@@ -1,10 +1,11 @@
 /**
  * Pagos por comprobante: pendiente → plataforma central → aprobado/rechazado (polling).
- * El comprobante permanece en BD; la UI lo oculta tras aprobación.
+ * Tras aprobación el comprobante pasa al historial y el formulario queda listo para el próximo ciclo.
  */
 const { readClientIdentity, isCentralSyncConfigured } = require('../../packages/shared-config');
 const { PAYMENT_STATUSES, normalizePaymentEstado } = require('../../packages/shared-types');
 const { mapCentralSyncError } = require('./saasPanelErrors');
+const { v4: uuidv4 } = require('uuid');
 const { queryOne, runSql } = require('../database');
 const { proximaFechaFromControlAnchor } = require('../pagoUsoBillingSync');
 const {
@@ -79,6 +80,8 @@ function applyNewComprobanteUploadToPago(pago, nextUrl, prevUrl) {
     pp.last_central_sync_ok = null;
     pp.last_central_sync_error = '';
     pp.central_payment_id = null;
+    pp.approval_notice_until = null;
+    pp.last_approval_at = null;
     clearNotificationsByTitle(PENDING_NOTIFICATION_TITLE);
     clearNotificationsByTitle(APPROVAL_NOTIFICATION_TITLE);
     clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
@@ -115,21 +118,115 @@ function generateReferencia() {
   return `RF-${Date.now()}-${suffix}`;
 }
 
+function voucherUrlFromHistorialEntry(entry) {
+  return String(entry?.comprobante_pago_url || entry?.voucher || '').trim();
+}
+
+function normalizeHistorialEntryForClient(entry) {
+  const url = voucherUrlFromHistorialEntry(entry);
+  return {
+    id: String(entry?.id || ''),
+    fecha: String(entry?.fecha || ''),
+    estado: normalizePaymentEstado(entry?.estado) || String(entry?.estado || ''),
+    referencia: String(entry?.referencia || ''),
+    monto: entry?.monto != null && Number.isFinite(Number(entry.monto)) ? Number(entry.monto) : null,
+    aprobacion_at: entry?.aprobacion_at || null,
+    rechazo_motivo: String(entry?.rechazo_motivo || ''),
+    comprobante_pago_url: url,
+    voucher: url,
+  };
+}
+
 function appendHistorial(pago, entry) {
   const hist = Array.isArray(pago.platform_payment?.historial) ? [...pago.platform_payment.historial] : [];
-  hist.unshift(entry);
+  hist.unshift({
+    id: String(entry?.id || uuidv4()),
+    ...entry,
+    comprobante_pago_url: voucherUrlFromHistorialEntry(entry) || String(entry?.comprobante_pago_url || entry?.voucher || '').trim(),
+    voucher: voucherUrlFromHistorialEntry(entry) || String(entry?.voucher || entry?.comprobante_pago_url || '').trim(),
+  });
   if (hist.length > 50) hist.length = 50;
   return hist;
+}
+
+/** Al aprobar: actualiza el registro pendiente del mismo ciclo o crea uno aprobado. */
+function upsertHistorialApproved(pago, entry) {
+  const hist = Array.isArray(pago.platform_payment?.historial) ? [...pago.platform_payment.historial] : [];
+  const ref = String(entry.referencia || '').trim();
+  const url = voucherUrlFromHistorialEntry(entry);
+  const idx = hist.findIndex((h) => {
+    const e = normalizePaymentEstado(h.estado);
+    const sameRef = ref && String(h.referencia || '').trim() === ref;
+    const sameVoucher = url && voucherUrlFromHistorialEntry(h) === url;
+    return (e === PAYMENT_STATUSES.PENDING || e === PAYMENT_STATUSES.APPROVED) && (sameRef || sameVoucher);
+  });
+  const row = {
+    id: idx >= 0 ? String(hist[idx].id || uuidv4()) : uuidv4(),
+    ...entry,
+    comprobante_pago_url: url,
+    voucher: url,
+  };
+  if (idx >= 0) {
+    hist[idx] = { ...hist[idx], ...row, estado: PAYMENT_STATUSES.APPROVED };
+  } else {
+    hist.unshift(row);
+  }
+  if (hist.length > 50) hist.length = 50;
+  return hist;
+}
+
+/** Tras aprobación: comprobante al historial y formulario listo para el próximo pago. */
+function archiveApprovedPaymentAndPrepareNextCycle(pago, { now, ref, url, monto, centralPaymentId } = {}) {
+  const ts = now || new Date().toISOString();
+  const voucher = String(url || '').trim();
+  const prevHist = Array.isArray(pago.platform_payment?.historial) ? [...pago.platform_payment.historial] : [];
+  const historial = voucher
+    ? upsertHistorialApproved(pago, {
+      fecha: ts.slice(0, 10),
+      voucher,
+      comprobante_pago_url: voucher,
+      estado: PAYMENT_STATUSES.APPROVED,
+      referencia: ref,
+      monto: monto != null && Number.isFinite(Number(monto)) ? Number(monto) : null,
+      aprobacion_at: ts,
+    })
+    : prevHist;
+  pago.comprobante_pago_url = '';
+  delete pago.monto_comprobante;
+  pago.platform_payment = {
+    historial,
+    approval_notice_until: paymentApprovalNoticeExpiresAt(),
+    last_approval_at: ts,
+  };
+  if (centralPaymentId) {
+    pago.platform_payment.last_central_payment_id = centralPaymentId;
+  }
+  return pago;
+}
+
+function daysFromTodayToDueDate(dueKey) {
+  const due = String(dueKey || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return null;
+  const a = new Date(`${isoDateKeyNow()}T12:00:00`);
+  const b = new Date(`${due}T12:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+  return Math.round((b - a) / (24 * 60 * 60 * 1000));
+}
+
+function isLicensePeriodActive(pago) {
+  const d = daysFromTodayToDueDate(pago?.fecha_proxima_facturacion);
+  return d != null && d >= 0;
 }
 
 function isPaymentApprovedForUnlock(pago) {
   if (!isCentralSyncConfigured()) return true;
   const pp = pago?.platform_payment || {};
   const estado = normalizePaymentEstado(pp.estado);
-  if (!estado && String(pago?.comprobante_pago_url || '').trim()) {
-    return true;
-  }
-  return estado === PAYMENT_STATUSES.APPROVED;
+  if (estado === PAYMENT_STATUSES.APPROVED) return true;
+  if (isApprovalNoticeActive(pp)) return true;
+  if (isLicensePeriodActive(pago)) return true;
+  if (!estado && String(pago?.comprobante_pago_url || '').trim()) return true;
+  return false;
 }
 
 /** Desbloqueo y aviso legacy (sin plataforma central configurada). */
@@ -308,20 +405,15 @@ function applyPaymentApproved({ centralPaymentId, resolvedAt, expirationDate } =
   const now = resolvedAt || new Date().toISOString();
   const ref = String(pp.referencia || '').trim();
   const url = String(pago.comprobante_pago_url || '').trim();
+  const montoRaw = pp.monto ?? pago.monto_comprobante ?? null;
+  const monto = montoRaw != null && Number.isFinite(Number(montoRaw)) ? Number(montoRaw) : null;
 
-  pp.estado = PAYMENT_STATUSES.APPROVED;
-  pp.resolved_at = now;
-  pp.comprobante_oculto_ui = true;
-  if (centralPaymentId) pp.central_payment_id = centralPaymentId;
-
-  pago.platform_payment = pp;
-  pago.platform_payment.historial = appendHistorial(pago, {
-    fecha: now.slice(0, 10),
-    voucher: url,
-    estado: PAYMENT_STATUSES.APPROVED,
-    referencia: ref,
-    monto: pp.monto ?? null,
-    aprobacion_at: now,
+  archiveApprovedPaymentAndPrepareNextCycle(pago, {
+    now,
+    ref,
+    url,
+    monto,
+    centralPaymentId,
   });
 
   const renewed = renewLicenseOnPaymentApproved(pago, expirationDate);
@@ -406,7 +498,9 @@ async function registerPendingComprobantePayment({ comprobanteUrl, monto = null,
   const now = new Date().toISOString();
   let pago = readPagoUso();
 
+  const prevPp = pago.platform_payment || {};
   pago.platform_payment = {
+    ...prevPp,
     estado: PAYMENT_STATUSES.PENDING,
     referencia: ref,
     monto: monto != null && Number.isFinite(Number(monto)) ? Number(monto) : null,
@@ -414,9 +508,11 @@ async function registerPendingComprobantePayment({ comprobanteUrl, monto = null,
     submitted_at: now,
     resolved_at: null,
     comprobante_oculto_ui: false,
+    approval_notice_until: null,
     historial: appendHistorial(pago, {
       fecha: now.slice(0, 10),
       voucher: url,
+      comprobante_pago_url: url,
       estado: PAYMENT_STATUSES.PENDING,
       referencia: ref,
       monto: monto != null && Number.isFinite(Number(monto)) ? Number(monto) : null,
@@ -495,9 +591,18 @@ async function pushComprobanteToCentral({ comprobanteUrl, referencia } = {}) {
 function syncExpiredPaymentApprovalNotices() {
   const pago = readPagoUso();
   const pp = pago.platform_payment || {};
+  const noticeUntil = pp.approval_notice_until ? new Date(pp.approval_notice_until).getTime() : NaN;
   const estado = normalizePaymentEstado(pp.estado);
-  if (estado !== PAYMENT_STATUSES.APPROVED) return;
-  if (isWithinPaymentApprovalNoticeWindow(pp.resolved_at)) return;
+  const legacyApproved = estado === PAYMENT_STATUSES.APPROVED;
+  const noticeActive = Number.isFinite(noticeUntil) && Date.now() < noticeUntil;
+  if (!legacyApproved && !noticeActive) return;
+  if (legacyApproved && isWithinPaymentApprovalNoticeWindow(pp.resolved_at)) return;
+  if (noticeActive) return;
+  if (pp.approval_notice_until) {
+    pp.approval_notice_until = null;
+    pago.platform_payment = pp;
+    writePagoUso(pago);
+  }
   clearNotificationsByTitle(APPROVAL_NOTIFICATION_TITLE);
   clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
 }
@@ -535,35 +640,46 @@ async function pollAndApplyPaymentStatus() {
   }
 }
 
+function isApprovalNoticeActive(pp = {}) {
+  const until = pp.approval_notice_until ? new Date(pp.approval_notice_until).getTime() : NaN;
+  if (Number.isFinite(until) && Date.now() < until) return true;
+  const estado = normalizePaymentEstado(pp.estado);
+  return estado === PAYMENT_STATUSES.APPROVED && isWithinPaymentApprovalNoticeWindow(pp.resolved_at);
+}
+
 function getPublicPlatformPaymentState() {
   syncExpiredPaymentApprovalNotices();
   const pago = readPagoUso();
   const pp = pago.platform_payment || {};
   const estado = normalizePaymentEstado(pp.estado);
   const centralOn = isCentralSyncConfigured();
+  const hasActiveComprobante = Boolean(String(pago.comprobante_pago_url || '').trim());
   const approved = estado === PAYMENT_STATUSES.APPROVED;
-  const pending = estado === PAYMENT_STATUSES.PENDING;
+  const pending = estado === PAYMENT_STATUSES.PENDING && hasActiveComprobante;
   const rejected = estado === PAYMENT_STATUSES.REJECTED;
-  const oculto = Boolean(pp.comprobante_oculto_ui) || approved;
-  const showApprovalNotice = approved && isWithinPaymentApprovalNoticeWindow(pp.resolved_at);
+  const showApprovalNotice = isApprovalNoticeActive(pp);
+  const oculto = hasActiveComprobante && (Boolean(pp.comprobante_oculto_ui) || approved);
+  const historial = (Array.isArray(pp.historial) ? pp.historial : []).map(normalizeHistorialEntryForClient);
+  const planActivo = showApprovalNotice || isLicensePeriodActive(pago);
 
   return {
     central_configured: centralOn,
-    estado: estado || (centralOn ? null : 'aprobado'),
+    estado: hasActiveComprobante ? (estado || null) : (centralOn ? null : (planActivo ? 'aprobado' : null)),
     referencia: String(pp.referencia || ''),
-    monto: pp.monto ?? null,
+    monto: pp.monto ?? pago.monto_comprobante ?? null,
     submitted_at: pp.submitted_at || null,
-    resolved_at: pp.resolved_at || null,
+    resolved_at: pp.resolved_at || pp.last_approval_at || null,
     comprobante_oculto_ui: oculto,
-    comprobante_visible_en_panel: Boolean(String(pago.comprobante_pago_url || '').trim()) && !oculto,
+    comprobante_visible_en_panel: hasActiveComprobante && !oculto,
     show_pending_banner: pending,
     show_approved_banner: showApprovalNotice,
     show_rejected_banner: rejected,
-    plan_activo: approved,
+    plan_activo: planActivo,
     mensaje_gracias: showApprovalNotice ? PAYMENT_APPROVAL_THANK_YOU : '',
     mensaje_aprobado: showApprovalNotice ? PAYMENT_APPROVAL_BODY : '',
     mensaje_licencia: showApprovalNotice ? 'Licencia actualizada' : '',
-    historial_count: Array.isArray(pp.historial) ? pp.historial.length : 0,
+    historial,
+    historial_count: historial.length,
     last_central_sync_ok: pp.last_central_sync_ok ?? null,
     last_central_sync_error: String(pp.last_central_sync_error || ''),
     central_user_message: !pp.last_central_sync_ok && pp.last_central_sync_error

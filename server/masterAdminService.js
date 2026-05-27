@@ -632,6 +632,8 @@ function buildPagoUsoComprobanteUiState() {
     quitar_comprobante_allowed: (() => {
       const estado = String(platformPayment?.estado || '').toLowerCase();
       if (estado === 'aprobado' || estado === 'approved') return false;
+      if (platformPayment?.show_approved_banner) return false;
+      if (estado === 'pendiente' || estado === 'pending') return false;
       return true;
     })(),
     upload_comprobante_message: msg,

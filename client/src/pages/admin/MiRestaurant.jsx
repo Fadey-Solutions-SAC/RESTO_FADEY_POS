@@ -16,6 +16,14 @@ import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople } from 'react-icons/md
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
 const DAY_NAMES = { lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles', jueves: 'Jueves', viernes: 'Viernes', sabado: 'Sábado', domingo: 'Domingo' };
+function pagoHistorialEstadoLabel(estado) {
+  const e = String(estado || '').toLowerCase();
+  if (e === 'approved' || e === 'aprobado') return 'Aprobado';
+  if (e === 'pending' || e === 'pendiente') return 'Pendiente';
+  if (e === 'rejected' || e === 'rechazado') return 'Rechazado';
+  return estado || '—';
+}
+
 const MI_RESTAURANT_VIEWS = [
   { id: 'mi_empresa', label: 'Mi empresa' },
   { id: 'facturacion_electronica', label: 'Facturación electrónica' },
@@ -128,16 +136,43 @@ export default function MiRestaurant() {
     setBillingPanel((p) => ({ ...p, cert_pfx_path: r.url }));
   }, []);
 
+  const syncPagoUsoAppConfigFromServer = useCallback(async () => {
+    try {
+      const appCfg = await api.get('/admin-modules/config/app');
+      const pago = appCfg?.pago_uso_sistema;
+      if (!pago || typeof pago !== 'object') return;
+      setAppConfig((prev) => {
+        const merged = { ...(prev.pago_uso_sistema || {}), ...pago };
+        if (!String(merged.comprobante_pago_url || '').trim()) {
+          merged.monto_comprobante = '';
+        }
+        return { ...prev, pago_uso_sistema: merged };
+      });
+    } catch (_) {
+      /* opcional */
+    }
+  }, []);
+
   const refreshPagoUsoComprobanteSchedule = useCallback(async () => {
     if (!canReadBillingConfig) return;
     try {
       await api.get('/platform-payments/status').catch(() => null);
       const s = await api.get('/master-admin/billing-schedule');
       setPagoUsoComprobanteUi(s?.pago_uso_comprobante || null);
+      await syncPagoUsoAppConfigFromServer();
     } catch (_) {
       setPagoUsoComprobanteUi(null);
     }
-  }, [canReadBillingConfig]);
+  }, [canReadBillingConfig, syncPagoUsoAppConfigFromServer]);
+
+  useEffect(() => {
+    if (activeView !== 'pago_uso_sistema' || !canReadBillingConfig) return undefined;
+    refreshPagoUsoComprobanteSchedule();
+    const timer = setInterval(() => {
+      refreshPagoUsoComprobanteSchedule();
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [activeView, canReadBillingConfig, refreshPagoUsoComprobanteSchedule]);
 
   const resyncCentralPayment = useCallback(async () => {
     if (!canReadBillingConfig) return;
@@ -161,7 +196,11 @@ export default function MiRestaurant() {
       const res = await api.post('/platform-payments/clear');
       setAppConfig((prev) => ({
         ...prev,
-        pago_uso_sistema: { ...(prev.pago_uso_sistema || {}), comprobante_pago_url: '' },
+        pago_uso_sistema: {
+          ...(prev.pago_uso_sistema || {}),
+          comprobante_pago_url: '',
+          monto_comprobante: '',
+        },
       }));
       await refreshPagoUsoComprobanteSchedule();
       if (res?.ok === false && res?.central_user_message) {
@@ -1300,6 +1339,73 @@ export default function MiRestaurant() {
                   })()}
                 </div>
               </div>
+
+              {(() => {
+                const historial = pagoUsoComprobanteUi?.platform_payment?.historial;
+                const rows = Array.isArray(historial) ? historial.filter((h) => {
+                  const url = String(h?.comprobante_pago_url || h?.voucher || '').trim();
+                  return Boolean(url);
+                }) : [];
+                if (!rows.length) return null;
+                return (
+                  <div className="mt-6 border-t border-[color:var(--ui-border)] pt-4">
+                    <h4 className="text-sm font-semibold text-[var(--ui-body-text)] mb-2">Historial de pagos</h4>
+                    <p className="text-xs text-[var(--ui-muted)] mb-3">
+                      Comprobantes ya enviados o aprobados. El formulario de arriba queda libre para el próximo pago.
+                    </p>
+                    <ul className="space-y-3">
+                      {rows.map((item) => {
+                        const url = String(item.comprobante_pago_url || item.voucher || '').trim();
+                        const isPdf = url.toLowerCase().endsWith('.pdf');
+                        const key = item.id || `${item.fecha}-${item.referencia}-${url}`;
+                        return (
+                          <li
+                            key={key}
+                            className="flex flex-wrap items-start gap-3 rounded-lg border border-[color:var(--ui-border)] p-3 bg-[var(--ui-surface-2)]"
+                          >
+                            {!isPdf ? (
+                              <a
+                                href={resolveMediaUrl(url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="shrink-0 rounded overflow-hidden border border-[color:var(--ui-border)] max-w-[88px]"
+                              >
+                                <img
+                                  src={resolveMediaUrl(url)}
+                                  alt=""
+                                  className="w-[88px] h-[66px] object-cover"
+                                />
+                              </a>
+                            ) : (
+                              <span className="text-xs font-medium text-[var(--ui-muted)] px-2 py-1 bg-white rounded border">
+                                PDF
+                              </span>
+                            )}
+                            <div className="min-w-0 flex-1 text-sm">
+                              <p className="font-medium text-[var(--ui-body-text)]">
+                                {pagoHistorialEstadoLabel(item.estado)}
+                                {item.monto != null ? ` · S/ ${Number(item.monto).toFixed(2)}` : ''}
+                              </p>
+                              <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                                {item.fecha || '—'}
+                                {item.referencia ? ` · Ref. ${item.referencia}` : ''}
+                              </p>
+                              <a
+                                href={resolveMediaUrl(url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:underline mt-1 inline-block"
+                              >
+                                Ver comprobante
+                              </a>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })()}
 
               <div className="rounded-lg bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] p-3 text-sm text-[var(--ui-muted)]">
                 {canEditBillingMaster ? (
