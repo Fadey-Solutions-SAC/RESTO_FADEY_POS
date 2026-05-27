@@ -395,7 +395,7 @@ router.put('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
         incomingUrl: nextUrl,
         previousUrl: prevUrl,
       });
-      const nextPago = {
+      let nextPago = {
         ...prevParsed,
         comprobante_pago_url: nextUrl,
       };
@@ -404,6 +404,10 @@ router.put('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
         if (Number.isFinite(montoRaw) && montoRaw > 0) {
           nextPago.monto_comprobante = Math.round(montoRaw * 100) / 100;
         }
+      }
+      if (nextUrl && nextUrl !== prevUrl) {
+        const { applyNewComprobanteUploadToPago } = require('../services/platformPaymentService');
+        nextPago = applyNewComprobanteUploadToPago(nextPago, nextUrl, prevUrl);
       }
       payload.pago_uso_sistema = nextPago;
     }
@@ -427,7 +431,14 @@ router.put('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
         ? Math.max(1, Math.min(14, Math.round(g)))
         : (prevParsed.comprobante_grace_days_after_due ?? 3);
     }
-    payload.pago_uso_sistema = merged;
+    const prevUrlMaster = String(prevParsed.comprobante_pago_url || '').trim();
+    const nextUrlMaster = String(merged.comprobante_pago_url || '').trim();
+    if (nextUrlMaster && nextUrlMaster !== prevUrlMaster) {
+      const { applyNewComprobanteUploadToPago } = require('../services/platformPaymentService');
+      payload.pago_uso_sistema = applyNewComprobanteUploadToPago(merged, nextUrlMaster, prevUrlMaster);
+    } else {
+      payload.pago_uso_sistema = merged;
+    }
   }
 
   const beforeState = readAppSettingsObject();

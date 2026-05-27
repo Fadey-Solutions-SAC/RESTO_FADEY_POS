@@ -111,6 +111,7 @@ export default function MiRestaurant() {
   const [pagoUsoComprobanteUi, setPagoUsoComprobanteUi] = useState(null);
   const [centralResyncBusy, setCentralResyncBusy] = useState(false);
   const [enviarComprobanteBusy, setEnviarComprobanteBusy] = useState(false);
+  const [comprobanteUploadBusy, setComprobanteUploadBusy] = useState(false);
   const [billingPanel, setBillingPanel] = useState(() => defaultBillingPanel());
   const [billingPanelPresence, setBillingPanelPresence] = useState(() => defaultBillingPanelPresence());
   const [staffUsers, setStaffUsers] = useState([]);
@@ -651,6 +652,7 @@ export default function MiRestaurant() {
       toast.error('No tienes permiso para cargar el comprobante.');
       return;
     }
+    setComprobanteUploadBusy(true);
     try {
       const uploaded = await api.upload(file);
       const url = uploaded?.url || '';
@@ -658,15 +660,19 @@ export default function MiRestaurant() {
         toast.error('No se recibió la URL del archivo.');
         return;
       }
-      const saved = await api.put('/admin-modules/config/app', {
-        pago_uso_sistema: { comprobante_pago_url: url },
-      });
+      const montoRaw = Number(appConfig.pago_uso_sistema?.monto_comprobante);
+      const body = { pago_uso_sistema: { comprobante_pago_url: url } };
+      if (Number.isFinite(montoRaw) && montoRaw > 0) {
+        body.pago_uso_sistema.monto_comprobante = montoRaw;
+      }
+      const saved = await api.put('/admin-modules/config/app', body);
       setAppConfig((prev) => ({ ...prev, ...saved }));
       await refreshPagoUsoComprobanteSchedule();
       toast.success('Comprobante cargado. Pulse «Enviar comprobante» para mandarlo al panel.');
     } catch (err) {
       toast.error(err.message || 'No se pudo subir el comprobante');
     } finally {
+      setComprobanteUploadBusy(false);
       if (comprobanteUsoInputRef.current) comprobanteUsoInputRef.current.value = '';
     }
   };
@@ -1182,36 +1188,43 @@ export default function MiRestaurant() {
                   <p className="text-xs text-[var(--ui-muted)] mb-2">Sube una imagen (o PDF) del voucher o transferencia.</p>
                   <div className="flex flex-wrap items-center gap-3">
                     {(() => {
-                      const compUi = pagoUsoComprobanteUi;
-                      const ppUi = compUi?.platform_payment;
-                      const comprobanteAprobado = Boolean(ppUi?.show_approved_banner);
-                      const blockRemove = comprobanteAprobado || compUi?.quitar_comprobante_allowed === false;
-                      const hideComprobanteUi =
-                        ppUi?.comprobante_oculto_ui || comprobanteAprobado;
-                      const showComprobanteEnPanel =
-                        appConfig.pago_uso_sistema?.comprobante_pago_url
-                        && !hideComprobanteUi;
+                      const ppUi = pagoUsoComprobanteUi?.platform_payment;
+                      const urlActual = String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim();
+                      const estadoPp = String(ppUi?.estado || '').toLowerCase();
+                      const pendienteEnRevision =
+                        (estadoPp === 'pendiente' || estadoPp === 'pending')
+                        && Boolean(urlActual)
+                        && ppUi?.last_central_sync_ok !== false;
+                      const blockRemove =
+                        Boolean(ppUi?.show_approved_banner)
+                        || (pendienteEnRevision && ppUi?.quitar_comprobante_allowed === false);
+                      const puedeCargar = canEditPagoUsoComprobante && !pendienteEnRevision && !comprobanteUploadBusy;
                       return (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => comprobanteUsoInputRef.current?.click()}
-                            className="btn-secondary flex items-center gap-2 text-sm"
-                            disabled={!canEditPagoUsoComprobante || hideComprobanteUi}
-                          >
-                            <MdUpload /> Cargar comprobante
-                          </button>
-                          <input
-                            ref={comprobanteUsoInputRef}
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
-                            className="hidden"
-                            onChange={(e) => uploadComprobantePagoUso(e.target.files?.[0])}
-                          />
-                          {showComprobanteEnPanel ? (
+                          <label className={puedeCargar ? 'cursor-pointer' : 'cursor-not-allowed'}>
+                            <span
+                              className={`btn-secondary inline-flex items-center gap-2 text-sm ${!puedeCargar ? 'opacity-50 pointer-events-none' : ''}`}
+                            >
+                              <MdUpload /> {comprobanteUploadBusy ? 'Subiendo…' : 'Cargar comprobante'}
+                            </span>
+                            <input
+                              ref={comprobanteUsoInputRef}
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
+                              className="sr-only"
+                              disabled={!puedeCargar}
+                              onChange={(e) => uploadComprobantePagoUso(e.target.files?.[0])}
+                            />
+                          </label>
+                          {pendienteEnRevision ? (
+                            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                              Hay un comprobante en revisión. Espere la respuesta o pida al maestro que lo rechace para cargar otro.
+                            </p>
+                          ) : null}
+                          {urlActual ? (
                             <>
                               <a
-                                href={resolveMediaUrl(appConfig.pago_uso_sistema.comprobante_pago_url)}
+                                href={resolveMediaUrl(urlActual)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-sm text-blue-600 hover:underline"
@@ -1221,7 +1234,7 @@ export default function MiRestaurant() {
                               <button
                                 type="button"
                                 className="text-sm text-red-600 hover:underline disabled:opacity-50"
-                                disabled={!canEditPagoUsoComprobante || blockRemove}
+                                disabled={!canEditPagoUsoComprobante || blockRemove || comprobanteUploadBusy}
                                 onClick={() => quitarComprobantePagoUso()}
                               >
                                 Quitar
@@ -1234,14 +1247,17 @@ export default function MiRestaurant() {
                   </div>
                   {(() => {
                     const pp = pagoUsoComprobanteUi?.platform_payment;
-                    const hidePreview = pp?.comprobante_oculto_ui || pp?.show_approved_banner;
-                    const url = appConfig.pago_uso_sistema?.comprobante_pago_url;
-                    const enviadoOk = pp?.estado === 'pendiente' && pp?.last_central_sync_ok === true;
-                    const compUiPrev = pagoUsoComprobanteUi;
-                    const blockRemovePreview = Boolean(pp?.show_approved_banner)
-                      || compUiPrev?.quitar_comprobante_allowed === false;
-                    if (!url || hidePreview) return null;
-                    const isPdf = String(url).toLowerCase().endsWith('.pdf');
+                    const url = String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim();
+                    if (!url) return null;
+                    const estadoPp = String(pp?.estado || '').toLowerCase();
+                    const pendienteEnRevision =
+                      (estadoPp === 'pendiente' || estadoPp === 'pending')
+                      && pp?.last_central_sync_ok !== false;
+                    const enviadoOk = pendienteEnRevision;
+                    const blockRemovePreview =
+                      Boolean(pp?.show_approved_banner)
+                      || (pendienteEnRevision && pagoUsoComprobanteUi?.quitar_comprobante_allowed === false);
+                    const isPdf = url.toLowerCase().endsWith('.pdf');
                     return (
                       <div className="mt-3 flex flex-wrap items-end gap-3">
                         {!isPdf ? (
@@ -1255,12 +1271,12 @@ export default function MiRestaurant() {
                         ) : (
                           <p className="text-sm text-[var(--ui-muted)]">PDF listo para enviar.</p>
                         )}
-                        {canEditPagoUsoComprobante ? (
+                        {canEditPagoUsoComprobante && !pendienteEnRevision ? (
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
                               className="btn-primary text-sm px-4 py-2 disabled:opacity-60"
-                              disabled={enviarComprobanteBusy}
+                              disabled={enviarComprobanteBusy || comprobanteUploadBusy}
                               onClick={() => enviarComprobanteAlPanel()}
                             >
                               {enviarComprobanteBusy
@@ -1272,7 +1288,7 @@ export default function MiRestaurant() {
                             <button
                               type="button"
                               className="btn-secondary text-sm px-4 py-2 disabled:opacity-60"
-                              disabled={blockRemovePreview}
+                              disabled={blockRemovePreview || comprobanteUploadBusy}
                               onClick={() => quitarComprobantePagoUso()}
                             >
                               Quitar

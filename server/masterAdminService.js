@@ -545,9 +545,7 @@ function evaluatePagoUsoComprobanteWindow() {
       controlChanged = true;
     }
   }
-  if (hasUrl) {
-    clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
-  }
+  /** El aviso «subir comprobante» se quita al enviar el pago (notifyPaymentPending), no solo al cargar el archivo. */
 
   if (pagoChanged) upsertSetting(PAGO_USO_APP_KEY, pago);
   if (controlChanged) upsertSetting(MASTER_SETTING_KEY, control);
@@ -663,7 +661,9 @@ function todayBeforeDue(st) {
 
 function releaseAutoLockIfComprobantePresent(urlTrimmed, options = {}) {
   if (!String(urlTrimmed || '').trim()) return;
-  clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
+  if (options.clearUploadAviso !== false) {
+    clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
+  }
   const legacySuccess = options.legacySuccessMessage !== false;
   if (legacySuccess) {
     clearNotificationsByTitle('Pago exitoso¡ Gracias por trabajar con Resto Fadey');

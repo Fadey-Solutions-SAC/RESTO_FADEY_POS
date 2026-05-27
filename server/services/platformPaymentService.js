@@ -18,10 +18,11 @@ const PAGO_USO_KEY = 'pago_uso_sistema';
 const APPROVAL_NOTIFICATION_TITLE = 'Pago aprobado — Resto Fadey';
 const PENDING_NOTIFICATION_TITLE = 'Comprobante recibido — pendiente de aprobación';
 const REJECTED_NOTIFICATION_TITLE = 'Pago rechazado — Resto Fadey';
-/** Aviso de aprobación en campana y banner de Mi restaurante. */
+const LEGACY_SUCCESS_NOTIFICATION_TITLE = 'Pago exitoso¡ Gracias por trabajar con Resto Fadey';
+/** Aviso de aprobación en campana y banner de Mi restaurante (por defecto 1 hora). */
 const PAYMENT_APPROVAL_NOTICE_MINUTES = Math.max(
   1,
-  Number(process.env.PLATFORM_PAYMENT_APPROVAL_NOTICE_MINUTES || 30),
+  Number(process.env.PLATFORM_PAYMENT_APPROVAL_NOTICE_MINUTES || 60),
 );
 
 const POLL_MS = Math.max(15000, Number(process.env.PLATFORM_PAYMENT_POLL_MS || 60000));
@@ -44,6 +45,42 @@ async function withCentralRetry(fn) {
     }
   }
   return last;
+}
+
+/**
+ * Nuevo archivo de comprobante: reabre la UI y reinicia el flujo si el pago anterior
+ * ya fue aprobado/rechazado o si se reemplaza el archivo en revisión.
+ */
+function applyNewComprobanteUploadToPago(pago, nextUrl, prevUrl) {
+  const out = { ...(pago && typeof pago === 'object' ? pago : {}) };
+  const next = String(nextUrl || '').trim();
+  const prev = String(prevUrl || '').trim();
+  if (!next) return out;
+  out.comprobante_pago_url = next;
+  if (next === prev) return out;
+
+  const pp = { ...(out.platform_payment || {}) };
+  const estado = normalizePaymentEstado(pp.estado);
+  pp.comprobante_oculto_ui = false;
+
+  if (
+    estado === PAYMENT_STATUSES.APPROVED
+    || estado === PAYMENT_STATUSES.REJECTED
+    || estado === PAYMENT_STATUSES.PENDING
+  ) {
+    pp.estado = '';
+    pp.referencia = '';
+    pp.submitted_at = '';
+    pp.resolved_at = '';
+    pp.last_central_sync_ok = null;
+    pp.last_central_sync_error = '';
+    pp.central_payment_id = null;
+    clearNotificationsByTitle(PENDING_NOTIFICATION_TITLE);
+    clearNotificationsByTitle(APPROVAL_NOTIFICATION_TITLE);
+    clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
+  }
+  out.platform_payment = pp;
+  return out;
 }
 
 function readPagoUso() {
@@ -217,10 +254,18 @@ function clearPaymentQueueNotifications() {
   clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
 }
 
+/** Quita avisos previos del ciclo de pago; deja solo la notificación de pendiente de aprobación. */
+function clearNotificationsBeforePaymentPending() {
+  clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
+  clearNotificationsByTitle(PENDING_NOTIFICATION_TITLE);
+  clearNotificationsByTitle(APPROVAL_NOTIFICATION_TITLE);
+  clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
+}
+
 function notifyPaymentApproved() {
   clearPaymentQueueNotifications();
   clearNotificationsByTitle(APPROVAL_NOTIFICATION_TITLE);
-  clearNotificationsByTitle('Pago exitoso¡ Gracias por trabajar con Resto Fadey');
+  clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
   addNotification({
     title: APPROVAL_NOTIFICATION_TITLE,
     message: 'Pago aprobado correctamente. Licencia actualizada.',
@@ -231,6 +276,9 @@ function notifyPaymentApproved() {
 }
 
 function notifyPaymentRejected(motivo) {
+  clearNotificationsByTitle(PENDING_NOTIFICATION_TITLE);
+  clearNotificationsByTitle(APPROVAL_NOTIFICATION_TITLE);
+  clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
   addNotification({
     title: REJECTED_NOTIFICATION_TITLE,
     message: motivo || 'Su comprobante no fue aprobado. Contacte a soporte o suba un nuevo comprobante.',
@@ -240,7 +288,7 @@ function notifyPaymentRejected(motivo) {
 }
 
 function notifyPaymentPending() {
-  clearNotificationsByTitle(PENDING_NOTIFICATION_TITLE);
+  clearNotificationsBeforePaymentPending();
   addNotification({
     title: PENDING_NOTIFICATION_TITLE,
     message: 'Su comprobante fue enviado y está pendiente de revisión por el administrador.',
@@ -275,7 +323,10 @@ function applyPaymentApproved({ centralPaymentId, resolvedAt, expirationDate } =
   writePagoUso(renewed);
 
   if (url) {
-    releaseAutoLockIfComprobantePresent(url, { legacySuccessMessage: false });
+    releaseAutoLockIfComprobantePresent(url, {
+      legacySuccessMessage: false,
+      clearUploadAviso: false,
+    });
   }
   notifyPaymentApproved();
 
@@ -335,7 +386,6 @@ function applyPaymentRejected({ motivo, resolvedAt } = {}) {
   });
   writePagoUso(pago);
   notifyPaymentRejected(motivo);
-  clearNotificationsByTitle(PENDING_NOTIFICATION_TITLE);
 
   return getPublicPlatformPaymentState();
 }
@@ -444,7 +494,7 @@ function syncExpiredPaymentApprovalNotices() {
   if (estado !== PAYMENT_STATUSES.APPROVED) return;
   if (isWithinPaymentApprovalNoticeWindow(pp.resolved_at)) return;
   clearNotificationsByTitle(APPROVAL_NOTIFICATION_TITLE);
-  clearNotificationsByTitle('Pago exitoso¡ Gracias por trabajar con Resto Fadey');
+  clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
 }
 
 async function pollAndApplyPaymentStatus() {
@@ -643,6 +693,7 @@ function startPlatformPaymentPoller() {
 }
 
 module.exports = {
+  applyNewComprobanteUploadToPago,
   registerPendingComprobantePayment,
   legacyConfirmComprobanteOnUpload,
   pollAndApplyPaymentStatus,
