@@ -5,6 +5,8 @@ const { proximaFechaFromControlAnchor, addDaysToIsoDate } = require('./pagoUsoBi
 
 /** Título fijo del aviso automático de comprobante; también filtra quién lo ve en la API. */
 const PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE = 'Pago por uso — subir comprobante';
+/** Aviso de calendario (evaluateAutomaticBillingRules), distinto del de «subir comprobante». */
+const BILLING_DUE_NOTIFICATION_TITLE = 'Vencimiento de facturación cercano';
 
 const REASON_PAGO_USO_SIN_COMPROBANTE =
   'Bloqueo automático: sin comprobante de pago por uso tras el plazo de gracia.';
@@ -280,6 +282,27 @@ function clearNotificationsByTitle(title) {
   return removed;
 }
 
+/** Avisos de «debe pagar / subir comprobante» del ciclo actual (no incluye pendiente ni aprobado). */
+function clearPaymentCycleReminderNotifications() {
+  let n = 0;
+  n += clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
+  n += clearNotificationsByTitle(BILLING_DUE_NOTIFICATION_TITLE);
+  return n;
+}
+
+/** No mostrar «vencimiento cercano» si ya envió comprobante y está pendiente o aprobado. */
+function shouldSuppressBillingDueNotification(pago = {}) {
+  const url = String(pago?.comprobante_pago_url || '').trim();
+  if (!url) return false;
+  try {
+    const { normalizePaymentEstado, PAYMENT_STATUSES } = require('../packages/shared-types');
+    const estado = normalizePaymentEstado(pago?.platform_payment?.estado);
+    return estado === PAYMENT_STATUSES.PENDING || estado === PAYMENT_STATUSES.APPROVED;
+  } catch (_) {
+    return false;
+  }
+}
+
 /** Vence a la próxima medianoche local (fin del día actual). */
 function nextLocalMidnightIso() {
   const d = new Date();
@@ -414,14 +437,16 @@ function evaluateAutomaticBillingRules() {
     const daysToDue = diffDays(today, dueDateKey);
     const notifyWindow = Math.max(1, Number(current.notify_days_before || 5));
 
+    const pagoBilling = readSetting(PAGO_USO_APP_KEY, {});
     if (
       daysToDue !== null
       && daysToDue >= 0
       && daysToDue <= notifyWindow
       && current.billing_alert_sent_for !== dueDateKey
+      && !shouldSuppressBillingDueNotification(pagoBilling)
     ) {
       addNotification({
-        title: 'Vencimiento de facturación cercano',
+        title: BILLING_DUE_NOTIFICATION_TITLE,
         message: `La próxima fecha de pago del período es el ${dueDateKey}. Quedan ${daysToDue} día(s).`,
         created_by: 'Sistema automático',
         level: 'warning',
@@ -769,6 +794,9 @@ function getLockState() {
 
 module.exports = {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
+  BILLING_DUE_NOTIFICATION_TITLE,
+  clearPaymentCycleReminderNotifications,
+  shouldSuppressBillingDueNotification,
   MASTER_SETTING_KEY,
   MASTER_NOTIFICATIONS_KEY,
   MASTER_AUTH_KEY,

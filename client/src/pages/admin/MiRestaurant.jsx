@@ -1030,13 +1030,13 @@ export default function MiRestaurant() {
               </div>
               {pagoUsoComprobanteUi?.platform_payment?.show_approved_banner ? (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                  <p className="font-semibold">Pago aprobado correctamente</p>
-                  <p className="mt-1">
-                    {pagoUsoComprobanteUi.platform_payment.mensaje_licencia || 'Licencia actualizada'}
+                  <p className="font-semibold">
+                    {pagoUsoComprobanteUi.platform_payment.mensaje_gracias
+                      || 'Gracias por trabajar con nosotros.'}
                   </p>
                   <p className="mt-2 text-emerald-800">
                     {pagoUsoComprobanteUi.platform_payment.mensaje_aprobado
-                      || 'Pago aprobado correctamente. Licencia actualizada.'}
+                      || 'Su pago fue aprobado correctamente. Licencia actualizada.'}
                   </p>
                 </div>
               ) : null}

@@ -10,12 +10,16 @@ const { proximaFechaFromControlAnchor } = require('../pagoUsoBillingSync');
 const {
   addNotification,
   clearNotificationsByTitle,
+  clearPaymentCycleReminderNotifications,
   releaseAutoLockIfComprobantePresent,
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
 } = require('../masterAdminService');
 
 const PAGO_USO_KEY = 'pago_uso_sistema';
 const APPROVAL_NOTIFICATION_TITLE = 'Pago aprobado — Resto Fadey';
+const PAYMENT_APPROVAL_THANK_YOU = 'Gracias por trabajar con nosotros.';
+const PAYMENT_APPROVAL_BODY = 'Su pago fue aprobado correctamente. Licencia actualizada.';
+const PAYMENT_APPROVAL_FULL_MESSAGE = `${PAYMENT_APPROVAL_THANK_YOU} ${PAYMENT_APPROVAL_BODY}`;
 const PENDING_NOTIFICATION_TITLE = 'Comprobante recibido — pendiente de aprobación';
 const REJECTED_NOTIFICATION_TITLE = 'Pago rechazado — Resto Fadey';
 const LEGACY_SUCCESS_NOTIFICATION_TITLE = 'Pago exitoso¡ Gracias por trabajar con Resto Fadey';
@@ -250,13 +254,13 @@ function isWithinPaymentApprovalNoticeWindow(resolvedAtIso) {
 }
 
 function clearPaymentQueueNotifications() {
+  clearPaymentCycleReminderNotifications();
   clearNotificationsByTitle(PENDING_NOTIFICATION_TITLE);
-  clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
 }
 
 /** Quita avisos previos del ciclo de pago; deja solo la notificación de pendiente de aprobación. */
 function clearNotificationsBeforePaymentPending() {
-  clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
+  clearPaymentCycleReminderNotifications();
   clearNotificationsByTitle(PENDING_NOTIFICATION_TITLE);
   clearNotificationsByTitle(APPROVAL_NOTIFICATION_TITLE);
   clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
@@ -268,7 +272,7 @@ function notifyPaymentApproved() {
   clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
   addNotification({
     title: APPROVAL_NOTIFICATION_TITLE,
-    message: 'Pago aprobado correctamente. Licencia actualizada.',
+    message: PAYMENT_APPROVAL_FULL_MESSAGE,
     created_by: 'Plataforma central',
     level: 'success',
     expires_at: paymentApprovalNoticeExpiresAt(),
@@ -276,6 +280,7 @@ function notifyPaymentApproved() {
 }
 
 function notifyPaymentRejected(motivo) {
+  clearPaymentCycleReminderNotifications();
   clearNotificationsByTitle(PENDING_NOTIFICATION_TITLE);
   clearNotificationsByTitle(APPROVAL_NOTIFICATION_TITLE);
   clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
@@ -349,7 +354,7 @@ function confirmLicenseFromSaas({ clientId, status, expirationDate } = {}) {
     });
     return {
       ok: true,
-      message: 'Pago aprobado correctamente. Licencia actualizada.',
+      message: PAYMENT_APPROVAL_FULL_MESSAGE,
       payment,
     };
   }
@@ -555,9 +560,8 @@ function getPublicPlatformPaymentState() {
     show_approved_banner: showApprovalNotice,
     show_rejected_banner: rejected,
     plan_activo: approved,
-    mensaje_aprobado: showApprovalNotice
-      ? 'Pago aprobado correctamente. Licencia actualizada.'
-      : '',
+    mensaje_gracias: showApprovalNotice ? PAYMENT_APPROVAL_THANK_YOU : '',
+    mensaje_aprobado: showApprovalNotice ? PAYMENT_APPROVAL_BODY : '',
     mensaje_licencia: showApprovalNotice ? 'Licencia actualizada' : '',
     historial_count: Array.isArray(pp.historial) ? pp.historial.length : 0,
     last_central_sync_ok: pp.last_central_sync_ok ?? null,
@@ -629,13 +633,6 @@ async function submitComprobanteToPanel({ comprobanteUrl, monto = null } = {}) {
     };
   }
 
-  try {
-    const { evaluateAutomaticBillingRules } = require('../masterAdminService');
-    evaluateAutomaticBillingRules();
-  } catch (_) {
-    /* opcional */
-  }
-
   const { resolveComprobanteAmount } = require('./centralSyncService');
   const pagoForAmount = readPagoUso();
   const resolvedMonto =
@@ -658,6 +655,12 @@ async function submitComprobanteToPanel({ comprobanteUrl, monto = null } = {}) {
     comprobanteUrl: url,
     monto: resolvedMonto,
   });
+  try {
+    const { evaluateAutomaticBillingRules } = require('../masterAdminService');
+    evaluateAutomaticBillingRules();
+  } catch (_) {
+    /* Tras marcar pendiente: no recrear aviso de vencimiento ni subir comprobante. */
+  }
   const pp = readPagoUso().platform_payment || {};
   const syncOk = pp.last_central_sync_ok === true;
   return {

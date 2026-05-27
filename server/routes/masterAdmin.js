@@ -4,6 +4,8 @@ const { authenticateToken } = require('../middleware/auth');
 const { buildPlanModuleTrees } = require('../planModuleCatalog');
 const {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
+  clearPaymentCycleReminderNotifications,
+  shouldSuppressBillingDueNotification,
   getControlConfig,
   setControlConfig,
   getNotifications,
@@ -23,9 +25,17 @@ router.use(authenticateToken);
 router.get('/admin-notifications', (req, res) => {
   const role = req.user?.role;
   const seesPagoUsoAviso = role === 'admin' || role === 'master_admin';
+  try {
+    const { readPagoUso } = require('../services/platformPaymentService');
+    if (shouldSuppressBillingDueNotification(readPagoUso())) {
+      clearPaymentCycleReminderNotifications();
+    }
+  } catch (_) {
+    /* opcional */
+  }
   let list = getActiveNotifications().slice(0, 30);
   if (!seesPagoUsoAviso) {
-    list = list.filter((n) => String(n.title || '') !== PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
+    list = list.filter((n) => String(n.title || '').trim() !== PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
   }
   return res.json(list);
 });
