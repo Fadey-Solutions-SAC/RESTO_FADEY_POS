@@ -12,7 +12,7 @@ import BillingSunatManualForm from '../../components/billing/BillingSunatManualF
 import { defaultBillingPanel, defaultBillingPanelPresence } from '../../data/sunat47Catalog';
 import { defaultMiRestaurantProfile, mergeMiRestaurantProfile } from '../../data/miRestaurantProfileDefaults';
 import MiRestaurantEmpresaHub from '../../components/miRestaurant/MiRestaurantEmpresaHub';
-import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople } from 'react-icons/md';
+import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory } from 'react-icons/md';
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
 const DAY_NAMES = { lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles', jueves: 'Jueves', viernes: 'Viernes', sabado: 'Sábado', domingo: 'Domingo' };
@@ -117,9 +117,18 @@ export default function MiRestaurant() {
   const [billingAnchorDate, setBillingAnchorDate] = useState('');
   /** Ventana de carga del comprobante (servidor): enlazada a fecha_proxima_facturación y días de gracia. */
   const [pagoUsoComprobanteUi, setPagoUsoComprobanteUi] = useState(null);
+  const pagoUsoHistorialRows = useMemo(() => {
+    const historial = pagoUsoComprobanteUi?.platform_payment?.historial;
+    if (!Array.isArray(historial)) return [];
+    return historial.filter((h) => {
+      const url = String(h?.comprobante_pago_url || h?.voucher || '').trim();
+      return Boolean(url);
+    });
+  }, [pagoUsoComprobanteUi]);
   const [centralResyncBusy, setCentralResyncBusy] = useState(false);
   const [enviarComprobanteBusy, setEnviarComprobanteBusy] = useState(false);
   const [comprobanteUploadBusy, setComprobanteUploadBusy] = useState(false);
+  const [pagoHistorialAbierto, setPagoHistorialAbierto] = useState(false);
   const [billingPanel, setBillingPanel] = useState(() => defaultBillingPanel());
   const [billingPanelPresence, setBillingPanelPresence] = useState(() => defaultBillingPanelPresence());
   const [staffUsers, setStaffUsers] = useState([]);
@@ -1287,7 +1296,6 @@ export default function MiRestaurant() {
                   {(() => {
                     const pp = pagoUsoComprobanteUi?.platform_payment;
                     const url = String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim();
-                    if (!url) return null;
                     const estadoPp = String(pp?.estado || '').toLowerCase();
                     const pendienteEnRevision =
                       (estadoPp === 'pendiente' || estadoPp === 'pending')
@@ -1296,116 +1304,138 @@ export default function MiRestaurant() {
                     const blockRemovePreview =
                       Boolean(pp?.show_approved_banner)
                       || (pendienteEnRevision && pagoUsoComprobanteUi?.quitar_comprobante_allowed === false);
+                    const muestraEnviar = Boolean(url) && canEditPagoUsoComprobante && !pendienteEnRevision;
+                    const tieneHistorial = pagoUsoHistorialRows.length > 0;
                     const isPdf = url.toLowerCase().endsWith('.pdf');
+
+                    const botonHistorial = tieneHistorial ? (
+                      <button
+                        type="button"
+                        className="btn-secondary inline-flex items-center gap-2 text-sm px-4 py-2 shrink-0"
+                        onClick={() => setPagoHistorialAbierto((v) => !v)}
+                        aria-expanded={pagoHistorialAbierto}
+                      >
+                        <MdHistory />
+                        {pagoHistorialAbierto
+                          ? 'Ocultar historial'
+                          : `Historial de pagos (${pagoUsoHistorialRows.length})`}
+                      </button>
+                    ) : null;
+
+                    const listaHistorial = pagoHistorialAbierto && tieneHistorial ? (
+                      <div className="w-full mt-3 pt-3 border-t border-[color:var(--ui-border)]">
+                        <p className="text-xs text-[var(--ui-muted)] mb-3">
+                          Comprobantes ya enviados o aprobados.
+                        </p>
+                        <ul className="space-y-3">
+                          {pagoUsoHistorialRows.map((item) => {
+                            const itemUrl = String(item.comprobante_pago_url || item.voucher || '').trim();
+                            const itemPdf = itemUrl.toLowerCase().endsWith('.pdf');
+                            const key = item.id || `${item.fecha}-${item.referencia}-${itemUrl}`;
+                            return (
+                              <li
+                                key={key}
+                                className="flex flex-wrap items-start gap-3 rounded-lg border border-[color:var(--ui-border)] p-3 bg-[var(--ui-surface-2)]"
+                              >
+                                {!itemPdf ? (
+                                  <a
+                                    href={resolveMediaUrl(itemUrl)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="shrink-0 rounded overflow-hidden border border-[color:var(--ui-border)] max-w-[88px]"
+                                  >
+                                    <img
+                                      src={resolveMediaUrl(itemUrl)}
+                                      alt=""
+                                      className="w-[88px] h-[66px] object-cover"
+                                    />
+                                  </a>
+                                ) : (
+                                  <span className="text-xs font-medium text-[var(--ui-muted)] px-2 py-1 bg-white rounded border">
+                                    PDF
+                                  </span>
+                                )}
+                                <div className="min-w-0 flex-1 text-sm">
+                                  <p className="font-medium text-[var(--ui-body-text)]">
+                                    {pagoHistorialEstadoLabel(item.estado)}
+                                    {item.monto != null ? ` · S/ ${Number(item.monto).toFixed(2)}` : ''}
+                                  </p>
+                                  <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                                    {item.fecha || '—'}
+                                    {item.referencia ? ` · Ref. ${item.referencia}` : ''}
+                                  </p>
+                                  <a
+                                    href={resolveMediaUrl(itemUrl)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-blue-600 hover:underline mt-1 inline-block"
+                                  >
+                                    Ver comprobante
+                                  </a>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ) : null;
+
+                    if (!url && !tieneHistorial) return null;
+
                     return (
-                      <div className="mt-3 flex flex-wrap items-end gap-3">
-                        {!isPdf ? (
-                          <div className="rounded-lg border border-[color:var(--ui-border)] overflow-hidden max-w-xs bg-[var(--ui-surface-2)]">
-                            <img
-                              src={resolveMediaUrl(url)}
-                              alt="Vista previa del comprobante"
-                              className="w-full max-h-48 object-contain"
-                            />
-                          </div>
-                        ) : (
-                          <p className="text-sm text-[var(--ui-muted)]">PDF listo para enviar.</p>
-                        )}
-                        {canEditPagoUsoComprobante && !pendienteEnRevision ? (
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              className="btn-primary text-sm px-4 py-2 disabled:opacity-60"
-                              disabled={enviarComprobanteBusy || comprobanteUploadBusy}
-                              onClick={() => enviarComprobanteAlPanel()}
-                            >
-                              {enviarComprobanteBusy
-                                ? 'Enviando…'
-                                : enviadoOk
-                                  ? 'Reenviar comprobante'
-                                  : 'Enviar comprobante'}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-secondary text-sm px-4 py-2 disabled:opacity-60"
-                              disabled={blockRemovePreview || comprobanteUploadBusy}
-                              onClick={() => quitarComprobantePagoUso()}
-                            >
-                              Quitar
-                            </button>
+                      <div className="mt-3 flex flex-col gap-3">
+                        {url ? (
+                          <div className="flex flex-wrap items-end gap-3">
+                            {!isPdf ? (
+                              <div className="rounded-lg border border-[color:var(--ui-border)] overflow-hidden max-w-xs bg-[var(--ui-surface-2)]">
+                                <img
+                                  src={resolveMediaUrl(url)}
+                                  alt="Vista previa del comprobante"
+                                  className="w-full max-h-48 object-contain"
+                                />
+                              </div>
+                            ) : (
+                              <p className="text-sm text-[var(--ui-muted)]">PDF listo para enviar.</p>
+                            )}
                           </div>
                         ) : null}
+                        {(muestraEnviar || botonHistorial) ? (
+                          <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                            <div className="flex flex-wrap gap-2">
+                              {muestraEnviar ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-primary text-sm px-4 py-2 disabled:opacity-60"
+                                    disabled={enviarComprobanteBusy || comprobanteUploadBusy}
+                                    onClick={() => enviarComprobanteAlPanel()}
+                                  >
+                                    {enviarComprobanteBusy
+                                      ? 'Enviando…'
+                                      : enviadoOk
+                                        ? 'Reenviar comprobante'
+                                        : 'Enviar comprobante'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-secondary text-sm px-4 py-2 disabled:opacity-60"
+                                    disabled={blockRemovePreview || comprobanteUploadBusy}
+                                    onClick={() => quitarComprobantePagoUso()}
+                                  >
+                                    Quitar
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                            {botonHistorial}
+                          </div>
+                        ) : null}
+                        {listaHistorial}
                       </div>
                     );
                   })()}
                 </div>
               </div>
-
-              {(() => {
-                const historial = pagoUsoComprobanteUi?.platform_payment?.historial;
-                const rows = Array.isArray(historial) ? historial.filter((h) => {
-                  const url = String(h?.comprobante_pago_url || h?.voucher || '').trim();
-                  return Boolean(url);
-                }) : [];
-                if (!rows.length) return null;
-                return (
-                  <div className="mt-6 border-t border-[color:var(--ui-border)] pt-4">
-                    <h4 className="text-sm font-semibold text-[var(--ui-body-text)] mb-2">Historial de pagos</h4>
-                    <p className="text-xs text-[var(--ui-muted)] mb-3">
-                      Comprobantes ya enviados o aprobados. El formulario de arriba queda libre para el próximo pago.
-                    </p>
-                    <ul className="space-y-3">
-                      {rows.map((item) => {
-                        const url = String(item.comprobante_pago_url || item.voucher || '').trim();
-                        const isPdf = url.toLowerCase().endsWith('.pdf');
-                        const key = item.id || `${item.fecha}-${item.referencia}-${url}`;
-                        return (
-                          <li
-                            key={key}
-                            className="flex flex-wrap items-start gap-3 rounded-lg border border-[color:var(--ui-border)] p-3 bg-[var(--ui-surface-2)]"
-                          >
-                            {!isPdf ? (
-                              <a
-                                href={resolveMediaUrl(url)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="shrink-0 rounded overflow-hidden border border-[color:var(--ui-border)] max-w-[88px]"
-                              >
-                                <img
-                                  src={resolveMediaUrl(url)}
-                                  alt=""
-                                  className="w-[88px] h-[66px] object-cover"
-                                />
-                              </a>
-                            ) : (
-                              <span className="text-xs font-medium text-[var(--ui-muted)] px-2 py-1 bg-white rounded border">
-                                PDF
-                              </span>
-                            )}
-                            <div className="min-w-0 flex-1 text-sm">
-                              <p className="font-medium text-[var(--ui-body-text)]">
-                                {pagoHistorialEstadoLabel(item.estado)}
-                                {item.monto != null ? ` · S/ ${Number(item.monto).toFixed(2)}` : ''}
-                              </p>
-                              <p className="text-xs text-[var(--ui-muted)] mt-0.5">
-                                {item.fecha || '—'}
-                                {item.referencia ? ` · Ref. ${item.referencia}` : ''}
-                              </p>
-                              <a
-                                href={resolveMediaUrl(url)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-blue-600 hover:underline mt-1 inline-block"
-                              >
-                                Ver comprobante
-                              </a>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                );
-              })()}
 
               <div className="rounded-lg bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] p-3 text-sm text-[var(--ui-muted)]">
                 {canEditBillingMaster ? (

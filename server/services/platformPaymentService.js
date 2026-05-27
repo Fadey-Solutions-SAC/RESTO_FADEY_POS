@@ -137,6 +137,17 @@ function normalizeHistorialEntryForClient(entry) {
   };
 }
 
+function historialSinPendienteDuplicado(pago, referencia) {
+  const ref = String(referencia || '').trim();
+  const hist = Array.isArray(pago.platform_payment?.historial) ? [...pago.platform_payment.historial] : [];
+  if (!ref) return hist;
+  return hist.filter((h) => {
+    const e = normalizePaymentEstado(h.estado);
+    if (e !== PAYMENT_STATUSES.PENDING) return true;
+    return String(h.referencia || '').trim() !== ref;
+  });
+}
+
 function appendHistorial(pago, entry) {
   const hist = Array.isArray(pago.platform_payment?.historial) ? [...pago.platform_payment.historial] : [];
   hist.unshift({
@@ -245,51 +256,45 @@ function unwrapCentralApiBody(data) {
   return data;
 }
 
-function pickRemotePaymentEstado(payload) {
+/** Solo campos del pago concreto; nunca mezclar licenseStatus ni un pago viejo aprobado. */
+function pickRemotePaymentEstado(payload, { referencia } = {}) {
   const d = unwrapCentralApiBody(payload);
   if (!d || typeof d !== 'object') return null;
+  const refFilter = String(referencia || '').trim();
+  const payment = d.payment && typeof d.payment === 'object' ? d.payment : null;
+  const paymentRef = String(payment?.referencia || d.referencia || '').trim();
+
+  if (refFilter && (!paymentRef || paymentRef !== refFilter)) {
+    return null;
+  }
+
   return normalizePaymentEstado(
-    d.paymentStatus
-      || d.estado
-      || d.status
-      || d.payment?.paymentStatus
-      || d.payment?.estado
-      || d.payment?.status,
+    payment?.estado
+      || payment?.paymentStatus
+      || payment?.status
+      || d.paymentStatus,
   );
 }
 
-async function fetchCentralStatus(referencia) {
-  if (!isCentralSyncConfigured()) return { skipped: true };
-  const { fetchCentralLicenseStatus } = require('./centralSyncService');
-  const licenseRes = await fetchCentralLicenseStatus();
-  if (licenseRes?.ok && licenseRes.data) {
-    const d = unwrapCentralApiBody(licenseRes.data);
-    const remoteEstado = pickRemotePaymentEstado(d);
-    if (remoteEstado) {
-      return {
-        ok: true,
-        data: {
-          estado: remoteEstado,
-          payment: d.payment || { estado: remoteEstado, id: d.payment?.id },
-          licenseStatus: d.licenseStatus,
-        },
-      };
-    }
-  }
-
-  const identity = readClientIdentity();
-  const ref = String(referencia || '').trim();
-  const qs = new URLSearchParams({ clientId: identity.clientId });
-  if (ref) qs.set('referencia', ref);
-  const url = `${identity.centralPlatformUrl}/api/payments/status?${qs.toString()}`;
-  const headers = {
+function centralStatusRequestHeaders(identity) {
+  return {
     Authorization: `Bearer ${identity.apiSecretKey}`,
     'X-Client-Id': identity.clientId,
     'X-WebService-Id': identity.webServiceId || identity.clientId,
     'X-License-Key': identity.licenseKey || identity.clientId,
   };
+}
+
+/** Consulta el pago exacto por referencia en el panel central. */
+async function fetchCentralPaymentStatusByReferencia(referencia) {
+  const ref = String(referencia || '').trim();
+  if (!ref) return { ok: false, error: 'sin_referencia' };
+
+  const identity = readClientIdentity();
+  const qs = new URLSearchParams({ clientId: identity.clientId, referencia: ref });
+  const url = `${identity.centralPlatformUrl}/api/payments/status?${qs.toString()}`;
   try {
-    const res = await fetch(url, { method: 'GET', headers });
+    const res = await fetch(url, { method: 'GET', headers: centralStatusRequestHeaders(identity) });
     const text = await res.text();
     let data = {};
     try {
@@ -301,18 +306,58 @@ async function fetchCentralStatus(referencia) {
       return { ok: false, status: res.status, data };
     }
     const unwrapped = unwrapCentralApiBody(data);
-    const remoteEstado = pickRemotePaymentEstado(unwrapped);
+    const payment = unwrapped?.payment && typeof unwrapped.payment === 'object'
+      ? unwrapped.payment
+      : null;
+    if (!payment) {
+      return {
+        ok: true,
+        data: { estado: null, referencia: ref, payment: null },
+      };
+    }
+    const remoteEstado = pickRemotePaymentEstado(unwrapped, { referencia: ref });
     return {
       ok: true,
       data: {
-        ...unwrapped,
-        estado: remoteEstado || unwrapped.estado,
-        payment: unwrapped.payment || unwrapped,
+        estado: remoteEstado,
+        referencia: ref,
+        payment,
+        paymentId: payment.id || unwrapped.paymentId,
       },
     };
   } catch (err) {
     return { ok: false, error: err.message || String(err) };
   }
+}
+
+async function fetchCentralStatus(referencia) {
+  if (!isCentralSyncConfigured()) return { skipped: true };
+  const ref = String(referencia || '').trim();
+
+  if (ref) {
+    return fetchCentralPaymentStatusByReferencia(ref);
+  }
+
+  const { fetchCentralLicenseStatus } = require('./centralSyncService');
+  const licenseRes = await fetchCentralLicenseStatus();
+  if (licenseRes?.ok && licenseRes.data) {
+    const d = unwrapCentralApiBody(licenseRes.data);
+    const paymentRef = String(d.payment?.referencia || '').trim();
+    const remoteEstado = pickRemotePaymentEstado(d, { referencia: paymentRef || undefined });
+    if (remoteEstado && paymentRef) {
+      return {
+        ok: true,
+        data: {
+          estado: remoteEstado,
+          referencia: paymentRef,
+          payment: d.payment,
+          licenseStatus: d.licenseStatus,
+        },
+      };
+    }
+  }
+
+  return { ok: true, data: { estado: null, payment: null } };
 }
 
 function parseExpirationDateInput(value) {
@@ -499,8 +544,9 @@ async function registerPendingComprobantePayment({ comprobanteUrl, monto = null,
   let pago = readPagoUso();
 
   const prevPp = pago.platform_payment || {};
+  pago.platform_payment = { ...prevPp, historial: historialSinPendienteDuplicado(pago, ref) };
   pago.platform_payment = {
-    ...prevPp,
+    ...pago.platform_payment,
     estado: PAYMENT_STATUSES.PENDING,
     referencia: ref,
     monto: monto != null && Number.isFinite(Number(monto)) ? Number(monto) : null,
@@ -615,15 +661,24 @@ async function pollAndApplyPaymentStatus() {
   const pago = readPagoUso();
   const pp = pago.platform_payment || {};
   const estado = normalizePaymentEstado(pp.estado);
-  if (!pp.referencia && estado !== PAYMENT_STATUSES.PENDING) return;
-  if (estado === PAYMENT_STATUSES.APPROVED || estado === PAYMENT_STATUSES.REJECTED) return;
+  const localRef = String(pp.referencia || '').trim();
+  if (!localRef || estado !== PAYMENT_STATUSES.PENDING) return;
 
   pollInFlight = true;
   try {
-    const result = await fetchCentralStatus(pp.referencia);
+    const result = await fetchCentralStatus(localRef);
     if (!result.ok || !result.data) return;
 
-    const remoteEstado = normalizePaymentEstado(result.data.estado || result.data.payment?.estado);
+    const remoteRef = String(
+      result.data.payment?.referencia || result.data.referencia || '',
+    ).trim();
+    if (!remoteRef || remoteRef !== localRef) return;
+
+    const remoteEstado = normalizePaymentEstado(
+      result.data.estado || result.data.payment?.estado,
+    );
+    if (!remoteEstado) return;
+
     if (remoteEstado === PAYMENT_STATUSES.APPROVED) {
       applyPaymentApproved({
         centralPaymentId: result.data.payment?.id || result.data.paymentId,
