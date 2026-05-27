@@ -391,13 +391,21 @@ router.put('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
       const nextUrl = String(inc.comprobante_pago_url ?? prevParsed.comprobante_pago_url ?? '').trim();
       assertComprobantePagoUsoChangeAllowed({
         isMaster: false,
+        isRestaurantAdmin: req.user?.role === 'admin',
         incomingUrl: nextUrl,
         previousUrl: prevUrl,
       });
-      payload.pago_uso_sistema = {
+      const nextPago = {
         ...prevParsed,
         comprobante_pago_url: nextUrl,
       };
+      if (inc.monto_comprobante !== undefined && inc.monto_comprobante !== null && inc.monto_comprobante !== '') {
+        const montoRaw = Number(inc.monto_comprobante);
+        if (Number.isFinite(montoRaw) && montoRaw > 0) {
+          nextPago.monto_comprobante = Math.round(montoRaw * 100) / 100;
+        }
+      }
+      payload.pago_uso_sistema = nextPago;
     }
   }
 

@@ -651,15 +651,18 @@ export default function MiRestaurant() {
       toast.error('No tienes permiso para cargar el comprobante.');
       return;
     }
-    const compUi = pagoUsoComprobanteUi;
-    if (isRestaurantAdmin && !isMasterAdmin && compUi?.policy_active && !compUi.upload_comprobante_allowed) {
-      toast.error(compUi.upload_comprobante_message || 'No puede cargar el comprobante en esta fecha.');
-      return;
-    }
     try {
       const uploaded = await api.upload(file);
       const url = uploaded?.url || '';
-      updateAppCfg('pago_uso_sistema', 'comprobante_pago_url', url);
+      if (!url) {
+        toast.error('No se recibió la URL del archivo.');
+        return;
+      }
+      const saved = await api.put('/admin-modules/config/app', {
+        pago_uso_sistema: { comprobante_pago_url: url },
+      });
+      setAppConfig((prev) => ({ ...prev, ...saved }));
+      await refreshPagoUsoComprobanteSchedule();
       toast.success('Comprobante cargado. Pulse «Enviar comprobante» para mandarlo al panel.');
     } catch (err) {
       toast.error(err.message || 'No se pudo subir el comprobante');
@@ -1080,6 +1083,12 @@ export default function MiRestaurant() {
                   Solo el <strong>administrador maestro</strong> puede modificar esta sección. Los datos se muestran en solo lectura.
                 </div>
               ) : null}
+              {isRestaurantAdmin && !isMasterAdmin ? (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                  Como <strong>administrador del restaurante</strong> puede cargar el comprobante de pago, indicar el monto y usar{' '}
+                  <strong>Enviar comprobante</strong>. La configuración de facturación (frecuencia, cuenta, días de gracia) la define el administrador maestro.
+                </div>
+              ) : null}
 
               <fieldset disabled={!canEditBillingMaster} className="border-0 p-0 m-0 min-w-0 space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1174,13 +1183,9 @@ export default function MiRestaurant() {
                   <div className="flex flex-wrap items-center gap-3">
                     {(() => {
                       const compUi = pagoUsoComprobanteUi;
-                      const restrictComprobanteForRestaurant =
-                        isRestaurantAdmin && !isMasterAdmin && Boolean(compUi?.policy_active);
-                      const blockUpload = restrictComprobanteForRestaurant && !compUi.upload_comprobante_allowed;
                       const ppUi = compUi?.platform_payment;
                       const comprobanteAprobado = Boolean(ppUi?.show_approved_banner);
-                      const blockRemove = comprobanteAprobado
-                        || (restrictComprobanteForRestaurant && compUi.quitar_comprobante_allowed === false);
+                      const blockRemove = comprobanteAprobado || compUi?.quitar_comprobante_allowed === false;
                       const hideComprobanteUi =
                         ppUi?.comprobante_oculto_ui || comprobanteAprobado;
                       const showComprobanteEnPanel =
@@ -1192,7 +1197,7 @@ export default function MiRestaurant() {
                             type="button"
                             onClick={() => comprobanteUsoInputRef.current?.click()}
                             className="btn-secondary flex items-center gap-2 text-sm"
-                            disabled={!canEditPagoUsoComprobante || blockUpload || hideComprobanteUi}
+                            disabled={!canEditPagoUsoComprobante || hideComprobanteUi}
                           >
                             <MdUpload /> Cargar comprobante
                           </button>
@@ -1233,10 +1238,8 @@ export default function MiRestaurant() {
                     const url = appConfig.pago_uso_sistema?.comprobante_pago_url;
                     const enviadoOk = pp?.estado === 'pendiente' && pp?.last_central_sync_ok === true;
                     const compUiPrev = pagoUsoComprobanteUi;
-                    const restrictRm =
-                      isRestaurantAdmin && !isMasterAdmin && Boolean(compUiPrev?.policy_active);
                     const blockRemovePreview = Boolean(pp?.show_approved_banner)
-                      || (restrictRm && compUiPrev?.quitar_comprobante_allowed === false);
+                      || compUiPrev?.quitar_comprobante_allowed === false;
                     if (!url || hidePreview) return null;
                     const isPdf = String(url).toLowerCase().endsWith('.pdf');
                     return (

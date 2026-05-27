@@ -618,27 +618,37 @@ function buildPagoUsoComprobanteUiState() {
   };
 }
 
-function assertComprobantePagoUsoChangeAllowed({ isMaster, incomingUrl, previousUrl }) {
-  if (isMaster) return;
-  const st = buildPagoUsoComprobanteUiState();
-  if (!st.policy_active) return;
+function assertComprobantePagoUsoChangeAllowed({
+  isMaster,
+  isRestaurantAdmin = false,
+  incomingUrl,
+  previousUrl,
+}) {
   const inc = String(incomingUrl ?? '').trim();
   const prev = String(previousUrl ?? '').trim();
 
   if (!inc && prev) {
-    const pagoRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['pago_uso_sistema']);
-    let pp = {};
-    try {
-      pp = pagoRow?.value ? JSON.parse(pagoRow.value).platform_payment || {} : {};
-    } catch (_) {
-      pp = {};
-    }
-    const estado = String(pp.estado || '').toLowerCase();
-    if (estado === 'aprobado' || estado === 'approved') {
-      throw new Error('No puede quitar un comprobante ya aprobado.');
+    if (!isMaster) {
+      const pagoRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['pago_uso_sistema']);
+      let pp = {};
+      try {
+        pp = pagoRow?.value ? JSON.parse(pagoRow.value).platform_payment || {} : {};
+      } catch (_) {
+        pp = {};
+      }
+      const estado = String(pp.estado || '').toLowerCase();
+      if (estado === 'aprobado' || estado === 'approved') {
+        throw new Error('No puede quitar un comprobante ya aprobado.');
+      }
     }
     return;
   }
+
+  /** Maestro y admin del restaurante pueden cargar/actualizar el comprobante en cualquier fecha. */
+  if (isMaster || isRestaurantAdmin) return;
+
+  const st = buildPagoUsoComprobanteUiState();
+  if (!st.policy_active) return;
   if (inc && !st.upload_comprobante_allowed) {
     throw new Error(st.upload_comprobante_message || 'No puede cargar el comprobante en esta fecha.');
   }

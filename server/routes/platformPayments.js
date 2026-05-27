@@ -61,11 +61,14 @@ router.get('/status', async (req, res) => {
 /** POST /api/platform-payments/clear — quita comprobante (solo si no está aprobado) */
 router.post('/clear', async (req, res) => {
   try {
-    const isMaster = String(req.user?.role || '').toLowerCase() === 'master_admin';
+    const role = String(req.user?.role || '').toLowerCase();
+    const isMaster = role === 'master_admin';
+    const isRestaurantAdmin = role === 'admin';
     const pago = readPagoUso();
     const previousUrl = String(pago.comprobante_pago_url || '').trim();
     assertComprobantePagoUsoChangeAllowed({
       isMaster,
+      isRestaurantAdmin,
       incomingUrl: '',
       previousUrl,
     });
@@ -87,7 +90,9 @@ router.post('/clear', async (req, res) => {
 /** POST /api/platform-payments/submit — guarda URL y envía comprobante al panel SaaS */
 router.post('/submit', async (req, res) => {
   try {
-    const isMaster = String(req.user?.role || '').toLowerCase() === 'master_admin';
+    const role = String(req.user?.role || '').toLowerCase();
+    const isMaster = role === 'master_admin';
+    const isRestaurantAdmin = role === 'admin';
     const incomingUrl = String(req.body?.comprobanteUrl || '').trim();
     const pago = readPagoUso();
     const previousUrl = String(pago.comprobante_pago_url || '').trim();
@@ -100,6 +105,7 @@ router.post('/submit', async (req, res) => {
     }
     assertComprobantePagoUsoChangeAllowed({
       isMaster,
+      isRestaurantAdmin,
       incomingUrl: nextUrl,
       previousUrl,
     });
