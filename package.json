@@ -26,6 +26,7 @@
     "test": "npm run smoke",
     "lint": "node scripts/lint-check.js",
     "reset-demo": "node scripts/reset-demo.js",
+    "branding:assets": "node scripts/generate-branding-assets.js",
     "prepare:first-owner": "node scripts/prepare-first-owner.js",
     "serve:offer": "npx --yes serve rolando-offer -l 8080",
     "electron": "electron .",

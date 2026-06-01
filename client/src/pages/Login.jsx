@@ -4,7 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api, resolveMediaUrl } from '../utils/api';
 import toast from 'react-hot-toast';
-import { MdStorefront, MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt } from 'react-icons/md';
+import { MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt } from 'react-icons/md';
+import RestoFadeyEntryHero from '../components/RestoFadeyEntryHero';
+
+const APP_LOGO_SRC = '/branding/resto-fadey-logo.png';
 import AttendancePhotoCapture from '../components/AttendancePhotoCapture';
 import { getStoredAppLocale, setAppLocale } from '../i18n';
 
@@ -117,31 +120,28 @@ export default function Login() {
     setStep(2);
   };
 
+  const headerLogoSrc = brandLogo ? resolveMediaUrl(brandLogo) : APP_LOGO_SRC;
+
   return (
-    <div className="rf-login-shell min-h-screen bg-[var(--ui-body-bg)] text-[var(--ui-body-text)] flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute top-0 left-0 w-96 h-96 bg-[var(--ui-accent)]/15 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-96 h-96 bg-[var(--ui-accent)]/20 rounded-full blur-3xl translate-x-1/2 translate-y-1/2 pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-[var(--ui-surface)]/30 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
+    <div className="rf-login-shell rf-entry-page">
+      <RestoFadeyEntryHero />
 
-      <div className="w-full max-w-md relative z-10">
-        <div className="text-center mb-8">
-          <div className="w-20 h-20 rounded-2xl mx-auto mb-4 shadow-lg overflow-hidden flex items-center justify-center bg-[var(--ui-surface)] ring-1 ring-[color:var(--ui-border)]">
-            {brandLogo ? (
-              <img
-                src={resolveMediaUrl(brandLogo)}
-                alt={restaurantName}
-                className="h-full w-full object-cover object-center"
-              />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-[var(--ui-accent)] to-[var(--ui-accent-hover)] flex items-center justify-center">
-                <MdStorefront className="text-white text-4xl" />
-              </div>
-            )}
+      <div className="rf-entry-panel">
+        <div className="rf-entry-panel__inner w-full">
+          <div className="text-center mb-6">
+            <img
+              src={headerLogoSrc}
+              alt={restaurantName}
+              className="rf-entry-brand-mark"
+              width={56}
+              height={56}
+            />
+            <h1 className="rf-font-display text-2xl sm:text-3xl font-bold text-[#e8f4fc] tracking-tight px-1">
+              {restaurantName}
+            </h1>
           </div>
-          <h1 className="rf-font-display text-3xl font-bold text-[var(--ui-body-text)] tracking-tight px-1">{restaurantName}</h1>
-        </div>
 
-        <div className="rf-login-card bg-[var(--ui-surface)] backdrop-blur-xl rounded-2xl shadow-2xl p-8 border border-[color:var(--ui-border)]">
+        <div className="rf-login-card bg-[var(--ui-surface)] backdrop-blur-xl rounded-2xl shadow-2xl p-6 sm:p-8 border border-[color:var(--ui-border)]">
           {step === 1 && (
             <>
               <h2 className="rf-font-display text-xl font-bold text-[var(--ui-body-text)] mb-1">{t('login.title')}</h2>
@@ -254,6 +254,7 @@ export default function Login() {
         <p className="text-center text-[var(--ui-muted)] text-xs mt-6 select-none" aria-hidden="true">
           {t('login.footer')}
         </p>
+        </div>
       </div>
     </div>
   );

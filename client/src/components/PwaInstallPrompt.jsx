@@ -110,8 +110,8 @@ export default function PwaInstallPrompt() {
       aria-label="Instalar aplicación"
     >
       <div className="flex items-start gap-3 min-w-0">
-        <div className="shrink-0 w-10 h-10 rounded-xl bg-[var(--ui-accent)]/15 flex items-center justify-center text-[var(--ui-accent)]">
-          <MdGetApp className="text-xl" />
+        <div className="shrink-0 w-10 h-10 rounded-xl overflow-hidden bg-[#00050d] ring-1 ring-[color:var(--ui-border)]">
+          <img src="/icon-192.png" alt="" className="w-full h-full object-cover" width={40} height={40} />
         </div>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[var(--ui-body-text)]">Instalar Resto-FADEY</p>
