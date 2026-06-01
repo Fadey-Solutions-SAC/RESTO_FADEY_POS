@@ -33,7 +33,6 @@ import CustomerOrders from './pages/customer/CustomerOrders';
 import OrderTracking from './pages/customer/OrderTracking';
 import MasterAdmin from './pages/master/MasterAdmin';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
-import RestoFadeyEntryHero from './components/RestoFadeyEntryHero';
 import BackgroundKitchenAutoPrinter from './components/BackgroundKitchenAutoPrinter';
 import PrintingAssistantAutoDiscover from './components/PrintingAssistantAutoDiscover';
 import { ADMIN_MODULE_PATHS, hasModulePermission, getDefaultStaffPath } from './utils/staffModuleAccess';
@@ -103,11 +102,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="rf-login-shell rf-entry-page min-h-screen">
-        <RestoFadeyEntryHero />
-        <div className="rf-entry-panel">
-          <p className="text-[#8eb4c9] text-sm animate-pulse">{t('app.loading')}</p>
-        </div>
+      <div className="rf-login-shell rf-login-page min-h-screen flex items-center justify-center">
+        <p className="text-[#8eb4c9] text-sm animate-pulse">{t('app.loading')}</p>
       </div>
     );
   }
