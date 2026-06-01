@@ -99,16 +99,25 @@ async function main() {
   await img.clone().write(path.join(PUBLIC, 'resto-fadey-splash.png'));
 
   const bg = sampleBackgroundColor(img);
-  const entryCrop = buildEntrySplashCrop(img, bg);
-  const targetW = Math.min(1400, Math.max(w, Math.round(w * 1.15)));
-  if (entryCrop.bitmap.width !== targetW) {
-    entryCrop.resize(targetW, Jimp.AUTO);
+  const entrySourcePath = path.join(BRANDING, 'resto-fadey-splash-entry-source.png');
+  let entryCrop;
+  let entryBg;
+  if (fs.existsSync(entrySourcePath)) {
+    entryCrop = await Jimp.read(entrySourcePath);
+    entryBg = sampleBackgroundColor(entryCrop);
+  } else {
+    entryCrop = buildEntrySplashCrop(img, bg);
+    entryBg = bg;
+    const targetW = Math.min(1400, Math.max(w, Math.round(w * 1.15)));
+    if (entryCrop.bitmap.width !== targetW) {
+      entryCrop.resize(targetW, Jimp.AUTO);
+    }
   }
   await entryCrop.write(path.join(BRANDING, 'resto-fadey-splash-entry.png'));
   await entryCrop.write(path.join(PUBLIC, 'resto-fadey-splash-entry.png'));
   fs.writeFileSync(
     path.join(BRANDING, 'entry-splash-bg.json'),
-    `${JSON.stringify({ hex: rgbaToHex(bg) }, null, 2)}\n`,
+    `${JSON.stringify({ hex: rgbaToHex(entryBg) }, null, 2)}\n`,
     'utf8',
   );
 
@@ -146,7 +155,8 @@ async function main() {
     x,
     y,
     entrySplash: `${entryCrop.bitmap.width}x${entryCrop.bitmap.height}`,
-    entryBg: rgbaToHex(bg),
+    entryBg: rgbaToHex(entryBg),
+    entryFromUserCrop: fs.existsSync(entrySourcePath),
   });
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
-const SPLASH_SRC = '/resto-fadey-splash-entry.png';
-const SPLASH_BG = '#01061a';
+const SPLASH_SRC = '/resto-fadey-splash-entry.png?v=4';
+const SPLASH_BG = '#010719';
 /** Tiempo visible con animación antes de mostrar el login. */
 const SPLASH_HOLD_MS = 2600;
 const SPLASH_EXIT_MS = 650;
@@ -42,8 +42,8 @@ export default function RestoFadeyEntrySplash({ onComplete, active = true }) {
           src={SPLASH_SRC}
           alt=""
           className="rf-entry-splash__img"
-          width={1400}
-          height={760}
+          width={950}
+          height={824}
           decoding="async"
           fetchPriority="high"
         />
