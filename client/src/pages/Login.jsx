@@ -2,14 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { api } from '../utils/api';
+import { api, resolveMediaUrl } from '../utils/api';
 import toast from 'react-hot-toast';
-import { MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt } from 'react-icons/md';
+import { MdStorefront, MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt } from 'react-icons/md';
 import RestoFadeyEntrySplash from '../components/RestoFadeyEntrySplash';
 import AttendancePhotoCapture from '../components/AttendancePhotoCapture';
 import { getStoredAppLocale, setAppLocale } from '../i18n';
-
-const APP_LOGO_SRC = '/branding/resto-fadey-logo.png?v=2';
 
 function getRoleRoute(role) {
   if (role === 'master_admin') return '/master';
@@ -36,6 +34,7 @@ export default function Login() {
   const [step, setStep] = useState(1);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [brandLogo, setBrandLogo] = useState('');
   const [restaurantName, setRestaurantName] = useState(FALLBACK_RESTAURANT_NAME);
 
   const photosRequired = attendancePolicy.loginRequired;
@@ -52,6 +51,7 @@ export default function Login() {
       .then((r) => {
         const n = String(r?.name || '').trim();
         setRestaurantName(n || FALLBACK_RESTAURANT_NAME);
+        setBrandLogo(String(r?.logo || '').trim());
       })
       .catch(() => {});
   }, []);
@@ -127,13 +127,19 @@ export default function Login() {
       >
         <div className="w-full max-w-md relative z-10 px-4">
           <div className="text-center mb-8">
-            <img
-              src={APP_LOGO_SRC}
-              alt={restaurantName}
-              className="rf-entry-brand-mark"
-              width={56}
-              height={56}
-            />
+            <div className="w-20 h-20 rounded-2xl mx-auto mb-4 shadow-lg overflow-hidden flex items-center justify-center bg-[var(--ui-surface)] ring-1 ring-[color:var(--ui-border)]">
+              {brandLogo ? (
+                <img
+                  src={resolveMediaUrl(brandLogo)}
+                  alt={restaurantName}
+                  className="h-full w-full object-cover object-center"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-[var(--ui-accent)] to-[var(--ui-accent-hover)] flex items-center justify-center">
+                  <MdStorefront className="text-white text-4xl" />
+                </div>
+              )}
+            </div>
             <h1 className="rf-font-display text-3xl font-bold text-[#e8f4fc] tracking-tight px-1">
               {restaurantName}
             </h1>
