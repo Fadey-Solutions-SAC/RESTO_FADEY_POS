@@ -67,17 +67,28 @@ export default function RestoFadeyEntrySplash({ onComplete }) {
       aria-hidden="true"
     >
       <div className="rf-entry-splash__stage">
-        <div className="rf-entry-splash__glow" aria-hidden />
-        <div className={`rf-entry-splash__logo-ring${phase === 'out' ? ' rf-entry-splash__logo-ring--out' : ''}`}>
-          <img
-            src={LOGO_SRC}
-            alt=""
-            className="rf-entry-splash__logo-img"
-            width={512}
-            height={512}
-            decoding="async"
-            fetchPriority="high"
-          />
+        <div className={`rf-entry-splash__stack${phase === 'out' ? ' rf-entry-splash__stack--out' : ''}`}>
+          <div className="rf-entry-splash__logo-wrap">
+            <div className="rf-entry-splash__glow" aria-hidden />
+            <div className="rf-entry-splash__logo-ring">
+              <img
+                src={LOGO_SRC}
+                alt=""
+                className="rf-entry-splash__logo-img"
+                width={512}
+                height={512}
+                decoding="async"
+                fetchPriority="high"
+              />
+            </div>
+          </div>
+          <div className="rf-entry-splash__brand">
+            <p className="rf-entry-splash__title">
+              <span className="rf-entry-splash__title-rest">RESTO </span>
+              <span className="rf-entry-splash__title-fadey">FADEY</span>
+            </p>
+            <p className="rf-entry-splash__tagline">Tecnología Que Potencia Tu Negocio</p>
+          </div>
         </div>
       </div>
     </div>

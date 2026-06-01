@@ -333,12 +333,39 @@ h1, h2, h3, h4 {
     justify-content: center;
     width: 100%;
     height: 100%;
+    padding: 1.25rem;
+  }
+
+  .rf-entry-splash__stack {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(1rem, 3.5vw, 1.75rem);
+    animation: rf-entry-logo-in 1s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .rf-entry-splash__stack--out {
+    animation: rf-entry-logo-out 0.45s ease-in forwards;
+  }
+
+  .rf-entry-splash__logo-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .rf-entry-splash__glow {
     position: absolute;
-    width: min(72vw, 420px);
-    height: min(72vw, 420px);
+    top: 50%;
+    left: 50%;
+    width: min(68vw, 400px);
+    height: min(68vw, 400px);
+    margin-top: calc(min(68vw, 400px) / -2);
+    margin-left: calc(min(68vw, 400px) / -2);
     border-radius: 50%;
     background: radial-gradient(circle, rgba(0, 174, 239, 0.35) 0%, rgba(0, 174, 239, 0.08) 45%, transparent 72%);
     animation: rf-entry-glow 2s ease-in-out infinite;
@@ -348,19 +375,14 @@ h1, h2, h3, h4 {
   .rf-entry-splash__logo-ring {
     position: relative;
     z-index: 1;
-    width: min(76vw, 460px);
-    height: min(76vw, 460px);
+    width: min(58vw, 340px);
+    height: min(58vw, 340px);
     border-radius: 50%;
     overflow: hidden;
     flex-shrink: 0;
     box-shadow:
       0 0 40px rgba(0, 174, 239, 0.45),
       0 0 80px rgba(0, 120, 255, 0.2);
-    animation: rf-entry-logo-in 1s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-
-  .rf-entry-splash__logo-ring--out {
-    animation: rf-entry-logo-out 0.45s ease-in forwards;
   }
 
   .rf-entry-splash__logo-img {
@@ -371,14 +393,50 @@ h1, h2, h3, h4 {
     object-position: center center;
   }
 
+  .rf-entry-splash__brand {
+    text-align: center;
+    max-width: min(92vw, 520px);
+  }
+
+  .rf-entry-splash__title {
+    margin: 0;
+    font-family: 'Clash Display', 'Inter', system-ui, sans-serif;
+    font-size: clamp(1.35rem, 5.2vw, 2.15rem);
+    font-weight: 600;
+    letter-spacing: 0.28em;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
+
+  .rf-entry-splash__title-rest {
+    color: #e8f4fc;
+  }
+
+  .rf-entry-splash__title-fadey {
+    color: #00aeef;
+    text-shadow: 0 0 24px rgba(0, 174, 239, 0.45);
+  }
+
+  .rf-entry-splash__tagline {
+    margin: 0.65rem 0 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: clamp(0.72rem, 2.8vw, 0.95rem);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    color: rgba(232, 244, 252, 0.72);
+    line-height: 1.45;
+  }
+
   @media (min-width: 900px) {
     .rf-entry-splash__logo-ring {
-      width: min(42vw, 480px);
-      height: min(42vw, 480px);
+      width: min(32vw, 360px);
+      height: min(32vw, 360px);
     }
     .rf-entry-splash__glow {
-      width: min(42vw, 420px);
-      height: min(42vw, 420px);
+      width: min(32vw, 380px);
+      height: min(32vw, 380px);
+      margin-top: calc(min(32vw, 380px) / -2);
+      margin-left: calc(min(32vw, 380px) / -2);
     }
   }
 
