@@ -5,7 +5,6 @@ import { useAuth } from '../context/AuthContext';
 import { api, resolveMediaUrl } from '../utils/api';
 import toast from 'react-hot-toast';
 import { MdStorefront, MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt } from 'react-icons/md';
-import RestoFadeyEntrySplash from '../components/RestoFadeyEntrySplash';
 import AttendancePhotoCapture from '../components/AttendancePhotoCapture';
 import { getStoredAppLocale, setAppLocale } from '../i18n';
 
@@ -29,7 +28,6 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [photoLogin, setPhotoLogin] = useState(null);
-  const [showEntrySplash, setShowEntrySplash] = useState(true);
   const [attendancePolicy, setAttendancePolicy] = useState({ loading: true, loginRequired: false });
   const [step, setStep] = useState(1);
   const { login } = useAuth();
@@ -117,14 +115,7 @@ export default function Login() {
 
   return (
     <div className="rf-login-shell rf-login-page">
-      {showEntrySplash ? (
-        <RestoFadeyEntrySplash active onComplete={() => setShowEntrySplash(false)} />
-      ) : null}
-
-      <div
-        className={`rf-login-page__content${showEntrySplash ? ' rf-login-page__content--hidden' : ' rf-login-page__content--visible'}`}
-        aria-hidden={showEntrySplash}
-      >
+      <div className="rf-login-page__content rf-login-page__content--visible">
         <div className="w-full max-w-md relative z-10 px-4">
           <div className="text-center mb-8">
             <div className="w-20 h-20 rounded-2xl mx-auto mb-4 shadow-lg overflow-hidden flex items-center justify-center bg-[var(--ui-surface)] ring-1 ring-[color:var(--ui-border)]">

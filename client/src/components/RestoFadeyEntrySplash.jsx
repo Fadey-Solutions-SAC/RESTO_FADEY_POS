@@ -1,33 +1,63 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  markEntrySplashStarted,
+  markEntrySplashDone,
+  isEntrySplashDone,
+} from '../utils/entrySplashSession';
 
-const SPLASH_SRC = '/resto-fadey-splash-entry.png?v=4';
-const SPLASH_BG = '#010719';
-/** Tiempo visible con animación antes de mostrar el login. */
-const SPLASH_HOLD_MS = 2600;
-const SPLASH_EXIT_MS = 650;
+const LOGO_SRC = '/branding/resto-fadey-splash-logo.png';
+const SPLASH_BG = '#000414';
+/** Entrada + visible: ~2 s; salida: ~0,45 s (total ~2,45 s). */
+const SPLASH_HOLD_MS = 2000;
+const SPLASH_EXIT_MS = 450;
+
+/** Evita reiniciar animación si React remonta el componente (StrictMode / recarga SW). */
+let splashAnimationStarted = false;
 
 /**
- * Pantalla completa de marca al ingresar; al terminar llama onComplete y desaparece.
+ * Única pantalla splash al abrir (sin login). Logo circular centrado.
  */
-export default function RestoFadeyEntrySplash({ onComplete, active = true }) {
+export default function RestoFadeyEntrySplash({ onComplete }) {
   const [phase, setPhase] = useState('in');
+  const completedRef = useRef(false);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  const finishSplash = useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    markEntrySplashDone();
+    onCompleteRef.current?.();
+  }, []);
 
   useEffect(() => {
-    if (!active) return undefined;
+    if (isEntrySplashDone()) {
+      finishSplash();
+      return undefined;
+    }
+
+    if (splashAnimationStarted) {
+      finishSplash();
+      return undefined;
+    }
+
+    splashAnimationStarted = true;
+    markEntrySplashStarted();
     setPhase('in');
+
     const holdTimer = setTimeout(() => setPhase('out'), SPLASH_HOLD_MS);
     return () => clearTimeout(holdTimer);
-  }, [active]);
+  }, [finishSplash]);
 
   useEffect(() => {
     if (phase !== 'out') return undefined;
-    const exitTimer = setTimeout(() => {
-      onComplete?.();
-    }, SPLASH_EXIT_MS);
+    const exitTimer = setTimeout(finishSplash, SPLASH_EXIT_MS);
     return () => clearTimeout(exitTimer);
-  }, [phase, onComplete]);
+  }, [phase, finishSplash]);
 
-  if (!active) return null;
+  if (completedRef.current || isEntrySplashDone()) {
+    return null;
+  }
 
   return (
     <div
@@ -36,17 +66,19 @@ export default function RestoFadeyEntrySplash({ onComplete, active = true }) {
       role="presentation"
       aria-hidden="true"
     >
-      <div className="rf-entry-splash__glow" />
-      <div className="rf-entry-splash__media">
-        <img
-          src={SPLASH_SRC}
-          alt=""
-          className="rf-entry-splash__img"
-          width={950}
-          height={824}
-          decoding="async"
-          fetchPriority="high"
-        />
+      <div className="rf-entry-splash__stage">
+        <div className="rf-entry-splash__glow" aria-hidden />
+        <div className={`rf-entry-splash__logo-ring${phase === 'out' ? ' rf-entry-splash__logo-ring--out' : ''}`}>
+          <img
+            src={LOGO_SRC}
+            alt=""
+            className="rf-entry-splash__logo-img"
+            width={512}
+            height={512}
+            decoding="async"
+            fetchPriority="high"
+          />
+        </div>
       </div>
     </div>
   );

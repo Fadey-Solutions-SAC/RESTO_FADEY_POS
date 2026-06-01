@@ -1,9 +1,13 @@
+import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './context/AuthContext';
+import { shouldSkipEntrySplash, markEntrySplashDone } from './utils/entrySplashSession';
+import { registerServiceWorkerAfterSplash } from './serviceWorkerRegister';
 
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import RestoFadeyEntrySplash from './components/RestoFadeyEntrySplash';
 import Escritorio from './pages/admin/Escritorio';
 import Ventas from './pages/admin/Ventas';
 import POSPanel from './pages/pos/POSPanel';
@@ -97,17 +101,37 @@ function AdminOnlyAutoPedido() {
 }
 
 export default function App() {
-  const { t } = useTranslation('common');
   const { user, loading } = useAuth();
+  const [splashDone, setSplashDone] = useState(() => shouldSkipEntrySplash());
 
-  if (loading) {
-    return (
-      <div className="rf-login-shell rf-login-page min-h-screen flex items-center justify-center">
-        <p className="text-[#8eb4c9] text-sm animate-pulse">{t('app.loading')}</p>
-      </div>
-    );
+  const handleSplashComplete = useCallback(() => {
+    markEntrySplashDone();
+    setSplashDone(true);
+  }, []);
+
+  useEffect(() => {
+    if (user || splashDone) {
+      registerServiceWorkerAfterSplash();
+    }
+  }, [user, splashDone]);
+
+  if (user) {
+    return <AppRoutes user={user} />;
   }
 
+  const hasStoredSession = typeof localStorage !== 'undefined' && !!localStorage.getItem('token');
+  if (loading && hasStoredSession) {
+    return <div className="rf-splash-boot" aria-hidden="true" />;
+  }
+
+  if (!splashDone) {
+    return <RestoFadeyEntrySplash onComplete={handleSplashComplete} />;
+  }
+
+  return <AppRoutes user={null} />;
+}
+
+function AppRoutes({ user }) {
   return (
     <>
       <Routes>

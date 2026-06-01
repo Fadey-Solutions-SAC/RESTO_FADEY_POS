@@ -127,6 +127,13 @@ async function main() {
   const logo = img.clone().crop(x, y, cropSize, cropSize);
   await logo.clone().write(path.join(BRANDING, 'resto-fadey-logo.png'));
 
+  /** Emblema circular RF (solo anillo, sin texto) para splash de ingreso. */
+  const emblemSize = Math.round(Math.min(w, h) * 0.46);
+  const emblemY = Math.round(h * 0.065);
+  const emblemX = Math.round((w - emblemSize) / 2);
+  const splashLogo = img.clone().crop(emblemX, emblemY, emblemSize, emblemSize);
+  await splashLogo.write(path.join(BRANDING, 'resto-fadey-splash-logo.png'));
+
   const icon192 = await composePwaIcon(logo, 192);
   const icon512 = await composePwaIcon(logo, 512);
 

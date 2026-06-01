@@ -293,8 +293,14 @@ h1, h2, h3, h4 {
   }
 
   /* —— Login / splash de ingreso Resto-FADEY —— */
-  .rf-login-shell {
-    background: #010719;
+  .rf-login-shell,
+  .rf-splash-boot {
+    background: #000414;
+  }
+
+  .rf-splash-boot {
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   .rf-login-page {
@@ -311,60 +317,68 @@ h1, h2, h3, h4 {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #010719;
-    padding: max(0.25rem, env(safe-area-inset-top)) max(0.25rem, env(safe-area-inset-right))
-      max(0.25rem, env(safe-area-inset-bottom)) max(0.25rem, env(safe-area-inset-left));
-    animation: rf-entry-splash-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+    background: #000414;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     pointer-events: none;
   }
 
   .rf-entry-splash--out {
-    animation: rf-entry-splash-out 0.65s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation: rf-entry-splash-out 0.45s ease-in forwards;
+  }
+
+  .rf-entry-splash__stage {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
   }
 
   .rf-entry-splash__glow {
     position: absolute;
-    inset: 8% 10%;
+    width: min(72vw, 420px);
+    height: min(72vw, 420px);
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(0, 174, 239, 0.2) 0%, transparent 70%);
-    animation: rf-entry-glow 2.8s ease-in-out infinite;
+    background: radial-gradient(circle, rgba(0, 174, 239, 0.35) 0%, rgba(0, 174, 239, 0.08) 45%, transparent 72%);
+    animation: rf-entry-glow 2s ease-in-out infinite;
     pointer-events: none;
   }
 
-  .rf-entry-splash__media {
+  .rf-entry-splash__logo-ring {
     position: relative;
     z-index: 1;
-    width: min(100vw, 1500px);
-    max-height: 94dvh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: min(76vw, 460px);
+    height: min(76vw, 460px);
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow:
+      0 0 40px rgba(0, 174, 239, 0.45),
+      0 0 80px rgba(0, 120, 255, 0.2);
+    animation: rf-entry-logo-in 1s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
-  .rf-entry-splash__img {
+  .rf-entry-splash__logo-ring--out {
+    animation: rf-entry-logo-out 0.45s ease-in forwards;
+  }
+
+  .rf-entry-splash__logo-img {
     display: block;
     width: 100%;
-    height: auto;
-    max-height: 94dvh;
-    object-fit: contain;
-    object-position: center;
-    animation: rf-entry-logo-pulse 2.8s ease-in-out 0.5s infinite;
-  }
-
-  @media (orientation: portrait) and (max-width: 768px) {
-    .rf-entry-splash__media {
-      width: 100vw;
-      max-height: 92dvh;
-    }
-    .rf-entry-splash__img {
-      max-height: 92dvh;
-    }
+    height: 100%;
+    object-fit: cover;
+    object-position: center center;
   }
 
   @media (min-width: 900px) {
-    .rf-entry-splash__media {
-      width: min(96vw, 1500px);
-      max-height: 90dvh;
+    .rf-entry-splash__logo-ring {
+      width: min(42vw, 480px);
+      height: min(42vw, 480px);
+    }
+    .rf-entry-splash__glow {
+      width: min(42vw, 420px);
+      height: min(42vw, 420px);
     }
   }
 
@@ -376,36 +390,18 @@ h1, h2, h3, h4 {
     justify-content: center;
     padding: 1rem;
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
-    background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(0, 174, 239, 0.1), transparent 60%),
-      #010719;
-  }
-
-  .rf-login-page__content--hidden {
-    visibility: hidden;
-    opacity: 0;
-    pointer-events: none;
+    background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(0, 174, 239, 0.08), transparent 60%),
+      #000414;
   }
 
   .rf-login-page__content--visible {
-    visibility: visible;
-    animation: rf-entry-panel-in 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: rf-entry-panel-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
-  .rf-entry-brand-mark {
-    width: 3.75rem;
-    height: 3.75rem;
-    border-radius: 1rem;
-    object-fit: contain;
-    margin: 0 auto 0.75rem;
-    display: block;
-    background: #00050d;
-    box-shadow: 0 0 28px rgba(0, 174, 239, 0.35);
-  }
-
-  @keyframes rf-entry-splash-in {
+  @keyframes rf-entry-logo-in {
     from {
       opacity: 0;
-      transform: scale(0.92);
+      transform: scale(0.8);
     }
     to {
       opacity: 1;
@@ -413,7 +409,7 @@ h1, h2, h3, h4 {
     }
   }
 
-  @keyframes rf-entry-splash-out {
+  @keyframes rf-entry-logo-out {
     from {
       opacity: 1;
       transform: scale(1);
@@ -424,32 +420,31 @@ h1, h2, h3, h4 {
     }
   }
 
-  @keyframes rf-entry-logo-pulse {
-    0%,
-    100% {
-      filter: drop-shadow(0 0 20px rgba(0, 174, 239, 0.25));
+  @keyframes rf-entry-splash-out {
+    from {
+      opacity: 1;
     }
-    50% {
-      filter: drop-shadow(0 0 36px rgba(0, 255, 255, 0.42));
+    to {
+      opacity: 0;
     }
   }
 
   @keyframes rf-entry-glow {
     0%,
     100% {
-      opacity: 0.5;
+      opacity: 0.65;
       transform: scale(1);
     }
     50% {
       opacity: 1;
-      transform: scale(1.05);
+      transform: scale(1.06);
     }
   }
 
   @keyframes rf-entry-panel-in {
     from {
       opacity: 0;
-      transform: translateY(16px);
+      transform: translateY(12px);
     }
     to {
       opacity: 1;
