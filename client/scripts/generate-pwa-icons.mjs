@@ -1,16 +1,33 @@
 /**
- * Genera icon-192.png e icon-512.png desde public/favicon.svg (rojo + R).
- * Ejecutar: node scripts/generate-pwa-icons.mjs
+ * Iconos PWA desde la imagen de marca (no usar favicon.svg legacy).
+ * Invoca scripts/generate-branding-assets.js en la raíz del repo.
  */
-import sharp from 'sharp';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const publicDir = join(__dirname, '..', 'public');
-const svg = readFileSync(join(publicDir, 'favicon.svg'));
+const repoRoot = join(__dirname, '..', '..');
+const script = join(repoRoot, 'scripts', 'generate-branding-assets.js');
+const source = join(repoRoot, 'client', 'public', 'branding', 'resto-fadey-source.png');
 
-await sharp(svg).resize(192, 192).png().toFile(join(publicDir, 'icon-192.png'));
-await sharp(svg).resize(512, 512).png().toFile(join(publicDir, 'icon-512.png'));
-console.log('OK: public/icon-192.png, public/icon-512.png');
+if (!existsSync(script)) {
+  console.error('No se encontró:', script);
+  process.exit(1);
+}
+if (!existsSync(source)) {
+  console.error('Falta la imagen de marca:', source);
+  process.exit(1);
+}
+
+const result = spawnSync(process.execPath, [script, source], {
+  cwd: repoRoot,
+  stdio: 'inherit',
+});
+
+if (result.status !== 0) {
+  process.exit(result.status ?? 1);
+}
+
+console.log('OK: iconos PWA desde resto-fadey-source.png');
