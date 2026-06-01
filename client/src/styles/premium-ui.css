@@ -294,7 +294,7 @@ h1, h2, h3, h4 {
 
   /* —— Login / splash de ingreso Resto-FADEY —— */
   .rf-login-shell {
-    background: #00050d;
+    background: #01061a;
   }
 
   .rf-login-page {
@@ -311,9 +311,9 @@ h1, h2, h3, h4 {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #00050d;
-    padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right))
-      max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+    background: #01061a;
+    padding: max(0.25rem, env(safe-area-inset-top)) max(0.25rem, env(safe-area-inset-right))
+      max(0.25rem, env(safe-area-inset-bottom)) max(0.25rem, env(safe-area-inset-left));
     animation: rf-entry-splash-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
     pointer-events: none;
   }
@@ -334,40 +334,42 @@ h1, h2, h3, h4 {
   .rf-entry-splash__media {
     position: relative;
     z-index: 1;
-    width: 100%;
-    height: 100%;
-    max-width: 100%;
-    max-height: 100%;
+    width: min(98vw, 1280px);
+    height: min(90dvh, 92vw);
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .rf-entry-splash__img {
+    display: block;
     width: 100%;
     height: 100%;
-    max-width: min(100vw, 100vh, 920px);
-    max-height: min(100dvh, 100vw, 920px);
+    max-width: 100%;
+    max-height: 100%;
     object-fit: contain;
     object-position: center;
     animation: rf-entry-logo-pulse 2.8s ease-in-out 0.5s infinite;
   }
 
   @media (orientation: portrait) and (max-width: 768px) {
-    .rf-entry-splash__img {
-      max-width: 100%;
-      max-height: 100%;
+    .rf-entry-splash__media {
+      width: min(100vw, 100%);
+      height: min(78dvh, 100vw);
+    }
+  }
+
+  @media (min-width: 900px) {
+    .rf-entry-splash__media {
+      width: min(94vw, 1320px);
+      height: min(86dvh, 78vw);
     }
   }
 
   @media (orientation: landscape) and (max-height: 520px) {
-    .rf-entry-splash {
-      padding-left: max(1rem, env(safe-area-inset-left));
-      padding-right: max(1rem, env(safe-area-inset-right));
-    }
-    .rf-entry-splash__img {
-      max-height: calc(100dvh - 1.5rem);
-      max-width: min(92vw, 720px);
+    .rf-entry-splash__media {
+      width: min(96vw, 900px);
+      height: min(92dvh, 88vw);
     }
   }
 
@@ -380,7 +382,7 @@ h1, h2, h3, h4 {
     padding: 1rem;
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
     background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(0, 174, 239, 0.1), transparent 60%),
-      #00050d;
+      #01061a;
   }
 
   .rf-login-page__content--hidden {
