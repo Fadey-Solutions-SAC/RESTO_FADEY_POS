@@ -112,7 +112,7 @@ export default function PwaInstallPrompt() {
       <div className="flex items-start gap-3 min-w-0">
         <div className="shrink-0 w-10 h-10 rounded-xl overflow-hidden bg-[#00050d] ring-1 ring-[color:var(--ui-border)]">
           <img
-            src="/branding/resto-fadey-logo.png"
+            src="/pwa-icon-192.png"
             alt=""
             className="w-full h-full object-contain"
             width={40}

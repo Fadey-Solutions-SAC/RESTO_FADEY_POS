@@ -843,7 +843,7 @@ function updateTrayMenu() {
 
 function createTray() {
   if (tray) return;
-  const iconPath = path.join(__dirname, '..', 'client', 'public', 'icon-192.png');
+  const iconPath = path.join(__dirname, '..', 'client', 'public', 'pwa-icon-192.png');
   const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip('Resto FADEY — Impresión (mantenga abierto para cobrar con ticket)');

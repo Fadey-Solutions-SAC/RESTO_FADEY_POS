@@ -15,7 +15,8 @@
     "client": "cd client && npm run dev",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "install-all": "npm install && cd client && npm install",
-    "build": "cd client && npm install --include=dev && npm run build",
+    "build": "node scripts/generate-branding-assets.js && cd client && npm install --include=dev && npm run build",
+    "branding:assets": "node scripts/generate-branding-assets.js",
     "start": "node server/index.js",
     "printing-bridge": "node server/index.js",
     "start:render": "bash scripts/render-start.sh",
@@ -26,7 +27,6 @@
     "test": "npm run smoke",
     "lint": "node scripts/lint-check.js",
     "reset-demo": "node scripts/reset-demo.js",
-    "branding:assets": "node scripts/generate-branding-assets.js",
     "prepare:first-owner": "node scripts/prepare-first-owner.js",
     "serve:offer": "npx --yes serve rolando-offer -l 8080",
     "electron": "electron .",
@@ -86,7 +86,7 @@
         }
       ],
       "artifactName": "RestoFADEY.Setup.exe",
-      "icon": "client/public/icon-512.png",
+      "icon": "client/public/pwa-icon-512.png",
       "signAndEditExecutable": false
     },
     "nsis": {
