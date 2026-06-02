@@ -80,6 +80,7 @@ export default function Productos() {
   const [comboSuggestions, setComboSuggestions] = useState(null);
   const [comboSuggestLoading, setComboSuggestLoading] = useState(false);
   const comboSuggestTimerRef = useRef(null);
+  const comboSuggestRequestRef = useRef(0);
 
   const [modifiers, setModifiers] = useState([]);
   const [showModModal, setShowModModal] = useState(false);
@@ -130,9 +131,14 @@ export default function Productos() {
 
   const selectedComboProducts = useMemo(
     () => comboForm.items
-      .map((name) => products.find((p) => p.name === name))
+      .map((id) => products.find((p) => String(p.id) === String(id)))
       .filter(Boolean),
     [comboForm.items, products],
+  );
+
+  const selectedComboProductIdsKey = useMemo(
+    () => comboForm.items.map(String).sort().join('|'),
+    [comboForm.items],
   );
 
   const selectedComboTotal = useMemo(
@@ -166,25 +172,41 @@ export default function Productos() {
     }
 
     if (selectedComboProducts.length === 0) {
+      comboSuggestRequestRef.current += 1;
       setComboSuggestions(null);
       setComboSuggestLoading(false);
       return undefined;
     }
 
+    const requestId = ++comboSuggestRequestRef.current;
+    const productIds = selectedComboProducts.map((p) => p.id);
+
+    setComboSuggestions(null);
     setComboSuggestLoading(true);
+
     comboSuggestTimerRef.current = setTimeout(() => {
-      api.post('/admin-modules/combos/suggest', {
-        product_ids: selectedComboProducts.map((p) => p.id),
-      })
-        .then((data) => setComboSuggestions(data))
-        .catch(() => setComboSuggestions(null))
-        .finally(() => setComboSuggestLoading(false));
-    }, 450);
+      api.post('/admin-modules/combos/suggest', { product_ids: productIds })
+        .then((data) => {
+          if (requestId !== comboSuggestRequestRef.current) return;
+          const responseIds = (data?.product_ids || []).map(String).sort().join('|');
+          const currentIds = productIds.map(String).sort().join('|');
+          if (responseIds !== currentIds) return;
+          setComboSuggestions(data);
+        })
+        .catch(() => {
+          if (requestId !== comboSuggestRequestRef.current) return;
+          setComboSuggestions(null);
+        })
+        .finally(() => {
+          if (requestId !== comboSuggestRequestRef.current) return;
+          setComboSuggestLoading(false);
+        });
+    }, 350);
 
     return () => {
       if (comboSuggestTimerRef.current) clearTimeout(comboSuggestTimerRef.current);
     };
-  }, [showComboModal, selectedComboProducts]);
+  }, [showComboModal, selectedComboProductIdsKey, selectedComboProducts]);
 
   const hiddenCategoryIds = new Set(
     categories
@@ -1124,9 +1146,9 @@ export default function Productos() {
               description: comboForm.description,
               price: parseFloat(comboForm.price),
               items: comboForm.items
-                .map(name => products.find(p => p.name === name))
+                .map((id) => products.find((p) => String(p.id) === String(id)))
                 .filter(Boolean)
-                .map(p => ({ product_id: p.id, quantity: 1 })),
+                .map((p) => ({ product_id: p.id, quantity: 1 })),
             });
             setShowComboModal(false);
             setComboSuggestions(null);
@@ -1141,9 +1163,16 @@ export default function Productos() {
             <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1">
               {products.filter(p => p.is_active).map(p => (
                 <label key={p.id} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded cursor-pointer text-sm">
-                  <input type="checkbox" checked={comboForm.items.includes(p.name)} onChange={e => {
-                    if (e.target.checked) setComboForm({ ...comboForm, items: [...comboForm.items, p.name] });
-                    else setComboForm({ ...comboForm, items: comboForm.items.filter(i => i !== p.name) });
+                  <input type="checkbox" checked={comboForm.items.includes(p.id)} onChange={e => {
+                    if (e.target.checked) {
+                      setComboForm((prev) => (
+                        prev.items.includes(p.id)
+                          ? prev
+                          : { ...prev, items: [...prev.items, p.id] }
+                      ));
+                    } else {
+                      setComboForm((prev) => ({ ...prev, items: prev.items.filter((i) => i !== p.id) }));
+                    }
                   }} className="rounded text-gold-500" />
                   {p.name} <span className="text-[var(--ui-muted)] ml-auto">{formatCurrency(p.price)}</span>
                 </label>
@@ -1151,7 +1180,8 @@ export default function Productos() {
             </div>
             {selectedComboProducts.length > 0 ? (
               <p className="text-xs text-[var(--ui-muted)] mt-2">
-                Total productos seleccionados: <span className="font-semibold text-[var(--ui-body-text)]">{formatCurrency(selectedComboTotal)}</span>
+                {selectedComboProducts.length} producto{selectedComboProducts.length === 1 ? '' : 's'} seleccionado{selectedComboProducts.length === 1 ? '' : 's'} · Total:{' '}
+                <span className="font-semibold text-[var(--ui-body-text)]">{formatCurrency(selectedComboTotal)}</span>
               </p>
             ) : null}
           </div>
@@ -1170,10 +1200,10 @@ export default function Productos() {
                 ) : null}
               </div>
 
-              {comboSuggestLoading && !comboSuggestions ? (
+              {comboSuggestLoading ? (
                 <div className="flex items-center gap-2 text-sm text-[var(--ui-muted)]">
                   <div className="animate-spin w-4 h-4 border-2 border-[var(--ui-accent)] border-t-transparent rounded-full" />
-                  Analizando productos seleccionados…
+                  Analizando {selectedComboProducts.length} producto{selectedComboProducts.length === 1 ? '' : 's'}…
                 </div>
               ) : comboSuggestions ? (
                 <>
@@ -1193,6 +1223,12 @@ export default function Productos() {
                     </div>
                   </div>
                   <div className="text-sm space-y-2">
+                    <div>
+                      <p className="text-xs text-[var(--ui-muted)] mb-0.5">Productos en el combo</p>
+                      <p className="text-[var(--ui-body-text)] leading-snug">
+                        {(comboSuggestions.products || []).map((p) => p.name).join(' · ') || '—'}
+                      </p>
+                    </div>
                     <div>
                       <p className="text-xs text-[var(--ui-muted)] mb-0.5">Nombre sugerido</p>
                       <p className="font-medium text-[var(--ui-body-text)]">{comboSuggestions.name || '—'}</p>

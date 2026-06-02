@@ -46,7 +46,7 @@ function buildHeuristicName(products) {
     return `Duo ${shortName(names[0])} + ${shortName(names[1])}`;
   }
   if (names.length === 3) {
-    return `Trío ${shortName(names[0])} Especial`;
+    return `Trío ${shortName(names[0])} + ${shortName(names[1])} + ${shortName(names[2])}`;
   }
   return `Combo Familiar ${names.length} Productos`;
 }
@@ -106,6 +106,7 @@ async function fetchOpenAiSuggestions(products, heuristic) {
   const prompt = [
     'Eres un experto en cartas de restaurantes peruanos.',
     'Genera un nombre atractivo, una descripción corta de venta (máx. 2 oraciones) y un precio sugerido para un combo.',
+    'Debes considerar TODOS los productos listados, no solo uno.',
     'El precio debe ser menor al total individual pero rentable para el negocio.',
     '',
     `Productos seleccionados:\n${productLines}`,
@@ -183,13 +184,15 @@ async function suggestComboProducts(productIds = []) {
   }
 
   const placeholders = ids.map(() => '?').join(', ');
-  const products = queryAll(
+  const rows = queryAll(
     `SELECT id, name, description, price, category_id
      FROM products
-     WHERE id IN (${placeholders}) AND is_active = 1
-     ORDER BY name COLLATE NOCASE`,
+     WHERE id IN (${placeholders}) AND is_active = 1`,
     ids,
   );
+
+  const rowMap = new Map(rows.map((p) => [String(p.id), p]));
+  const products = ids.map((id) => rowMap.get(String(id))).filter(Boolean);
 
   const heuristic = buildHeuristicSuggestions(products);
   const aiResult = await fetchOpenAiSuggestions(products, heuristic);
@@ -197,6 +200,8 @@ async function suggestComboProducts(productIds = []) {
 
   return {
     ...result,
+    product_ids: products.map((p) => p.id),
+    product_count: products.length,
     products: products.map((p) => ({
       id: p.id,
       name: p.name,
