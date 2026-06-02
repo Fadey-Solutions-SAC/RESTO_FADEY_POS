@@ -48,6 +48,11 @@ import {
 } from '../../utils/ticketPlainText';
 import { showStockInOrderingUI } from '../../utils/productStockDisplay';
 import {
+  mergeOrderingCatalog,
+  filterVisibleOrderingProducts,
+  buildOrderItemsPayload,
+} from '../../utils/orderingCatalog';
+import {
   billLineDisplayName,
   billLineKey,
   groupItemsByProductNameForBill,
@@ -506,7 +511,7 @@ export default function POSPanel() {
         String(user?.role || '').toLowerCase() === 'admin' && adminRid
           ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`
           : '/pos/current-register';
-      const [tablesData, reg, status, stationsRes, prods, cats, modifiersData, cfg, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
+      const [tablesData, reg, status, stationsRes, prods, cats, modifiersData, combosData, cfg, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
         api.get('/tables'),
         api.get(currentRegPath),
         api.get('/pos/register-status'),
@@ -514,6 +519,7 @@ export default function POSPanel() {
         api.get('/products?active_only=true&available_now=true'),
         api.get('/categories/active'),
         api.get('/admin-modules/modifiers').catch(() => []),
+        api.get('/admin-modules/combos').catch(() => []),
         api.get('/admin-modules/config/app').catch(() => null),
         api.get('/reports/daily').catch(() => null),
         api.get('/admin-modules/reservations').catch(() => []),
@@ -545,8 +551,9 @@ export default function POSPanel() {
             : undefined,
       });
       const visibleCategories = cats.filter(c => !WAREHOUSE_CATEGORY_NAMES.has((c.name || '').toUpperCase()));
-      const visibleCategoryIds = new Set(visibleCategories.map(c => c.id));
-      const visibleProducts = prods.filter(p => visibleCategoryIds.has(p.category_id));
+      const mergedCatalog = mergeOrderingCatalog(prods, visibleCategories, combosData || []);
+      const visibleCategoryIds = new Set(mergedCatalog.categories.map(c => c.id));
+      const visibleProducts = filterVisibleOrderingProducts(mergedCatalog.products, visibleCategoryIds);
       setTables(tablesData);
       setReservations(reservationsData || []);
       setAllOrders(ordersData || []);
@@ -554,7 +561,7 @@ export default function POSPanel() {
       setRegisterStatus(status);
       setProducts(visibleProducts);
       setModifiers(Array.isArray(modifiersData) ? modifiersData : []);
-      setCategories(visibleCategories);
+      setCategories(mergedCatalog.categories);
       setPaymentOptions(getPaymentMethodOptions(cfg, { includeOnline: false }));
       setDailySales(
         daily?.sales?.total_sales === undefined || daily?.sales?.total_sales === null
@@ -675,7 +682,7 @@ export default function POSPanel() {
   useSocket('inventory-update', loadData);
   useSocket('staff-data-update', (payload) => {
     const d = payload?.domain;
-    if (['modifiers', 'reservations', 'customers', 'app_config', 'catalog'].includes(d)) void loadData();
+    if (['modifiers', 'reservations', 'customers', 'app_config', 'catalog', 'combos'].includes(d)) void loadData();
   });
 
   useEffect(() => {
@@ -1815,13 +1822,7 @@ export default function POSPanel() {
         return;
       }
       const createdOrder = await api.post('/orders', {
-        items: cart.map(i => ({
-          product_id: i.product_id,
-          quantity: i.quantity,
-          modifier_id: i.modifier_id || '',
-          modifier_option: i.modifier_option || '',
-          notes: String(i.notes || '').trim(),
-        })),
+        items: buildOrderItemsPayload(cart),
         type: quickSaleMode ? 'pickup' : 'dine_in',
         table_number: quickSaleMode ? '' : String(selectedTable.number),
         customer_name: quickSaleMode ? 'VENTA RAPIDA' : `Mesa ${selectedTable.number}`,

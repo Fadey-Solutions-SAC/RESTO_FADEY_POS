@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
@@ -50,6 +51,8 @@ const EMPTY_PRODUCT_FORM = {
 
 export default function Productos() {
   const { t } = useTranslation('inventory');
+  const [searchParams] = useSearchParams();
+  const highlightSlowMoving = searchParams.get('sin_ventas') === '1';
   const TABS = useMemo(() => [
     { id: 'platos', label: t('tabs.dishes'), icon: MdRestaurantMenu },
     { id: 'combos', label: t('tabs.combos'), icon: MdLunchDining },
@@ -88,6 +91,8 @@ export default function Productos() {
   const [insumosKardex, setInsumosKardex] = useState([]);
   const [restaurantSchedule, setRestaurantSchedule] = useState({});
   const [scheduleWarnings, setScheduleWarnings] = useState([]);
+  const [slowMovingProductIds, setSlowMovingProductIds] = useState(new Set());
+  const [slowMovingDays, setSlowMovingDays] = useState(14);
 
   const defaultWarehouseId =
     warehouses.find(w => (w.name || '').toLowerCase() === 'almacen principal')?.id ||
@@ -103,8 +108,9 @@ export default function Productos() {
       api.get('/admin-modules/modifiers'),
       api.get('/kardex-inventory/insumos').catch(() => []),
       api.get('/restaurant').catch(() => ({})),
+      api.get('/reports/slow-moving-products').catch(() => ({ product_ids: [], days: 14 })),
     ])
-      .then(([p, c, w, combosData, modifiersData, ins, restaurant]) => {
+      .then(([p, c, w, combosData, modifiersData, ins, restaurant, slowMoving]) => {
         setProducts(p);
         setRestaurantSchedule(restaurant?.schedule || {});
         setCategories(c);
@@ -112,6 +118,8 @@ export default function Productos() {
         setCombos(combosData || []);
         setModifiers(modifiersData || []);
         setInsumosKardex(Array.isArray(ins) ? ins : []);
+        setSlowMovingProductIds(new Set((slowMoving?.product_ids || []).map(String)));
+        setSlowMovingDays(Number(slowMoving?.days || 14));
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -228,8 +236,13 @@ export default function Productos() {
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase());
     const matchCat = !selectedCat || p.category_id === selectedCat;
     const matchActive = showInactive ? true : p.is_active !== 0;
-    return matchSearch && matchCat && matchActive;
+    const matchSlowMoving = !highlightSlowMoving || slowMovingProductIds.has(String(p.id));
+    return matchSearch && matchCat && matchActive && matchSlowMoving;
   });
+
+  useEffect(() => {
+    if (highlightSlowMoving) setActiveTab('platos');
+  }, [highlightSlowMoving]);
 
   const openNewProduct = () => {
     setEditProduct(null);
@@ -513,6 +526,12 @@ export default function Productos() {
       </div>
 
       {activeTab === 'platos' && (
+        <>
+          {highlightSlowMoving ? (
+            <div className="mb-4 rounded-xl border border-red-300/50 bg-red-50 px-4 py-3 text-sm text-red-900">
+              Mostrando productos con stock y sin ventas cobradas en los últimos {slowMovingDays} días.
+            </div>
+          ) : null}
         <div className="flex gap-5">
           <div className="w-56 flex-shrink-0">
             <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] overflow-hidden">
@@ -609,7 +628,16 @@ export default function Productos() {
                   {filtered.map((p, idx) => (
                     <tr key={p.id} className={`border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)] transition-colors ${!p.is_active ? 'opacity-50' : ''}`}>
                       <td className="p-3">
-                        <p className="font-medium text-[var(--ui-body-text)] hover:text-gold-600 cursor-pointer" onClick={() => openEditProduct(p)}>{p.name}</p>
+                        <p className="font-medium text-[var(--ui-body-text)] hover:text-gold-600 cursor-pointer flex items-center gap-2" onClick={() => openEditProduct(p)}>
+                          {slowMovingProductIds.has(String(p.id)) ? (
+                            <span
+                              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 ring-2 ring-red-200"
+                              title={`Sin ventas cobradas en los últimos ${slowMovingDays} días`}
+                              aria-label="Producto sin ventas recientes"
+                            />
+                          ) : null}
+                          <span>{p.name}</span>
+                        </p>
                         {Number(p.schedule_enabled) === 1 && (() => {
                           const st = evaluateProductSchedule(p);
                           const label = scheduleTypeLabel(p.schedule_type, t);
@@ -677,6 +705,7 @@ export default function Productos() {
             </div>
           </div>
         </div>
+        </>
       )}
 
       {activeTab === 'combos' && (

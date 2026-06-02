@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { api, formatCurrency } from '../../utils/api';
+import { mergeOrderingCatalog, buildOrderItemsPayload } from '../../utils/orderingCatalog';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useAuth } from '../../context/AuthContext';
@@ -60,9 +60,11 @@ export default function Tables() {
       api.get('/products?active_only=true&available_now=true'),
       api.get('/categories/active'),
       api.get('/admin-modules/modifiers').catch(() => []),
-    ]).then(([prods, cats, mods]) => {
-      setProducts(prods);
-      setCategories(cats);
+      api.get('/admin-modules/combos').catch(() => []),
+    ]).then(([prods, cats, mods, combosData]) => {
+      const merged = mergeOrderingCatalog(prods, cats, combosData || []);
+      setProducts(merged.products);
+      setCategories(merged.categories);
       setModifiers(Array.isArray(mods) ? mods : []);
     }).catch(console.error);
   };
@@ -76,7 +78,7 @@ export default function Tables() {
   useSocket('table-update', loadTables);
   useSocket('inventory-update', loadProducts);
   useSocket('staff-data-update', (p) => {
-    if (['catalog', 'modifiers'].includes(p?.domain)) loadProducts();
+    if (['catalog', 'modifiers', 'combos'].includes(p?.domain)) loadProducts();
   });
 
   const openMenuForTable = (table) => {
@@ -148,13 +150,7 @@ export default function Tables() {
     const tid = toast.loading('Enviando pedido…');
     try {
       const created = await api.post('/orders', {
-        items: cart.map(i => ({
-          product_id: i.product_id,
-          quantity: i.quantity,
-          modifier_id: i.modifier_id || '',
-          modifier_option: i.modifier_option || '',
-          notes: String(i.notes || '').trim(),
-        })),
+        items: buildOrderItemsPayload(cart),
         type: 'dine_in',
         table_number: String(selectedTable.number),
         customer_name: `Mesa ${selectedTable.number}`,

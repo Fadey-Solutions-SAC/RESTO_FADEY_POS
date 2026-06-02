@@ -6,6 +6,7 @@ import Modal from '../../components/Modal';
 import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
+import { mergeOrderingCatalog, filterVisibleOrderingProducts, buildOrderItemsPayload } from '../../utils/orderingCatalog';
 import { MdAdd, MdExpandMore, MdEventSeat, MdPerson, MdPhone, MdCalendarToday, MdAccessTime } from 'react-icons/md';
 
 const WAREHOUSE_CATEGORY_NAMES = new Set(['PRODUCTOS ALMACEN', 'INSUMOS']);
@@ -46,21 +47,23 @@ export default function Reservas() {
 
   const load = useCallback(async () => {
     try {
-      const [tablesData, reservationsData, customersData, prods, cats, modifiersData] = await Promise.all([
+      const [tablesData, reservationsData, customersData, prods, cats, modifiersData, combosData] = await Promise.all([
         api.get('/tables'),
         api.get('/admin-modules/reservations'),
         api.get('/admin-modules/customers').catch(() => []),
         api.get('/products?active_only=true&available_now=true').catch(() => []),
         api.get('/categories/active').catch(() => []),
         api.get('/admin-modules/modifiers').catch(() => []),
+        api.get('/admin-modules/combos').catch(() => []),
       ]);
       setTables(tablesData);
       setReservas(reservationsData || []);
       setCustomers(customersData || []);
       const visibleCategories = (cats || []).filter((c) => !WAREHOUSE_CATEGORY_NAMES.has((c.name || '').toUpperCase()));
-      const visibleCategoryIds = new Set(visibleCategories.map((c) => c.id));
-      const visibleProducts = (prods || []).filter((p) => visibleCategoryIds.has(p.category_id));
-      setCategories(visibleCategories);
+      const mergedCatalog = mergeOrderingCatalog(prods || [], visibleCategories, combosData || []);
+      const visibleCategoryIds = new Set(mergedCatalog.categories.map((c) => c.id));
+      const visibleProducts = filterVisibleOrderingProducts(mergedCatalog.products, visibleCategoryIds);
+      setCategories(mergedCatalog.categories);
       setProducts(visibleProducts);
       setModifiers(Array.isArray(modifiersData) ? modifiersData : []);
     } catch (err) {
@@ -83,7 +86,7 @@ export default function Reservas() {
   });
   useSocket('staff-data-update', (p) => {
     const d = p?.domain;
-    if (['reservations', 'modifiers', 'customers', 'catalog'].includes(d)) void load();
+    if (['reservations', 'modifiers', 'customers', 'catalog', 'combos'].includes(d)) void load();
   });
   useEffect(() => {
     const query = String(form.client_name || '').trim().toLowerCase();
@@ -169,13 +172,7 @@ export default function Reservas() {
         try {
           const selectedTable = tables.find((t) => t.id === form.table_id);
           await api.post('/orders', {
-            items: cart.map((item) => ({
-              product_id: item.product_id,
-              quantity: item.quantity,
-              modifier_id: item.modifier_id || '',
-              modifier_option: item.modifier_option || '',
-              notes: String(item.notes || '').trim(),
-            })),
+            items: buildOrderItemsPayload(cart),
             type: 'dine_in',
             customer_id: selectedCustomerId || '',
             table_number: selectedTable ? String(selectedTable.number || '') : '',

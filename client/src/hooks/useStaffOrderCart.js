@@ -15,17 +15,24 @@ export function useStaffOrderCart(modifiers = []) {
   });
 
   const appendToCart = useCallback((product, { modifierId = '', modifierName = '', modifierOption = '' } = {}) => {
-    const lineKey = `${product.id}::${modifierId}::${modifierOption}`;
+    const isCombo = !!(product.is_combo || product.combo_id);
+    const lineKey = isCombo
+      ? `combo:${product.combo_id}`
+      : `${product.id}::${modifierId}::${modifierOption}`;
     setCart((prev) => {
       const existing = prev.find((i) => i.line_key === lineKey);
       if (existing) {
         return prev.map((i) => (i.line_key === lineKey ? { ...i, quantity: i.quantity + 1 } : i));
       }
+      const anchorProductId = isCombo
+        ? (product.combo_items?.[0]?.product_id || '')
+        : product.id;
       return [
         ...prev,
         {
           line_key: lineKey,
-          product_id: product.id,
+          product_id: anchorProductId,
+          combo_id: isCombo ? product.combo_id : '',
           name: product.name,
           price: product.price,
           quantity: 1,
@@ -41,6 +48,10 @@ export function useStaffOrderCart(modifiers = []) {
 
   const addToCart = useCallback(
     (product) => {
+      if (product.is_combo || product.combo_id) {
+        appendToCart(product);
+        return;
+      }
       const modifierId = String(product?.modifier_id || '').trim();
       if (!modifierId) {
         appendToCart(product);

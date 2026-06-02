@@ -10,6 +10,7 @@ const {
   queryRegisterSessionSalesBetween,
 } = require('../services/registerSessionSales');
 const { emitStaffDataUpdate } = require('../socketBroadcast');
+const { getSlowMovingProductIds } = require('../services/slowMovingProductsService');
 
 const router = express.Router();
 const FINANCIAL_FILTER = FINANCIAL_FILTER_SQL;
@@ -196,24 +197,8 @@ function buildOperationalIntelligence(opts = {}) {
        AND IFNULL(process_type, 'transformed') = 'non_transformed'`
   );
 
-  const slowMovingDateModLiteral = `-${slowMovingDays} days`;
-  const slowMovingCount = autoAlertsOn
-    ? queryOne(
-        `SELECT COUNT(*) as count FROM products p
-         WHERE p.is_active = 1
-           AND LOWER(IFNULL(p.process_type, 'transformed')) = 'non_transformed'
-           AND IFNULL(p.stock, 0) > 0
-           AND NOT EXISTS (
-             SELECT 1 FROM order_items oi
-             JOIN orders o ON o.id = oi.order_id
-             WHERE oi.product_id = p.id
-               AND o.status != 'cancelled'
-               AND o.payment_status = 'paid'
-               AND DATE(datetime(COALESCE(o.updated_at, o.created_at), 'localtime')) >= date('now', 'localtime', '${slowMovingDateModLiteral}')
-           )`,
-        []
-      )
-    : { count: 0 };
+  const slowMovingData = autoAlertsOn ? getSlowMovingProductIds() : { product_ids: [], products: [], days: slowMovingDays };
+  const slowMovingCount = autoAlertsOn ? { count: slowMovingData.product_ids.length } : { count: 0 };
 
   const operationalAlerts = [];
   const lowN = Number(lowStock?.length || 0);
@@ -243,7 +228,7 @@ function buildOperationalIntelligence(opts = {}) {
       severity: slowN >= 12 ? 'warning' : 'info',
       title: 'Productos con ventas detenidas',
       message: `${slowN} producto(s) con stock y sin ventas cobradas en los últimos ${slowMovingDays} días.`,
-      linkTo: '/admin/productos',
+      linkTo: '/admin/productos?sin_ventas=1',
       linkLabel: 'Revisar carta / productos',
     });
   }
@@ -605,6 +590,10 @@ router.get('/operational-alerts', authenticateToken, requireRole('admin', 'cajer
     generated_at: op.generated_at,
     businessIntel: op.businessIntel,
   });
+});
+
+router.get('/slow-moving-products', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  res.json(getSlowMovingProductIds());
 });
 
 router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {

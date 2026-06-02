@@ -25,6 +25,44 @@ function getOrderWithItems(orderId) {
  * @param {object} body - mismo cuerpo que POST /orders
  * @param {{ kind: 'customer' | 'staff' | 'public_qr' | 'public_customer', user?: object, customerId?: string }} actor
  */
+function buildComboOrderLine(tx, orderId, item) {
+  const comboId = String(item.combo_id || '').trim();
+  const combo = tx.queryOne('SELECT * FROM combos WHERE id = ? AND IFNULL(active, 1) = 1', [comboId]);
+  if (!combo) throw new Error('Combo no encontrado o inactivo');
+  const comboItems = tx.queryAll(
+    `SELECT ci.*, p.name AS product_name, p.production_area
+     FROM combo_items ci
+     LEFT JOIN products p ON p.id = ci.product_id
+     WHERE ci.combo_id = ?`,
+    [comboId],
+  );
+  if (!comboItems.length) throw new Error(`El combo "${combo.name}" no tiene productos configurados`);
+  const qty = Number(item.quantity || 0);
+  if (qty <= 0) throw new Error(`Cantidad inválida para combo ${combo.name}`);
+  const unitPrice = Number(combo.price || 0);
+  const itemSubtotal = unitPrice * qty;
+  const componentsLabel = comboItems
+    .map((ci) => `${ci.product_name || 'Producto'} x${Number(ci.quantity || 1) * qty}`)
+    .join(', ');
+  const itemNote = String(item.notes || '').trim();
+  const composedNotes = [`Incluye: ${componentsLabel}`, itemNote].filter(Boolean).join(' | ');
+  return {
+    line: {
+      id: uuidv4(),
+      order_id: orderId,
+      product_id: comboItems[0]?.product_id || null,
+      product_name: combo.name,
+      variant_name: 'Combo',
+      quantity: qty,
+      unit_price: unitPrice,
+      subtotal: itemSubtotal,
+      notes: composedNotes,
+      process_type: 'transformed',
+    },
+    subtotal: itemSubtotal,
+  };
+}
+
 function createOrderInTransaction(tx, orderId, body, actor) {
   const {
     items,
@@ -61,6 +99,12 @@ function createOrderInTransaction(tx, orderId, body, actor) {
 
   let subtotal = 0;
   const orderItems = items.map((item) => {
+    if (String(item.combo_id || '').trim()) {
+      const comboLine = buildComboOrderLine(tx, orderId, item);
+      subtotal += comboLine.subtotal;
+      return comboLine.line;
+    }
+
     const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [item.product_id]);
     if (!product) throw new Error(`Producto no encontrado: ${item.product_id}`);
     assertProductAvailableForOrder(product, orderNow, restaurantSchedule);
@@ -305,6 +349,12 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
 
   let subtotal = 0;
   const orderItems = items.map((item) => {
+    if (String(item.combo_id || '').trim()) {
+      const comboLine = buildComboOrderLine(tx, orderId, item);
+      subtotal += comboLine.subtotal;
+      return comboLine.line;
+    }
+
     const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [item.product_id]);
     if (!product) throw new Error(`Producto no encontrado: ${item.product_id}`);
     assertProductAvailableForOrder(product, orderNow, restaurantSchedule);

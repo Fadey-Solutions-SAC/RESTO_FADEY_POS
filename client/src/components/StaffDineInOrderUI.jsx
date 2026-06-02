@@ -327,8 +327,18 @@ export default function StaffDineInOrderUI({
                   onClick={() => onProductPick(p)}
                   className="w-full text-left"
                 >
-                  <p className="truncate text-sm font-medium text-[var(--ui-body-text)]">{p.name}</p>
+                  <div className="flex items-start gap-2">
+                    {p.is_combo ? (
+                      <span className="mt-0.5 shrink-0 rounded bg-[var(--ui-accent)]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--ui-accent)]">
+                        Combo
+                      </span>
+                    ) : null}
+                    <p className="truncate text-sm font-medium text-[var(--ui-body-text)]">{p.name}</p>
+                  </div>
                   <p className="mt-1 text-sm font-bold text-[var(--ui-body-text)]">{formatCurrency(p.price)}</p>
+                  {p.is_combo && p.description ? (
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--ui-muted)]">{p.description}</p>
+                  ) : null}
                   {showStock ? <p className="mt-0.5 text-xs text-[var(--ui-accent)]">Stock: {p.stock}</p> : null}
                 </button>
                 {productActionLabel ? (

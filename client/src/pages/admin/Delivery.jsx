@@ -9,7 +9,7 @@ import {
   PAYMENT_METHODS,
 } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { showStockInOrderingUI } from '../../utils/productStockDisplay';
+import { mergeOrderingCatalog, buildOrderItemsPayload } from '../../utils/orderingCatalog';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import Modal from '../../components/Modal';
@@ -53,9 +53,11 @@ export default function Delivery() {
     Promise.all([
       api.get('/products?active_only=true&available_now=true'),
       api.get('/categories/active'),
-    ]).then(([prods, cats]) => {
-      setProducts(prods);
-      setCategories(cats);
+      api.get('/admin-modules/combos').catch(() => []),
+    ]).then(([prods, cats, combosData]) => {
+      const merged = mergeOrderingCatalog(prods, cats, combosData || []);
+      setProducts(merged.products);
+      setCategories(merged.categories);
     }).catch(console.error);
   };
 
@@ -73,7 +75,7 @@ export default function Delivery() {
   useSocket('delivery-update', isMozo ? () => {} : load);
   useSocket('inventory-update', loadProducts);
   useSocket('staff-data-update', (p) => {
-    if (p?.domain === 'catalog') loadProducts();
+    if (['catalog', 'combos'].includes(p?.domain)) loadProducts();
   });
 
   const activeOrders = orders.filter(o => ['pending', 'preparing', 'ready'].includes(o.status));
@@ -117,12 +119,22 @@ export default function Delivery() {
 
   const addToCart = (product) => {
     setCart(prev => {
-      const existing = prev.find(i => i.product_id === product.id);
-      if (existing) return prev.map(i => i.product_id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
+      const isCombo = !!(product.is_combo || product.combo_id);
+      const cartKey = isCombo ? `combo:${product.combo_id}` : product.id;
+      const existing = prev.find(i => (isCombo ? i.combo_id === product.combo_id : i.product_id === product.id && !i.combo_id));
+      if (existing) {
+        return prev.map(i => (
+          (isCombo ? i.combo_id === product.combo_id : i.product_id === product.id && !i.combo_id)
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
+        ));
+      }
       return [
         ...prev,
         {
-          product_id: product.id,
+          product_id: isCombo ? (product.combo_items?.[0]?.product_id || '') : product.id,
+          combo_id: isCombo ? product.combo_id : '',
+          cart_key: cartKey,
           name: product.name,
           price: product.price,
           quantity: 1,
@@ -159,11 +171,7 @@ export default function Delivery() {
     if (!deliveryAddress.trim()) return toast.error('Ingresa la dirección de entrega');
     try {
       await api.post('/orders', {
-        items: cart.map(i => ({
-          product_id: i.product_id,
-          quantity: i.quantity,
-          notes: String(i.notes || '').trim(),
-        })),
+        items: buildOrderItemsPayload(cart),
         type: 'delivery',
         customer_name: customerName.trim(),
         delivery_address: deliveryAddress.trim(),
