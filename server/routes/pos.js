@@ -766,6 +766,12 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     });
 
     const { chargedOrderIds, discountsAppliedByOrder } = txResult;
+    try {
+      const { markProductsSoldOnPaidOrders } = require('../services/productSalesTrackingService');
+      markProductsSoldOnPaidOrders(chargedOrderIds);
+    } catch (err) {
+      console.warn('[product-sales-idle] venta cobrada no registrada:', err.message || err);
+    }
     const paidOrders = chargedOrderIds
       .map((id) => {
         const o = queryOne('SELECT * FROM orders WHERE id = ?', [id]);

@@ -365,6 +365,12 @@ async function start() {
   } catch (err) {
     console.warn('[platform-payment] poller no iniciado:', err.message || err);
   }
+  try {
+    const { startProductSalesMidnightJob } = require('./services/productSalesTrackingService');
+    startProductSalesMidnightJob();
+  } catch (err) {
+    console.warn('[product-sales-idle] job nocturno no iniciado:', err.message || err);
+  }
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {
       console.error(`[server] puerto ocupado: ${LISTEN_HOST}:${PORT}. Cierre la instancia previa o cambie PORT.`);

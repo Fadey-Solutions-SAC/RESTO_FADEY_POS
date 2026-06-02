@@ -1037,6 +1037,15 @@ async function initDatabase() {
     addProductColIfMissing('available_to', "ALTER TABLE products ADD COLUMN available_to TEXT DEFAULT ''");
     addProductColIfMissing('available_days', "ALTER TABLE products ADD COLUMN available_days TEXT DEFAULT '[]'");
     addProductColIfMissing('schedule_type', "ALTER TABLE products ADD COLUMN schedule_type TEXT DEFAULT 'personalizado'");
+    addProductColIfMissing('catalog_listed_at', "ALTER TABLE products ADD COLUMN catalog_listed_at TEXT DEFAULT ''");
+    addProductColIfMissing('last_paid_sale_at', "ALTER TABLE products ADD COLUMN last_paid_sale_at TEXT DEFAULT ''");
+    addProductColIfMissing('idle_sales_days', 'ALTER TABLE products ADD COLUMN idle_sales_days INTEGER NOT NULL DEFAULT 0');
+    try {
+      const { backfillProductSalesTracking } = require('./services/productSalesTrackingService');
+      backfillProductSalesTracking();
+    } catch (err) {
+      console.warn('[product-sales-idle] backfill omitido:', err.message || err);
+    }
 
     const addInsumoColIfMissing = (col, ddl) => {
       const cols = queryAll('PRAGMA table_info(insumos)');

@@ -263,8 +263,9 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
       process_type, stock_warehouse_id, production_area, tax_type, modifier_id, note_required,
       kardex_insumo_id, kardex_insumo_num, kardex_insumo_den, kardex_insumo_modo, kardex_insumo_gramos,
       purchase_price,
-      schedule_enabled, available_from, available_to, available_days, schedule_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      schedule_enabled, available_from, available_to, available_days, schedule_type,
+      catalog_listed_at, idle_sales_days
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0)`,
     [
       id,
       name,

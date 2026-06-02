@@ -19,24 +19,17 @@ function isSlowMovingAlertsEnabled() {
   return biz.auto_alerts_enabled !== false;
 }
 
+/** Usa idle_sales_days (recalculado a medianoche) en lugar de escanear pedidos en cada consulta. */
 function querySlowMovingProducts(days) {
-  const slowMovingDateModLiteral = `-${days} days`;
   return queryAll(
-    `SELECT p.id, p.name, p.stock, p.price
+    `SELECT p.id, p.name, p.stock, p.price, p.idle_sales_days, p.catalog_listed_at, p.last_paid_sale_at
      FROM products p
      WHERE p.is_active = 1
        AND LOWER(IFNULL(p.process_type, 'transformed')) = 'non_transformed'
        AND IFNULL(p.stock, 0) > 0
-       AND NOT EXISTS (
-         SELECT 1 FROM order_items oi
-         JOIN orders o ON o.id = oi.order_id
-         WHERE oi.product_id = p.id
-           AND o.status != 'cancelled'
-           AND o.payment_status = 'paid'
-           AND DATE(datetime(COALESCE(o.updated_at, o.created_at), 'localtime')) >= date('now', 'localtime', '${slowMovingDateModLiteral}')
-       )
-     ORDER BY p.name COLLATE NOCASE`,
-    [],
+       AND IFNULL(p.idle_sales_days, 0) >= ?
+     ORDER BY p.idle_sales_days DESC, p.name COLLATE NOCASE`,
+    [days],
   );
 }
 

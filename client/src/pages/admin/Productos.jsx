@@ -529,7 +529,7 @@ export default function Productos() {
         <>
           {highlightSlowMoving ? (
             <div className="mb-4 rounded-xl border border-red-300/50 bg-red-50 px-4 py-3 text-sm text-red-900">
-              Mostrando productos con stock y sin ventas cobradas en los últimos {slowMovingDays} días.
+              Mostrando productos con stock sin ventas cobradas desde hace al menos {slowMovingDays} días (desde alta o última venta).
             </div>
           ) : null}
         <div className="flex gap-5">
@@ -631,8 +631,8 @@ export default function Productos() {
                         <p className="font-medium text-[var(--ui-body-text)] hover:text-gold-600 cursor-pointer flex items-center gap-2" onClick={() => openEditProduct(p)}>
                           {slowMovingProductIds.has(String(p.id)) ? (
                             <span
-                              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 ring-2 ring-red-200"
-                              title={`Sin ventas cobradas en los últimos ${slowMovingDays} días`}
+                              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-red-600"
+                              title={`Sin ventas cobradas desde hace ${slowMovingDays} días o más`}
                               aria-label="Producto sin ventas recientes"
                             />
                           ) : null}

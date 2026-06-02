@@ -578,6 +578,7 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
   params.push(req.params.id);
 
   const docPm = nextPaymentMethod !== null ? nextPaymentMethod : order.payment_method;
+  const wasPaid = String(order.payment_status || '') === 'paid';
   const nextPayEffective =
     payment_status !== undefined && payment_status !== null
       ? String(payment_status)
@@ -628,6 +629,14 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
   const io = req.app.get('io');
   if (io) io.emit('order-update', fresh);
   if (applyKardexAfter) emitInventoryUpdate({});
+  if (nextPayEffective === 'paid' && !wasPaid) {
+    try {
+      const { markProductsSoldOnPaidOrder } = require('../services/productSalesTrackingService');
+      markProductsSoldOnPaidOrder(req.params.id);
+    } catch (err) {
+      console.warn('[product-sales-idle] venta cobrada no registrada:', err.message || err);
+    }
+  }
   res.json(fresh);
 });
 
