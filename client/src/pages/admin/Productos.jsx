@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import {
   MdAdd, MdEdit, MdDelete, MdSearch, MdRestaurantMenu, MdLunchDining,
-  MdTune, MdClose, MdCheck, MdToggleOn, MdToggleOff, MdDownload, MdSchedule
+  MdTune, MdClose, MdCheck, MdToggleOn, MdToggleOff, MdDownload, MdSchedule, MdAutoAwesome
 } from 'react-icons/md';
 import {
   DAY_KEYS,
@@ -77,6 +77,9 @@ export default function Productos() {
   const [combos, setCombos] = useState([]);
   const [showComboModal, setShowComboModal] = useState(false);
   const [comboForm, setComboForm] = useState({ name: '', description: '', price: '', items: [] });
+  const [comboSuggestions, setComboSuggestions] = useState(null);
+  const [comboSuggestLoading, setComboSuggestLoading] = useState(false);
+  const comboSuggestTimerRef = useRef(null);
 
   const [modifiers, setModifiers] = useState([]);
   const [showModModal, setShowModModal] = useState(false);
@@ -124,6 +127,64 @@ export default function Productos() {
     const d = p?.domain;
     if (['combos', 'modifiers', 'discounts', 'offers', 'catalog'].includes(d)) void load();
   });
+
+  const selectedComboProducts = useMemo(
+    () => comboForm.items
+      .map((name) => products.find((p) => p.name === name))
+      .filter(Boolean),
+    [comboForm.items, products],
+  );
+
+  const selectedComboTotal = useMemo(
+    () => selectedComboProducts.reduce((sum, p) => sum + Number(p.price || 0), 0),
+    [selectedComboProducts],
+  );
+
+  const openComboModal = () => {
+    setComboForm({ name: '', description: '', price: '', items: [] });
+    setComboSuggestions(null);
+    setComboSuggestLoading(false);
+    setShowComboModal(true);
+  };
+
+  const applyComboSuggestions = () => {
+    if (!comboSuggestions) return;
+    setComboForm((prev) => ({
+      ...prev,
+      name: comboSuggestions.name || prev.name,
+      description: comboSuggestions.description || prev.description,
+      price: comboSuggestions.suggested_price != null ? String(comboSuggestions.suggested_price) : prev.price,
+    }));
+    toast.success(comboSuggestions.source === 'ai' ? 'Sugerencias de IA aplicadas' : 'Sugerencias aplicadas');
+  };
+
+  useEffect(() => {
+    if (!showComboModal) return undefined;
+
+    if (comboSuggestTimerRef.current) {
+      clearTimeout(comboSuggestTimerRef.current);
+    }
+
+    if (selectedComboProducts.length === 0) {
+      setComboSuggestions(null);
+      setComboSuggestLoading(false);
+      return undefined;
+    }
+
+    setComboSuggestLoading(true);
+    comboSuggestTimerRef.current = setTimeout(() => {
+      api.post('/admin-modules/combos/suggest', {
+        product_ids: selectedComboProducts.map((p) => p.id),
+      })
+        .then((data) => setComboSuggestions(data))
+        .catch(() => setComboSuggestions(null))
+        .finally(() => setComboSuggestLoading(false));
+    }, 450);
+
+    return () => {
+      if (comboSuggestTimerRef.current) clearTimeout(comboSuggestTimerRef.current);
+    };
+  }, [showComboModal, selectedComboProducts]);
 
   const hiddenCategoryIds = new Set(
     categories
@@ -600,7 +661,7 @@ export default function Productos() {
         <div>
           <div className="flex justify-between items-center mb-4">
             <p className="text-sm ui-text-muted">{combos.length} combos registrados</p>
-            <button onClick={() => { setComboForm({ name: '', description: '', price: '', items: [] }); setShowComboModal(true); }} className="btn-primary flex items-center gap-2 text-sm"><MdAdd /> Nuevo Combo</button>
+            <button onClick={openComboModal} className="btn-primary flex items-center gap-2 text-sm"><MdAdd /> Nuevo Combo</button>
           </div>
           {combos.length === 0 ? (
             <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-[var(--ui-muted)]">
@@ -1068,15 +1129,13 @@ export default function Productos() {
                 .map(p => ({ product_id: p.id, quantity: 1 })),
             });
             setShowComboModal(false);
+            setComboSuggestions(null);
             toast.success('Combo creado');
             load();
           } catch (err) {
             toast.error(err.message);
           }
         }} className="space-y-4">
-          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre del Combo</label><input value={comboForm.name} onChange={e => setComboForm({ ...comboForm, name: e.target.value })} className="input-field" required /></div>
-          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Descripción</label><textarea value={comboForm.description} onChange={e => setComboForm({ ...comboForm, description: e.target.value })} className="input-field" rows="2" /></div>
-          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Precio</label><input type="number" step="0.01" value={comboForm.price} onChange={e => setComboForm({ ...comboForm, price: e.target.value })} className="input-field" required /></div>
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Productos incluidos</label>
             <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1">
@@ -1090,7 +1149,75 @@ export default function Productos() {
                 </label>
               ))}
             </div>
+            {selectedComboProducts.length > 0 ? (
+              <p className="text-xs text-[var(--ui-muted)] mt-2">
+                Total productos seleccionados: <span className="font-semibold text-[var(--ui-body-text)]">{formatCurrency(selectedComboTotal)}</span>
+              </p>
+            ) : null}
           </div>
+
+          {selectedComboProducts.length > 0 ? (
+            <div className="rounded-xl border border-[color:var(--ui-accent)]/25 bg-[color-mix(in_srgb,var(--ui-accent)_8%,transparent)] p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ui-body-text)]">
+                  <MdAutoAwesome className="text-[var(--ui-accent)] text-lg shrink-0" />
+                  Sugerencias {comboSuggestions?.source === 'ai' ? 'con IA' : 'inteligentes'}
+                </div>
+                {comboSuggestLoading ? (
+                  <span className="text-xs text-[var(--ui-muted)]">Calculando…</span>
+                ) : comboSuggestions?.source === 'ai' ? (
+                  <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--ui-accent)] text-white">IA</span>
+                ) : null}
+              </div>
+
+              {comboSuggestLoading && !comboSuggestions ? (
+                <div className="flex items-center gap-2 text-sm text-[var(--ui-muted)]">
+                  <div className="animate-spin w-4 h-4 border-2 border-[var(--ui-accent)] border-t-transparent rounded-full" />
+                  Analizando productos seleccionados…
+                </div>
+              ) : comboSuggestions ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-lg bg-white/70 dark:bg-black/20 px-3 py-2 border border-slate-200/80">
+                      <p className="text-xs text-[var(--ui-muted)]">Total individual</p>
+                      <p className="font-bold text-[var(--ui-body-text)]">{formatCurrency(comboSuggestions.total)}</p>
+                    </div>
+                    <div className="rounded-lg bg-white/70 dark:bg-black/20 px-3 py-2 border border-[var(--ui-accent)]/30">
+                      <p className="text-xs text-[var(--ui-muted)]">Precio sugerido</p>
+                      <p className="font-bold text-[var(--ui-accent)]">{formatCurrency(comboSuggestions.suggested_price)}</p>
+                      {comboSuggestions.discount_pct > 0 ? (
+                        <p className="text-[11px] text-emerald-600 mt-0.5">
+                          Ahorro {formatCurrency(comboSuggestions.savings)} ({comboSuggestions.discount_pct}%)
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="text-sm space-y-2">
+                    <div>
+                      <p className="text-xs text-[var(--ui-muted)] mb-0.5">Nombre sugerido</p>
+                      <p className="font-medium text-[var(--ui-body-text)]">{comboSuggestions.name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[var(--ui-muted)] mb-0.5">Descripción sugerida</p>
+                      <p className="text-[var(--ui-body-text)] leading-snug">{comboSuggestions.description || '—'}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={applyComboSuggestions}
+                    disabled={comboSuggestLoading}
+                    className="w-full btn-primary text-sm py-2.5 flex items-center justify-center gap-2"
+                  >
+                    <MdAutoAwesome /> Aplicar sugerencias
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre del Combo</label><input value={comboForm.name} onChange={e => setComboForm({ ...comboForm, name: e.target.value })} className="input-field" required placeholder="Ej: Duo Arroz Chaufa + Lomo Fino" /></div>
+          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Descripción</label><textarea value={comboForm.description} onChange={e => setComboForm({ ...comboForm, description: e.target.value })} className="input-field" rows="2" placeholder="Describe qué incluye el combo y el beneficio para el cliente" /></div>
+          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Precio</label><input type="number" step="0.01" min="0" value={comboForm.price} onChange={e => setComboForm({ ...comboForm, price: e.target.value })} className="input-field" required placeholder="Precio final del combo" /></div>
           <div className="flex gap-3"><button type="button" onClick={() => setShowComboModal(false)} className="btn-secondary flex-1">Cancelar</button><button type="submit" className="btn-primary flex-1">Crear Combo</button></div>
         </form>
       </Modal>

@@ -18,6 +18,7 @@ function broadcastStaffData(domain) {
   emitStaffDataUpdate({ domain: String(domain || '') });
 }
 const { consultarPadronPeru } = require('../peruConsultaPadron');
+const { suggestComboProducts } = require('../services/comboSuggestService');
 const { resolveRestaurantId, syncPrinterRoutesFromImpresoras, listPrinterRoutes } = require('../printerRoutesService');
 
 router.use(authenticateToken, requireRole('admin', 'cajero', 'mozo'));
@@ -983,6 +984,16 @@ router.get('/combos', (req, res) => {
     );
   });
   res.json(combos);
+});
+
+router.post('/combos/suggest', requireRole('admin'), async (req, res) => {
+  try {
+    const { product_ids = [] } = req.body || {};
+    const suggestions = await suggestComboProducts(product_ids);
+    res.json(suggestions);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudieron generar sugerencias' });
+  }
 });
 
 router.post('/combos', requireRole('admin'), (req, res) => {
