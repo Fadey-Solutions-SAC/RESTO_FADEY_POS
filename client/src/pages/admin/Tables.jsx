@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { api, formatCurrency } from '../../utils/api';
 import { mergeOrderingCatalog, buildOrderItemsPayload } from '../../utils/orderingCatalog';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
@@ -48,31 +49,35 @@ export default function Tables() {
 
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
-  const loadTables = () => {
-    api.get('/tables').then(data => {
-      setTables(data);
-      if (selectedTable) setSelectedTable(data.find(t => t.id === selectedTable.id) || null);
+  const loadTables = useCallback(() => {
+    api.get('/tables').then((data) => {
+      setTables(Array.isArray(data) ? data : []);
+      setSelectedTable((prev) => (prev ? (data || []).find((t) => t.id === prev.id) || null : null));
     }).catch(console.error).finally(() => setLoading(false));
-  };
+  }, []);
 
-  const loadProducts = () => {
+  const loadProducts = useCallback(() => {
     Promise.all([
-      api.get('/products?active_only=true&available_now=true'),
-      api.get('/categories/active'),
+      api.get('/products?active_only=true&available_now=true').catch(() => []),
+      api.get('/categories/active').catch(() => []),
       api.get('/admin-modules/modifiers').catch(() => []),
       api.get('/admin-modules/combos').catch(() => []),
     ]).then(([prods, cats, mods, combosData]) => {
-      const merged = mergeOrderingCatalog(prods, cats, combosData || []);
+      const merged = mergeOrderingCatalog(
+        Array.isArray(prods) ? prods : [],
+        Array.isArray(cats) ? cats : [],
+        combosData || [],
+      );
       setProducts(merged.products);
       setCategories(merged.categories);
       setModifiers(Array.isArray(mods) ? mods : []);
     }).catch(console.error);
-  };
+  }, []);
 
   useEffect(() => {
     loadTables();
     loadProducts();
-  }, []);
+  }, [loadTables, loadProducts]);
   useActiveInterval(loadTables, 10000);
   useSocket('order-update', loadTables);
   useSocket('table-update', loadTables);
@@ -183,9 +188,9 @@ export default function Tables() {
     { id: 'merge', label: 'Unir mesas' },
   ];
 
-  const filteredProducts = products.filter(p => {
+  const filteredProducts = products.filter((p) => {
     if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !(String(p.name || '')).toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
   const activeOrdersForTable = selectedTable?.orders || [];
