@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   api,
   formatCurrency,
@@ -10,6 +10,7 @@ import {
 } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { mergeOrderingCatalog, buildOrderItemsPayload } from '../../utils/orderingCatalog';
+import { showStockInOrderingUI } from '../../utils/productStockDisplay';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import Modal from '../../components/Modal';
@@ -43,23 +44,28 @@ export default function Delivery() {
   const [deliveryPaymentModality, setDeliveryPaymentModality] = useState('contra_entrega');
   const [restaurantAddress, setRestaurantAddress] = useState('');
 
-  const load = () => {
-    api.get('/orders').then(data => {
-      setOrders(data.filter(o => o.type === 'delivery'));
+  const load = useCallback(() => {
+    api.get('/orders').then((data) => {
+      const list = Array.isArray(data) ? data : [];
+      setOrders(list.filter((o) => o.type === 'delivery'));
     }).catch(console.error).finally(() => setLoading(false));
-  };
+  }, []);
 
-  const loadProducts = () => {
+  const loadProducts = useCallback(() => {
     Promise.all([
-      api.get('/products?active_only=true&available_now=true'),
-      api.get('/categories/active'),
+      api.get('/products?active_only=true&available_now=true').catch(() => []),
+      api.get('/categories/active').catch(() => []),
       api.get('/admin-modules/combos').catch(() => []),
     ]).then(([prods, cats, combosData]) => {
-      const merged = mergeOrderingCatalog(prods, cats, combosData || []);
+      const merged = mergeOrderingCatalog(
+        Array.isArray(prods) ? prods : [],
+        Array.isArray(cats) ? cats : [],
+        combosData || [],
+      );
       setProducts(merged.products);
       setCategories(merged.categories);
     }).catch(console.error);
-  };
+  }, []);
 
   useEffect(() => {
     loadProducts();
@@ -69,7 +75,7 @@ export default function Delivery() {
       return;
     }
     load();
-  }, [isMozo]);
+  }, [isMozo, load, loadProducts]);
   useActiveInterval(load, isMozo ? 0 : 10000);
   useSocket('order-update', isMozo ? () => {} : load);
   useSocket('delivery-update', isMozo ? () => {} : load);
@@ -186,9 +192,9 @@ export default function Delivery() {
     } catch (err) { toast.error(err.message); }
   };
 
-  const filteredProducts = products.filter(p => {
+  const filteredProducts = products.filter((p) => {
     if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !(String(p.name || '')).toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -296,7 +302,8 @@ export default function Delivery() {
         </>
       )}
 
-      <Modal isOpen={showNewOrder} onClose={() => setShowNewOrder(false)} title="Nuevo Pedido de Delivery" size="xl">
+      {showNewOrder ? (
+      <Modal isOpen onClose={() => setShowNewOrder(false)} title="Nuevo Pedido de Delivery" size="xl">
         <div className="flex flex-col lg:flex-row gap-4" style={{ minHeight: '65vh' }}>
           <div className="flex-1 flex flex-col">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -447,6 +454,7 @@ export default function Delivery() {
           </div>
         </div>
       </Modal>
+      ) : null}
     </div>
   );
 }

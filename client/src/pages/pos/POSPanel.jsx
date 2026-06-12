@@ -128,6 +128,7 @@ import Modal from '../../components/Modal';
 import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
 import StaffMesaPedidoTabs from '../../components/StaffMesaPedidoTabs';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
+import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
 import {
   MdPointOfSale, MdTableRestaurant, MdReceipt,
   MdCheckCircle, MdAttachMoney, MdPeople, MdClose,
@@ -386,6 +387,9 @@ export default function POSPanel() {
   const [customerForm, setCustomerForm] = useState(EMPTY_CUSTOMER_FORM);
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [matchedCustomer, setMatchedCustomer] = useState(null);
+  const [selectedBillingCustomerId, setSelectedBillingCustomerId] = useState('');
+  const [showCustomerPickerModal, setShowCustomerPickerModal] = useState(false);
+  const [addToAccountEnabled, setAddToAccountEnabled] = useState(false);
   const [searchingCustomer, setSearchingCustomer] = useState(false);
   const [consultaPadronLoading, setConsultaPadronLoading] = useState(false);
   /** Tras una consulta exitosa con cupo, el /auth/me no se refresca al instante. */
@@ -1011,7 +1015,20 @@ export default function POSPanel() {
     setBillingForm(DEFAULT_BILLING_FORM);
     setBillingResult(null);
     setMatchedCustomer(null);
+    setSelectedBillingCustomerId('');
+    setAddToAccountEnabled(false);
     setSearchingCustomer(false);
+  };
+
+  const resolveBillingCustomerId = () =>
+    String(selectedBillingCustomerId || matchedCustomer?.id || '').trim();
+
+  const handleCustomerPicked = (customer) => {
+    if (!customer) return;
+    applyCustomerToBilling(customer);
+    setMatchedCustomer(customer);
+    setSelectedBillingCustomerId(String(customer.id || ''));
+    toast.success(`Cliente cargado: ${customer.name}`);
   };
 
   const normalizeDocNumber = (value) => String(value || '').replace(/\D/g, '');
@@ -1082,6 +1099,7 @@ export default function POSPanel() {
 
   const applyCustomerToBilling = (customer) => {
     if (!customer) return;
+    if (customer.id) setSelectedBillingCustomerId(String(customer.id));
     setBillingForm(prev => ({
       ...prev,
       customer_doc_type: String(customer.doc_type || prev.customer_doc_type || '1'),
@@ -1245,37 +1263,50 @@ export default function POSPanel() {
     if (!selectedTable) return;
     const tableOrders = selectedTable.orders || [];
     const useLineSplit = splitMode;
+    const chargeToAccount = addToAccountEnabled;
+    const billingCustomerId = resolveBillingCustomerId();
 
     if (useLineSplit && selectedOrderItemIds.length === 0) {
       return toast.error('Selecciona al menos una línea de producto para cobrar');
+    }
+
+    if (chargeToAccount) {
+      if (!billingCustomerId) {
+        return toast.error('Seleccione un cliente de Mi Clientes (botón «Mis clientes»)');
+      }
+      if (billingForm.enabled) {
+        return toast.error('Desactive «Emitir comprobante» al agregar a cuenta del cliente');
+      }
     }
 
     const payableOrders = tableOrders;
 
     let checkoutPaymentMethod = paymentMethod;
     let checkoutPaymentBreakdown = null;
-    if (multiPayEnabled) {
-      const o = {};
-      for (const opt of paymentOptions) {
-        const raw = multiPayAmounts[opt.value];
-        if (raw === undefined || raw === '' || String(raw).trim() === '') continue;
-        const v = roundMoneySoles(parseFloat(raw));
-        if (v > 0) o[opt.value] = v;
+    if (!chargeToAccount) {
+      if (multiPayEnabled) {
+        const o = {};
+        for (const opt of paymentOptions) {
+          const raw = multiPayAmounts[opt.value];
+          if (raw === undefined || raw === '' || String(raw).trim() === '') continue;
+          const v = roundMoneySoles(parseFloat(raw));
+          if (v > 0) o[opt.value] = v;
+        }
+        if (Object.keys(o).length < 2) {
+          return toast.error('En multimétodo indica al menos dos métodos con monto mayor a cero.');
+        }
+        const sum = roundMoneySoles(Object.values(o).reduce((s, x) => s + x, 0));
+        if (Math.abs(sum - payableTotal) > 0.05) {
+          return toast.error(`La suma (${formatCurrency(sum)}) debe coincidir con el total (${formatCurrency(payableTotal)})`);
+        }
+        checkoutPaymentBreakdown = o;
+        checkoutPaymentMethod = dominantPaymentFromBreakdown(o);
+      } else if (paymentMethod === 'efectivo' && receivedAmount < payableTotal) {
+        return toast.error(`Monto insuficiente. Falta ${formatCurrency(payableTotal - receivedAmount)}`);
       }
-      if (Object.keys(o).length < 2) {
-        return toast.error('En multimétodo indica al menos dos métodos con monto mayor a cero.');
-      }
-      const sum = roundMoneySoles(Object.values(o).reduce((s, x) => s + x, 0));
-      if (Math.abs(sum - payableTotal) > 0.05) {
-        return toast.error(`La suma (${formatCurrency(sum)}) debe coincidir con el total (${formatCurrency(payableTotal)})`);
-      }
-      checkoutPaymentBreakdown = o;
-      checkoutPaymentMethod = dominantPaymentFromBreakdown(o);
-    } else if (paymentMethod === 'efectivo' && receivedAmount < payableTotal) {
-      return toast.error(`Monto insuficiente. Falta ${formatCurrency(payableTotal - receivedAmount)}`);
+      const billingError = validateBillingData();
+      if (billingError) return toast.error(billingError);
     }
-    const billingError = validateBillingData();
-    if (billingError) return toast.error(billingError);
     try {
       if (discountConfig.applied && splitMode && discountConfig.target === 'line' && discountConfig.targetOrderItemId) {
         if (!selectedOrderItemIds.includes(discountConfig.targetOrderItemId)) {
@@ -1329,7 +1360,7 @@ export default function POSPanel() {
       }
 
       const issuedDocs = [];
-      if (billingForm.enabled && !useLineSplit) {
+      if (!chargeToAccount && billingForm.enabled && !useLineSplit) {
         for (const order of payableOrders) {
           const doc = await issueElectronicDocument(order.id);
           issuedDocs.push(doc);
@@ -1341,8 +1372,13 @@ export default function POSPanel() {
         payment_method: checkoutPaymentMethod,
         discount_reason: discountConfig.reason,
       };
-      if (checkoutPaymentBreakdown) checkoutBody.payment_breakdown = checkoutPaymentBreakdown;
-      if (tipPayEnabled) {
+      if (chargeToAccount) {
+        checkoutBody.charge_to_customer_account = true;
+        checkoutBody.customer_id = billingCustomerId;
+      } else if (checkoutPaymentBreakdown) {
+        checkoutBody.payment_breakdown = checkoutPaymentBreakdown;
+      }
+      if (!chargeToAccount && tipPayEnabled) {
         const tipVal = roundMoneySoles(parseFloat(String(checkoutTipAmount).replace(',', '.')) || 0);
         if (tipVal > 0) checkoutBody.tip_amount = tipVal;
       }
@@ -1368,7 +1404,7 @@ export default function POSPanel() {
         ? (checkoutRes?.discounts_applied_by_order || {})
         : discountsByOrder;
 
-      if (billingForm.enabled && useLineSplit) {
+      if (!chargeToAccount && billingForm.enabled && useLineSplit) {
         for (const order of postPaidOrders) {
           const doc = await issueElectronicDocument(order.id);
           issuedDocs.push(doc);
@@ -1443,6 +1479,9 @@ export default function POSPanel() {
             if (!r.ok) toast.error(r.error || 'No se pudo imprimir comprobante SUNAT');
           }
         }
+      } else if (chargeToAccount) {
+        const clientName = billingForm.customer_name || matchedCustomer?.name || 'cliente';
+        toast.success(`${chargedCount} pedido(s) agregados a la cuenta de ${clientName}. Cobre después en Mi Clientes.`);
       } else {
         toast.success(`${chargedCount} pedido(s) cobrados en ${selectedTable.name}`);
       }
@@ -3670,6 +3709,8 @@ export default function POSPanel() {
           setAmountReceived('');
           setSplitMode(false);
           setSelectedOrderItemIds([]);
+          setAddToAccountEnabled(false);
+          setShowCustomerPickerModal(false);
           resetBillingForm();
         }}
         title={
@@ -3804,7 +3845,15 @@ export default function POSPanel() {
                       ) : (
                         <div className="flex flex-col gap-3 overflow-y-auto max-h-[min(50vh,400px)] pr-1">
                           <h3 className="text-base font-bold text-[#F9FAFB] shrink-0">Datos del comprobante</h3>
-                          <div className="flex items-center justify-end gap-2 shrink-0">
+                          <div className="flex items-center justify-end gap-2 shrink-0 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => setShowCustomerPickerModal(true)}
+                              className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[#BFDBFE] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1 shrink-0"
+                            >
+                              <MdPeople className="text-sm" />
+                              Mis clientes
+                            </button>
                             <button
                               type="button"
                               onClick={openCustomerModal}
@@ -3883,12 +3932,24 @@ export default function POSPanel() {
                                 </button>
                               )}
                             </div>
-                            <input
-                              className="input-field text-sm sm:col-span-2"
-                              placeholder={billingForm.doc_type === 'factura' ? 'Razón social' : 'Nombre cliente'}
-                              value={billingForm.customer_name}
-                              onChange={(e) => setBillingForm((prev) => ({ ...prev, customer_name: e.target.value }))}
-                            />
+                            <div className="sm:col-span-2 space-y-1">
+                              <input
+                                className="input-field text-sm w-full"
+                                placeholder={billingForm.doc_type === 'factura' ? 'Razón social' : 'Nombre cliente'}
+                                value={billingForm.customer_name}
+                                onChange={(e) => {
+                                  setBillingForm((prev) => ({ ...prev, customer_name: e.target.value }));
+                                  setSelectedBillingCustomerId('');
+                                  setMatchedCustomer(null);
+                                }}
+                              />
+                              {selectedBillingCustomerId ? (
+                                <p className="text-[11px] text-emerald-400">
+                                  Cliente vinculado a Mi Clientes
+                                  {billingForm.customer_name ? `: ${billingForm.customer_name}` : ''}
+                                </p>
+                              ) : null}
+                            </div>
                             <input
                               className="input-field text-sm sm:col-span-2"
                               placeholder="Dirección (opcional)"
@@ -4010,12 +4071,41 @@ export default function POSPanel() {
                       <p className="text-2xl sm:text-3xl font-bold text-[#BFDBFE] tabular-nums">{formatCurrency(payableTotal)}</p>
                       <p className="text-xs text-[#9CA3AF] mt-0.5">Total a pagar</p>
                     </div>
-                    <div>
+                    {!billingForm.enabled && (
+                      <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium text-[#E5E7EB]">Cliente</p>
+                          <button
+                            type="button"
+                            onClick={() => setShowCustomerPickerModal(true)}
+                            className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[#BFDBFE] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1 shrink-0"
+                          >
+                            <MdPeople className="text-sm" />
+                            Mis clientes
+                          </button>
+                        </div>
+                        <input
+                          className="input-field text-sm w-full"
+                          placeholder="Nombre del cliente"
+                          value={billingForm.customer_name}
+                          onChange={(e) => {
+                            setBillingForm((prev) => ({ ...prev, customer_name: e.target.value }));
+                            setSelectedBillingCustomerId('');
+                            setMatchedCustomer(null);
+                          }}
+                        />
+                        {selectedBillingCustomerId ? (
+                          <p className="text-[11px] text-emerald-400">Vinculado a Mi Clientes</p>
+                        ) : null}
+                      </div>
+                    )}
+                    <div className={addToAccountEnabled ? 'opacity-50 pointer-events-none' : ''}>
                       <label className="flex items-center gap-2 text-xs font-medium text-[#E5E7EB] mb-2 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={multiPayEnabled}
                           onChange={(e) => setMultiPayEnabled(e.target.checked)}
+                          disabled={addToAccountEnabled}
                           className="rounded border-[color:var(--ui-accent)]"
                         />
                         Pago multimétodo
@@ -4056,36 +4146,65 @@ export default function POSPanel() {
                         </div>
                       )}
                     </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-xs font-medium text-[#E5E7EB] mb-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={tipPayEnabled}
-                          onChange={(e) => {
-                            const on = e.target.checked;
-                            setTipPayEnabled(on);
-                            if (!on) setCheckoutTipAmount('');
-                          }}
-                          className="rounded border-[color:var(--ui-accent)]"
-                        />
-                        Propina (opcional)
-                      </label>
-                      {tipPayEnabled && (
-                        <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
-                          <label className="block text-xs font-medium text-[#E5E7EB] mb-1">Monto propina</label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="input-field w-full text-sm"
-                            placeholder="0.00"
-                            value={checkoutTipAmount}
-                            onChange={(e) => setCheckoutTipAmount(e.target.value)}
-                          />
-                        </div>
-                      )}
-                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className={`flex items-center gap-2 text-xs font-medium text-[#E5E7EB] mb-2 ${addToAccountEnabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                          <input
+                            type="checkbox"
+                            checked={tipPayEnabled}
+                            onChange={(e) => {
+                              const on = e.target.checked;
+                              setTipPayEnabled(on);
+                              if (!on) setCheckoutTipAmount('');
+                            }}
+                            disabled={addToAccountEnabled}
+                            className="rounded border-[color:var(--ui-accent)]"
+                          />
+                          Propina (opcional)
+                        </label>
+                        {tipPayEnabled && !addToAccountEnabled && (
+                          <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
+                            <label className="block text-xs font-medium text-[#E5E7EB] mb-1">Monto propina</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="input-field w-full text-sm"
+                              placeholder="0.00"
+                              value={checkoutTipAmount}
+                              onChange={(e) => setCheckoutTipAmount(e.target.value)}
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="flex items-center gap-2 text-xs font-medium text-[#E5E7EB] mb-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={addToAccountEnabled}
+                            onChange={(e) => {
+                              const on = e.target.checked;
+                              setAddToAccountEnabled(on);
+                              if (on) {
+                                setTipPayEnabled(false);
+                                setCheckoutTipAmount('');
+                                setBillingForm((prev) => ({ ...prev, enabled: false }));
+                              }
+                            }}
+                            className="rounded border-[color:var(--ui-accent)]"
+                          />
+                          Agregar a cuenta
+                        </label>
+                        {addToAccountEnabled && (
+                          <p className="text-[11px] text-sky-300/90 leading-snug rounded-lg border border-sky-500/30 bg-sky-950/25 px-2 py-1.5">
+                            {resolveBillingCustomerId()
+                              ? `Se cargará a la cuenta de ${billingForm.customer_name || 'el cliente'}. Cobre después en Mi Clientes.`
+                              : 'Seleccione un cliente con «Mis clientes» en datos del comprobante.'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${addToAccountEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
                       <div>
                         <label className="block text-xs font-medium text-[#E5E7EB] mb-1">Paga con</label>
                         <input
@@ -4129,7 +4248,7 @@ export default function POSPanel() {
                       </div>
                     )}
 
-                    <label className="flex items-start gap-2 text-sm font-medium text-[#F9FAFB] cursor-pointer pt-1 border-t border-[color:var(--ui-border)]">
+                    <label className={`flex items-start gap-2 text-sm font-medium text-[#F9FAFB] pt-1 border-t border-[color:var(--ui-border)] ${addToAccountEnabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
                       <input
                         type="checkbox"
                         checked={billingForm.enabled}
@@ -4142,6 +4261,7 @@ export default function POSPanel() {
                             invoice_lines_mode: 'detallado',
                           }
                           : { ...prev, enabled: false }))}
+                        disabled={addToAccountEnabled}
                         className="rounded border-[color:var(--ui-accent)] mt-0.5"
                       />
                       <span>Emitir Comprobante</span>
@@ -4150,9 +4270,13 @@ export default function POSPanel() {
                     <button
                       type="button"
                       onClick={cobrarMesa}
-                      className="w-full py-3 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white font-bold text-lg sm:text-xl hover:from-[#1D4ED8] hover:to-[#1E40AF] shadow-lg shadow-[#1D4ED8]/25 uppercase tracking-wide"
+                      className={`w-full py-3 rounded-xl text-white font-bold text-lg sm:text-xl shadow-lg uppercase tracking-wide ${
+                        addToAccountEnabled
+                          ? 'bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-600 shadow-sky-700/25'
+                          : 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] shadow-[#1D4ED8]/25'
+                      }`}
                     >
-                      COBRAR MESA
+                      {addToAccountEnabled ? 'AGREGAR A CUENTA' : 'COBRAR MESA'}
                     </button>
                   </div>
                 </div>
@@ -4185,6 +4309,12 @@ export default function POSPanel() {
           </div>
         )}
       </Modal>
+
+      <PosCustomerPickerModal
+        isOpen={showCustomerPickerModal}
+        onClose={() => setShowCustomerPickerModal(false)}
+        onSelect={handleCustomerPicked}
+      />
 
       <Modal
         isOpen={showCustomerModal}

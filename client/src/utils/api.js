@@ -643,6 +643,7 @@ export const PAYMENT_METHODS = {
   plin: 'Plin',
   tarjeta: 'Tarjeta',
   online: 'Online',
+  cuenta_cliente: 'Cuenta cliente',
 };
 
 /** Al crear pedido delivery: anticipado vs contra entrega (distinto del medio de pago en caja). */

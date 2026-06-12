@@ -627,7 +627,11 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     checkout_discount_total: checkoutDiscountTotalRaw,
     checkout_discount_anchor_order_item_id: checkoutDiscountAnchorItemRaw,
     tip_amount: tipAmountRaw,
+    charge_to_customer_account: chargeToAccountRaw,
+    customer_id: customerIdRaw,
   } = body;
+  const chargeToCustomerAccount = chargeToAccountRaw === true || chargeToAccountRaw === 1 || chargeToAccountRaw === '1';
+  const customerIdForAccount = String(customerIdRaw || '').trim();
   const orderItemIds = [
     ...new Set(
       (Array.isArray(orderItemIdsBody) ? orderItemIdsBody : [])
@@ -660,7 +664,14 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
 
   const formatCheckoutSoles = (n) => `S/ ${Number(n || 0).toFixed(2)}`;
 
-  if (paymentBreakdownObj) {
+  let accountCustomer = null;
+  if (chargeToCustomerAccount) {
+    if (!customerIdForAccount) {
+      return res.status(400).json({ error: 'Seleccione un cliente de Mi Clientes' });
+    }
+    accountCustomer = queryOne('SELECT id, name FROM customers WHERE id = ?', [customerIdForAccount]);
+    if (!accountCustomer) return res.status(400).json({ error: 'Cliente no encontrado en Mi Clientes' });
+  } else if (paymentBreakdownObj) {
     try {
       for (const k of Object.keys(paymentBreakdownObj)) {
         assertPaymentMethodAllowed(k, { allowOnline: true });
@@ -749,15 +760,23 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       toCharge.forEach((row, idx) => {
         const br = perOrderBreakdown ? perOrderBreakdown[idx] : null;
         const tipForOrder = round2(Number(tipsPerOrder[idx] || 0));
-        tx.run(
-          `UPDATE orders SET payment_method = ?, payment_status = 'paid', status = 'delivered',
-            payment_breakdown = ?, tip_amount = ?, updated_at = datetime('now') WHERE id = ?`,
-          [primaryMethod, br, tipForOrder, row.id]
-        );
-        tx.run(
-          "UPDATE electronic_documents SET payment_method = ?, updated_at = datetime('now') WHERE order_id = ?",
-          [primaryMethod, row.id]
-        );
+        if (chargeToCustomerAccount) {
+          tx.run(
+            `UPDATE orders SET payment_method = 'cuenta_cliente', payment_status = 'pending', status = 'delivered',
+              customer_id = ?, customer_name = ?, payment_breakdown = NULL, tip_amount = 0, updated_at = datetime('now') WHERE id = ?`,
+            [accountCustomer.id, accountCustomer.name, row.id]
+          );
+        } else {
+          tx.run(
+            `UPDATE orders SET payment_method = ?, payment_status = 'paid', status = 'delivered',
+              payment_breakdown = ?, tip_amount = ?, updated_at = datetime('now') WHERE id = ?`,
+            [primaryMethod, br, tipForOrder, row.id]
+          );
+          tx.run(
+            "UPDATE electronic_documents SET payment_method = ?, updated_at = datetime('now') WHERE order_id = ?",
+            [primaryMethod, row.id]
+          );
+        }
         kardexInventory.aplicarSalidasVentaPedido(tx, row.id, req.user.id);
         chargedOrderIds.push(row.id);
       });
@@ -766,11 +785,13 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     });
 
     const { chargedOrderIds, discountsAppliedByOrder } = txResult;
-    try {
-      const { markProductsSoldOnPaidOrders } = require('../services/productSalesTrackingService');
-      markProductsSoldOnPaidOrders(chargedOrderIds);
-    } catch (err) {
-      console.warn('[product-sales-idle] venta cobrada no registrada:', err.message || err);
+    if (!chargeToCustomerAccount) {
+      try {
+        const { markProductsSoldOnPaidOrders } = require('../services/productSalesTrackingService');
+        markProductsSoldOnPaidOrders(chargedOrderIds);
+      } catch (err) {
+        console.warn('[product-sales-idle] venta cobrada no registrada:', err.message || err);
+      }
     }
     const paidOrders = chargedOrderIds
       .map((id) => {
@@ -829,7 +850,14 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       }
     }
     if (chargedOrderIds.length > 0) emitInventoryUpdate({});
-    res.json({ success: true, orders: paidOrders, discounts_applied_by_order: discountsAppliedByOrder });
+    if (chargeToCustomerAccount) emitStaffDataUpdate({ domain: 'customers' });
+    res.json({
+      success: true,
+      orders: paidOrders,
+      discounts_applied_by_order: discountsAppliedByOrder,
+      charged_to_customer_account: chargeToCustomerAccount,
+      customer_id: chargeToCustomerAccount ? customerIdForAccount : null,
+    });
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo cobrar la mesa' });
   }
