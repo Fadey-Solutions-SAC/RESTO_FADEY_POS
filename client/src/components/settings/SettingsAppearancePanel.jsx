@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { MdDarkMode, MdLightMode, MdSettingsBrightness, MdPerson, MdStore } from 'react-icons/md';
 import {
   UI_THEME_OPTIONS,
   PREMIUM_THEME_IDS,
+  applyUiTheme,
   applyUiThemeFromAppSettings,
   getValidUiThemeId,
   readUserUiThemePreference,
@@ -41,55 +42,116 @@ function ThemePreviewCard({ opt, selected, onSelect }) {
   );
 }
 
+function readRestaurantCustom(appSettings) {
+  return appSettings?.ui_theme_custom && typeof appSettings.ui_theme_custom === 'object'
+    ? appSettings.ui_theme_custom
+    : {};
+}
+
 export default function SettingsAppearancePanel({
   appSettings,
   setAppSettings,
   currentUserId,
 }) {
-  const current = getValidUiThemeId(appSettings?.ui_theme);
-  const custom = appSettings?.ui_theme_custom && typeof appSettings.ui_theme_custom === 'object'
-    ? appSettings.ui_theme_custom
-    : {};
-  const mode = UI_THEME_MODE_IDS.includes(appSettings?.ui_theme_mode)
+  const [prefRevision, setPrefRevision] = useState(0);
+  const bumpPref = () => setPrefRevision((n) => n + 1);
+
+  const restaurantTheme = getValidUiThemeId(appSettings?.ui_theme);
+  const restaurantMode = UI_THEME_MODE_IDS.includes(appSettings?.ui_theme_mode)
     ? appSettings.ui_theme_mode
     : 'light';
+  const restaurantCustom = readRestaurantCustom(appSettings);
 
-  const userPref = useMemo(
-    () => (currentUserId ? readUserUiThemePreference(currentUserId) : null),
-    [currentUserId, appSettings?.ui_theme, appSettings?.ui_theme_mode]
-  );
+  const userPref = useMemo(() => {
+    void prefRevision;
+    return currentUserId ? readUserUiThemePreference(currentUserId) : null;
+  }, [currentUserId, prefRevision]);
+
+  const personalEnabled = Boolean(userPref?.usePersonal);
+
+  const current = personalEnabled && userPref?.theme
+    ? getValidUiThemeId(userPref.theme)
+    : restaurantTheme;
+  const mode = personalEnabled && userPref?.mode && UI_THEME_MODE_IDS.includes(userPref.mode)
+    ? userPref.mode
+    : restaurantMode;
+  const custom = personalEnabled
+    ? { ...restaurantCustom, ...(userPref?.custom || {}) }
+    : restaurantCustom;
 
   const premiumOptions = UI_THEME_OPTIONS.filter((o) => PREMIUM_THEME_IDS.includes(o.id));
   const legacyOptions = UI_THEME_OPTIONS.filter((o) => !PREMIUM_THEME_IDS.includes(o.id));
 
-  const patchAndApply = (patch) => {
+  const applyRestaurantPatch = (patch) => {
     const next = { ...appSettings, ...patch };
     setAppSettings(next);
     applyUiThemeFromAppSettings(next, currentUserId);
   };
 
+  const applyPersonalPatch = (patch) => {
+    if (!currentUserId) return;
+    const nextPref = {
+      usePersonal: true,
+      theme: getValidUiThemeId(patch.theme ?? current),
+      mode: UI_THEME_MODE_IDS.includes(patch.mode) ? patch.mode : mode,
+      custom: patch.custom !== undefined ? patch.custom : custom,
+    };
+    saveUserUiThemePreference(currentUserId, nextPref);
+    applyUiTheme(nextPref.theme, {
+      custom: nextPref.custom,
+      mode: nextPref.mode,
+      userId: currentUserId,
+      persist: true,
+      writeGlobalStorage: false,
+    });
+    bumpPref();
+  };
+
   const selectTheme = (themeId) => {
-    patchAndApply({ ui_theme: themeId });
+    if (personalEnabled) applyPersonalPatch({ theme: themeId });
+    else applyRestaurantPatch({ ui_theme: themeId });
   };
 
   const setMode = (nextMode) => {
-    patchAndApply({ ui_theme_mode: nextMode });
+    if (personalEnabled) applyPersonalPatch({ mode: nextMode });
+    else applyRestaurantPatch({ ui_theme_mode: nextMode });
   };
 
   const setCustomVar = (cssKey, value) => {
     const nextCustom = { ...custom, [cssKey]: value };
-    patchAndApply({ ui_theme_custom: nextCustom });
+    if (personalEnabled) applyPersonalPatch({ custom: nextCustom });
+    else applyRestaurantPatch({ ui_theme_custom: nextCustom });
   };
 
   const togglePersonalTheme = (enabled) => {
     if (!currentUserId) return;
-    saveUserUiThemePreference(currentUserId, {
-      usePersonal: enabled,
-      theme: current,
-      mode,
-      custom,
-    });
-    applyUiThemeFromAppSettings(appSettings, currentUserId);
+    if (enabled) {
+      saveUserUiThemePreference(currentUserId, {
+        usePersonal: true,
+        theme: restaurantTheme,
+        mode: restaurantMode,
+        custom: restaurantCustom,
+      });
+      applyUiTheme(restaurantTheme, {
+        custom: restaurantCustom,
+        mode: restaurantMode,
+        userId: currentUserId,
+        persist: true,
+        writeGlobalStorage: false,
+      });
+    } else {
+      saveUserUiThemePreference(currentUserId, {
+        ...(userPref || {}),
+        usePersonal: false,
+      });
+      applyUiThemeFromAppSettings(appSettings, currentUserId);
+    }
+    bumpPref();
+  };
+
+  const restoreCustomColors = () => {
+    if (personalEnabled) applyPersonalPatch({ custom: {} });
+    else applyRestaurantPatch({ ui_theme_custom: {} });
   };
 
   const preset = getThemePreset(current);
@@ -177,7 +239,7 @@ export default function SettingsAppearancePanel({
         <button
           type="button"
           className="btn-secondary mt-4 text-sm"
-          onClick={() => patchAndApply({ ui_theme_custom: {} })}
+          onClick={restoreCustomColors}
         >
           Restaurar colores del tema
         </button>
@@ -192,7 +254,7 @@ export default function SettingsAppearancePanel({
             <input
               type="checkbox"
               className="mt-1"
-              checked={Boolean(userPref?.usePersonal)}
+              checked={personalEnabled}
               onChange={(e) => togglePersonalTheme(e.target.checked)}
             />
             <span className="text-sm text-[var(--ui-body-text)]">
@@ -200,6 +262,15 @@ export default function SettingsAppearancePanel({
               <MdStore className="inline align-text-bottom" />.
             </span>
           </label>
+          {personalEnabled ? (
+            <p className="text-xs text-sky-300/90 mt-3 rounded-lg border border-sky-500/25 bg-sky-950/20 px-3 py-2">
+              Los cambios de esta sección solo se guardan en este navegador. El tema del restaurante en el servidor no cambia.
+            </p>
+          ) : (
+            <p className="text-xs text-[var(--ui-muted)] mt-3">
+              Los cambios se sincronizan con el servidor y aplican a todo el personal.
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -220,8 +291,19 @@ export default function SettingsAppearancePanel({
       </details>
 
       <p className="text-xs text-[var(--ui-muted)]">
-        Los cambios de esta sección se sincronizan automáticamente con el servidor. Tema activo:{' '}
-        <strong className="text-[var(--ui-body-text)]">{preset.label}</strong>.
+        {personalEnabled ? (
+          <>
+            Tema personal activo en este dispositivo:{' '}
+            <strong className="text-[var(--ui-body-text)]">{preset.label}</strong>.
+            Tema del restaurante (servidor):{' '}
+            <strong className="text-[var(--ui-body-text)]">{getThemePreset(restaurantTheme).label}</strong>.
+          </>
+        ) : (
+          <>
+            Tema del restaurante (servidor):{' '}
+            <strong className="text-[var(--ui-body-text)]">{preset.label}</strong>.
+          </>
+        )}
       </p>
     </div>
   );

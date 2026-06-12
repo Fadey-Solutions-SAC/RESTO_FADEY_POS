@@ -67,5 +67,10 @@ export function mergeSavedAppSettings(normalized, source) {
   if (source.apariencia && typeof source.apariencia === 'object') {
     next.apariencia = { ...(next.apariencia || {}), ...source.apariencia };
   }
+  if (source.ui_theme) next.ui_theme = source.ui_theme;
+  if (source.ui_theme_mode) next.ui_theme_mode = source.ui_theme_mode;
+  if (source.ui_theme_custom && typeof source.ui_theme_custom === 'object') {
+    next.ui_theme_custom = { ...(source.ui_theme_custom || {}) };
+  }
   return next;
 }

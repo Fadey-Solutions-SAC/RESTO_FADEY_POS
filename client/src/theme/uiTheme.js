@@ -148,14 +148,20 @@ export function applyUiTheme(id, opts = {}) {
     document.documentElement.setAttribute('data-ui-color-scheme', colorScheme);
     document.documentElement.style.colorScheme = colorScheme;
     applyCssVariables(mergedVars);
-    try {
-      localStorage.setItem(UI_THEME_STORAGE_KEY, themeId);
-      localStorage.setItem(UI_THEME_MODE_STORAGE_KEY, validMode);
-    } catch (_) {
-      /* ignore */
+    const writeGlobal = opts.writeGlobalStorage !== false;
+    if (writeGlobal) {
+      try {
+        localStorage.setItem(UI_THEME_STORAGE_KEY, themeId);
+        localStorage.setItem(UI_THEME_MODE_STORAGE_KEY, validMode);
+      } catch (_) {
+        /* ignore */
+      }
     }
     if (opts.persist !== false && opts.userId) {
+      const prev = readUserUiThemePreference(opts.userId) || {};
       saveUserUiThemePreference(opts.userId, {
+        ...prev,
+        usePersonal: true,
         theme: themeId,
         mode: validMode,
         custom,
@@ -202,6 +208,7 @@ export function applyUiThemeFromAppSettings(settings = {}, userId = '') {
     mode,
     userId: useUser ? userId : '',
     persist: false,
+    writeGlobalStorage: !useUser,
   });
 }
 

@@ -21,13 +21,26 @@ const router = express.Router();
 const { getValidUiThemeId } = require('../uiThemeCatalog');
 
 function readUiThemeFromStoredSettings() {
+  return readUiAppearanceFromStoredSettings().ui_theme;
+}
+
+function readUiAppearanceFromStoredSettings() {
+  const fallback = { ui_theme: 'corporate_blue', ui_theme_mode: 'light', ui_theme_custom: {} };
   const row = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
-  if (!row?.value) return 'corporate_blue';
+  if (!row?.value) return fallback;
   try {
     const s = JSON.parse(row.value);
-    return getValidUiThemeId(s?.ui_theme);
+    const mode = String(s?.ui_theme_mode || 'light').trim();
+    return {
+      ui_theme: getValidUiThemeId(s?.ui_theme),
+      ui_theme_mode: ['light', 'dark', 'auto'].includes(mode) ? mode : 'light',
+      ui_theme_custom:
+        s?.ui_theme_custom && typeof s.ui_theme_custom === 'object' && !Array.isArray(s.ui_theme_custom)
+          ? s.ui_theme_custom
+          : {},
+    };
   } catch (_) {
-    return 'corporate_blue';
+    return fallback;
   }
 }
 
@@ -199,7 +212,7 @@ router.post('/login', (req, res) => {
         full_name: 'Administrador Maestro',
         role: 'master_admin',
         avatar: '',
-        ui_theme: readUiThemeFromStoredSettings(),
+        ...readUiAppearanceFromStoredSettings(),
       },
     });
   }
@@ -283,7 +296,7 @@ router.post('/login', (req, res) => {
       sub_permissions,
       padron_quota,
       service_plan: plan,
-      ui_theme: readUiThemeFromStoredSettings(),
+      ...readUiAppearanceFromStoredSettings(),
       ...cajaMeta,
     },
   });
@@ -323,7 +336,7 @@ router.post('/customer/register', (req, res) => {
   const token = jwt.sign({ id, email, name, type: 'customer' }, JWT_SECRET, { expiresIn: '7d' });
   res.json({
     token,
-    customer: { id, name, email, phone, address, ui_theme: readUiThemeFromStoredSettings() },
+    customer: { id, name, email, phone, address, ...readUiAppearanceFromStoredSettings() },
   });
 });
 
@@ -349,7 +362,7 @@ router.post('/customer/login', (req, res) => {
       email: customer.email,
       phone: customer.phone,
       address: customer.address,
-      ui_theme: readUiThemeFromStoredSettings(),
+      ...readUiAppearanceFromStoredSettings(),
     },
   });
 });
@@ -363,12 +376,12 @@ router.get('/me', authenticateToken, (req, res) => {
       full_name: 'Administrador Maestro',
       role: 'master_admin',
       type: 'staff',
-      ui_theme: readUiThemeFromStoredSettings(),
+      ...readUiAppearanceFromStoredSettings(),
     });
   }
   if (req.user.type === 'customer') {
     const customer = queryOne('SELECT id, name, email, phone, address FROM customers WHERE id = ?', [req.user.id]);
-    return res.json({ ...customer, type: 'customer', ui_theme: readUiThemeFromStoredSettings() });
+    return res.json({ ...customer, type: 'customer', ...readUiAppearanceFromStoredSettings() });
   }
   ensureOpenWorkSession(req.user);
   const user = queryOne(
@@ -393,7 +406,7 @@ router.get('/me', authenticateToken, (req, res) => {
     service_plan: plan,
     type: 'staff',
     caja_name: caja?.name || '',
-    ui_theme: readUiThemeFromStoredSettings(),
+    ...readUiAppearanceFromStoredSettings(),
   });
 });
 
