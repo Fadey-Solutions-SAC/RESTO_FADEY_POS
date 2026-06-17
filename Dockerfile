@@ -7,6 +7,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY scripts ./scripts
 COPY client ./client
+COPY server/printing/thermalPrintLayout.json ./server/printing/thermalPrintLayout.json
 RUN npm run build
 
 FROM node:22-bookworm-slim
