@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-/* global __APP_VERSION__ */
 import {
   api,
   checkPrintingHealth,
@@ -12,7 +11,6 @@ import {
   normalizeUsbPrinterList,
   printingUnreachableMessage,
 } from '../../utils/api';
-import { getThermalPrintRevision } from '../../utils/ticketPlainText';
 import { useAuth } from '../../context/AuthContext';
 import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
@@ -1690,24 +1688,6 @@ export default function Settings() {
 
         {activeSection === 'impresoras' && (
           <div className="space-y-4">
-            <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
-              <p className="font-medium mb-1">Para imprimir tickets en esta computadora</p>
-              <ul className="list-disc pl-5 space-y-1 text-sky-900/90">
-                <li>Instale y abra <strong>Resto FADEY</strong> (quedará un ícono junto al reloj de Windows).</li>
-                <li>No cierre ese programa mientras use la caja en esta PC.</li>
-                <li>Si dice «Sin vinculación», pulse <strong>Verificar vínculo</strong>. Si sigue igual: clic derecho en el ícono → <strong>Reintentar servicio de impresión</strong>.</li>
-              </ul>
-            </div>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-950">
-              <p className="font-semibold mb-1">Formato térmico cargado en ESTE navegador</p>
-              <p className="font-mono">
-                {getThermalPrintRevision()} · web {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '—'}
-              </p>
-              <p className="mt-2 text-amber-900/90 leading-snug">
-                El texto del ticket (precuenta) sale del sitio en la nube (Vercel), no solo del .exe. Si imprimes y el papel sigue como antes pero aquí NO ves la revisión térmica actual (p. ej. <strong>thermal-v30-caja-logo-brand-gdi</strong>), el navegador usa JS viejo:
-                prueba <kbd className="px-1 bg-white rounded border border-amber-300">Ctrl+Shift+R</kbd>, borrar datos del sitio para tu dominio Vercel, o Chrome → F12 → pestaña <strong>Application</strong> → <strong>Service Workers</strong> → <strong>Unregister</strong>, y recarga.
-              </p>
-            </div>
             <div className="card space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="md:col-span-1">
