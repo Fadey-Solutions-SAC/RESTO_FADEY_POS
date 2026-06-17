@@ -5,6 +5,7 @@ FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
+COPY scripts ./scripts
 COPY client ./client
 RUN npm run build
 
