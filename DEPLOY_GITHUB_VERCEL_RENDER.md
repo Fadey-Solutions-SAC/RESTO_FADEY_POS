@@ -69,23 +69,33 @@ El **reinicio completo** de datos del programa sigue siendo solo el que configur
 
 ### 1c) Mismo servicio Node (sin Docker ni segundo Web Service): bot e-fact
 
-Render incluye **Python 3** en el runtime nativo de Node ([herramientas disponibles](https://render.com/docs/native-environments)). Puedes levantar **Node + `api_server.py`** en un solo servicio **sin crear otro** ni pasar a Docker:
+**Recomendado para todos los clientes (POLLERIA-KUELAP, ZOILAS SUITE ESCAPE, etc.): runtime Node, no Docker.**  
+Con Node, Render clona todo el repo (`packages/`, `scripts/`, etc.) y los deploys reflejan cada `git push` sin fallos de imagen Docker.
 
-1. Servicio existente → **Settings** (o el editor del servicio).
-2. **Build command** (sustituye el anterior por este, en una sola línea):
+Si un servicio está en **Docker**, cámbialo: **Settings** → **Build & Deploy** → **Runtime: Node** (o crea un Web Service nuevo Node y migra variables + disco).
 
-   `npm install && npm run build && pip3 install --user -r server/efact/requirements.txt`
+Render incluye **Python 3** en el runtime nativo de Node ([herramientas disponibles](https://render.com/docs/native-environments)). Puedes levantar **Node + `api_server.py`** en un solo servicio:
 
-3. **Start command** (sustituye `npm start` por):
+1. Servicio → **Settings** → **Build & Deploy**.
+2. **Runtime:** **Node** (no Docker).
+3. **Root directory:** vacío (raíz del repo).
+4. **Build command:**
+
+   `bash scripts/render-build.sh`
+
+   (equivale a `npm install && npm run build && pip3 install --user -r server/efact/requirements.txt`)
+
+5. **Start command:**
 
    `bash scripts/render-start.sh`
 
-4. Variables (como ya tienes): `EFACT_API_URL=http://127.0.0.1:8765` y `EFACT_HTTP_SECRET=…`  
+6. Variables (como ya tienes): `EFACT_API_URL=http://127.0.0.1:8765` y `EFACT_HTTP_SECRET=…`  
    Opcional: `OUTPUT_DIR=/data/efact-output` si tienes disco en `/data` y quieres conservar XML/PDF del bot ahí.
+   Cada servicio su propia URL en `RENDER_PUBLIC_URL` y `CORS_ORIGIN` con su front Vercel.
 
-5. **Save** y **Manual Deploy**. En **Logs** deberías ver el mensaje del API Python (puerto **8765**) y luego el arranque de Node.
+7. **Save** y **Manual Deploy**. En **Logs** deberías ver el mensaje del API Python (puerto **8765**) y luego el arranque de Node.
 
-El script está en el repo: `scripts/render-start.sh`.
+El script está en el repo: `scripts/render-start.sh`. Build: `scripts/render-build.sh`. Referencia: `render.yaml`.
 
 ---
 

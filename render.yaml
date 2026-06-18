@@ -1,0 +1,29 @@
+# Blueprint de referencia — Web Service Node (no Docker).
+# Si ya tienes servicios creados a mano, copia build/start en Settings → Build & Deploy.
+#
+# POLLERIA-KUELAP y ZOILAS SUITE ESCAPE deben usar:
+#   Runtime: Node
+#   Root Directory: (vacío)
+#   Build Command: bash scripts/render-build.sh
+#   Start Command: bash scripts/render-start.sh
+
+services:
+  - type: web
+    name: resto-api-node
+    runtime: node
+    plan: starter
+    branch: main
+    buildCommand: bash scripts/render-build.sh
+    startCommand: bash scripts/render-start.sh
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DB_PATH
+        value: /data/restaurant.db
+      - key: EFACT_API_URL
+        value: http://127.0.0.1:8765
+      - key: OUTPUT_DIR
+        value: /data/efact-output

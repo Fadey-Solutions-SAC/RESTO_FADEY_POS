@@ -79,9 +79,18 @@ async function restoreDbFromBuffer(fileBuffer) {
   if (!fileBuffer || !fileBuffer.length) {
     throw new Error('Archivo de backup inválido');
   }
+  if (fileBuffer.length < 512) {
+    throw new Error('El archivo es demasiado pequeño para ser una base SQLite válida');
+  }
   const SQL = await initSqlJs();
-  const nextDb = new SQL.Database(fileBuffer);
-  nextDb.run('PRAGMA foreign_keys = ON');
+  let nextDb;
+  try {
+    nextDb = new SQL.Database(fileBuffer);
+    nextDb.run('PRAGMA foreign_keys = ON');
+    nextDb.exec('SELECT 1');
+  } catch (err) {
+    throw new Error(`No se pudo leer el backup SQLite: ${err.message || 'archivo corrupto'}`);
+  }
   if (db && typeof db.close === 'function') {
     try {
       db.close();
@@ -91,6 +100,8 @@ async function restoreDbFromBuffer(fileBuffer) {
   }
   db = nextDb;
   saveDb();
+  const restaurant = queryOne('SELECT name FROM restaurants LIMIT 1');
+  console.info('[backup] Restaurado:', restaurant?.name || '(sin nombre)', '→', DB_PATH);
 }
 
 function resetOperationalData({ keepAdminUserId = '', preserveContrato = false } = {}) {
