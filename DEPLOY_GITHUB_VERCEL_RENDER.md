@@ -83,7 +83,7 @@ Render incluye **Python 3** en el runtime nativo de Node ([herramientas disponib
 
    `bash scripts/render-build.sh`
 
-   (equivale a `npm install && npm run build && pip3 install --user -r server/efact/requirements.txt`)
+   (equivale a `npm install && npm run build && python3 -m pip install -r server/efact/requirements.txt`)
 
 5. **Start command:**
 

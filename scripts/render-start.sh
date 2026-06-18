@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Arranque Render (runtime Node nativo): levanta el API Python e-fact y luego Node en el mismo proceso/grupo.
-# En Render: Build = "npm install && npm run build && pip3 install -r server/efact/requirements.txt --user"
-#            Start = "bash scripts/render-start.sh"
+# En Render: Build = "bash scripts/render-build.sh"  |  Start = "bash scripts/render-start.sh"
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

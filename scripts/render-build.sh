@@ -10,6 +10,6 @@ npm install
 npm run build
 
 echo "[render-build] dependencias Python e-fact…"
-pip3 install --user -r server/efact/requirements.txt
+python3 -m pip install -r server/efact/requirements.txt
 
 echo "[render-build] listo."
