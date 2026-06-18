@@ -14,7 +14,7 @@ const repoRoot = join(clientRoot, '..');
 const script = join(repoRoot, 'scripts', 'generate-branding-assets.js');
 const source = join(publicDir, 'branding', 'resto-fadey-source.png');
 
-/** Vercel usa Root Directory = client; no hay scripts/ de la raíz del repo. */
+/** Iconos ya versionados en git: no hace falta jimp ni scripts/ de la raíz (Vercel solo instala client/). */
 function hasCommittedBrandingAssets() {
   return (
     existsSync(join(publicDir, 'pwa-icon-192.png')) &&
@@ -23,11 +23,12 @@ function hasCommittedBrandingAssets() {
   );
 }
 
+if (process.env.FORCE_BRANDING !== '1' && hasCommittedBrandingAssets()) {
+  console.log('OK: iconos PWA ya en public/ (sin regenerar en build)');
+  process.exit(0);
+}
+
 if (!existsSync(script) || !existsSync(source)) {
-  if (hasCommittedBrandingAssets()) {
-    console.log('OK: iconos PWA ya en public/ (deploy solo client/, sin regenerar)');
-    process.exit(0);
-  }
   if (!existsSync(script)) {
     console.error('No se encontró:', script);
     process.exit(1);
