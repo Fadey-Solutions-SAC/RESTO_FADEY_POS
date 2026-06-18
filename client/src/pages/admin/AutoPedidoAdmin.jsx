@@ -295,22 +295,31 @@ export default function AutoPedidoAdmin() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4">
         <h1 className="text-2xl font-bold rf-page-title flex items-center gap-2">
           <MdQrCode2 className="text-[var(--ui-accent)]" />
           Auto pedido (QR)
         </h1>
+      </div>
+
+      <div className="card mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-[color:var(--ui-accent)]/35 bg-[var(--ui-surface)]">
+        <div className="min-w-0">
+          <p className="font-semibold text-[var(--ui-body-text)]">Productos e imágenes del menú</p>
+          <p className="text-xs ui-text-muted mt-0.5">
+            Gestiona fotos y datos de platos para el auto pedido. Puedes ocultar esta sección si solo usas cartas PDF.
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setShowProductCatalog((v) => !v)}
-          className="btn-secondary text-sm inline-flex items-center gap-2"
+          className="btn-primary text-sm inline-flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto px-5 py-2.5"
         >
-          {showProductCatalog ? <MdVisibilityOff /> : <MdVisibility />}
-          {showProductCatalog ? 'Ocultar productos e imágenes' : 'Mostrar productos e imágenes'}
+          {showProductCatalog ? <MdVisibilityOff className="text-lg" /> : <MdVisibility className="text-lg" />}
+          {showProductCatalog ? 'Ocultar productos' : 'Mostrar productos'}
         </button>
       </div>
 
-      {showProductCatalog && (
+      {showProductCatalog ? (
       <div className="card mb-6">
         <div className="flex flex-wrap gap-2 mb-4">
           <button
@@ -375,7 +384,7 @@ export default function AutoPedidoAdmin() {
           ))}
         </div>
       </div>
-      )}
+      ) : null}
 
       <div className="card mb-6">
         <div className="flex flex-col lg:flex-row gap-6 lg:items-stretch">
