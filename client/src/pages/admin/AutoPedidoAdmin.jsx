@@ -3,7 +3,7 @@ import { api, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
-import { MdAdd, MdDelete, MdSave, MdContentCopy, MdQrCode2, MdUploadFile, MdRestaurantMenu, MdEdit } from 'react-icons/md';
+import { MdAdd, MdDelete, MdSave, MdContentCopy, MdQrCode2, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff } from 'react-icons/md';
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import {
@@ -90,6 +90,7 @@ export default function AutoPedidoAdmin() {
   const [genText, setGenText] = useState(MENU_GEN_PLACEHOLDER);
   const [genPreviewUrl, setGenPreviewUrl] = useState('');
   const [genColors, setGenColors] = useState(() => ({ ...DEFAULT_MENU_CARTA_COLORS }));
+  const [showProductCatalog, setShowProductCatalog] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -294,13 +295,22 @@ export default function AutoPedidoAdmin() {
 
   return (
     <div>
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold rf-page-title flex items-center gap-2">
           <MdQrCode2 className="text-[var(--ui-accent)]" />
           Auto pedido (QR)
         </h1>
+        <button
+          type="button"
+          onClick={() => setShowProductCatalog((v) => !v)}
+          className="btn-secondary text-sm inline-flex items-center gap-2"
+        >
+          {showProductCatalog ? <MdVisibilityOff /> : <MdVisibility />}
+          {showProductCatalog ? 'Ocultar productos e imágenes' : 'Mostrar productos e imágenes'}
+        </button>
       </div>
 
+      {showProductCatalog && (
       <div className="card mb-6">
         <div className="flex flex-wrap gap-2 mb-4">
           <button
@@ -365,6 +375,7 @@ export default function AutoPedidoAdmin() {
           ))}
         </div>
       </div>
+      )}
 
       <div className="card mb-6">
         <div className="flex flex-col lg:flex-row gap-6 lg:items-stretch">
