@@ -129,6 +129,7 @@ import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
 import StaffMesaPedidoTabs from '../../components/StaffMesaPedidoTabs';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
+import { buildTablesBySalon } from '../../utils/salonesUtils';
 import {
   MdPointOfSale, MdTableRestaurant, MdReceipt,
   MdCheckCircle, MdAttachMoney, MdPeople, MdClose,
@@ -160,12 +161,6 @@ function isDeliveryCheckoutTable(table) {
 }
 function deliveryOrderIdFromSlotTable(table) {
   return String(table?.id || '').slice(POS_DELIVERY_SLOT_PREFIX.length);
-}
-
-function formatSalonLabel(zoneId) {
-  const id = String(zoneId || 'principal').trim() || 'principal';
-  if (id === 'principal') return 'Salón Principal';
-  return id.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 const CAJA_OPTIONS_CAJERO_IDS = new Set([
   'cobrar',
@@ -326,6 +321,7 @@ export default function POSPanel() {
   const navigate = useNavigate();
   const clientCheckoutOpenedKeyRef = useRef('');
   const [tables, setTables] = useState([]);
+  const [salonesConfig, setSalonesConfig] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
   const [register, setRegister] = useState(null);
@@ -427,6 +423,8 @@ export default function POSPanel() {
     m2: '',
     m1: '',
     c50: '',
+    c20: '',
+    c10: '',
   });
   const [registerHistory, setRegisterHistory] = useState([]);
   const [billingStatus, setBillingStatus] = useState({
@@ -523,8 +521,9 @@ export default function POSPanel() {
         String(user?.role || '').toLowerCase() === 'admin' && adminRid
           ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`
           : '/pos/current-register';
-      const [tablesData, reg, status, stationsRes, prods, cats, modifiersData, combosData, cfg, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
+      const [tablesData, salonesRes, reg, status, stationsRes, prods, cats, modifiersData, combosData, cfg, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
         api.get('/tables'),
+        api.get('/tables/salones').catch(() => ({ salones: [] })),
         api.get(currentRegPath),
         api.get('/pos/register-status'),
         api.get('/pos/caja-stations').catch(() => ({ stations: [] })),
@@ -567,6 +566,7 @@ export default function POSPanel() {
       const visibleCategoryIds = new Set(mergedCatalog.categories.map(c => c.id));
       const visibleProducts = filterVisibleOrderingProducts(mergedCatalog.products, visibleCategoryIds);
       setTables(tablesData);
+      setSalonesConfig(Array.isArray(salonesRes?.salones) ? salonesRes.salones : []);
       setReservations(reservationsData || []);
       setAllOrders(ordersData || []);
       setRegister(reg);
@@ -691,6 +691,7 @@ export default function POSPanel() {
   useActiveInterval(loadData, 10000);
   useSocket('order-update', loadData);
   useSocket('table-update', loadData);
+  useSocket('salones-update', loadData);
   useSocket('inventory-update', loadData);
   useSocket('staff-data-update', (payload) => {
     const d = payload?.domain;
@@ -846,6 +847,8 @@ export default function POSPanel() {
     { key: 'm2', label: 'Moneda S/2', value: 2 },
     { key: 'm1', label: 'Moneda S/1', value: 1 },
     { key: 'c50', label: 'Moneda S/0.50', value: 0.5 },
+    { key: 'c20', label: 'Moneda S/0.20', value: 0.2 },
+    { key: 'c10', label: 'Moneda S/0.10', value: 0.1 },
   ];
 
   const openRegisterForCajero = async () => {
@@ -921,6 +924,8 @@ export default function POSPanel() {
       m2: '',
       m1: '',
       c50: '',
+      c20: '',
+      c10: '',
     });
     setShowCloseModal(true);
   };
@@ -2003,27 +2008,10 @@ export default function POSPanel() {
       return { reservation, linkedOrders, total };
     }).filter((entry) => entry.linkedOrders.length > 0);
   }, [reservations, allOrders]);
-  const tablesBySalon = useMemo(() => {
-    const sorted = [...mesaPhysicalTables].sort(
-      (a, b) => Number(a.number || 0) - Number(b.number || 0)
-    );
-    const byZone = new Map();
-    for (const table of sorted) {
-      const zone = String(table.zone || 'principal').trim() || 'principal';
-      if (!byZone.has(zone)) byZone.set(zone, []);
-      byZone.get(zone).push(table);
-    }
-    const zones = [...byZone.keys()].sort((a, b) => {
-      if (a === 'principal') return -1;
-      if (b === 'principal') return 1;
-      return formatSalonLabel(a).localeCompare(formatSalonLabel(b), 'es');
-    });
-    return zones.map((zone) => ({
-      zone,
-      label: formatSalonLabel(zone),
-      tables: byZone.get(zone) || [],
-    }));
-  }, [mesaPhysicalTables]);
+  const tablesBySalon = useMemo(
+    () => buildTablesBySalon(salonesConfig, mesaPhysicalTables),
+    [salonesConfig, mesaPhysicalTables]
+  );
   useEffect(() => {
     if (!tablesBySalon.length) {
       setSelectedPosSalon('');

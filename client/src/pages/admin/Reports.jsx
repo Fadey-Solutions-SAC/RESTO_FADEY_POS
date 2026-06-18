@@ -40,6 +40,8 @@ const DENOMINATION_LABELS = {
   m2: 'Moneda S/2',
   m1: 'Moneda S/1',
   c50: 'Moneda S/0.50',
+  c20: 'Moneda S/0.20',
+  c10: 'Moneda S/0.10',
 };
 const formatDateTime = (dateValue) => {
   if (!dateValue) return '-';

@@ -52,7 +52,7 @@ export function mergeSavedAppSettings(normalized, source) {
     next.regional = { ...(next.regional || {}), ...source.regional };
   }
   const arrayKeys = [
-    'locales', 'almacenes', 'cajas', 'comprobantes', 'impresoras', 'tarjetas',
+    'locales', 'almacenes', 'salones', 'cajas', 'comprobantes', 'impresoras', 'tarjetas',
     'monedas', 'cuentas_transferencia', 'marcas', 'imagenes_self', 'categoria_anular', 'formas_pago',
   ];
   arrayKeys.forEach((key) => {

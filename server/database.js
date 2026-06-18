@@ -1857,6 +1857,12 @@ async function initDatabase() {
       regional: { country: 'Peru', timezone: 'America/Lima', language: 'es', date_format: 'DD/MM/YYYY' },
       locales: [{ name: 'Principal', address: '', phone: '', active: 1 }],
       almacenes: [{ name: 'Almacén Principal', description: 'Almacén general de insumos', active: 1 }],
+      salones: [{
+        id: 'principal',
+        name: 'Salón Principal',
+        description: 'Área principal del restaurante',
+        sort_order: 0,
+      }],
       cajas: [{
         id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
         name: 'Caja Principal',
@@ -1972,6 +1978,13 @@ async function initDatabase() {
       });
       if (JSON.stringify(cajasWithIds) !== JSON.stringify(cajasRaw)) {
         next = { ...next, cajas: cajasWithIds };
+      }
+      if (!Array.isArray(next.salones) || next.salones.length === 0) {
+        const { inferSalonesFromTables } = require('./services/salonesConfigService');
+        const tableZones = queryAll('SELECT zone, number FROM tables ORDER BY number ASC');
+        if (tableZones.length) {
+          next = { ...next, salones: inferSalonesFromTables(tableZones) };
+        }
       }
       if (JSON.stringify(next) !== JSON.stringify(parsed)) {
         db.run("UPDATE app_settings SET value = ?, updated_at = datetime('now') WHERE key = 'settings'", [JSON.stringify(next)]);

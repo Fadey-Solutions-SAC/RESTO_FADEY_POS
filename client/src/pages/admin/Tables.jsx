@@ -12,10 +12,12 @@ import StaffModifierPromptModal from '../../components/StaffModifierPromptModal'
 import toast from 'react-hot-toast';
 import { MdTableRestaurant, MdReceipt, MdClose } from 'react-icons/md';
 import { KITCHEN_TAKEOUT_NOTE } from '../../utils/ticketPlainText';
+import { buildTablesBySalon } from '../../utils/salonesUtils';
 
 export default function Tables() {
   const { user } = useAuth();
   const [tables, setTables] = useState([]);
+  const [salonesConfig, setSalonesConfig] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedTable, setSelectedTable] = useState(null);
   const [showMenu, setShowMenu] = useState(false);
@@ -50,10 +52,18 @@ export default function Tables() {
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
   const loadTables = useCallback(() => {
-    api.get('/tables').then((data) => {
-      setTables(Array.isArray(data) ? data : []);
-      setSelectedTable((prev) => (prev ? (data || []).find((t) => t.id === prev.id) || null : null));
-    }).catch(console.error).finally(() => setLoading(false));
+    Promise.all([
+      api.get('/tables'),
+      api.get('/tables/salones').catch(() => ({ salones: [] })),
+    ])
+      .then(([data, salonesRes]) => {
+        const list = Array.isArray(data) ? data : [];
+        setTables(list);
+        setSalonesConfig(Array.isArray(salonesRes?.salones) ? salonesRes.salones : []);
+        setSelectedTable((prev) => (prev ? list.find((t) => t.id === prev.id) || null : null));
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
   const loadProducts = useCallback(() => {
@@ -81,6 +91,7 @@ export default function Tables() {
   useActiveInterval(loadTables, 10000);
   useSocket('order-update', loadTables);
   useSocket('table-update', loadTables);
+  useSocket('salones-update', loadTables);
   useSocket('inventory-update', loadProducts);
   useSocket('staff-data-update', (p) => {
     if (['catalog', 'modifiers', 'combos'].includes(p?.domain)) loadProducts();
@@ -170,14 +181,20 @@ export default function Tables() {
     }
   };
 
+  const tablesBySalon = useMemo(
+    () => buildTablesBySalon(salonesConfig, tables),
+    [salonesConfig, tables]
+  );
+
   const salonOptions = useMemo(() => {
-    const zones = [...new Set((tables || []).map(t => String(t.zone || 'principal').trim()).filter(Boolean))];
+    const zones = tablesBySalon.map((s) => s.zone);
     return ['all', ...zones];
-  }, [tables]);
+  }, [tablesBySalon]);
 
   const salonLabel = (id) => {
     if (id === 'all') return 'Todos';
-    return id.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+    const found = tablesBySalon.find((s) => s.zone === id);
+    return found?.label ?? id;
   };
 
   const tablesToShow = selectedSalon === 'all'

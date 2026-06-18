@@ -34,6 +34,7 @@ import {
 import { applyUiThemeFromAppSettings } from '../../theme/uiTheme';
 import { syncLocaleFromRegional, setAppLocale } from '../../i18n';
 import { normalizeConfigFromApi, mergeSavedAppSettings } from '../../utils/appSettingsNormalize';
+import { salonSlugFromName } from '../../utils/salonesUtils';
 import SettingsAppearancePanel from '../../components/settings/SettingsAppearancePanel';
 import { useSocket } from '../../hooks/useSocket';
 import { useConfigHub } from '../../hooks/useConfigHub';
@@ -2928,58 +2929,105 @@ function UsersSection({
 function SalonMesasSection() {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [salones, setSalones] = useState([
-    { id: 'principal', name: 'Salón Principal', description: 'Área principal del restaurante' },
-  ]);
+  const [salones, setSalones] = useState([]);
   const [showSalonModal, setShowSalonModal] = useState(false);
   const [editSalon, setEditSalon] = useState(null);
   const [salonForm, setSalonForm] = useState({ name: '', description: '' });
+  const [savingSalones, setSavingSalones] = useState(false);
 
   const [showMesaModal, setShowMesaModal] = useState(false);
   const [editMesa, setEditMesa] = useState(null);
   const [mesaForm, setMesaForm] = useState({ number: '', name: '', capacity: 4, zone: 'principal' });
 
   const loadTables = () => {
-    api.get('/tables').then(data => {
-      setTables(data);
-      const zones = [...new Set(data.map(t => t.zone || 'principal'))];
-      setSalones(prev => {
-        const existing = prev.map(s => s.id);
-        const newSalones = [...prev];
-        zones.forEach(z => {
-          if (!existing.includes(z)) {
-            newSalones.push({ id: z, name: z.charAt(0).toUpperCase() + z.slice(1), description: '' });
-          }
-        });
-        return newSalones;
-      });
-    }).catch(console.error).finally(() => setLoading(false));
+    Promise.all([
+      api.get('/tables'),
+      api.get('/tables/salones').catch(() => ({ salones: [] })),
+    ])
+      .then(([data, salonesRes]) => {
+        setTables(data);
+        setSalones(Array.isArray(salonesRes?.salones) ? salonesRes.salones : []);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { loadTables(); }, []);
 
+  const persistSalones = async (nextSalones) => {
+    setSavingSalones(true);
+    try {
+      const res = await api.put('/tables/salones', {
+        salones: nextSalones.map((s, idx) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description || '',
+          sort_order: idx,
+        })),
+      });
+      const saved = Array.isArray(res?.salones) ? res.salones : nextSalones;
+      setSalones(saved);
+      return saved;
+    } catch (err) {
+      toast.error(err.message || 'No se pudieron guardar los salones');
+      throw err;
+    } finally {
+      setSavingSalones(false);
+    }
+  };
+
   const openNewSalon = () => { setEditSalon(null); setSalonForm({ name: '', description: '' }); setShowSalonModal(true); };
   const openEditSalon = (s) => { setEditSalon(s); setSalonForm({ name: s.name, description: s.description || '' }); setShowSalonModal(true); };
 
-  const handleSalonSubmit = (e) => {
+  const handleSalonSubmit = async (e) => {
     e.preventDefault();
-    if (editSalon) {
-      setSalones(prev => prev.map(s => s.id === editSalon.id ? { ...s, ...salonForm } : s));
-      toast.success('Salón actualizado');
-    } else {
-      const id = salonForm.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-      setSalones(prev => [...prev, { id, ...salonForm }]);
-      toast.success('Salón creado');
+    const name = String(salonForm.name || '').trim();
+    if (!name) return toast.error('Ingresa el nombre del salón');
+    try {
+      let next;
+      if (editSalon) {
+        next = salones.map((s) =>
+          s.id === editSalon.id
+            ? { ...s, name, description: String(salonForm.description || '').trim() }
+            : s
+        );
+      } else {
+        const baseId = salonSlugFromName(name) || `salon_${Date.now()}`;
+        let id = baseId;
+        let n = 2;
+        while (salones.some((s) => s.id === id)) {
+          id = `${baseId}_${n}`;
+          n += 1;
+        }
+        next = [
+          ...salones,
+          {
+            id,
+            name,
+            description: String(salonForm.description || '').trim(),
+            sort_order: salones.length,
+          },
+        ];
+      }
+      await persistSalones(next);
+      toast.success(editSalon ? 'Salón actualizado' : 'Salón creado');
+      setShowSalonModal(false);
+    } catch (_) {
+      /* toast en persistSalones */
     }
-    setShowSalonModal(false);
   };
 
-  const deleteSalon = (s) => {
+  const deleteSalon = async (s) => {
     const mesasEnSalon = tables.filter(t => (t.zone || 'principal') === s.id);
     if (mesasEnSalon.length > 0) return toast.error('Elimina primero las mesas de este salón');
     if (!confirm(`¿Eliminar salón "${s.name}"?`)) return;
-    setSalones(prev => prev.filter(sal => sal.id !== s.id));
-    toast.success('Salón eliminado');
+    try {
+      const next = salones.filter((sal) => sal.id !== s.id);
+      await persistSalones(next);
+      toast.success('Salón eliminado');
+    } catch (_) {
+      /* toast en persistSalones */
+    }
   };
 
   const openNewMesa = (salonId) => {
@@ -3025,7 +3073,10 @@ function SalonMesasSection() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <p className="text-sm ui-text-muted">{salones.length} salón(es) · {tables.length} mesa(s) en total</p>
+        <p className="text-sm ui-text-muted">
+          {salones.length} salón(es) · {tables.length} mesa(s) en total
+          {savingSalones ? ' · Guardando…' : ''}
+        </p>
         <button onClick={openNewSalon} className="btn-primary flex items-center gap-2 text-sm"><MdAdd /> Nuevo Salón</button>
       </div>
 

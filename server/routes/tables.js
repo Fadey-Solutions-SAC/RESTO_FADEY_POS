@@ -3,8 +3,39 @@ const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql, logAudit } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { getOrderWithItems } = require('../orderCreateService');
+const { ensureSalonesConfig, saveSalonesConfig, normalizeSalonesList } = require('../services/salonesConfigService');
 
 router.use(authenticateToken);
+
+router.get('/salones', (req, res) => {
+  try {
+    const tables = queryAll('SELECT id, zone, number FROM tables ORDER BY number ASC');
+    const salones = ensureSalonesConfig(tables);
+    res.json({ salones });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/salones', requireRole('admin'), (req, res) => {
+  try {
+    const raw = Array.isArray(req.body?.salones) ? req.body.salones : null;
+    if (!raw) return res.status(400).json({ error: 'Se requiere salones: []' });
+    const ids = new Set();
+    for (const s of raw) {
+      const id = String(s?.id || '').trim();
+      if (!id) return res.status(400).json({ error: 'Cada salón debe tener id' });
+      if (ids.has(id)) return res.status(400).json({ error: `Salón duplicado: ${id}` });
+      ids.add(id);
+    }
+    const salones = saveSalonesConfig(normalizeSalonesList(raw));
+    const io = req.app.get('io');
+    if (io) io.emit('salones-update', { salones });
+    res.json({ salones });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 router.get('/', (req, res) => {
   try {
