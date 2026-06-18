@@ -221,20 +221,32 @@ router.post('/restore', authenticateToken, requireRole('master_admin'), (req, re
     }
     try {
       await restoreDbFromBuffer(req.file.buffer);
-      const restaurant = queryOne('SELECT name FROM restaurants LIMIT 1');
-      const users = queryOne('SELECT COUNT(*) AS c FROM users')?.c ?? 0;
-      const products = queryOne('SELECT COUNT(*) AS c FROM products')?.c ?? 0;
+      let restaurantName = '';
+      let usersCount = 0;
+      let productsCount = 0;
+      try {
+        const restaurant = queryOne('SELECT name FROM restaurants LIMIT 1');
+        restaurantName = String(restaurant?.name || '').trim();
+        usersCount = Number(queryOne('SELECT COUNT(*) AS c FROM users')?.c) || 0;
+        productsCount = Number(queryOne('SELECT COUNT(*) AS c FROM products')?.c) || 0;
+      } catch (countErr) {
+        console.warn('[backup] restore ok, counts skipped:', countErr?.message || countErr);
+      }
       return res.json({
         success: true,
         message: 'Información restaurada correctamente',
-        restaurant_name: String(restaurant?.name || '').trim(),
-        users_count: Number(users) || 0,
-        products_count: Number(products) || 0,
+        restaurant_name: restaurantName,
+        users_count: usersCount,
+        products_count: productsCount,
         db_path: process.env.DB_PATH || '',
+        bytes: req.file.size,
       });
     } catch (err) {
       console.error('[backup] restore failed:', err?.message || err);
-      return res.status(400).json({ error: err.message || 'No se pudo restaurar el backup' });
+      return res.status(400).json({
+        error: err?.message || 'No se pudo restaurar el backup',
+        db_path: process.env.DB_PATH || '',
+      });
     }
   });
 });

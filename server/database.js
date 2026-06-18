@@ -83,14 +83,30 @@ async function restoreDbFromBuffer(fileBuffer) {
     throw new Error('El archivo es demasiado pequeño para ser una base SQLite válida');
   }
   const SQL = await initSqlJs();
-  let nextDb;
+  let probe;
   try {
-    nextDb = new SQL.Database(fileBuffer);
-    nextDb.run('PRAGMA foreign_keys = ON');
-    nextDb.exec('SELECT 1');
+    probe = new SQL.Database(fileBuffer);
+    probe.run('PRAGMA foreign_keys = ON');
+    probe.exec('SELECT 1');
+    probe.close();
   } catch (err) {
-    throw new Error(`No se pudo leer el backup SQLite: ${err.message || 'archivo corrupto'}`);
+    throw new Error(`No se pudo leer el backup SQLite: ${err?.message || 'archivo corrupto o incompatible'}`);
   }
+
+  const parentDir = path.dirname(DB_PATH);
+  try {
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+    const tmpPath = `${DB_PATH}.restore.tmp`;
+    fs.writeFileSync(tmpPath, Buffer.from(fileBuffer));
+    fs.renameSync(tmpPath, DB_PATH);
+  } catch (err) {
+    throw new Error(
+      `No se pudo guardar en ${DB_PATH}: ${err?.message || err}. En Render monte un disco en /data y use DB_PATH=/data/restaurant.db`,
+    );
+  }
+
   if (db && typeof db.close === 'function') {
     try {
       db.close();
@@ -98,10 +114,16 @@ async function restoreDbFromBuffer(fileBuffer) {
       // noop
     }
   }
-  db = nextDb;
-  saveDb();
+  try {
+    const diskBuffer = fs.readFileSync(DB_PATH);
+    db = new SQL.Database(diskBuffer);
+    db.run('PRAGMA foreign_keys = ON');
+  } catch (err) {
+    throw new Error(`Backup guardado en disco pero no se pudo abrir: ${err?.message || err}`);
+  }
+
   const restaurant = queryOne('SELECT name FROM restaurants LIMIT 1');
-  console.info('[backup] Restaurado:', restaurant?.name || '(sin nombre)', '→', DB_PATH);
+  console.info('[backup] Restaurado:', restaurant?.name || '(sin nombre)', '→', DB_PATH, `(${fileBuffer.length} bytes)`);
 }
 
 function resetOperationalData({ keepAdminUserId = '', preserveContrato = false } = {}) {

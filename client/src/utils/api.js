@@ -24,13 +24,43 @@ if (hasExplicitApi) {
 } else if (import.meta.env.PROD) {
   API_ORIGIN = 'https://resto-fadey-api.onrender.com';
 }
-export const API_BASE = API_ORIGIN ? `${API_ORIGIN}/api` : '/api';
+/** URL efectiva del API (`/api` incluido), con override opcional en localStorage. */
+export function getApiBase() {
+  let origin = API_ORIGIN;
+  if (typeof window !== 'undefined') {
+    const ls = String(window.localStorage?.getItem('resto_api_url') || '').trim();
+    if (ls) origin = normalizeApiOrigin(ls);
+  }
+  return origin ? `${origin}/api` : '/api';
+}
+
+export const API_BASE = getApiBase();
 
 /** URL del backend sin `/api` (para mostrar en diagnóstico o sockets). */
 export function getApiOrigin() {
+  if (typeof window !== 'undefined') {
+    const ls = String(window.localStorage?.getItem('resto_api_url') || '').trim();
+    if (ls) return normalizeApiOrigin(ls);
+  }
   if (API_ORIGIN) return API_ORIGIN;
   if (typeof window !== 'undefined') return window.location.origin;
   return '';
+}
+
+function assertBackupApiReachable() {
+  if (typeof window === 'undefined') return;
+  const base = getApiBase();
+  const origin = getApiOrigin();
+  if (base.startsWith('/') || origin === window.location.origin) {
+    throw new Error(
+      'El respaldo se estaba enviando a Vercel (405). En Vercel → Environment → VITE_API_URL debe ser la URL de Render, ej. https://zoilas-suite-escape.onrender.com (sin /api), y luego Redeploy.',
+    );
+  }
+  if (/\.vercel\.app$/i.test(origin)) {
+    throw new Error(
+      'VITE_API_URL apunta a Vercel, no al API. Use la URL de Render (onrender.com), no la del frontend (.vercel.app).',
+    );
+  }
 }
 
 function normalizeApiOrigin(url) {
@@ -178,7 +208,7 @@ async function request(endpoint, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const url = `${API_BASE}${endpoint}`;
+  const url = `${getApiBase()}${endpoint}`;
   const res = await fetch(url, { ...options, headers });
   const text = await res.text();
   let data = null;
@@ -454,7 +484,7 @@ export const api = {
     const token = localStorage.getItem('token');
     const formData = new FormData();
     formData.append('image', file);
-    const res = await fetch(`${API_BASE}/upload`, {
+    const res = await fetch(`${getApiBase()}/upload`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
@@ -465,13 +495,14 @@ export const api = {
   },
   /** Respaldo SQLite (solo master_admin en servidor). */
   restoreBackup: async (file) => {
+    assertBackupApiReachable();
     const token = localStorage.getItem('token');
     if (!token) throw new Error('Debe iniciar sesión como administrador maestro');
     const formData = new FormData();
     formData.append('backup', file);
     let res;
     try {
-      res = await fetch(`${API_BASE}/restaurant/restore`, {
+      res = await fetch(`${getApiBase()}/restaurant/restore`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -495,16 +526,24 @@ export const api = {
       }
     }
     if (!res.ok) {
-      throw new Error(data?.error || translateApiErrorMessage(res, data, '/restaurant/restore') || `Error ${res.status}`);
+      const serverMsg = data?.error ? String(data.error).trim() : '';
+      const extra = data?.db_path ? ` (${data.db_path})` : '';
+      throw new Error(
+        serverMsg
+        || (text && text.length < 300 ? text.trim() : '')
+        || translateApiErrorMessage(res, data, '/restaurant/restore')
+        || `Error HTTP ${res.status}${extra}`,
+      );
     }
     return data;
   },
   downloadBackup: async () => {
+    assertBackupApiReachable();
     const token = localStorage.getItem('token');
     if (!token) throw new Error('Debe iniciar sesión como administrador maestro');
     let res;
     try {
-      res = await fetch(`${API_BASE}/restaurant/backup`, {
+      res = await fetch(`${getApiBase()}/restaurant/backup`, {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -540,7 +579,7 @@ export const api = {
     const token = localStorage.getItem('token');
     const formData = new FormData();
     formData.append('cert', file);
-    const res = await fetch(`${API_BASE}/upload/billing-cert`, {
+    const res = await fetch(`${getApiBase()}/upload/billing-cert`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
