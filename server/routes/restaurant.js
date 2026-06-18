@@ -208,23 +208,35 @@ router.get('/backup', authenticateToken, requireRole('master_admin'), (req, res)
   return res.download(backupPath, fileName);
 });
 
-router.post('/restore', authenticateToken, requireRole('master_admin'), restoreUpload.single('backup'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Debes subir un archivo de backup' });
-  try {
-    await restoreDbFromBuffer(req.file.buffer);
-    const restaurant = queryOne('SELECT name FROM restaurants LIMIT 1');
-    const users = queryOne('SELECT COUNT(*) AS c FROM users')?.c ?? 0;
-    const products = queryOne('SELECT COUNT(*) AS c FROM products')?.c ?? 0;
-    return res.json({
-      success: true,
-      message: 'Información restaurada correctamente',
-      restaurant_name: String(restaurant?.name || '').trim(),
-      users_count: Number(users) || 0,
-      products_count: Number(products) || 0,
-    });
-  } catch (err) {
-    return res.status(400).json({ error: err.message || 'No se pudo restaurar el backup' });
-  }
+router.post('/restore', authenticateToken, requireRole('master_admin'), (req, res) => {
+  restoreUpload.single('backup')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
+        ? 'El archivo de backup supera el límite de 50 MB'
+        : (uploadErr.message || 'Error al subir el archivo de backup');
+      return res.status(400).json({ error: msg });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Debes subir un archivo de backup (.db)' });
+    }
+    try {
+      await restoreDbFromBuffer(req.file.buffer);
+      const restaurant = queryOne('SELECT name FROM restaurants LIMIT 1');
+      const users = queryOne('SELECT COUNT(*) AS c FROM users')?.c ?? 0;
+      const products = queryOne('SELECT COUNT(*) AS c FROM products')?.c ?? 0;
+      return res.json({
+        success: true,
+        message: 'Información restaurada correctamente',
+        restaurant_name: String(restaurant?.name || '').trim(),
+        users_count: Number(users) || 0,
+        products_count: Number(products) || 0,
+        db_path: process.env.DB_PATH || '',
+      });
+    } catch (err) {
+      console.error('[backup] restore failed:', err?.message || err);
+      return res.status(400).json({ error: err.message || 'No se pudo restaurar el backup' });
+    }
+  });
 });
 
 router.post('/reset-operational', authenticateToken, requireRole('master_admin'), (req, res) => {

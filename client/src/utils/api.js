@@ -26,6 +26,13 @@ if (hasExplicitApi) {
 }
 export const API_BASE = API_ORIGIN ? `${API_ORIGIN}/api` : '/api';
 
+/** URL del backend sin `/api` (para mostrar en diagnóstico o sockets). */
+export function getApiOrigin() {
+  if (API_ORIGIN) return API_ORIGIN;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return '';
+}
+
 function normalizeApiOrigin(url) {
   let o = String(url || '').trim().replace(/\/$/, '');
   if (/\/api\/?$/i.test(o)) o = o.replace(/\/api\/?$/i, '');
@@ -455,6 +462,78 @@ export const api = {
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || 'No se pudo subir el archivo');
     return data;
+  },
+  /** Respaldo SQLite (solo master_admin en servidor). */
+  restoreBackup: async (file) => {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Debe iniciar sesión como administrador maestro');
+    const formData = new FormData();
+    formData.append('backup', file);
+    let res;
+    try {
+      res = await fetch(`${API_BASE}/restaurant/restore`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+    } catch (err) {
+      const msg = String(err?.message || err || '');
+      if (/failed to fetch|network/i.test(msg)) {
+        throw new Error(
+          `No se pudo conectar al API (${getApiOrigin() || API_BASE}). Revise VITE_API_URL en Vercel, CORS_ORIGIN en Render y que el servicio Node esté en verde.`,
+        );
+      }
+      throw err;
+    }
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (_) {
+      if (/text\/html/i.test(String(res.headers.get('content-type') || '')) || text.trimStart().startsWith('<!')) {
+        throw new Error('El servidor devolvió HTML. VITE_API_URL en Vercel debe apuntar a su API en Render (sin /api).');
+      }
+    }
+    if (!res.ok) {
+      throw new Error(data?.error || translateApiErrorMessage(res, data, '/restaurant/restore') || `Error ${res.status}`);
+    }
+    return data;
+  },
+  downloadBackup: async () => {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Debe iniciar sesión como administrador maestro');
+    let res;
+    try {
+      res = await fetch(`${API_BASE}/restaurant/backup`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      const msg = String(err?.message || err || '');
+      if (/failed to fetch|network/i.test(msg)) {
+        throw new Error(
+          `No se pudo conectar al API (${getApiOrigin() || API_BASE}). Revise VITE_API_URL en Vercel y que Render esté activo.`,
+        );
+      }
+      throw err;
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data?.error || `No se pudo descargar el backup (${res.status})`);
+    }
+    const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('text/html')) {
+      throw new Error('El servidor devolvió HTML en lugar del .db. Revise VITE_API_URL en Vercel.');
+    }
+    const blob = await res.blob();
+    const head = await blob.slice(0, 16).text();
+    if (!head.startsWith('SQLite format')) {
+      throw new Error('La respuesta no es un archivo SQLite válido. Revise VITE_API_URL en Vercel.');
+    }
+    const disposition = res.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/i);
+    const filename = match?.[1] || `restaurant_backup_${new Date().toISOString().slice(0, 10)}.db`;
+    return { blob, filename };
   },
   /** Certificado SUNAT .pfx / .p12 → `uploads/billing-certs/` en el servidor Node. */
   uploadBillingCert: async (file) => {
