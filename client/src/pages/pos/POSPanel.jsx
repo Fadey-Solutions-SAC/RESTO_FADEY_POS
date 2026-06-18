@@ -338,6 +338,8 @@ export default function POSPanel() {
   const [mesaDetailModalOpen, setMesaDetailModalOpen] = useState(false);
   /** Modal mover/unir mesas (misma API que Admin → Mesas). */
   const [mesaTableAction, setMesaTableAction] = useState(null);
+  /** Zona/salón activo en mapa de mesas (pestañas tipo categoría). */
+  const [selectedPosSalon, setSelectedPosSalon] = useState('');
   const [showBill, setShowBill] = useState(false);
   const [splitMode, setSplitMode] = useState(false);
   /** En dividir cuenta: ids de `order_items` incluidos en este cobro. */
@@ -2022,6 +2024,24 @@ export default function POSPanel() {
       tables: byZone.get(zone) || [],
     }));
   }, [mesaPhysicalTables]);
+  useEffect(() => {
+    if (!tablesBySalon.length) {
+      setSelectedPosSalon('');
+      return;
+    }
+    setSelectedPosSalon((prev) => {
+      const ids = tablesBySalon.map((s) => s.zone);
+      return ids.includes(prev) ? prev : ids[0];
+    });
+  }, [tablesBySalon]);
+  const selectedSalonTables = useMemo(() => {
+    const entry = tablesBySalon.find((s) => s.zone === selectedPosSalon);
+    return entry?.tables || [];
+  }, [tablesBySalon, selectedPosSalon]);
+  const showReservasStatCard = cajaOptionsForRole.some((o) => o.id === 'reservas');
+  const cajaStatGridCols = showReservasStatCard
+    ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
+    : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5';
   const deliveryCajaSlots = useMemo(() => buildDeliveryCajaSlots(allOrders), [allOrders]);
   const filteredProducts = products.filter(p => {
     if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
@@ -2596,58 +2616,75 @@ export default function POSPanel() {
         </h2>
       </div>
 
+      {tablesBySalon.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {tablesBySalon.map(({ zone, label, tables: salonTables }) => {
+            const active = selectedPosSalon === zone;
+            return (
+              <button
+                key={zone}
+                type="button"
+                onClick={() => setSelectedPosSalon(zone)}
+                className={`rounded-lg px-3 py-2 text-xs sm:text-sm font-medium border transition-colors ${
+                  active
+                    ? 'border-[color:var(--ui-border)] bg-[var(--ui-accent)] text-white shadow-sm'
+                    : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                }`}
+              >
+                {label}
+                <span className={`ml-1.5 tabular-nums ${active ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
+                  ({salonTables.length})
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="min-w-0 space-y-6 mb-4">
-        {tablesBySalon.map(({ zone, label, tables: salonTables }) => (
-          <section key={zone} className="space-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600 flex items-center gap-2">
-              <MdTableRestaurant className="text-base shrink-0" />
-              {label}
-              <span className="text-xs font-normal normal-case text-[var(--ui-muted)]">
-                ({salonTables.length} mesa{salonTables.length === 1 ? '' : 's'})
-              </span>
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-              {salonTables.map((table) => {
-                const isOccupied = Boolean(table.orders && table.orders.length > 0);
-                const isSelected = tableDetail?.id === table.id;
-                return (
-                  <button
-                    key={table.id}
-                    type="button"
-                    onClick={() => {
-                      setTableDetail(table);
-                      setMesaDetailModalOpen(true);
-                    }}
-                    className={`card text-left transition-all border-l-4 hover:shadow-lg ${
-                      isOccupied ? 'border-l-red-500' : 'border-l-lime-500'
-                    } ${isSelected ? 'ring-2 ring-gold-400' : ''}`}
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                          isOccupied ? 'bg-red-100' : 'bg-emerald-100'
-                        }`}
-                      >
-                        <MdTableRestaurant className={`${isOccupied ? 'text-red-600' : 'text-emerald-600'} text-xl`} />
-                      </div>
-                      <div>
-                        <p className="font-bold rf-section-title">{table.name}</p>
-                        <p className="text-xs ui-text-muted">
-                          {isOccupied ? `${table.orders.length} pedido(s)` : 'Sin pedidos activos'}
-                        </p>
-                      </div>
+        {selectedSalonTables.length > 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+            {selectedSalonTables.map((table) => {
+              const isOccupied = Boolean(table.orders && table.orders.length > 0);
+              const isSelected = tableDetail?.id === table.id;
+              return (
+                <button
+                  key={table.id}
+                  type="button"
+                  onClick={() => {
+                    setTableDetail(table);
+                    setMesaDetailModalOpen(true);
+                  }}
+                  className={`card text-left transition-all border-l-4 hover:shadow-lg h-full min-h-[7.25rem] ${
+                    isOccupied ? 'border-l-red-500' : 'border-l-lime-500'
+                  } ${isSelected ? 'ring-2 ring-gold-400' : ''}`}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        isOccupied ? 'bg-red-100' : 'bg-emerald-100'
+                      }`}
+                    >
+                      <MdTableRestaurant className={`${isOccupied ? 'text-red-600' : 'text-emerald-600'} text-xl`} />
                     </div>
-                    <p className={`text-xs font-semibold ${isOccupied ? 'text-red-700' : 'text-emerald-700'}`}>
-                      {isOccupied ? 'Ocupada' : 'Libre'}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-        {tablesBySalon.length === 0 && (
+                    <div className="min-w-0">
+                      <p className="font-bold rf-section-title truncate">{table.name}</p>
+                      <p className="text-xs ui-text-muted">
+                        {isOccupied ? `${table.orders.length} pedido(s)` : 'Sin pedidos activos'}
+                      </p>
+                    </div>
+                  </div>
+                  <p className={`text-xs font-semibold ${isOccupied ? 'text-red-700' : 'text-emerald-700'}`}>
+                    {isOccupied ? 'Ocupada' : 'Libre'}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        ) : tablesBySalon.length === 0 ? (
           <p className="text-sm text-center text-[var(--ui-muted)] py-8">No hay mesas configuradas</p>
+        ) : (
+          <p className="text-sm text-center text-[var(--ui-muted)] py-8">No hay mesas en esta zona</p>
         )}
 
         {deliveryCajaSlots.length > 0 && (
@@ -2863,11 +2900,12 @@ export default function POSPanel() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-        {cajaOptionsForRole.some((o) => o.id === 'reservas') && (
+      <div className={`grid ${cajaStatGridCols} gap-3 w-full`}>
+        {showReservasStatCard && (
         <button
+          type="button"
           onClick={() => openCajaView('reservas')}
-          className="card flex items-center gap-3 hover:border-indigo-300 text-left"
+          className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem] hover:border-indigo-300"
         >
           <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
             <MdReceipt className="text-indigo-600 text-xl" />
@@ -2878,19 +2916,34 @@ export default function POSPanel() {
           </div>
         </button>
         )}
-        <div className="card flex items-center gap-3">
-          <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center"><MdTableRestaurant className="text-sky-600 text-xl" /></div>
-          <div><p className="text-xs ui-text-muted">Total Mesas</p><p className="text-xl font-bold">{mesaPhysicalTables.length}</p></div>
+        <div className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem]">
+          <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
+            <MdTableRestaurant className="text-sky-600 text-xl" />
+          </div>
+          <div>
+            <p className="text-xs ui-text-muted">Total Mesas</p>
+            <p className="text-xl font-bold">{mesaPhysicalTables.length}</p>
+          </div>
         </div>
-        <div className="card flex items-center gap-3">
-          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center"><MdPeople className="text-red-600 text-xl" /></div>
-          <div><p className="text-xs ui-text-muted">Ocupadas</p><p className="text-xl font-bold text-red-600">{occupiedTables.length}</p></div>
+        <div className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem]">
+          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+            <MdPeople className="text-red-600 text-xl" />
+          </div>
+          <div>
+            <p className="text-xs ui-text-muted">Ocupadas</p>
+            <p className="text-xl font-bold text-red-600">{occupiedTables.length}</p>
+          </div>
         </div>
-        <div className="card flex items-center gap-3">
-          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center"><MdCheckCircle className="text-emerald-600 text-xl" /></div>
-          <div><p className="text-xs ui-text-muted">Disponibles</p><p className="text-xl font-bold text-emerald-600">{mesaPhysicalTables.length - occupiedTables.length}</p></div>
+        <div className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem]">
+          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+            <MdCheckCircle className="text-emerald-600 text-xl" />
+          </div>
+          <div>
+            <p className="text-xs ui-text-muted">Disponibles</p>
+            <p className="text-xl font-bold text-emerald-600">{mesaPhysicalTables.length - occupiedTables.length}</p>
+          </div>
         </div>
-        <div className="card flex items-center gap-3">
+        <div className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem]">
           <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
             <MdAttachMoney className="text-emerald-600 text-xl" />
           </div>
@@ -2900,14 +2953,15 @@ export default function POSPanel() {
           </div>
         </div>
         <button
+          type="button"
           onClick={prepareClose}
           disabled={!register}
-          className="card flex items-center gap-3 hover:border-red-300 text-left disabled:opacity-50 disabled:cursor-not-allowed"
+          className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem] hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
             <MdClose className="text-red-600 text-xl" />
           </div>
-          <p className="text-xl font-bold text-red-700">Cerrar Caja</p>
+          <p className="text-base sm:text-xl font-bold text-red-700 leading-tight">Cerrar Caja</p>
         </button>
       </div>
         </>
