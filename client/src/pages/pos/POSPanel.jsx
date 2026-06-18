@@ -161,6 +161,12 @@ function isDeliveryCheckoutTable(table) {
 function deliveryOrderIdFromSlotTable(table) {
   return String(table?.id || '').slice(POS_DELIVERY_SLOT_PREFIX.length);
 }
+
+function formatSalonLabel(zoneId) {
+  const id = String(zoneId || 'principal').trim() || 'principal';
+  if (id === 'principal') return 'Salón Principal';
+  return id.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
 const CAJA_OPTIONS_CAJERO_IDS = new Set([
   'cobrar',
   'ingresos',
@@ -1947,7 +1953,14 @@ export default function POSPanel() {
     }
   };
 
-  const occupiedTables = tables.filter(t => t.orders && t.orders.length > 0);
+  const mesaPhysicalTables = useMemo(
+    () => (tables || []).filter((t) => !isDeliveryCheckoutTable(t) && !isClientCheckoutTable(t)),
+    [tables]
+  );
+  const occupiedTables = useMemo(
+    () => mesaPhysicalTables.filter((t) => t.orders && t.orders.length > 0),
+    [mesaPhysicalTables]
+  );
   const reservationQueue = useMemo(() => {
     const normalize = (value) => String(value || '').trim().toLowerCase();
     const pendingReservations = (reservations || []).filter((r) => {
@@ -1988,11 +2001,27 @@ export default function POSPanel() {
       return { reservation, linkedOrders, total };
     }).filter((entry) => entry.linkedOrders.length > 0);
   }, [reservations, allOrders]);
-  const stableTables = [...tables].sort((a, b) => Number(a.number || 0) - Number(b.number || 0));
-  const mesaPhysicalTables = useMemo(
-    () => (tables || []).filter((t) => !isDeliveryCheckoutTable(t) && !isClientCheckoutTable(t)),
-    [tables]
-  );
+  const tablesBySalon = useMemo(() => {
+    const sorted = [...mesaPhysicalTables].sort(
+      (a, b) => Number(a.number || 0) - Number(b.number || 0)
+    );
+    const byZone = new Map();
+    for (const table of sorted) {
+      const zone = String(table.zone || 'principal').trim() || 'principal';
+      if (!byZone.has(zone)) byZone.set(zone, []);
+      byZone.get(zone).push(table);
+    }
+    const zones = [...byZone.keys()].sort((a, b) => {
+      if (a === 'principal') return -1;
+      if (b === 'principal') return 1;
+      return formatSalonLabel(a).localeCompare(formatSalonLabel(b), 'es');
+    });
+    return zones.map((zone) => ({
+      zone,
+      label: formatSalonLabel(zone),
+      tables: byZone.get(zone) || [],
+    }));
+  }, [mesaPhysicalTables]);
   const deliveryCajaSlots = useMemo(() => buildDeliveryCajaSlots(allOrders), [allOrders]);
   const filteredProducts = products.filter(p => {
     if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
@@ -2568,44 +2597,58 @@ export default function POSPanel() {
       </div>
 
       <div className="min-w-0 space-y-6 mb-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-          {stableTables.map((table) => {
-            const isOccupied = Boolean(table.orders && table.orders.length > 0);
-            const isSelected = tableDetail?.id === table.id;
-            return (
-              <button
-                key={table.id}
-                type="button"
-                onClick={() => {
-                  setTableDetail(table);
-                  setMesaDetailModalOpen(true);
-                }}
-                className={`card text-left transition-all border-l-4 hover:shadow-lg ${
-                  isOccupied ? 'border-l-red-500' : 'border-l-lime-500'
-                } ${isSelected ? 'ring-2 ring-gold-400' : ''}`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                      isOccupied ? 'bg-red-100' : 'bg-emerald-100'
-                    }`}
+        {tablesBySalon.map(({ zone, label, tables: salonTables }) => (
+          <section key={zone} className="space-y-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600 flex items-center gap-2">
+              <MdTableRestaurant className="text-base shrink-0" />
+              {label}
+              <span className="text-xs font-normal normal-case text-[var(--ui-muted)]">
+                ({salonTables.length} mesa{salonTables.length === 1 ? '' : 's'})
+              </span>
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+              {salonTables.map((table) => {
+                const isOccupied = Boolean(table.orders && table.orders.length > 0);
+                const isSelected = tableDetail?.id === table.id;
+                return (
+                  <button
+                    key={table.id}
+                    type="button"
+                    onClick={() => {
+                      setTableDetail(table);
+                      setMesaDetailModalOpen(true);
+                    }}
+                    className={`card text-left transition-all border-l-4 hover:shadow-lg ${
+                      isOccupied ? 'border-l-red-500' : 'border-l-lime-500'
+                    } ${isSelected ? 'ring-2 ring-gold-400' : ''}`}
                   >
-                    <MdTableRestaurant className={`${isOccupied ? 'text-red-600' : 'text-emerald-600'} text-xl`} />
-                  </div>
-                  <div>
-                    <p className="font-bold rf-section-title">{table.name}</p>
-                    <p className="text-xs ui-text-muted">
-                      {isOccupied ? `${table.orders.length} pedido(s)` : 'Sin pedidos activos'}
+                    <div className="flex items-center gap-3 mb-2">
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                          isOccupied ? 'bg-red-100' : 'bg-emerald-100'
+                        }`}
+                      >
+                        <MdTableRestaurant className={`${isOccupied ? 'text-red-600' : 'text-emerald-600'} text-xl`} />
+                      </div>
+                      <div>
+                        <p className="font-bold rf-section-title">{table.name}</p>
+                        <p className="text-xs ui-text-muted">
+                          {isOccupied ? `${table.orders.length} pedido(s)` : 'Sin pedidos activos'}
+                        </p>
+                      </div>
+                    </div>
+                    <p className={`text-xs font-semibold ${isOccupied ? 'text-red-700' : 'text-emerald-700'}`}>
+                      {isOccupied ? 'Ocupada' : 'Libre'}
                     </p>
-                  </div>
-                </div>
-                <p className={`text-xs font-semibold ${isOccupied ? 'text-red-700' : 'text-emerald-700'}`}>
-                  {isOccupied ? 'Ocupada' : 'Libre'}
-                </p>
-              </button>
-            );
-          })}
-        </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+        {tablesBySalon.length === 0 && (
+          <p className="text-sm text-center text-[var(--ui-muted)] py-8">No hay mesas configuradas</p>
+        )}
 
         {deliveryCajaSlots.length > 0 && (
           <>
@@ -2837,7 +2880,7 @@ export default function POSPanel() {
         )}
         <div className="card flex items-center gap-3">
           <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center"><MdTableRestaurant className="text-sky-600 text-xl" /></div>
-          <div><p className="text-xs ui-text-muted">Total Mesas</p><p className="text-xl font-bold">{tables.length}</p></div>
+          <div><p className="text-xs ui-text-muted">Total Mesas</p><p className="text-xl font-bold">{mesaPhysicalTables.length}</p></div>
         </div>
         <div className="card flex items-center gap-3">
           <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center"><MdPeople className="text-red-600 text-xl" /></div>
@@ -2845,7 +2888,7 @@ export default function POSPanel() {
         </div>
         <div className="card flex items-center gap-3">
           <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center"><MdCheckCircle className="text-emerald-600 text-xl" /></div>
-          <div><p className="text-xs ui-text-muted">Disponibles</p><p className="text-xl font-bold text-emerald-600">{tables.length - occupiedTables.length}</p></div>
+          <div><p className="text-xs ui-text-muted">Disponibles</p><p className="text-xl font-bold text-emerald-600">{mesaPhysicalTables.length - occupiedTables.length}</p></div>
         </div>
         <div className="card flex items-center gap-3">
           <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
@@ -2856,17 +2899,16 @@ export default function POSPanel() {
             <p className="text-xl font-bold text-emerald-700">{formatCurrency(todaySales)}</p>
           </div>
         </div>
-        {String(user?.role || '').toLowerCase() !== 'cajero' && (
         <button
           onClick={prepareClose}
-          className="card flex items-center gap-3 hover:border-red-300 text-left"
+          disabled={!register}
+          className="card flex items-center gap-3 hover:border-red-300 text-left disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
             <MdClose className="text-red-600 text-xl" />
           </div>
           <p className="text-xl font-bold text-red-700">Cerrar Caja</p>
         </button>
-        )}
       </div>
         </>
       )}
