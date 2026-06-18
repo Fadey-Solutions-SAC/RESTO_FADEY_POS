@@ -8,15 +8,30 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, '..', '..');
+const clientRoot = join(__dirname, '..');
+const publicDir = join(clientRoot, 'public');
+const repoRoot = join(clientRoot, '..');
 const script = join(repoRoot, 'scripts', 'generate-branding-assets.js');
-const source = join(repoRoot, 'client', 'public', 'branding', 'resto-fadey-source.png');
+const source = join(publicDir, 'branding', 'resto-fadey-source.png');
 
-if (!existsSync(script)) {
-  console.error('No se encontró:', script);
-  process.exit(1);
+/** Vercel usa Root Directory = client; no hay scripts/ de la raíz del repo. */
+function hasCommittedBrandingAssets() {
+  return (
+    existsSync(join(publicDir, 'pwa-icon-192.png')) &&
+    existsSync(join(publicDir, 'pwa-icon-512.png')) &&
+    existsSync(join(publicDir, 'branding', 'resto-fadey-logo.png'))
+  );
 }
-if (!existsSync(source)) {
+
+if (!existsSync(script) || !existsSync(source)) {
+  if (hasCommittedBrandingAssets()) {
+    console.log('OK: iconos PWA ya en public/ (deploy solo client/, sin regenerar)');
+    process.exit(0);
+  }
+  if (!existsSync(script)) {
+    console.error('No se encontró:', script);
+    process.exit(1);
+  }
   console.error('Falta la imagen de marca:', source);
   process.exit(1);
 }
