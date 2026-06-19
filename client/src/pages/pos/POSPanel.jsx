@@ -625,7 +625,7 @@ export default function POSPanel() {
 
   const syncReservationAlertToasts = useCallback(async () => {
     try {
-      const data = await api.get('/reports/operational-alerts');
+      const data = await api.get('/reports/reservation-caja-alerts');
       const alerts = (data?.alerts || []).filter((a) => String(a?.id || '').startsWith('reserva_caja_'));
       const nextIds = new Set(alerts.map((a) => a.id));
       for (const id of reservationAlertToastIdsRef.current) {

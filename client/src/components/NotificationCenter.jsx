@@ -26,7 +26,7 @@ function saveDismissedAvisoIds(ids) {
 }
 
 /**
- * Campana de notificaciones: chat del equipo, avisos del maestro y pestaña Operación (alertas en vivo desde reportes).
+ * Campana de notificaciones: chat del equipo, avisos del maestro y pestaña Operación (solo admin).
  */
 export default function NotificationCenter({ className = '' }) {
   const { user } = useAuth();
@@ -40,7 +40,7 @@ export default function NotificationCenter({ className = '' }) {
   /** Avisos del maestro: visibles para todo el personal; el aviso de «pago por uso» solo admin / maestro. */
   const showAvisosTab = Boolean(user);
   const seesPagoUsoAviso = user?.role === 'admin' || user?.role === 'master_admin';
-  const showOperacionTab = ['admin', 'cajero', 'mozo', 'master_admin', 'delivery'].includes(user?.role);
+  const showOperacionTab = user?.role === 'admin' || user?.role === 'master_admin';
 
   const operacionQuickLinks = useMemo(() => getOperationalNotificationQuickLinks(user), [user]);
 

@@ -124,7 +124,7 @@ function buildLiveSalesPanel(registerOpen) {
 
 /**
  * Métricas operativas y alertas en tiempo casi real (mismas tablas que Caja, Mesas, Delivery, inventario, finanzas).
- * Usado por GET /reports/dashboard y GET /reports/operational-alerts (roles admin, cajero, mozo, delivery; maestro pasa por middleware).
+ * Usado por GET /reports/dashboard y GET /reports/operational-alerts (solo admin / maestro).
  * @param {{ role?: string }} [opts]
  */
 function buildOperationalIntelligence(opts = {}) {
@@ -618,7 +618,7 @@ router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero'), (req
   });
 });
 
-router.get('/operational-alerts', authenticateToken, requireRole('admin', 'cajero', 'mozo', 'delivery'), (req, res) => {
+router.get('/operational-alerts', authenticateToken, requireRole('admin', 'master_admin'), (req, res) => {
   const op = buildOperationalIntelligence({ role: req.user?.role });
   res.json({
     alerts: op.operationalAlerts,
@@ -626,6 +626,14 @@ router.get('/operational-alerts', authenticateToken, requireRole('admin', 'cajer
     insightToday: op.insightToday,
     generated_at: op.generated_at,
     businessIntel: op.businessIntel,
+  });
+});
+
+/** Avisos de reserva en caja (toasts POS); no expone el panel Operación completo. */
+router.get('/reservation-caja-alerts', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  res.json({
+    alerts: getReservationCajaOperationalAlerts(),
+    generated_at: new Date().toISOString(),
   });
 });
 
