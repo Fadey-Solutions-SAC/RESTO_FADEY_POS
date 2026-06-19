@@ -10,6 +10,12 @@ const kardexInventory = require('../services/kardexInventoryService');
 const { emitInventoryUpdate, emitBillingDocumentUpdate } = require('../socketBroadcast');
 const { recordWorkActivityEvent } = require('../services/workActivityTracker');
 const { logRouteError, publicErrorMessage } = require('../utils/routeErrors');
+const {
+  userCanAccessKitchenApi,
+  userCanAccessKitchenStation,
+  resolveKitchenStation,
+  userCanManageKitchenOrderForStation,
+} = require('../services/staffModuleAccessService');
 
 const DEBUG_ORDERS = String(process.env.DEBUG_ORDERS || process.env.LOG_LEVEL || '')
   .toLowerCase()
@@ -152,15 +158,14 @@ router.get('/kitchen', authenticateToken, (req, res) => {
   if (req.user.type === 'customer') {
     return res.status(403).json({ error: 'No tienes permisos para cocina' });
   }
-  if (!['admin', 'cocina', 'bar'].includes(req.user.role)) {
-    return res.status(403).json({ error: 'No tienes permisos para cocina' });
+  if (!userCanAccessKitchenApi(req.user)) {
+    return res.status(403).json({ error: 'No tienes permisos para cocina/bar' });
   }
-  const { type, station } = req.query;
-  const stationRequested = req.user.role === 'bar'
-    ? 'bar'
-    : req.user.role === 'cocina'
-      ? 'cocina'
-      : (station === 'bar' ? 'bar' : 'cocina');
+  const stationRequested = resolveKitchenStation(req.user, req.query.station);
+  if (!userCanAccessKitchenStation(req.user, stationRequested)) {
+    return res.status(403).json({ error: 'No tienes permiso para este panel de producción' });
+  }
+  const { type } = req.query;
   let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing')
     AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= datetime('now', 'localtime'))`;
   const params = [];
@@ -373,20 +378,12 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     return res.status(403).json({ error: 'Los mozos solo pueden crear pedidos de delivery; no gestionar su estado.' });
   }
 
-  /** Delivery: pendiente → preparación → listo solo cocina/bar (o admin); no cajero/mozo/delivery. */
+  /** Delivery: pendiente → preparación → listo — cocina/bar o quien tenga ese módulo. */
   if (order.type === 'delivery' && (status === 'preparing' || status === 'ready')) {
-    if (!['admin', 'cocina', 'bar'].includes(req.user.role)) {
-      return res.status(403).json({ error: 'Solo cocina, bar o administración pueden actualizar la preparación de pedidos delivery' });
-    }
-    if (req.user.role === 'cocina' || req.user.role === 'bar') {
-      const areaItems = getOrderItemsWithArea(order.id);
-      const barOnly = isBarOnlyOrder(areaItems);
-      if (req.user.role === 'cocina' && barOnly) {
-        return res.status(403).json({ error: 'Este pedido corresponde al panel de bar' });
-      }
-      if (req.user.role === 'bar' && !barOnly) {
-        return res.status(403).json({ error: 'Este pedido corresponde al panel de cocina' });
-      }
+    const areaItems = getOrderItemsWithArea(order.id);
+    const barOnly = isBarOnlyOrder(areaItems);
+    if (!userCanManageKitchenOrderForStation(req.user, barOnly)) {
+      return res.status(403).json({ error: 'No tienes permiso para actualizar la preparación de este pedido' });
     }
   }
 
@@ -414,17 +411,20 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     }
   }
 
+  if (['preparing', 'ready'].includes(status)) {
+    const role = String(req.user.role || '').toLowerCase();
+    if (['cocina', 'bar', 'cajero', 'mozo'].includes(role)) {
+      const areaItems = getOrderItemsWithArea(order.id);
+      const barOnly = isBarOnlyOrder(areaItems);
+      if (!userCanManageKitchenOrderForStation(req.user, barOnly)) {
+        return res.status(403).json({ error: 'No tienes permiso para actualizar este pedido en cocina/bar' });
+      }
+    }
+  }
+
   if (req.user.role === 'bar' || req.user.role === 'cocina') {
     if (!['preparing', 'ready'].includes(status)) {
       return res.status(403).json({ error: 'Cocina/Bar solo pueden mover pedidos a preparación o listo' });
-    }
-    const areaItems = getOrderItemsWithArea(order.id);
-    const barOnly = isBarOnlyOrder(areaItems);
-    if (req.user.role === 'bar' && !barOnly) {
-      return res.status(403).json({ error: 'El rol bar solo puede actualizar pedidos de barra' });
-    }
-    if (req.user.role === 'cocina' && barOnly) {
-      return res.status(403).json({ error: 'El rol cocina no puede actualizar pedidos exclusivos de barra' });
     }
   }
   const allowedNext = ORDER_TRANSITIONS[order.status] || [];
@@ -468,6 +468,11 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       return res.status(400).json({ error: err.message || 'No se pudo aplicar salidas de kardex' });
     }
     emitInventoryUpdate({});
+  } else if (status === 'preparing') {
+    runSql(
+      "UPDATE orders SET status = 'preparing', preparing_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+      [req.params.id],
+    );
   } else {
     runSql("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?", [status, req.params.id]);
     if (order.type === 'delivery' && status === 'delivered') {

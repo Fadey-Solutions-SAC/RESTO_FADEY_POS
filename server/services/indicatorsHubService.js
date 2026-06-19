@@ -255,7 +255,10 @@ function buildOperationalSection(from, to) {
   );
   const delayedKitchen = queryOne(
     `SELECT COUNT(*) AS c FROM orders WHERE status IN ('pending','preparing')
-     AND (julianday('now') - julianday(created_at)) * 24 * 60 > 28`
+     AND (
+       (status = 'pending' AND (julianday('now') - julianday(created_at)) * 24 * 60 > 15)
+       OR (status = 'preparing' AND (julianday('now') - julianday(COALESCE(preparing_at, updated_at, created_at))) * 24 * 60 > 25)
+     )`
   );
   const delayedDelivery = queryOne(
     `SELECT COUNT(*) AS c FROM delivery_assignments WHERE status != 'delivered'

@@ -16,7 +16,7 @@ const FIN = FINANCIAL_FILTER_SQL;
 /** Alertas de inactividad: permiso/día libre no debe disparar aviso por pausas cortas. */
 const IDLE_MINUTES_WARN = 24 * 60;
 const IDLE_MINUTES_SEVERE = 48 * 60;
-const KITCHEN_SLOW_MIN = 28;
+const KITCHEN_SLOW_MIN = 25;
 const DELIVERY_SLOW_MIN = 35;
 const LONG_SHIFT_MIN = 600;
 
@@ -263,7 +263,10 @@ function buildAreaMetrics(from, to) {
     `SELECT
       COUNT(*) AS orders_in_kitchen,
       AVG((julianday(COALESCE(o.updated_at, o.created_at)) - julianday(o.created_at)) * 24 * 60) AS avg_kitchen_minutes,
-      SUM(CASE WHEN o.status IN ('pending','preparing') AND (julianday('now') - julianday(o.created_at)) * 24 * 60 > ? THEN 1 ELSE 0 END) AS delayed_now
+      SUM(CASE WHEN
+        (o.status = 'pending' AND (julianday('now') - julianday(o.created_at)) * 24 * 60 > 15)
+        OR (o.status = 'preparing' AND (julianday('now') - julianday(COALESCE(o.preparing_at, o.updated_at, o.created_at))) * 24 * 60 > ?)
+      THEN 1 ELSE 0 END) AS delayed_now
      FROM orders o
      WHERE o.status IN ('pending','preparing','ready','delivered') AND o.type != 'delivery' AND ${od}`,
     [...op, KITCHEN_SLOW_MIN]

@@ -13,6 +13,7 @@ const {
 const { emitStaffDataUpdate } = require('../socketBroadcast');
 const { getSlowMovingProductIds } = require('../services/slowMovingProductsService');
 const { getReservationCajaOperationalAlerts } = require('../services/reservationSchedulerService');
+const { KITCHEN_ARRIVAL_ALERT_MIN, KITCHEN_PREP_ALERT_MIN } = require('../constants/kitchenTiming');
 
 const router = express.Router();
 const FINANCIAL_FILTER = FINANCIAL_FILTER_SQL;
@@ -168,6 +169,16 @@ function buildOperationalIntelligence(opts = {}) {
   );
   const pendingCount = queryOne(`SELECT COUNT(*) as count FROM orders WHERE status = 'pending'`);
   const readyCount = queryOne(`SELECT COUNT(*) as count FROM orders WHERE ${READY_NEEDS_CLOSURE_WHERE}`);
+  const kitchenPrepDelayed = queryOne(
+    `SELECT COUNT(*) as count FROM orders
+     WHERE status IN ('pending', 'preparing')
+       AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= datetime('now', 'localtime'))
+       AND (
+         (status = 'pending' AND (julianday('now') - julianday(created_at)) * 24 * 60 > ?)
+         OR (status = 'preparing' AND (julianday('now') - julianday(COALESCE(preparing_at, updated_at, created_at))) * 24 * 60 > ?)
+       )`,
+    [KITCHEN_ARRIVAL_ALERT_MIN, KITCHEN_PREP_ALERT_MIN]
+  );
   const staleReady = queryOne(
     `SELECT COUNT(*) as count FROM orders WHERE ${READY_NEEDS_CLOSURE_WHERE}
      AND (julianday('now') - julianday(COALESCE(updated_at, created_at))) * 24 * 60 > 25`
@@ -306,6 +317,17 @@ function buildOperationalIntelligence(opts = {}) {
       severity: 'warning',
       title: 'Pedidos listos sin retirar',
       message: `${readyN} pedido(s) en estado «listo»; revisar salón, bar o entrega.`,
+    });
+  }
+  const prepDelayN = Number(kitchenPrepDelayed?.count || 0);
+  if (prepDelayN > 0) {
+    operationalAlerts.push({
+      id: 'kitchen_prep_demora',
+      severity: 'warning',
+      title: 'Demora en cocina / bar',
+      message: `${prepDelayN} pedido(s) superan el tiempo en pendiente (>${KITCHEN_ARRIVAL_ALERT_MIN} min) o en preparación (>${KITCHEN_PREP_ALERT_MIN} min).`,
+      linkTo: '/admin/cocina',
+      linkLabel: 'Ir a Cocina',
     });
   }
   const staleN = Number(staleReady?.count || 0);

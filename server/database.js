@@ -1145,6 +1145,7 @@ async function initDatabase() {
     addOrderColIfMissing('payment_breakdown', "ALTER TABLE orders ADD COLUMN payment_breakdown TEXT DEFAULT NULL");
     addOrderColIfMissing('tip_amount', 'ALTER TABLE orders ADD COLUMN tip_amount REAL NOT NULL DEFAULT 0');
     addOrderColIfMissing('kitchen_release_at', 'ALTER TABLE orders ADD COLUMN kitchen_release_at TEXT');
+    addOrderColIfMissing('preparing_at', 'ALTER TABLE orders ADD COLUMN preparing_at TEXT');
 
     const reservationColumns = queryAll('PRAGMA table_info(reservations)');
     const addReservationColIfMissing = (colName, ddl) => {

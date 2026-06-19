@@ -76,7 +76,12 @@ export default function KitchenPanel({ station = 'cocina' }) {
       if (filter !== 'all') qs.set('type', filter);
       qs.set('station', station);
       setOrders(await api.get(`/orders/kitchen?${qs.toString()}`));
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+      if (String(err?.message || '').includes('403') || String(err?.message || '').toLowerCase().includes('permiso')) {
+        toast.error('Sin permiso para ver este panel. Cierre sesión y vuelva a entrar si le acaban de dar acceso.');
+      }
+    }
   };
 
   useEffect(() => {
@@ -171,9 +176,18 @@ export default function KitchenPanel({ station = 'cocina' }) {
     } catch (err) { toast.error(err.message); }
   };
 
-  const KITCHEN_OVERDUE_MS = 15 * 60 * 1000;
+  const ARRIVAL_OVERDUE_MS = 15 * 60 * 1000;
+  const PREP_OVERDUE_MS = 25 * 60 * 1000;
 
-  const getTimeDiff = (created) => {
+  const getOrderTimerAnchor = (order) => {
+    if (order?.status === 'preparing') {
+      return order.preparing_at || order.updated_at || order.created_at;
+    }
+    return order?.created_at;
+  };
+
+  const getTimeDiff = (order) => {
+    const created = getOrderTimerAnchor(order);
     const d = parseApiDate(created);
     if (!d) return '';
     const diff = Math.floor((Date.now() - d.getTime()) / 60000);
@@ -182,10 +196,15 @@ export default function KitchenPanel({ station = 'cocina' }) {
     return t('panel.timeHours', { hours: Math.floor(diff / 60), minutes: diff % 60 });
   };
 
-  const isKitchenOrderOverdue = (created) => {
-    const d = parseApiDate(created);
+  const isKitchenOrderOverdue = (order) => {
+    if (!order || order.status === 'ready' || order.status === 'delivered') return false;
+    const anchor = getOrderTimerAnchor(order);
+    const d = parseApiDate(anchor);
     if (!d) return false;
-    return Date.now() - d.getTime() >= KITCHEN_OVERDUE_MS;
+    const elapsed = Date.now() - d.getTime();
+    if (order.status === 'pending') return elapsed >= ARRIVAL_OVERDUE_MS;
+    if (order.status === 'preparing') return elapsed >= PREP_OVERDUE_MS;
+    return false;
   };
 
   const typeIcons = { dine_in: MdTableBar, delivery: MdDeliveryDining, pickup: MdRestaurant };
@@ -234,7 +253,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {orders.map(order => {
           const TypeIcon = typeIcons[order.type] || MdRestaurant;
-          const isOverdue = !isBar && isKitchenOrderOverdue(order.created_at);
+          const isOverdue = isKitchenOrderOverdue(order);
 
           const cuentaCliente = isCuentaClienteSelfOrder(order);
           const cardBorder = isOverdue
@@ -266,7 +285,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
                     </div>
                     <div className="flex shrink-0 items-center gap-1 text-sm">
                       <MdAccessTime className={isOverdue ? 'text-red-400' : 'text-[var(--ui-muted)]'} />
-                      <span className={isOverdue ? 'font-bold text-red-300' : 'text-[var(--ui-muted)]'}>{getTimeDiff(order.created_at)}</span>
+                      <span className={isOverdue ? 'font-bold text-red-300' : 'text-[var(--ui-muted)]'}>{getTimeDiff(order)}</span>
                     </div>
                   </div>
                 ) : (
@@ -284,7 +303,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
                     </div>
                     <div className="flex items-center gap-1 text-sm">
                       <MdAccessTime className={isOverdue ? 'text-red-400' : 'text-[var(--ui-muted)]'} />
-                      <span className={isOverdue ? 'font-bold text-red-300' : 'text-[var(--ui-muted)]'}>{getTimeDiff(order.created_at)}</span>
+                      <span className={isOverdue ? 'font-bold text-red-300' : 'text-[var(--ui-muted)]'}>{getTimeDiff(order)}</span>
                     </div>
                   </div>
                 )}
