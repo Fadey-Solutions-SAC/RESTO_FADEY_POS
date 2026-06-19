@@ -755,6 +755,15 @@ export default function POSPanel() {
   }, [showBill, selectedTable?.id]);
 
   useEffect(() => {
+    if (!showMenu) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [showMenu]);
+
+  useEffect(() => {
     const requestedView = searchParams.get('view');
     const isValidView = cajaOptionsForRole.some((option) => option.id === requestedView);
     if (isValidView && requestedView !== activeCajaOption) {
@@ -3371,11 +3380,13 @@ export default function POSPanel() {
           return `Agregar Pedido — ${selectedTable?.name || ''}`;
         })()}
         size={editingOrderId ? 'md' : 'xl'}
-        bodyClassName="!overflow-hidden flex min-h-0 flex-1 flex-col p-6"
+        maxHeightClass="max-h-[min(92vh,920px)]"
+        bodyClassName="!overflow-hidden flex min-h-0 flex-1 flex-col !p-4 sm:!p-6"
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {quickSaleMode ? (
         <StaffDineInOrderUI
+          fillParentHeight
           search={search}
           onSearchChange={setSearch}
           selectedCat={selectedCat}
@@ -3391,7 +3402,7 @@ export default function POSPanel() {
           updateItemNote={updateItemNote}
           cartTotal={cartTotal}
           formatCurrency={formatCurrency}
-          minHeightClass="min-h-0 flex-1"
+          className="min-h-0 flex-1"
           sidebarTop={(
               <div className="space-y-2">
                 <div>
@@ -3706,9 +3717,10 @@ export default function POSPanel() {
             orders={selectedTable.orders || []}
             formatCurrency={formatCurrency}
             resetKey={selectedTable.id}
-            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            className="min-h-0 flex-1 overflow-hidden"
           >
             <StaffDineInOrderUI
+              fillParentHeight
               search={search}
               onSearchChange={setSearch}
               selectedCat={selectedCat}
@@ -3724,8 +3736,7 @@ export default function POSPanel() {
               updateItemNote={updateItemNote}
               cartTotal={cartTotal}
               formatCurrency={formatCurrency}
-              minHeightClass="min-h-0 flex-1"
-              className="flex-1 min-h-0"
+              className="min-h-0 flex-1"
               footer={
                 cart.length > 0 ? (
                   <div className="space-y-2">
@@ -3744,6 +3755,7 @@ export default function POSPanel() {
           </StaffMesaPedidoTabs>
         ) : (
           <StaffDineInOrderUI
+            fillParentHeight
             search={search}
             onSearchChange={setSearch}
             selectedCat={selectedCat}
@@ -3759,7 +3771,7 @@ export default function POSPanel() {
             updateItemNote={updateItemNote}
             cartTotal={cartTotal}
             formatCurrency={formatCurrency}
-            minHeightClass="min-h-0 flex-1"
+            className="min-h-0 flex-1"
             footer={
               cart.length > 0 ? (
                 <div className="space-y-2">

@@ -212,14 +212,20 @@ export default function StaffDineInOrderUI({
   showProductThumbnail = false,
   hideProductStock = false,
   showLineDeleteLabel = false,
-  /** Panel lateral de Mesas: altura del padre + una sola zona de scroll (categorías + productos). */
+  /** Panel con altura del contenedor padre (modal Mesas / Caja). */
   fillParentHeight = false,
 }) {
+  const panelLayout = fillParentHeight || (!embedded && !stackedSelfOrder);
+
   const rootClass = embedded
     ? 'h-[min(50vh,460px)] max-h-[min(70vh,560px)] w-full min-h-0'
     : stackedSelfOrder
       ? 'min-h-0 flex-1 h-full'
-      : `${minHeightClass} h-full min-h-0`;
+      : panelLayout
+        ? 'min-h-0 flex-1'
+        : `${minHeightClass} h-full min-h-0`;
+
+  const catBtnBase = 'shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium';
 
   const searchBlock = (
     <div className="relative shrink-0">
@@ -240,12 +246,16 @@ export default function StaffDineInOrderUI({
     onWheel: (e) => e.stopPropagation(),
   };
 
-  const categoryButtons = (
-    <>
+  const categoriesBlock = (
+    <div
+      className="mb-3 flex shrink-0 flex-nowrap gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-x"
+      style={{ touchAction: 'pan-x' }}
+      onWheel={(e) => e.stopPropagation()}
+    >
       <button
         type="button"
         onClick={() => onSelectedCatChange('all')}
-        className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+        className={`${catBtnBase} ${
           selectedCat === 'all'
             ? 'border border-[color:var(--ui-accent)] bg-[var(--ui-accent)] text-white'
             : 'border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
@@ -258,7 +268,7 @@ export default function StaffDineInOrderUI({
           type="button"
           key={c.id}
           onClick={() => onSelectedCatChange(c.id)}
-          className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+          className={`${catBtnBase} ${
             selectedCat === c.id
               ? 'border border-[color:var(--ui-accent)] bg-[var(--ui-accent)] text-white'
               : 'border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
@@ -267,18 +277,6 @@ export default function StaffDineInOrderUI({
           {c.name}
         </button>
       ))}
-    </>
-  );
-
-  const categoriesBlock = fillParentHeight ? (
-    <div className="mb-3 flex shrink-0 flex-wrap gap-2">{categoryButtons}</div>
-  ) : (
-    <div
-      className="flex max-h-[min(22vh,168px)] shrink-0 flex-wrap gap-2 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
-      style={{ touchAction: 'pan-y' }}
-      onWheel={(e) => e.stopPropagation()}
-    >
-      {categoryButtons}
     </div>
   );
 
@@ -380,7 +378,7 @@ export default function StaffDineInOrderUI({
   );
 
   const cartAsideInner = (
-    <div className="flex min-h-0 flex-col overflow-hidden lg:max-h-[min(calc(100dvh-12rem),85vh)]">
+    <div className={`flex min-h-0 flex-col overflow-hidden ${panelLayout ? 'h-full flex-1' : 'lg:max-h-[min(calc(100dvh-12rem),85vh)]'}`}>
       <h3 className="mb-3 flex shrink-0 items-center gap-2 font-bold text-[var(--ui-body-text)]">
         <MdShoppingCart /> Pedido
         {cart.length > 0 && (
@@ -389,11 +387,9 @@ export default function StaffDineInOrderUI({
       </h3>
       {sidebarTop ? <div className="mb-3 shrink-0 space-y-2">{sidebarTop}</div> : null}
       <div
-        className={`min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] ${
-          fillParentHeight ? 'touch-pan-y' : ''
-        }`}
-        style={fillParentHeight ? { touchAction: 'pan-y' } : undefined}
-        onWheel={fillParentHeight ? (e) => e.stopPropagation() : undefined}
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
+        style={{ touchAction: 'pan-y' }}
+        onWheel={(e) => e.stopPropagation()}
       >
         {sidebarPreCart}
         {sidebarPreCart ? <div className="mt-1 border-t border-[color:var(--ui-border)] pt-3" /> : null}
@@ -425,11 +421,7 @@ export default function StaffDineInOrderUI({
       <div className={`flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden ${rootClass} ${className}`}>
         <div className="shrink-0">{searchBlock}</div>
         <div className="shrink-0">{categoriesBlock}</div>
-        <div
-          className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
-          style={{ touchAction: 'pan-y' }}
-          onWheel={(e) => e.stopPropagation()}
-        >
+        <div {...scrollAreaProps}>
           {productGrid}
         </div>
         <div className="shrink-0 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3">
@@ -439,7 +431,7 @@ export default function StaffDineInOrderUI({
               <span className="rounded-full bg-[var(--ui-accent)] px-2 py-0.5 text-xs text-white">{cart.length}</span>
             )}
           </h3>
-          <div className="max-h-[min(26vh,200px)] overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] touch-pan-y pr-0.5">
+          <div className="max-h-[min(26vh,200px)] overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] touch-pan-y pr-0.5" style={{ touchAction: 'pan-y' }} onWheel={(e) => e.stopPropagation()}>
             <CartLineItems
               cart={cart}
               cartLayout={cartLayout}
@@ -458,32 +450,15 @@ export default function StaffDineInOrderUI({
     );
   }
 
-  if (fillParentHeight) {
-    return (
-      <div className={`flex min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:flex-row lg:items-stretch ${className}`}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="mb-3 shrink-0">{searchBlock}</div>
-          <div {...scrollAreaProps}>
-            {categoriesBlock}
-            {productGrid}
-          </div>
-        </div>
-        <div className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] pt-4 lg:w-72 lg:min-h-0 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0 lg:shadow-[-6px_0_20px_rgba(0,0,0,0.12)]">
-          {cartAsideInner}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className={`flex min-h-0 flex-col gap-4 lg:flex-row lg:items-stretch ${rootClass} ${className}`}>
-      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="mb-3 shrink-0">{searchBlock}</div>
-        <div className="mb-3 shrink-0">{categoriesBlock}</div>
+    <div className={`flex min-h-0 flex-col gap-4 overflow-hidden lg:flex-row lg:items-stretch ${rootClass} ${className}`}>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="shrink-0">{searchBlock}</div>
+        {categoriesBlock}
         <div {...scrollAreaProps}>{productGrid}</div>
       </div>
 
-      <div className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] pt-4 lg:sticky lg:top-0 lg:z-10 lg:w-72 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0 lg:shadow-[-6px_0_20px_rgba(0,0,0,0.12)]">
+      <div className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] pt-4 lg:min-h-0 lg:w-72 lg:max-w-[18rem] lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0 lg:shadow-[-6px_0_20px_rgba(0,0,0,0.12)]">
         {cartAsideInner}
       </div>
     </div>

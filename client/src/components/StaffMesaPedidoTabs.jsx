@@ -39,7 +39,7 @@ export default function StaffMesaPedidoTabs({
   }, [orders, rowsToShow]);
 
   return (
-    <div className={`flex flex-col gap-3 min-h-0 flex-1 ${className}`}>
+    <div className={`flex min-h-0 flex-1 flex-col gap-3 overflow-hidden ${className}`}>
       <div className="flex flex-wrap gap-2 shrink-0">
         <button
           type="button"
@@ -80,7 +80,7 @@ export default function StaffMesaPedidoTabs({
                 <span className="w-10 text-center shrink-0">Cant.</span>
                 <span className="w-[5.25rem] text-right shrink-0">Total</span>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain pr-0.5">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y" style={{ touchAction: 'pan-y' }} onWheel={(e) => e.stopPropagation()}>
                 {rowsToShow.map((row) => {
                   const st = getStaffOrderStatusUi(row.status);
                   return (
