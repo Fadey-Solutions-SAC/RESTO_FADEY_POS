@@ -1,4 +1,4 @@
-const { queryOne } = require('./database');
+const { queryOne, queryAll } = require('./database');
 
 /** Misma id en seed (database) y en DEFAULT_APP_SETTINGS del cliente. */
 const DEFAULT_PRIMARY_CAJA_ID = 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001';
@@ -38,10 +38,34 @@ function getFirstAutoAssignCajaId() {
   return (preferred || list[0]).id;
 }
 
+/** Turnos abiertos vinculados a una caja activa del local (misma lógica que GET /pos/caja-stations). */
+function getOpenRegistersOnActiveStations() {
+  const active = listCajasWithIds().filter((c) => c.active);
+  const activeIds = new Set(active.map((c) => c.id));
+  const stationNameById = Object.fromEntries(active.map((c) => [c.id, c.name]));
+  if (!activeIds.size) return [];
+
+  const opens = queryAll(
+    `SELECT cr.id, cr.opened_at, cr.user_id, cr.caja_station_id, u.full_name AS user_name
+     FROM cash_registers cr
+     JOIN users u ON u.id = cr.user_id
+     WHERE cr.closed_at IS NULL
+     ORDER BY datetime(cr.opened_at) ASC`
+  );
+
+  return (opens || [])
+    .filter((r) => activeIds.has(String(r.caja_station_id || '').trim()))
+    .map((r) => ({
+      ...r,
+      station_name: stationNameById[String(r.caja_station_id || '').trim()] || 'Caja',
+    }));
+}
+
 module.exports = {
   readSettingsObject,
   listCajasWithIds,
   getActiveCajaById,
   DEFAULT_PRIMARY_CAJA_ID,
   getFirstAutoAssignCajaId,
+  getOpenRegistersOnActiveStations,
 };

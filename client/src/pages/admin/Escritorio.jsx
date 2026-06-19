@@ -388,12 +388,12 @@ export default function Escritorio() {
             <div className="flex items-center gap-2 min-w-0">
               <MdBolt className="text-xl text-[var(--ui-accent-muted)] shrink-0" />
               <div className="min-w-0">
-                <h3 className="text-base font-semibold text-[var(--ui-body-text)]">Panel en vivo</h3>
+                <h3 className="text-base font-semibold text-[var(--ui-body-text)]">Panel de control</h3>
                 <p className="text-xs text-[var(--ui-muted)]">
-                  Datos del servidor · sincronizado con Caja, Mesas, Delivery e inventario
+                  Sincronizado con Caja, Mesas, Delivery e inventario
                   {liveDash.generated_at && (
                     <span className="ml-1">
-                      ·{' '}
+                      · actualizado{' '}
                       {new Date(liveDash.generated_at).toLocaleTimeString('es-PE', {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -409,7 +409,13 @@ export default function Escritorio() {
                 liveDash.registerOpen ? 'ui-live-badge-open' : 'ui-live-badge-closed'
               }`}
             >
-              {liveDash.registerOpen ? 'Caja abierta' : 'Sin caja abierta'}
+              {liveDash.registerOpen
+                ? (liveDash.openRegisters?.length || 0) > 1
+                  ? `${liveDash.openRegisters.length} cajas abiertas`
+                  : liveDash.registerOpenSummary?.station_name
+                    ? `Caja abierta · ${liveDash.registerOpenSummary.station_name}`
+                    : 'Caja abierta'
+                : 'Sin caja abierta'}
             </span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">
@@ -422,13 +428,26 @@ export default function Escritorio() {
               </p>
               <p className="text-[11px] text-[var(--ui-muted)]">
                 {Number(liveDash.liveSales?.count ?? liveDash.today?.count ?? 0)} cobradas
-                {liveDash.liveSales?.subtitle ? ` · ${liveDash.liveSales.subtitle}` : ' · día local'}
+                {liveDash.liveSales?.subtitle ? ` · ${liveDash.liveSales.subtitle}` : ''}
+                {liveDash.registerOpen && liveDash.registerOpenSummary?.user_name
+                  ? ` · ${liveDash.registerOpenSummary.user_name}`
+                  : ''}
               </p>
-              {liveDash.liveSales?.day_total != null &&
-              liveDash.liveSales.mode !== 'venue_closed' &&
+              {liveDash.registerOpen &&
+              liveDash.liveSales?.day_total != null &&
               Number(liveDash.liveSales.day_total) !== Number(liveDash.liveSales.total) ? (
                 <p className="text-[10px] text-[var(--ui-muted)] mt-0.5">
-                  Día local: {formatCurrency(liveDash.liveSales.day_total)} ({liveDash.liveSales.day_count ?? 0})
+                  Total del día: {formatCurrency(liveDash.liveSales.day_total)} ({liveDash.liveSales.day_count ?? 0} cobradas)
+                </p>
+              ) : null}
+              {liveDash.liveSales?.mode === 'register_closed' && !liveDash.registerOpen ? (
+                <p className="text-[10px] text-amber-600 mt-0.5">
+                  No hay turno activo ahora · cifra del último cierre de caja
+                </p>
+              ) : null}
+              {liveDash.liveSales?.mode === 'venue_closed' && !liveDash.registerOpen ? (
+                <p className="text-[10px] text-[var(--ui-muted)] mt-0.5">
+                  Local fuera de horario · total cobrado hoy
                 </p>
               ) : null}
             </div>

@@ -5,6 +5,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { FINANCIAL_FILTER_SQL, LOCAL_TODAY_SQL, getLocalTodayDateKey } = require('../businessRules');
 const { getEffectiveFlat } = require('../services/businessConfigService');
 const { computeOpenStatus } = require('../services/systemConfigHubService');
+const { getOpenRegistersOnActiveStations, listCajasWithIds } = require('../cajaSettings');
 const {
   queryRegisterSessionSales,
   queryRegisterSessionSalesBetween,
@@ -72,7 +73,7 @@ function buildLiveSalesPanel(registerOpen) {
       day_count: dayCount,
       session_opened_at: registerOpen.opened_at,
       label: 'Ventas del turno (caja abierta)',
-      subtitle: 'Cobradas desde la apertura de caja · en vivo',
+      subtitle: 'Cobradas desde la apertura del turno activo',
     };
   }
 
@@ -152,9 +153,15 @@ function buildOperationalIntelligence(opts = {}) {
        AND status IN ('pending','preparing','ready')`
   );
   const inKitchen = queryOne(`SELECT COUNT(*) as count FROM orders WHERE status = 'preparing'`);
-  const registerOpen = queryOne(
-    'SELECT id, opened_at, user_id FROM cash_registers WHERE closed_at IS NULL ORDER BY opened_at DESC LIMIT 1'
+  const openRegisters = getOpenRegistersOnActiveStations();
+  const registerOpen = openRegisters[0] || null;
+  const allOpenRows = queryAll(
+    `SELECT cr.caja_station_id FROM cash_registers cr WHERE cr.closed_at IS NULL`
   );
+  const activeStationIds = new Set(listCajasWithIds().filter((c) => c.active).map((c) => c.id));
+  const orphanOpens = (allOpenRows || []).filter(
+    (r) => !activeStationIds.has(String(r.caja_station_id || '').trim())
+  ).length;
   const activeOrders = queryOne(
     `SELECT COUNT(*) as count FROM orders WHERE status IN ('pending', 'preparing')
      OR (${READY_NEEDS_CLOSURE_WHERE})`
@@ -277,7 +284,19 @@ function buildOperationalIntelligence(opts = {}) {
       id: 'caja_cerrada',
       severity: 'warning',
       title: 'Caja cerrada',
-      message: 'No hay turno de caja abierto; la caja no registrará ventas hasta la apertura.',
+      message: 'No hay turno de caja abierto en ninguna caja activa; abra un turno en el módulo Caja para registrar ventas.',
+      linkTo: '/admin/caja',
+      linkLabel: 'Ir a Caja',
+    });
+  }
+  if (orphanOpens > 0) {
+    operationalAlerts.push({
+      id: 'caja_huerfana',
+      severity: 'warning',
+      title: 'Turno de caja sin estación',
+      message: `${orphanOpens} turno(s) abierto(s) no están vinculados a una caja activa. Ciérrelos o reábralos desde Caja.`,
+      linkTo: '/admin/caja',
+      linkLabel: 'Ir a Caja',
     });
   }
   const readyN = Number(readyCount?.count || 0);
@@ -439,7 +458,17 @@ function buildOperationalIntelligence(opts = {}) {
     summary,
     insightToday,
     lowStock,
-    registerOpen: registerOpen ? { id: registerOpen.id, opened_at: registerOpen.opened_at, user_id: registerOpen.user_id } : null,
+    registerOpen: registerOpen
+      ? {
+          id: registerOpen.id,
+          opened_at: registerOpen.opened_at,
+          user_id: registerOpen.user_id,
+          user_name: registerOpen.user_name,
+          caja_station_id: registerOpen.caja_station_id,
+          station_name: registerOpen.station_name,
+        }
+      : null,
+    openRegisters,
     tablesWithActiveOrders: summary.tablesWithActiveOrders,
     deliveryActiveCount: summary.deliveryActiveCount,
     inKitchenCount: summary.inKitchenCount,
@@ -577,7 +606,9 @@ router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero'), (req
     tablesWithActiveOrders: op.tablesWithActiveOrders,
     deliveryActiveCount: op.deliveryActiveCount,
     inKitchenCount: op.inKitchenCount,
-    registerOpen: op.registerOpen,
+    registerOpen: op.summary.registerOpen,
+    openRegisters: op.openRegisters || [],
+    registerOpenSummary: op.registerOpen,
     operationalAlerts: op.operationalAlerts,
     operationalSummary: op.summary,
     insightToday: op.insightToday,
