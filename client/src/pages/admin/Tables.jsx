@@ -333,7 +333,7 @@ export default function Tables() {
                 orders={activeOrdersForTable}
                 formatCurrency={formatCurrency}
                 resetKey={selectedTable?.id}
-                className="flex h-full min-h-0 flex-1 basis-0 flex-col overflow-hidden"
+                className="min-h-0 flex-1 overflow-hidden"
               >
                 <StaffDineInOrderUI
                   fillParentHeight
@@ -352,8 +352,7 @@ export default function Tables() {
                   updateItemNote={updateItemNote}
                   cartTotal={cartTotal}
                   formatCurrency={formatCurrency}
-                  minHeightClass="min-h-0"
-                  className="h-full min-h-0 flex-1 basis-0"
+                  className="min-h-0 flex-1"
                   cartLayout="lines"
                   footer={
                     cart.length > 0 ? (
