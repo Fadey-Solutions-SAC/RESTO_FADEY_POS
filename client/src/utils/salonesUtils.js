@@ -46,3 +46,17 @@ export function salonSlugFromName(name) {
     .replace(/\s+/g, '_')
     .replace(/[^a-z0-9_]/g, '');
 }
+
+/** Mueve un salón a la posición 1..N y renumera sort_order. */
+export function reorderSalonList(salones, salonId, targetPosition1Based) {
+  const list = [...(salones || [])].sort(
+    (a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0),
+  );
+  const fromIdx = list.findIndex((s) => String(s.id) === String(salonId));
+  if (fromIdx < 0) return list;
+  const toIdx = Math.max(0, Math.min(list.length - 1, Number(targetPosition1Based) - 1));
+  if (fromIdx === toIdx) return list;
+  const [item] = list.splice(fromIdx, 1);
+  list.splice(toIdx, 0, item);
+  return list.map((s, idx) => ({ ...s, sort_order: idx }));
+}

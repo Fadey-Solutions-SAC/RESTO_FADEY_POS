@@ -13,6 +13,7 @@ import {
 } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import Modal from '../../components/Modal';
+import ContextMenu from '../../components/ContextMenu';
 import toast from 'react-hot-toast';
 import {
   MdPeople, MdAdd, MdEdit, MdDelete, MdPerson,
@@ -34,7 +35,7 @@ import {
 import { applyUiThemeFromAppSettings } from '../../theme/uiTheme';
 import { syncLocaleFromRegional, setAppLocale } from '../../i18n';
 import { normalizeConfigFromApi, mergeSavedAppSettings } from '../../utils/appSettingsNormalize';
-import { salonSlugFromName } from '../../utils/salonesUtils';
+import { salonSlugFromName, reorderSalonList } from '../../utils/salonesUtils';
 import SettingsAppearancePanel from '../../components/settings/SettingsAppearancePanel';
 import { useSocket } from '../../hooks/useSocket';
 import { useConfigHub } from '../../hooks/useConfigHub';
@@ -2934,6 +2935,9 @@ function SalonMesasSection() {
   const [editSalon, setEditSalon] = useState(null);
   const [salonForm, setSalonForm] = useState({ name: '', description: '' });
   const [savingSalones, setSavingSalones] = useState(false);
+  const [salonContextMenu, setSalonContextMenu] = useState(null);
+  const [salonOrderModal, setSalonOrderModal] = useState(null);
+  const [salonOrderPosition, setSalonOrderPosition] = useState(1);
 
   const [showMesaModal, setShowMesaModal] = useState(false);
   const [editMesa, setEditMesa] = useState(null);
@@ -2946,7 +2950,8 @@ function SalonMesasSection() {
     ])
       .then(([data, salonesRes]) => {
         setTables(data);
-        setSalones(Array.isArray(salonesRes?.salones) ? salonesRes.salones : []);
+        const raw = Array.isArray(salonesRes?.salones) ? salonesRes.salones : [];
+        setSalones([...raw].sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)));
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -3030,6 +3035,31 @@ function SalonMesasSection() {
     }
   };
 
+  const openSalonContextMenu = (e, salon) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSalonContextMenu({ x: e.clientX, y: e.clientY, salon });
+  };
+
+  const openSalonOrderModal = (salon) => {
+    const currentIdx = salones.findIndex((s) => s.id === salon.id);
+    setSalonOrderPosition(currentIdx >= 0 ? currentIdx + 1 : 1);
+    setSalonOrderModal(salon);
+  };
+
+  const applySalonOrder = async (e) => {
+    e.preventDefault();
+    if (!salonOrderModal) return;
+    try {
+      const next = reorderSalonList(salones, salonOrderModal.id, salonOrderPosition);
+      await persistSalones(next);
+      toast.success(`"${salonOrderModal.name}" movido a la posición ${salonOrderPosition}`);
+      setSalonOrderModal(null);
+    } catch (_) {
+      /* toast en persistSalones */
+    }
+  };
+
   const openNewMesa = (salonId) => {
     const mesasSalon = tables.filter(t => (t.zone || 'principal') === salonId);
     const nextNum = tables.length > 0 ? Math.max(...tables.map(t => t.number)) + 1 : 1;
@@ -3090,7 +3120,13 @@ function SalonMesasSection() {
                   <MdTableRestaurant className="text-xl text-gold-600" />
                 </div>
                 <div>
-                  <h3 className="font-bold rf-section-title">{salon.name}</h3>
+                  <h3
+                    className="font-bold rf-section-title cursor-context-menu select-none"
+                    onContextMenu={(e) => openSalonContextMenu(e, salon)}
+                    title="Clic derecho: mover orden de salón"
+                  >
+                    {salon.name}
+                  </h3>
                   {salon.description && <p className="text-xs text-[var(--ui-muted)]">{salon.description}</p>}
                 </div>
                 <span className="px-2 py-0.5 bg-slate-100 ui-text-muted text-xs rounded-full">{mesasSalon.length} mesas</span>
@@ -3176,6 +3212,53 @@ function SalonMesasSection() {
           <div className="flex gap-3"><button type="button" onClick={() => setShowSalonModal(false)} className="btn-secondary flex-1">Cancelar</button><button type="submit" className="btn-primary flex-1">{editSalon ? 'Guardar' : 'Crear Salón'}</button></div>
         </form>
       </Modal>
+
+      <Modal
+        isOpen={!!salonOrderModal}
+        onClose={() => setSalonOrderModal(null)}
+        title="Mover orden de salón"
+        size="sm"
+      >
+        {salonOrderModal ? (
+          <form onSubmit={applySalonOrder} className="space-y-4">
+            <p className="text-sm text-[var(--ui-muted)]">
+              Salón: <span className="font-semibold text-[var(--ui-body-text)]">{salonOrderModal.name}</span>
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nueva posición (1–{salones.length})</label>
+              <select
+                value={salonOrderPosition}
+                onChange={(e) => setSalonOrderPosition(Number(e.target.value))}
+                className="input-field"
+              >
+                {salones.map((s, idx) => (
+                  <option key={s.id} value={idx + 1}>
+                    {idx + 1} — {s.id === salonOrderModal.id ? `${s.name} (actual)` : s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setSalonOrderModal(null)} className="btn-secondary flex-1">Cancelar</button>
+              <button type="submit" className="btn-primary flex-1" disabled={savingSalones}>Mover</button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
+
+      <ContextMenu
+        open={!!salonContextMenu}
+        x={salonContextMenu?.x ?? 0}
+        y={salonContextMenu?.y ?? 0}
+        onClose={() => setSalonContextMenu(null)}
+        items={salonContextMenu ? [
+          {
+            id: 'move-order',
+            label: 'Mover orden de salón',
+            onClick: () => openSalonOrderModal(salonContextMenu.salon),
+          },
+        ] : []}
+      />
 
       {/* MESA MODAL */}
       <Modal isOpen={showMesaModal} onClose={() => setShowMesaModal(false)} title={editMesa ? 'Editar Mesa' : 'Nueva Mesa'} size="sm">

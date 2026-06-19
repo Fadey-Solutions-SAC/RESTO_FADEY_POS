@@ -116,6 +116,39 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
   }
 });
 
+/** Unifica categorías: mueve productos de origen a destino y elimina la origen. */
+router.post('/:id/merge', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    const sourceId = String(req.params.id || '').trim();
+    const targetId = String(req.body?.target_category_id || '').trim();
+    if (!sourceId || !targetId) {
+      return res.status(400).json({ error: 'Se requiere categoría origen y destino' });
+    }
+    if (sourceId === targetId) {
+      return res.status(400).json({ error: 'La categoría destino debe ser distinta' });
+    }
+
+    const source = queryOne('SELECT * FROM categories WHERE id = ?', [sourceId]);
+    const target = queryOne('SELECT * FROM categories WHERE id = ?', [targetId]);
+    if (!source) return res.status(404).json({ error: 'Categoría origen no encontrada' });
+    if (!target) return res.status(404).json({ error: 'Categoría destino no encontrada' });
+
+    const moved = queryOne('SELECT COUNT(*) as c FROM products WHERE category_id = ?', [sourceId]);
+    runSql('UPDATE products SET category_id = ? WHERE category_id = ?', [targetId, sourceId]);
+    runSql('DELETE FROM categories WHERE id = ?', [sourceId]);
+
+    emitStaffDataUpdate({ domain: 'catalog' });
+    res.json({
+      success: true,
+      target_category_id: targetId,
+      target_category_name: target.name,
+      products_moved: Number(moved?.c || 0),
+    });
+  } catch (err) {
+    sendRouteError(res, req, err, 'No se pudo unificar la categoría');
+  }
+});
+
 router.delete('/:id', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     const id = String(req.params.id || '').trim();

@@ -7,6 +7,7 @@ import { showStockInOrderingUI } from '../../utils/productStockDisplay';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
+import ContextMenu from '../../components/ContextMenu';
 import {
   MdAdd, MdEdit, MdDelete, MdSearch, MdRestaurantMenu, MdLunchDining,
   MdTune, MdClose, MdCheck, MdToggleOn, MdToggleOff, MdDownload, MdSchedule, MdAutoAwesome
@@ -77,6 +78,8 @@ export default function Productos() {
   const [showCatModal, setShowCatModal] = useState(false);
   const [editCat, setEditCat] = useState(null);
   const [catForm, setCatForm] = useState({ name: '', description: '' });
+  const [categoryMergeSourceId, setCategoryMergeSourceId] = useState(null);
+  const [catContextMenu, setCatContextMenu] = useState(null);
 
   const [combos, setCombos] = useState([]);
   const [showComboModal, setShowComboModal] = useState(false);
@@ -475,6 +478,52 @@ export default function Productos() {
     try { await api.delete(`/categories/${c.id}`); toast.success('Eliminada'); load(); } catch (err) { toast.error(err.message); }
   };
 
+  const openCatContextMenu = (e, cat) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCatContextMenu({ x: e.clientX, y: e.clientY, cat });
+  };
+
+  const startCategoryMerge = (cat) => {
+    setCategoryMergeSourceId(cat.id);
+    toast('Seleccione la categoría destino (clic en otra categoría)', { icon: '↪️' });
+  };
+
+  const cancelCategoryMerge = () => setCategoryMergeSourceId(null);
+
+  const mergeCategoryInto = async (targetCat) => {
+    const sourceId = categoryMergeSourceId;
+    if (!sourceId || sourceId === targetCat.id) {
+      if (sourceId === targetCat.id) toast.error('Elija una categoría distinta');
+      return;
+    }
+    const sourceName = categories.find((c) => c.id === sourceId)?.name || 'origen';
+    if (!confirm(`¿Unificar "${sourceName}" en "${targetCat.name}"? Los productos pasarán a esta categoría.`)) {
+      return;
+    }
+    try {
+      const res = await api.post(`/categories/${sourceId}/merge`, {
+        target_category_id: targetCat.id,
+      });
+      toast.success(
+        `Categorías unificadas en "${res.target_category_name}" (${res.products_moved} producto(s))`,
+      );
+      setCategoryMergeSourceId(null);
+      setSelectedCat(targetCat.id);
+      load();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo unificar la categoría');
+    }
+  };
+
+  const onCategoryClick = (cat) => {
+    if (categoryMergeSourceId) {
+      mergeCategoryInto(cat);
+      return;
+    }
+    setSelectedCat(cat.id);
+  };
+
   const getCatName = (id) => visibleCategories.find(c => c.id === id)?.name || '-';
   const getCatProductCount = (catId) => visibleProducts.filter(p => p.category_id === catId && p.is_active !== 0).length;
 
@@ -533,6 +582,16 @@ export default function Productos() {
               Mostrando productos con stock sin ventas cobradas desde hace al menos {slowMovingDays} días (desde alta o última venta).
             </div>
           ) : null}
+          {categoryMergeSourceId ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <span>
+                Moviendo categoría: elija la categoría destino (los productos se unificarán con el nombre de la destino).
+              </span>
+              <button type="button" onClick={cancelCategoryMerge} className="btn-secondary text-xs py-1.5 px-3">
+                Cancelar
+              </button>
+            </div>
+          ) : null}
         <div className="flex gap-5">
           <div className="w-56 flex-shrink-0">
             <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] overflow-hidden">
@@ -553,17 +612,26 @@ export default function Productos() {
                   <MdAdd className="text-base" /> {t('categories.add')}
                 </button>
               </div>
-              <nav className="max-h-[60vh] overflow-y-auto">
+              <nav
+                className="max-h-[60vh] overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
+                style={{ touchAction: 'pan-y' }}
+                onWheel={(e) => e.stopPropagation()}
+              >
                 {visibleCategories.map(cat => (
                   <div key={cat.id} className="m-1 border border-[color:var(--ui-border)] rounded-lg bg-[var(--ui-surface-2)] overflow-hidden">
                     <div className="flex items-center group">
                       <button
                         type="button"
-                        onClick={() => setSelectedCat(cat.id)}
+                        onClick={() => onCategoryClick(cat)}
+                        onContextMenu={(e) => openCatContextMenu(e, cat)}
                         className={`flex-1 text-left px-3 py-1.5 text-sm transition-colors ${
-                          selectedCat === cat.id
-                            ? 'bg-[var(--ui-accent)] text-white font-semibold'
-                            : 'text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                          categoryMergeSourceId === cat.id
+                            ? 'bg-amber-500 text-white font-semibold ring-2 ring-amber-300'
+                            : selectedCat === cat.id
+                              ? 'bg-[var(--ui-accent)] text-white font-semibold'
+                              : categoryMergeSourceId
+                                ? 'text-[var(--ui-body-text)] hover:bg-amber-100'
+                                : 'text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
                         }`}
                       >
                         {cat.name}
@@ -1296,6 +1364,20 @@ export default function Productos() {
           <div className="flex gap-3"><button type="button" onClick={() => setShowModModal(false)} className="btn-secondary flex-1">Cancelar</button><button type="submit" className="btn-primary flex-1">Crear</button></div>
         </form>
       </Modal>
+
+      <ContextMenu
+        open={!!catContextMenu}
+        x={catContextMenu?.x ?? 0}
+        y={catContextMenu?.y ?? 0}
+        onClose={() => setCatContextMenu(null)}
+        items={catContextMenu ? [
+          {
+            id: 'merge-cat',
+            label: 'Mover categoría',
+            onClick: () => startCategoryMerge(catContextMenu.cat),
+          },
+        ] : []}
+      />
 
     </div>
   );

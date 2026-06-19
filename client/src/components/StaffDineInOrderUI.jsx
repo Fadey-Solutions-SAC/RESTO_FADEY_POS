@@ -217,7 +217,7 @@ export default function StaffDineInOrderUI({
     ? 'h-[min(50vh,460px)] max-h-[min(70vh,560px)] w-full min-h-0'
     : stackedSelfOrder
       ? 'min-h-0 flex-1 h-full'
-      : minHeightClass;
+      : `${minHeightClass} h-full min-h-0`;
 
   const searchBlock = (
     <div className="relative shrink-0">
@@ -231,8 +231,19 @@ export default function StaffDineInOrderUI({
     </div>
   );
 
+  const scrollAreaProps = {
+    className:
+      'min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y',
+    style: { touchAction: 'pan-y' },
+    onWheel: (e) => e.stopPropagation(),
+  };
+
   const categoriesBlock = (
-    <div className="flex shrink-0 flex-wrap gap-2">
+    <div
+      className="flex max-h-[min(22vh,168px)] shrink-0 flex-wrap gap-2 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
+      style={{ touchAction: 'pan-y' }}
+      onWheel={(e) => e.stopPropagation()}
+    >
       <button
         type="button"
         onClick={() => onSelectedCatChange('all')}
@@ -399,8 +410,9 @@ export default function StaffDineInOrderUI({
         <div className="shrink-0">{searchBlock}</div>
         <div className="shrink-0">{categoriesBlock}</div>
         <div
-          className="min-h-0 flex-1 overflow-y-scroll overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch]"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
           style={{ touchAction: 'pan-y' }}
+          onWheel={(e) => e.stopPropagation()}
         >
           {productGrid}
         </div>
@@ -431,15 +443,11 @@ export default function StaffDineInOrderUI({
   }
 
   return (
-    <div className={`flex min-h-0 flex-col gap-4 lg:flex-row lg:items-start ${rootClass} ${className}`}>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className={`flex min-h-0 flex-col gap-4 lg:flex-row lg:items-stretch ${rootClass} ${className}`}>
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="mb-3 shrink-0">{searchBlock}</div>
         <div className="mb-3 shrink-0">{categoriesBlock}</div>
-        <div
-          className={`min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] ${
-            embedded ? '' : 'min-h-[200px]'
-          }`}
-        >
+        <div {...scrollAreaProps}>
           {productGrid}
         </div>
       </div>
