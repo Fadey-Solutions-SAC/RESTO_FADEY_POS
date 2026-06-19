@@ -8,6 +8,7 @@ import {
   formatInsumoQty,
   formatInsumoWithUnit,
 } from '../utils/api';
+import { formatCatalogNameInput } from '../utils/catalogNameFormat';
 import toast from 'react-hot-toast';
 import { MdDownload, MdWarning, MdInventory2, MdAdd, MdList, MdExpandMore, MdExpandLess } from 'react-icons/md';
 import Modal from './Modal';
@@ -768,7 +769,7 @@ export default function LogisticaKardexModule() {
                 <input
                   className="input-field text-sm py-1.5 w-40"
                   value={insumoForm.nombre}
-                  onChange={(e) => setInsumoForm((f) => ({ ...f, nombre: e.target.value }))}
+                  onChange={(e) => setInsumoForm((f) => ({ ...f, nombre: formatCatalogNameInput(e.target.value) }))}
                   required
                 />
               </div>

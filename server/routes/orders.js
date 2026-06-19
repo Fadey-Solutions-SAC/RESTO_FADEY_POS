@@ -161,7 +161,8 @@ router.get('/kitchen', authenticateToken, (req, res) => {
     : req.user.role === 'cocina'
       ? 'cocina'
       : (station === 'bar' ? 'bar' : 'cocina');
-  let query = "SELECT * FROM orders WHERE status IN ('pending', 'preparing')";
+  let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing')
+    AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= datetime('now', 'localtime'))`;
   const params = [];
   if (type === 'delivery') query += " AND type = 'delivery'";
   else if (type === 'dine_in') query += " AND type = 'dine_in'";
@@ -329,7 +330,15 @@ router.post('/', authenticateToken, (req, res) => {
       return res.status(500).json({ error: 'El pedido se creó pero no se pudo recuperar. Recargue la pantalla.' });
     }
     const io = req.app.get('io');
-    if (io) { io.emit('new-order', order); io.emit('order-update', order); }
+    const kitchenHeld = String(order.kitchen_release_at || '').trim()
+      && queryOne(
+        "SELECT CASE WHEN datetime(?) > datetime('now', 'localtime') THEN 1 ELSE 0 END AS held",
+        [String(order.kitchen_release_at).trim()]
+      )?.held === 1;
+    if (io) {
+      if (!kitchenHeld) io.emit('new-order', order);
+      io.emit('order-update', order);
+    }
     emitInventoryUpdate({});
     recordWorkActivityEvent(req.user?.id, 'order_created', { module: 'pedidos', refId: order?.id });
     logOrderDebug(req, 'post_order_ok', { order_id: order.id, order_number: order.order_number });

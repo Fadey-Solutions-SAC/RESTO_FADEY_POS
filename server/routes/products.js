@@ -11,6 +11,7 @@ const {
   normalizeProductScheduleColumns,
   parseRestaurantSchedule,
 } = require('../services/productScheduleService');
+const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 
 const router = express.Router();
 
@@ -206,7 +207,8 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     available_days,
     schedule_type,
   } = req.body;
-  if (!name || price === undefined) return res.status(400).json({ error: 'Nombre y precio son requeridos' });
+  const productName = normalizeCatalogDisplayName(name);
+  if (!productName || price === undefined) return res.status(400).json({ error: 'Nombre y precio son requeridos' });
 
   const restaurant = queryOne('SELECT id, schedule FROM restaurants LIMIT 1');
   const scheduleFields = parseScheduleFieldsFromBody({
@@ -268,7 +270,7 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0)`,
     [
       id,
-      name,
+      productName,
       description || '',
       price,
       image || '',
@@ -393,7 +395,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       : 'igv');
   const safeModifierId = modifier_id === undefined ? null : String(modifier_id || '').trim();
   const safeNoteRequired = note_required === undefined ? null : (Number(note_required) === 1 ? 1 : 0);
-  const safeName = name === undefined ? null : name;
+  const safeName = name === undefined ? null : normalizeCatalogDisplayName(name);
   const safeDescription = description === undefined ? null : description;
   const safePrice = price === undefined ? null : price;
   const safeImage = image === undefined ? null : image;

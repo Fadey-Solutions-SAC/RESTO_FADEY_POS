@@ -2646,7 +2646,7 @@ function UsersSection({
   const savePermissions = async () => {
     try {
       await api.put(`/users/${permsUser.id}/permissions`, { permissions: perms });
-      toast.success(`Permisos actualizados para ${permsUser.full_name}`);
+      toast.success(`Permisos actualizados para ${permsUser.full_name}. Si ya está conectado, que cierre sesión y vuelva a entrar (o cambie de pestaña).`);
       setShowPermsModal(false);
     } catch (err) { toast.error(err.message); }
   };

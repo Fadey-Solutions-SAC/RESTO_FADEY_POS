@@ -70,8 +70,21 @@ export function AuthProvider({ children }) {
     window.location.href = '/';
   };
 
+  const refreshStaffProfile = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    try {
+      const data = await api.get('/auth/me');
+      applyAuthUserTheme(data);
+      setUser({ ...data, type: 'staff' });
+      return data;
+    } catch {
+      return null;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, customerLogin, customerRegister, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, customerLogin, customerRegister, logout, refreshStaffProfile }}>
       {children}
     </AuthContext.Provider>
   );

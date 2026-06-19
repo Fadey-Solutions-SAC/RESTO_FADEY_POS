@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../database');
 const kx = require('../services/kardexInventoryService');
+const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 
 const router = express.Router();
 router.use(authenticateToken, requireRole('admin'));
@@ -67,7 +68,7 @@ router.post('/insumos', (req, res) => {
       minimo_masa,
       minimo_kg,
     } = req.body || {};
-    const n = String(nombre || '').trim();
+    const n = normalizeCatalogDisplayName(nombre);
     if (!n) return res.status(400).json({ error: 'Nombre es requerido' });
     const area = normalizeInsumoArea(req.body?.insumo_area);
     const umed = sanitizeUnidadMasa(unidad_medida);
@@ -141,7 +142,7 @@ router.put('/insumos/:id', (req, res) => {
        insumo_area = COALESCE(?, insumo_area),
        updated_at = datetime('now') WHERE id = ?`,
       [
-        nombre != null ? String(nombre).trim() : null,
+        nombre != null ? normalizeCatalogDisplayName(nombre) : null,
         unidad_medida != null ? sanitizeUnidadMasa(unidad_medida) : null,
         stock_unidades != null ? Math.max(0, Number(stock_unidades)) : null,
         minimo_unidades != null ? Math.max(0, Number(minimo_unidades)) : null,

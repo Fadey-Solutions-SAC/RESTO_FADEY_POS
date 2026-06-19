@@ -31,7 +31,9 @@ export default function WorkTimeReportTab({
       <p className="text-sm text-[var(--ui-muted)]">
         El rol <strong>Administrador</strong> no entra en revisión de asistencia: su tiempo cuenta con la jornada cerrada.
         Para el resto, mientras quede en <strong>Pendiente</strong>, el tiempo computable es <strong>0</strong>.
-        Clasifique cada sesión cerrada como <strong>Asistente</strong>, <strong>Justificado</strong> o <strong>Ausente</strong>.
+        Clasifique cada jornada cerrada como <strong>Asistente</strong>, <strong>Justificado</strong> o <strong>Ausente</strong>.
+        Si el mismo usuario entra desde varios dispositivos (PC + teléfono), el reporte usa la <strong>primera entrada</strong> y la{' '}
+        <strong>última salida real</strong> del día; los accesos extra de monitoreo no acortan la jornada.
       </p>
 
       <div className="card">
@@ -81,7 +83,7 @@ export default function WorkTimeReportTab({
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-[var(--ui-body-text)]">{formatMinutes(item.total_minutes)}</p>
-                      <p className="text-xs text-[var(--ui-muted)]">{item.sessions_count} sesión(es)</p>
+                      <p className="text-xs text-[var(--ui-muted)]">{item.sessions_count} jornada(s)</p>
                     </div>
                   </div>
                 ))}
@@ -106,6 +108,14 @@ export default function WorkTimeReportTab({
                           <p className="text-sm font-medium text-[var(--ui-body-text)]">{row.full_name}</p>
                           <p className="text-xs text-[var(--ui-muted)]">Inicio: {formatDateTime(row.login_at)}</p>
                           <p className="text-xs text-[var(--ui-muted)]">Fin: {row.logout_at ? formatDateTime(row.logout_at) : 'Jornada activa'}</p>
+                          {Number(row.device_sessions_count || 0) > 1 ? (
+                            <p className="text-xs text-sky-600">
+                              {row.device_sessions_count} acceso(s) en el día
+                              {Number(row.parallel_sessions_count || 0) > 0
+                                ? ` · ${row.parallel_sessions_count} de monitoreo`
+                                : ''}
+                            </p>
+                          ) : null}
                           <p className="text-xs mt-1">
                             Asistencia:{' '}
                             <span className={row.attendance_status === 'asistente' || (isAdminSession && row.attendance_status === 'pending') ? 'text-emerald-600 font-medium' : row.attendance_status === 'pending' ? 'text-amber-600 font-medium' : 'text-[var(--ui-muted)]'}>

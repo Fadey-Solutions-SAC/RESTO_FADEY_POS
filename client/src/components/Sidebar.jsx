@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
-import { ADMIN_MODULE_PATHS, hasModulePermission } from '../utils/staffModuleAccess';
+import { ADMIN_MODULE_PATHS, canAccessStaffModule } from '../utils/staffModuleAccess';
 import EndShiftModal from './EndShiftModal';
 import AdminAttendanceReviewModal from './AdminAttendanceReviewModal';
 import {
@@ -106,15 +106,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const [isCajaExpanded, setIsCajaExpanded] = useState(location.pathname.startsWith('/admin/caja'));
   const [isMiRestaurantExpanded, setIsMiRestaurantExpanded] = useState(location.pathname.startsWith('/admin/mi-restaurant'));
   const [isAlmacenExpanded, setIsAlmacenExpanded] = useState(location.pathname.startsWith('/admin/almacen'));
-  const hasLinkPermission = (link) => {
-    /** Maestro: solo entra a Mi restaurante desde /admin (resto del panel sigue en /master). */
-    if (user?.role === 'master_admin') {
-      return link.to === '/admin/mi-restaurant';
-    }
-    if (Array.isArray(link.roles) && link.roles.length > 0 && !link.roles.includes(user?.role)) return false;
-    if (!link.moduleId) return link.roles.includes(user?.role);
-    return hasModulePermission(user, link.moduleId);
-  };
+  const hasLinkPermission = (link) => canAccessStaffModule(user, { moduleId: link.moduleId, roles: link.roles });
   const filtered = allLinks.filter(hasLinkPermission);
   const planAllowsAlmacenAvanzado = user?.service_plan !== 'basico';
   const subAlmacen = user?.sub_permissions?.almacen || {};

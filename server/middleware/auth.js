@@ -1,8 +1,8 @@
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
-const { queryOne, runSql } = require('../database');
+const { queryOne } = require('../database');
 const { getLockState, getMasterCredentialsPublic } = require('../masterAdminService');
 const { touchWorkSessionActivity } = require('../services/workActivityTracker');
+const { ensureOpenWorkSession: ensureUserWorkSession } = require('../services/workSessionService');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -50,7 +50,11 @@ function authenticateToken(req, res, next) {
       username: user.username,
       full_name: user.full_name,
     };
-    ensureOpenWorkSession(req.user);
+    try {
+      ensureUserWorkSession(req.user);
+    } catch (_) {
+      /* noop */
+    }
     touchWorkSessionActivity(req.user, { module: 'api', path: req.path });
     const lock = getLockState();
     if (lock.locked) {
@@ -59,37 +63,6 @@ function authenticateToken(req, res, next) {
     next();
   } catch (err) {
     return res.status(403).json({ error: 'Token inválido o expirado' });
-  }
-}
-
-function ensureOpenWorkSession(user) {
-  const trackableRoles = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery']);
-  if (!user?.id || !trackableRoles.has(user.role)) return;
-
-  try {
-    const openSession = queryOne(
-      'SELECT id FROM user_work_sessions WHERE user_id = ? AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1',
-      [user.id]
-    );
-    if (openSession?.id) return;
-
-    const att = String(user.role || '').toLowerCase() === 'admin' ? 'asistente' : 'pending';
-    runSql(
-      `INSERT INTO user_work_sessions
-       (id, user_id, session_token_id, username, full_name, role, login_at, photo_login, attendance_status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), NULL, ?, datetime('now'), datetime('now'))`,
-      [
-        uuidv4(),
-        user.id,
-        uuidv4(),
-        user.username || '',
-        user.full_name || '',
-        user.role || '',
-        att,
-      ]
-    );
-  } catch (_) {
-    // Best effort: auth should continue even if tracking fails.
   }
 }
 

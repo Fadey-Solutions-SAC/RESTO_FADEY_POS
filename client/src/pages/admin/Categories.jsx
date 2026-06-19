@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../utils/api';
+import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import { useSocket } from '../../hooks/useSocket';
 import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
@@ -87,7 +88,7 @@ export default function Categories() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="input-field" required />
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: formatCatalogNameInput(e.target.value) }))} className="input-field" required />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>

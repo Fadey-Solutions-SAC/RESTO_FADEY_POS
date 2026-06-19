@@ -33,6 +33,20 @@ export function hasModulePermission(user, moduleId) {
   return isPermissionEnabled(user.permissions[moduleId]);
 }
 
+/**
+ * Acceso a ruta admin: permiso explícito del usuario prevalece sobre la lista de roles por defecto.
+ */
+export function canAccessStaffModule(user, { moduleId, roles } = {}) {
+  if (!user) return false;
+  if (user.role === 'master_admin') {
+    return moduleId === 'mi_restaurant' || !moduleId;
+  }
+  if (moduleId && hasModulePermission(user, moduleId)) return true;
+  const roleList = Array.isArray(roles) ? roles : [];
+  if (roleList.length > 0 && !roleList.includes(user.role)) return false;
+  return moduleId ? hasModulePermission(user, moduleId) : roleList.includes(user.role);
+}
+
 export function getDefaultStaffPath(user) {
   if (!user) return '/';
   if (user.role === 'master_admin') return '/master';

@@ -12,6 +12,7 @@ import {
   DEFAULT_MENU_CARTA_COLORS,
   normalizeHex,
 } from '../../utils/generateMenuCartaSvg';
+import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 
 /** Editor con resaltado: líneas que empiezan (tras espacios) con # usan color de sección. */
 function MenuCartaSyntaxEditor({ value, onChange, bgColor, textColor, sectionColor }) {
@@ -521,7 +522,7 @@ export default function AutoPedidoAdmin() {
             <input
               className="input-field"
               value={productForm.name}
-              onChange={(e) => setProductForm((prev) => ({ ...prev, name: e.target.value }))}
+              onChange={(e) => setProductForm((prev) => ({ ...prev, name: formatCatalogNameInput(e.target.value) }))}
             />
           </div>
           <div>

@@ -64,7 +64,7 @@ function buildLiveDashboard() {
   const activeEx = activeMinutesExpr('s');
   const idleEx = idleMinutesExpr('s');
 
-  const activeStaff = queryAll(
+  const activeStaffRaw = queryAll(
     `SELECT
       s.id AS session_id,
       s.user_id,
@@ -81,8 +81,14 @@ function buildLiveDashboard() {
      FROM user_work_sessions s
      LEFT JOIN users u ON u.id = s.user_id
      WHERE s.logout_at IS NULL
-     ORDER BY datetime(s.login_at) DESC`
+     ORDER BY datetime(s.login_at) ASC`
   );
+
+  const activeStaffByUser = new Map();
+  for (const row of activeStaffRaw || []) {
+    if (!activeStaffByUser.has(row.user_id)) activeStaffByUser.set(row.user_id, row);
+  }
+  const activeStaff = [...activeStaffByUser.values()];
 
   const today = new Date().toISOString().split('T')[0];
   const todayStats = queryOne(

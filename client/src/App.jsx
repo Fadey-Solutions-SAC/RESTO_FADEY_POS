@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './context/AuthContext';
 import { shouldSkipEntrySplash, markEntrySplashDone } from './utils/entrySplashSession';
@@ -43,26 +43,25 @@ import { ADMIN_MODULE_PATHS, hasModulePermission, getDefaultStaffPath } from './
 
 function ProtectedRoute({ children, roles, moduleId }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="rf-loader rf-loader--md" /></div>;
   if (!user || user.type === 'customer') return <Navigate to="/" />;
   const hasPermission = moduleId ? hasModulePermission(user, moduleId) : true;
-  if (roles && !roles.includes(user.role)) {
-    /** Repartidor: no usa el layout /admin; solo la app móvil en `/delivery`. */
+  if (roles && !roles.includes(user.role) && !hasPermission) {
     if (user.role === 'delivery') {
       return <Navigate to="/delivery" replace />;
     }
-    /**
-     * Vista `/delivery` (DeliveryPanel) es solo para rol `delivery`.
-     * Cajero/admin/mozo con permiso de módulo deben usar la misma gestión que el administrador: `/admin/delivery` (Delivery.jsx).
-     */
-    if (
-      moduleId === 'delivery' &&
-      hasPermission &&
-      ['admin', 'cajero', 'mozo'].includes(String(user.role || ''))
-    ) {
-      return <Navigate to="/admin/delivery" replace />;
-    }
     return <Navigate to="/admin" replace />;
+  }
+  if (
+    moduleId === 'delivery' &&
+    user.role !== 'delivery' &&
+    hasPermission &&
+    ['admin', 'cajero', 'mozo'].includes(String(user.role || '')) &&
+    location.pathname.startsWith('/delivery') &&
+    !location.pathname.startsWith('/admin/delivery')
+  ) {
+    return <Navigate to="/admin/delivery" replace />;
   }
   if (moduleId && !hasPermission) return <Navigate to="/admin" replace />;
   return children;

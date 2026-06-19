@@ -20,6 +20,15 @@ function effectiveWorkedMinutesExpr(alias = 's') {
   END) END)`;
 }
 
+/** Misma regla que effectiveWorkedMinutesExpr, en JS para filas agregadas. */
+function effectiveWorkedMinutesFromValues({ rawMinutes, attendanceStatus, role }) {
+  const raw = Math.max(0, Number(rawMinutes) || 0);
+  if (String(role || '').toLowerCase() === 'admin') return raw;
+  const st = String(attendanceStatus || 'pending').trim().toLowerCase();
+  if (st === 'asistente') return raw;
+  return 0;
+}
+
 function parseDateKey(input) {
   const value = String(input || '').trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
@@ -43,6 +52,7 @@ function shiftLabelFromLoginSql(alias = 's') {
 module.exports = {
   rawWorkedMinutesExpr,
   effectiveWorkedMinutesExpr,
+  effectiveWorkedMinutesFromValues,
   parseDateKey,
   shiftLabelFromHour,
   shiftLabelFromLoginSql,

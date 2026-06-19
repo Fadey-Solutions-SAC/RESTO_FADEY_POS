@@ -5,6 +5,7 @@ const {
   assertProductAvailableForOrder,
   parseRestaurantSchedule,
 } = require('./services/productScheduleService');
+const { computeKitchenReleaseAtForReservation } = require('./services/reservationKitchenHold');
 
 function getOrderWithItems(orderId) {
   const order = queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -75,6 +76,9 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     customer_name,
     discount,
     customer_id,
+    hold_kitchen_for_reservation,
+    reservation_date,
+    reservation_time,
   } = body;
 
   const orderType = ['dine_in', 'delivery', 'pickup'].includes(type) ? type : 'dine_in';
@@ -228,11 +232,16 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     createdByUserName = 'Auto-pedido (cliente)';
   }
 
+  let kitchenReleaseAt = null;
+  if (hold_kitchen_for_reservation && reservation_date && reservation_time) {
+    kitchenReleaseAt = computeKitchenReleaseAtForReservation(reservation_date, reservation_time);
+  }
+
   tx.run(
     `INSERT INTO orders (
       id, order_number, customer_id, customer_name, restaurant_id, type, subtotal, tax, discount, delivery_fee, total,
-      payment_method, table_number, delivery_address, delivery_payment_modality, notes, sale_document_type, sale_document_number, created_by_user_id, created_by_user_name
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      payment_method, table_number, delivery_address, delivery_payment_modality, notes, sale_document_type, sale_document_number, created_by_user_id, created_by_user_name, kitchen_release_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       orderId,
       orderNumber,
@@ -254,6 +263,7 @@ function createOrderInTransaction(tx, orderId, body, actor) {
       saleDocumentNumber,
       createdByUserId,
       createdByUserName,
+      kitchenReleaseAt,
     ]
   );
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, formatCurrency } from '../../utils/api';
+import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import { useSocket } from '../../hooks/useSocket';
 import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
@@ -180,7 +181,7 @@ export default function Inventory() {
         <form onSubmit={handleAdd} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-            <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" required placeholder="Nombre del producto" />
+            <input type="text" value={form.name} onChange={e => setForm({ ...form, name: formatCatalogNameInput(e.target.value) })} className="input-field" required placeholder="Nombre del producto" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>

@@ -164,12 +164,17 @@ function getEffectivePermissions(planKey, role, rawPerms = {}, moduleOverrides =
   const r = String(role || '').toLowerCase();
   const ov = parseModuleOverrides(moduleOverrides);
   return MODULE_IDS.reduce((acc, id) => {
+    if (ov[id] === false) {
+      acc[id] = false;
+      return acc;
+    }
     const inPlan = planSet.has(id);
-    const topOk = inPlan && ov[id] !== false;
+    const userGranted = isPermissionEnabled(rawPerms[id]);
     if (r === 'admin') {
-      acc[id] = topOk;
+      acc[id] = inPlan;
     } else {
-      acc[id] = topOk && isPermissionEnabled(rawPerms[id]);
+      /** Permiso explícito en Usuarios prevalece sobre el plan SaaS (salvo bloqueo maestro). */
+      acc[id] = userGranted;
     }
     return acc;
   }, {});

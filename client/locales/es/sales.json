@@ -22,6 +22,7 @@
   "status": {
     "paid": "Pagado",
     "pending": "Pendiente",
-    "refunded": "Reembolsado"
+    "refunded": "Reembolsado",
+    "anulada": "Anulada"
   }
 }

@@ -16,7 +16,7 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 1024 : false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { user } = useAuth();
+  const { user, refreshStaffProfile } = useAuth();
   const location = useLocation();
   const [cajaOpen, setCajaOpen] = useState(null);
   const [checkingCaja, setCheckingCaja] = useState(true);
@@ -37,6 +37,15 @@ export default function Layout() {
   useSocket('register-update', () => {
     if (user?.role === 'mozo') checkCaja();
   });
+
+  useEffect(() => {
+    if (!user || user.type === 'customer' || typeof refreshStaffProfile !== 'function') return undefined;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshStaffProfile();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [user, refreshStaffProfile]);
 
   useEffect(() => {
     if (user?.role === 'mozo') {

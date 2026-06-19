@@ -2,6 +2,7 @@ import { useState, useEffect, useId } from 'react';
 import toast from 'react-hot-toast';
 import Modal from './Modal';
 import { api, parseLocaleNumber } from '../utils/api';
+import { formatCatalogNameInput } from '../utils/catalogNameFormat';
 import { MdAdd } from 'react-icons/md';
 
 const emptyForm = () => ({
@@ -71,7 +72,7 @@ export default function InsumoCreateModal({ isOpen, onClose, onSaved }) {
             <input
               className="input-field text-sm py-1.5 w-full"
               value={form.nombre}
-              onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, nombre: formatCatalogNameInput(e.target.value) }))}
               required
             />
           </div>

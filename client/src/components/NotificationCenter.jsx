@@ -76,7 +76,10 @@ export default function NotificationCenter({ className = '' }) {
   useSocket('billing-document-update', loadOperationalAlerts);
   useSocket('staff-data-update', (p) => {
     const d = p?.domain;
-    if (d === 'catalog' || d === 'app_config' || d === 'finance_ops') loadOperationalAlerts();
+    if (d === 'catalog' || d === 'app_config' || d === 'finance_ops' || d === 'reservations') loadOperationalAlerts();
+  });
+  useSocket('reservation-reminder', () => {
+    loadOperationalAlerts();
   });
 
   const operationalWarnings = useMemo(() => {

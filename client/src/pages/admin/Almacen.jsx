@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSocket } from '../../hooks/useSocket';
 import { useSearchParams } from 'react-router-dom';
 import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
+import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline } from 'react-icons/md';
@@ -120,7 +121,7 @@ function CreateProductModal({
           <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre</label>
           <input
             value={itemForm.name}
-            onChange={e => setItemForm({ ...itemForm, name: e.target.value })}
+            onChange={e => setItemForm({ ...itemForm, name: formatCatalogNameInput(e.target.value) })}
             className="input-field"
             required
             placeholder="Ej: Gaseosa 500ml o Harina x Kg"

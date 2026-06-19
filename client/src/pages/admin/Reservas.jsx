@@ -177,6 +177,9 @@ export default function Reservas() {
             customer_id: selectedCustomerId || '',
             table_number: selectedTable ? String(selectedTable.number || '') : '',
             customer_name: clientName,
+            hold_kitchen_for_reservation: true,
+            reservation_date: createdReservation?.date || form.date,
+            reservation_time: createdReservation?.time || form.time,
             notes: [
               `RESERVA_ID:${createdReservation.id}`,
               `Reserva: ${createdReservation?.date || form.date} ${createdReservation?.time || form.time}`,
@@ -188,13 +191,17 @@ export default function Reservas() {
           });
           orderCreated = true;
         } catch (orderErr) {
-          toast.error(`Reserva guardada, pero el pedido no se pudo enviar: ${orderErr.message}`);
+          toast.error(`Reserva guardada, pero el pedido no se registró: ${orderErr.message}`);
         }
       }
       setShowModal(false);
       resetForm();
       if (hadOrderLines) {
-        toast.success(orderCreated ? 'Reserva creada y pedido enviado a preparación' : 'Reserva creada');
+        toast.success(
+          orderCreated
+            ? 'Reserva creada. El pedido se enviará a cocina 45 min antes de la hora reservada'
+            : 'Reserva creada'
+        );
       } else {
         toast.success('Reserva creada');
       }
@@ -208,6 +215,28 @@ export default function Reservas() {
     try {
       await api.put(`/admin-modules/reservations/${id}`, { status: 'cancelled' });
       toast.success('Reserva cancelada');
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const tableById = useMemo(() => {
+    const map = new Map();
+    (tables || []).forEach((t) => map.set(t.id, t));
+    return map;
+  }, [tables]);
+
+  const tableLabel = (tableId) => {
+    if (!tableId) return 'Sin mesa';
+    const t = tableById.get(tableId);
+    return t ? (t.name || `Mesa ${t.number}`) : 'Mesa asignada';
+  };
+
+  const assignTable = async (reservationId, tableId) => {
+    try {
+      await api.put(`/admin-modules/reservations/${reservationId}`, { table_id: tableId || '' });
+      toast.success(tableId ? 'Mesa asignada a la reserva' : 'Mesa quitada de la reserva');
       load();
     } catch (err) {
       toast.error(err.message);
@@ -298,6 +327,10 @@ export default function Reservas() {
                         {r.phone}
                       </p>
                     )}
+                    <p className="text-xs ui-text-muted mt-0.5">
+                      <MdEventSeat className="inline text-xs mr-1" />
+                      {tableLabel(r.table_id)}
+                    </p>
                     {r.notes && (
                       <p className="text-xs ui-text-muted mt-1 max-w-[520px] truncate">
                         Nota: {r.notes}
@@ -305,7 +338,20 @@ export default function Reservas() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+                  <select
+                    value={r.table_id || ''}
+                    onChange={(e) => assignTable(r.id, e.target.value)}
+                    className="input-field text-xs py-1.5 min-w-[140px] max-w-[200px]"
+                    title="Asignar o cambiar mesa"
+                  >
+                    <option value="">Sin mesa</option>
+                    {tables.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name || `Mesa ${t.number}`} (Cap. {t.capacity})
+                      </option>
+                    ))}
+                  </select>
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[r.status]}`}>
                     {statusNames[r.status]}
                   </span>
@@ -476,7 +522,7 @@ export default function Reservas() {
                           <span>Total</span>
                           <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
                         </div>
-                        <p className="text-xs text-[#9CA3AF]">Se enviará a cocina al pulsar &quot;Crear Reserva&quot;.</p>
+                        <p className="text-xs text-[#9CA3AF]">Se programará para cocina 45 min antes de la hora reservada.</p>
                       </>
                     ) : null
                   }

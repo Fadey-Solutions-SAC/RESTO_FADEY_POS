@@ -7,9 +7,15 @@ const { getActiveCajaById, getFirstAutoAssignCajaId } = require('../cajaSettings
 const {
   rawWorkedMinutesExpr,
   effectiveWorkedMinutesExpr,
-  parseDateKey,
 } = require('../lib/workSessionSql');
 const { buildAnalyticsBundle } = require('../services/workProductivityService');
+const {
+  queryAggregatedJornadas,
+  queryDeviceSessions,
+  summarizeJornadas,
+  parseDateKey,
+  ensureOpenWorkSession,
+} = require('../services/workSessionService');
 
 const router = express.Router();
 const VALID_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery']);
@@ -23,23 +29,6 @@ function isPermissionEnabled(value) {
 }
 
 const FINAL_ATTENDANCE = new Set(['asistente', 'justificado', 'ausente']);
-
-function ensureOpenWorkSession(user) {
-  const trackableRoles = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery']);
-  if (!user?.id || !trackableRoles.has(user.role)) return;
-  const existing = queryOne(
-    'SELECT id FROM user_work_sessions WHERE user_id = ? AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1',
-    [user.id]
-  );
-  if (existing?.id) return;
-  const att = String(user.role || '').toLowerCase() === 'admin' ? 'asistente' : 'pending';
-  runSql(
-    `INSERT INTO user_work_sessions
-      (id, user_id, session_token_id, username, full_name, role, login_at, photo_login, attendance_status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'), NULL, ?, datetime('now'), datetime('now'))`,
-    [uuidv4(), user.id, uuidv4(), user.username || '', user.full_name || '', user.role || '', att]
-  );
-}
 
 function createEmptyPermissions() {
   return MODULE_IDS.reduce((acc, id) => {
@@ -314,71 +303,16 @@ router.get('/work-sessions', authenticateToken, requireRole('admin'), (req, res)
   const from = parseDateKey(req.query?.from);
   const to = parseDateKey(req.query?.to);
   const userId = String(req.query?.user_id || '').trim();
-  const where = [];
-  const params = [];
 
-  if (from) {
-    where.push("date(datetime(s.login_at, 'localtime')) >= date(?)");
-    params.push(from);
-  }
-  if (to) {
-    where.push("date(datetime(s.login_at, 'localtime')) <= date(?)");
-    params.push(to);
-  }
-  if (userId && userId !== 'all') {
-    where.push('s.user_id = ?');
-    params.push(userId);
-  }
-
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const rawEx = rawWorkedMinutesExpr('s');
-  const effEx = effectiveWorkedMinutesExpr('s');
-
-  const sessions = queryAll(
-    `SELECT
-      s.id,
-      s.user_id,
-      COALESCE(NULLIF(u.full_name, ''), s.full_name) AS full_name,
-      COALESCE(NULLIF(u.username, ''), s.username) AS username,
-      COALESCE(NULLIF(u.role, ''), s.role) AS role,
-      s.login_at,
-      s.logout_at,
-      COALESCE(s.attendance_status, 'pending') AS attendance_status,
-      ${rawEx} AS raw_worked_minutes,
-      ${effEx} AS worked_minutes,
-      CASE WHEN length(COALESCE(s.photo_login, '')) > 10 THEN 1 ELSE 0 END AS has_photo_login,
-      CASE WHEN length(COALESCE(s.photo_logout, '')) > 10 THEN 1 ELSE 0 END AS has_photo_logout
-     FROM user_work_sessions s
-     LEFT JOIN users u ON u.id = s.user_id
-     ${whereSql}
-     ORDER BY s.login_at DESC
-     LIMIT 300`,
-    params
-  );
-
-  const summary = queryAll(
-    `SELECT
-      s.user_id,
-      COALESCE(NULLIF(u.full_name, ''), s.full_name) AS full_name,
-      COALESCE(NULLIF(u.username, ''), s.username) AS username,
-      COALESCE(NULLIF(u.role, ''), s.role) AS role,
-      COUNT(*) AS sessions_count,
-      COALESCE(SUM(${effEx}), 0) AS total_minutes
-     FROM user_work_sessions s
-     LEFT JOIN users u ON u.id = s.user_id
-     ${whereSql}
-     GROUP BY
-      s.user_id,
-      COALESCE(NULLIF(u.full_name, ''), s.full_name),
-      COALESCE(NULLIF(u.username, ''), s.username),
-      COALESCE(NULLIF(u.role, ''), s.role)
-     ORDER BY total_minutes DESC`,
-    params
-  );
+  const jornadas = queryAggregatedJornadas({ from, to, userId });
+  const deviceSessions = queryDeviceSessions({ from, to, userId });
+  const summary = summarizeJornadas(jornadas);
 
   res.json({
     filters: { from, to, user_id: userId || 'all' },
-    sessions,
+    jornadas,
+    device_sessions: deviceSessions,
+    sessions: jornadas,
     summary,
   });
 });
@@ -433,6 +367,7 @@ router.get('/attendance-review/today', authenticateToken, requireRole('admin'), 
      LEFT JOIN users u ON u.id = s.user_id
      WHERE date(datetime(s.login_at, 'localtime')) = date('now', 'localtime')
        AND COALESCE(s.attendance_status, 'pending') = 'pending'
+       AND COALESCE(s.session_kind, 'jornada') = 'jornada'
        AND lower(coalesce(nullif(u.role, ''), nullif(s.role, ''), '')) != 'admin'
      ORDER BY datetime(s.login_at) ASC`
   );

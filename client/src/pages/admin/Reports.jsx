@@ -14,6 +14,7 @@ import {
   MdRefresh,
   MdPointOfSale,
   MdDownload,
+  MdPrint,
   MdShoppingCart,
   MdVolunteerActivism,
   MdAutoGraph,
@@ -48,6 +49,168 @@ const formatDateTime = (dateValue) => {
   return new Date(`${dateValue}`.includes('T') ? dateValue : `${dateValue}Z`)
     .toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
+
+const DENOMINATION_VALUES = {
+  b200: 200,
+  b100: 100,
+  b50: 50,
+  b20: 20,
+  b10: 10,
+  m5: 5,
+  m2: 2,
+  m1: 1,
+  c50: 0.5,
+  c20: 0.2,
+  c10: 0.1,
+};
+
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+const CLOSED_REGISTER_PRINT_STYLES = `
+  @page { margin: 12mm; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; padding: 0; margin: 0; }
+  h2 { font-size: 16px; margin: 0 0 4px; text-transform: uppercase; color: #111827; }
+  h3 { font-size: 13px; font-weight: 500; margin: 0 0 12px; color: #374151; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; margin: 12px 0 6px; color: #374151; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 2px 0; color: #111827; }
+  .row span:last-child { text-align: right; }
+  .row.bold { font-weight: 700; }
+  .total-row { font-weight: 700; }
+  .sep { border-top: 1px dashed #9ca3af; margin: 8px 0; }
+  .diff-pos { color: #047857; font-weight: 700; }
+  .diff-neg { color: #b91c1c; font-weight: 700; }
+  .muted { color: #6b7280; font-size: 11px; }
+`;
+
+function buildClosedRegisterPrintHtml(register) {
+  if (!register) return '';
+  const arqueo = register.arqueo || {};
+  const diff = Number(arqueo.difference ?? 0);
+  const diffClass = diff >= 0 ? 'diff-pos' : 'diff-neg';
+  const counted = arqueo.counted_cash ?? register.closing_amount ?? 0;
+  const onlineAmt = Number(arqueo.payment_breakdown?.online ?? 0);
+  const parts = [];
+  const row = (left, right, cls = 'row') =>
+    `<div class="${cls}"><span>${escapeHtml(left)}</span><span>${escapeHtml(right)}</span></div>`;
+
+  parts.push('<h2>REPORTE DE CIERRE DE CAJA</h2>');
+  parts.push(`<h3>${escapeHtml(register.user_name || '-')} — ${escapeHtml(formatDateTime(register.closed_at))}</h3>`);
+  parts.push('<div class="sep"></div>');
+  parts.push(row('Apertura', formatDateTime(register.opened_at)));
+  parts.push(row('Cierre', formatDateTime(register.closed_at)));
+  parts.push('<div class="sep"></div>');
+  parts.push(row('MONTO APERTURA', formatCurrency(register.opening_amount || 0), 'row bold'));
+  parts.push('<div class="sep"></div>');
+  parts.push(row('Ventas (Efectivo)', formatCurrency(register.total_cash || 0)));
+  parts.push(row('Ventas (Yape)', formatCurrency(register.total_yape || 0)));
+  parts.push(row('Ventas (Plin)', formatCurrency(register.total_plin || 0)));
+  parts.push(row('Ventas (Tarjeta)', formatCurrency(register.total_card || 0)));
+  if (onlineAmt > 0) parts.push(row('Ventas (Online)', formatCurrency(onlineAmt)));
+  parts.push('<div class="sep"></div>');
+  parts.push(row('TOTAL VENTAS', formatCurrency(register.total_sales || 0), 'row total-row'));
+  parts.push(row('Propinas', formatCurrency(arqueo.total_tips || 0)));
+  parts.push('<div class="sep"></div>');
+  parts.push(row('EFECTIVO ESPERADO', formatCurrency(arqueo.expected_cash || 0), 'row bold'));
+  parts.push('<div class="sep"></div>');
+  parts.push(row('DETALLE ARQUEO', '', 'row bold'));
+  Object.entries(DENOMINATION_LABELS).forEach(([key, label]) => {
+    const qty = Number(arqueo.denominations?.[key] || 0);
+    if (qty > 0) {
+      const subtotal = qty * (DENOMINATION_VALUES[key] || 0);
+      parts.push(row(`${label} x ${qty}`, formatCurrency(subtotal)));
+    }
+  });
+  parts.push(row('EFECTIVO CONTADO', formatCurrency(counted), 'row bold'));
+  parts.push(
+    `<div class="row bold ${diffClass}"><span>DIFERENCIA</span><span>${diff > 0 ? '+' : ''}${escapeHtml(formatCurrency(diff))}</span></div>`
+  );
+  const obs = arqueo.observations || register.notes || '';
+  if (obs) parts.push(row('OBS:', obs));
+
+  const incomeMov = (register.movements || []).filter((m) => m.type === 'income');
+  const expenseMov = (register.movements || []).filter((m) => m.type === 'expense');
+  const notesDebit = (register.notes_list || []).filter((n) => n.note_type === 'debit');
+  const notesCredit = (register.notes_list || []).filter((n) => n.note_type === 'credit');
+
+  if (incomeMov.length) {
+    parts.push('<p class="section-title">Ingresos</p>');
+    incomeMov.forEach((mv) => {
+      parts.push(row(`${formatDateTime(mv.created_at)} · ${mv.concept || '-'}`, formatCurrency(mv.amount || 0)));
+    });
+  }
+  if (expenseMov.length) {
+    parts.push('<p class="section-title">Egresos</p>');
+    expenseMov.forEach((mv) => {
+      parts.push(row(`${formatDateTime(mv.created_at)} · ${mv.concept || '-'}`, formatCurrency(mv.amount || 0)));
+    });
+  }
+  if (notesDebit.length) {
+    parts.push('<p class="section-title">Notas de débito</p>');
+    notesDebit.forEach((note) => {
+      parts.push(row(`${formatDateTime(note.created_at)} · ${note.reason || '-'}`, formatCurrency(note.amount || 0)));
+    });
+  }
+  if (notesCredit.length) {
+    parts.push('<p class="section-title">Notas de crédito</p>');
+    notesCredit.forEach((note) => {
+      parts.push(row(`${formatDateTime(note.created_at)} · ${note.reason || '-'}`, formatCurrency(note.amount || 0)));
+    });
+  }
+  if (Array.isArray(register.sold_products) && register.sold_products.length) {
+    parts.push('<p class="section-title">Productos vendidos</p>');
+    register.sold_products.forEach((item) => {
+      const qty = Number(item.total_qty || 0);
+      const unit = qty > 0 ? Number(item.total_amount || 0) / qty : 0;
+      parts.push(row(`${item.product_name} x ${qty}`, formatCurrency(item.total_amount || 0)));
+      parts.push(`<div class="row muted"><span>Precio unit.</span><span>${escapeHtml(formatCurrency(unit))}</span></div>`);
+    });
+  }
+
+  return parts.join('');
+}
+
+function printClosedRegisterHtml(bodyHtml) {
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.style.visibility = 'hidden';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc || !iframe.contentWindow) {
+    document.body.removeChild(iframe);
+    throw new Error('No se pudo preparar la impresión');
+  }
+
+  doc.open();
+  doc.write(`<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Cierre de caja</title>
+    <style>${CLOSED_REGISTER_PRINT_STYLES}</style>
+  </head>
+  <body>${bodyHtml}</body>
+</html>`);
+  doc.close();
+
+  setTimeout(() => {
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+    setTimeout(() => {
+      if (document.body.contains(iframe)) document.body.removeChild(iframe);
+    }, 700);
+  }, 200);
+}
 
 function formatPct1(n) {
   const x = Number(n);
@@ -203,6 +366,7 @@ export default function Reports() {
   const [billingPdfPreview, setBillingPdfPreview] = useState(null);
   const [selectedClosedRegister, setSelectedClosedRegister] = useState(null);
   const [loadingClosedRegister, setLoadingClosedRegister] = useState(false);
+  const [printingClosedRegisterId, setPrintingClosedRegisterId] = useState('');
   const [productoInformeDetail, setProductoInformeDetail] = useState(null);
   const [productoInformeLoading, setProductoInformeLoading] = useState(false);
   const [productoInformeRegisterId, setProductoInformeRegisterId] = useState('');
@@ -500,6 +664,22 @@ export default function Reports() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  /** Impresión clásica (diálogo del navegador), no tiketera térmica. */
+  const printClosedRegisterManual = async (register) => {
+    if (!register?.id || printingClosedRegisterId) return;
+    try {
+      setPrintingClosedRegisterId(register.id);
+      const detail = Array.isArray(register.movements)
+        ? register
+        : await api.get(`/reports/closed-registers/${register.id}`);
+      printClosedRegisterHtml(buildClosedRegisterPrintHtml(detail));
+    } catch (err) {
+      toast.error(err.message || 'No se pudo imprimir el cierre de caja');
+    } finally {
+      setPrintingClosedRegisterId('');
+    }
   };
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>;
@@ -1043,6 +1223,14 @@ export default function Reports() {
                             <MdVisibility /> Ver detalle
                           </button>
                           <button
+                            type="button"
+                            onClick={() => printClosedRegisterManual(r)}
+                            disabled={printingClosedRegisterId === r.id}
+                            className="text-xs px-3 py-1.5 bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] rounded-lg hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <MdPrint /> {printingClosedRegisterId === r.id ? 'Preparando…' : 'Imprimir'}
+                          </button>
+                          <button
                             onClick={() => downloadClosedRegisterReport(r)}
                             className="text-xs px-3 py-1.5 bg-[#3B82F6] text-white rounded-lg hover:bg-[#2563EB] inline-flex items-center gap-1"
                           >
@@ -1514,7 +1702,15 @@ export default function Reports() {
         )}
         {selectedClosedRegister && !loadingClosedRegister && (
           <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => printClosedRegisterManual(selectedClosedRegister)}
+                disabled={printingClosedRegisterId === selectedClosedRegister.id}
+                className="text-xs px-3 py-1.5 bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] rounded-lg hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <MdPrint /> {printingClosedRegisterId === selectedClosedRegister.id ? 'Preparando…' : 'Imprimir cierre de caja'}
+              </button>
               <button
                 type="button"
                 onClick={() => downloadClosedRegisterReport(selectedClosedRegister)}

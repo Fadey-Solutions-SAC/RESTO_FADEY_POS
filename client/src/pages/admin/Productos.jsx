@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { showStockInOrderingUI } from '../../utils/productStockDisplay';
+import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import {
@@ -783,7 +784,7 @@ export default function Productos() {
       <Modal isOpen={showProductModal} onClose={() => setShowProductModal(false)} title={editProduct ? t('products.editTitle') : t('products.newTitle')} size="lg">
         <form onSubmit={handleProductSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2"><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.name')}</label><input value={productForm.name} onChange={e => setProductForm({ ...productForm, name: e.target.value })} className="input-field" required placeholder={t('products.namePlaceholder')} /></div>
+            <div className="col-span-2"><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.name')}</label><input value={productForm.name} onChange={e => setProductForm({ ...productForm, name: formatCatalogNameInput(e.target.value) })} className="input-field" required placeholder={t('products.namePlaceholder')} /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -1160,7 +1161,7 @@ export default function Productos() {
 
       <Modal isOpen={showCatModal} onClose={() => setShowCatModal(false)} title={editCat ? 'Editar Categoría' : 'Nueva Categoría'} size="sm">
         <form onSubmit={handleCatSubmit} className="space-y-4">
-          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre</label><input value={catForm.name} onChange={e => setCatForm({ ...catForm, name: e.target.value })} className="input-field" required placeholder="Ej: Entradas" /></div>
+          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre</label><input value={catForm.name} onChange={e => setCatForm({ ...catForm, name: formatCatalogNameInput(e.target.value) })} className="input-field" required placeholder="Ej: Entradas" /></div>
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Descripción</label><textarea value={catForm.description} onChange={e => setCatForm({ ...catForm, description: e.target.value })} className="input-field" rows="2" placeholder="Descripción..." /></div>
           <div className="flex gap-3"><button type="button" onClick={() => setShowCatModal(false)} className="btn-secondary flex-1">Cancelar</button><button type="submit" className="btn-primary flex-1">{editCat ? 'Guardar' : 'Crear'}</button></div>
         </form>

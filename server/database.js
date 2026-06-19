@@ -1144,6 +1144,19 @@ async function initDatabase() {
     );
     addOrderColIfMissing('payment_breakdown', "ALTER TABLE orders ADD COLUMN payment_breakdown TEXT DEFAULT NULL");
     addOrderColIfMissing('tip_amount', 'ALTER TABLE orders ADD COLUMN tip_amount REAL NOT NULL DEFAULT 0');
+    addOrderColIfMissing('kitchen_release_at', 'ALTER TABLE orders ADD COLUMN kitchen_release_at TEXT');
+
+    const reservationColumns = queryAll('PRAGMA table_info(reservations)');
+    const addReservationColIfMissing = (colName, ddl) => {
+      const cols = queryAll('PRAGMA table_info(reservations)');
+      if (!cols.some((col) => col.name === colName)) db.run(ddl);
+    };
+    if (!reservationColumns.some((col) => col.name === 'kitchen_prep_sent_at')) {
+      addReservationColIfMissing('kitchen_prep_sent_at', 'ALTER TABLE reservations ADD COLUMN kitchen_prep_sent_at TEXT');
+    }
+    if (!reservationColumns.some((col) => col.name === 'caja_verify_sent_at')) {
+      addReservationColIfMissing('caja_verify_sent_at', 'ALTER TABLE reservations ADD COLUMN caja_verify_sent_at TEXT');
+    }
     try {
       db.run(
         "UPDATE orders SET delivery_payment_modality = 'contra_entrega' WHERE type = 'delivery' AND (delivery_payment_modality IS NULL OR TRIM(delivery_payment_modality) = '')"
@@ -1296,6 +1309,10 @@ async function initDatabase() {
     }
     if (!workSessionColNames.has('pause_minutes')) {
       db.run('ALTER TABLE user_work_sessions ADD COLUMN pause_minutes INTEGER DEFAULT 0');
+    }
+    if (!workSessionColNames.has('session_kind')) {
+      db.run("ALTER TABLE user_work_sessions ADD COLUMN session_kind TEXT DEFAULT 'jornada'");
+      db.run("UPDATE user_work_sessions SET session_kind = 'jornada' WHERE session_kind IS NULL OR trim(session_kind) = ''");
     }
 
     db.run(`

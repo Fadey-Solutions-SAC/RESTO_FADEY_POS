@@ -347,6 +347,12 @@ function logSqlitePersistenceWarnings() {
 async function start() {
   await initDatabase();
   try {
+    const { migrateCatalogNamesToUppercase } = require('./services/catalogNameMigration');
+    migrateCatalogNamesToUppercase();
+  } catch (err) {
+    console.warn('[catalog-names] migración no ejecutada:', err.message || err);
+  }
+  try {
     const { initPosSaasIdentity } = require('./services/posSaasIdentityService');
     initPosSaasIdentity();
   } catch (err) {
@@ -370,6 +376,12 @@ async function start() {
     startProductSalesMidnightJob();
   } catch (err) {
     console.warn('[product-sales-idle] job nocturno no iniciado:', err.message || err);
+  }
+  try {
+    const { startReservationScheduler } = require('./services/reservationSchedulerService');
+    startReservationScheduler();
+  } catch (err) {
+    console.warn('[reservation-scheduler] no iniciado:', err.message || err);
   }
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {

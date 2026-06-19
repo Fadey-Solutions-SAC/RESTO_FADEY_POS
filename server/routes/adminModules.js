@@ -20,6 +20,7 @@ function broadcastStaffData(domain) {
 const { consultarPadronPeru } = require('../peruConsultaPadron');
 const { suggestComboProducts } = require('../services/comboSuggestService');
 const { resolveRestaurantId, syncPrinterRoutesFromImpresoras, listPrinterRoutes } = require('../printerRoutesService');
+const { computeKitchenReleaseAtForReservation } = require('../services/reservationKitchenHold');
 
 router.use(authenticateToken, requireRole('admin', 'cajero', 'mozo'));
 
@@ -785,10 +786,15 @@ router.put('/reservations/:id', (req, res) => {
   const safeGuests = guests === undefined || guests === null || Number.isNaN(Number(guests))
     ? null
     : Number(guests);
+  const scheduleChanged =
+    String(nextDate) !== String(existing.date) || String(nextTime).slice(0, 5) !== String(existing.time || '').slice(0, 5);
+  const resetScheduleFlags = scheduleChanged && ['confirmed', 'pending'].includes(String(nextStatus));
   runSql(
     `UPDATE reservations
      SET client_name = COALESCE(?, client_name), phone = COALESCE(?, phone), date = COALESCE(?, date), time = COALESCE(?, time),
          guests = COALESCE(?, guests), table_id = COALESCE(?, table_id), notes = COALESCE(?, notes), status = COALESCE(?, status),
+         kitchen_prep_sent_at = CASE WHEN ? THEN NULL ELSE kitchen_prep_sent_at END,
+         caja_verify_sent_at = CASE WHEN ? THEN NULL ELSE caja_verify_sent_at END,
          updated_at = datetime('now')
      WHERE id = ?`,
     [
@@ -800,9 +806,50 @@ router.put('/reservations/:id', (req, res) => {
       safeValue(table_id),
       safeValue(notes),
       safeValue(status),
+      resetScheduleFlags ? 1 : 0,
+      resetScheduleFlags ? 1 : 0,
       req.params.id,
     ]
   );
+
+  if (resetScheduleFlags) {
+    const marker = `RESERVA_ID:${req.params.id}`;
+    const kitchenReleaseAt = computeKitchenReleaseAtForReservation(nextDate, nextTime);
+    const linkedHeld = queryAll(
+      "SELECT id FROM orders WHERE notes LIKE ? AND status IN ('pending','preparing') AND kitchen_release_at IS NOT NULL",
+      [`%${marker}%`]
+    );
+    for (const row of linkedHeld) {
+      runSql(
+        "UPDATE orders SET kitchen_release_at = ?, updated_at = datetime('now') WHERE id = ?",
+        [kitchenReleaseAt, row.id]
+      );
+    }
+  }
+
+  const tableAssignmentChanged =
+    table_id !== undefined && String(nextTableId || '') !== String(existing.table_id || '');
+  if (tableAssignmentChanged) {
+    const marker = `RESERVA_ID:${req.params.id}`;
+    const tableNumber = nextTableId
+      ? String(queryOne('SELECT number FROM tables WHERE id = ?', [nextTableId])?.number || '')
+      : '';
+    const linkedForTable = queryAll(
+      "SELECT id FROM orders WHERE notes LIKE ? AND status != 'cancelled'",
+      [`%${marker}%`]
+    );
+    const io = req.app.get('io');
+    for (const row of linkedForTable) {
+      runSql(
+        "UPDATE orders SET table_number = ?, updated_at = datetime('now') WHERE id = ?",
+        [tableNumber, row.id]
+      );
+      if (io) {
+        const updatedOrder = getOrderWithItems(row.id);
+        if (updatedOrder) io.emit('order-update', updatedOrder);
+      }
+    }
+  }
 
   if (String(nextStatus) === 'cancelled') {
     const marker = `RESERVA_ID:${req.params.id}`;

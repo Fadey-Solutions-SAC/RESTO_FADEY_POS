@@ -135,7 +135,7 @@ import {
   MdCheckCircle, MdAttachMoney, MdPeople, MdClose,
   MdAccountBalanceWallet, MdTrendingUp, MdTrendingDown,
   MdRestaurantMenu,
-  MdAccessTime, MdPersonAdd, MdEmail, MdSearch,
+  MdAccessTime, MdPersonAdd, MdSearch,
   MdDeliveryDining,
   MdEdit, MdDelete, MdPrint, MdSave,
   MdSwapHoriz, MdMerge,
@@ -400,7 +400,6 @@ export default function POSPanel() {
   const [padronUsedBump, setPadronUsedBump] = useState(0);
   const [openingAmount, setOpeningAmount] = useState('');
   const [showCloseModal, setShowCloseModal] = useState(false);
-  const [sendingCloseMail, setSendingCloseMail] = useState(false);
   const [activeCajaOption, setActiveCajaOption] = useState(searchParams.get('view') || 'cobrar');
   const [printingConfig, setPrintingConfig] = useState(DEFAULT_PRINTING_CONFIG);
   const cajaPaperWidthMm = useMemo(() => {
@@ -622,6 +621,29 @@ export default function POSPanel() {
     finally { setLoading(false); }
   };
 
+  const reservationAlertToastIdsRef = useRef(new Set());
+
+  const syncReservationAlertToasts = useCallback(async () => {
+    try {
+      const data = await api.get('/reports/operational-alerts');
+      const alerts = (data?.alerts || []).filter((a) => String(a?.id || '').startsWith('reserva_caja_'));
+      const nextIds = new Set(alerts.map((a) => a.id));
+      for (const id of reservationAlertToastIdsRef.current) {
+        if (!nextIds.has(id)) toast.dismiss(id);
+      }
+      for (const alert of alerts) {
+        toast(`${alert.title}: ${alert.message}`, {
+          id: alert.id,
+          duration: Infinity,
+          icon: '📅',
+        });
+      }
+      reservationAlertToastIdsRef.current = nextIds;
+    } catch (_) {
+      /* noop */
+    }
+  }, []);
+
   const loadPrinterConfig = async () => {
     try {
       const cfg = hasElectronPrinting()
@@ -689,14 +711,28 @@ export default function POSPanel() {
     }
   }, [activeCajaOption]);
   useActiveInterval(loadData, 10000);
-  useSocket('order-update', loadData);
+  useSocket('order-update', () => {
+    void loadData();
+    void syncReservationAlertToasts();
+  });
   useSocket('table-update', loadData);
   useSocket('salones-update', loadData);
   useSocket('inventory-update', loadData);
   useSocket('staff-data-update', (payload) => {
     const d = payload?.domain;
     if (['modifiers', 'reservations', 'customers', 'app_config', 'catalog', 'combos'].includes(d)) void loadData();
+    if (d === 'reservations') void syncReservationAlertToasts();
   });
+  useSocket('reservation-reminder', () => {
+    void loadData();
+    void syncReservationAlertToasts();
+  });
+
+  useEffect(() => {
+    void syncReservationAlertToasts();
+    const interval = setInterval(() => void syncReservationAlertToasts(), 20000);
+    return () => clearInterval(interval);
+  }, [syncReservationAlertToasts]);
 
   useEffect(() => {
     if (!paymentOptions.some(opt => opt.value === paymentMethod)) {
@@ -976,52 +1012,69 @@ export default function POSPanel() {
       }
     } catch (err) { toast.error(err.message); }
   };
-  const sendCloseByEmail = async () => {
-    if (closingAmount === '') return toast.error('Ingresa el efectivo contado para enviar el reporte');
-    const amount = roundMoneySoles(parseFloat(closingAmount));
-    if (Number.isNaN(amount) || amount < 0) return toast.error('El efectivo contado no es válido');
-    try {
-      setSendingCloseMail(true);
-      await api.post('/pos/send-close-email', {
-        ...posRegisterBody(),
-        closing_amount: amount,
-        notes: closingNotes,
-        arqueo: {
-          expected_cash: expectedRounded,
-          counted_cash: amount,
-          difference,
-          denominations,
-          observations: closingNotes,
-        },
-      });
-      toast.success('Reporte enviado al correo configurado');
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setSendingCloseMail(false);
-    }
-  };
-
-  const handlePrint = async () => {
+  /** Impresión clásica (diálogo del navegador / impresora USB), no tiketera térmica. */
+  const printCloseRegisterManual = () => {
     const content = printRef.current;
-    if (!content) return;
-    const textForPrint = String(content.innerText || content.textContent || '')
-      .replace(/\r\n/g, '\n')
-      .trim()
-      .slice(0, 12000);
-    if (!textForPrint) {
+    if (!content) {
       toast.error('No hay contenido para imprimir');
       return;
     }
-    const r = await printCajaTicket({
-      text: textForPrint,
-      preformatted: true,
-      logoUrl: String(printRestaurantInfo.logo || '').trim() || undefined,
-      restaurantBrand: restaurantThermalBrandLine(printRestaurantInfo) || undefined,
-      paperWidth: cajaPaperWidthMm,
-    });
-    if (r.ok) toast.success('Acción completada');
-    else toast.error(r.error || 'No se pudo imprimir');
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.visibility = 'hidden';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc || !iframe.contentWindow) {
+      toast.error('No se pudo preparar la impresión');
+      document.body.removeChild(iframe);
+      return;
+    }
+
+    const restaurantName =
+      String(printRestaurantInfo.billing_nombre_comercial || printRestaurantInfo.name || '').trim() || 'Restaurante';
+
+    doc.open();
+    doc.write(`<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Arqueo de caja</title>
+    <style>
+      @page { margin: 12mm; }
+      body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; padding: 0; margin: 0; }
+      .brand { font-size: 11px; color: #4b5563; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+      h2 { font-size: 16px; margin: 0 0 4px; text-transform: uppercase; color: #111827; }
+      h3 { font-size: 13px; font-weight: 500; margin: 0 0 12px; color: #374151; }
+      .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 2px 0; color: #111827; }
+      .row span:last-child { text-align: right; }
+      .row.bold { font-weight: 700; }
+      .total-row { font-weight: 700; }
+      .sep { border-top: 1px dashed #9ca3af; margin: 8px 0; }
+      .diff-pos { color: #047857; font-weight: 700; }
+      .diff-neg { color: #b91c1c; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <p class="brand">${restaurantName}</p>
+    ${content.innerHTML}
+  </body>
+</html>`);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
+      }, 700);
+    }, 200);
   };
 
   const resetBillingForm = () => {
@@ -2356,7 +2409,76 @@ export default function POSPanel() {
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>;
 
-  if (!register) {
+  const printTableOrder = async (table) => {
+    if (!table) return;
+    const groupedTable = mergedProductsOnTable(table);
+    if (!groupedTable.length) return toast.error('La mesa no tiene pedidos para precuenta');
+    const tableTotal = (table.orders || []).reduce((sum, o) => sum + getOrderChargeTotal(o), 0);
+    const mozoNameTbl =
+      [...new Set((table.orders || []).map((o) => String(o.created_by_user_name || '').trim()).filter(Boolean))].join(', ')
+      || String(user?.full_name || '').trim()
+      || '—';
+    const customerLines = [
+      billingForm.customer_name && `Cliente: ${billingForm.customer_name}`,
+      billingForm.customer_doc_number && `Doc: ${billingForm.customer_doc_number}`,
+      billingForm.customer_phone && `Tel: ${billingForm.customer_phone}`,
+      billingForm.customer_address && `Dir: ${billingForm.customer_address}`,
+    ].filter(Boolean);
+    const widthMm = cajaPaperWidthMm;
+    const plain = buildPrecuentaPlainText({
+      restaurant: printRestaurantInfo,
+      tableName: table.name,
+      mozoName: mozoNameTbl,
+      customerLines,
+      groupedRows: groupedTable,
+      formatCurrencyFn: formatCurrency,
+      subtotal: tableTotal,
+      discount: 0,
+      payableTotal: tableTotal,
+      widthMm,
+      printedAt: new Date(),
+    });
+    const r = await printCajaTicket({
+      text: plain,
+      preformatted: true,
+      logoUrl: String(printRestaurantInfo.logo || '').trim() || undefined,
+      restaurantBrand: restaurantThermalBrandLine(printRestaurantInfo) || undefined,
+      paperWidth: widthMm,
+    });
+    if (r.ok) toast.success('Acción completada');
+    else toast.error(r.error || 'No se pudo imprimir');
+  };
+  const chargeReservation = async (entry) => {
+    const orders = entry?.linkedOrders || [];
+    if (!orders.length) return toast.error('Esta reserva no tiene pedidos pendientes para cobrar');
+    try {
+      await api.post('/pos/checkout-table', {
+        ...posRegisterBody(),
+        order_ids: orders.map(o => o.id),
+        payment_method: paymentMethod || 'efectivo',
+      });
+      await api.put(`/admin-modules/reservations/${entry.reservation.id}`, { status: 'completed' }).catch(() => {});
+      toast.success(`Reserva de ${entry.reservation.client_name} cobrada correctamente`);
+      loadData();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  /** Botones de acciones del detalle de mesa (tema app, sin fondos fijos claros). */
+  const mesaMapActionBtnClass =
+    'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-lg text-[11px] sm:text-sm font-semibold border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] shadow-sm hover:bg-[var(--ui-sidebar-hover)] transition-colors inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
+  /** Cobrar: acento del tema activo (misma idea que .btn-primary). */
+  const mesaMapCobrarBtnClass =
+    'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-xl text-[11px] sm:text-sm font-bold border border-[color:color-mix(in_srgb,var(--ui-accent-muted)_45%,transparent)] uppercase tracking-wide text-white bg-[var(--ui-accent)] shadow-md hover:bg-[var(--ui-accent-hover)] inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
+
+  const cajaRequiresRegisterNotice = (
+    <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-4">
+      Abra un turno de caja para registrar operaciones en este submodulo.
+    </p>
+  );
+
+  const renderOpenRegisterScreen = () => {
     const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
     if (isAdmin) {
       return (
@@ -2493,75 +2615,13 @@ export default function POSPanel() {
         </div>
       </div>
     );
-  }
-
-  const printTableOrder = async (table) => {
-    if (!table) return;
-    const groupedTable = mergedProductsOnTable(table);
-    if (!groupedTable.length) return toast.error('La mesa no tiene pedidos para precuenta');
-    const tableTotal = (table.orders || []).reduce((sum, o) => sum + getOrderChargeTotal(o), 0);
-    const mozoNameTbl =
-      [...new Set((table.orders || []).map((o) => String(o.created_by_user_name || '').trim()).filter(Boolean))].join(', ')
-      || String(user?.full_name || '').trim()
-      || '—';
-    const customerLines = [
-      billingForm.customer_name && `Cliente: ${billingForm.customer_name}`,
-      billingForm.customer_doc_number && `Doc: ${billingForm.customer_doc_number}`,
-      billingForm.customer_phone && `Tel: ${billingForm.customer_phone}`,
-      billingForm.customer_address && `Dir: ${billingForm.customer_address}`,
-    ].filter(Boolean);
-    const widthMm = cajaPaperWidthMm;
-    const plain = buildPrecuentaPlainText({
-      restaurant: printRestaurantInfo,
-      tableName: table.name,
-      mozoName: mozoNameTbl,
-      customerLines,
-      groupedRows: groupedTable,
-      formatCurrencyFn: formatCurrency,
-      subtotal: tableTotal,
-      discount: 0,
-      payableTotal: tableTotal,
-      widthMm,
-      printedAt: new Date(),
-    });
-    const r = await printCajaTicket({
-      text: plain,
-      preformatted: true,
-      logoUrl: String(printRestaurantInfo.logo || '').trim() || undefined,
-      restaurantBrand: restaurantThermalBrandLine(printRestaurantInfo) || undefined,
-      paperWidth: widthMm,
-    });
-    if (r.ok) toast.success('Acción completada');
-    else toast.error(r.error || 'No se pudo imprimir');
   };
-  const chargeReservation = async (entry) => {
-    const orders = entry?.linkedOrders || [];
-    if (!orders.length) return toast.error('Esta reserva no tiene pedidos pendientes para cobrar');
-    try {
-      await api.post('/pos/checkout-table', {
-        ...posRegisterBody(),
-        order_ids: orders.map(o => o.id),
-        payment_method: paymentMethod || 'efectivo',
-      });
-      await api.put(`/admin-modules/reservations/${entry.reservation.id}`, { status: 'completed' }).catch(() => {});
-      toast.success(`Reserva de ${entry.reservation.client_name} cobrada correctamente`);
-      loadData();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  };
-
-  /** Botones de acciones del detalle de mesa (tema app, sin fondos fijos claros). */
-  const mesaMapActionBtnClass =
-    'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-lg text-[11px] sm:text-sm font-semibold border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] shadow-sm hover:bg-[var(--ui-sidebar-hover)] transition-colors inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
-  /** Cobrar: acento del tema activo (misma idea que .btn-primary). */
-  const mesaMapCobrarBtnClass =
-    'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-xl text-[11px] sm:text-sm font-bold border border-[color:color-mix(in_srgb,var(--ui-accent-muted)_45%,transparent)] uppercase tracking-wide text-white bg-[var(--ui-accent)] shadow-md hover:bg-[var(--ui-accent-hover)] inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
 
   return (
     <div>
       <div className="mb-4 -mt-4">
       {activeCajaOption === 'cobrar' && (
+        register ? (
         <>
       <div className="flex flex-wrap items-center justify-between mb-3 gap-2">
         <div
@@ -2953,10 +3013,14 @@ export default function POSPanel() {
         </button>
       </div>
         </>
+        ) : (
+          renderOpenRegisterScreen()
+        )
       )}
 
       {activeCajaOption === 'reservas' && (
         <div className="card">
+          {!register ? cajaRequiresRegisterNotice : null}
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold rf-section-title">Reservas para cobro</h3>
             <span className="text-xs ui-text-muted">Total: {reservationQueue.length}</span>
@@ -2983,7 +3047,7 @@ export default function POSPanel() {
                   <div className="mt-3 flex justify-end">
                     <button
                       onClick={() => chargeReservation(entry)}
-                      disabled={!entry.linkedOrders.length}
+                      disabled={!register || !entry.linkedOrders.length}
                       className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {entry.linkedOrders.length ? 'Cobrar reserva' : 'Sin pedido para cobrar'}
@@ -2997,20 +3061,27 @@ export default function POSPanel() {
       )}
 
       {activeCajaOption === 'apertura_cierre' && (
-        <div className="card">
-          <h3 className="font-bold rf-section-title mb-4">Apertura y cierre</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs ui-text-muted">Apertura</p><p className="font-bold">{formatCurrency(openingAmt)}</p></div>
-            <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs ui-text-muted">Efectivo esperado</p><p className="font-bold">{formatCurrency(expectedRounded)}</p></div>
-            <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs ui-text-muted">Ventas del turno</p><p className="font-bold">{formatCurrency(registerSales)}</p></div>
+        register ? (
+          <div className="card">
+            <h3 className="font-bold rf-section-title mb-4">Apertura y cierre</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs ui-text-muted">Apertura</p><p className="font-bold">{formatCurrency(openingAmt)}</p></div>
+              <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs ui-text-muted">Efectivo esperado</p><p className="font-bold">{formatCurrency(expectedRounded)}</p></div>
+              <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs ui-text-muted">Ventas del turno</p><p className="font-bold">{formatCurrency(registerSales)}</p></div>
+            </div>
+            <button onClick={prepareClose} className="btn-primary">Ir al cierre de caja</button>
           </div>
-          <button onClick={prepareClose} className="btn-primary">Ir al cierre de caja</button>
-        </div>
+        ) : (
+          renderOpenRegisterScreen()
+        )
       )}
 
       {activeCajaOption === 'cierres_caja' && (
         <div className="card">
           <h3 className="font-bold rf-section-title mb-4">Historial de cierres de caja</h3>
+          {!registerHistory.length ? (
+            <p className="ui-text-muted">No hay cierres registrados.</p>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b"><th className="text-left py-2">Cajero</th><th className="text-left py-2">Apertura</th><th className="text-left py-2">Cierre</th><th className="text-right py-2">Ventas</th></tr></thead>
@@ -3026,17 +3097,19 @@ export default function POSPanel() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
 
       {activeCajaOption === 'ingresos' && (
         <div className="card">
           <h3 className="font-bold rf-section-title mb-4">Ingresos</h3>
+          {!register ? cajaRequiresRegisterNotice : null}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <input className="input-field" type="number" min="0" step="0.01" placeholder="Monto" value={movementForm.amount} onChange={e => setMovementForm({ ...movementForm, amount: e.target.value })} />
-            <input className="input-field md:col-span-2" placeholder="Concepto" value={movementForm.concept} onChange={e => setMovementForm({ ...movementForm, concept: e.target.value })} />
+            <input className="input-field" type="number" min="0" step="0.01" placeholder="Monto" value={movementForm.amount} onChange={e => setMovementForm({ ...movementForm, amount: e.target.value })} disabled={!register} />
+            <input className="input-field md:col-span-2" placeholder="Concepto" value={movementForm.concept} onChange={e => setMovementForm({ ...movementForm, concept: e.target.value })} disabled={!register} />
           </div>
-          <button onClick={() => registerMovement('income')} className="btn-primary mb-4">Registrar ingreso</button>
+          <button onClick={() => registerMovement('income')} disabled={!register} className="btn-primary mb-4 disabled:opacity-50 disabled:cursor-not-allowed">Registrar ingreso</button>
           <div className="space-y-2">
             {incomes.map(m => <div key={m.id} className="text-sm flex justify-between border-b border-slate-100 pb-1"><span>{m.concept || 'Sin concepto'}</span><strong>{formatCurrency(m.amount)}</strong></div>)}
           </div>
@@ -3046,11 +3119,12 @@ export default function POSPanel() {
       {activeCajaOption === 'egresos' && (
         <div className="card">
           <h3 className="font-bold rf-section-title mb-4">Egresos</h3>
+          {!register ? cajaRequiresRegisterNotice : null}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <input className="input-field" type="number" min="0" step="0.01" placeholder="Monto" value={movementForm.amount} onChange={e => setMovementForm({ ...movementForm, amount: e.target.value })} />
-            <input className="input-field md:col-span-2" placeholder="Concepto" value={movementForm.concept} onChange={e => setMovementForm({ ...movementForm, concept: e.target.value })} />
+            <input className="input-field" type="number" min="0" step="0.01" placeholder="Monto" value={movementForm.amount} onChange={e => setMovementForm({ ...movementForm, amount: e.target.value })} disabled={!register} />
+            <input className="input-field md:col-span-2" placeholder="Concepto" value={movementForm.concept} onChange={e => setMovementForm({ ...movementForm, concept: e.target.value })} disabled={!register} />
           </div>
-          <button onClick={() => registerMovement('expense')} className="btn-primary mb-4">Registrar egreso</button>
+          <button onClick={() => registerMovement('expense')} disabled={!register} className="btn-primary mb-4 disabled:opacity-50 disabled:cursor-not-allowed">Registrar egreso</button>
           <div className="space-y-2">
             {expenses.map(m => <div key={m.id} className="text-sm flex justify-between border-b border-slate-100 pb-1"><span>{m.concept || 'Sin concepto'}</span><strong>{formatCurrency(m.amount)}</strong></div>)}
           </div>
@@ -3060,11 +3134,12 @@ export default function POSPanel() {
       {activeCajaOption === 'notas_credito' && (
         <div className="card">
           <h3 className="font-bold rf-section-title mb-4">Notas de credito</h3>
+          {!register ? cajaRequiresRegisterNotice : null}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <input className="input-field" type="number" min="0" step="0.01" placeholder="Monto" value={noteForm.amount} onChange={e => setNoteForm({ ...noteForm, amount: e.target.value })} />
-            <input className="input-field md:col-span-2" placeholder="Motivo" value={noteForm.reason} onChange={e => setNoteForm({ ...noteForm, reason: e.target.value })} />
+            <input className="input-field" type="number" min="0" step="0.01" placeholder="Monto" value={noteForm.amount} onChange={e => setNoteForm({ ...noteForm, amount: e.target.value })} disabled={!register} />
+            <input className="input-field md:col-span-2" placeholder="Motivo" value={noteForm.reason} onChange={e => setNoteForm({ ...noteForm, reason: e.target.value })} disabled={!register} />
           </div>
-          <button onClick={() => registerNote('credit')} className="btn-primary mb-4">Registrar nota de crédito</button>
+          <button onClick={() => registerNote('credit')} disabled={!register} className="btn-primary mb-4 disabled:opacity-50 disabled:cursor-not-allowed">Registrar nota de crédito</button>
           <div className="space-y-2">
             {creditNotes.map(n => <div key={n.id} className="text-sm flex justify-between border-b border-slate-100 pb-1"><span>{n.reason || 'Sin motivo'}</span><strong>{formatCurrency(n.amount)}</strong></div>)}
           </div>
@@ -3074,11 +3149,12 @@ export default function POSPanel() {
       {activeCajaOption === 'notas_debito' && (
         <div className="card">
           <h3 className="font-bold rf-section-title mb-4">Notas de debito</h3>
+          {!register ? cajaRequiresRegisterNotice : null}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <input className="input-field" type="number" min="0" step="0.01" placeholder="Monto" value={noteForm.amount} onChange={e => setNoteForm({ ...noteForm, amount: e.target.value })} />
-            <input className="input-field md:col-span-2" placeholder="Motivo" value={noteForm.reason} onChange={e => setNoteForm({ ...noteForm, reason: e.target.value })} />
+            <input className="input-field" type="number" min="0" step="0.01" placeholder="Monto" value={noteForm.amount} onChange={e => setNoteForm({ ...noteForm, amount: e.target.value })} disabled={!register} />
+            <input className="input-field md:col-span-2" placeholder="Motivo" value={noteForm.reason} onChange={e => setNoteForm({ ...noteForm, reason: e.target.value })} disabled={!register} />
           </div>
-          <button onClick={() => registerNote('debit')} className="btn-primary mb-4">Registrar nota de débito</button>
+          <button onClick={() => registerNote('debit')} disabled={!register} className="btn-primary mb-4 disabled:opacity-50 disabled:cursor-not-allowed">Registrar nota de débito</button>
           <div className="space-y-2">
             {debitNotes.map(n => <div key={n.id} className="text-sm flex justify-between border-b border-slate-100 pb-1"><span>{n.reason || 'Sin motivo'}</span><strong>{formatCurrency(n.amount)}</strong></div>)}
           </div>
@@ -4662,11 +4738,11 @@ export default function POSPanel() {
             <div className="flex flex-wrap gap-3 pt-4 mt-4 border-t border-[color:var(--ui-border)]">
               <button onClick={() => setShowCloseModal(false)} className="btn-secondary flex-1 min-w-[120px]">Cancelar</button>
               <button
-                onClick={sendCloseByEmail}
-                disabled={sendingCloseMail}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm btn-secondary disabled:opacity-50 disabled:cursor-not-allowed min-w-[140px]"
+                type="button"
+                onClick={printCloseRegisterManual}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm btn-secondary min-w-[180px]"
               >
-                <MdEmail /> {sendingCloseMail ? 'Enviando...' : 'Enviar a correo'}
+                <MdPrint /> Imprimir cierre de caja
               </button>
               <button onClick={closeRegister} className="btn-primary flex-1 flex items-center justify-center gap-2">
                 <MdCheckCircle /> Cerrar Caja

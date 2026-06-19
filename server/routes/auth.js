@@ -15,6 +15,12 @@ const { normalizePlan } = require('../servicePlan');
 const { getEffectivePermissions, buildSubPermissions } = require('../planModuleCatalog');
 const { advanceStaffChatCycleIfDue, markAllStaffOfflineIfNeeded } = require('../staffChatService');
 const { getActiveCajaById } = require('../cajaSettings');
+const {
+  startWorkSession,
+  closeWorkSession,
+  countOpenSessions,
+  ensureOpenWorkSession,
+} = require('../services/workSessionService');
 
 const router = express.Router();
 
@@ -86,72 +92,6 @@ function getUserPermissions(userId) {
     acc[id] = isPermissionEnabled(parsed[id]);
     return acc;
   }, {});
-}
-
-/** El administrador no entra en el flujo de revisión de asistencia (es quien clasifica al resto). */
-function initialAttendanceStatusForRole(role) {
-  return String(role || '').toLowerCase() === 'admin' ? 'asistente' : 'pending';
-}
-
-function startWorkSession(user, photoLogin = null) {
-  if (!user?.id) return '';
-  const sessionTokenId = uuidv4();
-  runSql(
-    `UPDATE user_work_sessions
-     SET logout_at = datetime('now'),
-         worked_minutes = CAST((julianday('now') - julianday(login_at)) * 24 * 60 AS INTEGER),
-         close_reason = 'auto_login',
-         updated_at = datetime('now')
-     WHERE user_id = ? AND logout_at IS NULL`,
-    [user.id]
-  );
-  const att = initialAttendanceStatusForRole(user.role);
-  runSql(
-    `INSERT INTO user_work_sessions
-      (id, user_id, session_token_id, username, full_name, role, login_at, photo_login, attendance_status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, datetime('now'), datetime('now'))`,
-    [uuidv4(), user.id, sessionTokenId, user.username, user.full_name, user.role, photoLogin, att]
-  );
-  return sessionTokenId;
-}
-
-function closeWorkSession(userId, sessionTokenId = '', closeReason = 'logout', photoLogout = null) {
-  const uid = String(userId || '').trim();
-  const sid = String(sessionTokenId || '').trim();
-  if (!uid) return false;
-  const active = sid
-    ? queryOne('SELECT id FROM user_work_sessions WHERE user_id = ? AND session_token_id = ? AND logout_at IS NULL LIMIT 1', [uid, sid])
-    : queryOne('SELECT id FROM user_work_sessions WHERE user_id = ? AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1', [uid]);
-  if (!active?.id) return false;
-  runSql(
-    `UPDATE user_work_sessions
-     SET logout_at = datetime('now'),
-         worked_minutes = CAST((julianday('now') - julianday(login_at)) * 24 * 60 AS INTEGER),
-         close_reason = ?,
-         photo_logout = COALESCE(?, photo_logout),
-         updated_at = datetime('now')
-     WHERE id = ?`,
-    [closeReason, photoLogout, active.id]
-  );
-  return true;
-}
-
-function ensureOpenWorkSession(user) {
-  if (!user?.id) return '';
-  const existing = queryOne(
-    'SELECT id, session_token_id FROM user_work_sessions WHERE user_id = ? AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1',
-    [user.id]
-  );
-  if (existing?.id) return String(existing.session_token_id || '');
-  const sessionTokenId = uuidv4();
-  const att = initialAttendanceStatusForRole(user.role);
-  runSql(
-    `INSERT INTO user_work_sessions
-      (id, user_id, session_token_id, username, full_name, role, login_at, photo_login, attendance_status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'), NULL, ?, datetime('now'), datetime('now'))`,
-    [uuidv4(), user.id, sessionTokenId, user.username, user.full_name, user.role, att]
-  );
-  return sessionTokenId;
 }
 
 /** Lee flags desde settings.jornada_laboral (migración desde requiere_foto_asistencia legacy). */
@@ -243,13 +183,15 @@ router.post('/login', (req, res) => {
     }
   }
   const photoLogin = normalizeAttendancePhoto(req.body?.photo_login);
-  const { loginPhoto } = readJornadaLaboralFlags();
-  if (loginPhoto) {
+  const { loginPhoto, logoutPhoto } = readJornadaLaboralFlags();
+  const openBeforeLogin = countOpenSessions(user.id);
+  const isParallelLogin = openBeforeLogin > 0;
+  if (loginPhoto && !isParallelLogin) {
     if (!photoLogin) {
       return res.status(400).json({ error: 'Debe tomarse una foto para registrar el inicio de jornada' });
     }
   }
-  const sessionTokenId = startWorkSession(user, photoLogin || null);
+  const { sessionTokenId } = startWorkSession(user, photoLogin || null);
   advanceStaffChatCycleIfDue();
 
   const token = jwt.sign(
@@ -308,12 +250,14 @@ router.post('/logout', authenticateToken, (req, res) => {
   }
   const { logoutPhoto } = readJornadaLaboralFlags();
   const photoLogout = normalizeAttendancePhoto(req.body?.photo_logout);
-  if (logoutPhoto) {
+  const openCount = countOpenSessions(req.user?.id);
+  const closingLastDevice = openCount <= 1;
+  if (logoutPhoto && closingLastDevice) {
     if (!photoLogout) {
       return res.status(400).json({ error: 'Debe tomarse una foto para registrar el fin de jornada' });
     }
   }
-  const closed = closeWorkSession(req.user?.id, req.user?.session_id, 'logout', photoLogout);
+  const { closed } = closeWorkSession(req.user?.id, req.user?.session_id, 'logout', photoLogout);
   markAllStaffOfflineIfNeeded();
   return res.json({ success: true, closed });
 });

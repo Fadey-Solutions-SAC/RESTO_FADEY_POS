@@ -11,6 +11,7 @@ const {
 } = require('../services/registerSessionSales');
 const { emitStaffDataUpdate } = require('../socketBroadcast');
 const { getSlowMovingProductIds } = require('../services/slowMovingProductsService');
+const { getReservationCajaOperationalAlerts } = require('../services/reservationSchedulerService');
 
 const router = express.Router();
 const FINANCIAL_FILTER = FINANCIAL_FILTER_SQL;
@@ -399,6 +400,11 @@ function buildOperationalIntelligence(opts = {}) {
         }
       }
     }
+  }
+
+  if (['admin', 'cajero'].includes(role)) {
+    const reservationAlerts = getReservationCajaOperationalAlerts();
+    reservationAlerts.forEach((alert) => operationalAlerts.push(alert));
   }
 
   let insightToday = '';

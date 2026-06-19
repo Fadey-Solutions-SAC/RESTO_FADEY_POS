@@ -7,7 +7,26 @@ import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
 
-const statusColors = { paid: 'bg-emerald-100 text-emerald-700', pending: 'bg-gold-100 text-gold-700', refunded: 'bg-red-100 text-red-700' };
+const PAYMENT_STATUS_STYLES = {
+  paid: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
+  pending: 'bg-amber-500/20 text-amber-300 border border-amber-500/40',
+  refunded: 'bg-orange-500/20 text-orange-300 border border-orange-500/40',
+};
+
+function getSaleStatusBadge(order, t) {
+  if (order.status === 'cancelled') {
+    return { label: 'Anulada', className: 'bg-red-500/20 text-red-300 border border-red-500/50' };
+  }
+  const ps = String(order.payment_status || 'pending');
+  const label = t(`status.${ps}`, { defaultValue: ps === 'paid' ? 'Pagado' : ps === 'pending' ? 'Pendiente' : ps });
+  const className = PAYMENT_STATUS_STYLES[ps] || 'bg-slate-500/20 text-slate-300 border border-slate-500/30';
+  return { label, className };
+}
+
+function getSaleStatusDetailLabel(order, t) {
+  if (order.status === 'cancelled') return 'Anulada';
+  return t(`status.${order.payment_status}`, { defaultValue: order.payment_status });
+}
 
 function payLabel(method) {
   if (!method) return '';
@@ -425,10 +444,10 @@ export default function Ventas() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
-        <div className="card"><p className="text-xs ui-text-muted">Total Ventas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{formatCurrency(totals.total)}</p></div>
-        <div className="card"><p className="text-xs ui-text-muted">Cobrado</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totals.paid)}</p></div>
-        <div className="card"><p className="text-xs ui-text-muted">Pendiente</p><p className="text-xl font-bold text-amber-300">{formatCurrency(totals.pending)}</p></div>
-        <div className="card"><p className="text-xs ui-text-muted">Transacciones</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p></div>
+        <div className="card border-l-4 border-l-slate-400"><p className="text-xs ui-text-muted">Total Ventas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{formatCurrency(totals.total)}</p></div>
+        <div className="card border-l-4 border-l-emerald-500"><p className="text-xs text-emerald-600">Cobrado</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totals.paid)}</p></div>
+        <div className="card border-l-4 border-l-amber-500"><p className="text-xs text-amber-600">Pendiente</p><p className="text-xl font-bold text-amber-300">{formatCurrency(totals.pending)}</p></div>
+        <div className="card border-l-4 border-l-sky-500"><p className="text-xs text-sky-600">Transacciones</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p></div>
       </div>
 
       <div className="rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-5">
@@ -488,8 +507,8 @@ export default function Ventas() {
               {filtered.map(o => {
                 const doc = getOrderDocument(o);
                 const mesa = o.type === 'dine_in' ? `M${String(o.table_number || '0').padStart(2, '0')}` : '-';
-                const activeSale = o.status !== 'cancelled';
                 const mesero = o.created_by_user_name || o.customer_name || '-';
+                const statusBadge = getSaleStatusBadge(o, t);
                 return (
                   <tr key={o.id} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
                     <td className="py-2.5">
@@ -507,8 +526,8 @@ export default function Ventas() {
                     <td className="py-2.5 font-medium text-[var(--ui-body-text)]">{payLabel(o.payment_method)} (S/): {Number(o.total || 0).toFixed(2)}</td>
                     <td className="py-2.5 font-bold text-[var(--ui-body-text)]">{formatCurrency(o.total)}</td>
                     <td className="py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${activeSale ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}`}>
-                        {activeSale ? 'ACTIVA' : 'ANULADA'}
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${statusBadge.className}`}>
+                        {statusBadge.label}
                       </span>
                     </td>
                     <td className="py-2.5">
@@ -576,7 +595,7 @@ export default function Ventas() {
               <div><p className="ui-text-muted">Fecha</p><p className="font-medium">{formatDateTime(selected.created_at)}</p></div>
               <div><p className="ui-text-muted">Tipo</p><p className="font-medium">{selected.type === 'dine_in' ? `Mesa ${selected.table_number}` : selected.type}</p></div>
               <div><p className="ui-text-muted">Metodo de Pago</p><p className="font-medium">{payLabel(selected.payment_method)}</p></div>
-              <div><p className="ui-text-muted">Estado</p><p className="font-medium">{t(`status.${selected.payment_status}`, { defaultValue: selected.payment_status })}</p></div>
+              <div><p className="ui-text-muted">Estado</p><p className="font-medium">{getSaleStatusDetailLabel(selected, t)}</p></div>
               <div className="col-span-2">
                 <p className="ui-text-muted">Comprobante</p>
                 <p className="font-medium">{(() => { const doc = getOrderDocument(selected); return `${docLabel(doc.doc_type)} - ${doc.full_number}`; })()}</p>
