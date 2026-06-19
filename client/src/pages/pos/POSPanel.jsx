@@ -521,7 +521,7 @@ export default function POSPanel() {
         String(user?.role || '').toLowerCase() === 'admin' && adminRid
           ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`
           : '/pos/current-register';
-      const [tablesData, salonesRes, reg, status, stationsRes, prods, cats, modifiersData, combosData, cfg, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
+      const [tablesData, salonesRes, reg, status, stationsRes, prods, cats, modifiersData, combosData, cfg, paymentMethodsRes, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
         api.get('/tables'),
         api.get('/tables/salones').catch(() => ({ salones: [] })),
         api.get(currentRegPath),
@@ -532,6 +532,7 @@ export default function POSPanel() {
         api.get('/admin-modules/modifiers').catch(() => []),
         api.get('/admin-modules/combos').catch(() => []),
         api.get('/admin-modules/config/app').catch(() => null),
+        api.get('/pos/payment-methods').catch(() => null),
         api.get('/reports/daily').catch(() => null),
         api.get('/admin-modules/reservations').catch(() => []),
         api.get('/orders?limit=600').catch(() => []),
@@ -574,7 +575,11 @@ export default function POSPanel() {
       setProducts(visibleProducts);
       setModifiers(Array.isArray(modifiersData) ? modifiersData : []);
       setCategories(mergedCatalog.categories);
-      setPaymentOptions(getPaymentMethodOptions(cfg, { includeOnline: false }));
+      setPaymentOptions(
+        Array.isArray(paymentMethodsRes?.options) && paymentMethodsRes.options.length
+          ? paymentMethodsRes.options
+          : getPaymentMethodOptions(cfg, { includeOnline: false }),
+      );
       setDailySales(
         daily?.sales?.total_sales === undefined || daily?.sales?.total_sales === null
           ? null

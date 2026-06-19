@@ -44,23 +44,66 @@ function getAppSettingsSnapshot() {
   };
 }
 
+function paymentIdsFromPagosSistema(pagosSistema) {
+  const pagos = pagosSistema || {};
+  const ids = [];
+  if (Number(pagos.acepta_efectivo ?? 1) === 1) ids.push('efectivo');
+  if (Number(pagos.acepta_tarjeta ?? 1) === 1) ids.push('tarjeta');
+  if (Number(pagos.acepta_yape ?? 0) === 1) ids.push('yape');
+  if (Number(pagos.acepta_plin ?? 0) === 1) ids.push('plin');
+  return ids;
+}
+
 function getAllowedPaymentMethods() {
   const { pagosSistema, settings } = getAppSettingsSnapshot();
   const formasPago = Array.isArray(settings?.formas_pago) ? settings.formas_pago : [];
-  const fromForms = formasPago
-    .filter((item) => Number(item?.active ?? 1) === 1)
-    .map((item) => mapMethodNameToId(item?.name))
-    .filter(Boolean);
-  if (fromForms.length > 0) {
-    return Array.from(new Set(fromForms));
+  const seen = new Set();
+  const ordered = [];
+
+  for (const item of formasPago.filter((row) => Number(row?.active ?? 1) === 1)) {
+    const id = mapMethodNameToId(item?.name);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ordered.push(id);
   }
 
+  for (const id of paymentIdsFromPagosSistema(pagosSistema)) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ordered.push(id);
+  }
+
+  if (ordered.length === 0) return ['efectivo', 'tarjeta'];
+  return ordered;
+}
+
+function getPaymentMethodOptionsPayload({ includeOnline = false } = {}) {
+  const { pagosSistema, settings } = getAppSettingsSnapshot();
+  const formasPago = Array.isArray(settings?.formas_pago) ? settings.formas_pago : [];
+  const seen = new Set();
   const options = [];
-  if (Number(pagosSistema?.acepta_efectivo ?? 1) === 1) options.push('efectivo');
-  if (Number(pagosSistema?.acepta_tarjeta ?? 1) === 1) options.push('tarjeta');
-  if (Number(pagosSistema?.acepta_yape ?? 0) === 1) options.push('yape');
-  if (Number(pagosSistema?.acepta_plin ?? 0) === 1) options.push('plin');
-  if (options.length === 0) return ['efectivo', 'tarjeta'];
+
+  for (const item of formasPago.filter((row) => Number(row?.active ?? 1) === 1)) {
+    const id = mapMethodNameToId(item?.name);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const customLabel = String(item?.name || '').trim();
+    options.push({ value: id, label: customLabel || PAYMENT_METHOD_LABELS[id] || id });
+  }
+
+  for (const id of paymentIdsFromPagosSistema(pagosSistema)) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    options.push({ value: id, label: PAYMENT_METHOD_LABELS[id] || id });
+  }
+
+  if (includeOnline) options.push({ value: 'online', label: PAYMENT_METHOD_LABELS.online });
+  if (options.length === 0) {
+    return [
+      { value: 'efectivo', label: PAYMENT_METHOD_LABELS.efectivo },
+      { value: 'tarjeta', label: PAYMENT_METHOD_LABELS.tarjeta },
+    ];
+  }
   return options;
 }
 
@@ -101,6 +144,7 @@ module.exports = {
   LOCAL_TODAY_SQL,
   getLocalTodayDateKey,
   getAllowedPaymentMethods,
+  getPaymentMethodOptionsPayload,
   normalizePaymentMethod,
   isPaymentMethodAllowed,
   assertPaymentMethodAllowed,

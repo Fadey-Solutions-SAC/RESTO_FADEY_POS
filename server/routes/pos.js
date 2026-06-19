@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../database');
 const kardexInventory = require('../services/kardexInventoryService');
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { assertPaymentMethodAllowed, normalizePaymentMethod } = require('../businessRules');
+const { assertPaymentMethodAllowed, normalizePaymentMethod, getPaymentMethodOptionsPayload } = require('../businessRules');
 const { getActiveCajaById, listCajasWithIds } = require('../cajaSettings');
 const { print } = require('../printing/printerService');
 const { getOrderWithItems } = require('../orderCreateService');
@@ -861,6 +861,10 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo cobrar la mesa' });
   }
+});
+
+router.get('/payment-methods', authenticateToken, requireRole('admin', 'cajero', 'mozo'), (req, res) => {
+  res.json({ options: getPaymentMethodOptionsPayload({ includeOnline: false }) });
 });
 
 router.get('/register-status', authenticateToken, requireRole('admin', 'cajero', 'mozo'), (req, res) => {

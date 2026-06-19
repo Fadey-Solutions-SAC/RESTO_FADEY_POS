@@ -803,41 +803,30 @@ export const getPaymentMethodOptions = (appConfig, { includeOnline = false } = {
       : [];
 
   const activeFormas = formasPago.filter((item) => Number(item?.active ?? 1) === 1);
+  const seen = new Set();
+  const options = [];
 
-  /**
-   * Con formas activas en Ajustes → Formas de pago: orden y texto mostrado = configuración del sistema.
-   * Solo se incluyen métodos reconocidos (efectivo / tarjeta / yape / plin).
-   */
-  if (activeFormas.length > 0) {
-    const seen = new Set();
-    const options = [];
-    for (const item of activeFormas) {
-      const id = mapMethodNameToId(item?.name);
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      const rawName = String(item?.name || '').trim();
-      const label = rawName || PAYMENT_METHODS[id] || id;
-      options.push({ value: id, label });
-    }
-    if (includeOnline) options.push({ value: 'online', label: PAYMENT_METHODS.online });
-    if (options.length === 0) {
-      return [
-        { value: 'efectivo', label: PAYMENT_METHODS.efectivo },
-        { value: 'tarjeta', label: PAYMENT_METHODS.tarjeta },
-      ];
-    }
-    return options;
+  for (const item of activeFormas) {
+    const id = mapMethodNameToId(item?.name);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const rawName = String(item?.name || '').trim();
+    options.push({ value: id, label: rawName || PAYMENT_METHODS[id] || id });
   }
 
-  /* Sin filas activas en formas_pago: mismos interruptores que Mi restaurante → pagos_sistema */
-  const base = [
-    { value: 'efectivo', label: PAYMENT_METHODS.efectivo, enabled: Number(pagos.acepta_efectivo ?? 1) === 1 },
-    { value: 'tarjeta', label: PAYMENT_METHODS.tarjeta, enabled: Number(pagos.acepta_tarjeta ?? 1) === 1 },
-    { value: 'yape', label: PAYMENT_METHODS.yape, enabled: Number(pagos.acepta_yape ?? 0) === 1 },
-    { value: 'plin', label: PAYMENT_METHODS.plin, enabled: Number(pagos.acepta_plin ?? 0) === 1 },
+  const pagosSistemaIds = [
+    { value: 'efectivo', enabled: Number(pagos.acepta_efectivo ?? 1) === 1 },
+    { value: 'tarjeta', enabled: Number(pagos.acepta_tarjeta ?? 1) === 1 },
+    { value: 'yape', enabled: Number(pagos.acepta_yape ?? 0) === 1 },
+    { value: 'plin', enabled: Number(pagos.acepta_plin ?? 0) === 1 },
   ];
 
-  const options = base.filter((opt) => opt.enabled).map(({ value, label }) => ({ value, label }));
+  for (const { value, enabled } of pagosSistemaIds) {
+    if (!enabled || seen.has(value)) continue;
+    seen.add(value);
+    options.push({ value, label: PAYMENT_METHODS[value] || value });
+  }
+
   if (includeOnline) options.push({ value: 'online', label: PAYMENT_METHODS.online });
   if (options.length === 0) {
     return [
