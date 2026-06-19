@@ -1059,6 +1059,11 @@ export default function POSPanel() {
       .sep { border-top: 1px dashed #9ca3af; margin: 8px 0; }
       .diff-pos { color: #047857; font-weight: 700; }
       .diff-neg { color: #b91c1c; font-weight: 700; }
+      .products-table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 11px; }
+      .products-table th, .products-table td { padding: 3px 4px; border-bottom: 1px solid #e5e7eb; text-align: left; color: #111827; }
+      .products-table th.num, .products-table td.num { text-align: right; white-space: nowrap; }
+      .products-table thead th { font-size: 10px; text-transform: uppercase; color: #6b7280; }
+      .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; margin: 8px 0 4px; color: #374151; }
     </style>
   </head>
   <body>
@@ -2171,6 +2176,40 @@ export default function POSPanel() {
       arqueoHeaderDayLabel: inst.toLocaleDateString('es-PE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
     };
   }, [closingAtPreview]);
+
+  const registerSoldProducts = useMemo(() => {
+    const openedAt = closingData?.opened_at || register?.opened_at;
+    if (!openedAt) return [];
+    const endAt = closingAtPreview || new Date();
+    const parseTs = (v) => new Date(String(v || '').includes('T') ? v : `${v}Z`).getTime();
+    const openedMs = parseTs(openedAt);
+    const endMs = endAt.getTime();
+    const map = new Map();
+    for (const order of allOrders || []) {
+      if (String(order.status || '') === 'cancelled') continue;
+      if (String(order.payment_status || '') !== 'paid') continue;
+      const eventMs = parseTs(order.updated_at || order.created_at);
+      if (eventMs < openedMs || eventMs > endMs) continue;
+      for (const item of order.items || []) {
+        const key = `${item.product_id}|${item.product_name}`;
+        const prev = map.get(key) || {
+          product_id: item.product_id,
+          product_name: item.product_name || 'Producto',
+          total_qty: 0,
+          total_amount: 0,
+        };
+        prev.total_qty += Number(item.quantity) || 0;
+        prev.total_amount += Number(item.subtotal) || 0;
+        map.set(key, prev);
+      }
+    }
+    return [...map.values()]
+      .map((row) => ({
+        ...row,
+        unit_price: row.total_qty > 0 ? row.total_amount / row.total_qty : 0,
+      }))
+      .sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), 'es'));
+  }, [allOrders, closingData?.opened_at, register?.opened_at, closingAtPreview]);
 
   const selectionBaseTotal = useMemo(() => {
     if (!selectedTable) return 0;
@@ -4231,34 +4270,6 @@ export default function POSPanel() {
                       <p className="text-2xl sm:text-3xl font-bold text-[#BFDBFE] tabular-nums">{formatCurrency(payableTotal)}</p>
                       <p className="text-xs text-[#9CA3AF] mt-0.5">Total a pagar</p>
                     </div>
-                    {!billingForm.enabled && (
-                      <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-medium text-[#E5E7EB]">Cliente</p>
-                          <button
-                            type="button"
-                            onClick={() => setShowCustomerPickerModal(true)}
-                            className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[#BFDBFE] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1 shrink-0"
-                          >
-                            <MdPeople className="text-sm" />
-                            Mis clientes
-                          </button>
-                        </div>
-                        <input
-                          className="input-field text-sm w-full"
-                          placeholder="Nombre del cliente"
-                          value={billingForm.customer_name}
-                          onChange={(e) => {
-                            setBillingForm((prev) => ({ ...prev, customer_name: e.target.value }));
-                            setSelectedBillingCustomerId('');
-                            setMatchedCustomer(null);
-                          }}
-                        />
-                        {selectedBillingCustomerId ? (
-                          <p className="text-[11px] text-emerald-400">Vinculado a Mi Clientes</p>
-                        ) : null}
-                      </div>
-                    )}
                     <div className={addToAccountEnabled ? 'opacity-50 pointer-events-none' : ''}>
                       <label className="flex items-center gap-2 text-xs font-medium text-[#E5E7EB] mb-2 cursor-pointer">
                         <input
@@ -4349,21 +4360,51 @@ export default function POSPanel() {
                                 setTipPayEnabled(false);
                                 setCheckoutTipAmount('');
                                 setBillingForm((prev) => ({ ...prev, enabled: false }));
+                              } else {
+                                setSelectedBillingCustomerId('');
+                                setMatchedCustomer(null);
+                                setBillingForm((prev) => ({ ...prev, customer_name: '' }));
                               }
                             }}
                             className="rounded border-[color:var(--ui-accent)]"
                           />
                           Agregar a cuenta
                         </label>
-                        {addToAccountEnabled && (
-                          <p className="text-[11px] text-sky-300/90 leading-snug rounded-lg border border-sky-500/30 bg-sky-950/25 px-2 py-1.5">
-                            {resolveBillingCustomerId()
-                              ? `Se cargará a la cuenta de ${billingForm.customer_name || 'el cliente'}. Cobre después en Mi Clientes.`
-                              : 'Seleccione un cliente con «Mis clientes» en datos del comprobante.'}
-                          </p>
-                        )}
                       </div>
                     </div>
+                    {addToAccountEnabled && (
+                      <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium text-[#E5E7EB]">Cliente</p>
+                          <button
+                            type="button"
+                            onClick={() => setShowCustomerPickerModal(true)}
+                            className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[#BFDBFE] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1 shrink-0"
+                          >
+                            <MdPeople className="text-sm" />
+                            Mis clientes
+                          </button>
+                        </div>
+                        <input
+                          className="input-field text-sm w-full"
+                          placeholder="Nombre del cliente"
+                          value={billingForm.customer_name}
+                          onChange={(e) => {
+                            setBillingForm((prev) => ({ ...prev, customer_name: e.target.value }));
+                            setSelectedBillingCustomerId('');
+                            setMatchedCustomer(null);
+                          }}
+                        />
+                        {selectedBillingCustomerId ? (
+                          <p className="text-[11px] text-emerald-400">Vinculado a Mi Clientes</p>
+                        ) : null}
+                        <p className="text-[11px] text-sky-300/90 leading-snug rounded-lg border border-sky-500/30 bg-sky-950/25 px-2 py-1.5">
+                          {resolveBillingCustomerId()
+                            ? `Se cargará a la cuenta de ${billingForm.customer_name || 'el cliente'}. Cobre después en Mi Clientes.`
+                            : 'Seleccione un cliente con «Mis clientes» para agregar el consumo a su cuenta.'}
+                        </p>
+                      </div>
+                    )}
                     <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${addToAccountEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
                       <div>
                         <label className="block text-xs font-medium text-[#E5E7EB] mb-1">Paga con</label>
@@ -4603,6 +4644,32 @@ export default function POSPanel() {
               <div className="sep"></div>
               <div className="row total-row"><span>TOTAL VENTAS</span><span>{formatCurrency(registerSales)}</span></div>
               <div className="row bold"><span>N° de operaciones</span><span>{closingData.order_count || 0}</span></div>
+              {registerSoldProducts.length > 0 && (
+                <>
+                  <div className="sep"></div>
+                  <p className="section-title">Productos vendidos</p>
+                  <table className="products-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th className="num">Cant.</th>
+                        <th className="num">P. unit.</th>
+                        <th className="num">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {registerSoldProducts.map((item) => (
+                        <tr key={`${item.product_id}-${item.product_name}`}>
+                          <td>{item.product_name}</td>
+                          <td className="num">{item.total_qty}</td>
+                          <td className="num">{formatCurrency(item.unit_price)}</td>
+                          <td className="num">{formatCurrency(item.total_amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
               <div className="sep"></div>
               <div className="row bold"><span>EFECTIVO ESPERADO</span><span>{formatCurrency(expectedRounded)}</span></div>
               <div className="row"><span style={{ fontSize: '10px', color: '#94a3b8' }}>(Apertura + ventas en efectivo del turno)</span></div>

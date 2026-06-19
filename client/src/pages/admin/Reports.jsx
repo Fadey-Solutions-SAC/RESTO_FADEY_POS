@@ -85,7 +85,33 @@ const CLOSED_REGISTER_PRINT_STYLES = `
   .diff-pos { color: #047857; font-weight: 700; }
   .diff-neg { color: #b91c1c; font-weight: 700; }
   .muted { color: #6b7280; font-size: 11px; }
+  .products-table { width: 100%; border-collapse: collapse; margin: 4px 0 10px; font-size: 11px; }
+  .products-table th, .products-table td { padding: 3px 4px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  .products-table th.num, .products-table td.num { text-align: right; white-space: nowrap; }
+  .products-table thead th { font-size: 10px; text-transform: uppercase; color: #6b7280; }
 `;
+
+function buildSoldProductsPrintTable(soldProducts = []) {
+  if (!Array.isArray(soldProducts) || !soldProducts.length) return '';
+  const rows = soldProducts
+    .map((item) => {
+      const qty = Number(item.total_qty || 0);
+      const total = Number(item.total_amount || 0);
+      const unit = qty > 0 ? total / qty : Number(item.unit_price || 0);
+      return `<tr>
+        <td>${escapeHtml(item.product_name || '-')}</td>
+        <td class="num">${qty}</td>
+        <td class="num">${escapeHtml(formatCurrency(unit))}</td>
+        <td class="num">${escapeHtml(formatCurrency(total))}</td>
+      </tr>`;
+    })
+    .join('');
+  return `<p class="section-title">Productos vendidos</p>
+    <table class="products-table">
+      <thead><tr><th>Producto</th><th class="num">Cant.</th><th class="num">P. unit.</th><th class="num">Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
 
 function buildClosedRegisterPrintHtml(register) {
   if (!register) return '';
@@ -114,6 +140,7 @@ function buildClosedRegisterPrintHtml(register) {
   parts.push('<div class="sep"></div>');
   parts.push(row('TOTAL VENTAS', formatCurrency(register.total_sales || 0), 'row total-row'));
   parts.push(row('Propinas', formatCurrency(arqueo.total_tips || 0)));
+  parts.push(buildSoldProductsPrintTable(register.sold_products));
   parts.push('<div class="sep"></div>');
   parts.push(row('EFECTIVO ESPERADO', formatCurrency(arqueo.expected_cash || 0), 'row bold'));
   parts.push('<div class="sep"></div>');
@@ -159,15 +186,6 @@ function buildClosedRegisterPrintHtml(register) {
     parts.push('<p class="section-title">Notas de crédito</p>');
     notesCredit.forEach((note) => {
       parts.push(row(`${formatDateTime(note.created_at)} · ${note.reason || '-'}`, formatCurrency(note.amount || 0)));
-    });
-  }
-  if (Array.isArray(register.sold_products) && register.sold_products.length) {
-    parts.push('<p class="section-title">Productos vendidos</p>');
-    register.sold_products.forEach((item) => {
-      const qty = Number(item.total_qty || 0);
-      const unit = qty > 0 ? Number(item.total_amount || 0) / qty : 0;
-      parts.push(row(`${item.product_name} x ${qty}`, formatCurrency(item.total_amount || 0)));
-      parts.push(`<div class="row muted"><span>Precio unit.</span><span>${escapeHtml(formatCurrency(unit))}</span></div>`);
     });
   }
 

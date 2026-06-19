@@ -996,6 +996,37 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
   .modal-sheet-body .cash-close-print .diff-neg {
     color: #fca5a5 !important;
   }
+  .modal-sheet-body .cash-close-print .section-title {
+    color: #e2e8f0 !important;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin: 8px 0 4px;
+  }
+  .modal-sheet-body .cash-close-print .products-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4px 0 8px;
+    font-size: 11px;
+    color: #e2e8f0 !important;
+  }
+  .modal-sheet-body .cash-close-print .products-table th,
+  .modal-sheet-body .cash-close-print .products-table td {
+    padding: 3px 4px;
+    border-bottom: 1px solid #64748b;
+    text-align: left;
+    color: #e2e8f0 !important;
+  }
+  .modal-sheet-body .cash-close-print .products-table th.num,
+  .modal-sheet-body .cash-close-print .products-table td.num {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .modal-sheet-body .cash-close-print .products-table thead th {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: #94a3b8 !important;
+  }
 }
 
 @keyframes pulse-ring {

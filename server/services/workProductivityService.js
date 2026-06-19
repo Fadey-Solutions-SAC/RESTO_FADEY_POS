@@ -13,7 +13,9 @@ const {
 } = require('../lib/workSessionSql');
 
 const FIN = FINANCIAL_FILTER_SQL;
-const IDLE_MINUTES_WARN = 15;
+/** Alertas de inactividad: permiso/día libre no debe disparar aviso por pausas cortas. */
+const IDLE_MINUTES_WARN = 24 * 60;
+const IDLE_MINUTES_SEVERE = 48 * 60;
 const KITCHEN_SLOW_MIN = 28;
 const DELIVERY_SLOW_MIN = 35;
 const LONG_SHIFT_MIN = 600;
@@ -50,6 +52,18 @@ function idleMinutesExpr(alias = 's') {
     WHEN ${alias}.last_activity_at IS NULL OR trim(${alias}.last_activity_at) = '' THEN (${rawWorkedMinutesExpr(alias)})
     ELSE CAST((julianday('now') - julianday(${alias}.last_activity_at)) * 24 * 60 AS INTEGER)
   END`;
+}
+
+function formatIdleDuration(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  if (m >= 1440) {
+    const days = Math.floor(m / 1440);
+    const hours = Math.floor((m % 1440) / 60);
+    if (hours === 0) return `${days} día${days === 1 ? '' : 's'}`;
+    return `${days} día${days === 1 ? '' : 's'} y ${hours} h`;
+  }
+  if (m >= 60) return `${Math.floor(m / 60)} h`;
+  return `${m} min`;
 }
 
 function activeMinutesExpr(alias = 's') {
@@ -357,12 +371,13 @@ function buildAlerts() {
     [IDLE_MINUTES_WARN]
   );
   (idleUsers || []).forEach((u) => {
+    const idleMin = Number(u.idle_minutes) || 0;
     alerts.push({
       id: `idle_${u.user_id}`,
-      severity: Number(u.idle_minutes) >= 30 ? 'warning' : 'info',
+      severity: idleMin >= IDLE_MINUTES_SEVERE ? 'warning' : 'info',
       category: 'inactividad',
       title: 'Usuario inactivo',
-      message: `${u.full_name} lleva ${Math.round(u.idle_minutes)} min sin actividad en el sistema.`,
+      message: `${u.full_name} lleva ${formatIdleDuration(idleMin)} sin actividad en el sistema.`,
     });
   });
 
