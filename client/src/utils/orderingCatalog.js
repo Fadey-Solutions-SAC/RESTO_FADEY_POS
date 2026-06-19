@@ -53,6 +53,23 @@ export function filterVisibleOrderingProducts(products = [], categoryIds = new S
   return products.filter((p) => p.is_combo || categoryIds.has(p.category_id));
 }
 
+/** Coincide si el nombre del producto empieza con el texto buscado (orden de escritura). */
+export function matchesOrderingProductSearch(productName, searchTerm) {
+  const term = String(searchTerm || '').trim().toLowerCase();
+  if (!term) return true;
+  const name = String(productName || '').trim().toLowerCase();
+  return name.startsWith(term);
+}
+
+/** Filtra catálogo de pedidos por categoría y búsqueda por prefijo. */
+export function filterOrderingProducts(products = [], { search = '', selectedCat = 'all' } = {}) {
+  return products.filter((p) => {
+    if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
+    if (!matchesOrderingProductSearch(p.name, search)) return false;
+    return true;
+  });
+}
+
 export function buildOrderItemsPayload(cart = []) {
   return cart.map((i) => ({
     product_id: i.product_id,

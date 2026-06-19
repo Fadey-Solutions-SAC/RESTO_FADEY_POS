@@ -6,7 +6,7 @@ import Modal from '../../components/Modal';
 import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
-import { mergeOrderingCatalog, filterVisibleOrderingProducts, buildOrderItemsPayload } from '../../utils/orderingCatalog';
+import { mergeOrderingCatalog, filterVisibleOrderingProducts, buildOrderItemsPayload, filterOrderingProducts } from '../../utils/orderingCatalog';
 import { MdAdd, MdExpandMore, MdEventSeat, MdPerson, MdPhone, MdCalendarToday, MdAccessTime } from 'react-icons/md';
 
 const WAREHOUSE_CATEGORY_NAMES = new Set(['PRODUCTOS ALMACEN', 'INSUMOS']);
@@ -95,13 +95,10 @@ export default function Reservas() {
     setCustomerSuggestions(suggestions);
   }, [form.client_name, customers]);
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
-      if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
-      return true;
-    });
-  }, [products, selectedCat, search]);
+  const filteredProducts = useMemo(
+    () => filterOrderingProducts(products, { search, selectedCat }),
+    [products, selectedCat, search],
+  );
 
   const resetForm = () => {
     setForm({ client_name: '', phone: '', date: todayKey, time: '', guests: 1, table_id: '', notes: '' });

@@ -51,6 +51,7 @@ import {
   mergeOrderingCatalog,
   filterVisibleOrderingProducts,
   buildOrderItemsPayload,
+  filterOrderingProducts,
 } from '../../utils/orderingCatalog';
 import {
   billLineDisplayName,
@@ -2089,11 +2090,7 @@ export default function POSPanel() {
     ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
     : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5';
   const deliveryCajaSlots = useMemo(() => buildDeliveryCajaSlots(allOrders), [allOrders]);
-  const filteredProducts = products.filter(p => {
-    if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  const filteredProducts = filterOrderingProducts(products, { search, selectedCat });
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
   const registerSales = Number(register?.total_sales || 0);

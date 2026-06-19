@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api, formatCurrency } from '../../utils/api';
-import { mergeOrderingCatalog, buildOrderItemsPayload } from '../../utils/orderingCatalog';
+import { mergeOrderingCatalog, buildOrderItemsPayload, filterOrderingProducts } from '../../utils/orderingCatalog';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useAuth } from '../../context/AuthContext';
@@ -50,6 +50,15 @@ export default function Tables() {
   } = useStaffOrderCart(modifiers);
 
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+
+  useEffect(() => {
+    if (!showMenu) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [showMenu]);
 
   const loadTables = useCallback(() => {
     Promise.all([
@@ -205,11 +214,7 @@ export default function Tables() {
     { id: 'merge', label: 'Unir mesas' },
   ];
 
-  const filteredProducts = products.filter((p) => {
-    if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
-    if (search && !(String(p.name || '')).toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  const filteredProducts = filterOrderingProducts(products, { search, selectedCat });
   const activeOrdersForTable = selectedTable?.orders || [];
 
   if (loading) return <div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--ui-accent)] border-t-transparent" /></div>;
@@ -322,15 +327,16 @@ export default function Tables() {
             </button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden bg-[var(--ui-body-bg)] p-3 sm:p-4">
-            <div className="flex h-full min-h-0 w-full flex-col rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3 sm:p-4">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ui-body-bg)] p-3 sm:p-4">
+            <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3 sm:p-4">
               <StaffMesaPedidoTabs
                 orders={activeOrdersForTable}
                 formatCurrency={formatCurrency}
                 resetKey={selectedTable?.id}
-                className="min-h-0 flex-1"
+                className="flex h-full min-h-0 flex-1 basis-0 flex-col overflow-hidden"
               >
                 <StaffDineInOrderUI
+                  fillParentHeight
                   search={search}
                   onSearchChange={setSearch}
                   selectedCat={selectedCat}
@@ -346,8 +352,8 @@ export default function Tables() {
                   updateItemNote={updateItemNote}
                   cartTotal={cartTotal}
                   formatCurrency={formatCurrency}
-                  minHeightClass="min-h-0 flex-1"
-                  className="flex-1 min-h-0"
+                  minHeightClass="min-h-0"
+                  className="h-full min-h-0 flex-1 basis-0"
                   cartLayout="lines"
                   footer={
                     cart.length > 0 ? (

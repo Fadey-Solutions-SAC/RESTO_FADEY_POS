@@ -9,7 +9,7 @@ import {
   PAYMENT_METHODS,
 } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { mergeOrderingCatalog, buildOrderItemsPayload } from '../../utils/orderingCatalog';
+import { mergeOrderingCatalog, buildOrderItemsPayload, filterOrderingProducts } from '../../utils/orderingCatalog';
 import { showStockInOrderingUI } from '../../utils/productStockDisplay';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
@@ -192,11 +192,7 @@ export default function Delivery() {
     } catch (err) { toast.error(err.message); }
   };
 
-  const filteredProducts = products.filter((p) => {
-    if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
-    if (search && !(String(p.name || '')).toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  const filteredProducts = filterOrderingProducts(products, { search, selectedCat });
 
   if (loading) return <div className="flex justify-center py-16"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>;
 

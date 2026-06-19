@@ -10,6 +10,7 @@ import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel'
 import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
 import { MdAdd, MdClose, MdDelete, MdLock, MdReceipt, MdRemove, MdRestaurantMenu } from 'react-icons/md';
+import { filterOrderingProducts } from '../../utils/orderingCatalog';
 
 function storageKeyForCliente(id) {
   return `selfOrderCliente:${id}`;
@@ -128,13 +129,8 @@ export default function SelfOrderCliente() {
   });
 
   const filteredProducts = useMemo(
-    () =>
-      products.filter((p) => {
-        if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
-        if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
-        return true;
-      }),
-    [products, selectedCat, search]
+    () => filterOrderingProducts(products, { search, selectedCat }),
+    [products, selectedCat, search],
   );
 
   const table = bootstrap?.table;
