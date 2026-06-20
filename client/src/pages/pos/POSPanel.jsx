@@ -251,7 +251,7 @@ function parseOrderItemNotes(notesStr, product) {
 function canEditOrderLines(order) {
   return (
     order &&
-    ['pending', 'preparing'].includes(String(order.status || '')) &&
+    ['pending', 'preparing', 'ready'].includes(String(order.status || '')) &&
     String(order.payment_status || 'pending') === 'pending'
   );
 }
@@ -3379,7 +3379,7 @@ export default function POSPanel() {
           }
           return `Agregar Pedido — ${selectedTable?.name || ''}`;
         })()}
-        size={editingOrderId ? 'md' : 'xl'}
+        size="xl"
         maxHeightClass="max-h-[min(92vh,920px)]"
         bodyClassName="!overflow-hidden flex min-h-0 flex-1 flex-col !p-4 sm:!p-6"
       >
@@ -3646,72 +3646,6 @@ export default function POSPanel() {
             ) : null
           }
         />
-        ) : selectedTable && editingOrderId ? (
-          <div className="flex min-h-0 max-h-[min(72vh,520px)] flex-1 flex-col overflow-hidden text-[#E5E7EB]">
-            <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-[#9CA3AF]">Productos en la mesa</p>
-            <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
-              {cart.length === 0 ? (
-                <p className="py-8 text-center text-sm text-[#9CA3AF]">No quedan productos. Puedes liberar la mesa.</p>
-              ) : (
-                <ul className="space-y-1.5 text-sm text-[#D1D5DB]">
-                  {cart.map((item) => {
-                    const lineTotal = Number(item.price || 0) * Number(item.quantity || 0);
-                    return (
-                      <li
-                        key={item.line_key}
-                        className="flex flex-wrap items-center gap-2 border-b border-[#374151]/80 pb-1.5 last:border-0 last:pb-0"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <span className="font-medium text-white">{item.name}</span>
-                          <span className="text-[#9CA3AF]"> × {item.quantity}</span>
-                          {item.modifier_option ? (
-                            <p className="truncate text-[11px] text-[#BFDBFE]">{item.modifier_option}</p>
-                          ) : null}
-                          {item.notes?.trim() ? (
-                            <p className="truncate text-[11px] text-[#9CA3AF]">{item.notes}</p>
-                          ) : null}
-                        </div>
-                        <span className="shrink-0 tabular-nums font-medium text-[#BFDBFE]">{formatCurrency(lineTotal)}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(item.line_key)}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-500/45 bg-red-950/40 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-900/55"
-                        >
-                          <MdDelete className="text-sm" /> Eliminar
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-            <div className="mt-4 shrink-0 space-y-3 border-t border-[color:var(--ui-border)] pt-4">
-              {cart.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-base font-bold text-white">
-                    <span>Total</span>
-                    <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
-                  </div>
-                  {paraLlevarToggleButton}
-                  <button
-                    type="button"
-                    onClick={submitOrder}
-                    className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-base"
-                  >
-                    <MdReceipt /> Guardar cambios
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void liberarMesaDesdeEdicionPedidoVacio()}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-400/60 bg-amber-950/50 py-3 text-base font-semibold text-amber-100 hover:bg-amber-900/60"
-                >
-                  <MdTableRestaurant /> Liberar mesa
-                </button>
-              )}
-            </div>
-          </div>
         ) : selectedTable ? (
           <StaffMesaPedidoTabs
             orders={selectedTable.orders || []}
@@ -3737,8 +3671,34 @@ export default function POSPanel() {
               cartTotal={cartTotal}
               formatCurrency={formatCurrency}
               className="min-h-0 flex-1"
+              showLineDeleteLabel={Boolean(editingOrderId)}
               footer={
-                cart.length > 0 ? (
+                editingOrderId ? (
+                  cart.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex justify-between font-bold text-lg text-white">
+                        <span>Total</span>
+                        <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
+                      </div>
+                      {paraLlevarToggleButton}
+                      <button
+                        type="button"
+                        onClick={submitOrder}
+                        className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-base"
+                      >
+                        <MdReceipt /> Guardar cambios
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void liberarMesaDesdeEdicionPedidoVacio()}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-400/60 bg-amber-950/50 py-3 text-base font-semibold text-amber-100 hover:bg-amber-900/60"
+                    >
+                      <MdTableRestaurant /> Liberar mesa
+                    </button>
+                  )
+                ) : cart.length > 0 ? (
                   <div className="space-y-2">
                     <div className="flex justify-between font-bold text-lg text-white">
                       <span>Total</span>

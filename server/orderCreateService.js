@@ -338,8 +338,8 @@ function restoreNonTransformedStockForOrderTx(tx, orderId) {
 function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
   const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
   if (!order) throw new Error('Pedido no encontrado');
-  if (!['pending', 'preparing'].includes(String(order.status || ''))) {
-    throw new Error('Solo se pueden modificar pedidos pendientes o en preparación');
+  if (!['pending', 'preparing', 'ready'].includes(String(order.status || ''))) {
+    throw new Error('Solo se pueden modificar pedidos pendientes, en preparación o listos (sin cobrar)');
   }
   if (String(order.payment_status || 'pending') !== 'pending') {
     throw new Error('No se puede modificar un pedido ya cobrado');
@@ -439,8 +439,12 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
   const deliveryFee = Number(order.delivery_fee || 0);
   const total = Math.max(0, subtotal - discountAmount + deliveryFee);
 
+  const resetKitchen =
+    String(order.status || '') === 'ready'
+      ? ", status = 'pending', preparing_at = NULL"
+      : '';
   tx.run(
-    `UPDATE orders SET subtotal = ?, tax = 0, total = ?, updated_at = datetime('now') WHERE id = ?`,
+    `UPDATE orders SET subtotal = ?, tax = 0, total = ?, updated_at = datetime('now')${resetKitchen} WHERE id = ?`,
     [subtotal, total, orderId]
   );
 
