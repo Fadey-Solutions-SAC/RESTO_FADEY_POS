@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatDateTime } from '../../utils/api';
 import toast from 'react-hot-toast';
@@ -6,6 +6,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel, MdDownload } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
+import { buildSalesDisplayGroups } from '../../utils/mesaOrderLines';
 
 const PAYMENT_STATUS_STYLES = {
   paid: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
@@ -21,6 +22,22 @@ function getSaleStatusBadge(order, t) {
   const label = t(`status.${ps}`, { defaultValue: ps === 'paid' ? 'Pagado' : ps === 'pending' ? 'Pendiente' : ps });
   const className = PAYMENT_STATUS_STYLES[ps] || 'bg-slate-500/20 text-slate-300 border border-slate-500/30';
   return { label, className };
+}
+
+function getSalesGroupStatusBadge(group, t) {
+  const orders = group?.orders || [];
+  if (orders.length === 0) return getSaleStatusBadge({}, t);
+  if (orders.every((o) => o.status === 'cancelled')) {
+    return { label: 'Anulada', className: 'bg-red-500/20 text-red-300 border border-red-500/50' };
+  }
+  const paid = orders.filter((o) => o.payment_status === 'paid').length;
+  const pending = orders.filter((o) => String(o.payment_status || 'pending') === 'pending').length;
+  if (paid === orders.length) return getSaleStatusBadge({ payment_status: 'paid' }, t);
+  if (pending === orders.length) return getSaleStatusBadge({ payment_status: 'pending' }, t);
+  if (paid > 0 && pending > 0) {
+    return { label: 'Parcial', className: 'bg-sky-500/20 text-sky-200 border border-sky-500/40' };
+  }
+  return getSaleStatusBadge(orders[0], t);
 }
 
 function getSaleStatusDetailLabel(order, t) {
@@ -49,11 +66,17 @@ function getOrderDocument(order) {
   return { doc_type: docType, full_number: fullNumber };
 }
 
-function orderReceiptHtml(order) {
+function orderReceiptHtml(order, groupedProducts = null) {
   const doc = getOrderDocument(order);
-  const itemsHtml = (order.items || [])
-    .map(i => `<tr><td>${i.quantity}x ${i.product_name}</td><td style="text-align:right">${Number(i.subtotal || 0).toFixed(2)}</td></tr>`)
+  const lines = groupedProducts || (order.items || []).map((i) => ({
+    name: i.product_name,
+    qty: i.quantity,
+    subtotal: i.subtotal,
+  }));
+  const itemsHtml = lines
+    .map((i) => `<tr><td>${i.qty}x ${i.name}</td><td style="text-align:right">${Number(i.subtotal || 0).toFixed(2)}</td></tr>`)
     .join('');
+  const titleExtra = groupedProducts && groupedProducts.length ? ` · Mesa ${order.table_number || ''}` : '';
   return `
     <html>
       <head>
@@ -68,7 +91,7 @@ function orderReceiptHtml(order) {
         </style>
       </head>
       <body>
-        <h2>${docLabel(doc.doc_type)} ${doc.full_number}</h2>
+        <h2>${docLabel(doc.doc_type)} ${doc.full_number}${titleExtra}</h2>
         <p class="muted">Venta #${order.order_number} · ${new Date(`${order.created_at}Z`).toLocaleString('es-PE')}</p>
         <p><strong>Cliente:</strong> ${order.customer_name || 'PUBLICO GENERAL'}</p>
         <p><strong>Pago:</strong> ${payLabel(order.payment_method)}</p>
@@ -264,6 +287,7 @@ export default function Ventas() {
   const [voidReason, setVoidReason] = useState('');
   const [voidSubmitting, setVoidSubmitting] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState(null);
   const [editing, setEditing] = useState(null);
   const [editPaymentMethod, setEditPaymentMethod] = useState('efectivo');
   const [editDocType, setEditDocType] = useState('nota_venta');
@@ -319,6 +343,8 @@ export default function Ventas() {
     setFiltered(f);
   }, [search, statusFilter, typeFilter, waiterFilter, fromDate, toDate, saleTab, orders]);
 
+  const displayGroups = useMemo(() => buildSalesDisplayGroups(filtered), [filtered]);
+
   const waiterOptions = Array.from(
     new Set(orders.map(o => (o.created_by_user_name || o.customer_name || '-')).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, 'es'));
@@ -327,7 +353,20 @@ export default function Ventas() {
     total: filtered.reduce((s, o) => s + (o.total || 0), 0),
     paid: filtered.filter(o => o.payment_status === 'paid').reduce((s, o) => s + (o.total || 0), 0),
     pending: filtered.filter(o => o.payment_status === 'pending').reduce((s, o) => s + (o.total || 0), 0),
-    count: filtered.length,
+    count: displayGroups.length,
+    transactions: filtered.length,
+  };
+
+  const openGroupDetail = (group) => {
+    setSelectedGroup(group);
+    setSelected(group.primary);
+    setEditing(null);
+  };
+
+  const closeDetail = () => {
+    setSelected(null);
+    setSelectedGroup(null);
+    setEditing(null);
   };
 
   const startEdit = (order) => {
@@ -336,6 +375,8 @@ export default function Ventas() {
     setEditPaymentMethod(order.payment_method || 'efectivo');
     setEditDocType(doc.doc_type || 'nota_venta');
     setSelected(order);
+    const group = displayGroups.find((g) => g.orders.some((o) => o.id === order.id));
+    if (group) setSelectedGroup(group);
   };
 
   const saveChanges = async () => {
@@ -346,7 +387,7 @@ export default function Ventas() {
       await api.put(`/billing/order/${editing.id}/document`, { doc_type: editDocType });
       toast.success('Registro actualizado');
       setEditing(null);
-      setSelected(null);
+      closeDetail();
       await load();
     } catch (err) {
       toast.error(err.message);
@@ -355,7 +396,7 @@ export default function Ventas() {
     }
   };
 
-  const openReceipt = (order) => {
+  const openReceiptHtml = (html) => {
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0';
@@ -374,7 +415,7 @@ export default function Ventas() {
     }
 
     doc.open();
-    doc.write(orderReceiptHtml(order));
+    doc.write(html);
     doc.close();
 
     setTimeout(() => {
@@ -384,6 +425,27 @@ export default function Ventas() {
         if (document.body.contains(iframe)) document.body.removeChild(iframe);
       }, 700);
     }, 200);
+  };
+
+  const openGroupReceipt = (group) => {
+    const primary = group.primary;
+    const lines = group.groupedProducts.map((p) => ({
+      name: p.name,
+      qty: p.qty,
+      subtotal: p.subtotal,
+    }));
+    openReceiptHtml(orderReceiptHtml(
+      { ...primary, total: group.total },
+      group.isMesa && group.comprobanteCount > 1 ? lines : null,
+    ));
+  };
+
+  const openReceipt = (order, group = null) => {
+    if (group?.isMesa && group.comprobanteCount > 1) {
+      openGroupReceipt(group);
+      return;
+    }
+    openReceiptHtml(orderReceiptHtml(order));
   };
 
   const openVoidModal = (order) => {
@@ -407,7 +469,7 @@ export default function Ventas() {
       toast.success('Venta anulada');
       setVoidModalOrder(null);
       setVoidReason('');
-      if (selected?.id === order.id) setSelected(null);
+      if (selected?.id === order.id) closeDetail();
       setSaleTab('anuladas');
       await load();
     } catch (err) {
@@ -447,7 +509,7 @@ export default function Ventas() {
         <div className="card border-l-4 border-l-slate-400"><p className="text-xs ui-text-muted">Total Ventas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{formatCurrency(totals.total)}</p></div>
         <div className="card border-l-4 border-l-emerald-500"><p className="text-xs text-emerald-600">Cobrado</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totals.paid)}</p></div>
         <div className="card border-l-4 border-l-amber-500"><p className="text-xs text-amber-600">Pendiente</p><p className="text-xl font-bold text-amber-300">{formatCurrency(totals.pending)}</p></div>
-        <div className="card border-l-4 border-l-sky-500"><p className="text-xs text-sky-600">Transacciones</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p></div>
+        <div className="card border-l-4 border-l-sky-500"><p className="text-xs text-sky-600">Registros</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p><p className="text-[10px] text-[var(--ui-muted)]">{totals.transactions} comprobante(s)</p></div>
       </div>
 
       <div className="rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-5">
@@ -504,27 +566,58 @@ export default function Ventas() {
               <th className="pb-2 font-medium">Fecha</th><th className="pb-2 font-medium">Mesa</th><th className="pb-2 font-medium">Caja</th><th className="pb-2 font-medium">Mesero</th><th className="pb-2 font-medium">Cliente</th><th className="pb-2 font-medium">Documento</th><th className="pb-2 font-medium">Pagos</th><th className="pb-2 font-medium">Venta</th><th className="pb-2 font-medium">Estado</th><th className="pb-2 font-medium">Opciones</th>
             </tr></thead>
             <tbody>
-              {filtered.map(o => {
+              {displayGroups.map((group) => {
+                const o = group.primary;
                 const doc = getOrderDocument(o);
-                const mesa = o.type === 'dine_in' ? `M${String(o.table_number || '0').padStart(2, '0')}` : '-';
                 const mesero = o.created_by_user_name || o.customer_name || '-';
-                const statusBadge = getSaleStatusBadge(o, t);
+                const statusBadge = getSalesGroupStatusBadge(group, t);
+                const latest = new Date(`${group.latestAt}Z`);
+                const earliest = new Date(`${group.earliestAt}Z`);
+                const sameDay = group.comprobanteCount === 1
+                  || latest.toLocaleDateString('es-PE') === earliest.toLocaleDateString('es-PE');
                 return (
-                  <tr key={o.id} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
+                  <tr key={group.key} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
                     <td className="py-2.5">
-                      <p className="font-medium text-[var(--ui-body-text)]">{new Date(`${o.created_at}Z`).toLocaleDateString('es-PE')}</p>
-                      <p className="text-xs text-[var(--ui-muted)]">{new Date(`${o.created_at}Z`).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</p>
+                      <p className="font-medium text-[var(--ui-body-text)]">{latest.toLocaleDateString('es-PE')}</p>
+                      <p className="text-xs text-[var(--ui-muted)]">
+                        {group.comprobanteCount > 1 && !sameDay
+                          ? `${earliest.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} – ${latest.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`
+                          : latest.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                        {group.comprobanteCount > 1 ? ` · ${group.comprobanteCount} pagos` : ''}
+                      </p>
                     </td>
-                    <td className="py-2.5 text-[var(--ui-body-text)]">{mesa}</td>
+                    <td className="py-2.5 text-[var(--ui-body-text)] font-semibold">{group.mesaLabel}</td>
                     <td className="py-2.5 text-[var(--ui-muted)]">Caja 01</td>
                     <td className="py-2.5 text-[var(--ui-body-text)]">{mesero}</td>
-                    <td className="py-2.5 text-[var(--ui-body-text)]">{o.customer_name || 'PUBLICO GENERAL'}</td>
-                    <td className="py-2.5">
-                      <p className="font-medium text-[var(--ui-body-text)]">{docLabel(doc.doc_type)}</p>
-                      <p className="text-xs text-[var(--ui-muted)]">{doc.full_number}</p>
+                    <td className="py-2.5 text-[var(--ui-body-text)]">
+                      {group.isMesa ? `Mesa ${o.table_number}` : (o.customer_name || 'PUBLICO GENERAL')}
                     </td>
-                    <td className="py-2.5 font-medium text-[var(--ui-body-text)]">{payLabel(o.payment_method)} (S/): {Number(o.total || 0).toFixed(2)}</td>
-                    <td className="py-2.5 font-bold text-[var(--ui-body-text)]">{formatCurrency(o.total)}</td>
+                    <td className="py-2.5">
+                      {group.comprobanteCount > 1 ? (
+                        <>
+                          <p className="font-medium text-[var(--ui-body-text)]">{group.comprobanteCount} comprobantes</p>
+                          <p className="text-xs text-[var(--ui-muted)]">{docLabel(doc.doc_type)} · {doc.full_number}…</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium text-[var(--ui-body-text)]">{docLabel(doc.doc_type)}</p>
+                          <p className="text-xs text-[var(--ui-muted)]">{doc.full_number}</p>
+                        </>
+                      )}
+                    </td>
+                    <td className="py-2.5 font-medium text-[var(--ui-body-text)] text-xs leading-relaxed">
+                      {(() => {
+                        const payParts = new Map();
+                        for (const ord of group.orders) {
+                          const method = String(ord.payment_method || 'efectivo');
+                          payParts.set(method, (payParts.get(method) || 0) + Number(ord.total || 0));
+                        }
+                        return [...payParts.entries()]
+                          .map(([method, amount]) => `${payLabel(method)} (S/): ${amount.toFixed(2)}`)
+                          .join(' · ');
+                      })()}
+                    </td>
+                    <td className="py-2.5 font-bold text-[var(--ui-body-text)]">{formatCurrency(group.total)}</td>
                     <td className="py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${statusBadge.className}`}>
                         {statusBadge.label}
@@ -532,13 +625,34 @@ export default function Ventas() {
                     </td>
                     <td className="py-2.5">
                       <div className="flex items-center gap-1 relative">
-                        <button onClick={() => setSelected(o)} className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700" title="Ver"><MdVisibility /></button>
-                        <button onClick={() => openReceipt(o)} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
-                        <button onClick={() => downloadExcel({ ...o, local_name: restaurantName })} className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700" title="Excel"><MdTableChart /></button>
-                        <button onClick={() => startEdit(o)} className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600" title="Editar"><MdEdit /></button>
+                        <button onClick={() => openGroupDetail(group)} className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700" title="Ver"><MdVisibility /></button>
+                        <button onClick={() => openReceipt(o, group)} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
                         <button
-                          onClick={() => openVoidModal(o)}
-                          disabled={o.status === 'cancelled'}
+                          onClick={() => {
+                            if (group.comprobanteCount === 1) downloadExcel({ ...o, local_name: restaurantName });
+                            else group.orders.forEach((ord) => downloadExcel({ ...ord, local_name: restaurantName }));
+                          }}
+                          className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700"
+                          title="Excel"
+                        >
+                          <MdTableChart />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (group.comprobanteCount === 1) startEdit(o);
+                            else openGroupDetail(group);
+                          }}
+                          className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600"
+                          title="Editar"
+                        >
+                          <MdEdit />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (group.comprobanteCount === 1) openVoidModal(o);
+                            else openGroupDetail(group);
+                          }}
+                          disabled={group.orders.every((ord) => ord.status === 'cancelled')}
                           className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700 disabled:opacity-50"
                           title="Anular venta"
                         >
@@ -549,14 +663,23 @@ export default function Ventas() {
                   </tr>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan="10" className="py-8 text-center text-[var(--ui-muted)]">Sin ventas encontradas</td></tr>}
+              {displayGroups.length === 0 && <tr><td colSpan="10" className="py-8 text-center text-[var(--ui-muted)]">Sin ventas encontradas</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
 
-      <Modal isOpen={!!selected} onClose={() => { setSelected(null); setEditing(null); }} title={`Venta #${selected?.order_number}`} size="md">
-        {selected && (
+      <Modal
+        isOpen={!!selected}
+        onClose={closeDetail}
+        title={
+          selectedGroup?.isMesa && selectedGroup.comprobanteCount > 1
+            ? `Mesa ${selectedGroup.primary.table_number} — ${selectedGroup.comprobanteCount} comprobantes`
+            : `Venta #${selected?.order_number}`
+        }
+        size="md"
+      >
+        {selected && selectedGroup && (
           <div className="space-y-4">
             {editing?.id === selected.id && (
               <div className="bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] rounded-lg p-3 space-y-3">
@@ -592,26 +715,77 @@ export default function Ventas() {
               </div>
             ) : null}
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><p className="ui-text-muted">Fecha</p><p className="font-medium">{formatDateTime(selected.created_at)}</p></div>
-              <div><p className="ui-text-muted">Tipo</p><p className="font-medium">{selected.type === 'dine_in' ? `Mesa ${selected.table_number}` : selected.type}</p></div>
-              <div><p className="ui-text-muted">Metodo de Pago</p><p className="font-medium">{payLabel(selected.payment_method)}</p></div>
-              <div><p className="ui-text-muted">Estado</p><p className="font-medium">{getSaleStatusDetailLabel(selected, t)}</p></div>
-              <div className="col-span-2">
-                <p className="ui-text-muted">Comprobante</p>
-                <p className="font-medium">{(() => { const doc = getOrderDocument(selected); return `${docLabel(doc.doc_type)} - ${doc.full_number}`; })()}</p>
+              <div><p className="ui-text-muted">Fecha</p><p className="font-medium">{formatDateTime(selectedGroup.latestAt)}</p></div>
+              <div>
+                <p className="ui-text-muted">Tipo</p>
+                <p className="font-medium">
+                  {selectedGroup.isMesa
+                    ? `Mesa ${selectedGroup.primary.table_number}`
+                    : selected.type}
+                </p>
               </div>
+              <div><p className="ui-text-muted">Total mesa</p><p className="font-medium">{formatCurrency(selectedGroup.total)}</p></div>
+              <div><p className="ui-text-muted">Estado</p><p className="font-medium">{getSalesGroupStatusBadge(selectedGroup, t).label}</p></div>
             </div>
             <div className="border-t border-[color:var(--ui-border)] pt-3">
-              <p className="font-medium mb-2 text-[var(--ui-body-text)]">Detalle:</p>
-              {(selected.items || []).map((it, i) => (
-                <div key={i} className="flex justify-between text-sm py-1 border-b border-[color:var(--ui-border)] text-[var(--ui-body-text)]">
-                  <span>{it.quantity}x {it.product_name}</span>
+              <p className="font-medium mb-2 text-[var(--ui-body-text)]">
+                Productos {selectedGroup.isMesa ? `(agrupados — ${selectedGroup.mesaLabel})` : ''}:
+              </p>
+              {selectedGroup.groupedProducts.map((it) => (
+                <div key={it.key} className="flex justify-between text-sm py-1 border-b border-[color:var(--ui-border)] text-[var(--ui-body-text)]">
+                  <span>{it.qty}x {it.name}</span>
                   <span className="font-medium">{formatCurrency(it.subtotal)}</span>
                 </div>
               ))}
             </div>
+            {selectedGroup.comprobanteCount > 1 && (
+              <div className="border-t border-[color:var(--ui-border)] pt-3 space-y-2">
+                <p className="font-medium text-[var(--ui-body-text)]">Comprobantes por pago</p>
+                {selectedGroup.orders.map((ord) => {
+                  const doc = getOrderDocument(ord);
+                  const badge = getSaleStatusBadge(ord, t);
+                  return (
+                    <div
+                      key={ord.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-[var(--ui-body-text)]">
+                          #{ord.order_number} · {docLabel(doc.doc_type)} {doc.full_number}
+                        </p>
+                        <p className="text-xs text-[var(--ui-muted)]">
+                          {formatDateTime(ord.created_at)} · {payLabel(ord.payment_method)} · {formatCurrency(ord.total)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${badge.className}`}>{badge.label}</span>
+                        <button type="button" onClick={() => startEdit(ord)} className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600" title="Editar"><MdEdit /></button>
+                        <button
+                          type="button"
+                          onClick={() => openVoidModal(ord)}
+                          disabled={ord.status === 'cancelled'}
+                          className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700 disabled:opacity-50"
+                          title="Anular"
+                        >
+                          <MdCancel />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {selectedGroup.comprobanteCount === 1 && (
+              <div className="grid grid-cols-2 gap-3 text-sm border-t border-[color:var(--ui-border)] pt-3">
+                <div><p className="ui-text-muted">Metodo de Pago</p><p className="font-medium">{payLabel(selected.payment_method)}</p></div>
+                <div>
+                  <p className="ui-text-muted">Comprobante</p>
+                  <p className="font-medium">{(() => { const doc = getOrderDocument(selected); return `${docLabel(doc.doc_type)} - ${doc.full_number}`; })()}</p>
+                </div>
+              </div>
+            )}
             <div className="border-t border-[color:var(--ui-border)] pt-3 flex justify-between font-bold text-lg text-[var(--ui-body-text)]">
-              <span>Total</span><span>{formatCurrency(selected.total)}</span>
+              <span>Total</span><span>{formatCurrency(selectedGroup.total)}</span>
             </div>
           </div>
         )}

@@ -165,3 +165,79 @@ export function getStaffOrderStatusUi(status) {
   if (value === 'cancelled') return { label: 'Cancelado', classes: 'bg-[#1E40AF]/25 text-[#F9FAFB] border border-[#3B82F6]/40' };
   return { label: value || 'Sin estado', classes: 'bg-[#1F2937] text-[#F9FAFB] border border-[#3B82F6]/30' };
 }
+
+/** Clave de agrupación en Ventas: misma mesa (salón) o un pedido suelto (delivery/mostrador). */
+export function salesGroupKey(order) {
+  if (!order) return '';
+  const table = String(order.table_number || '').trim();
+  if (order.type === 'dine_in' && table) return `mesa:${table}`;
+  return `pedido:${order.id || ''}`;
+}
+
+export function formatMesaLabel(tableNumber) {
+  const t = String(tableNumber || '').trim();
+  if (!t) return '-';
+  return `M${t.padStart(2, '0')}`;
+}
+
+/**
+ * Agrupa ventas de salón por mesa; delivery/mostrador quedan como fila individual.
+ * Productos de la mesa se consolidan con la misma regla que precuenta/cobro.
+ */
+export function buildSalesDisplayGroups(orders = []) {
+  const byKey = new Map();
+  for (const order of orders) {
+    const key = salesGroupKey(order);
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(order);
+  }
+
+  const groups = [...byKey.entries()].map(([key, list]) => {
+    const sorted = [...list].sort(
+      (a, b) => new Date(`${b.created_at}Z`).getTime() - new Date(`${a.created_at}Z`).getTime(),
+    );
+    const primary = sorted[0];
+    const isMesa = key.startsWith('mesa:');
+    const allItems = sorted.flatMap((o) => o.items || []);
+    const groupedProducts = groupItemsByProductNameForBill(allItems);
+    const total = sorted.reduce((s, o) => s + Number(o.total || 0), 0);
+    const paidTotal = sorted
+      .filter((o) => o.payment_status === 'paid')
+      .reduce((s, o) => s + Number(o.total || 0), 0);
+    const pendingTotal = sorted
+      .filter((o) => String(o.payment_status || 'pending') === 'pending')
+      .reduce((s, o) => s + Number(o.total || 0), 0);
+
+    const payParts = new Map();
+    for (const o of sorted) {
+      const method = String(o.payment_method || 'efectivo');
+      payParts.set(method, (payParts.get(method) || 0) + Number(o.total || 0));
+    }
+    const paymentSummary = [...payParts.entries()]
+      .map(([method, amount]) => `${method} (S/): ${amount.toFixed(2)}`)
+      .join(' · ');
+
+    const latestAt = sorted[0]?.created_at;
+    const earliestAt = sorted[sorted.length - 1]?.created_at;
+
+    return {
+      key,
+      isMesa,
+      mesaLabel: isMesa ? formatMesaLabel(primary.table_number) : '-',
+      orders: sorted,
+      primary,
+      groupedProducts,
+      total,
+      paidTotal,
+      pendingTotal,
+      paymentSummary,
+      latestAt,
+      earliestAt,
+      comprobanteCount: sorted.length,
+    };
+  });
+
+  return groups.sort(
+    (a, b) => new Date(`${b.latestAt}Z`).getTime() - new Date(`${a.latestAt}Z`).getTime(),
+  );
+}

@@ -25,6 +25,10 @@ import {
 
 const HIDDEN_PRODUCT_CATEGORY_NAMES = new Set(['PRODUCTOS ALMACEN', 'INSUMOS']);
 
+function isProductInactive(p) {
+  return Number(p?.is_active ?? 1) === 0;
+}
+
 const EMPTY_PRODUCT_FORM = {
   name: '',
   description: '',
@@ -239,7 +243,7 @@ export default function Productos() {
   const filtered = visibleProducts.filter(p => {
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase());
     const matchCat = !selectedCat || p.category_id === selectedCat;
-    const matchActive = showInactive ? true : p.is_active !== 0;
+    const matchActive = showInactive ? isProductInactive(p) : !isProductInactive(p);
     const matchSlowMoving = !highlightSlowMoving || slowMovingProductIds.has(String(p.id));
     return matchSearch && matchCat && matchActive && matchSlowMoving;
   });
@@ -521,11 +525,14 @@ export default function Productos() {
       mergeCategoryInto(cat);
       return;
     }
-    setSelectedCat(cat.id);
+    setSelectedCat((prev) => (prev === cat.id ? '' : cat.id));
   };
 
   const getCatName = (id) => visibleCategories.find(c => c.id === id)?.name || '-';
-  const getCatProductCount = (catId) => visibleProducts.filter(p => p.category_id === catId && p.is_active !== 0).length;
+  const getCatProductCount = (catId) => visibleProducts.filter((p) => {
+    if (p.category_id !== catId) return false;
+    return showInactive ? isProductInactive(p) : !isProductInactive(p);
+  }).length;
 
   const handleModSubmit = async (e) => {
     e.preventDefault();
@@ -673,10 +680,12 @@ export default function Productos() {
             </div>
 
             <p className="text-sm text-[var(--ui-muted)] mb-3 font-medium">
-              {t('categories.showing', {
-                category: selectedCat ? getCatName(selectedCat) : t('categories.noCategory'),
-                count: filtered.length,
-              })}
+              {showInactive
+                ? `Anulados · ${selectedCat ? getCatName(selectedCat) : t('categories.noCategory')} · ${filtered.length} producto(s)`
+                : t('categories.showing', {
+                  category: selectedCat ? getCatName(selectedCat) : t('categories.noCategory'),
+                  count: filtered.length,
+                })}
             </p>
 
             <div className="bg-[var(--ui-surface)] rounded-xl border border-[color:var(--ui-border)] overflow-hidden">
