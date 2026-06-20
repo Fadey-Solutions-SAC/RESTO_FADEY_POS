@@ -7,6 +7,8 @@ import {
   buildPedidoMesaTicketPlainText,
   normalizeThermalPaperWidthMm,
 } from '../utils/ticketPlainText';
+import { isBarProductionItem, isKitchenProductionItem } from '../utils/productionArea';
+
 const POS_RECENT_AUTOPRINT_KEY = 'resto_pos_recent_kitchen_autoprint';
 
 const normalizePaperWidthMm = normalizeThermalPaperWidthMm;
@@ -26,13 +28,6 @@ function wasRecentlyAutoPrintedByPos(orderId) {
   } catch (_) {
     return false;
   }
-}
-
-function isBarItem(item = {}) {
-  const area = String(item?.production_area || '').toLowerCase();
-  if (area === 'bar') return true;
-  const text = `${item?.category_name_lc || ''} ${item?.product_name || ''}`.toLowerCase();
-  return ['bar', 'bebida', 'bebidas', 'trago', 'tragos', 'coctel', 'cocteles', 'cocktail', 'cocktails'].some((t) => text.includes(t));
 }
 
 export default function BackgroundKitchenAutoPrinter() {
@@ -62,8 +57,8 @@ export default function BackgroundKitchenAutoPrinter() {
       const items = Array.isArray(fullOrder?.items) ? fullOrder.items : [];
       if (!items.length) return;
 
-      const kitchenItems = items.filter((it) => !isBarItem(it));
-      const barItems = items.filter((it) => isBarItem(it));
+      const kitchenItems = items.filter(isKitchenProductionItem);
+      const barItems = items.filter(isBarProductionItem);
       const paperC = normalizePaperWidthMm(cfg?.cocina?.anchoPapel ?? cfg?.cocina?.paperWidth ?? 80);
       const paperB = normalizePaperWidthMm(cfg?.bar?.anchoPapel ?? cfg?.bar?.paperWidth ?? 80);
       const takeout = orderHasTakeoutNote(fullOrder);
@@ -132,4 +127,3 @@ export default function BackgroundKitchenAutoPrinter() {
 
   return null;
 }
-

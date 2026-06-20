@@ -16,6 +16,7 @@ const {
   resolveKitchenStation,
   userCanManageKitchenOrderForStation,
 } = require('../services/staffModuleAccessService');
+const { isBarProductionItem, isBarOnlyOrderItems, orderHasBarItems, orderHasKitchenItems } = require('../utils/productionArea');
 
 const DEBUG_ORDERS = String(process.env.DEBUG_ORDERS || process.env.LOG_LEVEL || '')
   .toLowerCase()
@@ -54,15 +55,10 @@ function getChargeBase(order) {
   );
 }
 
-function isBarText(value = '') {
-  const text = String(value || '').toLowerCase();
-  return ['bar', 'bebida', 'bebidas', 'trago', 'tragos', 'coctel', 'cocteles', 'cocktail', 'cocktails'].some(token => text.includes(token));
-}
-
 function getOrderItemsWithArea(orderId) {
   return queryAll(
     `SELECT oi.*,
-            p.production_area,
+            COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') as production_area,
             LOWER(COALESCE(c.name, '')) as category_name_lc
      FROM order_items oi
      LEFT JOIN products p ON p.id = oi.product_id
@@ -72,15 +68,8 @@ function getOrderItemsWithArea(orderId) {
   );
 }
 
-function isBarItemRow(item) {
-  if (String(item?.production_area || '').toLowerCase() === 'bar') return true;
-  return isBarText(item?.category_name_lc) || isBarText(item?.product_name);
-}
-
-function isBarOnlyOrder(items = []) {
-  if (!Array.isArray(items) || items.length === 0) return false;
-  return items.every(isBarItemRow);
-}
+const isBarItemRow = isBarProductionItem;
+const isBarOnlyOrder = isBarOnlyOrderItems;
 
 /** Ítems con production_area (Escritorio, listados, etc.) */
 function attachOrderItemsWithProductArea(orders) {
@@ -88,9 +77,12 @@ function attachOrderItemsWithProductArea(orders) {
   const placeholders = orders.map(() => '?').join(',');
   const ids = orders.map((o) => o.id);
   const allItems = queryAll(
-    `SELECT oi.*, p.production_area
+    `SELECT oi.*,
+            COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') as production_area,
+            LOWER(COALESCE(c.name, '')) as category_name_lc
      FROM order_items oi
      LEFT JOIN products p ON p.id = oi.product_id
+     LEFT JOIN categories c ON c.id = p.category_id
      WHERE oi.order_id IN (${placeholders})`,
     ids
   );
@@ -178,9 +170,10 @@ router.get('/kitchen', authenticateToken, (req, res) => {
   const filtered = [];
   orders.forEach(o => {
     const areaItems = getOrderItemsWithArea(o.id);
-    const barOnly = isBarOnlyOrder(areaItems);
-    if (stationRequested === 'bar' && !barOnly) return;
-    if (stationRequested === 'cocina' && barOnly) return;
+    const hasBar = orderHasBarItems(areaItems);
+    const hasKitchen = orderHasKitchenItems(areaItems);
+    if (stationRequested === 'bar' && !hasBar) return;
+    if (stationRequested === 'cocina' && !hasKitchen) return;
     o.items = areaItems.map(({ category_name_lc, ...item }) => item);
     filtered.push(o);
   });

@@ -11,9 +11,12 @@ function getOrderWithItems(orderId) {
   const order = queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
   if (!order) return null;
   order.items = queryAll(
-    `SELECT oi.*, p.production_area
+    `SELECT oi.*,
+            COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') as production_area,
+            LOWER(COALESCE(c.name, '')) as category_name_lc
      FROM order_items oi
      LEFT JOIN products p ON p.id = oi.product_id
+     LEFT JOIN categories c ON c.id = p.category_id
      WHERE oi.order_id = ?`,
     [orderId]
   );

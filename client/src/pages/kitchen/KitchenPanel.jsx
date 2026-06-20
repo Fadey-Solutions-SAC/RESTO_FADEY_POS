@@ -15,17 +15,11 @@ import {
   buildPedidoMesaTicketPlainText,
   normalizeThermalPaperWidthMm,
 } from '../../utils/ticketPlainText';
+import { isBarProductionItem, isKitchenProductionItem } from '../../utils/productionArea';
 
 /** Pedido auto-pedido con cuenta de cliente (sin mesa física). */
 function isCuentaClienteSelfOrder(order) {
   return String(order?.table_number || '') === 'Cliente' && String(order?.customer_id || '').trim() !== '';
-}
-
-function isBarItem(item = {}) {
-  const area = String(item?.production_area || '').toLowerCase();
-  if (area === 'bar') return true;
-  const text = `${item?.category_name_lc || ''} ${item?.product_name || ''}`.toLowerCase();
-  return ['bar', 'bebida', 'bebidas', 'trago', 'tragos', 'coctel', 'cocteles', 'cocktail', 'cocktails'].some((t) => text.includes(t));
 }
 
 const normalizePaperWidthMm = normalizeThermalPaperWidthMm;
@@ -92,7 +86,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
   const getStationItems = (items = []) => {
     const list = Array.isArray(items) ? items : [];
-    return isBar ? list.filter(isBarItem) : list.filter((it) => !isBarItem(it));
+    return isBar ? list.filter(isBarProductionItem) : list.filter(isKitchenProductionItem);
   };
 
   const printOrderForStation = async (order, { silent = false } = {}) => {
@@ -310,7 +304,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
               </div>
 
               <div className="space-y-2 px-4 py-3">
-                {order.items?.map(item => (
+                {getStationItems(order.items).map(item => (
                   <div key={item.id} className="flex items-start gap-2">
                     <span className="bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] text-[var(--ui-body-text)] w-6 h-6 rounded flex items-center justify-center text-sm font-bold flex-shrink-0">{item.quantity}</span>
                     <div className="flex-1">

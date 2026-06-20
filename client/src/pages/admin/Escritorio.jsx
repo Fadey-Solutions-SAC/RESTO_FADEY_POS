@@ -8,6 +8,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { MdDateRange, MdKeyboardArrowDown, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning } from 'react-icons/md';
 
 import { useChartTheme } from '../../theme/useChartTheme';
+import { orderHasBarItems, orderHasKitchenItems } from '../../utils/productionArea';
 
 const PAYMENT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#06b6d4', '#a855f7'];
 const toInputDate = (date) => {
@@ -310,21 +311,12 @@ export default function Escritorio() {
       .slice(0, 6);
   }, [rankingMode, paidOrdersInSchedule]);
 
-  const isBarItem = (item) => {
-    if (String(item?.production_area || '').toLowerCase() === 'bar') return true;
-    const text = `${item?.product_name || ''} ${item?.notes || ''}`.toLowerCase();
-    return ['bar', 'bebida', 'bebidas', 'trago', 'tragos', 'coctel', 'cocteles', 'cocktail', 'cocktails'].some(token => text.includes(token));
-  };
-  const isBarOnlyOrder = (order) => {
-    if (!Array.isArray(order?.items) || order.items.length === 0) return false;
-    return order.items.every(isBarItem);
-  };
   const kitchenQueue = useMemo(
-    () => orders.filter(o => ['pending', 'preparing'].includes(o.status) && !isBarOnlyOrder(o)).length,
+    () => orders.filter((o) => ['pending', 'preparing'].includes(o.status) && orderHasKitchenItems(o.items)).length,
     [orders]
   );
   const barQueue = useMemo(
-    () => orders.filter(o => ['pending', 'preparing'].includes(o.status) && isBarOnlyOrder(o)).length,
+    () => orders.filter((o) => ['pending', 'preparing'].includes(o.status) && orderHasBarItems(o.items)).length,
     [orders]
   );
   const deliveryReady = useMemo(
@@ -336,11 +328,11 @@ export default function Escritorio() {
     [orders]
   );
   const activeKitchenOrders = useMemo(
-    () => orders.filter(o => ['pending', 'preparing'].includes(o.status) && !isBarOnlyOrder(o)),
+    () => orders.filter((o) => ['pending', 'preparing'].includes(o.status) && orderHasKitchenItems(o.items)),
     [orders]
   );
   const activeBarOrders = useMemo(
-    () => orders.filter(o => ['pending', 'preparing'].includes(o.status) && isBarOnlyOrder(o)),
+    () => orders.filter((o) => ['pending', 'preparing'].includes(o.status) && orderHasBarItems(o.items)),
     [orders]
   );
   const getQueueLevel = (value) => {
