@@ -149,7 +149,7 @@ router.get('/kitchen', authenticateToken, (req, res) => {
     return res.status(403).json({ error: 'No tienes permiso para este panel de producción' });
   }
   const { type } = req.query;
-  let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing', 'ready')
+  let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing')
     AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= datetime('now', 'localtime'))`;
   const params = [];
   if (type === 'delivery') query += " AND type = 'delivery'";

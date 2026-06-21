@@ -175,7 +175,6 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
   const canShowPrepareAction = useCallback((order) => order?.status === 'pending', []);
   const canShowReadyAction = useCallback((order) => order?.status === 'preparing', []);
-  const isReadyWaiting = useCallback((order) => order?.status === 'ready', []);
 
   const updateStatus = async (orderId, status) => {
     if (statusBusy[orderId]) return;
@@ -190,9 +189,13 @@ export default function KitchenPanel({ station = 'cocina' }) {
     }
     setStatusBusy((prev) => ({ ...prev, [orderId]: true }));
     try {
-      const updated = await api.put(`/orders/${orderId}/status`, { status, station });
-      if (updated?.id) {
-        setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updated, items: updated.items ?? o.items } : o)));
+      await api.put(`/orders/${orderId}/status`, { status, station });
+      if (status === 'ready') {
+        setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      } else {
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, status: 'preparing' } : o)),
+        );
       }
       toast.success(status === 'preparing' ? t('toast.preparing') : t('toast.markedReady'));
       void loadOrders();
@@ -249,7 +252,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
           <div>
             <h1 className="text-xl font-bold">{panelTitle}</h1>
             <p className="text-[var(--ui-muted)] text-sm">
-              {t('panel.activeOrders', { count: orders.length })}
+              {t('panel.activeOrders', { count: visibleOrders.length })}
             </p>
           </div>
         </div>
@@ -392,13 +395,6 @@ export default function KitchenPanel({ station = 'cocina' }) {
                     >
                       <MdCheckCircle /> {t('panel.ready')}
                     </button>
-                  ) : isReadyWaiting(order) ? (
-                    <div
-                      className="flex-1 min-h-[2.5rem] py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 bg-emerald-600/20 text-emerald-300 border border-emerald-500/40"
-                      aria-label={t('panel.readyDone')}
-                    >
-                      <MdCheckCircle /> {t('panel.readyDone')}
-                    </div>
                   ) : null}
                 </div>
               </div>
