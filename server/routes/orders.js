@@ -16,8 +16,18 @@ const {
   resolveKitchenStation,
   userCanManageKitchenOrderForStation,
 } = require('../services/staffModuleAccessService');
-const { orderHasBarItems, orderHasKitchenItems, filterItemsForKitchenStation, stripKitchenItemMeta } = require('../utils/productionArea');
+const { orderHasBarItems, orderHasKitchenItems, stripKitchenItemMeta } = require('../utils/productionArea');
 const { getOrderItemsWithProductionArea, enrichOrderItemsWithComboAreas } = require('../services/orderItemsProductionService');
+const {
+  allRequiredStationsReady,
+  filterKitchenOrdersForStation,
+  normalizeKitchenStation,
+  getStationReadyColumn,
+  getStationPreparingColumn,
+  isStationMarkedReady,
+  isStationMarkedPreparing,
+  orderHasStationWork,
+} = require('../utils/kitchenStationReady');
 
 const DEBUG_ORDERS = String(process.env.DEBUG_ORDERS || process.env.LOG_LEVEL || '')
   .toLowerCase()
@@ -158,19 +168,13 @@ router.get('/kitchen', authenticateToken, (req, res) => {
   query += ' ORDER BY created_at ASC';
 
   const orders = queryAll(query, params);
-  const filtered = [];
-  orders.forEach(o => {
-    const areaItems = getOrderItemsWithArea(o.id);
-    const hasBar = orderHasBarItems(areaItems);
-    const hasKitchen = orderHasKitchenItems(areaItems);
-    if (stationRequested === 'bar' && !hasBar) return;
-    if (stationRequested === 'cocina' && !hasKitchen) return;
-    const stationItems = filterItemsForKitchenStation(areaItems, stationRequested);
-    if (!stationItems.length) return;
-    o.items = stationItems.map(stripKitchenItemMeta);
-    filtered.push(o);
-  });
-  res.json(filtered);
+  const filtered = filterKitchenOrdersForStation(orders, stationRequested, getOrderItemsWithArea);
+  res.json(
+    filtered.map(({ order: o, stationItems }) => {
+      o.items = stationItems.map(stripKitchenItemMeta);
+      return o;
+    }),
+  );
 });
 
 router.post('/:id/delivery-driver-action', authenticateToken, requireRole('delivery'), (req, res) => {
@@ -357,16 +361,36 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
   const valid = ['pending', 'preparing', 'ready', 'delivered', 'cancelled'];
   if (!valid.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
   const stationRequested = resolveKitchenStation(req.user, stationRaw || req.query.station);
+  const stationExplicit = String(stationRaw || req.query.station || '').trim().toLowerCase();
+  const isStationKitchenRequest = stationExplicit === 'cocina' || stationExplicit === 'bar';
+  const isStationReadyRequest = status === 'ready' && isStationKitchenRequest;
+  const isStationPreparingRequest = status === 'preparing' && isStationKitchenRequest;
 
   const order = queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
   if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
 
-  /** Evita error por doble clic o pantalla desincronizada (p. ej. otra estación ya marcó listo). */
-  if (status === 'preparing' && ['preparing', 'ready', 'delivered'].includes(order.status)) {
-    return res.json(getOrderWithItems(req.params.id));
+  const stationSt = normalizeKitchenStation(stationRequested);
+
+  /** Evita error por doble clic o pantalla desincronizada entre estaciones. */
+  if (status === 'preparing') {
+    if (isStationPreparingRequest) {
+      if (
+        isStationMarkedReady(order, stationSt)
+        || isStationMarkedPreparing(order, stationSt)
+      ) {
+        return res.json(getOrderWithItems(req.params.id));
+      }
+    } else if (['preparing', 'ready', 'delivered'].includes(order.status)) {
+      return res.json(getOrderWithItems(req.params.id));
+    }
   }
-  if (status === 'ready' && ['ready', 'delivered'].includes(order.status)) {
-    return res.json(getOrderWithItems(req.params.id));
+  if (status === 'ready') {
+    if (order.status === 'ready' || order.status === 'delivered') {
+      return res.json(getOrderWithItems(req.params.id));
+    }
+    if (isStationReadyRequest && isStationMarkedReady(order, stationSt)) {
+      return res.json(getOrderWithItems(req.params.id));
+    }
   }
 
   if (req.user.role === 'mozo' && order.type === 'delivery') {
@@ -421,7 +445,22 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     }
   }
   const allowedNext = ORDER_TRANSITIONS[order.status] || [];
-  if (!allowedNext.includes(status)) {
+  if (isStationPreparingRequest && status === 'preparing') {
+    if (!['pending', 'preparing'].includes(order.status)) {
+      return res.status(400).json({ error: `Transición inválida: ${order.status} -> ${status}` });
+    }
+    const areaItemsPrep = getOrderItemsWithArea(order.id);
+    if (!orderHasStationWork(areaItemsPrep, stationSt)) {
+      return res.status(400).json({ error: 'Este pedido no tiene ítems para esta estación' });
+    }
+  } else if (isStationReadyRequest && status === 'ready') {
+    if (!['pending', 'preparing'].includes(order.status)) {
+      return res.status(400).json({ error: `Transición inválida: ${order.status} -> ${status}` });
+    }
+    if (!isStationMarkedPreparing(order, stationSt)) {
+      return res.status(400).json({ error: 'Marque la comanda en preparación antes de listo' });
+    }
+  } else if (!allowedNext.includes(status)) {
     return res.status(400).json({ error: `Transición inválida: ${order.status} -> ${status}` });
   }
 
@@ -462,20 +501,68 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     }
     emitInventoryUpdate({});
   } else if (status === 'preparing') {
-    runSql(
-      "UPDATE orders SET status = 'preparing', preparing_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
-      [req.params.id],
-    );
-  } else if (status === 'ready') {
-    const nextStatus = String(order.payment_status || '') === 'paid' ? 'delivered' : 'ready';
-    runSql(
-      "UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?",
-      [nextStatus, req.params.id],
-    );
-    if (order.type === 'delivery' && nextStatus === 'delivered') {
+    if (isStationPreparingRequest) {
+      const prepCol = getStationPreparingColumn(stationSt);
+      const readyCol = getStationReadyColumn(stationSt);
       runSql(
-        "UPDATE delivery_assignments SET status = 'delivered', delivered_at = datetime('now') WHERE order_id = ? AND status != 'delivered'",
-        [order.id]
+        `UPDATE orders SET ${prepCol} = datetime('now'), ${readyCol} = NULL, updated_at = datetime('now') WHERE id = ?`,
+        [req.params.id],
+      );
+      if (order.status === 'pending') {
+        runSql(
+          "UPDATE orders SET status = 'preparing', preparing_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+          [req.params.id],
+        );
+      }
+    } else {
+      runSql(
+        `UPDATE orders SET status = 'preparing', preparing_at = datetime('now'),
+         station_cocina_ready_at = NULL, station_bar_ready_at = NULL,
+         station_cocina_preparing_at = datetime('now'), station_bar_preparing_at = datetime('now'),
+         updated_at = datetime('now') WHERE id = ?`,
+        [req.params.id],
+      );
+    }
+  } else if (status === 'ready') {
+    const st = stationSt;
+    const areaItems = getOrderItemsWithArea(order.id);
+    const readyCol = getStationReadyColumn(st);
+    const prepCol = getStationPreparingColumn(st);
+
+    if (isStationReadyRequest) {
+      if (orderHasStationWork(areaItems, st) && !isStationMarkedReady(order, st)) {
+        runSql(
+          `UPDATE orders SET ${readyCol} = datetime('now'), ${prepCol} = NULL, updated_at = datetime('now') WHERE id = ?`,
+          [req.params.id],
+        );
+      }
+    } else {
+      runSql(
+        `UPDATE orders SET station_cocina_ready_at = datetime('now'), station_bar_ready_at = datetime('now'),
+         station_cocina_preparing_at = NULL, station_bar_preparing_at = NULL,
+         updated_at = datetime('now') WHERE id = ?`,
+        [req.params.id],
+      );
+    }
+
+    const refreshed = queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    const refreshedItems = getOrderItemsWithArea(order.id);
+    if (allRequiredStationsReady(refreshed, refreshedItems)) {
+      const nextStatus = String(refreshed.payment_status || '') === 'paid' ? 'delivered' : 'ready';
+      runSql(
+        'UPDATE orders SET status = ?, updated_at = datetime(\'now\') WHERE id = ?',
+        [nextStatus, req.params.id],
+      );
+      if (order.type === 'delivery' && nextStatus === 'delivered') {
+        runSql(
+          "UPDATE delivery_assignments SET status = 'delivered', delivered_at = datetime('now') WHERE order_id = ? AND status != 'delivered'",
+          [order.id],
+        );
+      }
+    } else if (refreshed.status === 'pending') {
+      runSql(
+        "UPDATE orders SET status = 'preparing', preparing_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        [req.params.id],
       );
     }
   } else {
@@ -492,6 +579,12 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       from: order.status,
       to: status,
     };
+    if (status === 'ready' && isStationReadyRequest) {
+      auditDetails.station = stationSt;
+    }
+    if (status === 'preparing' && isStationPreparingRequest) {
+      auditDetails.station = stationSt;
+    }
     if (status === 'cancelled') {
       const reason = String(cancellationReasonRaw || '').trim();
       if (reason) auditDetails.cancellation_reason = reason;

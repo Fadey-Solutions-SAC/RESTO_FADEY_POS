@@ -1146,6 +1146,22 @@ async function initDatabase() {
     addOrderColIfMissing('tip_amount', 'ALTER TABLE orders ADD COLUMN tip_amount REAL NOT NULL DEFAULT 0');
     addOrderColIfMissing('kitchen_release_at', 'ALTER TABLE orders ADD COLUMN kitchen_release_at TEXT');
     addOrderColIfMissing('preparing_at', 'ALTER TABLE orders ADD COLUMN preparing_at TEXT');
+    addOrderColIfMissing('station_cocina_ready_at', 'ALTER TABLE orders ADD COLUMN station_cocina_ready_at TEXT');
+    addOrderColIfMissing('station_bar_ready_at', 'ALTER TABLE orders ADD COLUMN station_bar_ready_at TEXT');
+    addOrderColIfMissing('station_cocina_preparing_at', 'ALTER TABLE orders ADD COLUMN station_cocina_preparing_at TEXT');
+    addOrderColIfMissing('station_bar_preparing_at', 'ALTER TABLE orders ADD COLUMN station_bar_preparing_at TEXT');
+
+    const addOrderItemColIfMissing = (colName, ddl) => {
+      const cols = queryAll('PRAGMA table_info(order_items)');
+      if (!cols.some((col) => col.name === colName)) db.run(ddl);
+    };
+    addOrderItemColIfMissing('station_cocina_ready_at', 'ALTER TABLE order_items ADD COLUMN station_cocina_ready_at TEXT');
+    addOrderItemColIfMissing('station_bar_ready_at', 'ALTER TABLE order_items ADD COLUMN station_bar_ready_at TEXT');
+    try {
+      db.run('UPDATE order_items SET station_cocina_ready_at = NULL, station_bar_ready_at = NULL');
+    } catch (_) {
+      /* columnas opcionales; el control listo es por comanda (orders), no por ítem */
+    }
 
     const reservationColumns = queryAll('PRAGMA table_info(reservations)');
     const addReservationColIfMissing = (colName, ddl) => {

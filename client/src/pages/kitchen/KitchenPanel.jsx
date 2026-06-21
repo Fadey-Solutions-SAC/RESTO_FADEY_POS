@@ -98,7 +98,20 @@ export default function KitchenPanel({ station = 'cocina' }) {
       : list.filter(isKitchenProductionItemForStation);
   };
 
-  const visibleOrders = orders.filter((order) => getStationItems(order.items).length > 0);
+  const isComandaDoneForStation = useCallback((order) => {
+    const at = isBar ? order?.station_bar_ready_at : order?.station_cocina_ready_at;
+    return Boolean(String(at || '').trim());
+  }, [isBar]);
+
+  const isComandaPreparingForStation = useCallback((order) => {
+    const at = isBar ? order?.station_bar_preparing_at : order?.station_cocina_preparing_at;
+    return Boolean(String(at || '').trim());
+  }, [isBar]);
+
+  const visibleOrders = orders.filter((order) => {
+    if (isComandaDoneForStation(order)) return false;
+    return getStationItems(order.items).length > 0;
+  });
 
   const printOrderForStation = async (order, { silent = false } = {}) => {
     try {
@@ -173,8 +186,14 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
   useSocket('order-update', () => loadOrders());
 
-  const canShowPrepareAction = useCallback((order) => order?.status === 'pending', []);
-  const canShowReadyAction = useCallback((order) => order?.status === 'preparing', []);
+  const canShowPrepareAction = useCallback(
+    (order) => !isComandaDoneForStation(order) && !isComandaPreparingForStation(order),
+    [isComandaDoneForStation, isComandaPreparingForStation],
+  );
+  const canShowReadyAction = useCallback(
+    (order) => !isComandaDoneForStation(order) && isComandaPreparingForStation(order),
+    [isComandaDoneForStation, isComandaPreparingForStation],
+  );
 
   const updateStatus = async (orderId, status) => {
     if (statusBusy[orderId]) return;
@@ -193,8 +212,20 @@ export default function KitchenPanel({ station = 'cocina' }) {
       if (status === 'ready') {
         setOrders((prev) => prev.filter((o) => o.id !== orderId));
       } else {
+        const prepField = isBar ? 'station_bar_preparing_at' : 'station_cocina_preparing_at';
+        const readyField = isBar ? 'station_bar_ready_at' : 'station_cocina_ready_at';
+        const nowIso = new Date().toISOString();
         setOrders((prev) =>
-          prev.map((o) => (o.id === orderId ? { ...o, status: 'preparing' } : o)),
+          prev.map((o) =>
+            o.id === orderId
+              ? {
+                  ...o,
+                  status: o.status === 'pending' ? 'preparing' : o.status,
+                  [prepField]: nowIso,
+                  [readyField]: null,
+                }
+              : o,
+          ),
         );
       }
       toast.success(status === 'preparing' ? t('toast.preparing') : t('toast.markedReady'));
@@ -215,9 +246,8 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const PREP_OVERDUE_MS = 25 * 60 * 1000;
 
   const getOrderTimerAnchor = (order) => {
-    if (order?.status === 'preparing') {
-      return order.preparing_at || order.updated_at || order.created_at;
-    }
+    const stationPrep = isBar ? order?.station_bar_preparing_at : order?.station_cocina_preparing_at;
+    if (String(stationPrep || '').trim()) return stationPrep;
     return order?.created_at;
   };
 
@@ -232,14 +262,13 @@ export default function KitchenPanel({ station = 'cocina' }) {
   };
 
   const isKitchenOrderOverdue = (order) => {
-    if (!order || order.status === 'ready' || order.status === 'delivered') return false;
+    if (!order || isComandaDoneForStation(order)) return false;
     const anchor = getOrderTimerAnchor(order);
     const d = parseApiDate(anchor);
     if (!d) return false;
     const elapsed = Date.now() - d.getTime();
-    if (order.status === 'pending') return elapsed >= ARRIVAL_OVERDUE_MS;
-    if (order.status === 'preparing') return elapsed >= PREP_OVERDUE_MS;
-    return false;
+    if (!isComandaPreparingForStation(order)) return elapsed >= ARRIVAL_OVERDUE_MS;
+    return elapsed >= PREP_OVERDUE_MS;
   };
 
   const typeIcons = { dine_in: MdTableBar, delivery: MdDeliveryDining, pickup: MdRestaurant };
@@ -291,19 +320,20 @@ export default function KitchenPanel({ station = 'cocina' }) {
           const isOverdue = isKitchenOrderOverdue(order);
 
           const cuentaCliente = isCuentaClienteSelfOrder(order);
+          const stationPending = !isComandaPreparingForStation(order);
           const cardBorder = isOverdue
-            ? order.status === 'pending'
+            ? stationPending
               ? 'border-2 border-red-500 shadow-[0_0_24px_rgba(239,68,68,0.22)]'
               : 'border-2 border-red-500/75'
-            : order.status === 'pending'
+            : stationPending
               ? 'border-2 border-[color:color-mix(in_srgb,var(--ui-accent-muted)_55%,transparent)]'
               : 'border border-[color:var(--ui-border)]';
           const cardBg = 'bg-[var(--ui-surface)]';
           const headerBg = isOverdue
-            ? order.status === 'pending'
+            ? stationPending
               ? 'bg-red-950/55'
               : 'bg-red-950/40'
-            : order.status === 'pending'
+            : stationPending
               ? 'bg-[var(--ui-sidebar-active-bg)]'
               : 'bg-[var(--ui-surface-2)]';
 

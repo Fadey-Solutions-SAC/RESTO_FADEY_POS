@@ -437,8 +437,8 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
 
   const resetKitchen =
     String(order.status || '') === 'ready'
-      ? ", status = 'pending', preparing_at = NULL"
-      : '';
+      ? ", status = 'pending', preparing_at = NULL, station_cocina_ready_at = NULL, station_bar_ready_at = NULL, station_cocina_preparing_at = NULL, station_bar_preparing_at = NULL"
+      : ", station_cocina_ready_at = NULL, station_bar_ready_at = NULL, station_cocina_preparing_at = NULL, station_bar_preparing_at = NULL";
   tx.run(
     `UPDATE orders SET subtotal = ?, tax = 0, total = ?, updated_at = datetime('now')${resetKitchen} WHERE id = ?`,
     [subtotal, total, orderId]
