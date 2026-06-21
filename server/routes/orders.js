@@ -159,7 +159,8 @@ router.get('/kitchen', authenticateToken, (req, res) => {
     return res.status(403).json({ error: 'No tienes permiso para este panel de producción' });
   }
   const { type } = req.query;
-  let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing')
+  let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing', 'ready')
+    AND IFNULL(TRIM(payment_status), 'pending') != 'paid'
     AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= datetime('now', 'localtime'))`;
   const params = [];
   if (type === 'delivery') query += " AND type = 'delivery'";
@@ -385,7 +386,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     }
   }
   if (status === 'ready') {
-    if (order.status === 'ready' || order.status === 'delivered') {
+    if (order.status === 'delivered') {
       return res.json(getOrderWithItems(req.params.id));
     }
     if (isStationReadyRequest && isStationMarkedReady(order, stationSt)) {
@@ -446,7 +447,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
   }
   const allowedNext = ORDER_TRANSITIONS[order.status] || [];
   if (isStationPreparingRequest && status === 'preparing') {
-    if (!['pending', 'preparing'].includes(order.status)) {
+    if (['cancelled', 'delivered'].includes(order.status)) {
       return res.status(400).json({ error: `Transición inválida: ${order.status} -> ${status}` });
     }
     const areaItemsPrep = getOrderItemsWithArea(order.id);
@@ -454,7 +455,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       return res.status(400).json({ error: 'Este pedido no tiene ítems para esta estación' });
     }
   } else if (isStationReadyRequest && status === 'ready') {
-    if (!['pending', 'preparing'].includes(order.status)) {
+    if (['cancelled', 'delivered'].includes(order.status)) {
       return res.status(400).json({ error: `Transición inválida: ${order.status} -> ${status}` });
     }
     if (!isStationMarkedPreparing(order, stationSt)) {
@@ -508,9 +509,9 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
         `UPDATE orders SET ${prepCol} = datetime('now'), ${readyCol} = NULL, updated_at = datetime('now') WHERE id = ?`,
         [req.params.id],
       );
-      if (order.status === 'pending') {
+      if (order.status === 'pending' || order.status === 'ready') {
         runSql(
-          "UPDATE orders SET status = 'preparing', preparing_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+          "UPDATE orders SET status = 'preparing', preparing_at = COALESCE(preparing_at, datetime('now')), updated_at = datetime('now') WHERE id = ?",
           [req.params.id],
         );
       }

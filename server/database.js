@@ -1150,6 +1150,18 @@ async function initDatabase() {
     addOrderColIfMissing('station_bar_ready_at', 'ALTER TABLE orders ADD COLUMN station_bar_ready_at TEXT');
     addOrderColIfMissing('station_cocina_preparing_at', 'ALTER TABLE orders ADD COLUMN station_cocina_preparing_at TEXT');
     addOrderColIfMissing('station_bar_preparing_at', 'ALTER TABLE orders ADD COLUMN station_bar_preparing_at TEXT');
+    try {
+      db.run(`
+        UPDATE orders SET status = 'preparing',
+          preparing_at = COALESCE(preparing_at, datetime('now'))
+        WHERE status = 'ready'
+          AND IFNULL(TRIM(payment_status), 'pending') = 'pending'
+          AND TRIM(COALESCE(station_cocina_ready_at, '')) = ''
+          AND TRIM(COALESCE(station_bar_ready_at, '')) = ''
+      `);
+    } catch (_) {
+      /* recuperar comandas listas globalmente sin cierre por estación */
+    }
 
     const addOrderItemColIfMissing = (colName, ddl) => {
       const cols = queryAll('PRAGMA table_info(order_items)');
