@@ -11,6 +11,7 @@
     "printTicket": "Imprimir comanda",
     "prepare": "PREPARAR",
     "ready": "LISTO",
+    "readyDone": "LISTO — en espera",
     "emptyTitle": "No hay pedidos pendientes en {{station}}",
     "emptyHint": "Los nuevos pedidos aparecerán aquí automáticamente",
     "stationKitchen": "cocina",

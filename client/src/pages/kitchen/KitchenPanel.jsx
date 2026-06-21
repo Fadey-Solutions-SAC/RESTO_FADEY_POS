@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, ORDER_TYPES, formatTime, parseApiDate } from '../../utils/api';
 import { getKitchenOrderNotesDisplay } from '../../utils/reservationKitchenNotes';
@@ -33,6 +33,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const { user } = useAuth();
   useAppLocaleBootstrap();
   const [endShiftOpen, setEndShiftOpen] = useState(false);
+  const [statusBusy, setStatusBusy] = useState({});
   const navigate = useNavigate();
   const location = useLocation();
   const emit = useSocketEmit();
@@ -172,12 +173,39 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
   useSocket('order-update', () => loadOrders());
 
+  const canShowPrepareAction = useCallback((order) => order?.status === 'pending', []);
+  const canShowReadyAction = useCallback((order) => order?.status === 'preparing', []);
+  const isReadyWaiting = useCallback((order) => order?.status === 'ready', []);
+
   const updateStatus = async (orderId, status) => {
+    if (statusBusy[orderId]) return;
+    const current = orders.find((o) => o.id === orderId);
+    if (status === 'preparing' && !canShowPrepareAction(current)) {
+      void loadOrders();
+      return;
+    }
+    if (status === 'ready' && !canShowReadyAction(current)) {
+      void loadOrders();
+      return;
+    }
+    setStatusBusy((prev) => ({ ...prev, [orderId]: true }));
     try {
-      await api.put(`/orders/${orderId}/status`, { status });
+      const updated = await api.put(`/orders/${orderId}/status`, { status, station });
+      if (updated?.id) {
+        setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updated, items: updated.items ?? o.items } : o)));
+      }
       toast.success(status === 'preparing' ? t('toast.preparing') : t('toast.markedReady'));
-      loadOrders();
-    } catch (err) { toast.error(err.message); }
+      void loadOrders();
+    } catch (err) {
+      toast.error(err.message);
+      void loadOrders();
+    } finally {
+      setStatusBusy((prev) => {
+        const next = { ...prev };
+        delete next[orderId];
+        return next;
+      });
+    }
   };
 
   const ARRIVAL_OVERDUE_MS = 15 * 60 * 1000;
@@ -346,23 +374,32 @@ export default function KitchenPanel({ station = 'cocina' }) {
                   >
                     <MdPrint className="text-xl" />
                   </button>
-                  {order.status === 'pending' ? (
+                  {canShowPrepareAction(order) ? (
                     <button
                       type="button"
-                      onClick={() => updateStatus(order.id, 'preparing')}
-                      className="flex-1 min-h-[2.5rem] py-2.5 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2"
+                      disabled={Boolean(statusBusy[order.id])}
+                      onClick={() => void updateStatus(order.id, 'preparing')}
+                      className="flex-1 min-h-[2.5rem] py-2.5 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] disabled:opacity-50 disabled:pointer-events-none rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2"
                     >
                       <StationIcon /> {t('panel.prepare')}
                     </button>
-                  ) : (
+                  ) : canShowReadyAction(order) ? (
                     <button
                       type="button"
-                      onClick={() => updateStatus(order.id, 'ready')}
-                      className="flex-1 min-h-[2.5rem] py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                      disabled={Boolean(statusBusy[order.id])}
+                      onClick={() => void updateStatus(order.id, 'ready')}
+                      className="flex-1 min-h-[2.5rem] py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 disabled:pointer-events-none rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2"
                     >
                       <MdCheckCircle /> {t('panel.ready')}
                     </button>
-                  )}
+                  ) : isReadyWaiting(order) ? (
+                    <div
+                      className="flex-1 min-h-[2.5rem] py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 bg-emerald-600/20 text-emerald-300 border border-emerald-500/40"
+                      aria-label={t('panel.readyDone')}
+                    >
+                      <MdCheckCircle /> {t('panel.readyDone')}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>

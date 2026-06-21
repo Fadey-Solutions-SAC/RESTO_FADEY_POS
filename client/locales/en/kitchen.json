@@ -11,6 +11,7 @@
     "printTicket": "Print ticket",
     "prepare": "START",
     "ready": "READY",
+    "readyDone": "READY — waiting",
     "emptyTitle": "No pending orders in {{station}}",
     "emptyHint": "New orders will appear here automatically",
     "stationKitchen": "kitchen",

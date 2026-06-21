@@ -353,12 +353,21 @@ router.post('/', authenticateToken, (req, res) => {
 
 router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery'), (req, res) => {
   try {
-  const { status, cancellation_reason: cancellationReasonRaw } = req.body;
+  const { status, cancellation_reason: cancellationReasonRaw, station: stationRaw } = req.body;
   const valid = ['pending', 'preparing', 'ready', 'delivered', 'cancelled'];
   if (!valid.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
+  const stationRequested = resolveKitchenStation(req.user, stationRaw || req.query.station);
 
   const order = queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
   if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+  /** Evita error por doble clic o pantalla desincronizada (p. ej. otra estación ya marcó listo). */
+  if (status === 'preparing' && ['preparing', 'ready', 'delivered'].includes(order.status)) {
+    return res.json(getOrderWithItems(req.params.id));
+  }
+  if (status === 'ready' && ['ready', 'delivered'].includes(order.status)) {
+    return res.json(getOrderWithItems(req.params.id));
+  }
 
   if (req.user.role === 'mozo' && order.type === 'delivery') {
     return res.status(403).json({ error: 'Los mozos solo pueden crear pedidos de delivery; no gestionar su estado.' });
@@ -367,7 +376,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
   /** Delivery: pendiente → preparación → listo — cocina/bar o quien tenga ese módulo. */
   if (order.type === 'delivery' && (status === 'preparing' || status === 'ready')) {
     const areaItems = getOrderItemsWithArea(order.id);
-    if (!userCanManageKitchenOrderForStation(req.user, areaItems)) {
+    if (!userCanManageKitchenOrderForStation(req.user, areaItems, stationRequested)) {
       return res.status(403).json({ error: 'No tienes permiso para actualizar la preparación de este pedido' });
     }
   }
@@ -400,7 +409,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     const role = String(req.user.role || '').toLowerCase();
     if (['cocina', 'bar', 'cajero', 'mozo'].includes(role)) {
       const areaItems = getOrderItemsWithArea(order.id);
-      if (!userCanManageKitchenOrderForStation(req.user, areaItems)) {
+      if (!userCanManageKitchenOrderForStation(req.user, areaItems, stationRequested)) {
         return res.status(403).json({ error: 'No tienes permiso para actualizar este pedido en cocina/bar' });
       }
     }
