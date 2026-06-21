@@ -763,9 +763,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         const current = tx.queryOne('SELECT status FROM orders WHERE id = ?', [row.id]);
         const st = String(current?.status || '');
         let nextStatus = 'delivered';
-        if (st === 'pending' || st === 'preparing') {
-          nextStatus = st;
-        } else if (st === 'ready' && chargeToCustomerAccount) {
+        if (chargeToCustomerAccount && ['pending', 'preparing', 'ready'].includes(st)) {
           nextStatus = st;
         }
         if (chargeToCustomerAccount) {
@@ -840,6 +838,10 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         const full = getOrderWithItems(o.id);
         if (full) io.emit('order-update', full);
       }
+      const tableNums = [
+        ...new Set(paidOrders.map((o) => String(o.table_number || '').trim()).filter(Boolean)),
+      ];
+      if (tableNums.length) io.emit('table-update', { table_numbers: tableNums });
     }
     for (const oid of chargedOrderIds) {
       const docRow = queryOne('SELECT * FROM electronic_documents WHERE order_id = ? LIMIT 1', [oid]);

@@ -1164,6 +1164,15 @@ async function initDatabase() {
     } catch (_) {
       /* recuperar comandas atascadas en listo sin cierre por estación */
     }
+    try {
+      db.run(`
+        UPDATE orders SET status = 'delivered', updated_at = datetime('now')
+        WHERE IFNULL(TRIM(payment_status), '') = 'paid'
+          AND status IN ('pending', 'preparing', 'ready')
+      `);
+    } catch (_) {
+      /* mesas cobradas pero pedido aún «activo» */
+    }
 
     const addOrderItemColIfMissing = (colName, ddl) => {
       const cols = queryAll('PRAGMA table_info(order_items)');
