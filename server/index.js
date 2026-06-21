@@ -347,6 +347,12 @@ function logSqlitePersistenceWarnings() {
 async function start() {
   await initDatabase();
   try {
+    const { repairKitchenOrdersAtStartup } = require('./services/kitchenOrderRepairService');
+    repairKitchenOrdersAtStartup();
+  } catch (err) {
+    console.warn('[kitchen-repair] no ejecutada:', err.message || err);
+  }
+  try {
     const { migrateCatalogNamesToUppercase } = require('./services/catalogNameMigration');
     migrateCatalogNamesToUppercase();
   } catch (err) {

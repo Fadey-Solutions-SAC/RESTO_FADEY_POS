@@ -46,6 +46,13 @@ function allRequiredStationsReady(order, areaItems) {
   return hasKitchen || hasBar;
 }
 
+/** Comanda global «listo» pero estaciones sin cerrar → reabrir en preparación. */
+function kitchenOrderNeedsRepair(order, areaItems) {
+  if (!order || order.status !== 'ready') return false;
+  if (String(order.payment_status || 'pending') === 'paid') return false;
+  return !allRequiredStationsReady(order, areaItems);
+}
+
 /** Comandas visibles: bloque con ítems de esta estación aún no listos. */
 function filterKitchenOrdersForStation(orders, station, getAreaItems) {
   const st = normalizeKitchenStation(station);
@@ -70,5 +77,6 @@ module.exports = {
   isStationMarkedPreparing,
   orderHasStationWork,
   allRequiredStationsReady,
+  kitchenOrderNeedsRepair,
   filterKitchenOrdersForStation,
 };
