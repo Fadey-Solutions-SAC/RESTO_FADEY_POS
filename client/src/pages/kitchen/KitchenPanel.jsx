@@ -208,7 +208,8 @@ export default function KitchenPanel({ station = 'cocina' }) {
     }
     setStatusBusy((prev) => ({ ...prev, [orderId]: true }));
     try {
-      await api.put(`/orders/${orderId}/status`, { status, station });
+      const qs = new URLSearchParams({ station });
+      await api.put(`/orders/${orderId}/status?${qs.toString()}`, { status, station });
       if (status === 'ready') {
         setOrders((prev) => prev.filter((o) => o.id !== orderId));
       } else {

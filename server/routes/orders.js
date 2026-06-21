@@ -362,8 +362,11 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
   const valid = ['pending', 'preparing', 'ready', 'delivered', 'cancelled'];
   if (!valid.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
   const stationRequested = resolveKitchenStation(req.user, stationRaw || req.query.station);
-  const stationExplicit = String(stationRaw || req.query.station || '').trim().toLowerCase();
-  const isStationKitchenRequest = stationExplicit === 'cocina' || stationExplicit === 'bar';
+  const stationFromClient = String(stationRaw || req.query?.station || '').trim().toLowerCase();
+  const roleLc = String(req.user.role || '').toLowerCase();
+  const isDedicatedStationRole = roleLc === 'cocina' || roleLc === 'bar';
+  const isStationKitchenRequest =
+    stationFromClient === 'cocina' || stationFromClient === 'bar' || isDedicatedStationRole;
   const isStationReadyRequest = status === 'ready' && isStationKitchenRequest;
   const isStationPreparingRequest = status === 'preparing' && isStationKitchenRequest;
 
@@ -381,7 +384,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       ) {
         return res.json(getOrderWithItems(req.params.id));
       }
-    } else if (['preparing', 'ready', 'delivered'].includes(order.status)) {
+    } else if (['preparing', 'delivered'].includes(order.status)) {
       return res.json(getOrderWithItems(req.params.id));
     }
   }
@@ -462,7 +465,13 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       return res.status(400).json({ error: 'Marque la comanda en preparación antes de listo' });
     }
   } else if (!allowedNext.includes(status)) {
-    return res.status(400).json({ error: `Transición inválida: ${order.status} -> ${status}` });
+    const allowKitchenRecovery =
+      status === 'preparing'
+      && order.status === 'ready'
+      && ['admin', 'cajero', 'mozo', 'cocina', 'bar', 'master_admin'].includes(roleLc);
+    if (!allowKitchenRecovery) {
+      return res.status(400).json({ error: `Transición inválida: ${order.status} -> ${status}` });
+    }
   }
 
   if (status === 'cancelled' && order.status !== 'cancelled') {
@@ -509,9 +518,28 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
         `UPDATE orders SET ${prepCol} = datetime('now'), ${readyCol} = NULL, updated_at = datetime('now') WHERE id = ?`,
         [req.params.id],
       );
-      if (order.status === 'pending' || order.status === 'ready') {
+      if (['pending', 'ready'].includes(order.status)) {
         runSql(
           "UPDATE orders SET status = 'preparing', preparing_at = COALESCE(preparing_at, datetime('now')), updated_at = datetime('now') WHERE id = ?",
+          [req.params.id],
+        );
+      }
+    } else if (order.status === 'ready') {
+      const prepCol = getStationPreparingColumn(stationSt);
+      const readyCol = getStationReadyColumn(stationSt);
+      const areaItemsPrep = getOrderItemsWithArea(order.id);
+      if (orderHasStationWork(areaItemsPrep, stationSt)) {
+        runSql(
+          `UPDATE orders SET status = 'preparing', preparing_at = COALESCE(preparing_at, datetime('now')),
+           ${prepCol} = datetime('now'), ${readyCol} = NULL, updated_at = datetime('now') WHERE id = ?`,
+          [req.params.id],
+        );
+      } else {
+        runSql(
+          `UPDATE orders SET status = 'preparing', preparing_at = COALESCE(preparing_at, datetime('now')),
+           station_cocina_ready_at = NULL, station_bar_ready_at = NULL,
+           station_cocina_preparing_at = datetime('now'), station_bar_preparing_at = datetime('now'),
+           updated_at = datetime('now') WHERE id = ?`,
           [req.params.id],
         );
       }

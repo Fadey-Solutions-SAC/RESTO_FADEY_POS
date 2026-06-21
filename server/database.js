@@ -1158,9 +1158,11 @@ async function initDatabase() {
           AND IFNULL(TRIM(payment_status), 'pending') = 'pending'
           AND TRIM(COALESCE(station_cocina_ready_at, '')) = ''
           AND TRIM(COALESCE(station_bar_ready_at, '')) = ''
+          AND TRIM(COALESCE(station_cocina_preparing_at, '')) = ''
+          AND TRIM(COALESCE(station_bar_preparing_at, '')) = ''
       `);
     } catch (_) {
-      /* recuperar comandas listas globalmente sin cierre por estación */
+      /* recuperar comandas atascadas en listo sin cierre por estación */
     }
 
     const addOrderItemColIfMissing = (colName, ddl) => {
