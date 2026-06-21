@@ -1,4 +1,4 @@
-﻿import { useRef, useEffect } from 'react';
+﻿import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MdStore,
@@ -112,10 +112,8 @@ export default function MiRestaurantEmpresaHub({
     const next = !deliveryOn;
     onRestaurantField('delivery_enabled', next ? 1 : 0);
     notifyDeliveryEnabledChanged(next);
-    if (next) setTab('delivery');
   };
 
-  const empresaTabs = EMPRESA_TABS.filter((tdef) => tdef.id !== 'delivery' || deliveryOn);
   const messageFields = [
     ['ticket', 'Mensaje en ticket'],
     ['reservas', 'Reservas'],
@@ -125,14 +123,10 @@ export default function MiRestaurantEmpresaHub({
     ['whatsapp', 'Plantilla WhatsApp'],
   ];
 
-  useEffect(() => {
-    if (!deliveryOn && tab === 'delivery') setTab('info');
-  }, [deliveryOn, tab, setTab]);
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
-        {empresaTabs.map((tdef) => (
+        {EMPRESA_TABS.map((tdef) => (
           <button
             key={tdef.id}
             type="button"
@@ -159,14 +153,6 @@ export default function MiRestaurantEmpresaHub({
 
       {tab === 'info' && (
         <div className="card space-y-6">
-          {!deliveryOn ? (
-            <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-4 py-3">
-              <p className="text-sm font-medium text-[var(--ui-body-text)]">Desactivado</p>
-              <button type="button" className="btn-primary text-sm" onClick={toggleDelivery}>
-                Activar
-              </button>
-            </section>
-          ) : null}
           <section>
             <h3 className="font-bold text-[var(--ui-body-text)] mb-3">Datos comerciales y fiscales</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -332,14 +318,21 @@ export default function MiRestaurantEmpresaHub({
         </div>
       )}
 
-      {tab === 'delivery' && deliveryOn && (
+      {tab === 'delivery' && (
         <div className="space-y-4">
           <div className="card flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-medium text-[var(--ui-body-text)]">Activado en su negocio</p>
-            <button type="button" className="btn-secondary text-sm" onClick={toggleDelivery}>
-              Desactivar
+            <p className="text-sm font-medium text-[var(--ui-body-text)]">
+              {deliveryOn ? 'Activado en su negocio' : 'Desactivado'}
+            </p>
+            <button
+              type="button"
+              className={deliveryOn ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
+              onClick={toggleDelivery}
+            >
+              {deliveryOn ? 'Desactivar' : 'Activar'}
             </button>
           </div>
+          {deliveryOn ? (
           <div className="card space-y-4">
             <h4 className="font-bold text-[var(--ui-body-text)]">Configuración</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -369,6 +362,7 @@ export default function MiRestaurantEmpresaHub({
               </Field>
             </div>
           </div>
+          ) : null}
         </div>
       )}
 

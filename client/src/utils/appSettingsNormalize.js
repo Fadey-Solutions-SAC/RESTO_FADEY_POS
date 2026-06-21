@@ -72,5 +72,8 @@ export function mergeSavedAppSettings(normalized, source) {
   if (source.ui_theme_custom && typeof source.ui_theme_custom === 'object') {
     next.ui_theme_custom = { ...(source.ui_theme_custom || {}) };
   }
+  if (Array.isArray(source.auto_pedido_cartas)) {
+    next.auto_pedido_cartas = source.auto_pedido_cartas;
+  }
   return next;
 }

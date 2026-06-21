@@ -192,6 +192,11 @@ export function resolveMediaUrl(url) {
     if (origin) return `${origin}${s}`;
     return s;
   }
+  if (s.startsWith('/cartas/')) {
+    const origin = getStaticFilesOrigin() || (typeof window !== 'undefined' ? window.location.origin : '');
+    if (origin) return `${origin}${s}`;
+    return s;
+  }
   return s;
 }
 

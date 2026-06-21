@@ -106,6 +106,17 @@ function persistRegionalFromSettings(settingsRegional) {
   );
 }
 
+function mergeSettingsBlob(prevParsed, incoming) {
+  const prev = prevParsed && typeof prevParsed === 'object' && !Array.isArray(prevParsed) ? prevParsed : {};
+  const next = incoming && typeof incoming === 'object' && !Array.isArray(incoming) ? incoming : {};
+  const merged = { ...prev, ...next };
+  /** Cartas QR: solo se editan en Auto pedido; Configuración no debe borrarlas al guardar. */
+  if (!Object.prototype.hasOwnProperty.call(next, 'auto_pedido_cartas') && Array.isArray(prev.auto_pedido_cartas)) {
+    merged.auto_pedido_cartas = prev.auto_pedido_cartas;
+  }
+  return merged;
+}
+
 function parseTimeToMinutes(timeValue) {
   const [h, m] = String(timeValue || '').split(':').map(v => Number(v));
   if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
@@ -269,33 +280,70 @@ router.get('/printer-routes', requireRole('admin', 'master_admin'), (req, res) =
   }
 });
 
-router.get('/auto-pedido/cartas', (req, res) => {
+function normalizeAutoPedidoCartas(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((c, i) => ({
+      id: String(c.id || '').trim() || uuidv4(),
+      name: String(c.name || '').trim() || `Carta ${i + 1}`,
+      url: String(c.url || '').trim(),
+      sort: Number.isFinite(Number(c.sort)) ? Number(c.sort) : i,
+    }))
+    .filter((c) => c.url)
+    .sort((a, b) => a.sort - b.sort);
+}
+
+function readAutoPedidoCartasFromDb() {
   const settingsObj = parseJsonSafe(queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings'])?.value, {});
-  const raw = settingsObj.auto_pedido_cartas;
-  res.json({ cartas: Array.isArray(raw) ? raw : [] });
+  return normalizeAutoPedidoCartas(settingsObj.auto_pedido_cartas);
+}
+
+function tryRecoverAutoPedidoCartasFromHistory() {
+  const rows = queryAll(
+    `SELECT before_state, after_state FROM app_settings_history ORDER BY datetime(created_at) DESC LIMIT 80`
+  );
+  for (const row of rows) {
+    for (const col of ['before_state', 'after_state']) {
+      const state = parseJsonSafe(row[col], null);
+      if (!state || typeof state !== 'object') continue;
+      const cartas = normalizeAutoPedidoCartas(state.settings?.auto_pedido_cartas);
+      if (cartas.length > 0) return cartas;
+    }
+  }
+  return [];
+}
+
+function persistAutoPedidoCartas(cartas) {
+  const prevRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
+  const settingsObj = parseJsonSafe(prevRow?.value, {});
+  settingsObj.auto_pedido_cartas = cartas;
+  runSql(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+    ['settings', JSON.stringify(settingsObj)]
+  );
+}
+
+router.get('/auto-pedido/cartas', (req, res) => {
+  let cartas = readAutoPedidoCartasFromDb();
+  if (!cartas.length) {
+    const recovered = tryRecoverAutoPedidoCartasFromHistory();
+    if (recovered.length) {
+      persistAutoPedidoCartas(recovered);
+      broadcastStaffData('auto_pedido_cartas');
+      cartas = recovered;
+    }
+  }
+  res.json({ cartas });
 });
 
 router.put('/auto-pedido/cartas', requireRole('admin'), (req, res) => {
   try {
     const cartasIn = req.body?.cartas;
     if (!Array.isArray(cartasIn)) return res.status(400).json({ error: 'Se esperaba cartas: []' });
-    const normalized = cartasIn
-      .map((c, i) => ({
-        id: String(c.id || '').trim() || uuidv4(),
-        name: String(c.name || '').trim() || `Carta ${i + 1}`,
-        url: String(c.url || '').trim(),
-        sort: Number.isFinite(Number(c.sort)) ? Number(c.sort) : i,
-      }))
-      .filter((c) => c.url);
-    const prevRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
-    const settingsObj = parseJsonSafe(prevRow?.value, {});
-    settingsObj.auto_pedido_cartas = normalized;
-    runSql(
-      `INSERT INTO app_settings (key, value, updated_at)
-       VALUES (?, ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-      ['settings', JSON.stringify(settingsObj)]
-    );
+    const normalized = normalizeAutoPedidoCartas(cartasIn);
+    persistAutoPedidoCartas(normalized);
     logAudit({
       actorUserId: req.user.id,
       actorName: req.user.full_name || req.user.username || '',
@@ -451,7 +499,8 @@ router.put('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
     updatedKeys.push(key);
     const previous = queryOne('SELECT value FROM app_settings WHERE key = ?', [key]);
     const prevParsed = parseJsonSafe(previous?.value, {});
-    const nextParsed = payload[key] || {};
+    const incoming = payload[key] || {};
+    const nextParsed = key === 'settings' ? mergeSettingsBlob(prevParsed, incoming) : incoming;
     if (JSON.stringify(prevParsed) !== JSON.stringify(nextParsed)) {
       changedKeys.push(key);
     }
@@ -459,7 +508,7 @@ router.put('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
       `INSERT INTO app_settings (key, value, updated_at)
        VALUES (?, ?, datetime('now'))
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-      [key, JSON.stringify(payload[key] || {})]
+      [key, JSON.stringify(nextParsed)]
     );
   });
   const out = readAppSettingsObject();

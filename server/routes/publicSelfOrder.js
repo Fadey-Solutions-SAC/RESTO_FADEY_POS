@@ -63,8 +63,6 @@ function getAutoPedidoCartas() {
     .filter((c) => c.url)
     .sort((a, b) => a.sort - b.sort);
 }
-
-function findTableByMesa(mesaRaw) {
   const mesa = String(mesaRaw ?? '').trim();
   if (!mesa) return null;
   return queryOne('SELECT * FROM tables WHERE TRIM(CAST(number AS TEXT)) = ?', [mesa]);
