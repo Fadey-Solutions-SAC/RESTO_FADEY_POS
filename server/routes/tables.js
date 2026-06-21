@@ -154,8 +154,12 @@ router.patch('/:id/free', requireRole('admin', 'cajero'), (req, res) => {
       "SELECT id FROM orders WHERE table_number = ? AND status IN ('pending','preparing','ready')",
       [String(table.number)]
     );
-    activeOrders.forEach(o => {
-      runSql("UPDATE orders SET status = 'delivered', updated_at = datetime('now') WHERE id = ?", [o.id]);
+    activeOrders.forEach((o) => {
+      const ord = queryOne('SELECT status FROM orders WHERE id = ?', [o.id]);
+      if (!ord) return;
+      if (String(ord.status || '') === 'ready') {
+        runSql("UPDATE orders SET status = 'delivered', updated_at = datetime('now') WHERE id = ?", [o.id]);
+      }
     });
 
     runSql("UPDATE tables SET status = 'available' WHERE id = ?", [req.params.id]);

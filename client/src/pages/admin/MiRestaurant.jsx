@@ -12,6 +12,7 @@ import BillingSunatManualForm from '../../components/billing/BillingSunatManualF
 import { defaultBillingPanel, defaultBillingPanelPresence } from '../../data/sunat47Catalog';
 import { defaultMiRestaurantProfile, mergeMiRestaurantProfile } from '../../data/miRestaurantProfileDefaults';
 import MiRestaurantEmpresaHub from '../../components/miRestaurant/MiRestaurantEmpresaHub';
+import { isDeliveryEnabledValue, notifyDeliveryEnabledChanged } from '../../hooks/useDeliveryEnabled';
 import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory } from 'react-icons/md';
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
@@ -273,6 +274,7 @@ export default function MiRestaurant() {
         if (!data.schedule || typeof data.schedule !== 'object') data.schedule = {};
         DAYS.forEach(d => { if (!data.schedule[d]) data.schedule[d] = { open: '11:00', close: '23:00', enabled: true }; });
         setRestaurant(data);
+        notifyDeliveryEnabledChanged(isDeliveryEnabledValue(data?.delivery_enabled));
         setProfile(mergeMiRestaurantProfile(defaultMiRestaurantProfile(), data.profile || data.profile_effective || {}));
         skipAutosaveRef.current = true;
         if (data?.billing_panel && typeof data.billing_panel === 'object') {
@@ -500,6 +502,7 @@ export default function MiRestaurant() {
       const saved = await api.put('/restaurant', buildRestaurantPutPayload(restaurant, profile));
       skipAutosaveRef.current = true;
       setRestaurant(saved);
+      notifyDeliveryEnabledChanged(isDeliveryEnabledValue(saved?.delivery_enabled));
       if (saved?.profile) setProfile(mergeMiRestaurantProfile(defaultMiRestaurantProfile(), saved.profile));
       toast.success('Guardado correctamente');
     } catch (err) {
@@ -576,6 +579,7 @@ export default function MiRestaurant() {
       const saved = await api.put('/restaurant', buildRestaurantPutPayload(restaurant, profile));
       skipAutosaveRef.current = true;
       setRestaurant(saved);
+      notifyDeliveryEnabledChanged(isDeliveryEnabledValue(saved?.delivery_enabled));
       if (saved?.profile) setProfile(mergeMiRestaurantProfile(defaultMiRestaurantProfile(), saved.profile));
       setAutosaveStatus('Guardado automático');
     } catch (err) {

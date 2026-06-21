@@ -1,4 +1,4 @@
-﻿import { useRef } from 'react';
+﻿import { useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MdStore,
@@ -12,6 +12,7 @@ import {
   MdPeople,
   MdLink,
 } from 'react-icons/md';
+import { notifyDeliveryEnabledChanged } from '../../hooks/useDeliveryEnabled';
 import { resolveMediaUrl } from '../../utils/api';
 import { MESSAGE_VARIABLES_HELP } from '../../data/miRestaurantProfileDefaults';
 import TicketPreviewPanel from './TicketPreviewPanel';
@@ -105,11 +106,33 @@ export default function MiRestaurantEmpresaHub({
   const d = profile?.delivery_extra || {};
   const q = profile?.qr || {};
   const m = profile?.messages || {};
+  const deliveryOn = Number(restaurant.delivery_enabled) === 1;
+
+  const toggleDelivery = () => {
+    const next = !deliveryOn;
+    onRestaurantField('delivery_enabled', next ? 1 : 0);
+    notifyDeliveryEnabledChanged(next);
+    if (next) setTab('delivery');
+  };
+
+  const empresaTabs = EMPRESA_TABS.filter((tdef) => tdef.id !== 'delivery' || deliveryOn);
+  const messageFields = [
+    ['ticket', 'Mensaje en ticket'],
+    ['reservas', 'Reservas'],
+    ...(deliveryOn ? [['delivery', 'Delivery']] : []),
+    ['promos', 'Promociones'],
+    ['clientes', 'Clientes'],
+    ['whatsapp', 'Plantilla WhatsApp'],
+  ];
+
+  useEffect(() => {
+    if (!deliveryOn && tab === 'delivery') setTab('info');
+  }, [deliveryOn, tab, setTab]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
-        {EMPRESA_TABS.map((tdef) => (
+        {empresaTabs.map((tdef) => (
           <button
             key={tdef.id}
             type="button"
@@ -136,6 +159,14 @@ export default function MiRestaurantEmpresaHub({
 
       {tab === 'info' && (
         <div className="card space-y-6">
+          {!deliveryOn ? (
+            <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-4 py-3">
+              <p className="text-sm font-medium text-[var(--ui-body-text)]">Desactivado</p>
+              <button type="button" className="btn-primary text-sm" onClick={toggleDelivery}>
+                Activar
+              </button>
+            </section>
+          ) : null}
           <section>
             <h3 className="font-bold text-[var(--ui-body-text)] mb-3">Datos comerciales y fiscales</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -260,11 +291,13 @@ export default function MiRestaurantEmpresaHub({
               <textarea className="input-field min-h-[60px]" value={t.custom_footer || ''} onChange={(e) => onProfileSection('ticket', 'custom_footer', e.target.value)} />
             </Field>
             <p className="text-xs text-[var(--ui-muted)]">
-              Elija el tipo de ticket en la vista previa (precuenta, pedido, delivery, nota de venta, boleta, factura).
+              Elija el tipo de ticket en la vista previa (precuenta, pedido
+              {deliveryOn ? ', delivery' : ''}
+              , nota de venta, boleta, factura).
               La impresión real usa la misma plantilla y la configuración de impresoras en Configuración → Impresoras.
             </p>
           </div>
-          <TicketPreviewPanel restaurant={restaurant} profile={profile} />
+          <TicketPreviewPanel restaurant={restaurant} profile={profile} showDeliveryType={deliveryOn} />
         </div>
       )}
 
@@ -299,40 +332,42 @@ export default function MiRestaurantEmpresaHub({
         </div>
       )}
 
-      {tab === 'delivery' && (
-        <div className="card space-y-4">
-          <h3 className="font-bold text-[var(--ui-body-text)]">Delivery</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Delivery habilitado">
-              <select className="input-field" value={restaurant.delivery_enabled ? '1' : '0'} onChange={(e) => onRestaurantField('delivery_enabled', parseInt(e.target.value, 10))}>
-                <option value="1">Sí</option>
-                <option value="0">No</option>
-              </select>
-            </Field>
-            <Field label="Costo delivery (S/)">
-              <input type="number" step="0.5" className="input-field" value={restaurant.delivery_fee ?? 0} onChange={(e) => onRestaurantField('delivery_fee', parseFloat(e.target.value))} />
-            </Field>
-            <Field label="Pedido mínimo (S/)">
-              <input type="number" step="1" className="input-field" value={restaurant.delivery_min_order ?? 0} onChange={(e) => onRestaurantField('delivery_min_order', parseFloat(e.target.value))} />
-            </Field>
-            <Field label="Radio cobertura (km)">
-              <input type="number" step="0.5" className="input-field" value={restaurant.delivery_radius_km ?? 0} onChange={(e) => onRestaurantField('delivery_radius_km', parseFloat(e.target.value))} />
-            </Field>
-            <Field label="Tiempo estimado (min)">
-              <input type="number" min="5" className="input-field" value={d.estimated_minutes ?? 45} onChange={(e) => onProfileSection('delivery_extra', 'estimated_minutes', parseInt(e.target.value, 10) || 45)} />
-            </Field>
-            <Field label="Teléfono contacto delivery">
-              <input className="input-field" value={d.contact_phone || ''} onChange={(e) => onProfileSection('delivery_extra', 'contact_phone', e.target.value)} />
-            </Field>
-            <Field label="Mensaje para cliente" className="md:col-span-2">
-              <textarea className="input-field min-h-[60px]" value={d.message || ''} onChange={(e) => onProfileSection('delivery_extra', 'message', e.target.value)} />
-            </Field>
-            <Field label="Observaciones automáticas" className="md:col-span-2">
-              <input className="input-field" value={d.auto_notes || ''} onChange={(e) => onProfileSection('delivery_extra', 'auto_notes', e.target.value)} />
-            </Field>
-            <Field label="Zonas de cobertura (manual)" className="md:col-span-2" hint="Una zona por línea, ej. Miraflores, San Isidro">
-              <textarea className="input-field min-h-[72px]" value={d.coverage_zones || ''} onChange={(e) => onProfileSection('delivery_extra', 'coverage_zones', e.target.value)} />
-            </Field>
+      {tab === 'delivery' && deliveryOn && (
+        <div className="space-y-4">
+          <div className="card flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-[var(--ui-body-text)]">Activado en su negocio</p>
+            <button type="button" className="btn-secondary text-sm" onClick={toggleDelivery}>
+              Desactivar
+            </button>
+          </div>
+          <div className="card space-y-4">
+            <h4 className="font-bold text-[var(--ui-body-text)]">Configuración</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Costo delivery (S/)">
+                <input type="number" step="0.5" className="input-field" value={restaurant.delivery_fee ?? 0} onChange={(e) => onRestaurantField('delivery_fee', parseFloat(e.target.value))} />
+              </Field>
+              <Field label="Pedido mínimo (S/)">
+                <input type="number" step="1" className="input-field" value={restaurant.delivery_min_order ?? 0} onChange={(e) => onRestaurantField('delivery_min_order', parseFloat(e.target.value))} />
+              </Field>
+              <Field label="Radio cobertura (km)">
+                <input type="number" step="0.5" className="input-field" value={restaurant.delivery_radius_km ?? 0} onChange={(e) => onRestaurantField('delivery_radius_km', parseFloat(e.target.value))} />
+              </Field>
+              <Field label="Tiempo estimado (min)">
+                <input type="number" min="5" className="input-field" value={d.estimated_minutes ?? 45} onChange={(e) => onProfileSection('delivery_extra', 'estimated_minutes', parseInt(e.target.value, 10) || 45)} />
+              </Field>
+              <Field label="Teléfono contacto delivery">
+                <input className="input-field" value={d.contact_phone || ''} onChange={(e) => onProfileSection('delivery_extra', 'contact_phone', e.target.value)} />
+              </Field>
+              <Field label="Mensaje para cliente" className="md:col-span-2">
+                <textarea className="input-field min-h-[60px]" value={d.message || ''} onChange={(e) => onProfileSection('delivery_extra', 'message', e.target.value)} />
+              </Field>
+              <Field label="Observaciones automáticas" className="md:col-span-2">
+                <input className="input-field" value={d.auto_notes || ''} onChange={(e) => onProfileSection('delivery_extra', 'auto_notes', e.target.value)} />
+              </Field>
+              <Field label="Zonas de cobertura (manual)" className="md:col-span-2" hint="Una zona por línea, ej. Miraflores, San Isidro">
+                <textarea className="input-field min-h-[72px]" value={d.coverage_zones || ''} onChange={(e) => onProfileSection('delivery_extra', 'coverage_zones', e.target.value)} />
+              </Field>
+            </div>
           </div>
         </div>
       )}
@@ -375,14 +410,7 @@ export default function MiRestaurantEmpresaHub({
         <div className="card space-y-4">
           <h3 className="font-bold text-[var(--ui-body-text)]">Mensajes automáticos</h3>
           <p className="text-xs text-[var(--ui-muted)]">{MESSAGE_VARIABLES_HELP}</p>
-          {[
-            ['ticket', 'Mensaje en ticket'],
-            ['reservas', 'Reservas'],
-            ['delivery', 'Delivery'],
-            ['promos', 'Promociones'],
-            ['clientes', 'Clientes'],
-            ['whatsapp', 'Plantilla WhatsApp'],
-          ].map(([key, label]) => (
+          {messageFields.map(([key, label]) => (
             <Field key={key} label={label}>
               <textarea className="input-field min-h-[56px] font-mono text-sm" value={m[key] || ''} onChange={(e) => onProfileSection('messages', key, e.target.value)} />
             </Field>

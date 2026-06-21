@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { formatCurrency } from '../../utils/api';
 import {
   TICKET_PREVIEW_TYPES,
@@ -6,11 +6,20 @@ import {
 } from '../../utils/ticketPreviewSamples';
 
 /** Vista previa en tiempo real; usa los mismos builders que POS y cocina. */
-export default function TicketPreviewPanel({ restaurant, profile }) {
+export default function TicketPreviewPanel({ restaurant, profile, showDeliveryType = true }) {
   const [ticketType, setTicketType] = useState('precuenta');
   const widthMm = Number(profile?.ticket?.paper_width_mm) === 58 ? 58 : 80;
 
-  const activeMeta = TICKET_PREVIEW_TYPES.find((t) => t.id === ticketType) || TICKET_PREVIEW_TYPES[0];
+  const previewTypes = useMemo(
+    () => (showDeliveryType ? TICKET_PREVIEW_TYPES : TICKET_PREVIEW_TYPES.filter((t) => t.id !== 'delivery')),
+    [showDeliveryType],
+  );
+
+  useEffect(() => {
+    if (!showDeliveryType && ticketType === 'delivery') setTicketType('precuenta');
+  }, [showDeliveryType, ticketType]);
+
+  const activeMeta = previewTypes.find((t) => t.id === ticketType) || previewTypes[0];
 
   const previewText = useMemo(
     () =>
@@ -34,7 +43,7 @@ export default function TicketPreviewPanel({ restaurant, profile }) {
       </p>
 
       <div className="flex flex-wrap gap-1.5 mb-3" role="tablist" aria-label="Tipo de ticket">
-        {TICKET_PREVIEW_TYPES.map((t) => {
+        {previewTypes.map((t) => {
           const active = ticketType === t.id;
           return (
             <button

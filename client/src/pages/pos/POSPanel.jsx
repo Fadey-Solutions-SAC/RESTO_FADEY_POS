@@ -124,6 +124,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
+import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
@@ -317,6 +318,7 @@ function buildDeliveryCajaSlots(orders) {
 }
 
 export default function POSPanel() {
+  const showDeliveryUi = useShowDeliveryUi();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -2685,20 +2687,22 @@ export default function POSPanel() {
           {billingStatus.provider_reachable ? <MdCheckCircle className="text-xl" /> : <MdClose className="text-xl" />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              const el = document.getElementById('pos-delivery-caja');
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              if (!deliveryCajaSlots.length) {
-                toast.error('No hay pedidos delivery pendientes de cobro');
-              }
-            }}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5"
-          >
-            <MdDeliveryDining className="text-base shrink-0" />
-            Delivery
-          </button>
+          {showDeliveryUi ? (
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('pos-delivery-caja');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if (!deliveryCajaSlots.length) {
+                  toast.error('No hay pedidos delivery pendientes de cobro');
+                }
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5"
+            >
+              <MdDeliveryDining className="text-base shrink-0" />
+              Delivery
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={openQuickSaleMenu}
@@ -2785,7 +2789,7 @@ export default function POSPanel() {
           <p className="text-sm text-center text-[var(--ui-muted)] py-8">No hay mesas en esta zona</p>
         )}
 
-        {deliveryCajaSlots.length > 0 && (
+        {showDeliveryUi && deliveryCajaSlots.length > 0 && (
           <>
             <h2
               id="pos-delivery-caja"

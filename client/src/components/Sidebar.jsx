@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { ADMIN_MODULE_PATHS, canAccessStaffModule } from '../utils/staffModuleAccess';
+import { useShowDeliveryUi } from '../hooks/useDeliveryEnabled';
 import EndShiftModal from './EndShiftModal';
 import AdminAttendanceReviewModal from './AdminAttendanceReviewModal';
 import {
@@ -62,6 +63,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const { t } = useTranslation('dashboard');
   const { t: tc } = useTranslation('common');
   const { user } = useAuth();
+  const showDeliveryUi = useShowDeliveryUi();
 
   const allLinks = useMemo(
     () =>
@@ -107,7 +109,9 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const [isMiRestaurantExpanded, setIsMiRestaurantExpanded] = useState(location.pathname.startsWith('/admin/mi-restaurant'));
   const [isAlmacenExpanded, setIsAlmacenExpanded] = useState(location.pathname.startsWith('/admin/almacen'));
   const hasLinkPermission = (link) => canAccessStaffModule(user, { moduleId: link.moduleId, roles: link.roles });
-  const filtered = allLinks.filter(hasLinkPermission);
+  const filtered = allLinks
+    .filter(hasLinkPermission)
+    .filter((link) => link.moduleId !== 'delivery' || showDeliveryUi);
   const planAllowsAlmacenAvanzado = user?.service_plan !== 'basico';
   const subAlmacen = user?.sub_permissions?.almacen || {};
   const almacenSubOptions = ALMACEN_SUB_IDS.filter((id) => {

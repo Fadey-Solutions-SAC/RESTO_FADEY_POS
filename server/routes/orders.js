@@ -16,7 +16,8 @@ const {
   resolveKitchenStation,
   userCanManageKitchenOrderForStation,
 } = require('../services/staffModuleAccessService');
-const { isBarProductionItem, isBarOnlyOrderItems, orderHasBarItems, orderHasKitchenItems } = require('../utils/productionArea');
+const { orderHasBarItems, orderHasKitchenItems, filterItemsForKitchenStation, stripKitchenItemMeta } = require('../utils/productionArea');
+const { getOrderItemsWithProductionArea, enrichOrderItemsWithComboAreas } = require('../services/orderItemsProductionService');
 
 const DEBUG_ORDERS = String(process.env.DEBUG_ORDERS || process.env.LOG_LEVEL || '')
   .toLowerCase()
@@ -56,20 +57,8 @@ function getChargeBase(order) {
 }
 
 function getOrderItemsWithArea(orderId) {
-  return queryAll(
-    `SELECT oi.*,
-            COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') as production_area,
-            LOWER(COALESCE(c.name, '')) as category_name_lc
-     FROM order_items oi
-     LEFT JOIN products p ON p.id = oi.product_id
-     LEFT JOIN categories c ON c.id = p.category_id
-     WHERE oi.order_id = ?`,
-    [orderId]
-  );
+  return getOrderItemsWithProductionArea(orderId);
 }
-
-const isBarItemRow = isBarProductionItem;
-const isBarOnlyOrder = isBarOnlyOrderItems;
 
 /** Ítems con production_area (Escritorio, listados, etc.) */
 function attachOrderItemsWithProductArea(orders) {
@@ -91,7 +80,9 @@ function attachOrderItemsWithProductArea(orders) {
     if (!byOrder.has(row.order_id)) byOrder.set(row.order_id, []);
     byOrder.get(row.order_id).push(row);
   });
-  orders.forEach((o) => { o.items = byOrder.get(o.id) || []; });
+  orders.forEach((o) => {
+    o.items = enrichOrderItemsWithComboAreas(byOrder.get(o.id) || []);
+  });
 }
 
 router.get('/', authenticateToken, (req, res) => {
@@ -158,7 +149,7 @@ router.get('/kitchen', authenticateToken, (req, res) => {
     return res.status(403).json({ error: 'No tienes permiso para este panel de producción' });
   }
   const { type } = req.query;
-  let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing')
+  let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing', 'ready')
     AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= datetime('now', 'localtime'))`;
   const params = [];
   if (type === 'delivery') query += " AND type = 'delivery'";
@@ -174,7 +165,9 @@ router.get('/kitchen', authenticateToken, (req, res) => {
     const hasKitchen = orderHasKitchenItems(areaItems);
     if (stationRequested === 'bar' && !hasBar) return;
     if (stationRequested === 'cocina' && !hasKitchen) return;
-    o.items = areaItems.map(({ category_name_lc, ...item }) => item);
+    const stationItems = filterItemsForKitchenStation(areaItems, stationRequested);
+    if (!stationItems.length) return;
+    o.items = stationItems.map(stripKitchenItemMeta);
     filtered.push(o);
   });
   res.json(filtered);
@@ -374,8 +367,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
   /** Delivery: pendiente → preparación → listo — cocina/bar o quien tenga ese módulo. */
   if (order.type === 'delivery' && (status === 'preparing' || status === 'ready')) {
     const areaItems = getOrderItemsWithArea(order.id);
-    const barOnly = isBarOnlyOrder(areaItems);
-    if (!userCanManageKitchenOrderForStation(req.user, barOnly)) {
+    if (!userCanManageKitchenOrderForStation(req.user, areaItems)) {
       return res.status(403).json({ error: 'No tienes permiso para actualizar la preparación de este pedido' });
     }
   }
@@ -408,8 +400,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     const role = String(req.user.role || '').toLowerCase();
     if (['cocina', 'bar', 'cajero', 'mozo'].includes(role)) {
       const areaItems = getOrderItemsWithArea(order.id);
-      const barOnly = isBarOnlyOrder(areaItems);
-      if (!userCanManageKitchenOrderForStation(req.user, barOnly)) {
+      if (!userCanManageKitchenOrderForStation(req.user, areaItems)) {
         return res.status(403).json({ error: 'No tienes permiso para actualizar este pedido en cocina/bar' });
       }
     }
@@ -466,6 +457,18 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       "UPDATE orders SET status = 'preparing', preparing_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
       [req.params.id],
     );
+  } else if (status === 'ready') {
+    const nextStatus = String(order.payment_status || '') === 'paid' ? 'delivered' : 'ready';
+    runSql(
+      "UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?",
+      [nextStatus, req.params.id],
+    );
+    if (order.type === 'delivery' && nextStatus === 'delivered') {
+      runSql(
+        "UPDATE delivery_assignments SET status = 'delivered', delivered_at = datetime('now') WHERE order_id = ? AND status != 'delivered'",
+        [order.id]
+      );
+    }
   } else {
     runSql("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?", [status, req.params.id]);
     if (order.type === 'delivery' && status === 'delivered') {

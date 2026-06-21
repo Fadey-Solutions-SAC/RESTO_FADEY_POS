@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne } = require('./database');
+const { getOrderItemsWithProductionArea } = require('./services/orderItemsProductionService');
 const { normalizePaymentMethod } = require('./businessRules');
 const {
   assertProductAvailableForOrder,
@@ -10,16 +11,7 @@ const { computeKitchenReleaseAtForReservation } = require('./services/reservatio
 function getOrderWithItems(orderId) {
   const order = queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
   if (!order) return null;
-  order.items = queryAll(
-    `SELECT oi.*,
-            COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') as production_area,
-            LOWER(COALESCE(c.name, '')) as category_name_lc
-     FROM order_items oi
-     LEFT JOIN products p ON p.id = oi.product_id
-     LEFT JOIN categories c ON c.id = p.category_id
-     WHERE oi.order_id = ?`,
-    [orderId]
-  );
+  order.items = getOrderItemsWithProductionArea(orderId);
   return order;
 }
 
@@ -86,6 +78,11 @@ function createOrderInTransaction(tx, orderId, body, actor) {
 
   const orderType = ['dine_in', 'delivery', 'pickup'].includes(type) ? type : 'dine_in';
 
+  const restaurant = tx.queryOne('SELECT * FROM restaurants LIMIT 1');
+  if (orderType === 'delivery' && Number(restaurant?.delivery_enabled) !== 1) {
+    throw new Error('Delivery no está habilitado en este restaurante');
+  }
+
   const staffInHouseOrder =
     actor.kind === 'staff' &&
     (orderType === 'dine_in' || orderType === 'pickup') &&
@@ -93,7 +90,6 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     actor.user.type !== 'customer' &&
     ['admin', 'cajero', 'mozo', 'cocina', 'bar'].includes(String(actor.user.role || ''));
 
-  const restaurant = tx.queryOne('SELECT * FROM restaurants LIMIT 1');
   const restaurantSchedule = parseRestaurantSchedule(restaurant?.schedule);
   const orderNow = new Date();
   let seq = tx.queryOne('SELECT current_number FROM order_sequence WHERE id = 1');

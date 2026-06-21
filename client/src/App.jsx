@@ -40,6 +40,24 @@ import PwaInstallPrompt from './components/PwaInstallPrompt';
 import BackgroundKitchenAutoPrinter from './components/BackgroundKitchenAutoPrinter';
 import PrintingAssistantAutoDiscover from './components/PrintingAssistantAutoDiscover';
 import { ADMIN_MODULE_PATHS, hasModulePermission, getDefaultStaffPath } from './utils/staffModuleAccess';
+import { useDeliverySettings } from './hooks/useDeliveryEnabled';
+
+function DeliveryModuleGate({ children }) {
+  const { enabled, loaded } = useDeliverySettings();
+  const { user } = useAuth();
+  if (!loaded) {
+    return (
+      <div className="min-h-[40vh] flex items-center justify-center">
+        <div className="rf-loader rf-loader--md" />
+      </div>
+    );
+  }
+  if (!enabled) {
+    if (user?.role === 'delivery') return <Navigate to="/" replace />;
+    return <Navigate to="/admin" replace />;
+  }
+  return children;
+}
 
 function ProtectedRoute({ children, roles, moduleId }) {
   const { user, loading } = useAuth();
@@ -154,7 +172,7 @@ function AppRoutes({ user }) {
         <Route path="ofertas" element={<ProtectedRoute roles={['admin']} moduleId="ofertas"><Ofertas /></ProtectedRoute>} />
         <Route path="descuentos" element={<ProtectedRoute roles={['admin']} moduleId="descuentos"><Descuentos /></ProtectedRoute>} />
         <Route path="almacen" element={<ProtectedRoute roles={['admin']} moduleId="almacen"><Almacen /></ProtectedRoute>} />
-        <Route path="delivery" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo']} moduleId="delivery"><Delivery /></ProtectedRoute>} />
+        <Route path="delivery" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo']} moduleId="delivery"><DeliveryModuleGate><Delivery /></DeliveryModuleGate></ProtectedRoute>} />
         <Route path="cocina" element={<ProtectedRoute roles={['admin']} moduleId="cocina"><KitchenPanel station="cocina" /></ProtectedRoute>} />
         <Route path="bar" element={<ProtectedRoute roles={['admin']} moduleId="bar"><KitchenPanel station="bar" /></ProtectedRoute>} />
         <Route path="informes" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="informes"><Reports /></ProtectedRoute>} />
@@ -166,7 +184,7 @@ function AppRoutes({ user }) {
 
       <Route path="/kitchen" element={<ProtectedRoute roles={['admin', 'cocina']} moduleId="cocina"><KitchenPanel station="cocina" /></ProtectedRoute>} />
       <Route path="/bar" element={<ProtectedRoute roles={['admin', 'bar']} moduleId="bar"><KitchenPanel station="bar" /></ProtectedRoute>} />
-      <Route path="/delivery" element={<ProtectedRoute roles={['delivery']} moduleId="delivery"><DeliveryPanel /></ProtectedRoute>} />
+      <Route path="/delivery" element={<ProtectedRoute roles={['delivery']} moduleId="delivery"><DeliveryModuleGate><DeliveryPanel /></DeliveryModuleGate></ProtectedRoute>} />
       <Route path="/master" element={<ProtectedRoute roles={['master_admin']}><MasterAdmin /></ProtectedRoute>} />
       <Route path="/customer" element={<CustomerLayout />}>
         <Route index element={<Menu />} />

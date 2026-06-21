@@ -15,7 +15,8 @@ import {
   buildPedidoMesaTicketPlainText,
   normalizeThermalPaperWidthMm,
 } from '../../utils/ticketPlainText';
-import { isBarProductionItem, isKitchenProductionItem } from '../../utils/productionArea';
+import { isBarProductionItemForStation, isKitchenProductionItemForStation } from '../../utils/productionArea';
+import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 
 /** Pedido auto-pedido con cuenta de cliente (sin mesa física). */
 function isCuentaClienteSelfOrder(order) {
@@ -28,6 +29,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const { t } = useTranslation('kitchen');
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('all');
+  const showDeliveryUi = useShowDeliveryUi();
   const { user } = useAuth();
   useAppLocaleBootstrap();
   const [endShiftOpen, setEndShiftOpen] = useState(false);
@@ -64,6 +66,10 @@ export default function KitchenPanel({ station = 'cocina' }) {
     }
   };
 
+  useEffect(() => {
+    if (!showDeliveryUi && filter === 'delivery') setFilter('all');
+  }, [showDeliveryUi, filter]);
+
   const loadOrders = async () => {
     try {
       const qs = new URLSearchParams();
@@ -86,8 +92,12 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
   const getStationItems = (items = []) => {
     const list = Array.isArray(items) ? items : [];
-    return isBar ? list.filter(isBarProductionItem) : list.filter(isKitchenProductionItem);
+    return isBar
+      ? list.filter(isBarProductionItemForStation)
+      : list.filter(isKitchenProductionItemForStation);
   };
+
+  const visibleOrders = orders.filter((order) => getStationItems(order.items).length > 0);
 
   const printOrderForStation = async (order, { silent = false } = {}) => {
     try {
@@ -220,7 +230,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
             {[
               { v: 'all', l: t('panel.filterAll') },
               { v: 'dine_in', l: t('panel.filterTables') },
-              { v: 'delivery', l: t('panel.filterDelivery') },
+              ...(showDeliveryUi ? [{ v: 'delivery', l: t('panel.filterDelivery') }] : []),
             ].map(f => (
               <button
                 key={f.v}
@@ -245,7 +255,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
       </header>
       <EndShiftModal isOpen={endShiftOpen} onClose={() => setEndShiftOpen(false)} />
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {orders.map(order => {
+        {visibleOrders.map(order => {
           const TypeIcon = typeIcons[order.type] || MdRestaurant;
           const isOverdue = isKitchenOrderOverdue(order);
 
@@ -359,7 +369,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
           );
         })}
 
-        {orders.length === 0 && (
+        {visibleOrders.length === 0 && (
           <div className="col-span-full text-center py-20">
             <StationIcon className="text-6xl text-[var(--ui-muted)] mx-auto mb-4" />
             <p className="text-xl text-[var(--ui-body-text)]">{t('panel.emptyTitle', { station: stationLabel })}</p>

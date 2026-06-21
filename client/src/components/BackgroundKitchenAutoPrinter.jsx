@@ -7,7 +7,7 @@ import {
   buildPedidoMesaTicketPlainText,
   normalizeThermalPaperWidthMm,
 } from '../utils/ticketPlainText';
-import { isBarProductionItem, isKitchenProductionItem } from '../utils/productionArea';
+import { isBarProductionItemForStation, isKitchenProductionItemForStation } from '../utils/productionArea';
 
 const POS_RECENT_AUTOPRINT_KEY = 'resto_pos_recent_kitchen_autoprint';
 
@@ -57,8 +57,8 @@ export default function BackgroundKitchenAutoPrinter() {
       const items = Array.isArray(fullOrder?.items) ? fullOrder.items : [];
       if (!items.length) return;
 
-      const kitchenItems = items.filter(isKitchenProductionItem);
-      const barItems = items.filter(isBarProductionItem);
+      const kitchenItems = items.filter(isKitchenProductionItemForStation);
+      const barItems = items.filter(isBarProductionItemForStation);
       const paperC = normalizePaperWidthMm(cfg?.cocina?.anchoPapel ?? cfg?.cocina?.paperWidth ?? 80);
       const paperB = normalizePaperWidthMm(cfg?.bar?.anchoPapel ?? cfg?.bar?.paperWidth ?? 80);
       const takeout = orderHasTakeoutNote(fullOrder);

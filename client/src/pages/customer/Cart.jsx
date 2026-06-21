@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { api, formatCurrency } from '../../utils/api';
+import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import toast from 'react-hot-toast';
 import { MdAdd, MdRemove, MdDelete, MdShoppingCart, MdDeliveryDining, MdStorefront, MdRestaurant, MdArrowBack, MdEditNote } from 'react-icons/md';
 
 export default function Cart() {
   const { items, updateQuantity, updateItemNotes, removeItem, clearCart, total, count } = useCart();
   const { user } = useAuth();
+  const showDeliveryUi = useShowDeliveryUi();
   const navigate = useNavigate();
   const [orderType, setOrderType] = useState('pickup');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -19,8 +21,12 @@ export default function Cart() {
   const taxRate = 0.18;
   const subtotal = total;
   const tax = subtotal * taxRate;
-  const deliveryFee = orderType === 'delivery' ? 5 : 0;
+  const deliveryFee = showDeliveryUi && orderType === 'delivery' ? 5 : 0;
   const grandTotal = subtotal + tax + deliveryFee;
+
+  useEffect(() => {
+    if (!showDeliveryUi && orderType === 'delivery') setOrderType('pickup');
+  }, [showDeliveryUi, orderType]);
 
   const handleOrder = async () => {
     if (!user || user.type !== 'customer') {
@@ -150,6 +156,7 @@ export default function Cart() {
           <div className="bg-white rounded-xl border border-gray-100 p-6 sticky top-24">
             <h3 className="font-bold text-gray-800 mb-4">Resumen del Pedido</h3>
 
+            {showDeliveryUi ? (
             <div className="mb-4">
               <p className="text-sm font-medium text-gray-700 mb-2">Tipo de pedido</p>
               <div className="grid grid-cols-2 gap-2">
@@ -171,8 +178,9 @@ export default function Cart() {
                 </button>
               </div>
             </div>
+            ) : null}
 
-            {orderType === 'delivery' && (
+            {showDeliveryUi && orderType === 'delivery' && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Dirección de entrega *</label>
                 <textarea
@@ -193,7 +201,7 @@ export default function Cart() {
             <div className="space-y-2 mb-4 pt-4 border-t">
               <div className="flex justify-between text-sm"><span className="text-gray-500">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
               <div className="flex justify-between text-sm"><span className="text-gray-500">IGV (18%)</span><span>{formatCurrency(tax)}</span></div>
-              {orderType === 'delivery' && (
+              {showDeliveryUi && orderType === 'delivery' && (
                 <div className="flex justify-between text-sm"><span className="text-gray-500">Delivery</span><span>{formatCurrency(deliveryFee)}</span></div>
               )}
               <div className="flex justify-between text-lg font-bold border-t pt-2">

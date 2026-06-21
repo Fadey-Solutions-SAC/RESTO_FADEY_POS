@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { api, formatCurrency, parseApiDate, toLocalDateKey, PAYMENT_METHODS } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
+import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import { useNavigate, Link } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { MdDateRange, MdKeyboardArrowDown, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning } from 'react-icons/md';
@@ -42,6 +43,7 @@ function ventaMesaKey(order) {
 
 export default function Escritorio() {
   const CHART_COLORS = useChartTheme();
+  const showDeliveryUi = useShowDeliveryUi();
   const [orders, setOrders] = useState([]);
   const [liveDash, setLiveDash] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -457,6 +459,7 @@ export default function Escritorio() {
               <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{Number(liveDash.tablesWithActiveOrders || 0)}</p>
               <p className="text-[11px] font-medium ui-live-link-rose">Ir a Mesas</p>
             </button>
+            {showDeliveryUi ? (
             <button
               type="button"
               onClick={() => navigate('/admin/delivery')}
@@ -466,6 +469,7 @@ export default function Escritorio() {
               <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{Number(liveDash.deliveryActiveCount || 0)}</p>
               <p className="text-[11px] font-medium ui-live-link-emerald">Ir a Delivery</p>
             </button>
+            ) : null}
             <button
               type="button"
               onClick={() => navigate('/admin/cocina')}
@@ -573,11 +577,13 @@ export default function Escritorio() {
             <p className="text-2xl font-bold text-indigo-800 mt-1">{barQueue}</p>
             <p className="text-xs text-indigo-700">Pedidos en cola</p>
           </div>
+          {showDeliveryUi ? (
           <button onClick={() => navigate('/admin/delivery')} className="text-left p-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 transition-colors">
             <div className="flex items-center gap-2 text-emerald-700 font-semibold"><MdDeliveryDining /> Delivery</div>
             <p className="text-2xl font-bold text-emerald-800 mt-1">{deliveryReady}</p>
             <p className="text-xs text-emerald-700">Pedidos listos para repartir</p>
           </button>
+          ) : null}
           <button onClick={() => navigate('/admin/mesas')} className="text-left p-3 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-colors">
             <div className="flex items-center gap-2 text-rose-700 font-semibold"><MdTableBar /> Mesas</div>
             <p className="text-2xl font-bold text-rose-800 mt-1">{salonActive}</p>

@@ -7,6 +7,7 @@ import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
 import { buildSalesDisplayGroups } from '../../utils/mesaOrderLines';
+import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 
 const PAYMENT_STATUS_STYLES = {
   paid: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
@@ -273,6 +274,7 @@ const DOC_TYPE_KEYS = ['nota_venta', 'boleta', 'factura'];
 
 export default function Ventas() {
   const { t } = useTranslation('sales');
+  const showDeliveryUi = useShowDeliveryUi();
   const [orders, setOrders] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [search, setSearch] = useState('');
@@ -342,6 +344,10 @@ export default function Ventas() {
     else f = f.filter((o) => o.status === 'cancelled');
     setFiltered(f);
   }, [search, statusFilter, typeFilter, waiterFilter, fromDate, toDate, saleTab, orders]);
+
+  useEffect(() => {
+    if (!showDeliveryUi && typeFilter === 'delivery') setTypeFilter('all');
+  }, [showDeliveryUi, typeFilter]);
 
   const displayGroups = useMemo(() => buildSalesDisplayGroups(filtered), [filtered]);
 
@@ -529,7 +535,7 @@ export default function Ventas() {
             <option value="all">Todos los pagos</option><option value="paid">Pagado</option><option value="pending">Pendiente</option><option value="refunded">Reembolsado</option>
           </select>
           <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="input-field w-auto min-w-[140px] cursor-pointer">
-            <option value="all">Todos los tipos</option><option value="dine_in">Mesa</option><option value="delivery">Delivery</option><option value="pickup">Para llevar</option>
+            <option value="all">Todos los tipos</option><option value="dine_in">Mesa</option>{showDeliveryUi ? <option value="delivery">Delivery</option> : null}<option value="pickup">Para llevar</option>
           </select>
           <select value={waiterFilter} onChange={e => setWaiterFilter(e.target.value)} className="input-field w-auto min-w-[160px] cursor-pointer">
             <option value="all">Todos los meseros</option>

@@ -760,17 +760,25 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       toCharge.forEach((row, idx) => {
         const br = perOrderBreakdown ? perOrderBreakdown[idx] : null;
         const tipForOrder = round2(Number(tipsPerOrder[idx] || 0));
+        const current = tx.queryOne('SELECT status FROM orders WHERE id = ?', [row.id]);
+        const st = String(current?.status || '');
+        let nextStatus = 'delivered';
+        if (st === 'pending' || st === 'preparing') {
+          nextStatus = st;
+        } else if (st === 'ready' && chargeToCustomerAccount) {
+          nextStatus = st;
+        }
         if (chargeToCustomerAccount) {
           tx.run(
-            `UPDATE orders SET payment_method = 'cuenta_cliente', payment_status = 'pending', status = 'delivered',
+            `UPDATE orders SET payment_method = 'cuenta_cliente', payment_status = 'pending', status = ?,
               customer_id = ?, customer_name = ?, payment_breakdown = NULL, tip_amount = 0, updated_at = datetime('now') WHERE id = ?`,
-            [accountCustomer.id, accountCustomer.name, row.id]
+            [nextStatus, accountCustomer.id, accountCustomer.name, row.id]
           );
         } else {
           tx.run(
-            `UPDATE orders SET payment_method = ?, payment_status = 'paid', status = 'delivered',
+            `UPDATE orders SET payment_method = ?, payment_status = 'paid', status = ?,
               payment_breakdown = ?, tip_amount = ?, updated_at = datetime('now') WHERE id = ?`,
-            [primaryMethod, br, tipForOrder, row.id]
+            [primaryMethod, nextStatus, br, tipForOrder, row.id]
           );
           tx.run(
             "UPDATE electronic_documents SET payment_method = ?, updated_at = datetime('now') WHERE order_id = ?",

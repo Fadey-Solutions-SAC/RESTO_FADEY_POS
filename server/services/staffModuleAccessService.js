@@ -3,6 +3,7 @@ const { getControlConfig } = require('../masterAdminService');
 const { normalizePlan } = require('../servicePlan');
 const { getEffectivePermissions } = require('../planModuleCatalog');
 const { MODULE_IDS } = require('../servicePlan');
+const { orderHasBarItems, orderHasKitchenItems } = require('../utils/productionArea');
 
 function isPermissionEnabled(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
@@ -69,14 +70,17 @@ function resolveKitchenStation(user, queryStation) {
   return 'cocina';
 }
 
-/** Puede marcar preparando/listo según si el pedido es solo bar o incluye cocina. */
-function userCanManageKitchenOrderForStation(user, barOnly) {
+/** Puede marcar preparando/listo según ítems del pedido y estación del usuario. */
+function userCanManageKitchenOrderForStation(user, areaItems) {
   const role = String(user?.role || '').toLowerCase();
   if (['admin', 'master_admin'].includes(role)) return true;
-  if (role === 'cocina') return !barOnly;
-  if (role === 'bar') return barOnly;
-  if (barOnly) return userHasModule(user, 'bar');
-  return userHasModule(user, 'cocina');
+  const hasBar = orderHasBarItems(areaItems);
+  const hasKitchen = orderHasKitchenItems(areaItems);
+  if (role === 'cocina') return hasKitchen;
+  if (role === 'bar') return hasBar;
+  if (hasBar && !hasKitchen) return userHasModule(user, 'bar');
+  if (hasKitchen && !hasBar) return userHasModule(user, 'cocina');
+  return userHasModule(user, 'cocina') || userHasModule(user, 'bar');
 }
 
 module.exports = {
