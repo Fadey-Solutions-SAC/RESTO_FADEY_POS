@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api, formatCurrency, formatTime } from '../../utils/api';
+import { api, formatCurrency, formatInstantTime } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { MdTrendingUp, MdShoppingCart, MdAttachMoney, MdWarning, MdAccessTime, MdAccountBalance, MdReceiptLong } from 'react-icons/md';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -142,11 +142,7 @@ export default function Dashboard() {
             {data.generated_at && (
               <span className="text-xs text-gray-500">
                 Actualizado{' '}
-                {new Date(data.generated_at).toLocaleTimeString('es-PE', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                })}
+                {formatInstantTime(data.generated_at, { withSeconds: true })}
               </span>
             )}
           </div>

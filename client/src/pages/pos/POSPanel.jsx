@@ -43,9 +43,14 @@ import {
   buildNotaVentaPlainText,
   buildBoletaFacturaPlainText,
   getThermalPrintRevision,
-  normalizeThermalPaperWidthMm,
   restaurantThermalBrandLine,
 } from '../../utils/ticketPlainText';
+import PrinterModulePanel from '../../components/printing/PrinterModulePanel';
+import {
+  DEFAULT_PRINTING_CONFIG,
+  fetchPrintingConfig,
+  normalizePaperWidthMm,
+} from '../../utils/printingConfig';
 import { showStockInOrderingUI } from '../../utils/productStockDisplay';
 import {
   mergeOrderingCatalog,
@@ -145,11 +150,6 @@ import {
 
 /** Mesa sintética al cobrar cuenta desde Clientes (no existe fila en `tables`). */
 const POS_ADMIN_REGISTER_KEY = 'posAdminRegisterId';
-const DEFAULT_PRINTING_CONFIG = {
-  caja: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
-  cocina: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
-  bar: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
-};
 
 const CLIENT_CHECKOUT_TABLE_PREFIX = 'client-checkout:';
 function isClientCheckoutTable(table) {
@@ -171,6 +171,7 @@ const CAJA_OPTIONS_CAJERO_IDS = new Set([
   'notas_credito',
   'notas_debito',
   'consulta_precios',
+  'impresora',
 ]);
 const CAJA_OPTIONS = [
   { id: 'cobrar', label: 'Cobrar' },
@@ -184,7 +185,6 @@ const CAJA_OPTIONS = [
   { id: 'consulta_precios', label: 'Consulta de precios' },
   { id: 'impresora', label: 'Impresora' },
 ];
-const normalizePaperWidthMm = normalizeThermalPaperWidthMm;
 
 async function printCajaTicket(payload) {
   try {
@@ -408,8 +408,6 @@ export default function POSPanel() {
   const cajaPaperWidthMm = useMemo(() => {
     return normalizePaperWidthMm(printingConfig?.caja?.anchoPapel ?? printingConfig?.caja?.paperWidth ?? 80);
   }, [printingConfig?.caja?.anchoPapel, printingConfig?.caja?.paperWidth]);
-  const [detectedPrinters, setDetectedPrinters] = useState([]);
-  const [printingBusy, setPrintingBusy] = useState(false);
   const [closingData, setClosingData] = useState(null);
   /** Momento fijo al abrir el cierre (misma referencia que “Cierre” en el arqueo). */
   const [closingAtPreview, setClosingAtPreview] = useState(null);
@@ -654,58 +652,11 @@ export default function POSPanel() {
 
   const loadPrinterConfig = async () => {
     try {
-      const cfg = hasElectronPrinting()
-        ? await electronPrinting.getConfig()
-        : await api.printing.get('/printing/config');
-      setPrintingConfig({
-        caja: { ...DEFAULT_PRINTING_CONFIG.caja, ...(cfg?.caja || {}) },
-        cocina: { ...DEFAULT_PRINTING_CONFIG.cocina, ...(cfg?.cocina || {}) },
-        bar: { ...DEFAULT_PRINTING_CONFIG.bar, ...(cfg?.bar || {}) },
-      });
+      const cfg = await fetchPrintingConfig();
+      setPrintingConfig(cfg);
     } catch (err) {
       console.warn('[printing] fallback POS config por error de carga:', err?.message || err);
       setPrintingConfig(DEFAULT_PRINTING_CONFIG);
-    }
-  };
-
-  const detectUsbPrinters = async () => {
-    try {
-      setPrintingBusy(true);
-      if (hasElectronPrinting()) {
-        await electronPrinting.health();
-      } else {
-        await checkPrintingHealth();
-      }
-      const data = hasElectronPrinting()
-        ? await electronPrinting.getPrinters('caja')
-        : await api.printing.get('/printers?module=caja');
-      setDetectedPrinters(normalizeUsbPrinterList(data));
-    } catch (err) {
-      toast.error(err.message || printingUnreachableMessage());
-    } finally {
-      setPrintingBusy(false);
-    }
-  };
-
-  const savePrinterConfig = async () => {
-    try {
-      setPrintingBusy(true);
-      const rawWidth = printingConfig?.caja?.anchoPapel ?? printingConfig?.caja?.paperWidth ?? 80;
-      const width = normalizePaperWidthMm(rawWidth);
-      const cajaCfg = {
-        ...(printingConfig?.caja || {}),
-        anchoPapel: width,
-        paperWidth: width,
-      };
-      const next = hasElectronPrinting()
-        ? await electronPrinting.saveConfig({ caja: cajaCfg })
-        : await api.printing.put('/printing/config', { caja: cajaCfg });
-      setPrintingConfig(next || printingConfig);
-      toast.success('Impresora de caja guardada');
-    } catch (err) {
-      toast.error(err.message || 'No se pudo guardar');
-    } finally {
-      setPrintingBusy(false);
     }
   };
 
@@ -713,11 +664,6 @@ export default function POSPanel() {
     loadData();
     loadPrinterConfig();
   }, []);
-  useEffect(() => {
-    if (activeCajaOption === 'impresora' && hasElectronPrinting()) {
-      detectUsbPrinters();
-    }
-  }, [activeCajaOption]);
   useActiveInterval(loadData, 10000);
   useSocket('order-update', () => {
     void loadData();
@@ -1976,7 +1922,14 @@ export default function POSPanel() {
           toast.success('Venta rápida cobrada', { id: tid });
         }
       } else {
-        toast.success(`Pedido agregado a ${selectedTable.name}`, { id: tid });
+        if (createdOrder.merged_into_existing) {
+          toast.success(
+            `Productos agregados a comanda #${createdOrder.order_number ?? ''}`.trim(),
+            { id: tid },
+          );
+        } else {
+          toast.success(`Pedido agregado a ${selectedTable.name}`, { id: tid });
+        }
       }
       setShowMenu(false);
       setQuickSaleMode(false);
@@ -3242,108 +3195,11 @@ export default function POSPanel() {
       {activeCajaOption === 'impresora' && (
         <div className="card max-w-3xl">
           <h3 className="font-bold rf-section-title mb-4 flex items-center gap-2"><MdPrint /> Configuración de Impresora (Caja)</h3>
-          {!hasElectronPrinting() && (
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
-              <p className="text-sm text-amber-800">La impresión automática está disponible solo en la aplicación de escritorio.</p>
-            </div>
-          )}
-          {(() => {
-            const cfg = printingConfig?.caja || { tipo: 'usb', nombre: '', ip: '', puerto: 9100 };
-            const cajaPaperWidth = normalizePaperWidthMm(cfg.anchoPapel ?? cfg.paperWidth ?? 80);
-            return (
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Tipo</label>
-                    <select
-                      className="input-field"
-                      value={cfg.tipo || 'usb'}
-                      onChange={(e) => setPrintingConfig((prev) => ({
-                        ...prev,
-                        caja: { ...(prev.caja || {}), tipo: e.target.value },
-                      }))}
-                    >
-                      <option value="usb">USB</option>
-                      <option value="red">Red</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Ancho de papel</label>
-                    <select
-                      className="input-field"
-                      value={cajaPaperWidth}
-                      onChange={(e) => {
-                        const width = normalizePaperWidthMm(e.target.value);
-                        setPrintingConfig((prev) => ({
-                          ...prev,
-                          caja: { ...(prev.caja || {}), anchoPapel: width, paperWidth: width },
-                        }));
-                      }}
-                    >
-                      <option value={50}>50 mm</option>
-                      <option value={58}>58 mm</option>
-                      <option value={75}>75 mm</option>
-                      <option value={80}>80 mm</option>
-                    </select>
-                  </div>
-                  {(cfg.tipo || 'usb') === 'usb' ? (
-                    <div className="md:col-span-1">
-                      <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Impresora USB</label>
-                      <select
-                        className="input-field"
-                        value={cfg.nombre || ''}
-                        onChange={(e) => setPrintingConfig((prev) => ({
-                          ...prev,
-                          caja: { ...(prev.caja || {}), nombre: e.target.value },
-                        }))}
-                      >
-                        <option value="">Seleccione una impresora</option>
-                        {detectedPrinters.map((p) => (
-                          <option key={p.name} value={p.name}>{p.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">IP</label>
-                        <input
-                          className="input-field"
-                          value={cfg.ip || ''}
-                          onChange={(e) => setPrintingConfig((prev) => ({
-                            ...prev,
-                            caja: { ...(prev.caja || {}), ip: e.target.value },
-                          }))}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Puerto</label>
-                        <input
-                          className="input-field"
-                          type="number"
-                          min="1"
-                          max="65535"
-                          value={Number(cfg.puerto || 9100)}
-                          onChange={(e) => setPrintingConfig((prev) => ({
-                            ...prev,
-                            caja: { ...(prev.caja || {}), puerto: Number(e.target.value || 9100) },
-                          }))}
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" className="btn-secondary" onClick={detectUsbPrinters} disabled={printingBusy || !hasElectronPrinting()}>
-                    Detectar impresoras USB
-                  </button>
-                  <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={savePrinterConfig} disabled={printingBusy}>
-                    <MdSave /> Guardar configuración
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
+          <PrinterModulePanel
+            moduleKey="caja"
+            showLinkSection
+            onConfigLoaded={(cfg) => setPrintingConfig(cfg)}
+          />
         </div>
       )}
       </div>

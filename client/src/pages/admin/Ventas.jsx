@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, formatCurrency, formatDateTime } from '../../utils/api';
+import { api, formatCurrency, formatDateTime, formatDate, formatTime, parseApiDate } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
 import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel, MdDownload } from 'react-icons/md';
@@ -577,18 +577,18 @@ export default function Ventas() {
                 const doc = getOrderDocument(o);
                 const mesero = o.created_by_user_name || o.customer_name || '-';
                 const statusBadge = getSalesGroupStatusBadge(group, t);
-                const latest = new Date(`${group.latestAt}Z`);
-                const earliest = new Date(`${group.earliestAt}Z`);
+                const latest = parseApiDate(group.latestAt);
+                const earliest = parseApiDate(group.earliestAt);
                 const sameDay = group.comprobanteCount === 1
-                  || latest.toLocaleDateString('es-PE') === earliest.toLocaleDateString('es-PE');
+                  || (latest && earliest && formatDate(group.latestAt) === formatDate(group.earliestAt));
                 return (
                   <tr key={group.key} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
                     <td className="py-2.5">
-                      <p className="font-medium text-[var(--ui-body-text)]">{latest.toLocaleDateString('es-PE')}</p>
+                      <p className="font-medium text-[var(--ui-body-text)]">{formatDate(group.latestAt)}</p>
                       <p className="text-xs text-[var(--ui-muted)]">
                         {group.comprobanteCount > 1 && !sameDay
-                          ? `${earliest.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} – ${latest.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`
-                          : latest.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                          ? `${formatTime(group.earliestAt)} – ${formatTime(group.latestAt)}`
+                          : formatTime(group.latestAt)}
                         {group.comprobanteCount > 1 ? ` · ${group.comprobanteCount} pagos` : ''}
                       </p>
                     </td>

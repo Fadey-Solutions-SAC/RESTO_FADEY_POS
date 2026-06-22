@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { ADMIN_MODULE_PATHS, canAccessStaffModule } from '../utils/staffModuleAccess';
 import { useShowDeliveryUi } from '../hooks/useDeliveryEnabled';
+import { usePrintingModule } from '../hooks/usePrintingModule';
 import EndShiftModal from './EndShiftModal';
 import AdminAttendanceReviewModal from './AdminAttendanceReviewModal';
 import {
@@ -50,7 +51,7 @@ if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
 
 const CAJA_SUB_IDS = [
   'cobrar', 'apertura_cierre', 'cierres_caja', 'ingresos', 'egresos',
-  'notas_credito', 'notas_debito', 'consulta_precios',
+  'notas_credito', 'notas_debito', 'consulta_precios', 'impresora',
 ];
 const MI_RESTAURANT_SUB_IDS = [
   'mi_empresa', 'facturacion_electronica', 'pagos_sistema', 'contrato', 'pago_uso_sistema', 'informacion',
@@ -132,7 +133,9 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
       ? miRestaurantSubOptionsByPlan
       : miRestaurantSubOptionsByPlan.filter((o) => o.id !== 'informacion');
   const subCaja = user?.sub_permissions?.caja || {};
+  const { moduleEnabled: cajaPrinterEnabled } = usePrintingModule('caja');
   const cajaSubOptions = CAJA_SUB_IDS.filter((id) => {
+    if (id === 'impresora' && !cajaPrinterEnabled) return false;
     if (subCaja[id] === false) return false;
     if (String(user?.role || '').toLowerCase() === 'cajero' && (id === 'apertura_cierre' || id === 'cierres_caja')) {
       return false;

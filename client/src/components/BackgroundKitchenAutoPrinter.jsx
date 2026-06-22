@@ -8,6 +8,7 @@ import {
   normalizeThermalPaperWidthMm,
 } from '../utils/ticketPlainText';
 import { isBarProductionItemForStation, isKitchenProductionItemForStation } from '../utils/productionArea';
+import { isPrintingModuleEnabled } from '../utils/printingConfig';
 
 const POS_RECENT_AUTOPRINT_KEY = 'resto_pos_recent_kitchen_autoprint';
 
@@ -77,7 +78,7 @@ export default function BackgroundKitchenAutoPrinter() {
           modifier_option: String(it.modifier_option || '').trim(),
         }));
 
-      if (cfg?.cocina?.autoPrint && kitchenItems.length > 0) {
+      if (isPrintingModuleEnabled(cfg, 'cocina') && kitchenItems.length > 0) {
         const text = buildPedidoMesaTicketPlainText({
           tableLabel: tableLbl,
           orderNumber: fullOrder?.order_number,
@@ -95,7 +96,7 @@ export default function BackgroundKitchenAutoPrinter() {
           anchoPapel: paperC,
         });
       }
-      if (cfg?.bar?.autoPrint && barItems.length > 0) {
+      if (isPrintingModuleEnabled(cfg, 'bar') && barItems.length > 0) {
         const text = buildPedidoMesaTicketPlainText({
           tableLabel: tableLbl,
           orderNumber: fullOrder?.order_number,
@@ -121,7 +122,8 @@ export default function BackgroundKitchenAutoPrinter() {
   useSocket('new-order', (order) => {
     void autoPrintOrder(order);
   });
-  useSocket('order-lines-updated', (order) => {
+  useSocket('order-lines-updated', (payload) => {
+    const order = payload?.order || payload;
     void autoPrintOrder(order);
   });
 

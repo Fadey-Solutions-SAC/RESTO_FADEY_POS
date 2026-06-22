@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, withTransaction } = require('../database');
 const { assertPaymentMethodAllowed } = require('../businessRules');
-const { createOrderInTransaction, getOrderWithItems } = require('../orderCreateService');
+const { createOrMergeTableOrderInTransaction, getOrderWithItems } = require('../orderCreateService');
 const { emitInventoryUpdate } = require('../socketBroadcast');
 const { createRateLimiter } = require('../middleware/rateLimit');
 const { JWT_SECRET } = require('../middleware/auth');
@@ -326,16 +326,26 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
   };
 
   try {
-    const result = withTransaction((tx) => createOrderInTransaction(tx, orderId, body, { kind: 'public_qr' }));
+    const result = withTransaction((tx) =>
+      createOrMergeTableOrderInTransaction(tx, orderId, body, { kind: 'public_qr' })
+    );
     const order = getOrderWithItems(result.orderId);
     const io = req.app.get('io');
     if (io) {
-      io.emit('new-order', order);
+      if (result.merged) {
+        io.emit('order-lines-updated', { order, new_item_ids: result.newItemIds || [], merged: true });
+      } else {
+        io.emit('new-order', order);
+      }
       io.emit('order-update', order);
       io.emit('table-update', table);
     }
     emitInventoryUpdate({});
-    res.status(201).json(order);
+    res.status(result.merged ? 200 : 201).json({
+      ...order,
+      merged_into_existing: Boolean(result.merged),
+      new_item_ids: result.newItemIds || [],
+    });
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo crear el pedido' });
   }

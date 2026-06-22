@@ -1150,6 +1150,7 @@ async function initDatabase() {
     addOrderColIfMissing('station_bar_ready_at', 'ALTER TABLE orders ADD COLUMN station_bar_ready_at TEXT');
     addOrderColIfMissing('station_cocina_preparing_at', 'ALTER TABLE orders ADD COLUMN station_cocina_preparing_at TEXT');
     addOrderColIfMissing('station_bar_preparing_at', 'ALTER TABLE orders ADD COLUMN station_bar_preparing_at TEXT');
+    addOrderColIfMissing('kitchen_last_send_at', 'ALTER TABLE orders ADD COLUMN kitchen_last_send_at TEXT');
     try {
       db.run(`
         UPDATE orders SET status = 'preparing',
@@ -1180,6 +1181,7 @@ async function initDatabase() {
     };
     addOrderItemColIfMissing('station_cocina_ready_at', 'ALTER TABLE order_items ADD COLUMN station_cocina_ready_at TEXT');
     addOrderItemColIfMissing('station_bar_ready_at', 'ALTER TABLE order_items ADD COLUMN station_bar_ready_at TEXT');
+    addOrderItemColIfMissing('kitchen_highlight_at', 'ALTER TABLE order_items ADD COLUMN kitchen_highlight_at TEXT');
     try {
       db.run('UPDATE order_items SET station_cocina_ready_at = NULL, station_bar_ready_at = NULL');
     } catch (_) {
@@ -2070,6 +2072,12 @@ async function initDatabase() {
     ensureOperationalUsers();
     seedTables();
     seedWarehouses();
+    try {
+      const { ensureUserWorkSessionSchema } = require('./utils/ensureUserWorkSessionSchema');
+      ensureUserWorkSessionSchema();
+    } catch (err) {
+      console.warn('[db] user_work_sessions schema check:', err.message || err);
+    }
     saveDb();
     return db;
   })();

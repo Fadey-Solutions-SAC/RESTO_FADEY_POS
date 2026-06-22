@@ -7,8 +7,10 @@ import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import EndShiftModal from '../../components/EndShiftModal';
-import { MdKitchen, MdLocalBar, MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint } from 'react-icons/md';
+import { MdKitchen, MdLocalBar, MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings } from 'react-icons/md';
 import toast from 'react-hot-toast';
+import PrinterModuleModal from '../../components/printing/PrinterModuleModal';
+import { usePrintingModule } from '../../hooks/usePrintingModule';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   orderHasTakeoutNote,
@@ -23,7 +25,18 @@ function isCuentaClienteSelfOrder(order) {
   return String(order?.table_number || '') === 'Cliente' && String(order?.customer_id || '').trim() !== '';
 }
 
+const KITCHEN_ITEM_HIGHLIGHT_MS = 10 * 60 * 1000;
 const normalizePaperWidthMm = normalizeThermalPaperWidthMm;
+
+function itemHighlightActive(item, highlightIds) {
+  if (!item?.id) return false;
+  if (highlightIds?.has?.(item.id)) return true;
+  const at = item?.kitchen_highlight_at;
+  if (!String(at || '').trim()) return false;
+  const d = parseApiDate(at);
+  if (!d) return false;
+  return Date.now() - d.getTime() < KITCHEN_ITEM_HIGHLIGHT_MS;
+}
 
 export default function KitchenPanel({ station = 'cocina' }) {
   const { t } = useTranslation('kitchen');
@@ -34,10 +47,14 @@ export default function KitchenPanel({ station = 'cocina' }) {
   useAppLocaleBootstrap();
   const [endShiftOpen, setEndShiftOpen] = useState(false);
   const [statusBusy, setStatusBusy] = useState({});
+  const [highlightItemIds, setHighlightItemIds] = useState(() => new Set());
   const navigate = useNavigate();
   const location = useLocation();
   const emit = useSocketEmit();
   const isBar = station === 'bar';
+  const printerModuleKey = isBar ? 'bar' : 'cocina';
+  const { moduleEnabled: printerModuleEnabled, loadConfig: reloadPrinterConfig } = usePrintingModule(printerModuleKey);
+  const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const StationIcon = isBar ? MdLocalBar : MdKitchen;
   const panelTitle = isBar ? t('panel.barTitle') : t('panel.kitchenTitle');
   const stationLabel = isBar ? t('panel.stationBar') : t('panel.stationKitchen');
@@ -71,12 +88,29 @@ export default function KitchenPanel({ station = 'cocina' }) {
     if (!showDeliveryUi && filter === 'delivery') setFilter('all');
   }, [showDeliveryUi, filter]);
 
+  const getStationItems = useCallback((items = []) => {
+    const list = Array.isArray(items) ? items : [];
+    return isBar
+      ? list.filter(isBarProductionItemForStation)
+      : list.filter(isKitchenProductionItemForStation);
+  }, [isBar]);
+
   const loadOrders = async () => {
     try {
       const qs = new URLSearchParams();
       if (filter !== 'all') qs.set('type', filter);
       qs.set('station', station);
-      setOrders(await api.get(`/orders/kitchen?${qs.toString()}`));
+      const data = await api.get(`/orders/kitchen?${qs.toString()}`);
+      setOrders(data);
+      if (!isBar) {
+        const ids = new Set();
+        (data || []).forEach((order) => {
+          getStationItems(order?.items).forEach((item) => {
+            if (itemHighlightActive(item, null)) ids.add(item.id);
+          });
+        });
+        setHighlightItemIds(ids);
+      }
     } catch (err) {
       console.error(err);
       if (String(err?.message || '').includes('403') || String(err?.message || '').toLowerCase().includes('permiso')) {
@@ -91,17 +125,24 @@ export default function KitchenPanel({ station = 'cocina' }) {
   }, [filter, station]);
   useActiveInterval(loadOrders, 10000);
 
-  const getStationItems = (items = []) => {
-    const list = Array.isArray(items) ? items : [];
-    return isBar
-      ? list.filter(isBarProductionItemForStation)
-      : list.filter(isKitchenProductionItemForStation);
-  };
+  const isKitchenItemHighlighted = useCallback(
+    (item) => !isBar && itemHighlightActive(item, highlightItemIds),
+    [isBar, highlightItemIds],
+  );
+
+  const isKitchenItemReady = useCallback((item) => {
+    return Boolean(String(item?.station_cocina_ready_at || '').trim());
+  }, []);
 
   const isComandaDoneForStation = useCallback((order) => {
-    const at = isBar ? order?.station_bar_ready_at : order?.station_cocina_ready_at;
-    return Boolean(String(at || '').trim());
-  }, [isBar]);
+    if (isBar) {
+      return Boolean(String(order?.station_bar_ready_at || '').trim());
+    }
+    if (Boolean(String(order?.station_cocina_ready_at || '').trim())) return true;
+    const kitchenItems = getStationItems(order?.items);
+    if (!kitchenItems.length) return true;
+    return kitchenItems.every(isKitchenItemReady);
+  }, [isBar, getStationItems, isKitchenItemReady]);
 
   const isComandaPreparingForStation = useCallback((order) => {
     const at = isBar ? order?.station_bar_preparing_at : order?.station_cocina_preparing_at;
@@ -180,9 +221,30 @@ export default function KitchenPanel({ station = 'cocina' }) {
     );
   };
 
+  const handleKitchenLinesUpdated = (payload) => {
+    const order = payload?.order || payload;
+    const newIds = Array.isArray(payload?.new_item_ids) ? payload.new_item_ids : [];
+    if (!isBar && newIds.length) {
+      setHighlightItemIds((prev) => new Set([...prev, ...newIds]));
+    }
+    loadOrders();
+    if (payload?.merged && newIds.length) {
+      playStationAlert();
+      const num = order?.order_number;
+      toast.success(
+        num != null
+          ? t('toast.itemsAddedToComanda', { number: num })
+          : t('toast.itemsAddedToComandaShort'),
+        { icon: '➕', duration: 6000 },
+      );
+    } else {
+      handleKitchenIncomingOrder(order, t('toast.orderUpdated'));
+    }
+  };
+
   useSocket('new-order', (order) => handleKitchenIncomingOrder(order, t('toast.newOrder')));
   /** Mesa/salón: ítems nuevos van por PUT /orders/:id/lines — antes no había evento para imprimir en cocina. */
-  useSocket('order-lines-updated', (order) => handleKitchenIncomingOrder(order, t('toast.orderUpdated')));
+  useSocket('order-lines-updated', handleKitchenLinesUpdated);
 
   useSocket('order-update', () => loadOrders());
 
@@ -191,27 +253,60 @@ export default function KitchenPanel({ station = 'cocina' }) {
     [isComandaDoneForStation, isComandaPreparingForStation],
   );
   const canShowReadyAction = useCallback(
-    (order) => !isComandaDoneForStation(order) && isComandaPreparingForStation(order),
-    [isComandaDoneForStation, isComandaPreparingForStation],
+    (order) => isBar && !isComandaDoneForStation(order) && isComandaPreparingForStation(order),
+    [isBar, isComandaDoneForStation, isComandaPreparingForStation],
   );
 
-  const updateStatus = async (orderId, status) => {
-    if (statusBusy[orderId]) return;
+  const updateStatus = async (orderId, status, orderItemId = null) => {
+    const busyKey = orderItemId ? `${orderId}:${orderItemId}` : orderId;
+    if (statusBusy[busyKey]) return;
     const current = orders.find((o) => o.id === orderId);
     if (status === 'preparing' && !canShowPrepareAction(current)) {
       void loadOrders();
       return;
     }
-    if (status === 'ready' && !canShowReadyAction(current)) {
+    if (status === 'ready' && isBar && !canShowReadyAction(current)) {
       void loadOrders();
       return;
     }
-    setStatusBusy((prev) => ({ ...prev, [orderId]: true }));
+    if (status === 'ready' && !isBar) {
+      if (!isComandaPreparingForStation(current)) {
+        void loadOrders();
+        return;
+      }
+      const item = getStationItems(current?.items).find((i) => i.id === orderItemId);
+      if (!item || isKitchenItemReady(item)) {
+        void loadOrders();
+        return;
+      }
+    }
+    setStatusBusy((prev) => ({ ...prev, [busyKey]: true }));
     try {
       const qs = new URLSearchParams({ station });
-      await api.put(`/orders/${orderId}/status?${qs.toString()}`, { status, station });
-      if (status === 'ready') {
+      const body = { status, station };
+      if (!isBar && orderItemId) body.order_item_id = orderItemId;
+      await api.put(`/orders/${orderId}/status?${qs.toString()}`, body);
+      if (status === 'ready' && isBar) {
         setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      } else if (status === 'ready' && !isBar && orderItemId) {
+        const nowIso = new Date().toISOString();
+        setOrders((prev) =>
+          prev
+            .map((o) => {
+              if (o.id !== orderId) return o;
+              const items = (o.items || []).map((it) =>
+                it.id === orderItemId ? { ...it, station_cocina_ready_at: nowIso } : it,
+              );
+              const kitchenItems = getStationItems(items);
+              const allReady = kitchenItems.length > 0 && kitchenItems.every(isKitchenItemReady);
+              return {
+                ...o,
+                items,
+                ...(allReady ? { station_cocina_ready_at: nowIso, station_cocina_preparing_at: null } : {}),
+              };
+            })
+            .filter((o) => !isComandaDoneForStation(o)),
+        );
       } else {
         const prepField = isBar ? 'station_bar_preparing_at' : 'station_cocina_preparing_at';
         const readyField = isBar ? 'station_bar_ready_at' : 'station_cocina_ready_at';
@@ -224,6 +319,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
                   status: o.status === 'pending' ? 'preparing' : o.status,
                   [prepField]: nowIso,
                   [readyField]: null,
+                  ...(isBar ? {} : { items: (o.items || []).map((it) => ({ ...it, station_cocina_ready_at: null })) }),
                 }
               : o,
           ),
@@ -237,7 +333,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
     } finally {
       setStatusBusy((prev) => {
         const next = { ...prev };
-        delete next[orderId];
+        delete next[busyKey];
         return next;
       });
     }
@@ -304,6 +400,18 @@ export default function KitchenPanel({ station = 'cocina' }) {
               </button>
             ))}
           </div>
+          {printerModuleEnabled && (
+            <button
+              type="button"
+              onClick={() => setPrinterModalOpen(true)}
+              className="px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
+              title={t('panel.printerSettings')}
+              aria-label={t('panel.printerSettings')}
+            >
+              <MdSettings className="text-lg" />
+              {t('panel.printer')}
+            </button>
+          )}
           {canReturnToAdmin && (
             <button onClick={() => navigate('/admin')} className="px-3 py-2 bg-[var(--ui-accent)] hover:bg-[var(--ui-accent-hover)] rounded-lg text-white border border-[color:var(--ui-border)] text-sm font-medium">
               {t('panel.backToOps')}
@@ -315,6 +423,14 @@ export default function KitchenPanel({ station = 'cocina' }) {
         </div>
       </header>
       <EndShiftModal isOpen={endShiftOpen} onClose={() => setEndShiftOpen(false)} />
+      <PrinterModuleModal
+        isOpen={printerModalOpen}
+        onClose={() => {
+          setPrinterModalOpen(false);
+          void reloadPrinterConfig();
+        }}
+        moduleKey={printerModuleKey}
+      />
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {visibleOrders.map(order => {
           const TypeIcon = typeIcons[order.type] || MdRestaurant;
@@ -376,16 +492,42 @@ export default function KitchenPanel({ station = 'cocina' }) {
               </div>
 
               <div className="space-y-2 px-4 py-3">
-                {getStationItems(order.items).map(item => (
-                  <div key={item.id} className="flex items-start gap-2">
+                {getStationItems(order.items).map((item) => {
+                  const itemReady = !isBar && isKitchenItemReady(item);
+                  const itemHighlighted = !isBar && isKitchenItemHighlighted(item);
+                  const itemBusyKey = `${order.id}:${item.id}`;
+                  return (
+                  <div
+                    key={item.id}
+                    className={`flex items-start gap-2 rounded-lg p-1.5 -mx-1.5 ${
+                      itemHighlighted
+                        ? 'border-2 border-emerald-500 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]'
+                        : itemReady
+                          ? 'opacity-60'
+                          : ''
+                    }`}
+                  >
                     <span className="bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] text-[var(--ui-body-text)] w-6 h-6 rounded flex items-center justify-center text-sm font-bold flex-shrink-0">{item.quantity}</span>
-                    <div className="flex-1">
-                      <p className="font-medium text-sm text-[var(--ui-body-text)]">{item.product_name}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-medium text-sm text-[var(--ui-body-text)] ${itemReady ? 'line-through' : ''}`}>{item.product_name}</p>
                       {item.variant_name && <p className="text-xs text-[var(--ui-muted)]">{item.variant_name}</p>}
                       {item.notes && <p className="text-xs text-[var(--ui-muted)] italic">{item.notes}</p>}
                     </div>
+                    {!isBar && isComandaPreparingForStation(order) && !itemReady ? (
+                      <button
+                        type="button"
+                        disabled={Boolean(statusBusy[itemBusyKey])}
+                        onClick={() => void updateStatus(order.id, 'ready', item.id)}
+                        className="shrink-0 px-2.5 py-1.5 min-h-[2rem] bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 rounded-lg font-bold text-[11px] text-white transition-colors inline-flex items-center gap-1"
+                      >
+                        <MdCheckCircle className="text-sm" /> {t('panel.ready')}
+                      </button>
+                    ) : itemReady ? (
+                      <MdCheckCircle className="shrink-0 text-lg text-emerald-500 mt-0.5" title={t('panel.ready')} />
+                    ) : null}
                   </div>
-                ))}
+                  );
+                })}
                 {(() => {
                   const noteBlock = getKitchenOrderNotesDisplay(order);
                   if (!noteBlock) return null;
@@ -399,15 +541,17 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
               <div className="px-4 py-3 border-t border-[color:var(--ui-border)]">
                 <div className="flex gap-2 items-stretch">
-                  <button
-                    type="button"
-                    title={t('panel.printTicket')}
-                    aria-label={t('panel.printTicket')}
-                    onClick={() => void printOrderForStation(order)}
-                    className="shrink-0 w-10 h-10 min-w-[2.5rem] rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] transition-colors inline-flex items-center justify-center"
-                  >
-                    <MdPrint className="text-xl" />
-                  </button>
+                  {printerModuleEnabled ? (
+                    <button
+                      type="button"
+                      title={t('panel.printTicket')}
+                      aria-label={t('panel.printTicket')}
+                      onClick={() => void printOrderForStation(order)}
+                      className="shrink-0 w-10 h-10 min-w-[2.5rem] rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] transition-colors inline-flex items-center justify-center"
+                    >
+                      <MdPrint className="text-xl" />
+                    </button>
+                  ) : null}
                   {canShowPrepareAction(order) ? (
                     <button
                       type="button"
@@ -426,6 +570,10 @@ export default function KitchenPanel({ station = 'cocina' }) {
                     >
                       <MdCheckCircle /> {t('panel.ready')}
                     </button>
+                  ) : !isBar && isComandaPreparingForStation(order) ? (
+                    <div className="flex-1 min-h-[2.5rem] py-2.5 px-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-muted)] text-xs font-medium flex items-center justify-center text-center">
+                      {t('panel.readyEachItem')}
+                    </div>
                   ) : null}
                 </div>
               </div>

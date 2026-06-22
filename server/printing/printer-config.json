@@ -13,7 +13,7 @@
     "nombre": "",
     "ip": "",
     "puerto": 9100,
-    "autoPrint": true,
+    "autoPrint": false,
     "anchoPapel": 80,
     "paperWidth": 80
   },
@@ -22,7 +22,7 @@
     "nombre": "",
     "ip": "",
     "puerto": 9100,
-    "autoPrint": true,
+    "autoPrint": false,
     "anchoPapel": 80,
     "paperWidth": 80
   }

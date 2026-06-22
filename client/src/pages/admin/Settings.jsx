@@ -33,6 +33,11 @@ import {
   MdAutoGraph,
 } from 'react-icons/md';
 import { applyUiThemeFromAppSettings } from '../../theme/uiTheme';
+import {
+  cachePrintingConfig,
+  normalizePrintingConfig,
+  savePrintingModuleAutoPrint,
+} from '../../utils/printingConfig';
 import { syncLocaleFromRegional, setAppLocale } from '../../i18n';
 import { normalizeConfigFromApi, mergeSavedAppSettings } from '../../utils/appSettingsNormalize';
 import { salonSlugFromName, reorderSalonList } from '../../utils/salonesUtils';
@@ -566,6 +571,20 @@ export default function Settings() {
       .catch((err) => toast.error(err.message || 'No se pudo imprimir prueba'))
       .finally(() => setPrintingBusy(false));
   };
+  const toggleModuleAutoPrint = (moduleKey) => {
+    const cfg = printingConfig?.[moduleKey] || {};
+    const nextAuto = !Boolean(cfg.autoPrint);
+    const moduleLabel = moduleKey === 'caja' ? 'Caja' : moduleKey === 'cocina' ? 'Cocina' : 'Bar';
+    setPrintingBusy(true);
+    savePrintingModuleAutoPrint(printingConfig, moduleKey, nextAuto)
+      .then((saved) => {
+        setPrintingConfig(normalizePrintingConfig(saved));
+        toast.success(nextAuto ? `Impresora ${moduleLabel} activada` : `Impresora ${moduleLabel} desactivada`);
+        refreshPrinterStatus();
+      })
+      .catch((err) => toast.error(err.message || 'No se pudo guardar'))
+      .finally(() => setPrintingBusy(false));
+  };
   const savePrintingConfig = () => {
     const invalidRed = ['caja', 'cocina', 'bar'].find((moduleKey) => {
       const cfg = printingConfig?.[moduleKey] || {};
@@ -596,12 +615,8 @@ export default function Settings() {
     req
       .then((saved) => {
         if (saved && typeof saved === 'object') {
-          setPrintingConfig(saved);
-          try {
-            window.localStorage?.setItem(PRINTING_CONFIG_CACHE_KEY, JSON.stringify(saved));
-          } catch (_) {
-            // noop
-          }
+          setPrintingConfig(normalizePrintingConfig(saved));
+          cachePrintingConfig(saved);
         }
         toast.success('Configuración de impresoras guardada');
         refreshPrinterStatus();
@@ -1891,10 +1906,8 @@ export default function Settings() {
                       <button
                         type="button"
                         className={`btn-secondary text-sm ${Boolean(cfg.autoPrint) ? 'border-rose-200 text-rose-700 hover:bg-rose-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}
-                        onClick={() => setPrintingConfig((prev) => ({
-                          ...prev,
-                          [moduleKey]: { ...(prev[moduleKey] || {}), autoPrint: !Boolean(cfg.autoPrint) },
-                        }))}
+                        onClick={() => toggleModuleAutoPrint(moduleKey)}
+                        disabled={printingBusy}
                       >
                         {Boolean(cfg.autoPrint) ? `Desactivar impresora (${moduleLabel})` : `Activar impresora (${moduleLabel})`}
                       </button>

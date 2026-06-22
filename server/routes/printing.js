@@ -13,6 +13,8 @@ router.get('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', '
 router.put('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar'), (req, res) => {
   try {
     const next = saveConfig(req.body || {});
+    const io = req.app.get('io');
+    if (io) io.emit('printing-config-update', next);
     res.json(next);
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo guardar configuración de impresión' });

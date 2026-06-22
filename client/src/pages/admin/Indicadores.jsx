@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api } from '../../utils/api';
+import { api, formatInstantTime } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { getPresetRange } from '../../utils/indicatorsDatePresets';
 import {
@@ -226,7 +226,7 @@ export default function Indicadores() {
 
       {data?.generated_at ? (
         <p className="text-[10px] text-[var(--ui-muted)]">
-          Período {data.filters?.from} — {data.filters?.to} · Actualizado {new Date(data.generated_at).toLocaleString('es-PE')}
+          Período {data.filters?.from} — {data.filters?.to} · Actualizado {formatInstantTime(data.generated_at)}
         </p>
       ) : null}
 

@@ -595,6 +595,9 @@ export const api = {
   },
 };
 
+/** Zona horaria del negocio para mostrar fechas del API (SQLite guarda UTC naive en la nube). */
+export const APP_DISPLAY_TIMEZONE = 'America/Lima';
+
 export const parseApiDate = (value) => {
   if (!value) return null;
   const safe = String(value).replace(' ', 'T');
@@ -674,10 +677,14 @@ export function formatPeDateTimeLine(value) {
 export const toLocalDateKey = (value) => {
   const d = parseApiDate(value);
   if (!d) return '';
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_DISPLAY_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${map.year}-${map.month}-${map.day}`;
 };
 
 export const formatCurrency = (amount, symbol = 'S/') => {
@@ -729,22 +736,51 @@ export const formatDate = (dateStr) => {
   if (!dateStr) return '';
   const d = parseApiDate(dateStr);
   if (!d) return '';
-  return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return d.toLocaleDateString('es-PE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: APP_DISPLAY_TIMEZONE,
+  });
 };
 
 export const formatDateTime = (dateStr) => {
   if (!dateStr) return '';
   const d = parseApiDate(dateStr);
   if (!d) return '';
-  return d.toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString('es-PE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: APP_DISPLAY_TIMEZONE,
+  });
 };
 
 export const formatTime = (dateStr) => {
   if (!dateStr) return '';
   const d = parseApiDate(dateStr);
   if (!d) return '';
-  return d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('es-PE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: APP_DISPLAY_TIMEZONE,
+  });
 };
+
+/** ISO instant del servidor → hora local del negocio (p. ej. generated_at). */
+export function formatInstantTime(value, opts = {}) {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('es-PE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: opts.withSeconds ? '2-digit' : undefined,
+    timeZone: APP_DISPLAY_TIMEZONE,
+  });
+}
 
 export const ORDER_STATUS = {
   pending: { label: 'Pendiente', color: 'badge-pending' },

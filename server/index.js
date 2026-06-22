@@ -347,6 +347,12 @@ function logSqlitePersistenceWarnings() {
 async function start() {
   await initDatabase();
   try {
+    const { ensureUserWorkSessionSchema } = require('./utils/ensureUserWorkSessionSchema');
+    ensureUserWorkSessionSchema();
+  } catch (err) {
+    console.warn('[db] user_work_sessions schema (startup):', err.message || err);
+  }
+  try {
     const { repairKitchenOrdersAtStartup } = require('./services/kitchenOrderRepairService');
     repairKitchenOrdersAtStartup();
   } catch (err) {

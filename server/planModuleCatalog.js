@@ -37,6 +37,7 @@ const CAJA_SUBS = [
   { id: 'notas_credito', label: 'Notas de crédito' },
   { id: 'notas_debito', label: 'Notas de débito' },
   { id: 'consulta_precios', label: 'Consulta de precios' },
+  { id: 'impresora', label: 'Impresora' },
 ];
 
 const MI_RESTAURANT_SUBS = [

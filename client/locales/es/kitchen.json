@@ -9,8 +9,11 @@
     "filterTables": "Mesas",
     "filterDelivery": "Delivery",
     "printTicket": "Imprimir comanda",
+    "printer": "Impresora",
+    "printerSettings": "Configuración de impresora",
     "prepare": "PREPARAR",
     "ready": "LISTO",
+    "readyEachItem": "Marque LISTO en cada producto",
     "readyDone": "LISTO — en espera",
     "emptyTitle": "No hay pedidos pendientes en {{station}}",
     "emptyHint": "Los nuevos pedidos aparecerán aquí automáticamente",
@@ -32,6 +35,8 @@
     "markedReady": "Marcado como listo",
     "newOrder": "Nuevo pedido",
     "orderUpdated": "Comanda actualizada",
+    "itemsAddedToComanda": "Productos agregados a comanda #{{number}}",
+    "itemsAddedToComandaShort": "Productos agregados a la comanda",
     "newOrderNumber": "Nuevo pedido #{{number}} ({{station}})"
   }
 }

@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ensureLocalPrintingAssistantDiscovered } from '../utils/api';
+import { bootstrapPrintingOnLogin } from '../utils/printingConfig';
 
 /**
- * Tras iniciar sesión (personal), intenta detectar el asistente Electron en la PC
- * y guardar su URL para este dominio. Mismo instalador para todos los repos/clientes Vercel.
+ * Tras iniciar sesión (personal), detecta el asistente Electron, carga la config de impresoras
+ * y la persiste en caché para que caja/cocina/bar mantengan la vinculación.
  */
 export default function PrintingAssistantAutoDiscover() {
   const { user } = useAuth();
@@ -14,11 +14,11 @@ export default function PrintingAssistantAutoDiscover() {
 
     let cancelled = false;
     const run = async () => {
-      await ensureLocalPrintingAssistantDiscovered();
+      await bootstrapPrintingOnLogin();
       if (cancelled) return;
       await new Promise((r) => setTimeout(r, 2200));
       if (cancelled) return;
-      await ensureLocalPrintingAssistantDiscovered();
+      await bootstrapPrintingOnLogin();
     };
 
     const t = window.setTimeout(() => {

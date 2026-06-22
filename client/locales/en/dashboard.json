@@ -29,7 +29,8 @@
     "egresos": "Expenses",
     "notas_credito": "Credit notes",
     "notas_debito": "Debit notes",
-    "consulta_precios": "Price lookup"
+    "consulta_precios": "Price lookup",
+    "impresora": "Printer"
   },
   "miRestaurantSub": {
     "mi_empresa": "My business",

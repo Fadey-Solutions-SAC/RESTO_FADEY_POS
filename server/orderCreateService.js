@@ -7,6 +7,7 @@ const {
   parseRestaurantSchedule,
 } = require('./services/productScheduleService');
 const { computeKitchenReleaseAtForReservation } = require('./services/reservationKitchenHold');
+const { findMergeableTableOrderTx } = require('./services/tableOrderMergeService');
 
 function getOrderWithItems(orderId) {
   const order = queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -57,6 +58,245 @@ function buildComboOrderLine(tx, orderId, item) {
     },
     subtotal: itemSubtotal,
   };
+}
+
+function buildOrderLinesFromPayload(tx, orderId, items, { orderNow, restaurantSchedule, staffInHouseOrder }) {
+  let subtotalAdded = 0;
+  const lines = items.map((item) => {
+    if (String(item.combo_id || '').trim()) {
+      const comboLine = buildComboOrderLine(tx, orderId, item);
+      subtotalAdded += comboLine.subtotal;
+      return comboLine.line;
+    }
+
+    const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [item.product_id]);
+    if (!product) throw new Error(`Producto no encontrado: ${item.product_id}`);
+    assertProductAvailableForOrder(product, orderNow, restaurantSchedule);
+    const qty = Number(item.quantity || 0);
+    if (qty <= 0) throw new Error(`Cantidad inválida para ${product.name}`);
+    const requiresStock = product.process_type === 'non_transformed';
+    if (requiresStock) {
+      const whSum = tx.queryOne(
+        'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_warehouse_stocks WHERE product_id = ?',
+        [product.id]
+      );
+      const available = Math.max(Number(product.stock || 0), Number(whSum?.total || 0));
+      if (available < qty && !staffInHouseOrder) {
+        throw new Error(`Stock insuficiente para ${product.name}`);
+      }
+    }
+    const productModifierId = String(product.modifier_id || '').trim();
+    let modifierName = '';
+    let modifierOption = '';
+    if (productModifierId) {
+      const modifier = tx.queryOne('SELECT * FROM modifiers WHERE id = ?', [productModifierId]);
+      if (modifier) {
+        const requestedModifierId = String(item.modifier_id || '').trim();
+        const requestedOption = String(item.modifier_option || '').trim();
+        const availableOptions = tx
+          .queryAll('SELECT option_name FROM modifier_options WHERE modifier_id = ?', [productModifierId])
+          .map((row) => String(row.option_name || '').trim())
+          .filter(Boolean);
+        const isRequired = Number(modifier.required || 0) === 1;
+
+        if (requestedModifierId && requestedModifierId !== productModifierId) {
+          throw new Error(`El producto ${product.name} tiene un modificador inválido`);
+        }
+        if (isRequired && !requestedOption) {
+          throw new Error(`El producto ${product.name} requiere seleccionar ${modifier.name}`);
+        }
+        if (requestedOption) {
+          if (availableOptions.length > 0 && !availableOptions.includes(requestedOption)) {
+            throw new Error(`La opción "${requestedOption}" no es válida para ${modifier.name}`);
+          }
+          modifierName = String(modifier.name || '').trim();
+          modifierOption = requestedOption;
+        }
+      }
+    }
+    const unitPrice = Number(product.price || 0) + Number(item.price_modifier || 0);
+    const itemNote = String(item.notes || '').trim();
+    if (Number(product.note_required || 0) === 1 && !itemNote) {
+      throw new Error(`El producto ${product.name} requiere una nota obligatoria`);
+    }
+    const itemSubtotal = unitPrice * qty;
+    subtotalAdded += itemSubtotal;
+    const composedNotes = [itemNote, modifierName && modifierOption ? `${modifierName}: ${modifierOption}` : ''].filter(Boolean).join(' | ');
+    return {
+      id: uuidv4(),
+      order_id: orderId,
+      product_id: product.id,
+      product_name: product.name,
+      variant_name: item.variant_name || '',
+      quantity: qty,
+      unit_price: unitPrice,
+      subtotal: itemSubtotal,
+      notes: composedNotes,
+      process_type: product.process_type,
+    };
+  });
+  return { lines, subtotalAdded };
+}
+
+function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew = false }) {
+  const newIds = [];
+  orderItems.forEach((item) => {
+    if (item.process_type === 'non_transformed') {
+      const stockRows = tx.queryAll(
+        'SELECT id, quantity FROM inventory_warehouse_stocks WHERE product_id = ? ORDER BY quantity DESC',
+        [item.product_id]
+      );
+      let pending = Number(item.quantity || 0);
+      for (const row of stockRows) {
+        if (pending <= 0) break;
+        const available = Number(row.quantity || 0);
+        if (available <= 0) continue;
+        const consume = Math.min(available, pending);
+        tx.run(
+          'UPDATE inventory_warehouse_stocks SET quantity = ?, updated_at = datetime(\'now\') WHERE id = ?',
+          [available - consume, row.id]
+        );
+        pending -= consume;
+      }
+      if (pending > 0 && !staffInHouseOrder) {
+        throw new Error(`No hay stock suficiente en almacenes para ${item.product_name}`);
+      }
+      const newSum = tx.queryOne(
+        'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_warehouse_stocks WHERE product_id = ?',
+        [item.product_id]
+      );
+      tx.run('UPDATE products SET stock = ?, updated_at = datetime(\'now\') WHERE id = ?', [Number(newSum?.total || 0), item.product_id]);
+    }
+    if (highlightNew) {
+      tx.run(
+        `INSERT INTO order_items (id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes, kitchen_highlight_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        [item.id, item.order_id, item.product_id, item.product_name, item.variant_name, item.quantity, item.unit_price, item.subtotal, item.notes]
+      );
+    } else {
+      tx.run(
+        'INSERT INTO order_items (id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [item.id, item.order_id, item.product_id, item.product_name, item.variant_name, item.quantity, item.unit_price, item.subtotal, item.notes]
+      );
+    }
+    newIds.push(item.id);
+  });
+  return newIds;
+}
+
+function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
+  if (!lineIds.length) return;
+  const ph = lineIds.map(() => '?').join(',');
+  const rows = tx.queryAll(
+    `SELECT oi.id,
+            COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') AS production_area
+     FROM order_items oi
+     LEFT JOIN products p ON p.id = oi.product_id
+     WHERE oi.id IN (${ph})`,
+    lineIds
+  );
+  const hasKitchen = rows.some((r) => String(r.production_area || '').toLowerCase() !== 'bar');
+  const hasBar = rows.some((r) => String(r.production_area || '').toLowerCase() === 'bar');
+  if (hasKitchen) {
+    tx.run(
+      `UPDATE orders SET station_cocina_ready_at = NULL,
+        station_cocina_preparing_at = CASE
+          WHEN TRIM(COALESCE(station_cocina_preparing_at, '')) != '' THEN station_cocina_preparing_at
+          ELSE datetime('now') END,
+        updated_at = datetime('now')
+       WHERE id = ?`,
+      [orderId]
+    );
+  }
+  if (hasBar) {
+    tx.run(
+      `UPDATE orders SET station_bar_ready_at = NULL,
+        station_bar_preparing_at = CASE
+          WHEN TRIM(COALESCE(station_bar_preparing_at, '')) != '' THEN station_bar_preparing_at
+          ELSE datetime('now') END,
+        updated_at = datetime('now')
+       WHERE id = ?`,
+      [orderId]
+    );
+  }
+}
+
+/**
+ * Agrega productos a una comanda existente (misma mesa, ventana 10 min).
+ * No reinicia estaciones ya cerradas salvo reabrir la que recibe ítems nuevos.
+ */
+function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes } = {}) {
+  const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
+  if (!order) throw new Error('Pedido no encontrado');
+  if (order.type !== 'dine_in') throw new Error('Solo se pueden fusionar pedidos de mesa');
+  if (!['pending', 'preparing', 'ready'].includes(String(order.status || ''))) {
+    throw new Error('La comanda ya no admite productos adicionales');
+  }
+  if (String(order.payment_status || 'pending') !== 'pending') {
+    throw new Error('No se pueden agregar productos a una comanda cobrada');
+  }
+
+  const staffInHouseOrder =
+    actor.kind === 'staff' &&
+    actor.user &&
+    actor.user.type !== 'customer' &&
+    ['admin', 'cajero', 'mozo', 'cocina', 'bar'].includes(String(actor.user.role || ''));
+
+  const restaurantRow = tx.queryOne('SELECT schedule FROM restaurants LIMIT 1');
+  const restaurantSchedule = parseRestaurantSchedule(restaurantRow?.schedule);
+  const orderNow = new Date();
+
+  const { lines, subtotalAdded } = buildOrderLinesFromPayload(tx, orderId, items, {
+    orderNow,
+    restaurantSchedule,
+    staffInHouseOrder,
+  });
+  const newItemIds = insertOrderLineRows(tx, lines, { staffInHouseOrder, highlightNew: true });
+
+  const nextSubtotal = round2(Number(order.subtotal || 0) + subtotalAdded);
+  const discountAmount = Number(order.discount || 0);
+  const deliveryFee = Number(order.delivery_fee || 0);
+  const nextTotal = Math.max(0, nextSubtotal - discountAmount + deliveryFee);
+  const noteAppend = String(notes || '').trim();
+
+  if (noteAppend) {
+    tx.run(
+      `UPDATE orders SET subtotal = ?, total = ?, kitchen_last_send_at = datetime('now'),
+       notes = TRIM(COALESCE(notes, '') || CASE WHEN TRIM(COALESCE(notes, '')) = '' THEN '' ELSE ' | ' END || ?),
+       updated_at = datetime('now') WHERE id = ?`,
+      [nextSubtotal, nextTotal, noteAppend, orderId]
+    );
+  } else {
+    tx.run(
+      "UPDATE orders SET subtotal = ?, total = ?, kitchen_last_send_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+      [nextSubtotal, nextTotal, orderId]
+    );
+  }
+
+  reopenProductionStationsForNewLines(tx, orderId, newItemIds);
+
+  return { orderId, newItemIds, merged: true };
+}
+
+function round2(n) {
+  return Math.round(Number(n || 0) * 100) / 100;
+}
+
+function createOrMergeTableOrderInTransaction(tx, orderId, body, actor) {
+  const orderType = ['dine_in', 'delivery', 'pickup'].includes(body.type) ? body.type : 'dine_in';
+  const tableNumber = String(body.table_number || '').trim();
+  if (orderType === 'dine_in' && tableNumber && !body.hold_kitchen_for_reservation) {
+    const existing = findMergeableTableOrderTx(tx, tableNumber);
+    if (existing) {
+      return appendItemsToOrderInTransaction(tx, existing.id, body.items, actor, { notes: body.notes });
+    }
+  }
+  const created = createOrderInTransaction(tx, orderId, body, actor);
+  tx.run(
+    "UPDATE orders SET kitchen_last_send_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+    [created.orderId]
+  );
+  return { ...created, merged: false, newItemIds: [] };
 }
 
 function createOrderInTransaction(tx, orderId, body, actor) {
@@ -488,6 +728,8 @@ function actorFromRequest(req) {
 module.exports = {
   getOrderWithItems,
   createOrderInTransaction,
+  createOrMergeTableOrderInTransaction,
+  appendItemsToOrderInTransaction,
   replaceOrderLinesInTransaction,
   actorFromRequest,
 };

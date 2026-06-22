@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { api, resolveMediaUrl } from '../utils/api';
+import { api, resolveMediaUrl, formatInstantTime, formatDateTime } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import { getOperationalNotificationQuickLinks } from '../utils/staffModuleAccess';
@@ -257,7 +257,7 @@ export default function NotificationCenter({ className = '' }) {
                             Quitar
                           </button>
                         </div>
-                        <p className="text-[10px] text-[var(--ui-muted)] mt-1">{new Date(n.created_at).toLocaleString('es-PE')}</p>
+                        <p className="text-[10px] text-[var(--ui-muted)] mt-1">{formatDateTime(n.created_at)}</p>
                         {n.image_url ? (
                           <div className="mt-2 -mx-0.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] overflow-hidden">
                             <img
@@ -354,7 +354,7 @@ export default function NotificationCenter({ className = '' }) {
                       ) : null}
                       {operationalPayload.generated_at ? (
                         <p className="text-[10px] text-[var(--ui-muted)] text-right">
-                          Actualizado {new Date(operationalPayload.generated_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                          Actualizado {formatInstantTime(operationalPayload.generated_at)}
                         </p>
                       ) : null}
                     </>

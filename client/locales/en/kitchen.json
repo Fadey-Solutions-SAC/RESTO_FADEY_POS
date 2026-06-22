@@ -9,8 +9,11 @@
     "filterTables": "Tables",
     "filterDelivery": "Delivery",
     "printTicket": "Print ticket",
+    "printer": "Printer",
+    "printerSettings": "Printer settings",
     "prepare": "START",
     "ready": "READY",
+    "readyEachItem": "Mark READY on each item",
     "readyDone": "READY — waiting",
     "emptyTitle": "No pending orders in {{station}}",
     "emptyHint": "New orders will appear here automatically",
@@ -32,6 +35,8 @@
     "markedReady": "Marked as ready",
     "newOrder": "New order",
     "orderUpdated": "Order updated",
+    "itemsAddedToComanda": "Items added to order #{{number}}",
+    "itemsAddedToComandaShort": "Items added to the order",
     "newOrderNumber": "New order #{{number}} ({{station}})"
   }
 }

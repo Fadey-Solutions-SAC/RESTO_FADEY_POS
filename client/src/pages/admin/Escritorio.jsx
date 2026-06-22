@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { api, formatCurrency, parseApiDate, toLocalDateKey, PAYMENT_METHODS } from '../../utils/api';
+import { api, formatCurrency, parseApiDate, toLocalDateKey, PAYMENT_METHODS, formatInstantTime } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
@@ -387,12 +387,7 @@ export default function Escritorio() {
                   Sincronizado con Caja, Mesas, Delivery e inventario
                   {liveDash.generated_at && (
                     <span className="ml-1">
-                      · actualizado{' '}
-                      {new Date(liveDash.generated_at).toLocaleTimeString('es-PE', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      })}
+                      · actualizado {formatInstantTime(liveDash.generated_at, { withSeconds: true })}
                     </span>
                   )}
                 </p>

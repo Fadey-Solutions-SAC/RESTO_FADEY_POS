@@ -29,7 +29,8 @@
     "egresos": "Egresos",
     "notas_credito": "Notas de crédito",
     "notas_debito": "Notas de débito",
-    "consulta_precios": "Consulta de precios"
+    "consulta_precios": "Consulta de precios",
+    "impresora": "Impresora"
   },
   "miRestaurantSub": {
     "mi_empresa": "Mi empresa",
