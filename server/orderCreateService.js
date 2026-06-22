@@ -222,7 +222,7 @@ function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
 }
 
 /**
- * Agrega productos a una comanda existente (misma mesa, ventana 10 min).
+ * Agrega productos a una comanda existente (misma mesa, ventana 40 min).
  * No reinicia estaciones ya cerradas salvo reabrir la que recibe ítems nuevos.
  */
 function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes } = {}) {

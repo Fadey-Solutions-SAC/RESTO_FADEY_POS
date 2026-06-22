@@ -37,6 +37,9 @@
     "orderUpdated": "Comanda actualizada",
     "itemsAddedToComanda": "Productos agregados a comanda #{{number}}",
     "itemsAddedToComandaShort": "Productos agregados a la comanda",
-    "newOrderNumber": "Nuevo pedido #{{number}} ({{station}})"
+    "newOrderNumber": "Nuevo pedido #{{number}} ({{station}})",
+    "overdueTable": "Mesa {{table}} está tardando más de 30 minutos",
+    "overdueDelivery": "Delivery #{{number}} está tardando más de 30 minutos",
+    "overdueOrder": "Pedido #{{number}} está tardando más de 30 minutos"
   }
 }

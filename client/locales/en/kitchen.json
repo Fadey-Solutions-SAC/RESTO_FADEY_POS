@@ -37,6 +37,9 @@
     "orderUpdated": "Order updated",
     "itemsAddedToComanda": "Items added to order #{{number}}",
     "itemsAddedToComandaShort": "Items added to the order",
-    "newOrderNumber": "New order #{{number}} ({{station}})"
+    "newOrderNumber": "New order #{{number}} ({{station}})",
+    "overdueTable": "Table {{table}} is over 30 minutes late",
+    "overdueDelivery": "Delivery #{{number}} is over 30 minutes late",
+    "overdueOrder": "Order #{{number}} is over 30 minutes late"
   }
 }

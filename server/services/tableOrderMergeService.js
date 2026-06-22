@@ -1,8 +1,8 @@
 const { tableNumbersMatch } = require('../utils/tableNumberMatch');
 
-const TABLE_ORDER_MERGE_WINDOW_MINUTES = 10;
+const TABLE_ORDER_MERGE_WINDOW_MINUTES = 40;
 
-/** Última comanda activa de la mesa enviada hace menos de 10 minutos. */
+/** Última comanda activa de la mesa enviada hace menos de 40 minutos. */
 function findMergeableTableOrderTx(tx, tableNumberRaw) {
   const tableKey = String(tableNumberRaw ?? '').trim();
   if (!tableKey) return null;

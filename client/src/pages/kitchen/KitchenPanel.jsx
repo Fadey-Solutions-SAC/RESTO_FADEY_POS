@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, ORDER_TYPES, formatTime, parseApiDate } from '../../utils/api';
 import { getKitchenOrderNotesDisplay } from '../../utils/reservationKitchenNotes';
@@ -26,6 +26,8 @@ function isCuentaClienteSelfOrder(order) {
 }
 
 const KITCHEN_ITEM_HIGHLIGHT_MS = 10 * 60 * 1000;
+const KITCHEN_ARRIVAL_OVERDUE_MS = 30 * 60 * 1000;
+const KITCHEN_PREP_OVERDUE_MS = 30 * 60 * 1000;
 const normalizePaperWidthMm = normalizeThermalPaperWidthMm;
 
 function itemHighlightActive(item, highlightIds) {
@@ -48,6 +50,8 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const [endShiftOpen, setEndShiftOpen] = useState(false);
   const [statusBusy, setStatusBusy] = useState({});
   const [highlightItemIds, setHighlightItemIds] = useState(() => new Set());
+  const [clockTick, setClockTick] = useState(0);
+  const overdueNotifiedRef = useRef(new Set());
   const navigate = useNavigate();
   const location = useLocation();
   const emit = useSocketEmit();
@@ -124,6 +128,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
     emit(isBar ? 'join-bar' : 'join-kitchen');
   }, [filter, station]);
   useActiveInterval(loadOrders, 10000);
+  useActiveInterval(() => setClockTick((n) => n + 1), 30000);
 
   const isKitchenItemHighlighted = useCallback(
     (item) => !isBar && itemHighlightActive(item, highlightItemIds),
@@ -133,6 +138,12 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const isKitchenItemReady = useCallback((item) => {
     return Boolean(String(item?.station_cocina_ready_at || '').trim());
   }, []);
+
+  const getPendingStationItems = useCallback((items = []) => {
+    const stationItems = getStationItems(items);
+    if (isBar) return stationItems;
+    return stationItems.filter((item) => !isKitchenItemReady(item));
+  }, [isBar, getStationItems, isKitchenItemReady]);
 
   const isComandaDoneForStation = useCallback((order) => {
     if (isBar) {
@@ -151,18 +162,18 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
   const visibleOrders = orders.filter((order) => {
     if (isComandaDoneForStation(order)) return false;
-    return getStationItems(order.items).length > 0;
+    return getPendingStationItems(order.items).length > 0;
   });
 
   const printOrderForStation = async (order, { silent = false } = {}) => {
     try {
       const moduleKey = isBar ? 'bar' : 'cocina';
       let payloadOrder = order || {};
-      let items = getStationItems(payloadOrder?.items || []);
+      let items = getPendingStationItems(payloadOrder?.items || []);
       if (!items.length && payloadOrder?.id) {
         const full = await api.get(`/orders/${payloadOrder.id}`);
         payloadOrder = full || payloadOrder;
-        items = getStationItems(payloadOrder?.items || []);
+        items = getPendingStationItems(payloadOrder?.items || []);
       }
       if (!items.length) {
         if (!silent) toast.error(t('toast.noItems', { station: stationLabel }));
@@ -339,8 +350,8 @@ export default function KitchenPanel({ station = 'cocina' }) {
     }
   };
 
-  const ARRIVAL_OVERDUE_MS = 15 * 60 * 1000;
-  const PREP_OVERDUE_MS = 25 * 60 * 1000;
+  const ARRIVAL_OVERDUE_MS = KITCHEN_ARRIVAL_OVERDUE_MS;
+  const PREP_OVERDUE_MS = KITCHEN_PREP_OVERDUE_MS;
 
   const getOrderTimerAnchor = (order) => {
     const stationPrep = isBar ? order?.station_bar_preparing_at : order?.station_cocina_preparing_at;
@@ -367,6 +378,35 @@ export default function KitchenPanel({ station = 'cocina' }) {
     if (!isComandaPreparingForStation(order)) return elapsed >= ARRIVAL_OVERDUE_MS;
     return elapsed >= PREP_OVERDUE_MS;
   };
+
+  const getOverdueToastLabel = useCallback((order) => {
+    if (order?.table_number && order?.type === 'dine_in') {
+      return t('toast.overdueTable', { table: order.table_number });
+    }
+    if (order?.type === 'delivery') {
+      return t('toast.overdueDelivery', { number: order.order_number });
+    }
+    return t('toast.overdueOrder', { number: order.order_number });
+  }, [t]);
+
+  useEffect(() => {
+    const activeOrders = orders.filter((order) => {
+      if (isComandaDoneForStation(order)) return false;
+      return getPendingStationItems(order.items).length > 0;
+    });
+    const visibleIds = new Set();
+    activeOrders.forEach((order) => {
+      visibleIds.add(order.id);
+      if (!isKitchenOrderOverdue(order)) return;
+      if (overdueNotifiedRef.current.has(order.id)) return;
+      overdueNotifiedRef.current.add(order.id);
+      toast.error(getOverdueToastLabel(order), { duration: 9000, icon: '⏱️' });
+      playStationAlert();
+    });
+    overdueNotifiedRef.current.forEach((id) => {
+      if (!visibleIds.has(id)) overdueNotifiedRef.current.delete(id);
+    });
+  }, [orders, clockTick, getOverdueToastLabel, isComandaDoneForStation, getPendingStationItems]);
 
   const typeIcons = { dine_in: MdTableBar, delivery: MdDeliveryDining, pickup: MdRestaurant };
 
@@ -439,23 +479,24 @@ export default function KitchenPanel({ station = 'cocina' }) {
           const cuentaCliente = isCuentaClienteSelfOrder(order);
           const stationPending = !isComandaPreparingForStation(order);
           const cardBorder = isOverdue
-            ? stationPending
-              ? 'border-2 border-red-500 shadow-[0_0_24px_rgba(239,68,68,0.22)]'
-              : 'border-2 border-red-500/75'
+            ? 'border-[3px] border-[#DC2626] shadow-[0_0_36px_rgba(220,38,38,0.72)]'
             : stationPending
               ? 'border-2 border-[color:color-mix(in_srgb,var(--ui-accent-muted)_55%,transparent)]'
               : 'border border-[color:var(--ui-border)]';
           const cardBg = 'bg-[var(--ui-surface)]';
           const headerBg = isOverdue
             ? stationPending
-              ? 'bg-red-950/55'
-              : 'bg-red-950/40'
+              ? 'bg-red-950/70'
+              : 'bg-red-950/55'
             : stationPending
               ? 'bg-[var(--ui-sidebar-active-bg)]'
               : 'bg-[var(--ui-surface-2)]';
+          const tableBadgeClass = isOverdue
+            ? 'rounded border-[3px] border-[#DC2626] bg-red-600/30 px-2 py-0.5 text-sm font-bold text-red-50 shadow-[0_0_14px_rgba(220,38,38,0.75)]'
+            : 'rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-0.5 text-sm text-[var(--ui-body-text)]';
 
           return (
-            <div key={order.id} className={`rounded-xl overflow-hidden backdrop-blur-xl ${cardBg} ${cardBorder} ${isOverdue ? 'ring-2 ring-red-500/45' : ''}`}>
+            <div key={order.id} className={`rounded-xl overflow-hidden backdrop-blur-xl ${cardBg} ${cardBorder} ${isOverdue ? 'ring-4 ring-[#DC2626]/80' : ''}`}>
               <div className={`px-4 py-3 ${headerBg}`}>
                 {cuentaCliente ? (
                   <div className="flex items-start justify-between gap-2">
@@ -466,8 +507,8 @@ export default function KitchenPanel({ station = 'cocina' }) {
                       <p className="mt-1 text-xs text-[var(--ui-muted)]">{t('panel.orderNumber', { number: order.order_number })}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1 text-sm">
-                      <MdAccessTime className={isOverdue ? 'text-red-400' : 'text-[var(--ui-muted)]'} />
-                      <span className={isOverdue ? 'font-bold text-red-300' : 'text-[var(--ui-muted)]'}>{getTimeDiff(order)}</span>
+                      <MdAccessTime className={isOverdue ? 'text-red-500' : 'text-[var(--ui-muted)]'} />
+                      <span className={isOverdue ? 'font-bold text-red-400' : 'text-[var(--ui-muted)]'}>{getTimeDiff(order)}</span>
                     </div>
                   </div>
                 ) : (
@@ -480,20 +521,19 @@ export default function KitchenPanel({ station = 'cocina' }) {
                       )}
                       <TypeIcon className="text-xl shrink-0 text-[var(--ui-body-text)]" />
                       {order.table_number ? (
-                        <span className="rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-0.5 text-sm text-[var(--ui-body-text)]">{t('panel.table', { number: order.table_number })}</span>
+                        <span className={tableBadgeClass}>{t('panel.table', { number: order.table_number })}</span>
                       ) : null}
                     </div>
                     <div className="flex items-center gap-1 text-sm">
-                      <MdAccessTime className={isOverdue ? 'text-red-400' : 'text-[var(--ui-muted)]'} />
-                      <span className={isOverdue ? 'font-bold text-red-300' : 'text-[var(--ui-muted)]'}>{getTimeDiff(order)}</span>
+                      <MdAccessTime className={isOverdue ? 'text-red-500' : 'text-[var(--ui-muted)]'} />
+                      <span className={isOverdue ? 'font-bold text-red-400' : 'text-[var(--ui-muted)]'}>{getTimeDiff(order)}</span>
                     </div>
                   </div>
                 )}
               </div>
 
               <div className="space-y-2 px-4 py-3">
-                {getStationItems(order.items).map((item) => {
-                  const itemReady = !isBar && isKitchenItemReady(item);
+                {getPendingStationItems(order.items).map((item) => {
                   const itemHighlighted = !isBar && isKitchenItemHighlighted(item);
                   const itemBusyKey = `${order.id}:${item.id}`;
                   return (
@@ -502,18 +542,16 @@ export default function KitchenPanel({ station = 'cocina' }) {
                     className={`flex items-start gap-2 rounded-lg p-1.5 -mx-1.5 ${
                       itemHighlighted
                         ? 'border-2 border-emerald-500 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]'
-                        : itemReady
-                          ? 'opacity-60'
-                          : ''
+                        : ''
                     }`}
                   >
                     <span className="bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] text-[var(--ui-body-text)] w-6 h-6 rounded flex items-center justify-center text-sm font-bold flex-shrink-0">{item.quantity}</span>
                     <div className="flex-1 min-w-0">
-                      <p className={`font-medium text-sm text-[var(--ui-body-text)] ${itemReady ? 'line-through' : ''}`}>{item.product_name}</p>
+                      <p className="font-medium text-sm text-[var(--ui-body-text)]">{item.product_name}</p>
                       {item.variant_name && <p className="text-xs text-[var(--ui-muted)]">{item.variant_name}</p>}
                       {item.notes && <p className="text-xs text-[var(--ui-muted)] italic">{item.notes}</p>}
                     </div>
-                    {!isBar && isComandaPreparingForStation(order) && !itemReady ? (
+                    {!isBar && isComandaPreparingForStation(order) ? (
                       <button
                         type="button"
                         disabled={Boolean(statusBusy[itemBusyKey])}
@@ -522,8 +560,6 @@ export default function KitchenPanel({ station = 'cocina' }) {
                       >
                         <MdCheckCircle className="text-sm" /> {t('panel.ready')}
                       </button>
-                    ) : itemReady ? (
-                      <MdCheckCircle className="shrink-0 text-lg text-emerald-500 mt-0.5" title={t('panel.ready')} />
                     ) : null}
                   </div>
                   );
