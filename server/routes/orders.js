@@ -255,10 +255,21 @@ router.post('/:id/delivery-driver-action', authenticateToken, requireRole('deliv
   res.json(updated);
 });
 
-router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo'), (req, res) => {
+router.put('/:id/lines', authenticateToken, requireRole('admin', 'master_admin'), (req, res) => {
   const { items } = req.body || {};
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'El pedido debe tener al menos un producto' });
+  }
+  const orderBefore = queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+  if (!orderBefore) return res.status(404).json({ error: 'Pedido no encontrado' });
+  const existingItems = queryAll('SELECT quantity FROM order_items WHERE order_id = ?', [req.params.id]);
+  const oldQty = existingItems.reduce((sum, row) => sum + Math.max(0, Number(row.quantity || 0)), 0);
+  const newQty = items.reduce((sum, row) => sum + Math.max(0, Number(row.quantity || 0)), 0);
+  const removalReason = String(req.body?.removal_reason || '').trim();
+  if (newQty < oldQty && removalReason.length < 3) {
+    return res.status(400).json({
+      error: 'Indique el motivo por retirar productos de la mesa (mínimo 3 caracteres).',
+    });
   }
   try {
     logOrderDebug(req, 'put_lines_start', {
@@ -552,8 +563,18 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
 
   if (status === 'cancelled' && order.status !== 'cancelled') {
     const reason = String(cancellationReasonRaw || '').trim();
+    const isUnpaidActive =
+      ['pending', 'preparing', 'ready'].includes(String(order.status || '')) &&
+      String(order.payment_status || 'pending') !== 'paid';
     const mustReason =
-      order.status === 'delivered' || String(order.payment_status || '') === 'paid';
+      order.status === 'delivered' ||
+      String(order.payment_status || '') === 'paid' ||
+      isUnpaidActive;
+    if (isUnpaidActive && !['admin', 'master_admin'].includes(roleLc)) {
+      return res.status(403).json({
+        error: 'Solo un administrador puede quitar productos o liberar la mesa.',
+      });
+    }
     if (mustReason && reason.length < 3) {
       return res.status(400).json({ error: 'Indique el motivo de anulación (mínimo 3 caracteres).' });
     }

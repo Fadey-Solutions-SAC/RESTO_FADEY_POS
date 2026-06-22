@@ -258,6 +258,47 @@ function canEditOrderLines(order) {
   );
 }
 
+function isPosAdminUser(user) {
+  const role = String(user?.role || '').toLowerCase();
+  return role === 'admin' || role === 'master_admin';
+}
+
+function cartRemovalSignature(cart) {
+  const rows = (cart || []).map((i) => ({
+    k: [
+      String(i.source_order_id || ''),
+      String(i.product_id || ''),
+      String(i.modifier_id || ''),
+      String(i.modifier_option || ''),
+      String(i.notes || '').trim(),
+    ].join('\0'),
+    q: Number(i.quantity || 0),
+  }));
+  rows.sort((a, b) => a.k.localeCompare(b.k));
+  return rows;
+}
+
+function cartHasProductRemovals(initialCart, currentCart) {
+  const sumRows = (rows) => {
+    const m = new Map();
+    for (const r of rows) m.set(r.k, (m.get(r.k) || 0) + r.q);
+    return m;
+  };
+  const before = sumRows(cartRemovalSignature(initialCart));
+  const after = sumRows(cartRemovalSignature(currentCart));
+  for (const [key, qty] of before) {
+    if ((after.get(key) || 0) < qty) return true;
+  }
+  return false;
+}
+
+function formatMesaRemovalReason(prefix, reason) {
+  const text = String(reason || '').trim();
+  if (!text) return prefix;
+  const prefixRe = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:?\\s*`, 'i');
+  return prefixRe.test(text) ? text : `${prefix}: ${text}`;
+}
+
 /** Todos los productos de la mesa agrupados por línea de producto (misma lógica que precuenta/cobro). */
 function mergedProductsOnTable(table) {
   const allItems = (table?.orders || []).flatMap((o) => o.items || []);
@@ -389,6 +430,11 @@ export default function POSPanel() {
   const [editingOrderId, setEditingOrderId] = useState('');
   /** Comanda “principal” (nuevas líneas sin `source_order_id` y nota para llevar). */
   const [editingSessionOrderIds, setEditingSessionOrderIds] = useState([]);
+  const editSessionInitialCartRef = useRef([]);
+  const mesaRemovalConfirmRef = useRef(null);
+  const [mesaRemovalModal, setMesaRemovalModal] = useState(null);
+  const [mesaRemovalReason, setMesaRemovalReason] = useState('');
+  const [mesaRemovalSubmitting, setMesaRemovalSubmitting] = useState(false);
   /** Comanda cocina/bar: «PARA LLEVAR» en mayúsculas (orders.notes). Solo mesa/salón, no venta rápida. */
   const [paraLlevarMesa, setParaLlevarMesa] = useState(false);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -457,6 +503,7 @@ export default function POSPanel() {
     company_ruc: '',
   });
   const { user } = useAuth();
+  const posAdmin = isPosAdminUser(user);
   const cajaOptionsForRole = useMemo(() => {
     if (String(user?.role || '').toLowerCase() === 'cajero') {
       return CAJA_OPTIONS.filter((o) => CAJA_OPTIONS_CAJERO_IDS.has(o.id));
@@ -1347,6 +1394,15 @@ export default function POSPanel() {
       const billingError = validateBillingData();
       if (billingError) return toast.error(billingError);
     }
+    if (discountConfig.applied) {
+      const discountReasonText = String(discountConfig.reason || '').trim();
+      if (!discountReasonText) {
+        return toast.error('Ingresa el motivo del descuento o cortesía');
+      }
+      if (discountReasonText.length < 3) {
+        return toast.error('El motivo del descuento o cortesía debe tener al menos 3 caracteres');
+      }
+    }
     try {
       if (discountConfig.applied && splitMode && discountConfig.target === 'line' && discountConfig.targetOrderItemId) {
         if (!selectedOrderItemIds.includes(discountConfig.targetOrderItemId)) {
@@ -1572,7 +1628,11 @@ export default function POSPanel() {
 
     const value = parseFloat(discountConfig.value);
     if (Number.isNaN(value) || value <= 0) return toast.error('Ingresa un descuento válido');
-    if (!discountConfig.reason.trim()) return toast.error('Ingresa el motivo del descuento');
+    const discountReasonText = String(discountConfig.reason || '').trim();
+    if (!discountReasonText) return toast.error('Ingresa el motivo del descuento');
+    if (discountReasonText.length < 3) {
+      return toast.error('El motivo del descuento debe tener al menos 3 caracteres');
+    }
 
     if (splitMode && discountConfig.target === 'line' && discountConfig.targetOrderItemId) {
       if (!selectedOrderItemIds.includes(discountConfig.targetOrderItemId)) {
@@ -1590,6 +1650,15 @@ export default function POSPanel() {
 
   const applyCourtesyDiscount = () => {
     if (!discountConfig.active || discountConfig.applied) return;
+    const motive = String(discountConfig.reason || '').trim();
+    if (!motive) {
+      toast.error('Ingresa el motivo de la cortesía');
+      return;
+    }
+    if (motive.length < 3) {
+      toast.error('El motivo de la cortesía debe tener al menos 3 caracteres');
+      return;
+    }
     const orders = selectedTable?.orders || [];
     let base = selectionBaseTotal;
     if (splitMode && discountConfig.target === 'line' && discountConfig.targetOrderItemId) {
@@ -1604,12 +1673,13 @@ export default function POSPanel() {
       toast.error('Sin monto para cortesía');
       return;
     }
+    const courtesyReason = /^cortes[ií]a\s*:/i.test(motive) ? motive : `Cortesía: ${motive}`;
     setDiscountConfig({
       ...EMPTY_DISCOUNT_CONFIG,
       applied: true,
       type: 'amount',
       value: String(roundMoneySoles(base)),
-      reason: 'Cortesía',
+      reason: courtesyReason,
       target: discountConfig.target,
       targetOrderItemId: discountConfig.targetOrderItemId,
     });
@@ -1677,6 +1747,10 @@ export default function POSPanel() {
 
   /** @returns {boolean} si se abrió el editor */
   const openEditOrderFromToolbar = () => {
+    if (!posAdmin) {
+      toast.error('Solo un administrador puede modificar o quitar productos de la mesa.');
+      return false;
+    }
     const list = tableDetail?.orders || [];
     const editable = list.filter((o) => canEditOrderLines(o));
     if (editable.length === 0) {
@@ -1685,7 +1759,7 @@ export default function POSPanel() {
       } else {
         toast.error('Ninguna comanda se puede modificar desde aquí (estado o cobro).');
       }
-      return;
+      return false;
     }
     const sorted = [...editable].sort((a, b) => {
       const na = Number(a.order_number);
@@ -1694,6 +1768,8 @@ export default function POSPanel() {
       return String(b.created_at || '').localeCompare(String(a.created_at || ''));
     });
     const primary = sorted[0];
+    const initialCart = editable.flatMap((o) => orderItemsToCart(o, productsById));
+    editSessionInitialCartRef.current = initialCart.map((row) => ({ ...row }));
     setMesaDetailModalOpen(false);
     setQuickSaleMode(false);
     setEditingSessionOrderIds(editable.map((o) => o.id));
@@ -1702,10 +1778,79 @@ export default function POSPanel() {
     setSelectedTable(tableDetail);
     setSearch('');
     setSelectedCat('all');
-    setCart(editable.flatMap((o) => orderItemsToCart(o, productsById)));
+    setCart(initialCart);
     setShowMenu(true);
     setAmountReceived('');
     resetBillingForm();
+    return true;
+  };
+
+  const promptMesaRemovalReason = (mode) =>
+    new Promise((resolve, reject) => {
+      mesaRemovalConfirmRef.current = { resolve, reject, mode };
+      setMesaRemovalReason('');
+      setMesaRemovalModal({ mode });
+    });
+
+  const closeMesaRemovalModal = () => {
+    mesaRemovalConfirmRef.current?.reject?.(new Error('cancelled'));
+    mesaRemovalConfirmRef.current = null;
+    setMesaRemovalModal(null);
+    setMesaRemovalReason('');
+    setMesaRemovalSubmitting(false);
+  };
+
+  const confirmMesaRemovalModal = async () => {
+    const reason = String(mesaRemovalReason || '').trim();
+    if (reason.length < 3) {
+      toast.error('El motivo debe tener al menos 3 caracteres.');
+      return;
+    }
+    setMesaRemovalSubmitting(true);
+    try {
+      mesaRemovalConfirmRef.current?.resolve?.(reason);
+      mesaRemovalConfirmRef.current = null;
+      setMesaRemovalModal(null);
+      setMesaRemovalReason('');
+    } finally {
+      setMesaRemovalSubmitting(false);
+    }
+  };
+
+  const executeMesaOrderCancellations = async (orderIds, reason, tid) => {
+    const formatted = formatMesaRemovalReason('Liberar mesa', reason);
+    for (const oid of orderIds) {
+      await api.put(`/orders/${oid}/status`, {
+        status: 'cancelled',
+        cancellation_reason: formatted,
+      });
+    }
+    if (
+      selectedTable &&
+      !isClientCheckoutTable(selectedTable) &&
+      !isDeliveryCheckoutTable(selectedTable) &&
+      selectedTable.id
+    ) {
+      const updatedTable = await api.get(`/tables/${selectedTable.id}`);
+      const remaining = (updatedTable.orders || []).filter((o) =>
+        ['pending', 'preparing', 'ready'].includes(String(o.status || ''))
+      );
+      if (remaining.length === 0) {
+        await api.patch(`/tables/${selectedTable.id}/status`, { status: 'available' });
+      }
+    }
+    toast.success(
+      orderIds.length > 1
+        ? 'Pedidos anulados. Mesa liberada si no había otros pedidos activos.'
+        : 'Pedido anulado. Mesa liberada si no había otros pedidos activos.',
+      { id: tid }
+    );
+    setShowMenu(false);
+    setEditingOrderId('');
+    setEditingSessionOrderIds([]);
+    editSessionInitialCartRef.current = [];
+    resetCart();
+    loadData();
   };
 
   const confirmCancelOrder = async (order) => {
@@ -1730,45 +1875,47 @@ export default function POSPanel() {
   /** Modificar pedido: carrito vacío → anular pedido y liberar mesa si no quedan pedidos activos. */
   const liberarMesaDesdeEdicionPedidoVacio = async () => {
     if (!editingOrderId || !selectedTable) return;
+    if (!posAdmin) {
+      toast.error('Solo un administrador puede liberar la mesa.');
+      return;
+    }
     const idsToCancel =
       editingSessionOrderIds.length > 0 ? editingSessionOrderIds : [editingOrderId];
-    const ok = window.confirm(
-      idsToCancel.length > 1
-        ? `¿Anular ${idsToCancel.length} pedidos de esta mesa y marcarla libre si no queda ningún pedido activo?`
-        : '¿Anular este pedido sin productos y marcar la mesa como libre si no quedan otros pedidos activos?'
-    );
-    if (!ok) return;
+    let reason = '';
+    try {
+      reason = await promptMesaRemovalReason('liberar');
+    } catch {
+      return;
+    }
     const tid = toast.loading('Liberando mesa…');
     try {
-      for (const oid of idsToCancel) {
-        await api.put(`/orders/${oid}/status`, {
-          status: 'cancelled',
-          cancellation_reason: 'Pedido vaciado desde caja — liberar mesa',
-        });
-      }
-      if (!isClientCheckoutTable(selectedTable) && !isDeliveryCheckoutTable(selectedTable) && selectedTable.id) {
-        const updatedTable = await api.get(`/tables/${selectedTable.id}`);
-        const remaining = (updatedTable.orders || []).filter((o) =>
-          ['pending', 'preparing', 'ready'].includes(String(o.status || ''))
-        );
-        if (remaining.length === 0) {
-          await api.patch(`/tables/${selectedTable.id}/status`, { status: 'available' });
-        }
-      }
-      toast.success(
-        idsToCancel.length > 1
-          ? 'Pedidos anulados. Mesa liberada si no había otros pedidos activos.'
-          : 'Pedido anulado. Mesa liberada si no había otros pedidos activos.',
-        { id: tid }
-      );
-      setShowMenu(false);
-      setEditingOrderId('');
-      setEditingSessionOrderIds([]);
-      resetCart();
-      loadData();
+      await executeMesaOrderCancellations(idsToCancel, reason, tid);
     } catch (err) {
       toast.error(err.message || 'No se pudo completar', { id: tid });
     }
+  };
+
+  const guardedUpdateQty = (lineKey, qty) => {
+    if (editingOrderId && !posAdmin) {
+      toast.error('Solo un administrador puede modificar productos de la mesa.');
+      return;
+    }
+    if (editingOrderId) {
+      const line = cart.find((c) => c.line_key === lineKey);
+      if (line && qty < Number(line.quantity || 0) && !posAdmin) {
+        toast.error('Solo un administrador puede quitar productos de la mesa.');
+        return;
+      }
+    }
+    updateQty(lineKey, qty);
+  };
+
+  const guardedRemoveFromCart = (lineKey) => {
+    if (editingOrderId && !posAdmin) {
+      toast.error('Solo un administrador puede quitar productos de la mesa.');
+      return;
+    }
+    removeFromCart(lineKey);
   };
 
   const openQuickSaleMenu = () => {
@@ -1817,7 +1964,10 @@ export default function POSPanel() {
   const submitOrder = async () => {
     if (cart.length === 0) {
       if (editingOrderId) {
-        return toast.error('Quitaste todos los productos. Pulsa «Liberar mesa» para anular el pedido.');
+        if (!posAdmin) {
+          return toast.error('Solo un administrador puede liberar la mesa.');
+        }
+        return void liberarMesaDesdeEdicionPedidoVacio();
       }
       return toast.error('Agrega productos al pedido');
     }
@@ -1868,6 +2018,19 @@ export default function POSPanel() {
           if (!byOrder.has(oid)) byOrder.set(oid, []);
           byOrder.get(oid).push(i);
         }
+        const willCancelOrders = sessionIds.some((oid) => (byOrder.get(oid) || []).length === 0);
+        const hasRemovals = cartHasProductRemovals(editSessionInitialCartRef.current, cart);
+        let removalReason = '';
+        if (hasRemovals || willCancelOrders) {
+          if (!posAdmin) {
+            return toast.error('Solo un administrador puede quitar productos o liberar la mesa.');
+          }
+          try {
+            removalReason = await promptMesaRemovalReason(willCancelOrders ? 'liberar' : 'save');
+          } catch {
+            return;
+          }
+        }
         const linesPayload = (lines) =>
           lines.map((x) => ({
             product_id: x.product_id,
@@ -1876,19 +2039,25 @@ export default function POSPanel() {
             modifier_option: x.modifier_option || '',
             notes: String(x.notes || '').trim(),
           }));
+        const cancelReason = formatMesaRemovalReason(
+          willCancelOrders ? 'Liberar mesa' : 'Productos retirados',
+          removalReason
+        );
         const updatedOrderIds = [];
         for (const oid of sessionIds) {
           const lines = byOrder.get(oid) || [];
           if (lines.length === 0) {
             await api.put(`/orders/${oid}/status`, {
               status: 'cancelled',
-              cancellation_reason: 'Líneas retiradas al editar mesa desde caja',
+              cancellation_reason: cancelReason,
             });
           } else {
-            await api.put(`/orders/${oid}/lines`, {
+            const body = {
               items: linesPayload(lines),
               notes: noteOrder,
-            });
+            };
+            if (hasRemovals) body.removal_reason = cancelReason;
+            await api.put(`/orders/${oid}/lines`, body);
             updatedOrderIds.push(oid);
           }
         }
@@ -1896,6 +2065,7 @@ export default function POSPanel() {
         setShowMenu(false);
         setEditingOrderId('');
         setEditingSessionOrderIds([]);
+        editSessionInitialCartRef.current = [];
         resetCart();
         loadData();
         return;
@@ -2892,9 +3062,10 @@ export default function POSPanel() {
                 )}
                 <button
                   type="button"
-                  title="Modificar pedido"
+                  title={posAdmin ? 'Modificar pedido' : 'Solo administrador'}
                   onClick={openEditOrderFromToolbar}
                   disabled={
+                    !posAdmin ||
                     !tableDetail.orders?.length ||
                     isClientCheckoutTable(tableDetail) ||
                     !(tableDetail.orders || []).some((o) => canEditOrderLines(o))
@@ -3531,8 +3702,8 @@ export default function POSPanel() {
               cart={cart}
               noteEditorLineKey={noteEditorLineKey}
               setNoteEditorLineKey={setNoteEditorLineKey}
-              updateQty={updateQty}
-              removeFromCart={removeFromCart}
+              updateQty={editingOrderId ? guardedUpdateQty : updateQty}
+              removeFromCart={editingOrderId ? guardedRemoveFromCart : removeFromCart}
               updateItemNote={updateItemNote}
               cartTotal={cartTotal}
               formatCurrency={formatCurrency}
@@ -4078,7 +4249,7 @@ export default function POSPanel() {
                               onClick={applyCourtesyDiscount}
                               className="flex-1 py-2 rounded-lg border border-amber-400/60 text-amber-100 text-xs font-semibold hover:bg-amber-500/15"
                             >
-                              Cortesía
+                              Cortesía (requiere motivo)
                             </button>
                             <button
                               type="button"
@@ -4657,6 +4828,59 @@ export default function POSPanel() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(mesaRemovalModal)}
+        onClose={() => {
+          if (!mesaRemovalSubmitting) closeMesaRemovalModal();
+        }}
+        title={
+          mesaRemovalModal?.mode === 'liberar'
+            ? 'Liberar mesa — motivo obligatorio'
+            : 'Quitar productos — motivo obligatorio'
+        }
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--ui-muted)]">
+            {mesaRemovalModal?.mode === 'liberar'
+              ? 'Solo un administrador puede anular el pedido y liberar la mesa. Indique el motivo (obligatorio).'
+              : 'Solo un administrador puede retirar productos de la mesa. Indique el motivo (obligatorio).'}
+          </p>
+          <div>
+            <label htmlFor="mesa-removal-reason" className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">
+              Motivo
+            </label>
+            <textarea
+              id="mesa-removal-reason"
+              value={mesaRemovalReason}
+              onChange={(e) => setMesaRemovalReason(e.target.value)}
+              rows={4}
+              className="input-field w-full text-sm resize-y min-h-[100px]"
+              placeholder="Ej.: Cliente se retiró, error en el pedido, cambio de mesa…"
+              disabled={mesaRemovalSubmitting}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              disabled={mesaRemovalSubmitting}
+              onClick={closeMesaRemovalModal}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50"
+              disabled={mesaRemovalSubmitting}
+              onClick={() => void confirmMesaRemovalModal()}
+            >
+              {mesaRemovalSubmitting ? 'Guardando…' : 'Confirmar'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

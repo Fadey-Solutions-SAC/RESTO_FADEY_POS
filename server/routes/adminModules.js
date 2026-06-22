@@ -21,6 +21,7 @@ const { consultarPadronPeru } = require('../peruConsultaPadron');
 const { suggestComboProducts } = require('../services/comboSuggestService');
 const { resolveRestaurantId, syncPrinterRoutesFromImpresoras, listPrinterRoutes } = require('../printerRoutesService');
 const { computeKitchenReleaseAtForReservation } = require('../services/reservationKitchenHold');
+const { getValidUiThemeId } = require('../uiThemeCatalog');
 
 router.use(authenticateToken, requireRole('admin', 'cajero', 'mozo'));
 
@@ -146,6 +147,68 @@ function hasReservationConflict({ tableId, date, time, excludeId = '' }) {
 
 router.get('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
   res.json(readAppSettingsForClient());
+});
+
+/** Guarda solo tema visual del restaurante (settings.ui_theme*). */
+router.put('/config/appearance', requireRole('admin', 'master_admin'), (req, res) => {
+  try {
+    const incoming = req.body && typeof req.body === 'object' ? req.body : {};
+    const prevRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
+    const beforeState = readAppSettingsObject();
+    const settingsObj = parseJsonSafe(prevRow?.value, {});
+
+    if (incoming.ui_theme !== undefined) {
+      settingsObj.ui_theme = getValidUiThemeId(incoming.ui_theme);
+    }
+    if (incoming.ui_theme_mode !== undefined) {
+      const mode = String(incoming.ui_theme_mode || 'light').trim();
+      settingsObj.ui_theme_mode = ['light', 'dark', 'auto'].includes(mode) ? mode : 'light';
+    }
+    if (incoming.ui_theme_custom !== undefined) {
+      settingsObj.ui_theme_custom =
+        incoming.ui_theme_custom && typeof incoming.ui_theme_custom === 'object' && !Array.isArray(incoming.ui_theme_custom)
+          ? incoming.ui_theme_custom
+          : {};
+    }
+
+    runSql(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+      ['settings', JSON.stringify(settingsObj)]
+    );
+
+    const { saveDb } = require('../database');
+    saveDb();
+
+    const out = readAppSettingsObject();
+    const historyId = uuidv4();
+    runSql(
+      `INSERT INTO app_settings_history (id, actor_user_id, actor_name, changed_keys, before_state, after_state, details)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        historyId,
+        req.user.id,
+        req.user.full_name || req.user.username || '',
+        JSON.stringify(['settings']),
+        JSON.stringify(beforeState),
+        JSON.stringify(out),
+        JSON.stringify({ source: 'config_appearance_put', fields: Object.keys(incoming) }),
+      ]
+    );
+    logAudit({
+      actorUserId: req.user.id,
+      actorName: req.user.full_name || req.user.username || '',
+      action: 'app_settings.update',
+      resourceType: 'app_settings',
+      resourceId: 'appearance',
+      details: { updated_keys: ['settings'], history_id: historyId, fields: Object.keys(incoming) },
+    });
+    broadcastStaffData('app_config');
+    res.json(readAppSettingsForClient());
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'No se pudo guardar la apariencia' });
+  }
 });
 
 /** Hub de configuración: contexto en vivo por sección (Indicadores, operación, regional). */

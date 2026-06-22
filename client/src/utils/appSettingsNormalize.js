@@ -67,10 +67,17 @@ export function mergeSavedAppSettings(normalized, source) {
   if (source.apariencia && typeof source.apariencia === 'object') {
     next.apariencia = { ...(next.apariencia || {}), ...source.apariencia };
   }
-  if (source.ui_theme) next.ui_theme = source.ui_theme;
-  if (source.ui_theme_mode) next.ui_theme_mode = source.ui_theme_mode;
-  if (source.ui_theme_custom && typeof source.ui_theme_custom === 'object') {
-    next.ui_theme_custom = { ...(source.ui_theme_custom || {}) };
+  if (Object.prototype.hasOwnProperty.call(source, 'ui_theme')) {
+    next.ui_theme = source.ui_theme;
+  }
+  if (Object.prototype.hasOwnProperty.call(source, 'ui_theme_mode')) {
+    next.ui_theme_mode = source.ui_theme_mode;
+  }
+  if (Object.prototype.hasOwnProperty.call(source, 'ui_theme_custom')) {
+    next.ui_theme_custom =
+      source.ui_theme_custom && typeof source.ui_theme_custom === 'object' && !Array.isArray(source.ui_theme_custom)
+        ? { ...source.ui_theme_custom }
+        : {};
   }
   if (Array.isArray(source.auto_pedido_cartas)) {
     next.auto_pedido_cartas = source.auto_pedido_cartas;

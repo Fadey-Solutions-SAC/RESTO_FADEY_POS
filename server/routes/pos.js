@@ -651,6 +651,13 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     return res.status(400).json({ error: 'Debes enviar pedidos o líneas de producto para cobrar' });
   }
 
+  const discountReasonText = String(discountReason || '').trim();
+  const hasExplicitCheckoutDiscount = checkoutDiscountTotal > 0;
+  const hasDiscountsByOrder = Object.values(discountsByOrderInput).some((v) => Number(v) > 0);
+  if ((hasExplicitCheckoutDiscount || hasDiscountsByOrder) && discountReasonText.length < 3) {
+    return res.status(400).json({ error: 'Debe indicar el motivo del descuento o cortesía (mínimo 3 caracteres)' });
+  }
+
   let paymentBreakdownObj = null;
   if (paymentBreakdownBody != null && typeof paymentBreakdownBody === 'object' && !Array.isArray(paymentBreakdownBody)) {
     paymentBreakdownObj = parsePaymentBreakdown(JSON.stringify(paymentBreakdownBody));

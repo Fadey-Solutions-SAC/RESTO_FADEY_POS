@@ -52,6 +52,7 @@ export default function SettingsAppearancePanel({
   appSettings,
   setAppSettings,
   currentUserId,
+  onSaveRestaurantAppearance,
 }) {
   const [prefRevision, setPrefRevision] = useState(0);
   const bumpPref = () => setPrefRevision((n) => n + 1);
@@ -82,10 +83,11 @@ export default function SettingsAppearancePanel({
   const premiumOptions = UI_THEME_OPTIONS.filter((o) => PREMIUM_THEME_IDS.includes(o.id));
   const legacyOptions = UI_THEME_OPTIONS.filter((o) => !PREMIUM_THEME_IDS.includes(o.id));
 
-  const applyRestaurantPatch = (patch) => {
+  const applyRestaurantPatch = (patch, { debounceMs = 0 } = {}) => {
     const next = { ...appSettings, ...patch };
     setAppSettings(next);
     applyUiThemeFromAppSettings(next, currentUserId);
+    onSaveRestaurantAppearance?.(next, { debounceMs });
   };
 
   const applyPersonalPatch = (patch) => {
@@ -120,7 +122,7 @@ export default function SettingsAppearancePanel({
   const setCustomVar = (cssKey, value) => {
     const nextCustom = { ...custom, [cssKey]: value };
     if (personalEnabled) applyPersonalPatch({ custom: nextCustom });
-    else applyRestaurantPatch({ ui_theme_custom: nextCustom });
+    else applyRestaurantPatch({ ui_theme_custom: nextCustom }, { debounceMs: 600 });
   };
 
   const togglePersonalTheme = (enabled) => {

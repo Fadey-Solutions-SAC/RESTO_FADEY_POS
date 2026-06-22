@@ -385,6 +385,8 @@ export default function Settings() {
     enabled: Boolean(activeSection),
   });
   const autoSaveTimerRef = useRef(null);
+  const appearanceSaveTimerRef = useRef(null);
+  const pendingAppSettingsSaveRef = useRef(null);
   const historySearchTimerRef = useRef(null);
   const appSettingsRef = useRef(appSettings);
   const skipConfigReloadUntilRef = useRef(0);
@@ -888,6 +890,8 @@ export default function Settings() {
     }
     prevSettingsSectionRef.current = activeSection;
     if (!activeSection || !PARTIAL_SECTIONS.has(activeSection)) return undefined;
+    /** Apariencia guarda al instante vía PUT /config/appearance (no autoguardado del blob completo). */
+    if (activeSection === 'apariencia') return undefined;
     if (!hasUnsavedAppSettings || settingsCrudModal.isOpen) return undefined;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
@@ -904,6 +908,7 @@ export default function Settings() {
 
   useEffect(() => () => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    if (appearanceSaveTimerRef.current) clearTimeout(appearanceSaveTimerRef.current);
     if (historySearchTimerRef.current) clearTimeout(historySearchTimerRef.current);
   }, []);
 
@@ -1045,7 +1050,10 @@ export default function Settings() {
   };
 
   const saveAppSettings = async ({ silent = false, nextSettings = null } = {}) => {
-    if (isSavingAppSettings) return;
+    if (isSavingAppSettings) {
+      pendingAppSettingsSaveRef.current = { silent, nextSettings };
+      return;
+    }
     const snap = JSON.parse(appSettingsSnapshot || '{}');
     const base = nextSettings || appSettings;
     const source = { ...base, regional: snap.regional || base.regional };
@@ -1081,7 +1089,55 @@ export default function Settings() {
       if (!silent) toast.error(err.message);
     } finally {
       setIsSavingAppSettings(false);
+      const pending = pendingAppSettingsSaveRef.current;
+      pendingAppSettingsSaveRef.current = null;
+      if (pending) {
+        void saveAppSettings(pending);
+      }
     }
+  };
+
+  const saveRestaurantAppearance = async (nextSettings, { debounceMs = 0 } = {}) => {
+    const run = async () => {
+      if (isSavingAppSettings) {
+        pendingAppSettingsSaveRef.current = { silent: true, nextSettings };
+        return;
+      }
+      const snap = JSON.parse(appSettingsSnapshot || '{}');
+      const source = { ...nextSettings, regional: snap.regional || nextSettings.regional };
+      const patch = {
+        ui_theme: source.ui_theme,
+        ui_theme_mode: source.ui_theme_mode,
+        ui_theme_custom: source.ui_theme_custom || {},
+      };
+      try {
+        setIsSavingAppSettings(true);
+        skipConfigReloadUntilRef.current = Date.now() + 4000;
+        const saved = await api.put('/admin-modules/config/appearance', patch);
+        const normalized = mergeSavedAppSettings(normalizeConfigPayload(saved), source);
+        setAppSettings(normalized);
+        setAppSettingsSnapshot(serializeAppSettings(normalized));
+        applyUiThemeFromAppSettings(normalized, currentUser?.id);
+      } catch (err) {
+        toast.error(err.message || 'No se pudo guardar el tema del restaurante');
+      } finally {
+        setIsSavingAppSettings(false);
+        const pending = pendingAppSettingsSaveRef.current;
+        pendingAppSettingsSaveRef.current = null;
+        if (pending) {
+          void saveAppSettings(pending);
+        }
+      }
+    };
+    if (appearanceSaveTimerRef.current) clearTimeout(appearanceSaveTimerRef.current);
+    if (debounceMs > 0) {
+      appearanceSaveTimerRef.current = setTimeout(() => {
+        appearanceSaveTimerRef.current = null;
+        void run();
+      }, debounceMs);
+      return;
+    }
+    await run();
   };
 
   const updateR = (field, value) => setRestaurant(prev => ({ ...prev, [field]: value }));
@@ -1388,6 +1444,7 @@ export default function Settings() {
             appSettings={appSettings}
             setAppSettings={setAppSettings}
             currentUserId={currentUser?.id}
+            onSaveRestaurantAppearance={saveRestaurantAppearance}
           />
         )}
         {activeSection === 'config_historial' && (
