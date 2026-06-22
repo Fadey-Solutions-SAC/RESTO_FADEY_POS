@@ -549,7 +549,7 @@ async function initDatabase() {
         discount REAL DEFAULT 0,
         delivery_fee REAL DEFAULT 0,
         total REAL DEFAULT 0,
-        payment_method TEXT DEFAULT 'efectivo' CHECK(payment_method IN ('efectivo','yape','plin','tarjeta','online')),
+        payment_method TEXT DEFAULT 'efectivo' CHECK(payment_method IN ('efectivo','yape','plin','tarjeta','online','cuenta_cliente','cortesia')),
         payment_status TEXT DEFAULT 'pending' CHECK(payment_status IN ('pending','paid','refunded')),
         table_number TEXT DEFAULT '',
         delivery_address TEXT DEFAULT '',
@@ -1826,27 +1826,91 @@ async function initDatabase() {
       db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-05-pagos-yape-plin-default-v1']);
     }
 
-    const courtesyFixDone = db.exec(
-      "SELECT 1 as ok FROM schema_migrations WHERE migration_key = '2026-06-courtesy-payment-method-v1'"
+    const ordersPayMethodMigDone = queryOne(
+      'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
+      ['2026-06-orders-payment-method-cortesia-v1']
     );
-    if (!courtesyFixDone?.[0]?.values?.length) {
-      db.run(
-        `UPDATE orders
-         SET payment_method = 'cortesia',
-             discount = COALESCE(subtotal, 0) + COALESCE(delivery_fee, 0),
-             total = 0,
-             tip_amount = 0,
-             payment_breakdown = NULL,
-             updated_at = datetime('now')
-         WHERE status != 'cancelled'
-           AND payment_status = 'paid'
-           AND IFNULL(payment_method, '') != 'cortesia'
-           AND (
-             notes LIKE '%[DESCUENTO: Cortes%'
-             OR notes LIKE '%[DESCUENTO: cortes%'
-           )`
-      );
-      db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-06-courtesy-payment-method-v1']);
+    if (!ordersPayMethodMigDone?.ok) {
+      try {
+        withTransaction((tx) => {
+          const formatOrderColDefault = (dflt) => {
+            if (dflt == null || String(dflt).trim() === '') return '';
+            const d = String(dflt).trim();
+            if (d.toUpperCase() === 'NULL') return ' DEFAULT NULL';
+            if (/^[a-z_]+\(/i.test(d)) return ` DEFAULT (${d})`;
+            return ` DEFAULT ${d}`;
+          };
+          const cols = tx.queryAll('PRAGMA table_info(orders)');
+          const colNames = cols.map((c) => c.name);
+          const colDefs = cols.map((col) => {
+            if (col.name === 'payment_method') {
+              return "payment_method TEXT DEFAULT 'efectivo' CHECK(payment_method IN ('efectivo','yape','plin','tarjeta','online','cuenta_cliente','cortesia'))";
+            }
+            if (col.name === 'type') {
+              return "type TEXT NOT NULL CHECK(type IN ('dine_in','delivery','pickup'))";
+            }
+            if (col.name === 'status') {
+              return "status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','preparing','ready','delivered','cancelled'))";
+            }
+            if (col.name === 'payment_status') {
+              return "payment_status TEXT DEFAULT 'pending' CHECK(payment_status IN ('pending','paid','refunded'))";
+            }
+            if (col.name === 'sale_document_type') {
+              return "sale_document_type TEXT DEFAULT 'nota_venta' CHECK(sale_document_type IN ('nota_venta','boleta','factura'))";
+            }
+            let sql = `${col.name} ${String(col.type || 'TEXT').toUpperCase()}`;
+            if (col.pk) sql += ' PRIMARY KEY';
+            if (col.notnull && !col.pk) sql += ' NOT NULL';
+            sql += formatOrderColDefault(col.dflt_value);
+            return sql;
+          });
+          tx.run(`CREATE TABLE orders_payment_mig (${colDefs.join(', ')})`);
+          const list = colNames.join(', ');
+          tx.run(`INSERT INTO orders_payment_mig (${list}) SELECT ${list} FROM orders`);
+          tx.run('DROP TABLE orders');
+          tx.run('ALTER TABLE orders_payment_mig RENAME TO orders');
+          tx.run('CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)');
+          tx.run('CREATE INDEX IF NOT EXISTS idx_orders_status_payment ON orders(status, payment_status)');
+          tx.run('CREATE INDEX IF NOT EXISTS idx_orders_table_number ON orders(table_number)');
+        });
+        runSql('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', [
+          '2026-06-orders-payment-method-cortesia-v1',
+        ]);
+        console.log('[migration] orders: payment_method admite cortesia y cuenta_cliente');
+      } catch (e) {
+        console.error('[migration] orders payment_method cortesia:', e.message || e);
+      }
+    }
+
+    const courtesyBackfillDone = queryOne(
+      'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
+      ['2026-06-courtesy-backfill-v2']
+    );
+    if (!courtesyBackfillDone?.ok) {
+      try {
+        runSql(
+          `UPDATE orders
+           SET payment_method = 'cortesia',
+               discount = COALESCE(subtotal, 0) + COALESCE(delivery_fee, 0),
+               total = 0,
+               tip_amount = 0,
+               payment_breakdown = NULL,
+               updated_at = datetime('now')
+           WHERE status != 'cancelled'
+             AND payment_status = 'paid'
+             AND IFNULL(payment_method, '') != 'cortesia'
+             AND (
+               notes LIKE '%[DESCUENTO: Cortes%'
+               OR notes LIKE '%[DESCUENTO: cortes%'
+             )`
+        );
+        runSql('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', [
+          '2026-06-courtesy-backfill-v2',
+        ]);
+        console.log('[migration] cortesías históricas normalizadas');
+      } catch (e) {
+        console.error('[migration] cortesía backfill:', e.message || e);
+      }
     }
 
     db.run('CREATE INDEX IF NOT EXISTS idx_customers_doc_number ON customers(doc_number)');

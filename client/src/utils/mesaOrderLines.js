@@ -180,9 +180,13 @@ export function formatMesaLabel(tableNumber) {
   return `M${t.padStart(2, '0')}`;
 }
 
+export function isCourtesyOrder(order) {
+  return String(order?.payment_method || '').trim().toLowerCase() === 'cortesia';
+}
+
 /**
  * Agrupa ventas de salón por mesa; delivery/mostrador quedan como fila individual.
- * Productos de la mesa se consolidan con la misma regla que precuenta/cobro.
+ * Cortesías no suman al total de venta ni al desglose de pagos en soles.
  */
 export function buildSalesDisplayGroups(orders = []) {
   const byKey = new Map();
@@ -198,23 +202,33 @@ export function buildSalesDisplayGroups(orders = []) {
     );
     const primary = sorted[0];
     const isMesa = key.startsWith('mesa:');
+    const salesOrders = sorted.filter((o) => !isCourtesyOrder(o));
+    const courtesyOrders = sorted.filter(isCourtesyOrder);
     const allItems = sorted.flatMap((o) => o.items || []);
     const groupedProducts = groupItemsByProductNameForBill(allItems);
-    const total = sorted.reduce((s, o) => s + Number(o.total || 0), 0);
-    const paidTotal = sorted
+    const total = salesOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+    const paidTotal = salesOrders
       .filter((o) => o.payment_status === 'paid')
       .reduce((s, o) => s + Number(o.total || 0), 0);
-    const pendingTotal = sorted
+    const pendingTotal = salesOrders
       .filter((o) => String(o.payment_status || 'pending') === 'pending')
       .reduce((s, o) => s + Number(o.total || 0), 0);
 
     const payParts = new Map();
-    for (const o of sorted) {
+    for (const o of salesOrders) {
       const method = String(o.payment_method || 'efectivo');
       payParts.set(method, (payParts.get(method) || 0) + Number(o.total || 0));
     }
+    if (courtesyOrders.length) {
+      payParts.set('cortesia', courtesyOrders.length);
+    }
     const paymentSummary = [...payParts.entries()]
-      .map(([method, amount]) => `${method} (S/): ${amount.toFixed(2)}`)
+      .map(([method, amount]) => {
+        if (method === 'cortesia') return `Cortesía × ${amount}`;
+        const labels = { efectivo: 'Efectivo', yape: 'Yape', plin: 'Plin', tarjeta: 'Tarjeta', online: 'Online' };
+        const label = labels[method] || method;
+        return `${label} (S/): ${Number(amount).toFixed(2)}`;
+      })
       .join(' · ');
 
     const latestAt = sorted[0]?.created_at;
@@ -234,6 +248,8 @@ export function buildSalesDisplayGroups(orders = []) {
       latestAt,
       earliestAt,
       comprobanteCount: sorted.length,
+      salesOrderCount: salesOrders.length,
+      courtesyCount: courtesyOrders.length,
     };
   });
 
