@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../database');
 const kardexInventory = require('../services/kardexInventoryService');
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { assertPaymentMethodAllowed, normalizePaymentMethod, getPaymentMethodOptionsPayload } = require('../businessRules');
+const { assertPaymentMethodAllowed, normalizePaymentMethod, getPaymentMethodOptionsPayload, isCourtesyDiscountReason, COURTESY_PAYMENT_METHOD } = require('../businessRules');
 const { getActiveCajaById, listCajasWithIds } = require('../cajaSettings');
 const { print } = require('../printing/printerService');
 const { getOrderWithItems } = require('../orderCreateService');
@@ -652,9 +652,10 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
   }
 
   const discountReasonText = String(discountReason || '').trim();
+  const isCourtesyCheckout = isCourtesyDiscountReason(discountReasonText);
   const hasExplicitCheckoutDiscount = checkoutDiscountTotal > 0;
   const hasDiscountsByOrder = Object.values(discountsByOrderInput).some((v) => Number(v) > 0);
-  if ((hasExplicitCheckoutDiscount || hasDiscountsByOrder) && discountReasonText.length < 3) {
+  if ((hasExplicitCheckoutDiscount || hasDiscountsByOrder || isCourtesyCheckout) && discountReasonText.length < 3) {
     return res.status(400).json({ error: 'Debe indicar el motivo del descuento o cortesía (mínimo 3 caracteres)' });
   }
 
@@ -686,7 +687,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
-  } else {
+  } else if (!isCourtesyCheckout) {
     try {
       assertPaymentMethodAllowed(paymentMethod, { allowOnline: true });
     } catch (err) {
@@ -721,13 +722,18 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         if (order.status === 'delivered' && order.payment_status === 'paid') {
           return;
         }
-        const extraDiscount = Math.max(0, Number(discountsByOrder[orderId] || 0));
+        const extraDiscountRaw = Math.max(0, Number(discountsByOrder[orderId] || 0));
+        let extraDiscount = extraDiscountRaw;
+        if (isCourtesyCheckout) {
+          const baseTotal = getChargeBase(order);
+          extraDiscount = Math.max(extraDiscount, Math.max(0, baseTotal - Number(order.discount || 0)));
+        }
         if (extraDiscount > 0) {
           discountsAppliedByOrder[orderId] = extraDiscount;
           const baseTotal = getChargeBase(order);
           const nextDiscount = Math.max(0, Math.min(baseTotal, Number(order.discount || 0) + extraDiscount));
           const nextTotal = Math.max(0, baseTotal - nextDiscount);
-          const note = discountReason ? ` [DESCUENTO: ${discountReason}]` : '';
+          const note = discountReasonText ? ` [DESCUENTO: ${discountReasonText}]` : '';
           tx.run(
             "UPDATE orders SET discount = ?, total = ?, notes = COALESCE(notes, '') || ?, updated_at = datetime('now') WHERE id = ?",
             [nextDiscount, nextTotal, note, order.id]
@@ -740,10 +746,14 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       const toCharge = chargedRows;
       const batchTotal = round2(toCharge.reduce((s, r) => s + r.total, 0));
 
-      let primaryMethod = paymentMethod;
+      let primaryMethod = isCourtesyCheckout ? COURTESY_PAYMENT_METHOD : paymentMethod;
       let perOrderBreakdown = null;
 
-      if (paymentBreakdownObj) {
+      if (isCourtesyCheckout) {
+        if (batchTotal > 0.05) {
+          throw new Error('La cortesía debe dejar el total en S/ 0.00. Revise el descuento aplicado.');
+        }
+      } else if (paymentBreakdownObj) {
         const splitSum = round2(
           Object.values(paymentBreakdownObj).reduce((acc, v) => acc + round2(Number(v) || 0), 0)
         );
@@ -760,7 +770,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         );
       }
 
-      const tipGross = round2(Math.max(0, Number(tipAmountRaw || 0)));
+      const tipGross = isCourtesyCheckout ? 0 : round2(Math.max(0, Number(tipAmountRaw || 0)));
       const tipsPerOrder = distributeTipAcrossOrders(tipGross, toCharge.map((r) => r.total));
 
       const chargedOrderIds = [];
@@ -785,10 +795,12 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
               payment_breakdown = ?, tip_amount = ?, updated_at = datetime('now') WHERE id = ?`,
             [primaryMethod, nextStatus, br, tipForOrder, row.id]
           );
-          tx.run(
-            "UPDATE electronic_documents SET payment_method = ?, updated_at = datetime('now') WHERE order_id = ?",
-            [primaryMethod, row.id]
-          );
+          if (primaryMethod !== COURTESY_PAYMENT_METHOD) {
+            tx.run(
+              "UPDATE electronic_documents SET payment_method = ?, updated_at = datetime('now') WHERE order_id = ?",
+              [primaryMethod, row.id]
+            );
+          }
         }
         kardexInventory.aplicarSalidasVentaPedido(tx, row.id, req.user.id);
         chargedOrderIds.push(row.id);
@@ -798,10 +810,17 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     });
 
     const { chargedOrderIds, discountsAppliedByOrder } = txResult;
-    if (!chargeToCustomerAccount) {
+    const courtesyIds = new Set(
+      chargedOrderIds.filter((id) => {
+        const row = queryOne('SELECT payment_method FROM orders WHERE id = ?', [id]);
+        return String(row?.payment_method || '') === COURTESY_PAYMENT_METHOD;
+      })
+    );
+    const salesOrderIds = chargedOrderIds.filter((id) => !courtesyIds.has(id));
+    if (!chargeToCustomerAccount && salesOrderIds.length) {
       try {
         const { markProductsSoldOnPaidOrders } = require('../services/productSalesTrackingService');
-        markProductsSoldOnPaidOrders(chargedOrderIds);
+        markProductsSoldOnPaidOrders(salesOrderIds);
       } catch (err) {
         console.warn('[product-sales-idle] venta cobrada no registrada:', err.message || err);
       }
@@ -813,12 +832,16 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         return { ...o, items: queryAll('SELECT * FROM order_items WHERE order_id = ?', [id]) };
       })
       .filter(Boolean);
-    const primaryForAudit = paymentBreakdownObj ? dominantPaymentMethod(paymentBreakdownObj) : paymentMethod;
-    recordWorkActivityEvent(req.user?.id, 'sale_closed', {
-      module: 'caja',
-      refId: paidOrders[0]?.id,
-      meta: { order_count: paidOrders.length },
-    });
+    const primaryForAudit = isCourtesyCheckout
+      ? COURTESY_PAYMENT_METHOD
+      : (paymentBreakdownObj ? dominantPaymentMethod(paymentBreakdownObj) : paymentMethod);
+    if (salesOrderIds.length) {
+      recordWorkActivityEvent(req.user?.id, 'sale_closed', {
+        module: 'caja',
+        refId: salesOrderIds[0] || paidOrders[0]?.id,
+        meta: { order_count: salesOrderIds.length },
+      });
+    }
     logAudit({
       actorUserId: req.user.id,
       actorName: req.user.full_name || req.user.username || '',

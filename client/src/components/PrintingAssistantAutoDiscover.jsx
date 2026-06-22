@@ -4,19 +4,23 @@ import { maintainPrintingAssistantLink, PRINTING_LINK_STATUS_EVENT } from '../ut
 import { useActiveInterval } from '../hooks/useActiveInterval';
 
 /**
- * Con cualquier sesión de personal activa: despierta Resto FADEY, descubre el bridge
- * y mantiene el vínculo mientras alguien usa el sistema (sin desvincular al recargar).
+ * Con sesión de personal: descubre el bridge Resto FADEY sin spamear restofadey://wake.
  */
 export default function PrintingAssistantAutoDiscover() {
   const { user } = useAuth();
   const isStaff = Boolean(user && user.type === 'staff');
   const linkedRef = useRef(false);
+  const initialBurstDoneRef = useRef(false);
 
   useEffect(() => {
     if (!isStaff) {
       linkedRef.current = false;
+      initialBurstDoneRef.current = false;
       return undefined;
     }
+
+    if (initialBurstDoneRef.current) return undefined;
+    initialBurstDoneRef.current = true;
 
     let cancelled = false;
 
@@ -30,10 +34,10 @@ export default function PrintingAssistantAutoDiscover() {
       await attemptLink(true);
       if (cancelled || linkedRef.current) return;
 
-      for (let i = 0; i < 18 && !cancelled && !linkedRef.current; i += 1) {
-        await new Promise((r) => setTimeout(r, i < 6 ? 1200 : 2500));
+      for (let i = 0; i < 3 && !cancelled && !linkedRef.current; i += 1) {
+        await new Promise((r) => setTimeout(r, 2500));
         if (cancelled) return;
-        await attemptLink(i === 0 || i % 3 === 0);
+        await attemptLink(false);
       }
     };
 
@@ -47,13 +51,13 @@ export default function PrintingAssistantAutoDiscover() {
   useActiveInterval(() => {
     if (!isStaff) return;
     void maintainPrintingAssistantLink({ tryWake: false });
-  }, 20_000);
+  }, 60_000);
 
   useEffect(() => {
     if (!isStaff) return undefined;
     const onVisible = () => {
-      if (typeof document !== 'undefined' && !document.hidden) {
-        void maintainPrintingAssistantLink({ tryWake: !linkedRef.current });
+      if (typeof document !== 'undefined' && !document.hidden && !linkedRef.current) {
+        void maintainPrintingAssistantLink({ tryWake: false });
       }
     };
     document.addEventListener('visibilitychange', onVisible);

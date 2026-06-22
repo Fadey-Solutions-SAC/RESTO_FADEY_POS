@@ -1,7 +1,8 @@
 /** Protocolo local para despertar Resto FADEY instalado (registrado en electron-builder). */
 const WAKE_PROTOCOL = 'restofadey://wake';
 const LAST_WAKE_KEY = 'resto_printing_last_wake_ms';
-const WAKE_COOLDOWN_MS = 30_000;
+const WAKE_COOLDOWN_MS = 5 * 60 * 1000;
+const WAKE_ONCE_SESSION_KEY = 'resto_printing_wake_once_v1';
 
 /**
  * Intenta abrir/enfocar el asistente Electron desde el navegador (sin descargas).
@@ -10,9 +11,11 @@ const WAKE_COOLDOWN_MS = 30_000;
 export function tryWakePrintingAssistant() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return false;
   try {
+    if (window.sessionStorage?.getItem(WAKE_ONCE_SESSION_KEY) === '1') return false;
     const last = Number(window.sessionStorage?.getItem(LAST_WAKE_KEY) || 0);
     if (Date.now() - last < WAKE_COOLDOWN_MS) return false;
     window.sessionStorage?.setItem(LAST_WAKE_KEY, String(Date.now()));
+    window.sessionStorage?.setItem(WAKE_ONCE_SESSION_KEY, '1');
   } catch (_) {
     /* noop */
   }

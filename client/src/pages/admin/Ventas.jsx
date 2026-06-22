@@ -19,6 +19,9 @@ function getSaleStatusBadge(order, t) {
   if (order.status === 'cancelled') {
     return { label: 'Anulada', className: 'bg-red-500/20 text-red-300 border border-red-500/50' };
   }
+  if (String(order.payment_method || '').trim().toLowerCase() === 'cortesia') {
+    return { label: 'Cortesía', className: 'bg-violet-500/20 text-violet-300 border border-violet-500/40' };
+  }
   const ps = String(order.payment_status || 'pending');
   const label = t(`status.${ps}`, { defaultValue: ps === 'paid' ? 'Pagado' : ps === 'pending' ? 'Pendiente' : ps });
   const className = PAYMENT_STATUS_STYLES[ps] || 'bg-slate-500/20 text-slate-300 border border-slate-500/30';

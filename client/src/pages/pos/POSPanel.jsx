@@ -126,6 +126,10 @@ const EMPTY_DISCOUNT_CONFIG = {
   target: 'whole',
   targetOrderItemId: '',
 };
+
+function isCourtesyDiscountReason(text) {
+  return /^cortes[ií]a\s*:/i.test(String(text || '').trim());
+}
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
@@ -1367,10 +1371,11 @@ export default function POSPanel() {
     }
 
     const payableOrders = tableOrders;
+    const isCourtesyCheckout = discountConfig.applied && isCourtesyDiscountReason(discountConfig.reason);
 
     let checkoutPaymentMethod = paymentMethod;
     let checkoutPaymentBreakdown = null;
-    if (!chargeToAccount) {
+    if (!chargeToAccount && !isCourtesyCheckout) {
       if (multiPayEnabled) {
         const o = {};
         for (const opt of multiPaymentOptions) {
@@ -1393,6 +1398,15 @@ export default function POSPanel() {
       }
       const billingError = validateBillingData();
       if (billingError) return toast.error(billingError);
+    } else if (isCourtesyCheckout) {
+      if (billingForm.enabled) {
+        return toast.error('Desactive «Emitir comprobante» al registrar una cortesía (total S/ 0.00)');
+      }
+      if (tipPayEnabled && (parseFloat(String(checkoutTipAmount).replace(',', '.')) || 0) > 0) {
+        return toast.error('No se registra propina en una cortesía');
+      }
+      checkoutPaymentMethod = 'cortesia';
+      checkoutPaymentBreakdown = null;
     }
     if (discountConfig.applied) {
       const discountReasonText = String(discountConfig.reason || '').trim();

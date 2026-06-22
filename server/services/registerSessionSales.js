@@ -57,7 +57,8 @@ function queryRegisterSessionSales(openedAt) {
        FROM orders
        WHERE ${SALES_EVENT_AT_SQL} >= ?
          AND status != 'cancelled'
-         AND payment_status = 'paid'`,
+         AND payment_status = 'paid'
+         AND IFNULL(payment_method, '') != 'cortesia'`,
       [openedAt]
     ) || [];
   return aggregatePaidOrders(rows);
@@ -82,7 +83,8 @@ function queryRegisterSessionSalesBetween(openedAt, closedAt) {
      FROM orders
      WHERE ${SALES_EVENT_AT_SQL} >= ?
        AND status != 'cancelled'
-       AND payment_status = 'paid'${endSql}`,
+       AND payment_status = 'paid'
+       AND IFNULL(payment_method, '') != 'cortesia'${endSql}`,
     params
   );
   return {

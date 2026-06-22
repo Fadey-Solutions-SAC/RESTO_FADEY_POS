@@ -128,13 +128,14 @@ export default function Escritorio() {
     [scopedOrdersAll]
   );
   const paidOrders = useMemo(
-    () => scopedOrders.filter(o => o.payment_status === 'paid'),
+    () => scopedOrders.filter((o) => o.payment_status === 'paid' && String(o.payment_method || '').toLowerCase() !== 'cortesia'),
     [scopedOrders]
   );
   const todayDateKey = useMemo(() => toInputDate(new Date()), []);
   const paidOrdersToday = useMemo(
     () => orders.filter((o) => {
       if (o.status === 'cancelled' || o.payment_status !== 'paid') return false;
+      if (String(o.payment_method || '').toLowerCase() === 'cortesia') return false;
       return toLocalDateKey(o.updated_at || o.created_at) === todayDateKey;
     }),
     [orders, todayDateKey],
@@ -144,7 +145,7 @@ export default function Escritorio() {
     [paidOrdersToday],
   );
   const paidOrdersCount = useMemo(
-    () => scopedOrdersAll.filter(o => o.status !== 'cancelled' && o.payment_status === 'paid').length,
+    () => scopedOrdersAll.filter((o) => o.status !== 'cancelled' && o.payment_status === 'paid' && String(o.payment_method || '').toLowerCase() !== 'cortesia').length,
     [scopedOrdersAll]
   );
   const pendingPaymentCount = useMemo(

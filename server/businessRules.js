@@ -1,12 +1,19 @@
 const { queryOne } = require('./database');
 
+const COURTESY_PAYMENT_METHOD = 'cortesia';
+
 const PAYMENT_METHOD_LABELS = {
   efectivo: 'Efectivo',
   tarjeta: 'Tarjeta',
   yape: 'Yape',
   plin: 'Plin',
   online: 'Online',
+  cortesia: 'Cortesía',
 };
+
+function isCourtesyDiscountReason(text) {
+  return /^cortes[ií]a\s*:/i.test(String(text || '').trim());
+}
 
 function parseJsonSafe(value, fallback = {}) {
   try {
@@ -112,6 +119,7 @@ function getPaymentMethodOptionsPayload({ includeOnline = false } = {}) {
 function normalizePaymentMethod(rawMethod, { fallback = 'efectivo', allowOnline = false } = {}) {
   const requested = String(rawMethod || '').trim().toLowerCase();
   if (!requested) return fallback;
+  if (requested === COURTESY_PAYMENT_METHOD) return COURTESY_PAYMENT_METHOD;
   if (allowOnline && requested === 'online') return 'online';
   const allowed = getAllowedPaymentMethods();
   if (allowed.includes(requested)) return requested;
@@ -131,7 +139,9 @@ function assertPaymentMethodAllowed(method, { allowOnline = false } = {}) {
   throw new Error(`Método de pago no permitido. Configuración actual: ${labels}`);
 }
 
-const FINANCIAL_FILTER_SQL = "status != 'cancelled' AND payment_status = 'paid'";
+/** Ventas con ingreso real: excluye cortesías (total 0, sin cobro). */
+const FINANCIAL_FILTER_SQL =
+  "status != 'cancelled' AND payment_status = 'paid' AND IFNULL(payment_method, '') != 'cortesia'";
 
 /** Fecha calendario local del servidor SQLite (no UTC de JavaScript). */
 const LOCAL_TODAY_SQL = "date('now', 'localtime')";
@@ -142,6 +152,7 @@ function getLocalTodayDateKey() {
 }
 
 module.exports = {
+  COURTESY_PAYMENT_METHOD,
   FINANCIAL_FILTER_SQL,
   LOCAL_TODAY_SQL,
   getLocalTodayDateKey,
@@ -150,4 +161,5 @@ module.exports = {
   normalizePaymentMethod,
   isPaymentMethodAllowed,
   assertPaymentMethodAllowed,
+  isCourtesyDiscountReason,
 };

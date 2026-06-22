@@ -720,8 +720,8 @@ router.get('/customers', requireRole('admin', 'cajero'), (req, res) => {
   const customers = queryAll(sql, params);
   customers.forEach((c) => {
     const stats = queryOne(
-      `SELECT COUNT(*) as visits,
-              COALESCE(SUM(CASE WHEN status != 'cancelled' AND payment_status = 'paid' THEN total ELSE 0 END), 0) as total_spent,
+      `SELECT COUNT(CASE WHEN status != 'cancelled' AND payment_status = 'paid' AND IFNULL(payment_method, '') != 'cortesia' THEN 1 END) as visits,
+              COALESCE(SUM(CASE WHEN status != 'cancelled' AND payment_status = 'paid' AND IFNULL(payment_method, '') != 'cortesia' THEN total ELSE 0 END), 0) as total_spent,
               MAX(created_at) as last_visit
        FROM orders
        WHERE customer_id = ?`,

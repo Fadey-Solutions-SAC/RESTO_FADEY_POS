@@ -92,6 +92,7 @@ function splitBreakdownAcrossOrders(breakdown, orderTotals, batchTotal) {
 }
 
 function addOrderToSalesTotals(row, totals) {
+  if (String(row?.payment_method || '').trim().toLowerCase() === 'cortesia') return;
   const t = round2(row.total || 0);
   totals.total_sales = round2(totals.total_sales + t);
   const tip = round2(Number(row.tip_amount || 0));

@@ -605,7 +605,7 @@ router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero'), (req
     `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} AND ${FINANCIAL_FILTER}`
   );
   const monthSales = queryOne(`SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${SALES_EVENT_MONTH_SQL} = strftime('%Y-%m', 'now', 'localtime') AND ${FINANCIAL_FILTER}`);
-  const topProducts = queryAll(`SELECT oi.product_name, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND ${SALES_EVENT_ORDER_MONTH_SQL} = strftime('%Y-%m', 'now', 'localtime') GROUP BY oi.product_name ORDER BY total_sold DESC LIMIT 10`);
+  const topProducts = queryAll(`SELECT oi.product_name, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' AND ${SALES_EVENT_ORDER_MONTH_SQL} = strftime('%Y-%m', 'now', 'localtime') GROUP BY oi.product_name ORDER BY total_sold DESC LIMIT 10`);
   const recentOrders = queryAll('SELECT * FROM orders ORDER BY created_at DESC LIMIT 10');
   recentOrders.forEach(o => { o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]); });
   const paymentMethods = queryAll(
@@ -741,6 +741,7 @@ router.get('/closed-registers/:id', authenticateToken, requireRole('admin', 'caj
      JOIN orders o ON o.id = oi.order_id
      WHERE o.status != 'cancelled'
        AND o.payment_status = 'paid'
+       AND IFNULL(o.payment_method, '') != 'cortesia'
        AND COALESCE(o.updated_at, o.created_at) >= ?
        AND COALESCE(o.updated_at, o.created_at) <= ?
      GROUP BY oi.product_id, oi.product_name
@@ -807,7 +808,7 @@ router.get('/ranking', authenticateToken, requireRole('admin', 'cajero'), (req, 
   else if (period === 'month') dateFilter = `AND ${SALES_EVENT_ORDER_MONTH_SQL} = strftime('%Y-%m', 'now', 'localtime')`;
 
   const ranking = queryAll(
-    `SELECT oi.product_name, oi.product_id, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue, COUNT(DISTINCT oi.order_id) as order_count FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' ${dateFilter} GROUP BY oi.product_id ORDER BY total_sold DESC`
+    `SELECT oi.product_name, oi.product_id, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue, COUNT(DISTINCT oi.order_id) as order_count FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' ${dateFilter} GROUP BY oi.product_id ORDER BY total_sold DESC`
   );
 
   res.json(ranking);
@@ -823,7 +824,7 @@ router.get('/sales', authenticateToken, requireRole('admin'), (req, res) => {
 });
 
 router.get('/products', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
-  res.json(queryAll("SELECT oi.product_name, oi.product_id, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue, COUNT(DISTINCT oi.order_id) as order_count FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' GROUP BY oi.product_id ORDER BY total_sold DESC"));
+  res.json(queryAll("SELECT oi.product_name, oi.product_id, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue, COUNT(DISTINCT oi.order_id) as order_count FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' GROUP BY oi.product_id ORDER BY total_sold DESC"));
 });
 
 router.get('/payment-methods', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {

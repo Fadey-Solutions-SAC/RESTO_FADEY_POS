@@ -144,7 +144,7 @@ export async function maintainPrintingAssistantLink({ tryWake = false } = {}) {
       const afterDiscover = await verifyPrintingLinkStatus();
       if (!afterDiscover.connected) {
         tryWakePrintingAssistant();
-        await new Promise((r) => setTimeout(r, 1400));
+        await new Promise((r) => setTimeout(r, 1800));
         await ensureLocalPrintingAssistantDiscovered();
       }
     }

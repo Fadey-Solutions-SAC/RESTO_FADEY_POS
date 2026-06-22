@@ -12,7 +12,8 @@
     "yape": "Yape",
     "plin": "Plin",
     "tarjeta": "Card",
-    "online": "Online"
+    "online": "Online",
+    "cortesia": "Courtesy"
   },
   "docTypes": {
     "nota_venta": "Sales note",

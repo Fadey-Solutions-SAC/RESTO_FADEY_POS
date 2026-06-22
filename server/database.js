@@ -1826,6 +1826,29 @@ async function initDatabase() {
       db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-05-pagos-yape-plin-default-v1']);
     }
 
+    const courtesyFixDone = db.exec(
+      "SELECT 1 as ok FROM schema_migrations WHERE migration_key = '2026-06-courtesy-payment-method-v1'"
+    );
+    if (!courtesyFixDone?.[0]?.values?.length) {
+      db.run(
+        `UPDATE orders
+         SET payment_method = 'cortesia',
+             discount = COALESCE(subtotal, 0) + COALESCE(delivery_fee, 0),
+             total = 0,
+             tip_amount = 0,
+             payment_breakdown = NULL,
+             updated_at = datetime('now')
+         WHERE status != 'cancelled'
+           AND payment_status = 'paid'
+           AND IFNULL(payment_method, '') != 'cortesia'
+           AND (
+             notes LIKE '%[DESCUENTO: Cortes%'
+             OR notes LIKE '%[DESCUENTO: cortes%'
+           )`
+      );
+      db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-06-courtesy-payment-method-v1']);
+    }
+
     db.run('CREATE INDEX IF NOT EXISTS idx_customers_doc_number ON customers(doc_number)');
     db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_doc_number_unique ON customers(doc_number) WHERE COALESCE(doc_number, '') != ''");
     db.run('CREATE INDEX IF NOT EXISTS idx_app_settings_history_created_at ON app_settings_history(created_at)');

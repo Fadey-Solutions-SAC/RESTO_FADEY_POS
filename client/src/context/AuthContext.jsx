@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { applyUiThemeFromAppSettings } from '../theme/uiTheme';
-import { maintainPrintingAssistantLink } from '../utils/printingConfig';
 
 function applyAuthUserTheme(profile) {
   if (!profile) return;
@@ -28,7 +27,6 @@ export function AuthProvider({ children }) {
         .then((data) => {
           applyAuthUserTheme(data);
           setUser({ ...data, type: 'staff' });
-          void maintainPrintingAssistantLink({ tryWake: true });
         })
         .catch(() => { localStorage.removeItem('token'); })
         .finally(() => setLoading(false));
@@ -44,7 +42,6 @@ export function AuthProvider({ children }) {
     localStorage.setItem('token', data.token);
     applyAuthUserTheme(data.user);
     setUser({ ...data.user, type: 'staff' });
-    void maintainPrintingAssistantLink({ tryWake: true });
     return data.user;
   };
 

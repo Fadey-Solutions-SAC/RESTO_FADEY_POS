@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const net = require('net');
 const http = require('http');
 const { execFile, spawn } = require('child_process');
@@ -42,10 +43,15 @@ let restaurantApiChild = null;
 let embeddedApiHealthGeneration = 0;
 let embeddedApiWatchdogTimer = null;
 let embeddedApiStopIntentional = false;
-const API_HEALTH_SLOW_NOTICE_MS = 12_000;
+const API_HEALTH_SLOW_NOTICE_MS = 30_000;
 const API_HEALTH_RESTART_MS = 75_000;
 const API_HEALTH_GIVE_UP_MS = 120_000;
 const API_RESTART_COOLDOWN_MS = 2_000;
+/** Evita repetir el mismo aviso de bandeja (p. ej. cada wake del navegador). */
+const BALLOON_COOLDOWN_MS = 20 * 60 * 1000;
+const balloonLastShownAt = new Map();
+const balloonShownOncePerSession = new Set();
+let lastEmbeddedApiSpawnErrorAt = 0;
 let mainWindow = null; // Ventana oculta auxiliar para APIs de impresión del sistema.
 let tray = null;
 let localServer = null;
@@ -65,6 +71,23 @@ function isValidIp(value) {
 
 function configPath() {
   return path.join(app.getPath('userData'), 'printer-config.json');
+}
+
+/** Secreto JWT estable para la API embebida (sin depender de .env en la PC del cliente). */
+function ensureDesktopJwtSecret(userDataDir) {
+  const secretFile = path.join(userDataDir, '.jwt-secret');
+  try {
+    if (fs.existsSync(secretFile)) {
+      const existing = fs.readFileSync(secretFile, 'utf8').trim();
+      if (existing.length >= 16) return existing;
+    }
+    const generated = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(secretFile, generated, { encoding: 'utf8', mode: 0o600 });
+    return generated;
+  } catch (err) {
+    console.warn('[electron] no se pudo persistir JWT_SECRET:', err?.message || err);
+    return crypto.randomBytes(32).toString('hex');
+  }
 }
 
 function defaultConfig() {
@@ -704,7 +727,11 @@ function monitorEmbeddedApiHealth(portNum, { isRestart = false } = {}) {
       if (ok) {
         console.log('[electron] API respondió /api/healthz');
         if (slowNoticeShown) {
-          showTrayBalloon('Resto FADEY', 'Servicio local listo. Ya puede usar el sistema e imprimir.');
+          showTrayBalloon(
+            'Resto FADEY',
+            'Servicio local listo. Ya puede usar el sistema e imprimir.',
+            { oncePerSession: true },
+          );
         }
         tryOpenBrowserFirstRun(portNum);
         updateTrayMenu();
@@ -717,6 +744,7 @@ function monitorEmbeddedApiHealth(portNum, { isRestart = false } = {}) {
         showTrayBalloon(
           'Resto FADEY',
           'Iniciando servicios… Mantenga el ícono junto al reloj. Si hay antivirus, permita Resto FADEY en esta PC.',
+          { oncePerSession: true },
         );
       }
 
@@ -728,6 +756,7 @@ function monitorEmbeddedApiHealth(portNum, { isRestart = false } = {}) {
         showTrayBalloon(
           'Resto FADEY',
           'Reiniciando servicio local. Espere un momento; no abra otra copia del programa.',
+          { cooldownMs: 10 * 60 * 1000 },
         );
         setTimeout(() => {
           if (gen === embeddedApiHealthGeneration && !app.isQuitting) {
@@ -742,6 +771,7 @@ function monitorEmbeddedApiHealth(portNum, { isRestart = false } = {}) {
         showTrayBalloon(
           'Resto FADEY',
           'El servicio local tarda más de lo normal. Clic derecho en el ícono → «Reintentar servicio de impresión». Si persiste, excluya Resto FADEY del antivirus.',
+          { oncePerSession: true },
         );
         return;
       }
@@ -767,12 +797,11 @@ function startEmbeddedApiWatchdog() {
     waitForEmbeddedApiHealthz(port, 4000, (ok) => {
       if (ok) return;
       if (restaurantApiChild) {
-        console.warn('[electron] watchdog: API no responde; reinicio');
-        stopEmbeddedRestaurantApi();
-        setTimeout(() => startEmbeddedRestaurantApi({ isRestart: true }), API_RESTART_COOLDOWN_MS);
-      } else {
-        startEmbeddedRestaurantApi({ isRestart: true });
+        console.warn('[electron] watchdog: API no responde aún; se espera sin reiniciar');
+        return;
       }
+      console.warn('[electron] watchdog: API caída; reinicio');
+      startEmbeddedRestaurantApi({ isRestart: true });
     });
   }, 45_000);
 }
@@ -787,6 +816,7 @@ function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
   const userData = app.getPath('userData');
   const dbPath = path.join(userData, 'restaurant.db');
   const uploadsDir = path.join(userData, 'uploads');
+  const jwtSecret = String(process.env.JWT_SECRET || '').trim() || ensureDesktopJwtSecret(userData);
   const env = {
     ...process.env,
     ELECTRON_RUN_AS_NODE: '1',
@@ -794,9 +824,11 @@ function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
     UPLOADS_DIR: uploadsDir,
     PORT: port,
     LISTEN_HOST: process.env.LISTEN_HOST || '0.0.0.0',
+    JWT_SECRET: jwtSecret,
   };
   const serverEntry = getPackagedServerEntry();
-  const cwd = path.join(__dirname, '..');
+  /** app.asar es un archivo en Windows; no puede ser cwd del spawn de la API embebida. */
+  const cwd = app.isPackaged ? path.dirname(process.execPath) : path.join(__dirname, '..');
   const execPath = process.execPath;
   if (!fs.existsSync(execPath)) {
     console.error('[electron] ejecutable no encontrado:', execPath);
@@ -817,10 +849,15 @@ function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
       console.error('[electron] no se pudo iniciar API embebida (spawn):', err?.message || err);
       restaurantApiChild = null;
       embeddedApiListenPort = null;
-      showTrayBalloon(
-        'Resto FADEY',
-        'Servicio local no inició. Cierre otras copias de Resto FADEY, reinstale si hace falta y use «Reintentar servicio de impresión».',
-      );
+      const now = Date.now();
+      if (now - lastEmbeddedApiSpawnErrorAt >= 10 * 60 * 1000) {
+        lastEmbeddedApiSpawnErrorAt = now;
+        showTrayBalloon(
+          'Resto FADEY',
+          'Servicio local no inició. Cierre otras copias de Resto FADEY, reinstale si hace falta y use «Reintentar servicio de impresión».',
+          { oncePerSession: true },
+        );
+      }
     });
     restaurantApiChild.stderr?.on('data', (d) => {
       const t = String(d || '').trimEnd().slice(-500);
@@ -837,6 +874,7 @@ function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
         showTrayBalloon(
           'Resto FADEY',
           'El servicio local se detuvo (p. ej. antivirus). Reiniciando automáticamente…',
+          { cooldownMs: 10 * 60 * 1000 },
         );
         setTimeout(() => startEmbeddedRestaurantApi({ isRestart: true }), API_RESTART_COOLDOWN_MS);
       }
@@ -849,11 +887,22 @@ function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
     showTrayBalloon(
       'Resto FADEY',
       'No se pudo iniciar el servidor local. Revise el antivirus o use «Reintentar servicio de impresión» en el ícono junto al reloj.',
+      { oncePerSession: true },
     );
   }
 }
 
-function showTrayBalloon(title, body) {
+function showTrayBalloon(title, body, opts = {}) {
+  const { oncePerSession = false, cooldownMs = BALLOON_COOLDOWN_MS } = opts;
+  const key = `${String(title || '')}\0${String(body || '')}`;
+  if (oncePerSession) {
+    if (balloonShownOncePerSession.has(key)) return;
+    balloonShownOncePerSession.add(key);
+  } else {
+    const last = balloonLastShownAt.get(key) || 0;
+    if (Date.now() - last < cooldownMs) return;
+    balloonLastShownAt.set(key, Date.now());
+  }
   try {
     if (Notification.isSupported()) {
       new Notification({ title, body }).show();
@@ -876,6 +925,9 @@ async function stopAssistantServer() {
 }
 
 async function startPrintingAssistantServer() {
+  if (assistantListenPort && localServer) {
+    return assistantListenPort;
+  }
   await stopAssistantServer();
   assistantListenPort = null;
 
@@ -913,6 +965,7 @@ async function startPrintingAssistantServer() {
   showTrayBalloon(
     'Resto FADEY — Impresión',
     'No se pudo iniciar el servicio en esta PC (puertos ocupados). Elija «Reintentar servicio» en el ícono junto al reloj o reinicie Windows.',
+    { oncePerSession: true },
   );
   return null;
 }
@@ -1007,18 +1060,19 @@ function extractProtocolUrl(argv = process.argv) {
 }
 
 function wakePrintingServicesFromProtocol() {
-  void startPrintingAssistantServer();
-  if (app.isPackaged) {
-    const port = embeddedApiListenPort || EMBEDDED_API_DEFAULT_PORT;
-    waitForEmbeddedApiHealthz(port, 3500, (ok) => {
-      if (!ok) startEmbeddedRestaurantApi({ isRestart: true });
-    });
+  /** Solo el arranque principal gestiona la API embebida (3001). El wake del navegador no debe reiniciarla. */
+  if (!assistantListenPort) {
+    void startPrintingAssistantServer();
   }
 }
 
 function handleProtocolWake(url = '') {
   const raw = String(url || '').trim();
   if (raw && !raw.toLowerCase().startsWith('restofadey://')) return;
+  if (assistantListenPort && (!app.isPackaged || restaurantApiChild)) {
+    console.log('[electron] wake ignorado: servicios ya activos');
+    return;
+  }
   console.log('[electron] activación por protocolo:', raw || 'restofadey://wake');
   wakePrintingServicesFromProtocol();
 }
@@ -1078,10 +1132,6 @@ if (!acquiredSingleInstance) {
     const protocolUrl = extractProtocolUrl(argv);
     if (protocolUrl) handleProtocolWake(protocolUrl);
     else wakePrintingServicesFromProtocol();
-    showTrayBalloon(
-      'Resto FADEY',
-      'Servicio activo (ícono junto al reloj). Impresión verificada.',
-    );
   });
 
   app.on('will-quit', () => {
