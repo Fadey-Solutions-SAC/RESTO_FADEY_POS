@@ -1,7 +1,7 @@
 /** Protocolo local para despertar Resto FADEY instalado (registrado en electron-builder). */
 const WAKE_PROTOCOL = 'restofadey://wake';
 const LAST_WAKE_KEY = 'resto_printing_last_wake_ms';
-const WAKE_COOLDOWN_MS = 8_000;
+const WAKE_COOLDOWN_MS = 30_000;
 
 /**
  * Intenta abrir/enfocar el asistente Electron desde el navegador (sin descargas).

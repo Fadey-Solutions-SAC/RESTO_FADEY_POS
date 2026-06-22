@@ -245,8 +245,10 @@ app.get(
 );
 app.use('/api/printing', require('./routes/printing'));
 app.use('/api/master-admin', require('./routes/masterAdmin'));
-app.use('/api/central-sync', require('./routes/centralSync'));
-app.use('/api/platform-payments', require('./routes/platformPayments'));
+if (!process.env.ELECTRON_RUN_AS_NODE) {
+  app.use('/api/central-sync', require('./routes/centralSync'));
+  app.use('/api/platform-payments', require('./routes/platformPayments'));
+}
 const billingRoutes = require('./routes/billing');
 app.use('/api/billing', billingRoutes);
 
@@ -364,11 +366,13 @@ async function start() {
   } catch (err) {
     console.warn('[catalog-names] migración no ejecutada:', err.message || err);
   }
-  try {
-    const { initPosSaasIdentity } = require('./services/posSaasIdentityService');
-    initPosSaasIdentity();
-  } catch (err) {
-    console.warn('[saas-pos] identidad no inicializada:', err.message || err);
+  if (!process.env.ELECTRON_RUN_AS_NODE) {
+    try {
+      const { initPosSaasIdentity } = require('./services/posSaasIdentityService');
+      initPosSaasIdentity();
+    } catch (err) {
+      console.warn('[saas-pos] identidad no inicializada:', err.message || err);
+    }
   }
   logSqlitePersistenceWarnings();
   console.log(`[DB] SQLite path: ${getDbPath()}`);
@@ -377,11 +381,13 @@ async function start() {
   if (typeof billingRoutes.startBillingAutoRetryJob === 'function') {
     billingRoutes.startBillingAutoRetryJob();
   }
-  try {
-    const { startPlatformPaymentPoller } = require('./services/platformPaymentService');
-    startPlatformPaymentPoller();
-  } catch (err) {
-    console.warn('[platform-payment] poller no iniciado:', err.message || err);
+  if (!process.env.ELECTRON_RUN_AS_NODE) {
+    try {
+      const { startPlatformPaymentPoller } = require('./services/platformPaymentService');
+      startPlatformPaymentPoller();
+    } catch (err) {
+      console.warn('[platform-payment] poller no iniciado:', err.message || err);
+    }
   }
   try {
     const { startProductSalesMidnightJob } = require('./services/productSalesTrackingService');

@@ -1,6 +1,6 @@
 {
   "name": "restaurant-platform",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "Plataforma completa para restaurante - Admin, Cocina, POS, Cliente, Delivery",
   "private": true,
   "workspaces": [
@@ -70,6 +70,23 @@
       "client/dist/**",
       "server/**/*",
       "!server/efact/**",
+      "packages/**",
+      {
+        "from": "packages/shared-config",
+        "to": "node_modules/@restofadey/shared-config"
+      },
+      {
+        "from": "packages/shared-types",
+        "to": "node_modules/@restofadey/shared-types"
+      },
+      {
+        "from": "packages/shared-auth",
+        "to": "node_modules/@restofadey/shared-auth"
+      },
+      {
+        "from": "packages/shared-api",
+        "to": "node_modules/@restofadey/shared-api"
+      },
       "package.json"
     ],
     "asarUnpack": [
@@ -95,7 +112,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Resto FADEY",
-      "runAfterFinish": true
+      "runAfterFinish": false,
+      "include": "build/installer.nsh"
     },
     "protocols": [
       {

@@ -1,8 +1,8 @@
 const {
   readClientIdentity,
   isCentralSyncConfigured,
-} = require('@restofadey/shared-config');
-const { SYNC_EVENT_TYPES } = require('@restofadey/shared-types');
+} = require('../shared-config');
+const { SYNC_EVENT_TYPES } = require('../shared-types');
 
 function serviceHeaders(identity, extraHeaders = {}) {
   return {

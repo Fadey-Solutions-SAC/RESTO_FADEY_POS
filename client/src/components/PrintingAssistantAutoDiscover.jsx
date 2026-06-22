@@ -46,8 +46,8 @@ export default function PrintingAssistantAutoDiscover() {
 
   useActiveInterval(() => {
     if (!isStaff) return;
-    void maintainPrintingAssistantLink({ tryWake: !linkedRef.current });
-  }, 12_000);
+    void maintainPrintingAssistantLink({ tryWake: false });
+  }, 20_000);
 
   useEffect(() => {
     if (!isStaff) return undefined;

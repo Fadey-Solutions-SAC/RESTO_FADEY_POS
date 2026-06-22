@@ -382,6 +382,22 @@ html[data-ui-color-scheme='dark'] #root .text-neutral-500 {
   color: var(--ui-muted) !important;
 }
 
+/*
+ * Temas oscuros (Gold Premium, etc.): bloques Tailwind con fondo claro mantienen
+ * fondo blanco/gris pero el texto del tema es claro → forzar texto oscuro.
+ */
+html[data-ui-color-scheme='dark'] #root :is(.bg-slate-50, .bg-slate-50\/60, .bg-slate-50\/80, .bg-slate-100, .bg-gray-50, .bg-gray-100) {
+  color: #0f172a !important;
+}
+html[data-ui-color-scheme='dark'] #root :is(.bg-slate-50, .bg-slate-50\/60, .bg-slate-50\/80, .bg-slate-100, .bg-gray-50, .bg-gray-100)
+  :is(.ui-text-muted, .rf-section-desc) {
+  color: #57534e !important;
+}
+html[data-ui-color-scheme='dark'] #root :is(.bg-slate-50, .bg-slate-50\/60, .bg-slate-50\/80, .bg-slate-100, .bg-gray-50, .bg-gray-100)
+  :is(.ui-text-body, .rf-section-title, .rf-page-title, .font-bold) {
+  color: #0f172a !important;
+}
+
 /* Tema claro: utilidades hex pensadas para UI oscura (POS, modales legacy) */
 html[data-ui-color-scheme='light'] #root .bg-slate-50 {
   background-color: #f8fafc !important;

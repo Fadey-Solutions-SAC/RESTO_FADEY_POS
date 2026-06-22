@@ -3078,9 +3078,9 @@ export default function POSPanel() {
           <div className="card">
             <h3 className="font-bold rf-section-title mb-4">Apertura y cierre</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs ui-text-muted">Apertura</p><p className="font-bold">{formatCurrency(openingAmt)}</p></div>
-              <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs ui-text-muted">Efectivo esperado</p><p className="font-bold">{formatCurrency(expectedRounded)}</p></div>
-              <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs ui-text-muted">Ventas del turno</p><p className="font-bold">{formatCurrency(registerSales)}</p></div>
+              <div className="rf-surface-light rounded-lg p-3"><p className="text-xs ui-text-muted">Apertura</p><p className="font-bold">{formatCurrency(openingAmt)}</p></div>
+              <div className="rf-surface-light rounded-lg p-3"><p className="text-xs ui-text-muted">Efectivo esperado</p><p className="font-bold">{formatCurrency(expectedRounded)}</p></div>
+              <div className="rf-surface-light rounded-lg p-3"><p className="text-xs ui-text-muted">Ventas del turno</p><p className="font-bold">{formatCurrency(registerSales)}</p></div>
             </div>
             <button onClick={prepareClose} className="btn-primary">Ir al cierre de caja</button>
           </div>

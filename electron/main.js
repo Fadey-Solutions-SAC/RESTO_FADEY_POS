@@ -797,12 +797,30 @@ function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
   };
   const serverEntry = getPackagedServerEntry();
   const cwd = path.join(__dirname, '..');
+  const execPath = process.execPath;
+  if (!fs.existsSync(execPath)) {
+    console.error('[electron] ejecutable no encontrado:', execPath);
+    showTrayBalloon(
+      'Resto FADEY',
+      'No se encontró el programa instalado. Reinstale RestoFADEY.Setup.exe y abra solo un acceso directo.',
+    );
+    return;
+  }
   try {
-    restaurantApiChild = spawn(process.execPath, [serverEntry], {
+    restaurantApiChild = spawn(execPath, [serverEntry], {
       env,
       cwd,
       stdio: ['ignore', 'ignore', 'pipe'],
       windowsHide: true,
+    });
+    restaurantApiChild.on('error', (err) => {
+      console.error('[electron] no se pudo iniciar API embebida (spawn):', err?.message || err);
+      restaurantApiChild = null;
+      embeddedApiListenPort = null;
+      showTrayBalloon(
+        'Resto FADEY',
+        'Servicio local no inició. Cierre otras copias de Resto FADEY, reinstale si hace falta y use «Reintentar servicio de impresión».',
+      );
     });
     restaurantApiChild.stderr?.on('data', (d) => {
       const t = String(d || '').trimEnd().slice(-500);

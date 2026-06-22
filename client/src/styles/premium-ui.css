@@ -58,6 +58,23 @@ h1, h2, h3, h4 {
   color: var(--ui-muted);
 }
 
+/* Tarjeta/resumen con fondo claro (legible en temas oscuros y claros) */
+.rf-surface-light {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+.rf-surface-light .ui-text-muted,
+.rf-surface-light .rf-section-desc {
+  color: #57534e !important;
+}
+.rf-surface-light .ui-text-body,
+.rf-surface-light .rf-section-title,
+.rf-surface-light .rf-page-title,
+.rf-surface-light .font-bold {
+  color: #0f172a !important;
+}
+
 /* Pestañas de sección (Informes, etc.) */
 .rf-tab-btn {
   @apply px-4 py-2 rounded-lg border text-sm font-semibold transition-colors;
