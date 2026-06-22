@@ -9,6 +9,7 @@ import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import EndShiftModal from '../../components/EndShiftModal';
 import { MdKitchen, MdLocalBar, MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings } from 'react-icons/md';
 import toast from 'react-hot-toast';
+import Modal from '../../components/Modal';
 import PrinterModuleModal from '../../components/printing/PrinterModuleModal';
 import { usePrintingModule } from '../../hooks/usePrintingModule';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -59,6 +60,10 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const printerModuleKey = isBar ? 'bar' : 'cocina';
   const { moduleEnabled: printerModuleEnabled, loadConfig: reloadPrinterConfig } = usePrintingModule(printerModuleKey);
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
+  const [barSettingsOpen, setBarSettingsOpen] = useState(false);
+  const [barAutoDismiss, setBarAutoDismiss] = useState(false);
+  const [barSettingsLoaded, setBarSettingsLoaded] = useState(false);
+  const [barSettingsSaving, setBarSettingsSaving] = useState(false);
   const StationIcon = isBar ? MdLocalBar : MdKitchen;
   const panelTitle = isBar ? t('panel.barTitle') : t('panel.kitchenTitle');
   const stationLabel = isBar ? t('panel.stationBar') : t('panel.stationKitchen');
@@ -253,6 +258,63 @@ export default function KitchenPanel({ station = 'cocina' }) {
     }
   };
 
+  useEffect(() => {
+    if (!isBar) return undefined;
+    let cancelled = false;
+    api
+      .get('/orders/bar-station-settings')
+      .then((data) => {
+        if (cancelled) return;
+        setBarAutoDismiss(Boolean(data?.autoDismissPendingAfter30Min));
+        setBarSettingsLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setBarSettingsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBar]);
+
+  const saveBarAutoDismiss = async (enabled) => {
+    setBarSettingsSaving(true);
+    try {
+      const saved = await api.put('/orders/bar-station-settings', {
+        autoDismissPendingAfter30Min: Boolean(enabled),
+      });
+      setBarAutoDismiss(Boolean(saved?.autoDismissPendingAfter30Min));
+      toast.success(
+        saved?.autoDismissPendingAfter30Min
+          ? t('barSettings.enabledToast')
+          : t('barSettings.disabledToast'),
+      );
+      void loadOrders();
+    } catch (err) {
+      toast.error(err?.message || t('barSettings.saveFailed'));
+    } finally {
+      setBarSettingsSaving(false);
+    }
+  };
+
+  useSocket('bar-station-settings-update', (payload) => {
+    if (!isBar || !payload) return;
+    setBarAutoDismiss(Boolean(payload.autoDismissPendingAfter30Min));
+  });
+
+  useSocket('bar-auto-dismiss', (payload) => {
+    if (!isBar) return;
+    const order = payload?.order || payload;
+    const table = order?.table_number;
+    const num = order?.order_number;
+    const label = table
+      ? t('barSettings.autoDismissTable', { table })
+      : num != null
+        ? t('barSettings.autoDismissOrder', { number: num })
+        : t('barSettings.autoDismissGeneric');
+    toast(label, { duration: 7000, icon: 'ℹ️' });
+    void loadOrders();
+  });
+
   useSocket('new-order', (order) => handleKitchenIncomingOrder(order, t('toast.newOrder')));
   /** Mesa/salón: ítems nuevos van por PUT /orders/:id/lines — antes no había evento para imprimir en cocina. */
   useSocket('order-lines-updated', handleKitchenLinesUpdated);
@@ -416,9 +478,27 @@ export default function KitchenPanel({ station = 'cocina' }) {
         <div className="flex items-center gap-3">
           <StationIcon className="text-3xl text-[var(--ui-body-text)]" />
           <div>
-            <h1 className="text-xl font-bold">{panelTitle}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold">{panelTitle}</h1>
+              {isBar && (
+                <button
+                  type="button"
+                  onClick={() => setBarSettingsOpen(true)}
+                  className="p-1.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)]"
+                  title={t('barSettings.gearTitle')}
+                  aria-label={t('barSettings.gearTitle')}
+                >
+                  <MdSettings className="text-lg" />
+                </button>
+              )}
+            </div>
             <p className="text-[var(--ui-muted)] text-sm">
               {t('panel.activeOrders', { count: visibleOrders.length })}
+              {isBar && barAutoDismiss ? (
+                <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-400/90">
+                  · {t('barSettings.badgeActive')}
+                </span>
+              ) : null}
             </p>
           </div>
         </div>
@@ -471,6 +551,37 @@ export default function KitchenPanel({ station = 'cocina' }) {
         }}
         moduleKey={printerModuleKey}
       />
+      {isBar && (
+        <Modal
+          isOpen={barSettingsOpen}
+          onClose={() => setBarSettingsOpen(false)}
+          title={t('barSettings.modalTitle')}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-[var(--ui-muted)]">{t('barSettings.modalHint')}</p>
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 rounded border-[color:var(--ui-border)]"
+                checked={barAutoDismiss}
+                disabled={barSettingsSaving || !barSettingsLoaded}
+                onChange={(e) => void saveBarAutoDismiss(e.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-[var(--ui-body-text)]">
+                  {t('barSettings.toggleLabel')}
+                </span>
+                <span className="block text-xs text-[var(--ui-muted)] mt-1">
+                  {t('barSettings.toggleHelp')}
+                </span>
+              </span>
+            </label>
+            {barSettingsSaving ? (
+              <p className="text-xs text-[var(--ui-muted)]">{t('barSettings.saving')}</p>
+            ) : null}
+          </div>
+        </Modal>
+      )}
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {visibleOrders.map(order => {
           const TypeIcon = typeIcons[order.type] || MdRestaurant;

@@ -85,8 +85,8 @@ export default function MiRestaurant() {
     pagos_sistema: {
       acepta_efectivo: 1,
       acepta_tarjeta: 1,
-      acepta_yape: 0,
-      acepta_plin: 0,
+      acepta_yape: 1,
+      acepta_plin: 1,
       requiere_referencia_digital: 0,
       propina_sugerida_pct: 10,
       tolerancia_diferencia_caja: 2,

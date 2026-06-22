@@ -49,8 +49,8 @@ function paymentIdsFromPagosSistema(pagosSistema) {
   const ids = [];
   if (Number(pagos.acepta_efectivo ?? 1) === 1) ids.push('efectivo');
   if (Number(pagos.acepta_tarjeta ?? 1) === 1) ids.push('tarjeta');
-  if (Number(pagos.acepta_yape ?? 0) === 1) ids.push('yape');
-  if (Number(pagos.acepta_plin ?? 0) === 1) ids.push('plin');
+  if (Number(pagos.acepta_yape ?? 1) === 1) ids.push('yape');
+  if (Number(pagos.acepta_plin ?? 1) === 1) ids.push('plin');
   return ids;
 }
 
@@ -101,6 +101,8 @@ function getPaymentMethodOptionsPayload({ includeOnline = false } = {}) {
   if (options.length === 0) {
     return [
       { value: 'efectivo', label: PAYMENT_METHOD_LABELS.efectivo },
+      { value: 'yape', label: PAYMENT_METHOD_LABELS.yape },
+      { value: 'plin', label: PAYMENT_METHOD_LABELS.plin },
       { value: 'tarjeta', label: PAYMENT_METHOD_LABELS.tarjeta },
     ];
   }

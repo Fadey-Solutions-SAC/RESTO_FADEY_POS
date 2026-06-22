@@ -41,5 +41,20 @@
     "overdueTable": "Mesa {{table}} está tardando más de 30 minutos",
     "overdueDelivery": "Delivery #{{number}} está tardando más de 30 minutos",
     "overdueOrder": "Pedido #{{number}} está tardando más de 30 minutos"
+  },
+  "barSettings": {
+    "gearTitle": "Ajustes de bar",
+    "modalTitle": "Ajustes de bar",
+    "modalHint": "Opciones solo para el módulo de bar. La configuración se guarda en el servidor para todo el local.",
+    "toggleLabel": "Retirar automáticamente a los 30 minutos",
+    "toggleHelp": "Si una comanda lleva 30 minutos sin PREPARAR ni LISTO en bar, se marca listo y desaparece del panel. Cocina no se ve afectada.",
+    "badgeActive": "Auto-retiro 30 min",
+    "enabledToast": "Retiro automático activado en bar",
+    "disabledToast": "Retiro automático desactivado — bar manual otra vez",
+    "saveFailed": "No se pudo guardar el ajuste",
+    "saving": "Guardando…",
+    "autoDismissTable": "Mesa {{table}} retirada de bar (30 min sin atender)",
+    "autoDismissOrder": "Pedido #{{number}} retirado de bar (30 min sin atender)",
+    "autoDismissGeneric": "Comanda retirada de bar (30 min sin atender)"
   }
 }

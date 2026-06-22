@@ -30,6 +30,7 @@ import {
   formatPeDateTimeLine,
   formatPeDateTimeParts,
   getPaymentMethodOptions,
+  orderMultiPaymentOptions,
   hasElectronPrinting,
   normalizeUsbPrinterList,
   PAYMENT_METHODS,
@@ -694,6 +695,11 @@ export default function POSPanel() {
     }
   }, [paymentOptions, paymentMethod]);
 
+  const multiPaymentOptions = useMemo(
+    () => orderMultiPaymentOptions(paymentOptions),
+    [paymentOptions]
+  );
+
   useEffect(() => {
     if (!showBill) return;
     setMultiPayEnabled(false);
@@ -1320,7 +1326,7 @@ export default function POSPanel() {
     if (!chargeToAccount) {
       if (multiPayEnabled) {
         const o = {};
-        for (const opt of paymentOptions) {
+        for (const opt of multiPaymentOptions) {
           const raw = multiPayAmounts[opt.value];
           if (raw === undefined || raw === '' || String(raw).trim() === '') continue;
           const v = roundMoneySoles(parseFloat(raw));
@@ -1825,7 +1831,7 @@ export default function POSPanel() {
     if (quickSaleMode) {
       if (multiPayEnabled) {
         const o = {};
-        for (const opt of paymentOptions) {
+        for (const opt of multiPaymentOptions) {
           const raw = multiPayAmounts[opt.value];
           if (raw === undefined || raw === '' || String(raw).trim() === '') continue;
           const v = roundMoneySoles(parseFloat(raw));
@@ -2257,12 +2263,12 @@ export default function POSPanel() {
   const multiPaySumProof = useMemo(
     () =>
       roundMoneySoles(
-        paymentOptions.reduce((s, o) => {
+        multiPaymentOptions.reduce((s, o) => {
           const v = parseFloat(multiPayAmounts[o.value] || '0');
           return s + (Number.isFinite(v) && v > 0 ? v : 0);
         }, 0)
       ),
-    [paymentOptions, multiPayAmounts]
+    [multiPaymentOptions, multiPayAmounts]
   );
   const billLineItemsGrouped = useMemo(() => {
     if (!selectedTable) return [];
@@ -3285,7 +3291,7 @@ export default function POSPanel() {
                   </select>
                   ) : (
                     <div className="space-y-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
-                      {paymentOptions.map((opt) => (
+                      {multiPaymentOptions.map((opt) => (
                         <div key={opt.value} className="flex items-center gap-2">
                           <span className="text-xs text-[#E5E7EB] w-[80px] shrink-0">{opt.label}</span>
                           <input
@@ -4129,7 +4135,7 @@ export default function POSPanel() {
                       </select>
                       ) : (
                         <div className="space-y-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
-                          {paymentOptions.map((opt) => (
+                          {multiPaymentOptions.map((opt) => (
                             <div key={opt.value} className="flex items-center gap-2">
                               <span className="text-xs text-[#E5E7EB] w-[88px] shrink-0">{opt.label}</span>
                               <input

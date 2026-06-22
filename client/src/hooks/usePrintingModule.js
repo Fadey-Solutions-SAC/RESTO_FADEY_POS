@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { useSocket } from './useSocket';
+import { useActiveInterval } from './useActiveInterval';
 import {
   DEFAULT_PRINTING_CONFIG,
   detectUsbPrintersForModule,
@@ -164,6 +165,11 @@ export function usePrintingModule(moduleKey, { autoLoad = true } = {}) {
     window.addEventListener(PRINTING_CONFIG_UPDATED_EVENT, onUpdated);
     return () => window.removeEventListener(PRINTING_CONFIG_UPDATED_EVENT, onUpdated);
   }, [applyConfig]);
+
+  useActiveInterval(() => {
+    if (!autoLoad) return;
+    void refreshLink();
+  }, 20_000);
 
   useEffect(() => {
     if (!autoLoad) return undefined;

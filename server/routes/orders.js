@@ -163,6 +163,10 @@ router.get('/kitchen', authenticateToken, (req, res) => {
   if (!userCanAccessKitchenStation(req.user, stationRequested)) {
     return res.status(403).json({ error: 'No tienes permiso para este panel de producción' });
   }
+  if (stationRequested === 'bar') {
+    const { processBarAutoDismiss } = require('../services/barAutoDismissService');
+    processBarAutoDismiss({ io: req.app.get('io') });
+  }
   const { type } = req.query;
   let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing', 'ready')
     AND IFNULL(TRIM(payment_status), 'pending') != 'paid'
@@ -181,6 +185,31 @@ router.get('/kitchen', authenticateToken, (req, res) => {
       return o;
     }),
   );
+});
+
+const {
+  readBarStationSettings,
+  saveBarStationSettings,
+} = require('../services/barStationSettingsService');
+
+router.get('/bar-station-settings', authenticateToken, (req, res) => {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (!['admin', 'bar', 'master_admin'].includes(role)) {
+    return res.status(403).json({ error: 'No tienes permiso para ver ajustes de bar' });
+  }
+  res.json(readBarStationSettings());
+});
+
+router.put('/bar-station-settings', authenticateToken, requireRole('admin', 'bar', 'master_admin'), (req, res) => {
+  try {
+    const saved = saveBarStationSettings(req.body || {});
+    const io = req.app.get('io');
+    if (io) io.emit('bar-station-settings-update', saved);
+    res.json(saved);
+  } catch (err) {
+    logRouteError(req, err, { phase: 'bar-station-settings' });
+    res.status(400).json({ error: publicErrorMessage(err, 'No se pudo guardar ajustes de bar') });
+  }
 });
 
 router.post('/:id/delivery-driver-action', authenticateToken, requireRole('delivery'), (req, res) => {

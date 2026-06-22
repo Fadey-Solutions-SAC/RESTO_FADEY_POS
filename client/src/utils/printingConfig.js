@@ -8,10 +8,12 @@ import {
   printingUnreachableMessage,
   getPersistedPrintingBridgeOrigin,
 } from './api';
+import { tryWakePrintingAssistant } from './printingAssistantWake';
 import { normalizeThermalPaperWidthMm } from './ticketPlainText';
 
 export const PRINTING_CONFIG_CACHE_KEY = 'resto_printing_config_cache_v1';
 export const PRINTING_CONFIG_UPDATED_EVENT = 'resto-printing-config-updated';
+export const PRINTING_LINK_STATUS_EVENT = 'resto-printing-link-status';
 
 export const DEFAULT_PRINTING_CONFIG = {
   caja: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
@@ -64,6 +66,15 @@ export function emitPrintingConfigUpdated(cfg) {
   }
 }
 
+function emitPrintingLinkStatus(status) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new CustomEvent(PRINTING_LINK_STATUS_EVENT, { detail: status }));
+  } catch (_) {
+    /* noop */
+  }
+}
+
 export function isAutoPrintFlagEnabled(value) {
   if (value === false || value === 0 || value === '0' || value === 'false') return false;
   if (value === true || value === 1 || value === '1' || value === 'true') return true;
@@ -96,17 +107,69 @@ export async function fetchPrintingConfig() {
  * para que cocina/bar/caja no pierdan la vinculación al recargar.
  */
 export async function bootstrapPrintingOnLogin() {
-  if (typeof window === 'undefined') return loadPrintingConfigFromCache();
+  return maintainPrintingAssistantLink({ tryWake: true });
+}
+
+/**
+ * Mantiene vínculo con Resto FADEY mientras hay sesión activa.
+ * No borra el origen guardado; solo lo actualiza si encuentra un asistente válido.
+ */
+export async function maintainPrintingAssistantLink({ tryWake = false } = {}) {
+  if (typeof window === 'undefined') {
+    return { connected: false, source: 'Sin navegador', detail: '' };
+  }
+
+  const finish = async (status) => {
+    emitPrintingLinkStatus(status);
+    return status;
+  };
+
   try {
-    if (!hasElectronPrinting()) {
-      await ensureLocalPrintingAssistantDiscovered();
+    const quick = await verifyPrintingLinkStatus();
+    if (quick.connected) {
+      try {
+        await fetchPrintingConfig();
+      } catch (_) {
+        loadPrintingConfigFromCache();
+      }
+      return finish(quick);
     }
-    return await fetchPrintingConfig();
+  } catch (_) {
+    /* continuar con descubrimiento */
+  }
+
+  if (!hasElectronPrinting()) {
+    await ensureLocalPrintingAssistantDiscovered();
+    if (tryWake) {
+      const afterDiscover = await verifyPrintingLinkStatus();
+      if (!afterDiscover.connected) {
+        tryWakePrintingAssistant();
+        await new Promise((r) => setTimeout(r, 1400));
+        await ensureLocalPrintingAssistantDiscovered();
+      }
+    }
+  }
+
+  try {
+    await fetchPrintingConfig();
+    const status = await verifyPrintingLinkStatus();
+    return finish(status);
   } catch (err) {
-    console.warn('[printing] bootstrap login:', err?.message || err);
     const cached = loadPrintingConfigFromCache();
-    if (cached) return cached;
-    return normalizePrintingConfig(DEFAULT_PRINTING_CONFIG);
+    const persisted = getPersistedPrintingBridgeOrigin();
+    if (cached || persisted) {
+      const fallback = {
+        connected: Boolean(persisted),
+        source: persisted ? 'Asistente local (reconectando…)' : 'Configuración en caché',
+        detail: persisted || 'Esperando servicio Resto FADEY',
+      };
+      return finish(fallback);
+    }
+    return finish({
+      connected: false,
+      source: 'Sin vínculo',
+      detail: err?.message || printingUnreachableMessage(),
+    });
   }
 }
 

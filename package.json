@@ -1,6 +1,6 @@
 {
   "name": "restaurant-platform",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Plataforma completa para restaurante - Admin, Cocina, POS, Cliente, Delivery",
   "private": true,
   "workspaces": [
@@ -97,6 +97,14 @@
       "shortcutName": "Resto FADEY",
       "runAfterFinish": true
     },
+    "protocols": [
+      {
+        "name": "Resto FADEY",
+        "schemes": [
+          "restofadey"
+        ]
+      }
+    ],
     "publish": [
       {
         "provider": "generic",

@@ -260,8 +260,8 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
       pagos_sistema: {
         acepta_efectivo: 1,
         acepta_tarjeta: 1,
-        acepta_yape: 0,
-        acepta_plin: 0,
+        acepta_yape: 1,
+        acepta_plin: 1,
         requiere_referencia_digital: 0,
         propina_sugerida_pct: 10,
         tolerancia_diferencia_caja: 2,
@@ -1798,6 +1798,34 @@ async function initDatabase() {
       db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-05-business-config-v1']);
     }
 
+    const migPagosYapePlin = queryOne(
+      'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
+      ['2026-05-pagos-yape-plin-default-v1']
+    );
+    if (!migPagosYapePlin?.ok) {
+      const pagosRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['pagos_sistema']);
+      if (pagosRow?.value) {
+        try {
+          const pagos = JSON.parse(pagosRow.value);
+          let changed = false;
+          if (Number(pagos.acepta_yape ?? 0) !== 1) {
+            pagos.acepta_yape = 1;
+            changed = true;
+          }
+          if (Number(pagos.acepta_plin ?? 0) !== 1) {
+            pagos.acepta_plin = 1;
+            changed = true;
+          }
+          if (changed) {
+            db.run('UPDATE app_settings SET value = ? WHERE key = ?', [JSON.stringify(pagos), 'pagos_sistema']);
+          }
+        } catch (_) {
+          /* ignore malformed pagos_sistema */
+        }
+      }
+      db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-05-pagos-yape-plin-default-v1']);
+    }
+
     db.run('CREATE INDEX IF NOT EXISTS idx_customers_doc_number ON customers(doc_number)');
     db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_doc_number_unique ON customers(doc_number) WHERE COALESCE(doc_number, '') != ''");
     db.run('CREATE INDEX IF NOT EXISTS idx_app_settings_history_created_at ON app_settings_history(created_at)');
@@ -1893,8 +1921,8 @@ async function initDatabase() {
     db.run('INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)', ['pagos_sistema', JSON.stringify({
       acepta_efectivo: 1,
       acepta_tarjeta: 1,
-      acepta_yape: 0,
-      acepta_plin: 0,
+      acepta_yape: 1,
+      acepta_plin: 1,
       requiere_referencia_digital: 0,
       propina_sugerida_pct: 10,
       tolerancia_diferencia_caja: 2,

@@ -369,9 +369,11 @@ async function discoverAssistantAndPersist() {
 export async function ensureLocalPrintingAssistantDiscovered() {
   if (typeof window === 'undefined') return false;
   if (hasElectronPrinting()) return true;
-  if (await discoverAssistantAndPersist()) return true;
-  await new Promise((r) => setTimeout(r, 600));
-  return discoverAssistantAndPersist();
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (await discoverAssistantAndPersist()) return true;
+    await new Promise((r) => setTimeout(r, 700 + attempt * 350));
+  }
+  return false;
 }
 
 /** Origen del bridge sin sufijo `/api` (ej. `http://127.0.0.1:3001`). */
@@ -382,6 +384,12 @@ function getPrintingBridgeOriginOnly() {
 }
 
 export async function checkPrintingHealth() {
+  const persisted = getPersistedPrintingBridgeOrigin();
+  if (persisted) {
+    const probe = await probeOriginHealth(persisted, 4500);
+    if (probe.ok) return true;
+  }
+
   /** Si el asistente Electron quedó en otro puerto (3002…), lo encontramos sin depender de localStorage. */
   if (await discoverAssistantAndPersist()) {
     return true;
@@ -858,8 +866,8 @@ export const getPaymentMethodOptions = (appConfig, { includeOnline = false } = {
   const pagosSistemaIds = [
     { value: 'efectivo', enabled: Number(pagos.acepta_efectivo ?? 1) === 1 },
     { value: 'tarjeta', enabled: Number(pagos.acepta_tarjeta ?? 1) === 1 },
-    { value: 'yape', enabled: Number(pagos.acepta_yape ?? 0) === 1 },
-    { value: 'plin', enabled: Number(pagos.acepta_plin ?? 0) === 1 },
+    { value: 'yape', enabled: Number(pagos.acepta_yape ?? 1) === 1 },
+    { value: 'plin', enabled: Number(pagos.acepta_plin ?? 1) === 1 },
   ];
 
   for (const { value, enabled } of pagosSistemaIds) {
@@ -872,8 +880,28 @@ export const getPaymentMethodOptions = (appConfig, { includeOnline = false } = {
   if (options.length === 0) {
     return [
       { value: 'efectivo', label: PAYMENT_METHODS.efectivo },
+      { value: 'yape', label: PAYMENT_METHODS.yape },
+      { value: 'plin', label: PAYMENT_METHODS.plin },
       { value: 'tarjeta', label: PAYMENT_METHODS.tarjeta },
     ];
   }
   return options;
 };
+
+const MULTI_PAY_ORDER = ['efectivo', 'yape', 'plin', 'tarjeta'];
+
+/** Orden estándar para desglose multimétodo en caja (Yape/Plin independientes). */
+export const orderMultiPaymentOptions = (options) => {
+  const list = Array.isArray(options) ? options : [];
+  const byValue = new Map(list.map((o) => [o.value, o]));
+  const ordered = MULTI_PAY_ORDER.filter((id) => byValue.has(id)).map((id) => byValue.get(id));
+  for (const o of list) {
+    if (!MULTI_PAY_ORDER.includes(o.value)) ordered.push(o);
+  }
+  return ordered.length
+    ? ordered
+    : MULTI_PAY_ORDER.map((value) => ({ value, label: PAYMENT_METHODS[value] || value }));
+};
+
+export const getMultiPaymentMethodOptions = (appConfig) =>
+  orderMultiPaymentOptions(getPaymentMethodOptions(appConfig, { includeOnline: false }));

@@ -6,6 +6,9 @@ client/node_modules/
 client/dist/
 dist/
 
+# Instalador Electron (publicar en GitHub Releases)
+release/dist/
+
 # Runtime and local data
 uploads/
 tmp_xlsx/

@@ -41,5 +41,20 @@
     "overdueTable": "Table {{table}} is over 30 minutes late",
     "overdueDelivery": "Delivery #{{number}} is over 30 minutes late",
     "overdueOrder": "Order #{{number}} is over 30 minutes late"
+  },
+  "barSettings": {
+    "gearTitle": "Bar settings",
+    "modalTitle": "Bar settings",
+    "modalHint": "Bar module only. Saved on the server for the whole venue.",
+    "toggleLabel": "Auto-remove after 30 minutes",
+    "toggleHelp": "If an order stays 30 minutes without START or READY in bar, it is marked ready and removed from the panel. Kitchen is not affected.",
+    "badgeActive": "Auto-remove 30 min",
+    "enabledToast": "Bar auto-remove enabled",
+    "disabledToast": "Bar auto-remove disabled — manual flow restored",
+    "saveFailed": "Could not save setting",
+    "saving": "Saving…",
+    "autoDismissTable": "Table {{table}} removed from bar (30 min unattended)",
+    "autoDismissOrder": "Order #{{number}} removed from bar (30 min unattended)",
+    "autoDismissGeneric": "Order removed from bar (30 min unattended)"
   }
 }
