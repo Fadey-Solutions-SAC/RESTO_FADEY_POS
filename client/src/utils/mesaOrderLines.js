@@ -181,7 +181,22 @@ export function formatMesaLabel(tableNumber) {
 }
 
 export function isCourtesyOrder(order) {
-  return String(order?.payment_method || '').trim().toLowerCase() === 'cortesia';
+  if (String(order?.payment_method || '').trim().toLowerCase() === 'cortesia') return true;
+  return /\[DESCUENTO:\s*Cortes/i.test(String(order?.notes || ''));
+}
+
+export function parseCourtesyReason(order) {
+  const raw = String(order?.notes || '');
+  const tagged = raw.match(/\[DESCUENTO:\s*(Cortes[ií]a:\s*[^\]]+)\]/i);
+  if (tagged) return tagged[1].replace(/^Cortes[ií]a:\s*/i, '').trim();
+  const generic = raw.match(/\[DESCUENTO:\s*([^\]]+)\]/);
+  return generic ? generic[1].trim() : '';
+}
+
+export function courtesyReferenceAmount(order) {
+  const disc = Number(order?.discount || 0);
+  if (disc > 0) return disc;
+  return Math.max(0, Number(order?.subtotal || 0) + Number(order?.delivery_fee || 0));
 }
 
 /**

@@ -15,6 +15,29 @@ function isCourtesyDiscountReason(text) {
   return /^cortes[ií]a\s*:/i.test(String(text || '').trim());
 }
 
+/** SQL: filas de pedido que son cortesía (método o nota histórica). */
+const COURTESY_ORDER_WHERE_SQL =
+  "(IFNULL(payment_method, '') = 'cortesia' OR notes LIKE '%[DESCUENTO: Cortes%' OR notes LIKE '%[DESCUENTO: cortes%')";
+
+function isCourtesyOrderRecord(row) {
+  if (String(row?.payment_method || '').trim().toLowerCase() === COURTESY_PAYMENT_METHOD) return true;
+  return /\[DESCUENTO:\s*Cortes/i.test(String(row?.notes || ''));
+}
+
+function parseCourtesyReasonFromNotes(notes) {
+  const raw = String(notes || '');
+  const tagged = raw.match(/\[DESCUENTO:\s*(Cortes[ií]a:\s*[^\]]+)\]/i);
+  if (tagged) return tagged[1].replace(/^Cortes[ií]a:\s*/i, '').trim();
+  const generic = raw.match(/\[DESCUENTO:\s*([^\]]+)\]/);
+  return generic ? generic[1].trim() : '';
+}
+
+function courtesyReferenceAmount(order) {
+  const disc = Number(order?.discount || 0);
+  if (disc > 0) return disc;
+  return Math.max(0, Number(order?.subtotal || 0) + Number(order?.delivery_fee || 0));
+}
+
 function parseJsonSafe(value, fallback = {}) {
   try {
     return value ? JSON.parse(value) : fallback;
@@ -153,6 +176,7 @@ function getLocalTodayDateKey() {
 
 module.exports = {
   COURTESY_PAYMENT_METHOD,
+  COURTESY_ORDER_WHERE_SQL,
   FINANCIAL_FILTER_SQL,
   LOCAL_TODAY_SQL,
   getLocalTodayDateKey,
@@ -162,4 +186,7 @@ module.exports = {
   isPaymentMethodAllowed,
   assertPaymentMethodAllowed,
   isCourtesyDiscountReason,
+  isCourtesyOrderRecord,
+  parseCourtesyReasonFromNotes,
+  courtesyReferenceAmount,
 };

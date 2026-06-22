@@ -20,6 +20,7 @@ import {
   MdAutoGraph,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
+import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
 import toast from 'react-hot-toast';
 
 const COLORS = ['#f04438', '#ffa520', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#f97316'];
@@ -459,6 +460,8 @@ export default function Reports() {
       setReportSection('productos');
     } else if (searchParams.get('seccion') === 'finanzas') {
       setReportSection('finanzas');
+    } else if (searchParams.get('seccion') === 'cortesias') {
+      setReportSection('cortesias');
     }
   }, [searchParams]);
 
@@ -726,6 +729,7 @@ export default function Reports() {
   ];
   const sectionCards = [
     { id: 'ventas', title: 'Informe de Ventas', desc: 'Diversos informes de las ventas realizadas en la empresa.' },
+    { id: 'cortesias', title: 'Informe de Cortesías', desc: 'Cortesías registradas en caja. No suman a ventas ni afectan el dinero (cobrado S/ 0.00).' },
     { id: 'productos', title: 'Informe de productos', desc: 'Detalle de productos vendidos por cada cierre de caja (se genera al cerrar turno).' },
     { id: 'caja', title: 'Informe de Caja', desc: 'Historial de cajas cerradas, detalle del cierre y descarga del reporte.' },
     { id: 'compras', title: 'Informe de Compras', desc: 'Las compras que has realizado.' },
@@ -757,6 +761,8 @@ export default function Reports() {
           <p className="text-sm text-[var(--ui-muted)] mt-3">{activeSectionMeta.desc}</p>
         )}
       </div>
+
+      {reportSection === 'cortesias' && <CortesiasReportSection />}
 
       {reportSection === 'ventas' && (
         <>

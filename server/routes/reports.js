@@ -2,7 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { FINANCIAL_FILTER_SQL, LOCAL_TODAY_SQL, getLocalTodayDateKey } = require('../businessRules');
+const { FINANCIAL_FILTER_SQL, LOCAL_TODAY_SQL, getLocalTodayDateKey, COURTESY_ORDER_WHERE_SQL } = require('../businessRules');
 const { getEffectiveFlat } = require('../services/businessConfigService');
 const { computeOpenStatus } = require('../services/systemConfigHubService');
 const { getOpenRegistersOnActiveStations, listCajasWithIds } = require('../cajaSettings');
@@ -681,7 +681,7 @@ router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, re
   );
 
   const orders = queryAll(
-    `SELECT * FROM orders WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} ORDER BY ${SALES_EVENT_AT_SQL} DESC`
+    `SELECT * FROM orders WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} AND NOT ${COURTESY_ORDER_WHERE_SQL} ORDER BY ${SALES_EVENT_AT_SQL} DESC`
   );
   orders.forEach(o => { o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]); });
 
@@ -1029,6 +1029,23 @@ router.get('/indicators-export', authenticateToken, requireRole('admin'), (req, 
     exportIndicators(req.query || {}, res);
   } catch (err) {
     if (!res.headersSent) res.status(500).json({ error: err.message || 'No se pudo exportar' });
+  }
+});
+
+router.get('/courtesies', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  try {
+    const { listCourtesyOrders, summarizeCourtesyOrders } = require('../services/courtesyOrdersService');
+    const orders = listCourtesyOrders({
+      from: req.query.from,
+      to: req.query.to,
+      limit: req.query.limit,
+    });
+    res.json({
+      summary: summarizeCourtesyOrders(orders),
+      orders,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo cargar informe de cortesías' });
   }
 });
 

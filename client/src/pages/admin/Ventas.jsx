@@ -318,7 +318,9 @@ export default function Ventas() {
       const docsByOrder = new Map((docsData || []).map(d => [d.order_id, d]));
       const local = restaurant?.name || '-';
       setRestaurantName(local);
-      const merged = (ordersData || []).map(o => ({ ...o, document: docsByOrder.get(o.id) || null, local_name: local }));
+      const merged = (ordersData || [])
+        .filter((o) => !isCourtesyOrder(o))
+        .map(o => ({ ...o, document: docsByOrder.get(o.id) || null, local_name: local }));
       setOrders(merged);
       setFiltered(merged);
     } catch (err) {
