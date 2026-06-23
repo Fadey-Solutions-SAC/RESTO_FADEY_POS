@@ -1,6 +1,9 @@
 const { queryOne } = require('./database');
-
-const COURTESY_PAYMENT_METHOD = 'cortesia';
+const {
+  getBusinessTodayDateKey,
+  getBusinessMonthKey,
+  sqlBusinessTimestamp,
+} = require('./utils/appDateTime');
 
 const PAYMENT_METHOD_LABELS = {
   efectivo: 'Efectivo',
@@ -186,16 +189,40 @@ function assertPaymentMethodAllowed(method, { allowOnline = false } = {}) {
   throw new Error(`Método de pago no permitido. Configuración actual: ${labels}`);
 }
 
-/** Ventas con ingreso real: excluye cortesías (total 0, sin cobro). */
+
+const COURTESY_PAYMENT_METHOD = 'cortesia';
 const FINANCIAL_FILTER_SQL =
   "status != 'cancelled' AND payment_status = 'paid' AND IFNULL(payment_method, '') != 'cortesia'";
 
-/** Fecha calendario local del servidor SQLite (no UTC de JavaScript). */
-const LOCAL_TODAY_SQL = "date('now', 'localtime')";
+/** Expresiones SQL de ventas en zona horaria del restaurante (p. ej. America/Lima). */
+function getSalesEventSql() {
+  const at = 'COALESCE(updated_at, created_at)';
+  const local = sqlBusinessTimestamp(at, queryOne);
+  const orderAt = 'COALESCE(o.updated_at, o.created_at)';
+  const orderLocal = sqlBusinessTimestamp(orderAt, queryOne);
+  const today = getBusinessTodayDateKey(queryOne);
+  const month = getBusinessMonthKey(queryOne);
+  return {
+    EVENT_AT: at,
+    EVENT_LOCAL: local,
+    EVENT_DATE: `DATE(${local})`,
+    EVENT_MONTH: `strftime('%Y-%m', ${local})`,
+    EVENT_HOUR: `strftime('%H', ${local})`,
+    ORDER_LOCAL: orderLocal,
+    ORDER_DATE: `DATE(${orderLocal})`,
+    ORDER_MONTH: `strftime('%Y-%m', ${orderLocal})`,
+    TODAY: `'${today}'`,
+    MONTH: `'${month}'`,
+  };
+}
 
 function getLocalTodayDateKey() {
-  const row = queryOne(`SELECT ${LOCAL_TODAY_SQL} as d`);
-  return row?.d || '';
+  return getBusinessTodayDateKey(queryOne);
+}
+
+/** @deprecated Use getSalesEventSql().TODAY */
+function getLocalTodaySql() {
+  return getSalesEventSql().TODAY;
 }
 
 module.exports = {
@@ -203,7 +230,8 @@ module.exports = {
   COURTESY_ORDER_WHERE_SQL,
   SALES_ADJUSTMENT_WHERE_SQL,
   FINANCIAL_FILTER_SQL,
-  LOCAL_TODAY_SQL,
+  getSalesEventSql,
+  getLocalTodaySql,
   getLocalTodayDateKey,
   getAllowedPaymentMethods,
   getPaymentMethodOptionsPayload,

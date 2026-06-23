@@ -98,6 +98,28 @@ function closeWorkSession(userId, sessionTokenId = '', closeReason = 'logout', p
   return { closed: true, isParallel, wasLastOpen };
 }
 
+/** Cierra jornadas abiertas sin actividad real (p. ej. cerró el navegador sin «Finalizar jornada»). */
+function closeStaleOpenWorkSessions({ minIdleMinutes = 48 * 60 } = {}) {
+  const threshold = Math.max(60, Number(minIdleMinutes) || 0);
+  const rows = queryAll(
+    `SELECT s.id, s.user_id, s.session_token_id,
+            CASE
+              WHEN s.last_activity_at IS NULL OR trim(s.last_activity_at) = ''
+                THEN CAST((julianday('now') - julianday(s.login_at)) * 24 * 60 AS INTEGER)
+              ELSE CAST((julianday('now') - julianday(s.last_activity_at)) * 24 * 60 AS INTEGER)
+            END AS idle_minutes
+     FROM user_work_sessions s
+     WHERE s.logout_at IS NULL`
+  );
+  let closed = 0;
+  for (const row of rows || []) {
+    if (Number(row.idle_minutes || 0) < threshold) continue;
+    const result = closeWorkSession(row.user_id, row.session_token_id, 'stale_auto_close', null);
+    if (result.closed) closed += 1;
+  }
+  return closed;
+}
+
 function buildSessionDateWhere(alias, from, to, params) {
   const parts = [];
   if (from) {
@@ -269,6 +291,7 @@ module.exports = {
   countOpenSessions,
   startWorkSession,
   closeWorkSession,
+  closeStaleOpenWorkSessions,
   ensureOpenWorkSession,
   queryAggregatedJornadas,
   queryDeviceSessions,

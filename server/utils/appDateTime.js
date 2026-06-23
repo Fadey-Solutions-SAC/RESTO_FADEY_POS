@@ -82,6 +82,29 @@ function utcOffsetForTimezone(timeZone) {
   return DEFAULT_UTC_OFFSET;
 }
 
+function getBusinessTodayDateKey(queryOneFn) {
+  const tz = resolveRegionalTimezone(queryOneFn);
+  const p = partsFromDate(new Date(), tz);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+function getBusinessMonthKey(queryOneFn) {
+  const tz = resolveRegionalTimezone(queryOneFn);
+  const p = partsFromDate(new Date(), tz);
+  return `${p.year}-${p.month}`;
+}
+
+/** Convierte timestamp UTC naive (Render) a hora del restaurante en SQL. */
+function sqlBusinessTimestamp(columnExpr, queryOneFn) {
+  const tz = resolveRegionalTimezone(queryOneFn);
+  const offset = utcOffsetForTimezone(tz);
+  return `datetime(${columnExpr}, '${offset}')`;
+}
+
+function sqlBusinessNow(queryOneFn) {
+  return `'${nowLimaSql(queryOneFn)}'`;
+}
+
 module.exports = {
   DEFAULT_TIMEZONE,
   DEFAULT_UTC_OFFSET,
@@ -89,4 +112,8 @@ module.exports = {
   formatLimaSqlDateTime,
   nowLimaSql,
   utcOffsetForTimezone,
+  getBusinessTodayDateKey,
+  getBusinessMonthKey,
+  sqlBusinessTimestamp,
+  sqlBusinessNow,
 };

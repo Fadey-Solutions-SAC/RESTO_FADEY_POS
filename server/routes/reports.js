@@ -2,7 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { FINANCIAL_FILTER_SQL, LOCAL_TODAY_SQL, getLocalTodayDateKey, COURTESY_ORDER_WHERE_SQL } = require('../businessRules');
+const { FINANCIAL_FILTER_SQL, getSalesEventSql, getLocalTodayDateKey, COURTESY_ORDER_WHERE_SQL } = require('../businessRules');
 const { getEffectiveFlat } = require('../services/businessConfigService');
 const { computeOpenStatus } = require('../services/systemConfigHubService');
 const { getOpenRegistersOnActiveStations, listCajasWithIds } = require('../cajaSettings');
@@ -17,14 +17,6 @@ const { KITCHEN_ARRIVAL_ALERT_MIN, KITCHEN_PREP_ALERT_MIN } = require('../consta
 
 const router = express.Router();
 const FINANCIAL_FILTER = FINANCIAL_FILTER_SQL;
-const SALES_EVENT_AT_SQL = 'COALESCE(updated_at, created_at)';
-const SALES_EVENT_LOCAL_SQL = `datetime(${SALES_EVENT_AT_SQL}, 'localtime')`;
-const SALES_EVENT_DATE_SQL = `DATE(${SALES_EVENT_LOCAL_SQL})`;
-const SALES_EVENT_MONTH_SQL = `strftime('%Y-%m', ${SALES_EVENT_LOCAL_SQL})`;
-const SALES_EVENT_HOUR_SQL = `strftime('%H', ${SALES_EVENT_LOCAL_SQL})`;
-const SALES_EVENT_ORDER_LOCAL_SQL = `datetime(COALESCE(o.updated_at, o.created_at), 'localtime')`;
-const SALES_EVENT_ORDER_MONTH_SQL = `strftime('%Y-%m', ${SALES_EVENT_ORDER_LOCAL_SQL})`;
-const SALES_EVENT_ORDER_DATE_SQL = `DATE(${SALES_EVENT_ORDER_LOCAL_SQL})`;
 
 /** Solo ítems de inventario (excluye platos de carta con process_type transformado). */
 const INVENTORY_PRODUCT_WHERE = "IFNULL(process_type, 'transformed') = 'non_transformed'";
@@ -46,8 +38,9 @@ function readBusinessIntelFlat() {
 
 /** Ventas «en vivo»: turno de caja abierto; si no, último turno o día según horario del local. */
 function buildLiveSalesPanel(registerOpen) {
+  const s = getSalesEventSql();
   const todayRow = queryOne(
-    `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} AND ${FINANCIAL_FILTER}`
+    `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER}`
   );
   const dayTotal = Number(todayRow?.total || 0);
   const dayCount = Number(todayRow?.count || 0);
@@ -129,6 +122,7 @@ function buildLiveSalesPanel(registerOpen) {
  * @param {{ role?: string }} [opts]
  */
 function buildOperationalIntelligence(opts = {}) {
+  const s = getSalesEventSql();
   const role = String(opts.role || '');
   const biz = readBusinessIntelFlat();
   const autoAlertsOn = biz.auto_alerts_enabled !== false;
@@ -188,10 +182,10 @@ function buildOperationalIntelligence(opts = {}) {
      ORDER BY stock ASC LIMIT 10`
   );
   const peakHourToday = queryOne(
-    `SELECT ${SALES_EVENT_HOUR_SQL} as hour, COALESCE(SUM(total), 0) as total
+    `SELECT ${s.EVENT_HOUR} as hour, COALESCE(SUM(total), 0) as total
      FROM orders
-     WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} AND ${FINANCIAL_FILTER}
-     GROUP BY ${SALES_EVENT_HOUR_SQL}
+     WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER}
+     GROUP BY ${s.EVENT_HOUR}
      ORDER BY total DESC
      LIMIT 1`
   );
@@ -536,21 +530,22 @@ function getCajaDifferenceToleranceSoles() {
 
 /** Ventas y costos aproximados últimos 7 días (alineado con la lógica de finance-overview). */
 function financeRolling7dSnapshot() {
-  const dateSales = SALES_EVENT_DATE_SQL;
+  const s = getSalesEventSql();
+  const dateSales = s.EVENT_DATE;
   const salesRow = queryOne(
-    `SELECT COALESCE(SUM(total), 0) as total_sales FROM orders WHERE ${FINANCIAL_FILTER} AND ${dateSales} >= date('now', 'localtime', '-6 days')`
+    `SELECT COALESCE(SUM(total), 0) as total_sales FROM orders WHERE ${FINANCIAL_FILTER} AND ${dateSales} >= date(${s.TODAY}, '-6 days')`
   );
   const cashExpensesRow = queryOne(
     `SELECT COALESCE(SUM(amount), 0) as total FROM cash_movements
-     WHERE type = 'expense' AND date(datetime(created_at, 'localtime')) >= date('now', 'localtime', '-6 days')`
+     WHERE type = 'expense' AND date(datetime(created_at, '-05:00')) >= date(${s.TODAY}, '-6 days')`
   );
   const lossEventsRow = queryOne(
     `SELECT COALESCE(SUM(amount), 0) as total FROM finance_loss_events
-     WHERE date(datetime(occurred_at, 'localtime')) >= date('now', 'localtime', '-6 days')`
+     WHERE date(datetime(occurred_at, '-05:00')) >= date(${s.TODAY}, '-6 days')`
   );
   const purchasesRow = queryOne(
     `SELECT COALESCE(SUM(total_cost), 0) as total FROM inventory_expenses
-     WHERE date(datetime(created_at, 'localtime')) >= date('now', 'localtime', '-6 days')`
+     WHERE date(datetime(created_at, '-05:00')) >= date(${s.TODAY}, '-6 days')`
   );
   const totalSales = Number(salesRow?.total_sales || 0);
   const cashExpenses = Number(cashExpensesRow?.total || 0);
@@ -563,22 +558,23 @@ function financeRolling7dSnapshot() {
 
 /** Mes calendario en curso: ventas cobradas, compras, salidas y utilidad aprox. (base Informes · Finanzas). */
 function financeMonthToDateSnapshot() {
+  const s = getSalesEventSql();
   const monthSalesRow = queryOne(
-    `SELECT COALESCE(SUM(total), 0) as total_sales, COUNT(*) as orders FROM orders WHERE ${FINANCIAL_FILTER} AND ${SALES_EVENT_MONTH_SQL} = strftime('%Y-%m', 'now', 'localtime')`
+    `SELECT COALESCE(SUM(total), 0) as total_sales, COUNT(*) as orders FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_MONTH} = ${s.MONTH}`
   );
   const purchasesRow = queryOne(
     `SELECT COALESCE(SUM(total_cost), 0) as total FROM inventory_expenses
-     WHERE strftime('%Y-%m', datetime(created_at, 'localtime')) = strftime('%Y-%m', 'now', 'localtime')`
+     WHERE strftime('%Y-%m', datetime(created_at, '-05:00')) = ${s.MONTH}`
   );
   const cashExpensesRow = queryOne(
     `SELECT COALESCE(SUM(amount), 0) as total FROM cash_movements
-     WHERE type = 'expense' AND strftime('%Y-%m', datetime(created_at, 'localtime')) = strftime('%Y-%m', 'now', 'localtime')`
+     WHERE type = 'expense' AND strftime('%Y-%m', datetime(created_at, '-05:00')) = ${s.MONTH}`
   );
   const lossEventsRow = queryOne(
     `SELECT COALESCE(SUM(amount), 0) as total FROM finance_loss_events
-     WHERE strftime('%Y-%m', datetime(occurred_at, 'localtime')) = strftime('%Y-%m', 'now', 'localtime')`
+     WHERE strftime('%Y-%m', datetime(occurred_at, '-05:00')) = ${s.MONTH}`
   );
-  const ymRow = queryOne(`SELECT strftime('%Y-%m', 'now', 'localtime') as ym`);
+  const ymRow = { ym: s.MONTH.replace(/'/g, '') };
   const totalSales = Number(monthSalesRow?.total_sales || 0);
   const totalPurchases = Number(purchasesRow?.total || 0);
   const cashExpenses = Number(cashExpensesRow?.total || 0);
@@ -600,16 +596,17 @@ function financeMonthToDateSnapshot() {
 }
 
 router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  const s = getSalesEventSql();
   const today = getLocalTodayDateKey();
   const todaySales = queryOne(
-    `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} AND ${FINANCIAL_FILTER}`
+    `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER}`
   );
-  const monthSales = queryOne(`SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${SALES_EVENT_MONTH_SQL} = strftime('%Y-%m', 'now', 'localtime') AND ${FINANCIAL_FILTER}`);
-  const topProducts = queryAll(`SELECT oi.product_name, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' AND ${SALES_EVENT_ORDER_MONTH_SQL} = strftime('%Y-%m', 'now', 'localtime') GROUP BY oi.product_name ORDER BY total_sold DESC LIMIT 10`);
+  const monthSales = queryOne(`SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_MONTH} = ${s.MONTH} AND ${FINANCIAL_FILTER}`);
+  const topProducts = queryAll(`SELECT oi.product_name, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' AND ${s.ORDER_MONTH} = ${s.MONTH} GROUP BY oi.product_name ORDER BY total_sold DESC LIMIT 10`);
   const recentOrders = queryAll('SELECT * FROM orders ORDER BY created_at DESC LIMIT 10');
   recentOrders.forEach(o => { o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]); });
   const paymentMethods = queryAll(
-    `SELECT payment_method, COUNT(*) as count, SUM(total) as total FROM orders WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} AND ${FINANCIAL_FILTER} GROUP BY payment_method`
+    `SELECT payment_method, COUNT(*) as count, SUM(total) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER} GROUP BY payment_method`
   );
 
   const op = buildOperationalIntelligence({ role: req.user?.role });
@@ -664,24 +661,26 @@ router.get('/slow-moving-products', authenticateToken, requireRole('admin', 'caj
 });
 
 router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  const s = getSalesEventSql();
   const today = getLocalTodayDateKey();
 
-  const register = queryOne("SELECT * FROM cash_registers WHERE closed_at IS NULL ORDER BY opened_at DESC LIMIT 1");
+  const openRegisters = getOpenRegistersOnActiveStations();
+  const register = openRegisters.length ? openRegisters[openRegisters.length - 1] : null;
 
   const sales = queryOne(
-    `SELECT COUNT(*) as order_count, COALESCE(SUM(total), 0) as total_sales, COALESCE(SUM(subtotal), 0) as subtotal, COALESCE(SUM(tax), 0) as total_tax, COALESCE(SUM(discount), 0) as total_discount, COALESCE(SUM(tip_amount), 0) as total_tips FROM orders WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} AND ${FINANCIAL_FILTER}`
+    `SELECT COUNT(*) as order_count, COALESCE(SUM(total), 0) as total_sales, COALESCE(SUM(subtotal), 0) as subtotal, COALESCE(SUM(tax), 0) as total_tax, COALESCE(SUM(discount), 0) as total_discount, COALESCE(SUM(tip_amount), 0) as total_tips FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER}`
   );
 
   const hourly = queryAll(
-    `SELECT ${SALES_EVENT_HOUR_SQL} as hour, COUNT(*) as orders, COALESCE(SUM(total), 0) as total FROM orders WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} AND ${FINANCIAL_FILTER} GROUP BY ${SALES_EVENT_HOUR_SQL} ORDER BY hour`
+    `SELECT ${s.EVENT_HOUR} as hour, COUNT(*) as orders, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER} GROUP BY ${s.EVENT_HOUR} ORDER BY hour`
   );
 
   const paymentMethods = queryAll(
-    `SELECT payment_method, COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} AND ${FINANCIAL_FILTER} GROUP BY payment_method`
+    `SELECT payment_method, COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER} GROUP BY payment_method`
   );
 
   const orders = queryAll(
-    `SELECT * FROM orders WHERE ${SALES_EVENT_DATE_SQL} = ${LOCAL_TODAY_SQL} AND NOT ${COURTESY_ORDER_WHERE_SQL} ORDER BY ${SALES_EVENT_AT_SQL} DESC`
+    `SELECT * FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND NOT ${COURTESY_ORDER_WHERE_SQL} ORDER BY ${s.EVENT_AT} DESC`
   );
   orders.forEach(o => { o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]); });
 
@@ -701,10 +700,11 @@ router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, re
     console.warn('[reports/daily] adjustments:', err?.message || err);
   }
 
-  res.json({ register_open: !!register, register, sales, hourly, paymentMethods, orders, adjustments, date: today });
+  res.json({ register_open: openRegisters.length > 0, register, sales, hourly, paymentMethods, orders, adjustments, date: today });
 });
 
 router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  const s = getSalesEventSql();
   const closedRegisters = queryAll(
     "SELECT cr.*, u.full_name as user_name FROM cash_registers cr LEFT JOIN users u ON u.id = cr.user_id WHERE cr.closed_at IS NOT NULL ORDER BY cr.closed_at DESC LIMIT 60"
   );
@@ -714,15 +714,15 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
   }));
 
   const dailySales = queryAll(
-    `SELECT ${SALES_EVENT_DATE_SQL} as date, COUNT(*) as orders, COALESCE(SUM(total), 0) as total, COALESCE(SUM(tax), 0) as tax FROM orders WHERE ${FINANCIAL_FILTER} AND ${SALES_EVENT_LOCAL_SQL} >= datetime('now', 'localtime', '-30 days') GROUP BY ${SALES_EVENT_DATE_SQL} ORDER BY date DESC`
+    `SELECT ${s.EVENT_DATE} as date, COUNT(*) as orders, COALESCE(SUM(total), 0) as total, COALESCE(SUM(tax), 0) as tax FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_DATE} >= date(${s.TODAY}, '-30 days') GROUP BY ${s.EVENT_DATE} ORDER BY date DESC`
   );
 
   const monthlySales = queryAll(
-    `SELECT ${SALES_EVENT_MONTH_SQL} as month, COUNT(*) as orders, COALESCE(SUM(total), 0) as total, COALESCE(SUM(tax), 0) as tax FROM orders WHERE ${FINANCIAL_FILTER} GROUP BY ${SALES_EVENT_MONTH_SQL} ORDER BY month DESC LIMIT 12`
+    `SELECT ${s.EVENT_MONTH} as month, COUNT(*) as orders, COALESCE(SUM(total), 0) as total, COALESCE(SUM(tax), 0) as tax FROM orders WHERE ${FINANCIAL_FILTER} GROUP BY ${s.EVENT_MONTH} ORDER BY month DESC LIMIT 12`
   );
 
   const totalMonth = queryOne(
-    `SELECT COUNT(*) as orders, COALESCE(SUM(total), 0) as total, COALESCE(SUM(tax), 0) as tax FROM orders WHERE ${FINANCIAL_FILTER} AND ${SALES_EVENT_MONTH_SQL} = strftime('%Y-%m', 'now', 'localtime')`
+    `SELECT COUNT(*) as orders, COALESCE(SUM(total), 0) as total, COALESCE(SUM(tax), 0) as tax FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_MONTH} = ${s.MONTH}`
   );
   const closedRegistersMonth = queryOne(
     "SELECT COUNT(*) as count FROM cash_registers WHERE closed_at IS NOT NULL AND strftime('%Y-%m', closed_at) = strftime('%Y-%m', 'now')"
@@ -817,11 +817,12 @@ router.get('/closed-registers/:id', authenticateToken, requireRole('admin', 'caj
 });
 
 router.get('/ranking', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  const s = getSalesEventSql();
   const { period } = req.query;
   let dateFilter = '';
-  if (period === 'today') dateFilter = `AND ${SALES_EVENT_ORDER_DATE_SQL} = DATE('now', 'localtime')`;
-  else if (period === 'week') dateFilter = `AND ${SALES_EVENT_ORDER_LOCAL_SQL} >= datetime('now', 'localtime', '-6 days')`;
-  else if (period === 'month') dateFilter = `AND ${SALES_EVENT_ORDER_MONTH_SQL} = strftime('%Y-%m', 'now', 'localtime')`;
+  if (period === 'today') dateFilter = `AND ${s.ORDER_DATE} = ${s.TODAY}`;
+  else if (period === 'week') dateFilter = `AND ${s.ORDER_DATE} >= date(${s.TODAY}, '-6 days')`;
+  else if (period === 'month') dateFilter = `AND ${s.ORDER_MONTH} = ${s.MONTH}`;
 
   const ranking = queryAll(
     `SELECT oi.product_name, oi.product_id, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue, COUNT(DISTINCT oi.order_id) as order_count FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' ${dateFilter} GROUP BY oi.product_id ORDER BY total_sold DESC`
@@ -831,11 +832,12 @@ router.get('/ranking', authenticateToken, requireRole('admin', 'cajero'), (req, 
 });
 
 router.get('/sales', authenticateToken, requireRole('admin'), (req, res) => {
+  const s = getSalesEventSql();
   const { period, start_date, end_date } = req.query;
   if (period === 'daily') {
-    res.json(queryAll(`SELECT ${SALES_EVENT_DATE_SQL} as date, COUNT(*) as orders, SUM(total) as total, SUM(tax) as tax, SUM(discount) as discounts FROM orders WHERE ${FINANCIAL_FILTER} AND ${SALES_EVENT_DATE_SQL} BETWEEN COALESCE(?, DATE('now', 'localtime', '-30 days')) AND COALESCE(?, DATE('now', 'localtime')) GROUP BY ${SALES_EVENT_DATE_SQL} ORDER BY date DESC`, [start_date || null, end_date || null]));
+    res.json(queryAll(`SELECT ${s.EVENT_DATE} as date, COUNT(*) as orders, SUM(total) as total, SUM(tax) as tax, SUM(discount) as discounts FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_DATE} BETWEEN COALESCE(?, date(${s.TODAY}, '-30 days')) AND COALESCE(?, ${s.TODAY}) GROUP BY ${s.EVENT_DATE} ORDER BY date DESC`, [start_date || null, end_date || null]));
   } else {
-    res.json(queryAll(`SELECT ${SALES_EVENT_MONTH_SQL} as month, COUNT(*) as orders, SUM(total) as total, SUM(tax) as tax, SUM(discount) as discounts FROM orders WHERE ${FINANCIAL_FILTER} GROUP BY ${SALES_EVENT_MONTH_SQL} ORDER BY month DESC LIMIT 12`));
+    res.json(queryAll(`SELECT ${s.EVENT_MONTH} as month, COUNT(*) as orders, SUM(total) as total, SUM(tax) as tax, SUM(discount) as discounts FROM orders WHERE ${FINANCIAL_FILTER} GROUP BY ${s.EVENT_MONTH} ORDER BY month DESC LIMIT 12`));
   }
 });
 
@@ -844,8 +846,9 @@ router.get('/products', authenticateToken, requireRole('admin', 'cajero'), (req,
 });
 
 router.get('/payment-methods', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  const s = getSalesEventSql();
   const { start_date, end_date } = req.query;
-  res.json(queryAll(`SELECT payment_method, COUNT(*) as count, SUM(total) as total FROM orders WHERE ${FINANCIAL_FILTER} AND ${SALES_EVENT_DATE_SQL} BETWEEN COALESCE(?, DATE('now', 'localtime', '-30 days')) AND COALESCE(?, DATE('now', 'localtime')) GROUP BY payment_method ORDER BY total DESC`, [start_date || null, end_date || null]));
+  res.json(queryAll(`SELECT payment_method, COUNT(*) as count, SUM(total) as total FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_DATE} BETWEEN COALESCE(?, date(${s.TODAY}, '-30 days')) AND COALESCE(?, ${s.TODAY}) GROUP BY payment_method ORDER BY total DESC`, [start_date || null, end_date || null]));
 });
 
 const LOSS_CATEGORIES = new Set(['salida_efectivo', 'gasto_extra', 'merma', 'danio_propiedad', 'reembolso', 'otro']);
@@ -864,10 +867,11 @@ function defaultFinanceRange() {
 }
 
 router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, res) => {
+  const s = getSalesEventSql();
   const def = defaultFinanceRange();
   const from = parseYmd(req.query.from) || def.from;
   const to = parseYmd(req.query.to) || def.to;
-  const dateSales = SALES_EVENT_DATE_SQL;
+  const dateSales = s.EVENT_DATE;
   const salesRow = queryOne(
     `SELECT COUNT(*) as orders, COALESCE(SUM(total), 0) as total_sales FROM orders WHERE ${FINANCIAL_FILTER} AND ${dateSales} BETWEEN date(?) AND date(?)`,
     [from, to]

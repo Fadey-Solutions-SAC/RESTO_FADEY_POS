@@ -5,6 +5,7 @@
 
 const { queryAll, queryOne } = require('../database');
 const { FINANCIAL_FILTER_SQL } = require('../businessRules');
+const { closeStaleOpenWorkSessions } = require('./workSessionService');
 const {
   rawWorkedMinutesExpr,
   effectiveWorkedMinutesExpr,
@@ -73,6 +74,8 @@ function activeMinutesExpr(alias = 's') {
 }
 
 function buildLiveDashboard() {
+  closeStaleOpenWorkSessions({ minIdleMinutes: IDLE_MINUTES_SEVERE });
+
   const rawEx = rawWorkedMinutesExpr('s');
   const effEx = effectiveWorkedMinutesExpr('s');
   const activeEx = activeMinutesExpr('s');
@@ -82,9 +85,9 @@ function buildLiveDashboard() {
     `SELECT
       s.id AS session_id,
       s.user_id,
-      COALESCE(NULLIF(u.full_name, ''), s.full_name) AS full_name,
-      COALESCE(NULLIF(u.username, ''), s.username) AS username,
-      COALESCE(NULLIF(u.role, ''), s.role) AS role,
+      COALESCE(NULLIF(trim(u.full_name), ''), NULLIF(trim(s.full_name), ''), NULLIF(trim(u.username), ''), s.username) AS full_name,
+      COALESCE(NULLIF(trim(u.username), ''), s.username) AS username,
+      COALESCE(NULLIF(trim(u.role), ''), s.role) AS role,
       s.login_at,
       s.last_activity_at,
       ${shiftLabelFromLoginSql('s')} AS shift_label,
@@ -93,14 +96,19 @@ function buildLiveDashboard() {
       ${activeEx} AS active_minutes,
       ${idleEx} AS idle_minutes
      FROM user_work_sessions s
-     LEFT JOIN users u ON u.id = s.user_id
+     INNER JOIN users u ON u.id = s.user_id AND IFNULL(u.is_active, 1) = 1
      WHERE s.logout_at IS NULL
-     ORDER BY datetime(s.login_at) ASC`
+       AND (${idleEx}) < ?
+     ORDER BY datetime(s.login_at) ASC`,
+    [IDLE_MINUTES_WARN]
   );
 
   const activeStaffByUser = new Map();
   for (const row of activeStaffRaw || []) {
-    if (!activeStaffByUser.has(row.user_id)) activeStaffByUser.set(row.user_id, row);
+    const prev = activeStaffByUser.get(row.user_id);
+    if (!prev || Number(row.active_minutes || 0) >= Number(prev.active_minutes || 0)) {
+      activeStaffByUser.set(row.user_id, row);
+    }
   }
   const activeStaff = [...activeStaffByUser.values()];
 
