@@ -39,10 +39,23 @@ function buildRefreshedStaffToken(decoded, userRow) {
   });
 }
 
+function buildStaffToken(userRow, sessionId = '') {
+  if (!userRow?.id || Number(userRow.is_active || 0) !== 1) return null;
+  return signStaffToken({
+    id: userRow.id,
+    username: userRow.username,
+    role: userRow.role,
+    restaurant_id: userRow.restaurant_id,
+    full_name: userRow.full_name,
+    session_id: String(sessionId || '').trim(),
+  });
+}
+
 module.exports = {
   STAFF_JWT_EXPIRES_IN,
   signStaffToken,
   signMasterToken,
   shouldRefreshStaffToken,
   buildRefreshedStaffToken,
+  buildStaffToken,
 };

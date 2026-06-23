@@ -223,7 +223,7 @@ function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
 
 /**
  * Agrega productos a una comanda existente (misma mesa, ventana 40 min).
- * No reinicia estaciones ya cerradas salvo reabrir la que recibe ítems nuevos.
+ * Si la comanda ya no admite fusión, createOrMergeTableOrderInTransaction crea una nueva.
  */
 function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes } = {}) {
   const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -296,8 +296,10 @@ function createOrMergeTableOrderInTransaction(tx, orderId, body, actor) {
   if (orderType === 'dine_in' && tableNumber && !body.hold_kitchen_for_reservation) {
     if (targetOrderId) {
       const explicit = resolveExplicitMergeTargetTx(tx, targetOrderId, { tableId, tableNumberRaw: tableNumber });
-      syncOrderTableIdTx(tx, explicit.id, tableId);
-      return appendItemsToOrderInTransaction(tx, explicit.id, body.items, actor, { notes: body.notes });
+      if (explicit) {
+        syncOrderTableIdTx(tx, explicit.id, tableId);
+        return appendItemsToOrderInTransaction(tx, explicit.id, body.items, actor, { notes: body.notes });
+      }
     }
     const existing = findMergeableTableOrderTx(tx, tableNumber, { tableId });
     if (existing) {

@@ -5,7 +5,6 @@
 
 const { queryAll, queryOne } = require('../database');
 const { FINANCIAL_FILTER_SQL } = require('../businessRules');
-const { closeStaleOpenWorkSessions } = require('./workSessionService');
 const { STAFF_IDLE_LOGOUT_MINUTES } = require('../constants/staffSessionPolicy');
 const {
   rawWorkedMinutesExpr,
@@ -75,8 +74,6 @@ function activeMinutesExpr(alias = 's') {
 }
 
 function buildLiveDashboard() {
-  closeStaleOpenWorkSessions({ minIdleMinutes: IDLE_MINUTES_SEVERE });
-
   const rawEx = rawWorkedMinutesExpr('s');
   const effEx = effectiveWorkedMinutesExpr('s');
   const activeEx = activeMinutesExpr('s');

@@ -252,13 +252,30 @@ export function formatMesaLabel(tableNumber) {
   return `M${t.padStart(2, '0')}`;
 }
 
+const TABLE_ORDER_MERGE_WINDOW_MS = 40 * 60 * 1000;
+
+function isWithinTableMergeWindow(order) {
+  if (!order) return false;
+  const releaseAt = String(order.kitchen_release_at || '').trim();
+  if (releaseAt) {
+    const releaseMs = Date.parse(releaseAt.includes('T') ? releaseAt : releaseAt.replace(' ', 'T'));
+    if (Number.isFinite(releaseMs) && releaseMs > Date.now()) return false;
+  }
+  const anchor = order.kitchen_last_send_at || order.updated_at || order.created_at;
+  if (!anchor) return false;
+  const anchorMs = Date.parse(String(anchor).includes('T') ? anchor : String(anchor).replace(' ', 'T'));
+  if (!Number.isFinite(anchorMs)) return false;
+  return Date.now() - anchorMs < TABLE_ORDER_MERGE_WINDOW_MS;
+}
+
 export function pickMergeTargetOrder(orders = []) {
   const active = (orders || []).filter(
     (o) =>
       o &&
       o.status !== 'cancelled' &&
       String(o.payment_status || 'pending') !== 'paid' &&
-      ['pending', 'preparing', 'ready'].includes(String(o.status || '')),
+      ['pending', 'preparing', 'ready'].includes(String(o.status || '')) &&
+      isWithinTableMergeWindow(o),
   );
   if (!active.length) return null;
   return [...active].sort((a, b) => {

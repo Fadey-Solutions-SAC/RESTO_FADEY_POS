@@ -64,16 +64,10 @@ function resolveExplicitMergeTargetTx(tx, targetOrderId, { tableId, tableNumberR
   const id = String(targetOrderId || '').trim();
   if (!id) return null;
   const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [id]);
-  if (!order) throw new Error('Comanda destino no encontrada');
-  if (!isOrderMergeableState(order)) {
-    throw new Error('La comanda seleccionada ya no admite productos adicionales');
-  }
-  if (!orderMatchesTableScope(order, { tableId, tableNumberRaw })) {
-    throw new Error('La comanda no pertenece a esta mesa');
-  }
-  if (!isWithinMergeWindowTx(tx, order)) {
-    throw new Error('La comanda ya no está en la ventana de 40 minutos para agregar productos');
-  }
+  if (!order) return null;
+  if (!isOrderMergeableState(order)) return null;
+  if (!orderMatchesTableScope(order, { tableId, tableNumberRaw })) return null;
+  if (!isWithinMergeWindowTx(tx, order)) return null;
   return order;
 }
 

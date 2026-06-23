@@ -101,20 +101,25 @@ function closeWorkSession(userId, sessionTokenId = '', closeReason = 'logout', p
   return { closed: true, isParallel, wasLastOpen };
 }
 
+/** Jornada abierta que coincide exactamente con el token JWT. */
+function resolveJwtStaffSession(userId, sessionTokenId = '') {
+  const uid = String(userId || '').trim();
+  const sid = String(sessionTokenId || '').trim();
+  if (!uid || !sid) return null;
+  return queryOne(
+    `SELECT id, user_id, login_at, last_activity_at, session_token_id
+     FROM user_work_sessions
+     WHERE user_id = ? AND session_token_id = ? AND logout_at IS NULL LIMIT 1`,
+    [uid, sid]
+  );
+}
+
 /** Jornada abierta del token JWT o, si no coincide, la más reciente del usuario. */
 function resolveOpenStaffSession(userId, sessionTokenId = '') {
+  const own = resolveJwtStaffSession(userId, sessionTokenId);
+  if (own) return own;
   const uid = String(userId || '').trim();
   if (!uid) return null;
-  const sid = String(sessionTokenId || '').trim();
-  if (sid) {
-    const own = queryOne(
-      `SELECT id, user_id, login_at, last_activity_at, session_token_id
-       FROM user_work_sessions
-       WHERE user_id = ? AND session_token_id = ? AND logout_at IS NULL LIMIT 1`,
-      [uid, sid]
-    );
-    if (own) return own;
-  }
   return queryOne(
     `SELECT id, user_id, login_at, last_activity_at, session_token_id
      FROM user_work_sessions
@@ -125,7 +130,8 @@ function resolveOpenStaffSession(userId, sessionTokenId = '') {
 
 /** Reinicia el contador de inactividad (login u operación). */
 function touchStaffSessionNow(userId, sessionTokenId = '') {
-  const row = resolveOpenStaffSession(userId, sessionTokenId);
+  const row = resolveJwtStaffSession(userId, sessionTokenId)
+    || resolveOpenStaffSession(userId, sessionTokenId);
   if (!row?.id) return false;
   runSql(
     `UPDATE user_work_sessions SET last_activity_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
@@ -134,9 +140,9 @@ function touchStaffSessionNow(userId, sessionTokenId = '') {
   return true;
 }
 
-/** Minutos sin actividad en la jornada abierta (null = sin sesión abierta). */
+/** Minutos sin actividad solo en la jornada del token JWT (null = sin jornada ligada). */
 function getStaffSessionIdleMinutes(userId, sessionTokenId = '') {
-  const row = resolveOpenStaffSession(userId, sessionTokenId);
+  const row = resolveJwtStaffSession(userId, sessionTokenId);
   if (!row) return null;
   const anchor = String(row.last_activity_at || '').trim() || String(row.login_at || '').trim();
   if (!anchor) return 0;
@@ -328,7 +334,7 @@ function summarizeJornadas(jornadas) {
 
 function ensureOpenWorkSession(user) {
   const trackableRoles = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery']);
-  if (!user?.id || !trackableRoles.has(user.role)) return;
+  if (!user?.id || !trackableRoles.has(user.role)) return null;
 
   const sid = String(user.session_id || '').trim();
   if (sid) {
@@ -336,21 +342,28 @@ function ensureOpenWorkSession(user) {
       'SELECT id FROM user_work_sessions WHERE user_id = ? AND session_token_id = ? AND logout_at IS NULL LIMIT 1',
       [user.id, sid]
     );
-    if (own?.id) return;
-    const anyOpen = queryOne(
-      'SELECT id FROM user_work_sessions WHERE user_id = ? AND logout_at IS NULL LIMIT 1',
-      [user.id]
-    );
-    if (anyOpen?.id) return;
-    return;
+    if (own?.id) return null;
   }
 
   const existing = queryOne(
     'SELECT id FROM user_work_sessions WHERE user_id = ? AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1',
     [user.id]
   );
-  if (existing?.id) return;
-  startWorkSession(user, null);
+  if (!sid && existing?.id) return null;
+
+  const { sessionTokenId } = startWorkSession(user, null);
+  touchStaffSessionNow(user.id, sessionTokenId);
+  return sessionTokenId;
+}
+
+/** Repara jornadas abiertas sin last_activity_at (usuarios bloqueados tras migración). */
+function backfillOpenSessionActivity() {
+  runSql(
+    `UPDATE user_work_sessions
+     SET last_activity_at = datetime('now'), updated_at = datetime('now')
+     WHERE logout_at IS NULL
+       AND (last_activity_at IS NULL OR trim(last_activity_at) = '')`
+  );
 }
 
 module.exports = {
@@ -360,10 +373,12 @@ module.exports = {
   closeWorkSession,
   closeStaleOpenWorkSessions,
   resolveOpenStaffSession,
+  resolveJwtStaffSession,
   touchStaffSessionNow,
   getStaffSessionIdleMinutes,
   enforceStaffIdleLogout,
   ensureOpenWorkSession,
+  backfillOpenSessionActivity,
   queryAggregatedJornadas,
   queryDeviceSessions,
   summarizeJornadas,

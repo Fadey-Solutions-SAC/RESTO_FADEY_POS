@@ -2,10 +2,14 @@ const jwt = require('jsonwebtoken');
 const { queryOne } = require('../database');
 const { getLockState, getMasterCredentialsPublic } = require('../masterAdminService');
 const { touchWorkSessionActivity } = require('../services/workActivityTracker');
-const { ensureOpenWorkSession: ensureUserWorkSession, enforceStaffIdleLogout } = require('../services/workSessionService');
+const {
+  ensureOpenWorkSession: ensureUserWorkSession,
+  touchStaffSessionNow,
+} = require('../services/workSessionService');
 const {
   shouldRefreshStaffToken,
   buildRefreshedStaffToken,
+  buildStaffToken,
 } = require('../utils/staffJwt');
 const { JWT_SECRET } = require('../utils/jwtSecret');
 
@@ -49,20 +53,27 @@ function authenticateToken(req, res, next) {
       username: user.username,
       full_name: user.full_name,
     };
+
+    let newSessionId = null;
     try {
-      ensureUserWorkSession(req.user);
+      newSessionId = ensureUserWorkSession(req.user);
     } catch (_) {
       /* noop */
     }
-    const idleMsg = enforceStaffIdleLogout(req.user);
-    if (idleMsg) {
-      return res.status(401).json({ error: idleMsg, code: 'SESSION_IDLE_TIMEOUT' });
+    if (newSessionId) {
+      req.user.session_id = newSessionId;
+      const reboundToken = buildStaffToken(user, newSessionId);
+      if (reboundToken) res.setHeader('X-Refreshed-Token', reboundToken);
     }
-    touchWorkSessionActivity(req.user, { module: 'api', path: req.path });
-    if (shouldRefreshStaffToken(decoded)) {
-      const refreshed = buildRefreshedStaffToken(decoded, user);
+
+    touchStaffSessionNow(req.user.id, req.user.session_id);
+    touchWorkSessionActivity(req.user, { module: 'api', path: req.path }, { force: false });
+
+    if (!newSessionId && shouldRefreshStaffToken(decoded)) {
+      const refreshed = buildRefreshedStaffToken(req.user, user);
       if (refreshed) res.setHeader('X-Refreshed-Token', refreshed);
     }
+
     const lock = getLockState();
     if (lock.locked) {
       return res.status(423).json({ error: lock.reason || 'Sistema bloqueado por falta de pago' });

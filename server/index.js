@@ -352,6 +352,16 @@ async function start() {
   try {
     const { ensureUserWorkSessionSchema } = require('./utils/ensureUserWorkSessionSchema');
     ensureUserWorkSessionSchema();
+    const { backfillOpenSessionActivity, closeStaleOpenWorkSessions } = require('./services/workSessionService');
+    backfillOpenSessionActivity();
+    closeStaleOpenWorkSessions();
+    setInterval(() => {
+      try {
+        closeStaleOpenWorkSessions();
+      } catch (err) {
+        console.warn('[work-session] auto-cierre inactividad:', err.message || err);
+      }
+    }, 60 * 60 * 1000);
   } catch (err) {
     console.warn('[db] user_work_sessions schema (startup):', err.message || err);
   }
