@@ -355,6 +355,12 @@ async function start() {
     console.warn('[db] user_work_sessions schema (startup):', err.message || err);
   }
   try {
+    const { ensureOrdersSchema } = require('./utils/ensureOrdersSchema');
+    ensureOrdersSchema();
+  } catch (err) {
+    console.warn('[db] orders schema (startup):', err.message || err);
+  }
+  try {
     const { repairKitchenOrdersAtStartup } = require('./services/kitchenOrderRepairService');
     repairKitchenOrdersAtStartup();
   } catch (err) {

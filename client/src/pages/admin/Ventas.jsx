@@ -614,7 +614,7 @@ export default function Ventas() {
                         {group.comprobanteCount > 1 ? ` · ${group.comprobanteCount} pagos` : ''}
                       </p>
                     </td>
-                    <td className="py-2.5 text-[var(--ui-body-text)] font-semibold">{group.accountLabel || group.mesaLabel}</td>
+                    <td className="py-2.5 text-[var(--ui-body-text)] font-semibold">{group.mesaLabel}</td>
                     <td className="py-2.5 text-[var(--ui-muted)]">Caja 01</td>
                     <td className="py-2.5 text-[var(--ui-body-text)]">{mesero}</td>
                     <td className="py-2.5 text-[var(--ui-body-text)]">

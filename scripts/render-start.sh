@@ -8,25 +8,50 @@ cd "$ROOT"
 
 export EFACT_HTTP_HOST="${EFACT_HTTP_HOST:-0.0.0.0}"
 export EFACT_HTTP_PORT="${EFACT_HTTP_PORT:-8765}"
-if [[ -z "${OUTPUT_DIR:-}" ]]; then
-  if [[ -d /data ]]; then
-    export OUTPUT_DIR="/data/efact-output"
-  else
-    export OUTPUT_DIR="$ROOT/server/efact/output"
+
+resolve_output_dir() {
+  if [[ -n "${OUTPUT_DIR:-}" ]]; then
+    echo "$OUTPUT_DIR"
+    return
   fi
+  if [[ -d /data ]]; then
+    echo "/data/efact-output"
+    return
+  fi
+  echo "$ROOT/server/efact/output"
+}
+
+export OUTPUT_DIR="$(resolve_output_dir)"
+if ! mkdir -p "$OUTPUT_DIR" 2>/dev/null; then
+  echo "[render-start] WARN: no se pudo usar OUTPUT_DIR=$OUTPUT_DIR (¿disco /data montado?). Fallback local."
+  export OUTPUT_DIR="$ROOT/server/efact/output"
+  mkdir -p "$OUTPUT_DIR"
 fi
-mkdir -p "$OUTPUT_DIR"
+
+if [[ -n "${DB_PATH:-}" ]] && [[ "$DB_PATH" == /data/* ]] && [[ ! -d /data ]]; then
+  echo "[render-start] ERROR: DB_PATH=$DB_PATH pero /data no existe."
+  echo "[render-start] Render → Disks → mount path /data, luego Manual Deploy (ver DEPLOY_GITHUB_VERCEL_RENDER.md)."
+  exit 1
+fi
 
 cd "$ROOT/server/efact"
-python3 api_server.py &
-EFACT_PID=$!
+if command -v python3 >/dev/null 2>&1; then
+  python3 api_server.py &
+  EFACT_PID=$!
+else
+  echo "[render-start] WARN: python3 no disponible; e-fact no iniciará (Node sigue)."
+  EFACT_PID=""
+fi
 
 cleanup() {
-  kill "$EFACT_PID" 2>/dev/null || true
+  if [[ -n "${EFACT_PID:-}" ]]; then
+    kill "$EFACT_PID" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT INT TERM
 
 sleep 1
 
 cd "$ROOT"
+echo "[render-start] Iniciando Node (PORT=${PORT:-3001})…"
 exec node server/index.js

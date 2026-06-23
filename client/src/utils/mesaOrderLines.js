@@ -406,12 +406,6 @@ export function buildSalesDisplayGroups(orders = []) {
       mesaLabel: isMesa ? formatMesaLabel(primary.table_number) : '-',
       salesDateKey: dateKey,
       sessionIndex,
-      accountLabel:
-        isMesa && sessionIndex > 0
-          ? `${formatMesaLabel(primary.table_number)} · cuenta ${sessionIndex + 1}`
-          : isMesa
-            ? formatMesaLabel(primary.table_number)
-            : '-',
       orders: sorted,
       primary,
       groupedProducts,

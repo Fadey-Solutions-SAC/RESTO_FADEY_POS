@@ -18,6 +18,7 @@ const {
 } = require('../services/staffModuleAccessService');
 const { orderHasBarItems, orderHasKitchenItems, stripKitchenItemMeta, filterItemsForKitchenStation } = require('../utils/productionArea');
 const { getOrderItemsWithProductionArea, enrichOrderItemsWithComboAreas } = require('../services/orderItemsProductionService');
+const { ensureOrdersSchema } = require('../utils/ensureOrdersSchema');
 const {
   allRequiredStationsReady,
   kitchenOrderNeedsRepair,
@@ -359,6 +360,7 @@ router.post('/', authenticateToken, (req, res) => {
     }
   }
   try {
+    ensureOrdersSchema();
     logOrderDebug(req, 'post_order_start', {
       item_count: items.length,
       type: req.body?.type,
