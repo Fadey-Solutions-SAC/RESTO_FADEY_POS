@@ -20,6 +20,7 @@ const {
   closeWorkSession,
   countOpenSessions,
   ensureOpenWorkSession,
+  touchStaffSessionNow,
 } = require('../services/workSessionService');
 const { signStaffToken, signMasterToken, shouldRefreshStaffToken, buildRefreshedStaffToken } = require('../utils/staffJwt');
 const { touchWorkSessionActivity } = require('../services/workActivityTracker');
@@ -140,7 +141,7 @@ router.post('/heartbeat', authenticateToken, (req, res) => {
   if (req.user?.type === 'customer' || req.user?.role === 'master_admin') {
     return res.json({ ok: true });
   }
-  touchWorkSessionActivity(req.user, { module: 'heartbeat', path: '/auth/heartbeat' });
+  touchWorkSessionActivity(req.user, { module: 'heartbeat', path: '/auth/heartbeat' }, { force: true });
   res.json({ ok: true, idle_logout_minutes: STAFF_IDLE_LOGOUT_MINUTES });
 });
 
@@ -200,6 +201,7 @@ router.post('/login', (req, res) => {
     }
   }
   const { sessionTokenId } = startWorkSession(user, photoLogin || null);
+  touchStaffSessionNow(user.id, sessionTokenId);
   advanceStaffChatCycleIfDue();
 
   const token = signStaffToken({

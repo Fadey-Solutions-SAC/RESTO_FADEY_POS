@@ -101,22 +101,42 @@ function closeWorkSession(userId, sessionTokenId = '', closeReason = 'logout', p
   return { closed: true, isParallel, wasLastOpen };
 }
 
-/** Minutos sin actividad en la jornada abierta (null = sin sesión abierta). */
-function getStaffSessionIdleMinutes(userId, sessionTokenId = '') {
+/** Jornada abierta del token JWT o, si no coincide, la más reciente del usuario. */
+function resolveOpenStaffSession(userId, sessionTokenId = '') {
   const uid = String(userId || '').trim();
   if (!uid) return null;
   const sid = String(sessionTokenId || '').trim();
-  const row = sid
-    ? queryOne(
-        `SELECT login_at, last_activity_at FROM user_work_sessions
-         WHERE user_id = ? AND session_token_id = ? AND logout_at IS NULL LIMIT 1`,
-        [uid, sid]
-      )
-    : queryOne(
-        `SELECT login_at, last_activity_at FROM user_work_sessions
-         WHERE user_id = ? AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1`,
-        [uid]
-      );
+  if (sid) {
+    const own = queryOne(
+      `SELECT id, user_id, login_at, last_activity_at, session_token_id
+       FROM user_work_sessions
+       WHERE user_id = ? AND session_token_id = ? AND logout_at IS NULL LIMIT 1`,
+      [uid, sid]
+    );
+    if (own) return own;
+  }
+  return queryOne(
+    `SELECT id, user_id, login_at, last_activity_at, session_token_id
+     FROM user_work_sessions
+     WHERE user_id = ? AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1`,
+    [uid]
+  );
+}
+
+/** Reinicia el contador de inactividad (login u operación). */
+function touchStaffSessionNow(userId, sessionTokenId = '') {
+  const row = resolveOpenStaffSession(userId, sessionTokenId);
+  if (!row?.id) return false;
+  runSql(
+    `UPDATE user_work_sessions SET last_activity_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+    [row.id]
+  );
+  return true;
+}
+
+/** Minutos sin actividad en la jornada abierta (null = sin sesión abierta). */
+function getStaffSessionIdleMinutes(userId, sessionTokenId = '') {
+  const row = resolveOpenStaffSession(userId, sessionTokenId);
   if (!row) return null;
   const anchor = String(row.last_activity_at || '').trim() || String(row.login_at || '').trim();
   if (!anchor) return 0;
@@ -128,27 +148,19 @@ function getStaffSessionIdleMinutes(userId, sessionTokenId = '') {
 }
 
 /**
- * Cierra sesión si lleva ≥36 h sin actividad. Mientras haya uso (API / heartbeat), no cierra.
+ * Cierra sesión si lleva ≥36 h sin actividad desde last_activity_at.
+ * Cada login u operación reinicia ese contador (touchStaffSessionNow).
  * @returns {string|null} mensaje de error si debe bloquearse el acceso
  */
-function enforceStaffIdleLogout(user, jwtIssuedAtSec = 0) {
+function enforceStaffIdleLogout(user) {
   if (!user?.id || !TRACKABLE_STAFF_ROLES.has(String(user.role || ''))) return null;
 
   const idleMinutes = getStaffSessionIdleMinutes(user.id, user.session_id);
-  if (idleMinutes != null) {
-    if (idleMinutes >= STAFF_IDLE_LOGOUT_MINUTES) {
-      closeWorkSession(user.id, user.session_id, 'idle_auto_logout', null);
-      return 'Sesión cerrada por inactividad (36 h). Inicie sesión nuevamente.';
-    }
-    return null;
-  }
+  if (idleMinutes == null) return null;
 
-  const iat = Number(jwtIssuedAtSec) || 0;
-  if (iat > 0) {
-    const jwtIdleMinutes = Math.floor(Date.now() / 1000 - iat) / 60;
-    if (jwtIdleMinutes >= STAFF_IDLE_LOGOUT_MINUTES) {
-      return 'Sesión cerrada por inactividad (36 h). Inicie sesión nuevamente.';
-    }
+  if (idleMinutes >= STAFF_IDLE_LOGOUT_MINUTES) {
+    closeWorkSession(user.id, user.session_id, 'idle_auto_logout', null);
+    return 'Sesión cerrada por inactividad (36 h). Inicie sesión nuevamente.';
   }
   return null;
 }
@@ -347,6 +359,8 @@ module.exports = {
   startWorkSession,
   closeWorkSession,
   closeStaleOpenWorkSessions,
+  resolveOpenStaffSession,
+  touchStaffSessionNow,
   getStaffSessionIdleMinutes,
   enforceStaffIdleLogout,
   ensureOpenWorkSession,

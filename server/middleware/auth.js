@@ -7,12 +7,7 @@ const {
   shouldRefreshStaffToken,
   buildRefreshedStaffToken,
 } = require('../utils/staffJwt');
-
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET es obligatorio. Define la variable de entorno antes de iniciar el servidor.');
-}
+const { JWT_SECRET } = require('../utils/jwtSecret');
 
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -54,20 +49,20 @@ function authenticateToken(req, res, next) {
       username: user.username,
       full_name: user.full_name,
     };
-    const idleMsg = enforceStaffIdleLogout(req.user, decoded.iat);
-    if (idleMsg) {
-      return res.status(401).json({ error: idleMsg, code: 'SESSION_IDLE_TIMEOUT' });
-    }
-    if (shouldRefreshStaffToken(decoded)) {
-      const refreshed = buildRefreshedStaffToken(decoded, user);
-      if (refreshed) res.setHeader('X-Refreshed-Token', refreshed);
-    }
     try {
       ensureUserWorkSession(req.user);
     } catch (_) {
       /* noop */
     }
+    const idleMsg = enforceStaffIdleLogout(req.user);
+    if (idleMsg) {
+      return res.status(401).json({ error: idleMsg, code: 'SESSION_IDLE_TIMEOUT' });
+    }
     touchWorkSessionActivity(req.user, { module: 'api', path: req.path });
+    if (shouldRefreshStaffToken(decoded)) {
+      const refreshed = buildRefreshedStaffToken(decoded, user);
+      if (refreshed) res.setHeader('X-Refreshed-Token', refreshed);
+    }
     const lock = getLockState();
     if (lock.locked) {
       return res.status(423).json({ error: lock.reason || 'Sistema bloqueado por falta de pago' });

@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { JWT_SECRET } = require('../middleware/auth');
+const { JWT_SECRET } = require('./jwtSecret');
 
 /** Personal del restaurante: sesión larga hasta cierre explícito (renovable). */
 const STAFF_JWT_EXPIRES_IN = String(process.env.JWT_STAFF_EXPIRES_IN || '30d').trim() || '30d';
@@ -17,8 +17,13 @@ function signMasterToken(payload) {
 
 function shouldRefreshStaffToken(decoded) {
   if (!decoded?.exp) return false;
-  const ttl = decoded.exp - Math.floor(Date.now() / 1000);
-  return ttl > 0 && ttl < REFRESH_IF_TTL_BELOW_SEC;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const ttl = decoded.exp - nowSec;
+  if (ttl <= 0) return false;
+  if (ttl < REFRESH_IF_TTL_BELOW_SEC) return true;
+  const iat = Number(decoded.iat) || 0;
+  if (iat > 0 && nowSec - iat >= 3600) return true;
+  return false;
 }
 
 function buildRefreshedStaffToken(decoded, userRow) {

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { api } from '../utils/api';
 
-const HEARTBEAT_MS = 5 * 60 * 1000;
+const HEARTBEAT_MS = 3 * 60 * 1000;
 
 /**
  * Registra actividad en el servidor mientras el personal tiene la app abierta.
