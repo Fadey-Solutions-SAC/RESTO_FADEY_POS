@@ -65,6 +65,7 @@ import {
   groupItemsByProductNameForBill,
   getOrderChargeTotal,
   sumOrderItemsChargeSubtotal,
+  buildDineInOrderPayload,
 } from '../../utils/mesaOrderLines';
 
 function collectAllOrderItemIds(orders) {
@@ -1727,6 +1728,10 @@ export default function POSPanel() {
         if (!src?.id) return toast.error('La mesa origen ya no está disponible');
         if (!targetId) return toast.error('Selecciona mesa destino');
         if (sourceId === targetId) return toast.error('Origen y destino deben ser diferentes');
+        const targetTable = tables.find((t) => t.id === targetId);
+        if (targetTable?.orders?.length > 0) {
+          return toast.error('La mesa destino debe estar libre (sin pedidos activos)');
+        }
         await api.post('/tables/move-orders', { source_table_id: sourceId, target_table_id: targetId });
         toast.success('Pedidos movidos correctamente');
       } else if (type === 'merge') {
@@ -2084,14 +2089,15 @@ export default function POSPanel() {
         loadData();
         return;
       }
-      const createdOrder = await api.post('/orders', {
-        items: buildOrderItemsPayload(cart),
-        type: quickSaleMode ? 'pickup' : 'dine_in',
-        table_number: quickSaleMode ? '' : String(selectedTable.number),
-        customer_name: quickSaleMode ? 'VENTA RAPIDA' : `Mesa ${selectedTable.number}`,
-        payment_method: quickSaleMode ? quickPayMethod : paymentMethod,
-        notes: !quickSaleMode && paraLlevarMesa ? KITCHEN_TAKEOUT_NOTE : '',
-      });
+      const createdOrder = await api.post('/orders', buildDineInOrderPayload({
+        table: selectedTable,
+        cartItems: buildOrderItemsPayload(cart),
+        extra: {
+          payment_method: quickSaleMode ? quickPayMethod : paymentMethod,
+          notes: !quickSaleMode && paraLlevarMesa ? KITCHEN_TAKEOUT_NOTE : '',
+          ...(quickSaleMode ? { type: 'pickup', table_number: '', table_id: '', target_order_id: '', customer_name: 'VENTA RAPIDA' } : {}),
+        },
+      }));
       if (quickSaleMode) {
         let doc = null;
         if (billingForm.enabled) {
@@ -2184,6 +2190,10 @@ export default function POSPanel() {
   );
   const occupiedTables = useMemo(
     () => mesaPhysicalTables.filter((t) => t.orders && t.orders.length > 0),
+    [mesaPhysicalTables]
+  );
+  const freeTablesForMove = useMemo(
+    () => mesaPhysicalTables.filter((t) => !(t.orders && t.orders.length > 0)),
     [mesaPhysicalTables]
   );
   const reservationQueue = useMemo(() => {
@@ -3839,7 +3849,7 @@ export default function POSPanel() {
           {mesaTableAction?.type && (mesaTableAction.type === 'merge' || mesaTableAction.type === 'move') && (
             <div>
               <label className="block text-sm text-[var(--ui-body-text)] mb-1">
-                {mesaTableAction.type === 'merge' ? 'Segunda mesa' : 'Mesa destino'}
+                {mesaTableAction.type === 'merge' ? 'Segunda mesa' : 'Mesa destino (libre)'}
               </label>
               <select
                 value={mesaTableAction.targetId || ''}
@@ -3847,7 +3857,7 @@ export default function POSPanel() {
                 className="input-field"
               >
                 <option value="">Seleccionar...</option>
-                {mesaPhysicalTables
+                {(mesaTableAction.type === 'move' ? freeTablesForMove : mesaPhysicalTables)
                   .filter((t) => t.id !== mesaTableAction.sourceId)
                   .map((t) => (
                     <option key={t.id} value={t.id}>
@@ -3855,6 +3865,10 @@ export default function POSPanel() {
                     </option>
                   ))}
               </select>
+              {mesaTableAction.type === 'move' &&
+                freeTablesForMove.filter((t) => t.id !== mesaTableAction.sourceId).length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No hay mesas libres para mover el pedido.</p>
+                )}
             </div>
           )}
           <div className="flex gap-2 pt-2">

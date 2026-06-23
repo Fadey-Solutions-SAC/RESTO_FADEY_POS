@@ -10,6 +10,7 @@ import { MdDateRange, MdKeyboardArrowDown, MdKitchen, MdLocalBar, MdDeliveryDini
 
 import { useChartTheme } from '../../theme/useChartTheme';
 import { orderHasBarItems, orderHasKitchenItems } from '../../utils/productionArea';
+import { isDiscountOrder } from '../../utils/mesaOrderLines';
 
 const PAYMENT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#06b6d4', '#a855f7'];
 const toInputDate = (date) => {
@@ -247,7 +248,9 @@ export default function Escritorio() {
     });
     return ids.size;
   }, [paidOrders]);
-  const totalDiscounts = scopedOrders.reduce((sum, o) => sum + Number(o.discount || 0), 0);
+  const totalDiscounts = scopedOrders
+    .filter((o) => o.payment_status === 'paid' && isDiscountOrder(o))
+    .reduce((sum, o) => sum + Number(o.discount || 0), 0);
   const totalCredit = paidOrders
     .filter(o => o.payment_method === 'online')
     .reduce((sum, o) => sum + Number(o.total || 0), 0);

@@ -46,15 +46,20 @@
     "gearTitle": "Bar settings",
     "modalTitle": "Bar settings",
     "modalHint": "Bar module only. Saved on the server for the whole venue.",
-    "toggleLabel": "Auto-remove after 30 minutes",
-    "toggleHelp": "If an order stays 30 minutes without START or READY in bar, it is marked ready and removed from the panel. Kitchen is not affected.",
-    "badgeActive": "Auto-remove 30 min",
-    "enabledToast": "Bar auto-remove enabled",
+    "toggleLabel": "Auto-remove unattended orders",
+    "toggleHelp": "If an order stays the selected time without START or READY in bar, it is marked ready and removed from the panel. Kitchen is not affected.",
+    "minutesLabel": "Unattended time",
+    "minutesHelp": "Bar orders not marked START or READY are removed automatically after this time.",
+    "minutesOption": "{{count}} minutes",
+    "minutesOption_one": "{{count}} minute",
+    "badgeActive": "Auto-remove {{minutes}} min",
+    "enabledToast": "Bar auto-remove enabled ({{minutes}} min)",
     "disabledToast": "Bar auto-remove disabled — manual flow restored",
+    "minutesSaved": "Auto-remove time: {{minutes}} min",
     "saveFailed": "Could not save setting",
     "saving": "Saving…",
-    "autoDismissTable": "Table {{table}} removed from bar (30 min unattended)",
-    "autoDismissOrder": "Order #{{number}} removed from bar (30 min unattended)",
-    "autoDismissGeneric": "Order removed from bar (30 min unattended)"
+    "autoDismissTable": "Table {{table}} removed from bar ({{minutes}} min unattended)",
+    "autoDismissOrder": "Order #{{number}} removed from bar ({{minutes}} min unattended)",
+    "autoDismissGeneric": "Order removed from bar ({{minutes}} min unattended)"
   }
 }

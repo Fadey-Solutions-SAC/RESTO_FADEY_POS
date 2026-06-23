@@ -1151,6 +1151,22 @@ async function initDatabase() {
     addOrderColIfMissing('station_cocina_preparing_at', 'ALTER TABLE orders ADD COLUMN station_cocina_preparing_at TEXT');
     addOrderColIfMissing('station_bar_preparing_at', 'ALTER TABLE orders ADD COLUMN station_bar_preparing_at TEXT');
     addOrderColIfMissing('kitchen_last_send_at', 'ALTER TABLE orders ADD COLUMN kitchen_last_send_at TEXT');
+    addOrderColIfMissing('table_id', "ALTER TABLE orders ADD COLUMN table_id TEXT DEFAULT ''");
+    try {
+      db.run(`
+        UPDATE orders
+        SET table_id = (
+          SELECT t.id FROM tables t
+          WHERE TRIM(CAST(t.number AS TEXT)) = TRIM(CAST(orders.table_number AS TEXT))
+          LIMIT 1
+        )
+        WHERE type = 'dine_in'
+          AND IFNULL(TRIM(table_id), '') = ''
+          AND IFNULL(TRIM(table_number), '') != ''
+      `);
+    } catch (_) {
+      /* backfill table_id histórico */
+    }
     try {
       db.run(`
         UPDATE orders SET status = 'preparing',
@@ -1910,6 +1926,23 @@ async function initDatabase() {
         console.log('[migration] cortesías históricas normalizadas');
       } catch (e) {
         console.error('[migration] cortesía backfill:', e.message || e);
+      }
+    }
+
+    const kardexVentasBackfillDone = queryOne(
+      'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
+      ['2026-06-kardex-ventas-backfill-v1']
+    );
+    if (!kardexVentasBackfillDone?.ok) {
+      try {
+        const { backfillKardexVentasPagadas } = require('./services/kardexBackfillService');
+        const result = backfillKardexVentasPagadas({ limit: 10000 });
+        console.log('[migration] kardex ventas históricas:', JSON.stringify(result));
+        runSql('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', [
+          '2026-06-kardex-ventas-backfill-v1',
+        ]);
+      } catch (e) {
+        console.error('[migration] kardex ventas backfill:', e.message || e);
       }
     }
 

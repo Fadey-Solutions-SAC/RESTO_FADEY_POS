@@ -1,5 +1,7 @@
 /** Líneas de producto a partir de pedidos de mesa (u órdenes con items). */
 
+import { toLocalDateKey } from './api';
+
 /**
  * Identidad de línea para mesa / precuenta / cobro: mismo producto, variante, notas y precio unitario → se agrupan cantidades.
  * No agrupa solo por nombre (evita mezclar ítems distintos con el mismo texto).
@@ -166,18 +168,119 @@ export function getStaffOrderStatusUi(status) {
   return { label: value || 'Sin estado', classes: 'bg-[#1F2937] text-[#F9FAFB] border border-[#3B82F6]/30' };
 }
 
-/** Clave de agrupación en Ventas: misma mesa (salón) o un pedido suelto (delivery/mostrador). */
-export function salesGroupKey(order) {
+/** Fecha local (YYYY-MM-DD) del pedido para agrupar ventas por día. */
+export function salesOrderLocalDateKey(order) {
+  return toLocalDateKey(order?.updated_at || order?.created_at);
+}
+
+/**
+ * Separa cuentas distintas de la misma mesa en un mismo día:
+ * cuando la cuenta anterior quedó totalmente cobrada, la siguiente es otra venta.
+ */
+export function splitMesaAccountSessions(orders = []) {
+  const sorted = [...orders].sort(
+    (a, b) => new Date(String(a?.created_at || 0)).getTime() - new Date(String(b?.created_at || 0)).getTime(),
+  );
+  const sessions = [];
+  let current = [];
+
+  const sessionFullyClosed = (list) =>
+    list.length > 0 &&
+    list.every(
+      (o) =>
+        o.status === 'cancelled' ||
+        String(o.payment_status || 'pending') === 'paid' ||
+        String(o.payment_status || '') === 'refunded',
+    );
+
+  for (const order of sorted) {
+    if (!current.length) {
+      current.push(order);
+      continue;
+    }
+    if (sessionFullyClosed(current)) {
+      sessions.push(current);
+      current = [order];
+    } else {
+      current.push(order);
+    }
+  }
+  if (current.length) sessions.push(current);
+  return sessions;
+}
+
+/** Clave de agrupación en Ventas: mesa + fecha + cuenta (sesión). Delivery/mostrador: pedido suelto. */
+export function salesGroupKey(order, { sessionIndex = 0 } = {}) {
+  if (!order) return '';
+  const table = String(order.table_number || '').trim();
+  if (order.type === 'dine_in' && table) {
+    const dateKey = salesOrderLocalDateKey(order);
+    return `mesa:${table}:${dateKey}:${sessionIndex}`;
+  }
+  return `pedido:${order.id || ''}`;
+}
+
+/** @deprecated use salesGroupKey — mantiene compatibilidad con clave mesa simple. */
+export function salesGroupKeyLegacy(order) {
   if (!order) return '';
   const table = String(order.table_number || '').trim();
   if (order.type === 'dine_in' && table) return `mesa:${table}`;
   return `pedido:${order.id || ''}`;
 }
 
+export function orderMatchesMesaSearch(order, queryRaw) {
+  const q = String(queryRaw || '').trim().toLowerCase();
+  if (!q) return true;
+  const table = String(order?.table_number || '').trim();
+  if (!table) return false;
+  const qMesa = q.replace(/^mesa\s*/i, '').trim();
+  const qDigits = qMesa.replace(/^m\s*/i, '').trim();
+  const normalizeNum = (v) => {
+    const s = String(v || '').trim();
+    return /^\d+$/.test(s) ? String(Number.parseInt(s, 10)) : s.toLowerCase();
+  };
+  if (normalizeNum(table) === normalizeNum(qDigits)) return true;
+  if (table.toLowerCase().includes(qMesa)) return true;
+  const label = formatMesaLabel(table).toLowerCase();
+  if (label.includes(qMesa) || label.includes(q)) return true;
+  return false;
+}
+
 export function formatMesaLabel(tableNumber) {
   const t = String(tableNumber || '').trim();
   if (!t) return '-';
   return `M${t.padStart(2, '0')}`;
+}
+
+export function pickMergeTargetOrder(orders = []) {
+  const active = (orders || []).filter(
+    (o) =>
+      o &&
+      o.status !== 'cancelled' &&
+      String(o.payment_status || 'pending') !== 'paid' &&
+      ['pending', 'preparing', 'ready'].includes(String(o.status || '')),
+  );
+  if (!active.length) return null;
+  return [...active].sort((a, b) => {
+    const ta = new Date(String(a.kitchen_last_send_at || a.updated_at || a.created_at || 0)).getTime();
+    const tb = new Date(String(b.kitchen_last_send_at || b.updated_at || b.created_at || 0)).getTime();
+    return tb - ta;
+  })[0];
+}
+
+/** Payload común al enviar/agregar pedido de mesa. */
+export function buildDineInOrderPayload({ table, cartItems, extra = {} }) {
+  const mergeTarget = pickMergeTargetOrder(table?.orders || []);
+  return {
+    items: cartItems,
+    type: 'dine_in',
+    table_number: String(table?.number ?? '').trim(),
+    table_id: String(table?.id ?? '').trim(),
+    target_order_id: mergeTarget?.id || '',
+    customer_name: `Mesa ${table?.number ?? ''}`,
+    payment_method: 'efectivo',
+    ...extra,
+  };
 }
 
 export function isCourtesyOrder(order) {
@@ -199,24 +302,72 @@ export function courtesyReferenceAmount(order) {
   return Math.max(0, Number(order?.subtotal || 0) + Number(order?.delivery_fee || 0));
 }
 
+/** Descuento aplicado o cortesía (pedido con ajuste al cobrar). */
+export function isSalesAdjustmentOrder(order) {
+  if (isCourtesyOrder(order)) return true;
+  return Number(order?.discount || 0) > 0.009;
+}
+
+/** Descuento parcial (no cortesía). */
+export function isDiscountOrder(order) {
+  return !isCourtesyOrder(order) && Number(order?.discount || 0) > 0.009;
+}
+
+export function parseAdjustmentReason(order) {
+  if (isCourtesyOrder(order)) return parseCourtesyReason(order);
+  const raw = String(order?.notes || '');
+  const tagged = raw.match(/\[DESCUENTO:\s*([^\]]+)\]/);
+  return tagged ? tagged[1].trim() : '';
+}
+
+export function adjustmentReferenceAmount(order) {
+  if (isCourtesyOrder(order)) return courtesyReferenceAmount(order);
+  return Math.max(0, Number(order?.discount || 0));
+}
+
+export function adjustmentAmountCharged(order) {
+  if (isCourtesyOrder(order)) return 0;
+  return Math.max(0, Number(order?.total || 0));
+}
+
 /**
- * Agrupa ventas de salón por mesa; delivery/mostrador quedan como fila individual.
+ * Agrupa ventas de salón por mesa + fecha + cuenta; delivery/mostrador quedan como fila individual.
  * Cortesías no suman al total de venta ni al desglose de pagos en soles.
  */
 export function buildSalesDisplayGroups(orders = []) {
-  const byKey = new Map();
+  const mesaBuckets = new Map();
+  const standalone = [];
+
   for (const order of orders) {
-    const key = salesGroupKey(order);
-    if (!byKey.has(key)) byKey.set(key, []);
-    byKey.get(key).push(order);
+    const table = String(order.table_number || '').trim();
+    if (order.type === 'dine_in' && table) {
+      const bucketKey = `${table}::${salesOrderLocalDateKey(order)}`;
+      if (!mesaBuckets.has(bucketKey)) mesaBuckets.set(bucketKey, []);
+      mesaBuckets.get(bucketKey).push(order);
+    } else {
+      standalone.push(order);
+    }
   }
 
-  const groups = [...byKey.entries()].map(([key, list]) => {
+  const sessionLists = [];
+  for (const list of mesaBuckets.values()) {
+    splitMesaAccountSessions(list).forEach((session, sessionIndex) => {
+      sessionLists.push({ list: session, sessionIndex });
+    });
+  }
+  for (const order of standalone) {
+    sessionLists.push({ list: [order], sessionIndex: 0 });
+  }
+
+  const groups = sessionLists.map(({ list, sessionIndex }) => {
     const sorted = [...list].sort(
       (a, b) => new Date(`${b.created_at}Z`).getTime() - new Date(`${a.created_at}Z`).getTime(),
     );
     const primary = sorted[0];
-    const isMesa = key.startsWith('mesa:');
+    const table = String(primary.table_number || '').trim();
+    const dateKey = salesOrderLocalDateKey(primary);
+    const key = salesGroupKey(primary, { sessionIndex });
+    const isMesa = primary.type === 'dine_in' && Boolean(table);
     const salesOrders = sorted.filter((o) => !isCourtesyOrder(o));
     const courtesyOrders = sorted.filter(isCourtesyOrder);
     const allItems = sorted.flatMap((o) => o.items || []);
@@ -253,6 +404,14 @@ export function buildSalesDisplayGroups(orders = []) {
       key,
       isMesa,
       mesaLabel: isMesa ? formatMesaLabel(primary.table_number) : '-',
+      salesDateKey: dateKey,
+      sessionIndex,
+      accountLabel:
+        isMesa && sessionIndex > 0
+          ? `${formatMesaLabel(primary.table_number)} · cuenta ${sessionIndex + 1}`
+          : isMesa
+            ? formatMesaLabel(primary.table_number)
+            : '-',
       orders: sorted,
       primary,
       groupedProducts,

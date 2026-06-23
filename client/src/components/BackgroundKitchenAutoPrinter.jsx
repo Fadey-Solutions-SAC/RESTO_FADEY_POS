@@ -58,8 +58,15 @@ export default function BackgroundKitchenAutoPrinter() {
       const items = Array.isArray(fullOrder?.items) ? fullOrder.items : [];
       if (!items.length) return;
 
-      const kitchenItems = items.filter(isKitchenProductionItemForStation);
-      const barItems = items.filter(isBarProductionItemForStation);
+      const newItemIds = Array.isArray(incomingOrder?.new_item_ids) ? incomingOrder.new_item_ids : null;
+      const scopedItems =
+        newItemIds && newItemIds.length
+          ? items.filter((it) => newItemIds.includes(it.id))
+          : items;
+      if (!scopedItems.length) return;
+
+      const kitchenItems = scopedItems.filter(isKitchenProductionItemForStation);
+      const barItems = scopedItems.filter(isBarProductionItemForStation);
       const paperC = normalizePaperWidthMm(cfg?.cocina?.anchoPapel ?? cfg?.cocina?.paperWidth ?? 80);
       const paperB = normalizePaperWidthMm(cfg?.bar?.anchoPapel ?? cfg?.bar?.paperWidth ?? 80);
       const takeout = orderHasTakeoutNote(fullOrder);
@@ -124,7 +131,10 @@ export default function BackgroundKitchenAutoPrinter() {
   });
   useSocket('order-lines-updated', (payload) => {
     const order = payload?.order || payload;
-    void autoPrintOrder(order);
+    void autoPrintOrder({
+      ...order,
+      new_item_ids: Array.isArray(payload?.new_item_ids) ? payload.new_item_ids : [],
+    });
   });
 
   return null;

@@ -38,6 +38,30 @@ function courtesyReferenceAmount(order) {
   return Math.max(0, Number(order?.subtotal || 0) + Number(order?.delivery_fee || 0));
 }
 
+/** Pedidos con descuento o cortesía aplicados al cobrar. */
+const SALES_ADJUSTMENT_WHERE_SQL =
+  `(IFNULL(discount, 0) > 0.009 OR ${COURTESY_ORDER_WHERE_SQL})`;
+
+function parseAdjustmentReasonFromNotes(notes) {
+  return parseCourtesyReasonFromNotes(notes);
+}
+
+function classifySalesAdjustment(order) {
+  if (isCourtesyOrderRecord(order)) return 'cortesia';
+  if (Number(order?.discount || 0) > 0.009) return 'descuento';
+  return null;
+}
+
+function adjustmentDiscountAmount(order) {
+  if (isCourtesyOrderRecord(order)) return courtesyReferenceAmount(order);
+  return Math.max(0, Number(order?.discount || 0));
+}
+
+function adjustmentAmountCharged(order) {
+  if (isCourtesyOrderRecord(order)) return 0;
+  return Math.max(0, Number(order?.total || 0));
+}
+
 function parseJsonSafe(value, fallback = {}) {
   try {
     return value ? JSON.parse(value) : fallback;
@@ -177,6 +201,7 @@ function getLocalTodayDateKey() {
 module.exports = {
   COURTESY_PAYMENT_METHOD,
   COURTESY_ORDER_WHERE_SQL,
+  SALES_ADJUSTMENT_WHERE_SQL,
   FINANCIAL_FILTER_SQL,
   LOCAL_TODAY_SQL,
   getLocalTodayDateKey,
@@ -188,5 +213,9 @@ module.exports = {
   isCourtesyDiscountReason,
   isCourtesyOrderRecord,
   parseCourtesyReasonFromNotes,
+  parseAdjustmentReasonFromNotes,
   courtesyReferenceAmount,
+  classifySalesAdjustment,
+  adjustmentDiscountAmount,
+  adjustmentAmountCharged,
 };

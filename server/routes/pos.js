@@ -802,7 +802,12 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
             );
           }
         }
-        kardexInventory.aplicarSalidasVentaPedido(tx, row.id, req.user.id);
+        kardexInventory.aplicarSalidasVentaPedido(
+          tx,
+          row.id,
+          req.user.id,
+          tx.queryOne('SELECT COALESCE(updated_at, created_at) AS event_at FROM orders WHERE id = ?', [row.id])?.event_at
+        );
         chargedOrderIds.push(row.id);
       });
 

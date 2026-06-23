@@ -317,6 +317,7 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
     items,
     type: 'dine_in',
     table_number: String(table.number),
+    table_id: String(table.id),
     delivery_address: '',
     notes: notes || '',
     payment_method: payment_method || 'efectivo',

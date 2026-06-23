@@ -7,7 +7,7 @@ const {
   parseRestaurantSchedule,
 } = require('./services/productScheduleService');
 const { computeKitchenReleaseAtForReservation } = require('./services/reservationKitchenHold');
-const { findMergeableTableOrderTx } = require('./services/tableOrderMergeService');
+const { findMergeableTableOrderTx, resolveExplicitMergeTargetTx } = require('./services/tableOrderMergeService');
 
 function getOrderWithItems(orderId) {
   const order = queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -282,12 +282,26 @@ function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
 
+function syncOrderTableIdTx(tx, orderId, tableId) {
+  const tid = String(tableId || '').trim();
+  if (!tid || !orderId) return;
+  tx.run("UPDATE orders SET table_id = ? WHERE id = ? AND IFNULL(TRIM(table_id), '') = ''", [tid, orderId]);
+}
+
 function createOrMergeTableOrderInTransaction(tx, orderId, body, actor) {
   const orderType = ['dine_in', 'delivery', 'pickup'].includes(body.type) ? body.type : 'dine_in';
   const tableNumber = String(body.table_number || '').trim();
+  const tableId = String(body.table_id || '').trim();
+  const targetOrderId = String(body.target_order_id || '').trim();
   if (orderType === 'dine_in' && tableNumber && !body.hold_kitchen_for_reservation) {
-    const existing = findMergeableTableOrderTx(tx, tableNumber);
+    if (targetOrderId) {
+      const explicit = resolveExplicitMergeTargetTx(tx, targetOrderId, { tableId, tableNumberRaw: tableNumber });
+      syncOrderTableIdTx(tx, explicit.id, tableId);
+      return appendItemsToOrderInTransaction(tx, explicit.id, body.items, actor, { notes: body.notes });
+    }
+    const existing = findMergeableTableOrderTx(tx, tableNumber, { tableId });
     if (existing) {
+      syncOrderTableIdTx(tx, existing.id, tableId);
       return appendItemsToOrderInTransaction(tx, existing.id, body.items, actor, { notes: body.notes });
     }
   }
@@ -304,6 +318,7 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     items,
     type,
     table_number,
+    table_id: tableIdBody,
     delivery_address,
     notes,
     payment_method,
@@ -476,11 +491,19 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     kitchenReleaseAt = computeKitchenReleaseAtForReservation(reservation_date, reservation_time);
   }
 
+  let tableId = String(tableIdBody || '').trim();
+  if (!tableId && table_number) {
+    const trow = tx.queryOne('SELECT id FROM tables WHERE TRIM(CAST(number AS TEXT)) = ? LIMIT 1', [
+      String(table_number).trim(),
+    ]);
+    tableId = String(trow?.id || '').trim();
+  }
+
   tx.run(
     `INSERT INTO orders (
       id, order_number, customer_id, customer_name, restaurant_id, type, subtotal, tax, discount, delivery_fee, total,
-      payment_method, table_number, delivery_address, delivery_payment_modality, notes, sale_document_type, sale_document_number, created_by_user_id, created_by_user_name, kitchen_release_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      payment_method, table_number, table_id, delivery_address, delivery_payment_modality, notes, sale_document_type, sale_document_number, created_by_user_id, created_by_user_name, kitchen_release_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       orderId,
       orderNumber,
@@ -495,6 +518,7 @@ function createOrderInTransaction(tx, orderId, body, actor) {
       total,
       paymentMethod,
       table_number || '',
+      tableId,
       delivery_address || '',
       deliveryModality,
       notes || '',

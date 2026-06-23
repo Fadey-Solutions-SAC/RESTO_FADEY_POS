@@ -1,5 +1,5 @@
 /**
- * Bar: retira comandas que llevan 30+ min sin PREPARAR ni LISTO (solo si está activado en ajustes).
+ * Bar: retira comandas que llevan X min sin PREPARAR ni LISTO (solo si está activado en ajustes).
  */
 const { queryAll, queryOne, runSql, logAudit } = require('../database');
 const { getOrderWithItems } = require('../orderCreateService');
@@ -10,21 +10,9 @@ const {
   isStationMarkedPreparing,
   isStationMarkedReady,
 } = require('../utils/kitchenStationReady');
-const {
-  readBarStationSettings,
-  BAR_AUTO_DISMISS_MINUTES,
-} = require('./barStationSettingsService');
+const { readBarStationSettings } = require('./barStationSettingsService');
 
-function anchorMsForOrder(order) {
-  const raw = String(order?.kitchen_last_send_at || order?.created_at || '').trim();
-  if (!raw) return null;
-  const safe = raw.includes('T') ? raw : raw.replace(' ', 'T');
-  const withZone = /Z$|[+-]\d{2}:\d{2}$/.test(safe) ? safe : `${safe}Z`;
-  const d = new Date(withZone);
-  return Number.isNaN(d.getTime()) ? null : d.getTime();
-}
-
-function markBarStationReady(order, { io, reason = 'manual' } = {}) {
+function markBarStationReady(order, { io, reason = 'manual', minutes = null } = {}) {
   const orderId = order.id;
   if (!orderId || isStationMarkedReady(order, 'bar')) return null;
 
@@ -58,12 +46,12 @@ function markBarStationReady(order, { io, reason = 'manual' } = {}) {
   if (io) {
     io.emit('order-update', updated);
     io.emit('order-ready', updated);
-    if (reason === 'auto_dismiss_30m') {
-      io.emit('bar-auto-dismiss', { orderId, order: updated });
+    if (reason === 'auto_dismiss') {
+      io.emit('bar-auto-dismiss', { orderId, order: updated, minutes });
     }
   }
 
-  if (reason === 'auto_dismiss_30m') {
+  if (reason === 'auto_dismiss') {
     try {
       logAudit({
         actorUserId: '',
@@ -71,7 +59,7 @@ function markBarStationReady(order, { io, reason = 'manual' } = {}) {
         action: 'order.bar.auto_dismiss',
         resourceType: 'order',
         resourceId: orderId,
-        details: { minutes: BAR_AUTO_DISMISS_MINUTES },
+        details: { minutes },
       });
     } catch (_) {
       /* noop */
@@ -85,8 +73,7 @@ function processBarAutoDismiss({ io } = {}) {
   const settings = readBarStationSettings();
   if (!settings.autoDismissPendingAfter30Min) return [];
 
-  const maxAgeMs = BAR_AUTO_DISMISS_MINUTES * 60 * 1000;
-  const now = Date.now();
+  const minutes = settings.autoDismissMinutes;
 
   const orders = queryAll(`
     SELECT * FROM orders
@@ -97,7 +84,14 @@ function processBarAutoDismiss({ io } = {}) {
         OR trim(kitchen_release_at) = ''
         OR datetime(kitchen_release_at) <= datetime('now', 'localtime')
       )
-  `);
+      AND (station_bar_ready_at IS NULL OR trim(station_bar_ready_at) = '')
+      AND (station_bar_preparing_at IS NULL OR trim(station_bar_preparing_at) = '')
+      AND kitchen_last_send_at IS NOT NULL
+      AND trim(kitchen_last_send_at) != ''
+      AND (
+        (julianday('now', 'localtime') - julianday(trim(kitchen_last_send_at))) * 1440
+      ) >= ?
+  `, [minutes]);
 
   const dismissed = [];
   for (const order of orders) {
@@ -106,10 +100,7 @@ function processBarAutoDismiss({ io } = {}) {
     if (isStationMarkedReady(order, 'bar')) continue;
     if (isStationMarkedPreparing(order, 'bar')) continue;
 
-    const anchorMs = anchorMsForOrder(order);
-    if (anchorMs == null || now - anchorMs < maxAgeMs) continue;
-
-    markBarStationReady(order, { io, reason: 'auto_dismiss_30m' });
+    markBarStationReady(order, { io, reason: 'auto_dismiss', minutes });
     dismissed.push(order.id);
   }
 
@@ -119,5 +110,4 @@ function processBarAutoDismiss({ io } = {}) {
 module.exports = {
   processBarAutoDismiss,
   markBarStationReady,
-  anchorMsForOrder,
 };

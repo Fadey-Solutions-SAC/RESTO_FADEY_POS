@@ -685,7 +685,23 @@ router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, re
   );
   orders.forEach(o => { o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]); });
 
-  res.json({ register_open: !!register, register, sales, hourly, paymentMethods, orders, date: today });
+  let adjustments = {
+    count: 0,
+    courtesy_count: 0,
+    discount_count: 0,
+    courtesy_reference_total: 0,
+    discount_amount_total: 0,
+    reference_total: 0,
+  };
+  try {
+    const { listSalesAdjustments, summarizeSalesAdjustments } = require('../services/salesAdjustmentsService');
+    const adjustmentOrders = listSalesAdjustments({ from: today, to: today, limit: 2000 });
+    adjustments = summarizeSalesAdjustments(adjustmentOrders);
+  } catch (err) {
+    console.warn('[reports/daily] adjustments:', err?.message || err);
+  }
+
+  res.json({ register_open: !!register, register, sales, hourly, paymentMethods, orders, adjustments, date: today });
 });
 
 router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
@@ -1032,20 +1048,49 @@ router.get('/indicators-export', authenticateToken, requireRole('admin'), (req, 
   }
 });
 
-router.get('/courtesies', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+router.get('/sales-adjustments', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
   try {
-    const { listCourtesyOrders, summarizeCourtesyOrders } = require('../services/courtesyOrdersService');
-    const orders = listCourtesyOrders({
+    const { listSalesAdjustments, summarizeSalesAdjustments } = require('../services/salesAdjustmentsService');
+    const orders = listSalesAdjustments({
       from: req.query.from,
       to: req.query.to,
       limit: req.query.limit,
     });
     res.json({
-      summary: summarizeCourtesyOrders(orders),
+      summary: summarizeSalesAdjustments(orders),
       orders,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message || 'No se pudo cargar informe de cortesías' });
+    res.status(500).json({ error: err.message || 'No se pudo cargar informe de descuentos y cortesías' });
+  }
+});
+
+/** Alias histórico — mismo informe unificado descuentos + cortesías. */
+router.get('/courtesies', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  try {
+    const { listSalesAdjustments, summarizeSalesAdjustments } = require('../services/salesAdjustmentsService');
+    const orders = listSalesAdjustments({
+      from: req.query.from,
+      to: req.query.to,
+      limit: req.query.limit,
+    });
+    res.json({
+      summary: summarizeSalesAdjustments(orders),
+      orders,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo cargar informe de descuentos y cortesías' });
+  }
+});
+
+router.post('/backfill-kardex-ventas', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    const { backfillKardexVentasPagadas } = require('../services/kardexBackfillService');
+    const limit = req.body?.limit ?? req.query?.limit;
+    const result = backfillKardexVentasPagadas({ limit });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo aplicar inventario histórico' });
   }
 });
 

@@ -12,6 +12,7 @@ import StaffModifierPromptModal from '../../components/StaffModifierPromptModal'
 import toast from 'react-hot-toast';
 import { MdTableRestaurant, MdReceipt, MdClose } from 'react-icons/md';
 import { KITCHEN_TAKEOUT_NOTE } from '../../utils/ticketPlainText';
+import { buildDineInOrderPayload } from '../../utils/mesaOrderLines';
 import { buildTablesBySalon } from '../../utils/salonesUtils';
 
 export default function Tables() {
@@ -141,6 +142,10 @@ export default function Tables() {
         if (!sourceForAction?.id) return toast.error('La mesa origen ya no está disponible, vuelve a seleccionarla');
         if (!targetTableId) return toast.error('Selecciona mesa destino');
         if (sourceForAction?.id === targetTableId) return toast.error('Origen y destino deben ser diferentes');
+        const targetForAction = tables.find((t) => t.id === targetTableId);
+        if (targetForAction?.orders?.length > 0) {
+          return toast.error('La mesa destino debe estar libre (sin pedidos activos)');
+        }
         await api.post('/tables/move-orders', {
           source_table_id: sourceForAction.id,
           target_table_id: targetTableId,
@@ -174,14 +179,13 @@ export default function Tables() {
     }
     const tid = toast.loading('Enviando pedido…');
     try {
-      const created = await api.post('/orders', {
-        items: buildOrderItemsPayload(cart),
-        type: 'dine_in',
-        table_number: String(selectedTable.number),
-        customer_name: `Mesa ${selectedTable.number}`,
-        payment_method: 'efectivo',
-        notes: paraLlevarMesa ? KITCHEN_TAKEOUT_NOTE : '',
-      });
+      const created = await api.post('/orders', buildDineInOrderPayload({
+        table: selectedTable,
+        cartItems: buildOrderItemsPayload(cart),
+        extra: {
+          notes: paraLlevarMesa ? KITCHEN_TAKEOUT_NOTE : '',
+        },
+      }));
       toast.success(`Pedido enviado a Mesa ${selectedTable.number}`, { id: tid });
       closeMenuPanel();
       loadTables();
@@ -421,14 +425,23 @@ export default function Tables() {
           {actionType && (actionType === 'merge' || actionType === 'move') && (
             <div>
               <label className="mb-1 block text-sm text-[var(--ui-body-text)]">
-                {actionType === 'merge' ? 'Segunda mesa' : 'Mesa destino'}
+                {actionType === 'merge' ? 'Segunda mesa' : 'Mesa destino (libre)'}
               </label>
               <select value={targetTableId} onChange={e => setTargetTableId(e.target.value)} className="input-field">
                 <option value="">Seleccionar...</option>
-                {tables.filter(t => t.id !== sourceTableId).map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
+                {(actionType === 'move'
+                  ? tables.filter((t) => !(t.orders && t.orders.length > 0))
+                  : tables
+                )
+                  .filter(t => t.id !== sourceTableId)
+                  .map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
               </select>
+              {actionType === 'move' &&
+                tables.filter((t) => t.id !== sourceTableId && !(t.orders && t.orders.length > 0)).length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No hay mesas libres para mover el pedido.</p>
+                )}
             </div>
           )}
 

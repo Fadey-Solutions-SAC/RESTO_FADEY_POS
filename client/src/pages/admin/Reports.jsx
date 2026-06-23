@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { api, formatCurrency, PAYMENT_METHODS, resolveMediaUrl } from '../../utils/api';
+import { api, formatCurrency, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import {
   MdCalendarToday,
   MdCalendarMonth,
@@ -18,12 +18,13 @@ import {
   MdShoppingCart,
   MdVolunteerActivism,
   MdAutoGraph,
+  MdLocalOffer,
+  MdPayments,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
 import toast from 'react-hot-toast';
 
-const COLORS = ['#f04438', '#ffa520', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#f97316'];
 const FINANCE_LOSS_LABELS = {
   salida_efectivo: 'Salida de efectivo',
   gasto_extra: 'Gasto extra',
@@ -460,8 +461,8 @@ export default function Reports() {
       setReportSection('productos');
     } else if (searchParams.get('seccion') === 'finanzas') {
       setReportSection('finanzas');
-    } else if (searchParams.get('seccion') === 'cortesias') {
-      setReportSection('cortesias');
+    } else if (searchParams.get('seccion') === 'cortesias' || searchParams.get('seccion') === 'descuentos') {
+      setReportSection('descuentos');
     }
   }, [searchParams]);
 
@@ -729,7 +730,7 @@ export default function Reports() {
   ];
   const sectionCards = [
     { id: 'ventas', title: 'Informe de Ventas', desc: 'Diversos informes de las ventas realizadas en la empresa.' },
-    { id: 'cortesias', title: 'Informe de Cortesías', desc: 'Cortesías registradas en caja. No suman a ventas ni afectan el dinero (cobrado S/ 0.00).' },
+    { id: 'descuentos', title: 'Descuentos y Cortesías', desc: 'Descuentos y cortesías al cobrar. Descuentan inventario; las cortesías no suman a ventas (S/ 0.00).' },
     { id: 'productos', title: 'Informe de productos', desc: 'Detalle de productos vendidos por cada cierre de caja (se genera al cerrar turno).' },
     { id: 'caja', title: 'Informe de Caja', desc: 'Historial de cajas cerradas, detalle del cierre y descarga del reporte.' },
     { id: 'compras', title: 'Informe de Compras', desc: 'Las compras que has realizado.' },
@@ -762,7 +763,7 @@ export default function Reports() {
         )}
       </div>
 
-      {reportSection === 'cortesias' && <CortesiasReportSection />}
+      {reportSection === 'descuentos' && <CortesiasReportSection />}
 
       {reportSection === 'ventas' && (
         <>
@@ -783,7 +784,7 @@ export default function Reports() {
             <span className="text-sm text-[var(--ui-muted)]">Fecha: {dailyData.date}</span>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
             <div className="card">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center"><MdAttachMoney className="text-emerald-600 text-xl" /></div>
@@ -813,10 +814,11 @@ export default function Reports() {
             </div>
             <div className="card">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center"><MdAttachMoney className="text-sky-600 text-xl" /></div>
+                <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center"><MdLocalOffer className="text-amber-600 text-xl" /></div>
                 <div>
-                  <p className="text-xs text-[var(--ui-muted)]">Descuentos</p>
-                  <p className="text-xl font-bold text-sky-600">{formatCurrency(dailyData.sales?.total_discount)}</p>
+                  <p className="text-xs text-[var(--ui-muted)]">Descuentos (ref.)</p>
+                  <p className="text-xl font-bold text-amber-600">{formatCurrency(dailyData.adjustments?.discount_amount_total)}</p>
+                  <p className="text-[10px] text-[var(--ui-muted)]">Informativo · no suma a ventas</p>
                 </div>
               </div>
             </div>
@@ -824,54 +826,20 @@ export default function Reports() {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center"><MdVolunteerActivism className="text-violet-600 text-xl" /></div>
                 <div>
-                  <p className="text-xs text-[var(--ui-muted)]">Propinas</p>
-                  <p className="text-xl font-bold text-violet-600">{formatCurrency(dailyData.sales?.total_tips)}</p>
+                  <p className="text-xs text-[var(--ui-muted)]">Cortesías (ref.)</p>
+                  <p className="text-xl font-bold text-violet-600">{formatCurrency(dailyData.adjustments?.courtesy_reference_total)}</p>
+                  <p className="text-[10px] text-[var(--ui-muted)]">Informativo · cobro S/ 0.00</p>
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div className="card">
-              <h3 className="font-bold rf-section-title mb-4">Ventas por Hora</h3>
-              {dailyData.hourly?.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={dailyData.hourly}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="hour" tick={{ fontSize: 11 }} tickFormatter={h => `${h}:00`} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip formatter={(v, name) => [name === 'total' ? formatCurrency(v) : v, name === 'total' ? 'Ventas' : 'Pedidos']} labelFormatter={l => `${l}:00 hrs`} />
-                    <Bar dataKey="total" fill="#f04438" radius={[4, 4, 0, 0]} name="Ventas" />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <p className="text-[var(--ui-muted)] text-center py-8">Sin datos hoy</p>}
-            </div>
-
-            <div className="card">
-              <h3 className="font-bold rf-section-title mb-4">Métodos de Pago</h3>
-              {dailyData.paymentMethods?.length > 0 ? (
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center"><MdPayments className="text-indigo-600 text-xl" /></div>
                 <div>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <PieChart>
-                      <Pie data={dailyData.paymentMethods} dataKey="total" nameKey="payment_method" cx="50%" cy="50%" outerRadius={70} label={({ payment_method, percent }) => `${PAYMENT_METHODS[payment_method] || payment_method} ${(percent * 100).toFixed(0)}%`}>
-                        {dailyData.paymentMethods.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip formatter={(v) => formatCurrency(v)} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="space-y-1 mt-2">
-                    {dailyData.paymentMethods.map((pm, i) => (
-                      <div key={pm.payment_method} className="flex justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                          <span>{PAYMENT_METHODS[pm.payment_method] || pm.payment_method}</span>
-                        </div>
-                        <span className="font-medium">{formatCurrency(pm.total)}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-xs text-[var(--ui-muted)]">Propinas</p>
+                  <p className="text-xl font-bold text-indigo-600">{formatCurrency(dailyData.sales?.total_tips)}</p>
                 </div>
-              ) : <p className="text-[var(--ui-muted)] text-center py-8">Sin ventas hoy</p>}
+              </div>
             </div>
           </div>
 

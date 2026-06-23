@@ -291,8 +291,12 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'master_admin')
     const io = req.app.get('io');
     if (io) {
       io.emit('order-update', order);
-      /** Cocina/bar: mismo efecto que pedido nuevo para impresión automática (ítems añadidos a mesa existente). */
-      io.emit('order-lines-updated', order);
+      /** Cocina/bar: ítems añadidos a mesa existente (solo resalta líneas nuevas cuando hay diff). */
+      io.emit('order-lines-updated', {
+        order,
+        new_item_ids: [],
+        merged: true,
+      });
     }
     emitInventoryUpdate({});
     logOrderDebug(req, 'put_lines_ok', { order_id: order.id, order_number: order.order_number });

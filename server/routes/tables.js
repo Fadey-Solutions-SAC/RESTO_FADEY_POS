@@ -4,24 +4,8 @@ const { queryAll, queryOne, runSql, logAudit } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { getOrderWithItems } = require('../orderCreateService');
 const { ensureSalonesConfig, saveSalonesConfig, normalizeSalonesList } = require('../services/salonesConfigService');
+const { loadActiveTableOrders } = require('../services/tableOrdersQueryService');
 const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
-
-/** Pedidos activos en mesa (excluye ya cobrados). */
-const ACTIVE_ORDER_STATUS_SQL =
-  "status IN ('pending','preparing','ready') AND IFNULL(TRIM(payment_status), 'pending') != 'paid'";
-
-function loadActiveTableOrders(tableNumber) {
-  const key = normalizeTableNumber(tableNumber);
-  if (!key) return [];
-  const orders = queryAll(
-    `SELECT * FROM orders WHERE ${ACTIVE_ORDER_STATUS_SQL} ORDER BY created_at DESC`,
-  );
-  const matched = orders.filter((o) => tableNumbersMatch(o.table_number, key));
-  matched.forEach((o) => {
-    o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]);
-  });
-  return matched;
-}
 
 router.use(authenticateToken);
 
@@ -59,7 +43,7 @@ router.get('/', (req, res) => {
   try {
     const tables = queryAll('SELECT * FROM tables ORDER BY number ASC');
     tables.forEach(t => {
-      const orders = loadActiveTableOrders(t.number);
+      const orders = loadActiveTableOrders(t);
       t.orders = orders;
       t.order_total = orders.reduce((sum, o) => sum + (o.total || 0), 0);
       t.order_count = orders.length;
@@ -76,7 +60,7 @@ router.get('/:id', (req, res) => {
   try {
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
-    const orders = loadActiveTableOrders(table.number);
+    const orders = loadActiveTableOrders(table);
     table.orders = orders;
     table.order_total = orders.reduce((sum, o) => sum + (o.total || 0), 0);
     table.status = orders.length > 0 ? 'occupied' : 'available';
@@ -142,8 +126,12 @@ router.delete('/:id', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
   try {
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
-    const active = queryAll(`SELECT id, table_number FROM orders WHERE ${ACTIVE_ORDER_STATUS_SQL}`);
-    const activeOnTable = active.filter((o) => tableNumbersMatch(o.table_number, table.number));
+    const active = queryAll(`SELECT id, table_number, table_id FROM orders WHERE status IN ('pending','preparing','ready') AND IFNULL(TRIM(payment_status), 'pending') != 'paid'`);
+    const activeOnTable = active.filter((o) => {
+      const orderTableId = String(o.table_id || '').trim();
+      if (orderTableId) return orderTableId === table.id;
+      return tableNumbersMatch(o.table_number, table.number);
+    });
     if (activeOnTable.length > 0) return res.status(400).json({ error: 'No se puede eliminar una mesa con pedidos activos' });
     runSql('DELETE FROM tables WHERE id = ?', [req.params.id]);
     const io = req.app.get('io');
@@ -197,18 +185,25 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
     const target = queryOne('SELECT * FROM tables WHERE id = ?', [targetTableId]);
     if (!source || !target) return res.status(404).json({ error: 'Mesa origen o destino no encontrada' });
 
-    const activeOrders = loadActiveTableOrders(source.number);
+    const activeOrders = loadActiveTableOrders(source);
     const requestedIds = Array.isArray(orderIdsRaw) ? orderIdsRaw.filter(Boolean) : [];
     const selected = requestedIds.length
       ? activeOrders.filter((o) => requestedIds.includes(o.id))
       : activeOrders;
     if (!selected.length) return res.status(400).json({ error: 'No hay pedidos activos para mover' });
 
+    const targetActiveOrders = loadActiveTableOrders(target);
+    if (targetActiveOrders.length > 0) {
+      return res.status(400).json({
+        error: `La mesa destino (${target.name || target.number}) no está libre. Solo puede mover a una mesa sin pedidos activos.`,
+      });
+    }
+
     const targetTableNumber = String(target.number ?? '').trim();
     selected.forEach((order) => {
       runSql(
-        "UPDATE orders SET table_number = ?, customer_name = ?, updated_at = datetime('now') WHERE id = ?",
-        [targetTableNumber, `Mesa ${targetTableNumber}`, order.id]
+        "UPDATE orders SET table_number = ?, table_id = ?, customer_name = ?, updated_at = datetime('now') WHERE id = ?",
+        [targetTableNumber, target.id, `Mesa ${targetTableNumber}`, order.id]
       );
     });
 
@@ -253,12 +248,12 @@ router.post('/merge', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
     sourceTableIds.forEach((sourceId) => {
       const source = queryOne('SELECT * FROM tables WHERE id = ?', [sourceId]);
       if (!source) return;
-      const activeOrders = loadActiveTableOrders(source.number);
+      const activeOrders = loadActiveTableOrders(source);
       const targetTableNumber = String(target.number ?? '').trim();
       activeOrders.forEach((order) => {
         runSql(
-          "UPDATE orders SET table_number = ?, customer_name = ?, updated_at = datetime('now') WHERE id = ?",
-          [targetTableNumber, `Mesa ${targetTableNumber}`, order.id]
+          "UPDATE orders SET table_number = ?, table_id = ?, customer_name = ?, updated_at = datetime('now') WHERE id = ?",
+          [targetTableNumber, target.id, `Mesa ${targetTableNumber}`, order.id]
         );
         mergedOrderIds.push(order.id);
         moved += 1;

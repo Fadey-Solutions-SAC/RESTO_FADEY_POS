@@ -6,7 +6,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel, MdDownload } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
-import { buildSalesDisplayGroups, isCourtesyOrder } from '../../utils/mesaOrderLines';
+import { buildSalesDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch } from '../../utils/mesaOrderLines';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 
 const PAYMENT_STATUS_STYLES = {
@@ -339,7 +339,16 @@ export default function Ventas() {
 
   useEffect(() => {
     let f = orders;
-    if (search) f = f.filter(o => String(o.order_number).includes(search) || (o.customer_name || '').toLowerCase().includes(search.toLowerCase()));
+    if (search) {
+      const q = search.trim();
+      const qLower = q.toLowerCase();
+      f = f.filter(
+        (o) =>
+          String(o.order_number || '').includes(q) ||
+          (o.customer_name || '').toLowerCase().includes(qLower) ||
+          orderMatchesMesaSearch(o, q),
+      );
+    }
     if (statusFilter !== 'all') f = f.filter(o => o.payment_status === statusFilter);
     if (typeFilter !== 'all') f = f.filter(o => o.type === typeFilter);
     if (waiterFilter !== 'all') {
@@ -535,7 +544,7 @@ export default function Ventas() {
         <div className="flex flex-wrap gap-3 mb-4">
           <div className="relative flex-1 min-w-[220px]">
             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)]" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por # o cliente..." className="input-field pl-9" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por #, mesa (ej. 20 o M20) o cliente..." className="input-field pl-9" />
           </div>
           <button
             onClick={() => downloadAllSalesExcel(filtered.map(o => ({ ...o, local_name: restaurantName })))}
@@ -605,7 +614,7 @@ export default function Ventas() {
                         {group.comprobanteCount > 1 ? ` · ${group.comprobanteCount} pagos` : ''}
                       </p>
                     </td>
-                    <td className="py-2.5 text-[var(--ui-body-text)] font-semibold">{group.mesaLabel}</td>
+                    <td className="py-2.5 text-[var(--ui-body-text)] font-semibold">{group.accountLabel || group.mesaLabel}</td>
                     <td className="py-2.5 text-[var(--ui-muted)]">Caja 01</td>
                     <td className="py-2.5 text-[var(--ui-body-text)]">{mesero}</td>
                     <td className="py-2.5 text-[var(--ui-body-text)]">

@@ -31,15 +31,22 @@ const KITCHEN_ARRIVAL_OVERDUE_MS = 30 * 60 * 1000;
 const KITCHEN_PREP_OVERDUE_MS = 30 * 60 * 1000;
 const normalizePaperWidthMm = normalizeThermalPaperWidthMm;
 
-function itemHighlightActive(item, highlightIds) {
-  if (!item?.id) return false;
-  if (highlightIds?.has?.(item.id)) return true;
+function kitchenHighlightKey(orderId, itemId) {
+  return `${String(orderId || '').trim()}:${String(itemId || '').trim()}`;
+}
+
+function itemHighlightActive(item, highlightIds, orderId) {
+  if (!item?.id || !orderId) return false;
+  const key = kitchenHighlightKey(orderId, item.id);
+  if (highlightIds?.has?.(key)) return true;
   const at = item?.kitchen_highlight_at;
   if (!String(at || '').trim()) return false;
   const d = parseApiDate(at);
   if (!d) return false;
   return Date.now() - d.getTime() < KITCHEN_ITEM_HIGHLIGHT_MS;
 }
+
+const BAR_AUTO_DISMISS_MINUTE_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 
 export default function KitchenPanel({ station = 'cocina' }) {
   const { t } = useTranslation('kitchen');
@@ -62,6 +69,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [barSettingsOpen, setBarSettingsOpen] = useState(false);
   const [barAutoDismiss, setBarAutoDismiss] = useState(false);
+  const [barAutoDismissMinutes, setBarAutoDismissMinutes] = useState(30);
   const [barSettingsLoaded, setBarSettingsLoaded] = useState(false);
   const [barSettingsSaving, setBarSettingsSaving] = useState(false);
   const StationIcon = isBar ? MdLocalBar : MdKitchen;
@@ -115,7 +123,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
         const ids = new Set();
         (data || []).forEach((order) => {
           getStationItems(order?.items).forEach((item) => {
-            if (itemHighlightActive(item, null)) ids.add(item.id);
+            if (itemHighlightActive(item, null, order.id)) ids.add(kitchenHighlightKey(order.id, item.id));
           });
         });
         setHighlightItemIds(ids);
@@ -136,7 +144,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
   useActiveInterval(() => setClockTick((n) => n + 1), 30000);
 
   const isKitchenItemHighlighted = useCallback(
-    (item) => !isBar && itemHighlightActive(item, highlightItemIds),
+    (item, orderId) => !isBar && itemHighlightActive(item, highlightItemIds, orderId),
     [isBar, highlightItemIds],
   );
 
@@ -239,9 +247,14 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
   const handleKitchenLinesUpdated = (payload) => {
     const order = payload?.order || payload;
+    const orderId = order?.id;
     const newIds = Array.isArray(payload?.new_item_ids) ? payload.new_item_ids : [];
-    if (!isBar && newIds.length) {
-      setHighlightItemIds((prev) => new Set([...prev, ...newIds]));
+    if (!isBar && orderId && newIds.length) {
+      setHighlightItemIds((prev) => {
+        const next = new Set(prev);
+        newIds.forEach((itemId) => next.add(kitchenHighlightKey(orderId, itemId)));
+        return next;
+      });
     }
     loadOrders();
     if (payload?.merged && newIds.length) {
@@ -266,6 +279,9 @@ export default function KitchenPanel({ station = 'cocina' }) {
       .then((data) => {
         if (cancelled) return;
         setBarAutoDismiss(Boolean(data?.autoDismissPendingAfter30Min));
+        if (data?.autoDismissMinutes != null) {
+          setBarAutoDismissMinutes(Number(data.autoDismissMinutes));
+        }
         setBarSettingsLoaded(true);
       })
       .catch(() => {
@@ -276,18 +292,26 @@ export default function KitchenPanel({ station = 'cocina' }) {
     };
   }, [isBar]);
 
-  const saveBarAutoDismiss = async (enabled) => {
+  const saveBarSettings = async ({ enabled, minutes } = {}) => {
     setBarSettingsSaving(true);
     try {
-      const saved = await api.put('/orders/bar-station-settings', {
-        autoDismissPendingAfter30Min: Boolean(enabled),
-      });
+      const payload = {};
+      if (enabled !== undefined) payload.autoDismissPendingAfter30Min = Boolean(enabled);
+      if (minutes !== undefined) payload.autoDismissMinutes = Number(minutes);
+      const saved = await api.put('/orders/bar-station-settings', payload);
       setBarAutoDismiss(Boolean(saved?.autoDismissPendingAfter30Min));
-      toast.success(
-        saved?.autoDismissPendingAfter30Min
-          ? t('barSettings.enabledToast')
-          : t('barSettings.disabledToast'),
-      );
+      if (saved?.autoDismissMinutes != null) {
+        setBarAutoDismissMinutes(Number(saved.autoDismissMinutes));
+      }
+      if (enabled !== undefined) {
+        toast.success(
+          saved?.autoDismissPendingAfter30Min
+            ? t('barSettings.enabledToast', { minutes: saved.autoDismissMinutes })
+            : t('barSettings.disabledToast'),
+        );
+      } else if (minutes !== undefined) {
+        toast.success(t('barSettings.minutesSaved', { minutes: saved.autoDismissMinutes }));
+      }
       void loadOrders();
     } catch (err) {
       toast.error(err?.message || t('barSettings.saveFailed'));
@@ -299,6 +323,9 @@ export default function KitchenPanel({ station = 'cocina' }) {
   useSocket('bar-station-settings-update', (payload) => {
     if (!isBar || !payload) return;
     setBarAutoDismiss(Boolean(payload.autoDismissPendingAfter30Min));
+    if (payload.autoDismissMinutes != null) {
+      setBarAutoDismissMinutes(Number(payload.autoDismissMinutes));
+    }
   });
 
   useSocket('bar-auto-dismiss', (payload) => {
@@ -306,11 +333,12 @@ export default function KitchenPanel({ station = 'cocina' }) {
     const order = payload?.order || payload;
     const table = order?.table_number;
     const num = order?.order_number;
+    const minutes = payload?.minutes ?? barAutoDismissMinutes;
     const label = table
-      ? t('barSettings.autoDismissTable', { table })
+      ? t('barSettings.autoDismissTable', { table, minutes })
       : num != null
-        ? t('barSettings.autoDismissOrder', { number: num })
-        : t('barSettings.autoDismissGeneric');
+        ? t('barSettings.autoDismissOrder', { number: num, minutes })
+        : t('barSettings.autoDismissGeneric', { minutes });
     toast(label, { duration: 7000, icon: 'ℹ️' });
     void loadOrders();
   });
@@ -496,7 +524,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
               {t('panel.activeOrders', { count: visibleOrders.length })}
               {isBar && barAutoDismiss ? (
                 <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-400/90">
-                  · {t('barSettings.badgeActive')}
+                  · {t('barSettings.badgeActive', { minutes: barAutoDismissMinutes })}
                 </span>
               ) : null}
             </p>
@@ -565,7 +593,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
                 className="mt-1 h-4 w-4 rounded border-[color:var(--ui-border)]"
                 checked={barAutoDismiss}
                 disabled={barSettingsSaving || !barSettingsLoaded}
-                onChange={(e) => void saveBarAutoDismiss(e.target.checked)}
+                onChange={(e) => void saveBarSettings({ enabled: e.target.checked })}
               />
               <span>
                 <span className="block text-sm font-medium text-[var(--ui-body-text)]">
@@ -576,6 +604,28 @@ export default function KitchenPanel({ station = 'cocina' }) {
                 </span>
               </span>
             </label>
+            {barAutoDismiss ? (
+              <label className="block">
+                <span className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">
+                  {t('barSettings.minutesLabel')}
+                </span>
+                <select
+                  className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-sm text-[var(--ui-body-text)]"
+                  value={barAutoDismissMinutes}
+                  disabled={barSettingsSaving || !barSettingsLoaded}
+                  onChange={(e) => void saveBarSettings({ minutes: Number(e.target.value) })}
+                >
+                  {BAR_AUTO_DISMISS_MINUTE_OPTIONS.map((mins) => (
+                    <option key={mins} value={mins}>
+                      {t('barSettings.minutesOption', { count: mins })}
+                    </option>
+                  ))}
+                </select>
+                <span className="block text-xs text-[var(--ui-muted)] mt-1">
+                  {t('barSettings.minutesHelp')}
+                </span>
+              </label>
+            ) : null}
             {barSettingsSaving ? (
               <p className="text-xs text-[var(--ui-muted)]">{t('barSettings.saving')}</p>
             ) : null}
@@ -645,7 +695,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
               <div className="space-y-2 px-4 py-3">
                 {getPendingStationItems(order.items).map((item) => {
-                  const itemHighlighted = !isBar && isKitchenItemHighlighted(item);
+                  const itemHighlighted = !isBar && isKitchenItemHighlighted(item, order.id);
                   const itemBusyKey = `${order.id}:${item.id}`;
                   return (
                   <div

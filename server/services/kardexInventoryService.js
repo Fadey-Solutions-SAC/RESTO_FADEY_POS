@@ -6,11 +6,17 @@
 const { v4: uuidv4 } = require('uuid');
 const { getKardexMetodoValorizacion } = require('./businessConfigService');
 
+function normalizeKardexTimestamp(eventAt) {
+  const raw = String(eventAt || '').trim();
+  if (!raw) return null;
+  return raw.includes('T') ? raw : raw.replace(' ', 'T');
+}
+
 /**
  * @param {import('../database').Tx} tx
  * @param {object} p
  */
-function registrarEntrada(tx, { insumoId, cantidad, costoUnitario, referencia, referenciaId, userId, unidadesIngreso }) {
+function registrarEntrada(tx, { insumoId, cantidad, costoUnitario, referencia, referenciaId, userId, unidadesIngreso, eventAt }) {
   const ins = tx.queryOne('SELECT * FROM insumos WHERE id = ?', [insumoId]);
   if (!ins) throw new Error(`Insumo no encontrado: ${insumoId}`);
   if (!Number(ins.activo)) throw new Error(`Insumo inactivo: ${ins.nombre}`);
@@ -52,11 +58,12 @@ function registrarEntrada(tx, { insumoId, cantidad, costoUnitario, referencia, r
   }
 
   const kid = uuidv4();
+  const ts = normalizeKardexTimestamp(eventAt);
   tx.run(
     `INSERT INTO kardex (
       id, id_insumo, tipo_movimiento, cantidad, costo_unitario, costo_total,
       stock_anterior, stock_resultante, metodo_valorizacion, referencia, referencia_id, fecha, created_at, created_by
-    ) VALUES (?, ?, 'entrada', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)`,
+    ) VALUES (?, ?, 'entrada', ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')), ?)`,
     [
       kid,
       insumoId,
@@ -68,6 +75,8 @@ function registrarEntrada(tx, { insumoId, cantidad, costoUnitario, referencia, r
       getKardexMetodoValorizacion(),
       String(referencia || 'compra'),
       String(referenciaId || ''),
+      ts,
+      ts,
       userId || null,
     ]
   );
@@ -82,7 +91,7 @@ function registrarEntrada(tx, { insumoId, cantidad, costoUnitario, referencia, r
  * @param {number} [p.unidadesSalida] — p. ej. 1/4 = 0,25 U; con kpu>0 el producto vinculado (num/den) descuenta U y kg coherente
  * @param {boolean} [p.soloMasa] — solo descuenta stock en kg/L; no descuenta unidades (carnes por gramos en el plato)
  */
-function registrarSalida(tx, { insumoId, cantidad, unidadesSalida, soloMasa, referencia, referenciaId, userId }) {
+function registrarSalida(tx, { insumoId, cantidad, unidadesSalida, soloMasa, referencia, referenciaId, userId, eventAt }) {
   const ins = tx.queryOne('SELECT * FROM insumos WHERE id = ?', [insumoId]);
   if (!ins) throw new Error(`Insumo no encontrado: ${insumoId}`);
   if (!Number(ins.activo)) throw new Error(`Insumo inactivo: ${ins.nombre}`);
@@ -140,11 +149,12 @@ function registrarSalida(tx, { insumoId, cantidad, unidadesSalida, soloMasa, ref
   );
 
   const kid = uuidv4();
+  const ts = normalizeKardexTimestamp(eventAt);
   tx.run(
     `INSERT INTO kardex (
       id, id_insumo, tipo_movimiento, cantidad, costo_unitario, costo_total,
       stock_anterior, stock_resultante, metodo_valorizacion, referencia, referencia_id, fecha, created_at, created_by
-    ) VALUES (?, ?, 'salida', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)`,
+    ) VALUES (?, ?, 'salida', ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')), ?)`,
     [
       kid,
       insumoId,
@@ -156,6 +166,8 @@ function registrarSalida(tx, { insumoId, cantidad, unidadesSalida, soloMasa, ref
       getKardexMetodoValorizacion(),
       String(referencia || 'venta'),
       String(referenciaId || ''),
+      ts,
+      ts,
       userId || null,
     ]
   );
@@ -261,9 +273,10 @@ function revertirSalidasVentaPedido(tx, orderId, userId) {
  * @param {string} orderId
  * @param {string} [userId]
  */
-function aplicarSalidasVentaPedido(tx, orderId, userId) {
+function aplicarSalidasVentaPedido(tx, orderId, userId, eventAt) {
   if (yaAplicoVentaEnKardex(tx, orderId)) return { skipped: true, reason: 'ya_procesado' };
 
+  const movAt = eventAt || null;
   const items = tx.queryAll('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
   for (const line of items) {
     const pid = line.product_id;
@@ -286,6 +299,7 @@ function aplicarSalidasVentaPedido(tx, orderId, userId) {
           referencia: 'venta_masa',
           referenciaId: orderId,
           userId,
+          eventAt: movAt,
         });
         continue;
       }
@@ -308,6 +322,7 @@ function aplicarSalidasVentaPedido(tx, orderId, userId) {
           referencia: 'venta',
           referenciaId: orderId,
           userId,
+          eventAt: movAt,
         });
       } else {
         registrarSalida(tx, {
@@ -316,6 +331,7 @@ function aplicarSalidasVentaPedido(tx, orderId, userId) {
           referencia: 'venta',
           referenciaId: orderId,
           userId,
+          eventAt: movAt,
         });
       }
       continue;
@@ -337,6 +353,7 @@ function aplicarSalidasVentaPedido(tx, orderId, userId) {
         referencia: 'venta',
         referenciaId: orderId,
         userId,
+        eventAt: movAt,
       });
     }
   }
