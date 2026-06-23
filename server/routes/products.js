@@ -12,6 +12,7 @@ const {
   parseRestaurantSchedule,
 } = require('../services/productScheduleService');
 const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
+const { parseProductMinStock } = require('../utils/productStockThreshold');
 
 const router = express.Router();
 
@@ -206,6 +207,7 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     available_to,
     available_days,
     schedule_type,
+    min_stock,
   } = req.body;
   const productName = normalizeCatalogDisplayName(name);
   if (!productName || price === undefined) return res.status(400).json({ error: 'Nombre y precio son requeridos' });
@@ -234,6 +236,7 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
   const id = uuidv4();
   const safeProcessType = process_type === 'non_transformed' ? 'non_transformed' : 'transformed';
   const safeStock = safeProcessType === 'transformed' ? 0 : Math.max(0, Number(stock || 0));
+  const safeMinStock = safeProcessType === 'non_transformed' ? parseProductMinStock(min_stock) : 0;
   const safeWarehouseId = safeProcessType === 'transformed' ? '' : resolveWarehouseId(stock_warehouse_id);
   const safeProductionArea = production_area === 'bar' ? 'bar' : 'cocina';
   const safeTaxType = ['igv', 'exonerado', 'inafecto'].includes(String(tax_type || '').toLowerCase())
@@ -266,8 +269,8 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
       kardex_insumo_id, kardex_insumo_num, kardex_insumo_den, kardex_insumo_modo, kardex_insumo_gramos,
       purchase_price,
       schedule_enabled, available_from, available_to, available_days, schedule_type,
-      catalog_listed_at, idle_sales_days
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0)`,
+      catalog_listed_at, idle_sales_days, min_stock
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, ?)`,
     [
       id,
       productName,
@@ -294,6 +297,7 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
       scheduleFields.available_to,
       scheduleFields.available_days,
       scheduleFields.schedule_type,
+      safeMinStock,
     ]
   );
   if (safeProcessType === 'non_transformed') {
@@ -342,6 +346,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     available_to,
     available_days,
     schedule_type,
+    min_stock,
   } = req.body;
   const current = queryOne('SELECT * FROM products WHERE id = ?', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Producto no encontrado' });
@@ -454,6 +459,10 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     }
   }
 
+  const finalMinStock = finalProcessType === 'non_transformed'
+    ? (min_stock !== undefined ? parseProductMinStock(min_stock) : parseProductMinStock(current.min_stock))
+    : 0;
+
   runSql(
     `UPDATE products SET
       name = COALESCE(?, name),
@@ -475,6 +484,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       kardex_insumo_modo = ?,
       kardex_insumo_gramos = ?,
       purchase_price = ?,
+      min_stock = ?,
       schedule_enabled = COALESCE(?, schedule_enabled),
       available_from = COALESCE(?, available_from),
       available_to = COALESCE(?, available_to),
@@ -502,6 +512,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       finalProcessType === 'non_transformed' ? 'unidad' : finalKardexModo,
       finalProcessType === 'non_transformed' ? 0 : (finalKardexModo === 'peso' ? finalKardexGramos : 0),
       safePurchasePrice === undefined ? current.purchase_price : safePurchasePrice,
+      finalMinStock,
       scheduleUpdate ? scheduleUpdate.schedule_enabled : null,
       scheduleUpdate ? scheduleUpdate.available_from : null,
       scheduleUpdate ? scheduleUpdate.available_to : null,

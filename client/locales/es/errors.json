@@ -4,6 +4,9 @@
   "notFound": "No se encontró el recurso solicitado.",
   "forbidden": "No tiene permisos para esta acción.",
   "unauthorized": "Sesión expirada. Inicie sesión nuevamente.",
+  "sessionExpired": "Su sesión expiró por inactividad prolongada. Vuelva a iniciar sesión.",
+  "sessionIdleTimeout": "Sesión cerrada por inactividad (36 h). Inicie sesión nuevamente.",
+  "invalidSession": "Sesión no válida. Vuelva a iniciar sesión.",
   "service404": "No se encontró el servicio (404). En local, ejecute el backend en el puerto 3001.",
   "orders": {
     "sendFailed": "No se pudo enviar el pedido a cocina/bar. Intente nuevamente.",

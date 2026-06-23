@@ -25,6 +25,9 @@ export function AuthProvider({ children }) {
     if (token) {
       api.get('/auth/me')
         .then((data) => {
+          if (data?.token) {
+            localStorage.setItem('token', data.token);
+          }
           applyAuthUserTheme(data);
           setUser({ ...data, type: 'staff' });
         })
@@ -75,6 +78,9 @@ export function AuthProvider({ children }) {
     if (!token) return null;
     try {
       const data = await api.get('/auth/me');
+      if (data?.token) {
+        localStorage.setItem('token', data.token);
+      }
       applyAuthUserTheme(data);
       setUser({ ...data, type: 'staff' });
       return data;

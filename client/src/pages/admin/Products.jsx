@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, formatCurrency } from '../../utils/api';
+import { isProductLowStock } from '../../utils/productStockDisplay';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import { useSocket } from '../../hooks/useSocket';
 import Modal from '../../components/Modal';
@@ -122,7 +123,7 @@ export default function Products() {
             <p className="text-xs text-gray-400 mb-2 line-clamp-2">{p.description}</p>
             <div className="flex items-center justify-between text-xs text-gray-400 mb-3">
               <span className="badge bg-gray-100 text-gray-600">{p.category_name}</span>
-              <span className={p.stock <= 10 ? 'text-red-500 font-bold' : ''}>Stock: {p.stock}</span>
+              <span className={isProductLowStock(p.stock, p.min_stock) ? 'text-red-500 font-bold' : ''}>Stock: {p.stock}</span>
             </div>
             <div className="flex gap-1">
               <button onClick={() => openEdit(p)} className="flex-1 text-xs py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-1"><MdEdit /> Editar</button>

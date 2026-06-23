@@ -6,6 +6,7 @@
 const { queryAll, queryOne } = require('../database');
 const { FINANCIAL_FILTER_SQL } = require('../businessRules');
 const { closeStaleOpenWorkSessions } = require('./workSessionService');
+const { STAFF_IDLE_LOGOUT_MINUTES } = require('../constants/staffSessionPolicy');
 const {
   rawWorkedMinutesExpr,
   effectiveWorkedMinutesExpr,
@@ -16,7 +17,7 @@ const {
 const FIN = FINANCIAL_FILTER_SQL;
 /** Alertas de inactividad: permiso/día libre no debe disparar aviso por pausas cortas. */
 const IDLE_MINUTES_WARN = 24 * 60;
-const IDLE_MINUTES_SEVERE = 48 * 60;
+const IDLE_MINUTES_SEVERE = STAFF_IDLE_LOGOUT_MINUTES;
 const KITCHEN_SLOW_MIN = 25;
 const DELIVERY_SLOW_MIN = 35;
 const LONG_SHIFT_MIN = 600;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, formatCurrency } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
-import { showStockInOrderingUI } from '../../utils/productStockDisplay';
+import { showStockInOrderingUI, isProductLowStock } from '../../utils/productStockDisplay';
 import { useCart } from '../../context/CartContext';
 import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
@@ -182,7 +182,7 @@ export default function Menu() {
               </span>
               {showStockInOrderingUI(selectedProduct) &&
                 selectedProduct.stock > 0 &&
-                selectedProduct.stock <= 10 && (
+                isProductLowStock(selectedProduct.stock, selectedProduct.min_stock) && (
                 <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">Pocas unidades</span>
               )}
             </div>

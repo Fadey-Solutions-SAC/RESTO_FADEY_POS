@@ -21,6 +21,9 @@ const {
   countOpenSessions,
   ensureOpenWorkSession,
 } = require('../services/workSessionService');
+const { signStaffToken, signMasterToken, shouldRefreshStaffToken, buildRefreshedStaffToken } = require('../utils/staffJwt');
+const { touchWorkSessionActivity } = require('../services/workActivityTracker');
+const { STAFF_IDLE_LOGOUT_MINUTES } = require('../constants/staffSessionPolicy');
 
 const router = express.Router();
 
@@ -114,16 +117,12 @@ function readJornadaLaboralFlags() {
 
 function buildMasterToken() {
   const master = getMasterCredentialsPublic();
-  return jwt.sign(
-    {
-      id: 'master-admin',
-      username: master.username,
-      role: 'master_admin',
-      full_name: 'Administrador Maestro',
-    },
-    JWT_SECRET,
-    { expiresIn: '24h' }
-  );
+  return signMasterToken({
+    id: 'master-admin',
+    username: master.username,
+    role: 'master_admin',
+    full_name: 'Administrador Maestro',
+  });
 }
 
 router.get('/attendance-photos-required', (req, res) => {
@@ -134,6 +133,15 @@ router.get('/attendance-photos-required', (req, res) => {
     logoutRequired: logoutPhoto,
     required: loginPhoto,
   });
+});
+
+/** Mantiene viva la sesión mientras la pestaña está abierta (caja, cocina, etc.). */
+router.post('/heartbeat', authenticateToken, (req, res) => {
+  if (req.user?.type === 'customer' || req.user?.role === 'master_admin') {
+    return res.json({ ok: true });
+  }
+  touchWorkSessionActivity(req.user, { module: 'heartbeat', path: '/auth/heartbeat' });
+  res.json({ ok: true, idle_logout_minutes: STAFF_IDLE_LOGOUT_MINUTES });
 });
 
 router.post('/login', (req, res) => {
@@ -194,17 +202,14 @@ router.post('/login', (req, res) => {
   const { sessionTokenId } = startWorkSession(user, photoLogin || null);
   advanceStaffChatCycleIfDue();
 
-  const token = jwt.sign(
-    {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      restaurant_id: user.restaurant_id,
-      full_name: user.full_name,
-      session_id: sessionTokenId,
-    },
-    JWT_SECRET, { expiresIn: '24h' }
-  );
+  const token = signStaffToken({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    restaurant_id: user.restaurant_id,
+    full_name: user.full_name,
+    session_id: sessionTokenId,
+  });
 
   const control = getControlConfig();
   const plan = normalizePlan(control.service_plan);
@@ -342,7 +347,7 @@ router.get('/me', authenticateToken, (req, res) => {
     String(user?.role || '').toLowerCase() === 'cajero'
       ? getActiveCajaById(user?.caja_station_id)
       : null;
-  res.json({
+  const payload = {
     ...user,
     permissions,
     sub_permissions,
@@ -351,7 +356,12 @@ router.get('/me', authenticateToken, (req, res) => {
     type: 'staff',
     caja_name: caja?.name || '',
     ...readUiAppearanceFromStoredSettings(),
-  });
+  };
+  if (shouldRefreshStaffToken(req.user)) {
+    const refreshed = buildRefreshedStaffToken(req.user, user);
+    if (refreshed) payload.token = refreshed;
+  }
+  res.json(payload);
 });
 
 module.exports = router;

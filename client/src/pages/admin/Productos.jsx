@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
-import { showStockInOrderingUI } from '../../utils/productStockDisplay';
+import { showStockInOrderingUI, isProductLowStock, productStockStatus } from '../../utils/productStockDisplay';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
@@ -36,6 +36,7 @@ const EMPTY_PRODUCT_FORM = {
   purchase_price: '',
   category_id: '',
   stock: 0,
+  min_stock: '',
   is_active: 1,
   process_type: 'transformed',
   stock_warehouse_id: '',
@@ -309,6 +310,7 @@ export default function Productos() {
           : '',
       category_id: p.category_id || '',
       stock: p.stock,
+      min_stock: p.min_stock != null && Number(p.min_stock) > 0 ? String(p.min_stock) : '',
       is_active: p.is_active,
       process_type: p.process_type === 'non_transformed' ? 'non_transformed' : 'transformed',
       stock_warehouse_id: p.stock_warehouse_id || defaultWarehouseId,
@@ -400,6 +402,7 @@ export default function Productos() {
         schedule_enabled: Number(productForm.schedule_enabled) === 1 ? 1 : 0,
         available_days: normalizeAvailableDays(productForm.available_days),
         stock: isNonTransformed ? stockAmount : 0,
+        min_stock: isNonTransformed ? Math.max(0, Math.floor(Number(productForm.min_stock || 0))) : 0,
         stock_warehouse_id: isNonTransformed ? warehouseId : '',
         kardex_insumo_id: !isNonTransformed ? (productForm.kardex_insumo_id || '').trim() : '',
         kardex_insumo_num: !isNonTransformed && hasK && !modoPeso ? kn : 1,
@@ -741,9 +744,17 @@ export default function Productos() {
                           : '—'}
                       </td>
                       <td className="p-3 text-center">
-                        {showStockInOrderingUI(p) ? (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.stock > 10 ? 'bg-emerald-100 text-emerald-700' : p.stock > 0 ? 'bg-gold-100 text-gold-700' : 'bg-red-100 text-red-700'}`}>{p.stock}</span>
-                        ) : null}
+                        {showStockInOrderingUI(p) ? (() => {
+                          const status = productStockStatus(p.stock, p.min_stock);
+                          const cls = status === 'normal'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : status === 'low'
+                              ? 'bg-gold-100 text-gold-700'
+                              : 'bg-red-100 text-red-700';
+                          return (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{p.stock}</span>
+                          );
+                        })() : null}
                       </td>
                       <td className="p-3 text-center">
                         <button onClick={() => toggleProductActive(p)}>
@@ -870,6 +881,7 @@ export default function Productos() {
                 ...productForm,
                 process_type: 'transformed',
                 stock: 0,
+                min_stock: '',
                 stock_warehouse_id: '',
                 kardex_insumo_id: productForm.kardex_insumo_id || '',
                 kardex_insumo_num: productForm.kardex_insumo_num || '1',
@@ -935,6 +947,16 @@ export default function Productos() {
             <div>
               {productForm.process_type === 'non_transformed' ? (
                 <>
+                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.minStock')}</label>
+                  <input
+                    type="number"
+                    value={productForm.min_stock}
+                    onChange={e => setProductForm({ ...productForm, min_stock: e.target.value })}
+                    className="input-field"
+                    placeholder="0"
+                    min="0"
+                  />
+                  <p className="text-xs ui-text-muted mt-1 mb-3">{t('products.minStockHint')}</p>
                   <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.initialStock')}</label>
                   <input
                     type="number"

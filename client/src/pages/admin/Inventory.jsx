@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, formatCurrency } from '../../utils/api';
+import { isProductLowStock, productStockStatus } from '../../utils/productStockDisplay';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import { useSocket } from '../../hooks/useSocket';
 import Modal from '../../components/Modal';
@@ -65,7 +66,9 @@ export default function Inventory() {
     return true;
   });
 
-  const lowStockCount = products.filter(p => p.stock <= 10).length;
+  const lowStockCount = products.filter(
+    (p) => p.process_type === 'non_transformed' && isProductLowStock(p.stock, p.min_stock)
+  ).length;
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full" /></div>;
 
@@ -86,7 +89,7 @@ export default function Inventory() {
           <MdWarning className="text-amber-500 text-xl flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-medium text-amber-800">Stock Bajo</p>
-            <p className="text-sm text-amber-600">{lowStockCount} producto(s) con stock menor a 10 unidades</p>
+            <p className="text-sm text-amber-600">{lowStockCount} producto(s) en o por debajo de su stock mínimo</p>
           </div>
         </div>
       )}
@@ -118,7 +121,13 @@ export default function Inventory() {
                 <p className="text-xs text-gray-400 truncate">{p.category_name || 'Sin categoría'}</p>
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-primary-600 font-bold text-sm">{formatCurrency(p.price)}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.stock <= 5 ? 'bg-red-100 text-red-700' : p.stock <= 10 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    productStockStatus(p.stock, p.min_stock) === 'normal'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : productStockStatus(p.stock, p.min_stock) === 'low'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-red-100 text-red-700'
+                  }`}>
                     {p.stock} u.
                   </span>
                 </div>
@@ -158,7 +167,13 @@ export default function Inventory() {
                   <td className="py-3 px-4 text-sm text-gray-500">{p.category_name || '—'}</td>
                   <td className="py-3 px-4 text-sm font-bold text-right">{formatCurrency(p.price)}</td>
                   <td className="py-3 px-4 text-right">
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${p.stock <= 5 ? 'bg-red-100 text-red-700' : p.stock <= 10 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                      productStockStatus(p.stock, p.min_stock) === 'normal'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : productStockStatus(p.stock, p.min_stock) === 'low'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-red-100 text-red-700'
+                    }`}>
                       {p.stock} unid.
                     </span>
                   </td>

@@ -4,6 +4,7 @@
 
 const { queryAll, queryOne } = require('../database');
 const { buildRankings, buildProductivityByUser } = require('./workProductivityService');
+const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
 
 const CACHE_TTL_MS = 12000;
 const hubCache = new Map();
@@ -301,7 +302,7 @@ function buildOperationalSection(from, to) {
 function buildInventorySection(from, to) {
   const critical = queryAll(
     `SELECT id, name, stock, price FROM products
-     WHERE is_active = 1 AND stock <= 10 AND IFNULL(process_type, 'non_transformed') = 'non_transformed'
+     WHERE is_active = 1 AND ${isNonTransformedLowStockSql()} AND IFNULL(process_type, 'non_transformed') = 'non_transformed'
      ORDER BY stock ASC LIMIT 15`
   );
   const oos = queryAll(

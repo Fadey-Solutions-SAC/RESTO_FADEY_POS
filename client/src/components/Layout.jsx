@@ -9,6 +9,7 @@ import { MdMenu, MdPointOfSale, MdLock, MdAdminPanelSettings } from 'react-icons
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppLocaleBootstrap } from '../hooks/useAppLocaleBootstrap';
+import useStaffSessionHeartbeat from '../hooks/useStaffSessionHeartbeat';
 
 export default function Layout() {
   const { t } = useTranslation('common');
@@ -17,6 +18,7 @@ export default function Layout() {
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 1024 : false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, refreshStaffProfile } = useAuth();
+  useStaffSessionHeartbeat(user);
   const location = useLocation();
   const [cajaOpen, setCajaOpen] = useState(null);
   const [checkingCaja, setCheckingCaja] = useState(true);

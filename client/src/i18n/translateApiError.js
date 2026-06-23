@@ -9,7 +9,9 @@ const SERVER_MESSAGE_KEYS = [
   [/categor[ií]a no encontrada/i, 'errors:categories.notFound'],
   [/error al actualizar la categor[ií]a/i, 'errors:categories.updateFailed'],
   [/no se pudo guardar la categor[ií]a/i, 'errors:categories.saveFailed'],
-  [/token.*inv[aá]lido|sesi[oó]n/i, 'errors:unauthorized'],
+  [/token.*expirad[oa]|jwt expired/i, 'errors:sessionExpired'],
+  [/inactividad.*36\s*h|36\s*h.*inactividad/i, 'errors:sessionIdleTimeout'],
+  [/token.*inv[aá]lido|sesi[oó]n inv[aá]lida/i, 'errors:invalidSession'],
   [/no tienes permisos|no tiene permisos/i, 'errors:forbidden'],
 ];
 
@@ -50,8 +52,14 @@ export function translateApiErrorMessage(res, data, endpoint) {
     return i18n.t('errors:categories.saveFailed');
   }
   if (res.status === 404) return i18n.t('errors:service404');
-  if (res.status === 401 || res.status === 403) {
-    return res.status === 401 ? i18n.t('errors:unauthorized') : i18n.t('errors:forbidden');
+  const isLoginAttempt = /\/auth\/(login|customer\/login|customer\/register)/.test(ep);
+  if (res.status === 401) {
+    if (isLoginAttempt && fromApi) return fromApi;
+    return i18n.t('errors:sessionExpired');
+  }
+  if (res.status === 403) {
+    if (translated && translated !== fromApi) return translated;
+    return i18n.t('errors:forbidden');
   }
   if (res.status >= 500) return i18n.t('errors:server');
   return data?.message || i18n.t('errors:generic');

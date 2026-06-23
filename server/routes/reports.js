@@ -14,6 +14,7 @@ const { emitStaffDataUpdate } = require('../socketBroadcast');
 const { getSlowMovingProductIds } = require('../services/slowMovingProductsService');
 const { getReservationCajaOperationalAlerts } = require('../services/reservationSchedulerService');
 const { KITCHEN_ARRIVAL_ALERT_MIN, KITCHEN_PREP_ALERT_MIN } = require('../constants/kitchenTiming');
+const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
 
 const router = express.Router();
 const FINANCIAL_FILTER = FINANCIAL_FILTER_SQL;
@@ -178,7 +179,7 @@ function buildOperationalIntelligence(opts = {}) {
      AND (julianday('now') - julianday(COALESCE(updated_at, created_at))) * 24 * 60 > 25`
   );
   const lowStock = queryAll(
-    `SELECT * FROM products WHERE stock <= 10 AND is_active = 1 AND ${INVENTORY_PRODUCT_WHERE}
+    `SELECT * FROM products WHERE ${isNonTransformedLowStockSql()} AND is_active = 1 AND ${INVENTORY_PRODUCT_WHERE}
      ORDER BY stock ASC LIMIT 10`
   );
   const peakHourToday = queryOne(

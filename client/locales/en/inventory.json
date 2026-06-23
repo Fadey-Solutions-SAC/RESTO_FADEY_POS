@@ -51,6 +51,8 @@
     "purchasePriceHint": "Inventory investment cost (reports and valuation). Same field as in Warehouse.",
     "purchasePricePlaceholder": "Inventory investment",
     "initialStock": "Initial stock",
+    "minStock": "Minimum stock",
+    "minStockHint": "Low-stock alerts and requirements trigger when stock reaches this limit. Leave at 0 to use the default of 10.",
     "transformed": "Prepared item",
     "nonTransformed": "Retail / stock item",
     "nonTransformedHint": "Retail item: managed as sellable inventory in internal transfers by category.",

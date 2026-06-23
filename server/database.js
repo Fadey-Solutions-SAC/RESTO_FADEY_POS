@@ -1073,6 +1073,7 @@ async function initDatabase() {
     addProductColIfMissing('catalog_listed_at', "ALTER TABLE products ADD COLUMN catalog_listed_at TEXT DEFAULT ''");
     addProductColIfMissing('last_paid_sale_at', "ALTER TABLE products ADD COLUMN last_paid_sale_at TEXT DEFAULT ''");
     addProductColIfMissing('idle_sales_days', 'ALTER TABLE products ADD COLUMN idle_sales_days INTEGER NOT NULL DEFAULT 0');
+    addProductColIfMissing('min_stock', 'ALTER TABLE products ADD COLUMN min_stock INTEGER NOT NULL DEFAULT 0');
     try {
       const { backfillProductSalesTracking } = require('./services/productSalesTrackingService');
       backfillProductSalesTracking();

@@ -2,7 +2,11 @@ const jwt = require('jsonwebtoken');
 const { queryOne } = require('../database');
 const { getLockState, getMasterCredentialsPublic } = require('../masterAdminService');
 const { touchWorkSessionActivity } = require('../services/workActivityTracker');
-const { ensureOpenWorkSession: ensureUserWorkSession } = require('../services/workSessionService');
+const { ensureOpenWorkSession: ensureUserWorkSession, enforceStaffIdleLogout } = require('../services/workSessionService');
+const {
+  shouldRefreshStaffToken,
+  buildRefreshedStaffToken,
+} = require('../utils/staffJwt');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -40,7 +44,7 @@ function authenticateToken(req, res, next) {
       req.user = decoded;
       return next();
     }
-    const user = queryOne('SELECT id, username, role, full_name, is_active FROM users WHERE id = ?', [decoded.id]);
+    const user = queryOne('SELECT id, username, role, full_name, is_active, restaurant_id FROM users WHERE id = ?', [decoded.id]);
     if (!user || Number(user.is_active || 0) !== 1) {
       return res.status(401).json({ error: 'Usuario no autorizado' });
     }
@@ -50,6 +54,14 @@ function authenticateToken(req, res, next) {
       username: user.username,
       full_name: user.full_name,
     };
+    const idleMsg = enforceStaffIdleLogout(req.user, decoded.iat);
+    if (idleMsg) {
+      return res.status(401).json({ error: idleMsg, code: 'SESSION_IDLE_TIMEOUT' });
+    }
+    if (shouldRefreshStaffToken(decoded)) {
+      const refreshed = buildRefreshedStaffToken(decoded, user);
+      if (refreshed) res.setHeader('X-Refreshed-Token', refreshed);
+    }
     try {
       ensureUserWorkSession(req.user);
     } catch (_) {
@@ -62,7 +74,10 @@ function authenticateToken(req, res, next) {
     }
     next();
   } catch (err) {
-    return res.status(403).json({ error: 'Token inválido o expirado' });
+    if (err?.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expirado' });
+    }
+    return res.status(401).json({ error: 'Token inválido' });
   }
 }
 

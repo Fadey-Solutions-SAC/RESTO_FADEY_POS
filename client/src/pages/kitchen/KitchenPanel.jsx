@@ -6,6 +6,7 @@ import { useSocket, useSocketEmit } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
+import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
 import EndShiftModal from '../../components/EndShiftModal';
 import { MdKitchen, MdLocalBar, MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings } from 'react-icons/md';
 import toast from 'react-hot-toast';
@@ -54,6 +55,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const [filter, setFilter] = useState('all');
   const showDeliveryUi = useShowDeliveryUi();
   const { user } = useAuth();
+  useStaffSessionHeartbeat(user);
   useAppLocaleBootstrap();
   const [endShiftOpen, setEndShiftOpen] = useState(false);
   const [statusBusy, setStatusBusy] = useState({});

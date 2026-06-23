@@ -215,6 +215,14 @@ async function request(endpoint, options = {}) {
 
   const url = `${getApiBase()}${endpoint}`;
   const res = await fetch(url, { ...options, headers });
+  const refreshedToken = res.headers.get('X-Refreshed-Token');
+  if (refreshedToken && typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem('token', refreshedToken);
+    } catch (_) {
+      /* noop */
+    }
+  }
   const text = await res.text();
   let data = null;
   try {
@@ -224,6 +232,20 @@ async function request(endpoint, options = {}) {
   }
 
   if (!res.ok) {
+    if (
+      res.status === 401
+      && data?.code === 'SESSION_IDLE_TIMEOUT'
+      && typeof window !== 'undefined'
+    ) {
+      try {
+        window.localStorage.removeItem('token');
+      } catch (_) {
+        /* noop */
+      }
+      if (window.location.pathname !== '/') {
+        window.location.href = '/';
+      }
+    }
     const message = translateApiErrorMessage(res, data, endpoint);
     if (import.meta.env.DEV) {
       console.warn('[api]', options.method || 'GET', endpoint, res.status, data || text?.slice(0, 200));

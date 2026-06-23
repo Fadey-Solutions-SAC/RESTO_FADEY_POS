@@ -4,6 +4,9 @@
   "notFound": "The requested resource was not found.",
   "forbidden": "You do not have permission for this action.",
   "unauthorized": "Session expired. Please sign in again.",
+  "sessionExpired": "Your session expired after prolonged inactivity. Please sign in again.",
+  "sessionIdleTimeout": "Session closed due to inactivity (36 h). Please sign in again.",
+  "invalidSession": "Invalid session. Please sign in again.",
   "service404": "Service not found (404). In local dev, run the backend on port 3001.",
   "orders": {
     "sendFailed": "Could not send the order to kitchen/bar. Please try again.",

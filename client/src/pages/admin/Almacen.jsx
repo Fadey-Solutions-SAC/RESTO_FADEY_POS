@@ -9,6 +9,7 @@ import { MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline } fro
 import Modal from '../../components/Modal';
 import LogisticaKardexModule from '../../components/LogisticaKardexModule';
 import InsumoCreateModal from '../../components/InsumoCreateModal';
+import { isProductLowStock, productStockStatus } from '../../utils/productStockDisplay';
 
 const WAREHOUSE_CATEGORY_NAMES = {
   products: 'PRODUCTOS ALMACEN',
@@ -488,7 +489,7 @@ export default function Almacen() {
     return matchSearch;
   });
   const lowFromWarehouse = products.filter(
-    (p) => p.process === 'non_transformed' && Number(p.stock || 0) <= 10
+    (p) => p.process === 'non_transformed' && isProductLowStock(p.stock, p.min_stock)
   );
   const lowFromKardex = (kardexBajoMin || []).map((i) => {
     const uMin = Number(i.minimo_unidades) || 0;
@@ -523,7 +524,7 @@ export default function Almacen() {
   }, {});
 
   const lowStock = productsForSelectedWarehouse.filter(
-    (p) => p.process === 'non_transformed' && Number(p.stock || 0) <= 10
+    (p) => p.process === 'non_transformed' && isProductLowStock(p.stock, p.min_stock)
   );
   const selectedWarehouse = warehouses.find((w) => sameWarehouseId(w.id, selectedWarehouseView));
   const selectedIsInsumosWarehouse = isInsumosWarehouse(selectedWarehouse);
@@ -1312,7 +1313,7 @@ export default function Almacen() {
         >
           <div className="space-y-4">
             <p className="text-sm text-[var(--ui-muted)]">
-              Incluye productos de almacén (stock ≤ 10) e <strong>insumos kardex</strong> bajo el mínimo (en U o en kg/L,
+              Incluye productos de almacén bajo su stock mínimo e <strong>insumos kardex</strong> bajo el mínimo (en U o en kg/L,
               según se configuró al crear el insumo). Puedes desmarcar filas.
             </p>
             <div className="max-h-[340px] overflow-y-auto border border-slate-200 rounded-lg">
@@ -1622,7 +1623,13 @@ export default function Almacen() {
                   <td className="py-3 font-bold">{p.stock_kitchen || 0}</td>
                   <td className="py-3 font-bold">{p.stock}</td>
                   <td className="py-3">{formatCurrency(p.price * p.stock)}</td>
-                  <td className="py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.stock > 10 ? 'bg-emerald-100 text-emerald-700' : p.stock > 0 ? 'bg-gold-100 text-gold-700' : 'bg-red-100 text-red-700'}`}>{p.stock > 10 ? 'Normal' : p.stock > 0 ? 'Bajo' : 'Agotado'}</span></td>
+                  <td className="py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    productStockStatus(p.stock, p.min_stock) === 'normal'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : productStockStatus(p.stock, p.min_stock) === 'low'
+                        ? 'bg-gold-100 text-gold-700'
+                        : 'bg-red-100 text-red-700'
+                  }`}>{productStockStatus(p.stock, p.min_stock) === 'normal' ? 'Normal' : productStockStatus(p.stock, p.min_stock) === 'low' ? 'Bajo' : 'Agotado'}</span></td>
                   <td className="py-3">
                     <button
                       type="button"

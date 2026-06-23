@@ -11,6 +11,9 @@ const {
   effectiveWorkedMinutesFromValues,
   parseDateKey,
 } = require('../lib/workSessionSql');
+const { STAFF_IDLE_LOGOUT_MINUTES } = require('../constants/staffSessionPolicy');
+
+const TRACKABLE_STAFF_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery']);
 
 function initialAttendanceStatusForRole(role) {
   return String(role || '').toLowerCase() === 'admin' ? 'asistente' : 'pending';
@@ -33,8 +36,8 @@ function startWorkSession(user, photoLogin = null) {
 
   runSql(
     `INSERT INTO user_work_sessions
-      (id, user_id, session_token_id, username, full_name, role, login_at, photo_login, attendance_status, session_kind, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, datetime('now'), datetime('now'))`,
+      (id, user_id, session_token_id, username, full_name, role, login_at, last_activity_at, photo_login, attendance_status, session_kind, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, datetime('now'), datetime('now'))`,
     [
       uuidv4(),
       user.id,
@@ -98,8 +101,60 @@ function closeWorkSession(userId, sessionTokenId = '', closeReason = 'logout', p
   return { closed: true, isParallel, wasLastOpen };
 }
 
+/** Minutos sin actividad en la jornada abierta (null = sin sesión abierta). */
+function getStaffSessionIdleMinutes(userId, sessionTokenId = '') {
+  const uid = String(userId || '').trim();
+  if (!uid) return null;
+  const sid = String(sessionTokenId || '').trim();
+  const row = sid
+    ? queryOne(
+        `SELECT login_at, last_activity_at FROM user_work_sessions
+         WHERE user_id = ? AND session_token_id = ? AND logout_at IS NULL LIMIT 1`,
+        [uid, sid]
+      )
+    : queryOne(
+        `SELECT login_at, last_activity_at FROM user_work_sessions
+         WHERE user_id = ? AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1`,
+        [uid]
+      );
+  if (!row) return null;
+  const anchor = String(row.last_activity_at || '').trim() || String(row.login_at || '').trim();
+  if (!anchor) return 0;
+  const idle = queryOne(
+    `SELECT CAST((julianday('now') - julianday(?)) * 24 * 60 AS INTEGER) AS idle_minutes`,
+    [anchor]
+  );
+  return Math.max(0, Number(idle?.idle_minutes || 0));
+}
+
+/**
+ * Cierra sesión si lleva ≥36 h sin actividad. Mientras haya uso (API / heartbeat), no cierra.
+ * @returns {string|null} mensaje de error si debe bloquearse el acceso
+ */
+function enforceStaffIdleLogout(user, jwtIssuedAtSec = 0) {
+  if (!user?.id || !TRACKABLE_STAFF_ROLES.has(String(user.role || ''))) return null;
+
+  const idleMinutes = getStaffSessionIdleMinutes(user.id, user.session_id);
+  if (idleMinutes != null) {
+    if (idleMinutes >= STAFF_IDLE_LOGOUT_MINUTES) {
+      closeWorkSession(user.id, user.session_id, 'idle_auto_logout', null);
+      return 'Sesión cerrada por inactividad (36 h). Inicie sesión nuevamente.';
+    }
+    return null;
+  }
+
+  const iat = Number(jwtIssuedAtSec) || 0;
+  if (iat > 0) {
+    const jwtIdleMinutes = Math.floor(Date.now() / 1000 - iat) / 60;
+    if (jwtIdleMinutes >= STAFF_IDLE_LOGOUT_MINUTES) {
+      return 'Sesión cerrada por inactividad (36 h). Inicie sesión nuevamente.';
+    }
+  }
+  return null;
+}
+
 /** Cierra jornadas abiertas sin actividad real (p. ej. cerró el navegador sin «Finalizar jornada»). */
-function closeStaleOpenWorkSessions({ minIdleMinutes = 48 * 60 } = {}) {
+function closeStaleOpenWorkSessions({ minIdleMinutes = STAFF_IDLE_LOGOUT_MINUTES } = {}) {
   const threshold = Math.max(60, Number(minIdleMinutes) || 0);
   const rows = queryAll(
     `SELECT s.id, s.user_id, s.session_token_id,
@@ -292,6 +347,8 @@ module.exports = {
   startWorkSession,
   closeWorkSession,
   closeStaleOpenWorkSessions,
+  getStaffSessionIdleMinutes,
+  enforceStaffIdleLogout,
   ensureOpenWorkSession,
   queryAggregatedJornadas,
   queryDeviceSessions,

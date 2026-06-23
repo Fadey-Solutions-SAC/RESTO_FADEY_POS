@@ -4,6 +4,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
+import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
 import EndShiftModal from '../../components/EndShiftModal';
 import NotificationCenter from '../../components/NotificationCenter';
 import Modal from '../../components/Modal';
@@ -62,6 +63,7 @@ export default function DeliveryPanel() {
   const [orders, setOrders] = useState([]);
   const [tab, setTab] = useState(TAB_KEYS.activos);
   const { user } = useAuth();
+  useStaffSessionHeartbeat(user);
   useAppLocaleBootstrap();
   const [endShiftOpen, setEndShiftOpen] = useState(false);
   const [reportGateOpen, setReportGateOpen] = useState(false);

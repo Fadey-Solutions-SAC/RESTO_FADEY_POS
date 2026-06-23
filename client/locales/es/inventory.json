@@ -51,6 +51,8 @@
     "purchasePriceHint": "Costo de inversión en inventario (informes y valorización). Mismo dato que en Almacén.",
     "purchasePricePlaceholder": "Inversión en inventario",
     "initialStock": "Stock inicial",
+    "minStock": "Stock mínimo",
+    "minStockHint": "Alerta de stock bajo y requerimientos cuando el stock llegue a este límite. Si se deja en 0, se usa 10 por defecto.",
     "transformed": "Transformado",
     "nonTransformed": "No transformado",
     "nonTransformedHint": "Producto no transformado: se gestiona como inventario vendible en Movimiento interno según su categoría.",

@@ -1,3 +1,30 @@
+/** Umbral global cuando el producto no tiene min_stock configurado (> 0). */
+export const DEFAULT_NON_TRANSFORMED_MIN_STOCK = 10;
+
+export function parseProductMinStock(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+
+export function effectiveProductMinStock(minStock) {
+  const min = parseProductMinStock(minStock);
+  return min > 0 ? min : DEFAULT_NON_TRANSFORMED_MIN_STOCK;
+}
+
+export function isProductLowStock(stock, minStock) {
+  const s = Number(stock) || 0;
+  return s <= effectiveProductMinStock(minStock);
+}
+
+/** `normal` | `low` | `out` */
+export function productStockStatus(stock, minStock) {
+  const s = Number(stock) || 0;
+  if (s <= 0) return 'out';
+  if (isProductLowStock(s, minStock)) return 'low';
+  return 'normal';
+}
+
 /**
  * En pedidos solo mostramos stock cuando el producto es inventario vendible:
  * - Debe ser explícitamente `non_transformed`.

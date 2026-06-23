@@ -4,6 +4,10 @@ const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../da
 const kardexInventory = require('../services/kardexInventoryService');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { emitInventoryUpdate } = require('../socketBroadcast');
+const {
+  isNonTransformedLowStockSql,
+  suggestedReplenishmentQty,
+} = require('../utils/productStockThreshold');
 
 const router = express.Router();
 
@@ -194,7 +198,7 @@ router.get('/alerts', authenticateToken, requireRole('admin', 'cajero'), (req, r
     `SELECT p.id, p.name, p.stock, c.name as category_name
      FROM products p
      LEFT JOIN categories c ON c.id = p.category_id
-     WHERE p.stock <= 10
+     WHERE ${isNonTransformedLowStockSql('p')}
        AND p.is_active = 1
        AND p.process_type = 'non_transformed'
      ORDER BY p.stock ASC`
@@ -309,7 +313,7 @@ router.get('/warehouse-stock', authenticateToken, requireRole('admin'), (req, re
     ensureWarehouseTables();
     const { category_type } = req.query;
     let productsQuery = `
-      SELECT p.id, p.name, p.description, p.price, p.purchase_price, p.stock, p.category_id, p.process_type, p.stock_warehouse_id, c.name as category_name
+      SELECT p.id, p.name, p.description, p.price, p.purchase_price, p.stock, p.min_stock, p.category_id, p.process_type, p.stock_warehouse_id, c.name as category_name
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       WHERE p.is_active = 1
@@ -365,13 +369,13 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
     const selectedProductIds = Array.isArray(req.body?.product_ids) ? req.body.product_ids : null;
     const selectedInsumoIds = Array.isArray(req.body?.insumo_ids) ? req.body.insumo_ids : null;
     const lowStockProducts = queryAll(
-      `SELECT p.id, p.name, p.stock, p.stock_warehouse_id, p.price,
+      `SELECT p.id, p.name, p.stock, p.min_stock, p.stock_warehouse_id, p.price,
               c.name as category_name
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        WHERE p.is_active = 1
          AND p.process_type = 'non_transformed'
-         AND p.stock <= 10
+         AND ${isNonTransformedLowStockSql('p')}
        ORDER BY p.stock ASC, p.name ASC`
     ).filter(p => !selectedProductIds || selectedProductIds.includes(p.id));
 
@@ -433,7 +437,7 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
       const warehouse = (product.stock_warehouse_id
         ? queryOne('SELECT * FROM warehouse_locations WHERE id = ? AND is_active = 1', [product.stock_warehouse_id])
         : null) || principal;
-      const suggestedQty = Math.max(0, 20 - Number(product.stock || 0));
+      const suggestedQty = suggestedReplenishmentQty(product.stock, product.min_stock);
       const item = {
         id: uuidv4(),
         requirement_id: requirementId,
