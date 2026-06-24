@@ -3699,11 +3699,8 @@ export default function POSPanel() {
                     </div>
                   </>
                 )}
+                {billingForm.enabled ? (
                 <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-2 space-y-2">
-                  {!billingForm.enabled && (
-                    <p className="text-[11px] text-[#9CA3AF]">Activa «Emitir comprobante» debajo del total para completar boleta o factura.</p>
-                  )}
-                  {billingForm.enabled && (
                     <div className="space-y-2">
                       <div className="flex justify-end">
                         <button
@@ -3808,8 +3805,8 @@ export default function POSPanel() {
                         <p className="text-[11px] text-emerald-400">Cliente encontrado: {matchedCustomer.name}</p>
                       )}
                     </div>
-                  )}
                 </div>
+                ) : null}
               </div>
           )}
           footer={
