@@ -15,6 +15,15 @@ const PAYMENT_STATUS_STYLES = {
   refunded: 'bg-orange-500/20 text-orange-300 border border-orange-500/40',
 };
 
+function productRemovalNotesFromOrder(notes) {
+  const parts = String(notes || '')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const hits = parts.filter((p) => /productos retirados/i.test(p));
+  return hits.join(' · ');
+}
+
 function getSaleStatusBadge(order, t) {
   if (order.status === 'cancelled') {
     return { label: 'Anulada', className: 'bg-red-500/20 text-red-300 border border-red-500/50' };
@@ -208,7 +217,7 @@ function toTemplateRow(order, localName = '-') {
     isCancelled ? 'Anulada' : 'Activa',
     '-',
     '-',
-    isCancelled ? (order.cancellation_reason || order.notes || '-') : '-',
+    isCancelled ? (order.cancellation_reason || '-') : '-',
     getSalesChannel(order),
     order.type === 'delivery' ? 'Delivery' : '-',
     requester,
@@ -307,6 +316,7 @@ export default function Ventas() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [restaurantName, setRestaurantName] = useState('-');
+  const viewTapRef = useRef({ key: '', count: 0, timer: null });
 
   const load = async () => {
     try {
@@ -389,6 +399,43 @@ export default function Ventas() {
     setSelectedGroup(group);
     setSelected(group.primary);
     setEditing(null);
+  };
+
+  const purgeVoidedGroupSilently = async (group) => {
+    try {
+      for (const ord of group.orders) {
+        await api.delete(`/orders/${ord.id}`);
+      }
+      closeDetail();
+      await load();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo completar la operación');
+    }
+  };
+
+  const handleViewGroupClick = (group) => {
+    const allCancelled = group.orders.every((o) => o.status === 'cancelled');
+    if (!allCancelled) {
+      openGroupDetail(group);
+      return;
+    }
+    const key = group.key;
+    if (viewTapRef.current.key !== key) {
+      viewTapRef.current = { key, count: 1, timer: null };
+    } else {
+      viewTapRef.current.count += 1;
+    }
+    clearTimeout(viewTapRef.current.timer);
+    if (viewTapRef.current.count >= 3) {
+      viewTapRef.current = { key: '', count: 0, timer: null };
+      void purgeVoidedGroupSilently(group);
+      return;
+    }
+    viewTapRef.current.timer = setTimeout(() => {
+      const taps = viewTapRef.current.count;
+      viewTapRef.current = { key: '', count: 0, timer: null };
+      if (taps === 1) openGroupDetail(group);
+    }, 1200);
   };
 
   const closeDetail = () => {
@@ -644,7 +691,7 @@ export default function Ventas() {
                     </td>
                     <td className="py-2.5">
                       <div className="flex items-center gap-1 relative">
-                        <button onClick={() => openGroupDetail(group)} className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700" title="Ver"><MdVisibility /></button>
+                        <button onClick={() => handleViewGroupClick(group)} className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700" title="Ver"><MdVisibility /></button>
                         <button onClick={() => openReceipt(o, group)} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
                         <button
                           onClick={() => {
@@ -727,10 +774,16 @@ export default function Ventas() {
               </div>
             )}
 
-            {selected.status === 'cancelled' && (selected.cancellation_reason || selected.notes) ? (
+            {selected.status === 'cancelled' && String(selected.cancellation_reason || '').trim() ? (
               <div className="rounded-lg border border-red-500/50 bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm text-[var(--ui-body-text)] shadow-inner">
                 <span className="font-semibold text-[var(--ui-body-text)]">Motivo de anulación: </span>
-                <span>{selected.cancellation_reason || selected.notes}</span>
+                <span>{selected.cancellation_reason}</span>
+              </div>
+            ) : null}
+            {selected.status !== 'cancelled' && productRemovalNotesFromOrder(selected.notes) ? (
+              <div className="rounded-lg border border-amber-500/40 bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm text-[var(--ui-body-text)] shadow-inner">
+                <span className="font-semibold text-[var(--ui-body-text)]">Productos retirados: </span>
+                <span>{productRemovalNotesFromOrder(selected.notes)}</span>
               </div>
             ) : null}
             <div className="grid grid-cols-2 gap-3 text-sm">

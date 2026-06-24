@@ -4,7 +4,7 @@ const { queryAll, queryOne, runSql, logAudit } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { getOrderWithItems } = require('../orderCreateService');
 const { ensureSalonesConfig, saveSalonesConfig, normalizeSalonesList } = require('../services/salonesConfigService');
-const { loadActiveTableOrders } = require('../services/tableOrdersQueryService');
+const { loadActiveTableOrders, loadAllActiveTableOrdersWithItems, attachActiveOrdersToTables, deriveTableStatus } = require('../services/tableOrdersQueryService');
 const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
 
 router.use(authenticateToken);
@@ -42,14 +42,8 @@ router.put('/salones', requireRole('admin'), (req, res) => {
 router.get('/', (req, res) => {
   try {
     const tables = queryAll('SELECT * FROM tables ORDER BY number ASC');
-    tables.forEach(t => {
-      const orders = loadActiveTableOrders(t);
-      t.orders = orders;
-      t.order_total = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-      t.order_count = orders.length;
-      const hasActiveOrders = orders.length > 0;
-      t.status = hasActiveOrders ? 'occupied' : 'available';
-    });
+    const activeOrders = loadAllActiveTableOrdersWithItems();
+    attachActiveOrdersToTables(tables, activeOrders);
     res.json(tables);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -63,7 +57,7 @@ router.get('/:id', (req, res) => {
     const orders = loadActiveTableOrders(table);
     table.orders = orders;
     table.order_total = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-    table.status = orders.length > 0 ? 'occupied' : 'available';
+    table.status = deriveTableStatus(table, orders);
     res.json(table);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -115,6 +109,16 @@ router.put('/:id', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
     }
     runSql('UPDATE tables SET number = COALESCE(?, number), name = COALESCE(?, name), capacity = COALESCE(?, capacity), zone = COALESCE(?, zone) WHERE id = ?',
       [number, name, capacity, zone, req.params.id]);
+    if (number && String(number) !== String(table.number)) {
+      const nextNumber = String(number).trim();
+      runSql(
+        `UPDATE orders SET table_number = ?, customer_name = ?, updated_at = datetime('now')
+         WHERE table_id = ? AND type = 'dine_in'
+           AND status IN ('pending','preparing','ready')
+           AND IFNULL(TRIM(payment_status), 'pending') != 'paid'`,
+        [nextNumber, `Mesa ${nextNumber}`, req.params.id],
+      );
+    }
     const updated = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     const io = req.app.get('io');
     if (io) io.emit('table-update', updated);
@@ -145,7 +149,7 @@ router.patch('/:id/free', requireRole('admin', 'cajero'), (req, res) => {
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
 
-    const activeOrders = loadActiveTableOrders(table.number);
+    const activeOrders = loadActiveTableOrders(table);
     activeOrders.forEach((o) => {
       const ord = queryOne('SELECT status FROM orders WHERE id = ?', [o.id]);
       if (!ord) return;
@@ -153,6 +157,13 @@ router.patch('/:id/free', requireRole('admin', 'cajero'), (req, res) => {
         runSql("UPDATE orders SET status = 'delivered', updated_at = datetime('now') WHERE id = ?", [o.id]);
       }
     });
+
+    const remaining = loadActiveTableOrders(table);
+    if (remaining.length > 0) {
+      return res.status(400).json({
+        error: 'La mesa aún tiene pedidos activos. Entregue o anule los pedidos antes de liberar la mesa.',
+      });
+    }
 
     runSql("UPDATE tables SET status = 'available' WHERE id = ?", [req.params.id]);
 

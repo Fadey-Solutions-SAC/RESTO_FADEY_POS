@@ -235,7 +235,26 @@ export default function KitchenPanel({ station = 'cocina' }) {
     }
   };
 
+  const orderRelevantToStation = useCallback(
+    (order) => getStationItems(order?.items || []).length > 0,
+    [getStationItems],
+  );
+
+  const filterNewIdsForStation = useCallback(
+    (order, ids) => {
+      if (!Array.isArray(ids) || !ids.length) return [];
+      const items = Array.isArray(order?.items) ? order.items : [];
+      return ids.filter((id) => {
+        const item = items.find((i) => i.id === id);
+        if (!item) return false;
+        return isBar ? isBarProductionItemForStation(item) : isKitchenProductionItemForStation(item);
+      });
+    },
+    [isBar],
+  );
+
   const handleKitchenIncomingOrder = (order, toastLabel) => {
+    if (!orderRelevantToStation(order)) return;
     loadOrders();
     playStationAlert();
     const num = order?.order_number;
@@ -250,16 +269,17 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const handleKitchenLinesUpdated = (payload) => {
     const order = payload?.order || payload;
     const orderId = order?.id;
-    const newIds = Array.isArray(payload?.new_item_ids) ? payload.new_item_ids : [];
-    if (!isBar && orderId && newIds.length) {
+    const allNewIds = Array.isArray(payload?.new_item_ids) ? payload.new_item_ids : [];
+    const stationNewIds = filterNewIdsForStation(order, allNewIds);
+    if (!isBar && orderId && stationNewIds.length) {
       setHighlightItemIds((prev) => {
         const next = new Set(prev);
-        newIds.forEach((itemId) => next.add(kitchenHighlightKey(orderId, itemId)));
+        stationNewIds.forEach((itemId) => next.add(kitchenHighlightKey(orderId, itemId)));
         return next;
       });
     }
     loadOrders();
-    if (payload?.merged && newIds.length) {
+    if (payload?.merged && stationNewIds.length) {
       playStationAlert();
       const num = order?.order_number;
       toast.success(
@@ -268,7 +288,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
           : t('toast.itemsAddedToComandaShort'),
         { icon: '➕', duration: 6000 },
       );
-    } else {
+    } else if (!payload?.merged && orderRelevantToStation(order)) {
       handleKitchenIncomingOrder(order, t('toast.orderUpdated'));
     }
   };

@@ -9,7 +9,11 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { MdDateRange, MdKeyboardArrowDown, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning } from 'react-icons/md';
 
 import { useChartTheme } from '../../theme/useChartTheme';
-import { orderHasBarItems, orderHasKitchenItems } from '../../utils/productionArea';
+import {
+  isActiveProductionQueueOrder,
+  orderPendingForBarStation,
+  orderPendingForKitchenStation,
+} from '../../utils/productionArea';
 import { isDiscountOrder } from '../../utils/mesaOrderLines';
 
 const PAYMENT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#06b6d4', '#a855f7'];
@@ -318,11 +322,11 @@ export default function Escritorio() {
   }, [rankingMode, paidOrdersInSchedule]);
 
   const kitchenQueue = useMemo(
-    () => orders.filter((o) => ['pending', 'preparing'].includes(o.status) && orderHasKitchenItems(o.items)).length,
+    () => orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForKitchenStation(o)).length,
     [orders]
   );
   const barQueue = useMemo(
-    () => orders.filter((o) => ['pending', 'preparing'].includes(o.status) && orderHasBarItems(o.items)).length,
+    () => orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForBarStation(o)).length,
     [orders]
   );
   const deliveryReady = useMemo(
@@ -334,11 +338,11 @@ export default function Escritorio() {
     [orders]
   );
   const activeKitchenOrders = useMemo(
-    () => orders.filter((o) => ['pending', 'preparing'].includes(o.status) && orderHasKitchenItems(o.items)),
+    () => orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForKitchenStation(o)),
     [orders]
   );
   const activeBarOrders = useMemo(
-    () => orders.filter((o) => ['pending', 'preparing'].includes(o.status) && orderHasBarItems(o.items)),
+    () => orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForBarStation(o)),
     [orders]
   );
   const getQueueLevel = (value) => {

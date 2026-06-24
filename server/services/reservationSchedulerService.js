@@ -11,6 +11,7 @@ const {
   parseReservationLocalDateTime,
   reservationLocalSqlExpr,
 } = require('./reservationDateTime');
+const { scheduleKitchenBarAutoPrint } = require('./kitchenBarAutoPrintService');
 
 let schedulerTimer = null;
 let tickInFlight = false;
@@ -98,9 +99,12 @@ function releaseReservationKitchenOrders(reservation) {
       [row.id]
     );
     const order = getOrderWithItems(row.id);
-    if (order && io) {
-      io.emit('new-order', order);
-      io.emit('order-update', order);
+    if (order) {
+      scheduleKitchenBarAutoPrint(order);
+      if (io) {
+        io.emit('new-order', { ...order, _reservation_release: true });
+        io.emit('order-update', order);
+      }
     }
     released += 1;
   }

@@ -128,6 +128,7 @@ export default function SelfOrder() {
     try {
       await api.post('/public/self-order/orders', {
         mesa: String(table.number),
+        table_id: String(table.id || ''),
         items: cart.map((i) => ({
           product_id: i.product_id,
           quantity: i.quantity,
@@ -139,6 +140,7 @@ export default function SelfOrder() {
         customer_name: `Mesa ${table.number}`,
       });
       toast.success(`Pedido enviado — mesa ${table.number}`, { id: tid });
+      resetCart();
       closeOrderPanel();
       loadOrders();
     } catch (err) {

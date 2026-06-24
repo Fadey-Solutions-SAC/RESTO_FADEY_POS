@@ -7,7 +7,42 @@ const {
   parseRestaurantSchedule,
 } = require('./services/productScheduleService');
 const { computeKitchenReleaseAtForReservation } = require('./services/reservationKitchenHold');
-const { findMergeableTableOrderTx, resolveExplicitMergeTargetTx } = require('./services/tableOrderMergeService');
+const {
+  findMergeableTableOrderTx,
+  resolveExplicitMergeTargetTx,
+  isOrderMergeableState,
+  isWithinMergeWindowTx,
+} = require('./services/tableOrderMergeService');
+const { tableNumbersMatch } = require('./utils/tableNumberMatch');
+
+function resolveDineInTableContextTx(tx, { tableId: tableIdRaw, tableNumber: tableNumberRaw } = {}) {
+  const sentNumber = String(tableNumberRaw ?? '').trim();
+  let tableId = String(tableIdRaw || '').trim();
+  let row = null;
+  if (tableId) {
+    row = tx.queryOne('SELECT id, number, name FROM tables WHERE id = ?', [tableId]);
+    if (!row) throw new Error('Mesa no encontrada');
+  } else if (sentNumber) {
+    row = tx.queryOne('SELECT id, number, name FROM tables WHERE TRIM(CAST(number AS TEXT)) = ? LIMIT 1', [
+      sentNumber,
+    ]);
+    if (!row) throw new Error(`Mesa ${sentNumber} no encontrada`);
+    tableId = String(row.id);
+  } else {
+    throw new Error('Mesa no especificada');
+  }
+  const canonicalNumber = String(row.number ?? '').trim();
+  if (sentNumber && canonicalNumber && !tableNumbersMatch(sentNumber, canonicalNumber)) {
+    throw new Error(
+      `El número de mesa no coincide con la mesa seleccionada (enviado ${sentNumber}, actual ${canonicalNumber}). Cierre y vuelva a abrir el pedido.`,
+    );
+  }
+  return {
+    tableId: String(row.id),
+    tableNumber: canonicalNumber,
+    tableName: String(row.name || '').trim() || (canonicalNumber ? `Mesa ${canonicalNumber}` : ''),
+  };
+}
 
 function getOrderWithItems(orderId) {
   const order = queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -138,7 +173,7 @@ function buildOrderLinesFromPayload(tx, orderId, items, { orderNow, restaurantSc
   return { lines, subtotalAdded };
 }
 
-function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew = false }) {
+function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew = false, highlightIdSet = null }) {
   const newIds = [];
   orderItems.forEach((item) => {
     if (item.process_type === 'non_transformed') {
@@ -167,7 +202,9 @@ function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew =
       );
       tx.run('UPDATE products SET stock = ?, updated_at = datetime(\'now\') WHERE id = ?', [Number(newSum?.total || 0), item.product_id]);
     }
-    if (highlightNew) {
+    const shouldHighlight =
+      highlightNew || (highlightIdSet instanceof Set && highlightIdSet.has(String(item.id)));
+    if (shouldHighlight) {
       tx.run(
         `INSERT INTO order_items (id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes, kitchen_highlight_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
@@ -288,24 +325,51 @@ function syncOrderTableIdTx(tx, orderId, tableId) {
   tx.run("UPDATE orders SET table_id = ? WHERE id = ? AND IFNULL(TRIM(table_id), '') = ''", [tid, orderId]);
 }
 
+/** Intenta fusionar; si la comanda ya no admite merge, devuelve null (el caller crea comanda nueva). */
+function tryAppendToMergeableOrderTx(tx, targetOrder, body, actor, tableId) {
+  if (!targetOrder?.id) return null;
+  if (!isOrderMergeableState(targetOrder)) return null;
+  if (!isWithinMergeWindowTx(tx, targetOrder)) return null;
+  try {
+    syncOrderTableIdTx(tx, targetOrder.id, tableId);
+    return appendItemsToOrderInTransaction(tx, targetOrder.id, body.items, actor, { notes: body.notes });
+  } catch (err) {
+    const msg = String(err.message || '').toLowerCase();
+    if (
+      msg.includes('comanda') ||
+      msg.includes('cobrada') ||
+      msg.includes('admite productos') ||
+      msg.includes('fusionar')
+    ) {
+      return null;
+    }
+    throw err;
+  }
+}
+
 function createOrMergeTableOrderInTransaction(tx, orderId, body, actor) {
   const orderType = ['dine_in', 'delivery', 'pickup'].includes(body.type) ? body.type : 'dine_in';
-  const tableNumber = String(body.table_number || '').trim();
-  const tableId = String(body.table_id || '').trim();
+  let tableNumber = String(body.table_number || '').trim();
+  let tableId = String(body.table_id || '').trim();
   const targetOrderId = String(body.target_order_id || '').trim();
-  if (orderType === 'dine_in' && tableNumber && !body.hold_kitchen_for_reservation) {
+  if (orderType === 'dine_in' && (tableId || tableNumber) && !body.hold_kitchen_for_reservation) {
+    const resolved = resolveDineInTableContextTx(tx, { tableId, tableNumber });
+    tableId = resolved.tableId;
+    tableNumber = resolved.tableNumber;
+    body = {
+      ...body,
+      table_id: tableId,
+      table_number: tableNumber,
+      customer_name: String(body.customer_name || '').trim() || resolved.tableName,
+    };
     if (targetOrderId) {
       const explicit = resolveExplicitMergeTargetTx(tx, targetOrderId, { tableId, tableNumberRaw: tableNumber });
-      if (explicit) {
-        syncOrderTableIdTx(tx, explicit.id, tableId);
-        return appendItemsToOrderInTransaction(tx, explicit.id, body.items, actor, { notes: body.notes });
-      }
+      const merged = tryAppendToMergeableOrderTx(tx, explicit, body, actor, tableId);
+      if (merged) return merged;
     }
     const existing = findMergeableTableOrderTx(tx, tableNumber, { tableId });
-    if (existing) {
-      syncOrderTableIdTx(tx, existing.id, tableId);
-      return appendItemsToOrderInTransaction(tx, existing.id, body.items, actor, { notes: body.notes });
-    }
+    const merged = tryAppendToMergeableOrderTx(tx, existing, body, actor, tableId);
+    if (merged) return merged;
   }
   const created = createOrderInTransaction(tx, orderId, body, actor);
   tx.run(
@@ -607,6 +671,12 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
     throw new Error('No se puede modificar un pedido ya cobrado');
   }
 
+  const { computeAddedLineIds } = require('./utils/orderLineRemoval');
+  const existingItems = tx.queryAll(
+    'SELECT product_id, product_name, variant_name, quantity, unit_price, notes FROM order_items WHERE order_id = ?',
+    [orderId],
+  );
+
   const orderType = order.type;
   const staffInHouseOrder =
     actor.kind === 'staff' &&
@@ -701,49 +771,33 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
   const deliveryFee = Number(order.delivery_fee || 0);
   const total = Math.max(0, subtotal - discountAmount + deliveryFee);
 
-  const resetKitchen =
-    String(order.status || '') === 'ready'
-      ? ", status = 'pending', preparing_at = NULL, station_cocina_ready_at = NULL, station_bar_ready_at = NULL, station_cocina_preparing_at = NULL, station_bar_preparing_at = NULL"
-      : ", station_cocina_ready_at = NULL, station_bar_ready_at = NULL, station_cocina_preparing_at = NULL, station_bar_preparing_at = NULL";
+  const newItemIds = computeAddedLineIds(existingItems, orderItems);
+  const highlightIdSet = new Set(newItemIds);
+
   tx.run(
-    `UPDATE orders SET subtotal = ?, tax = 0, total = ?, updated_at = datetime('now')${resetKitchen} WHERE id = ?`,
-    [subtotal, total, orderId]
+    'UPDATE orders SET subtotal = ?, tax = 0, total = ?, updated_at = datetime(\'now\') WHERE id = ?',
+    [subtotal, total, orderId],
   );
 
-  orderItems.forEach((item) => {
-    if (item.process_type === 'non_transformed') {
-      const stockRows = tx.queryAll(
-        'SELECT id, quantity FROM inventory_warehouse_stocks WHERE product_id = ? ORDER BY quantity DESC',
-        [item.product_id]
-      );
-      let pending = Number(item.quantity || 0);
-      for (const row of stockRows) {
-        if (pending <= 0) break;
-        const available = Number(row.quantity || 0);
-        if (available <= 0) continue;
-        const consume = Math.min(available, pending);
-        tx.run(
-          'UPDATE inventory_warehouse_stocks SET quantity = ?, updated_at = datetime(\'now\') WHERE id = ?',
-          [available - consume, row.id]
-        );
-        pending -= consume;
-      }
-      if (pending > 0 && !staffInHouseOrder) {
-        throw new Error(`No hay stock suficiente en almacenes para ${item.product_name}`);
-      }
-      const newSum = tx.queryOne(
-        'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_warehouse_stocks WHERE product_id = ?',
-        [item.product_id]
-      );
-      tx.run('UPDATE products SET stock = ?, updated_at = datetime(\'now\') WHERE id = ?', [Number(newSum?.total || 0), item.product_id]);
-    }
+  if (newItemIds.length) {
     tx.run(
-      'INSERT INTO order_items (id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [item.id, item.order_id, item.product_id, item.product_name, item.variant_name, item.quantity, item.unit_price, item.subtotal, item.notes]
+      "UPDATE orders SET kitchen_last_send_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+      [orderId],
     );
-  });
+    if (String(order.status || '') === 'ready') {
+      tx.run(
+        "UPDATE orders SET status = 'preparing', preparing_at = COALESCE(preparing_at, datetime('now')), updated_at = datetime('now') WHERE id = ?",
+        [orderId],
+      );
+    }
+  }
 
-  return { orderId };
+  insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightIdSet });
+  if (newItemIds.length) {
+    reopenProductionStationsForNewLines(tx, orderId, newItemIds);
+  }
+
+  return { orderId, newItemIds };
 }
 
 function actorFromRequest(req) {

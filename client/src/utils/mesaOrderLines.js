@@ -261,39 +261,21 @@ function isWithinTableMergeWindow(order) {
     const releaseMs = Date.parse(releaseAt.includes('T') ? releaseAt : releaseAt.replace(' ', 'T'));
     if (Number.isFinite(releaseMs) && releaseMs > Date.now()) return false;
   }
-  const anchor = order.kitchen_last_send_at || order.updated_at || order.created_at;
+  const anchor = order.kitchen_last_send_at || order.created_at;
   if (!anchor) return false;
   const anchorMs = Date.parse(String(anchor).includes('T') ? anchor : String(anchor).replace(' ', 'T'));
   if (!Number.isFinite(anchorMs)) return false;
   return Date.now() - anchorMs < TABLE_ORDER_MERGE_WINDOW_MS;
 }
 
-export function pickMergeTargetOrder(orders = []) {
-  const active = (orders || []).filter(
-    (o) =>
-      o &&
-      o.status !== 'cancelled' &&
-      String(o.payment_status || 'pending') !== 'paid' &&
-      ['pending', 'preparing', 'ready'].includes(String(o.status || '')) &&
-      isWithinTableMergeWindow(o),
-  );
-  if (!active.length) return null;
-  return [...active].sort((a, b) => {
-    const ta = new Date(String(a.kitchen_last_send_at || a.updated_at || a.created_at || 0)).getTime();
-    const tb = new Date(String(b.kitchen_last_send_at || b.updated_at || b.created_at || 0)).getTime();
-    return tb - ta;
-  })[0];
-}
-
 /** Payload común al enviar/agregar pedido de mesa. */
 export function buildDineInOrderPayload({ table, cartItems, extra = {} }) {
-  const mergeTarget = pickMergeTargetOrder(table?.orders || []);
   return {
     items: cartItems,
     type: 'dine_in',
     table_number: String(table?.number ?? '').trim(),
     table_id: String(table?.id ?? '').trim(),
-    target_order_id: mergeTarget?.id || '',
+    target_order_id: '',
     customer_name: `Mesa ${table?.number ?? ''}`,
     payment_method: 'efectivo',
     ...extra,

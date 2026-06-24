@@ -20,6 +20,10 @@ function orderMatchesTableScope(order, { tableId, tableNumberRaw } = {}) {
   return false;
 }
 
+function mergeAnchorDatetime(order) {
+  return String(order?.kitchen_last_send_at || order?.created_at || '').trim();
+}
+
 function isWithinMergeWindowTx(tx, order) {
   const releaseAt = String(order.kitchen_release_at || '').trim();
   if (releaseAt) {
@@ -29,7 +33,7 @@ function isWithinMergeWindowTx(tx, order) {
     );
     if (Number(held?.held || 0) === 1) return false;
   }
-  const anchor = String(order.kitchen_last_send_at || order.updated_at || order.created_at || '').trim();
+  const anchor = mergeAnchorDatetime(order);
   if (!anchor) return false;
   const within = tx.queryOne(
     `SELECT CASE WHEN datetime(?) >= datetime('now', '-${TABLE_ORDER_MERGE_WINDOW_MINUTES} minutes', 'localtime') THEN 1 ELSE 0 END AS ok`,
@@ -49,7 +53,7 @@ function findMergeableTableOrderTx(tx, tableNumberRaw, { tableId } = {}) {
     WHERE type = 'dine_in'
       AND IFNULL(TRIM(payment_status), 'pending') != 'paid'
       AND status IN ('pending', 'preparing', 'ready')
-    ORDER BY datetime(COALESCE(kitchen_last_send_at, updated_at, created_at)) DESC
+    ORDER BY datetime(COALESCE(kitchen_last_send_at, created_at)) DESC
   `);
 
   for (const row of candidates) {
@@ -73,8 +77,10 @@ function resolveExplicitMergeTargetTx(tx, targetOrderId, { tableId, tableNumberR
 
 module.exports = {
   TABLE_ORDER_MERGE_WINDOW_MINUTES,
+  mergeAnchorDatetime,
   findMergeableTableOrderTx,
   resolveExplicitMergeTargetTx,
   orderMatchesTableScope,
   isOrderMergeableState,
+  isWithinMergeWindowTx,
 };

@@ -418,6 +418,18 @@ async function start() {
   } catch (err) {
     console.warn('[reservation-scheduler] no iniciado:', err.message || err);
   }
+  try {
+    const { processBarAutoDismiss } = require('./services/barAutoDismissService');
+    setInterval(() => {
+      try {
+        processBarAutoDismiss({ io });
+      } catch (err) {
+        console.warn('[bar-auto-dismiss] intervalo:', err.message || err);
+      }
+    }, 60 * 1000);
+  } catch (err) {
+    console.warn('[bar-auto-dismiss] no iniciado:', err.message || err);
+  }
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {
       console.error(`[server] puerto ocupado: ${LISTEN_HOST}:${PORT}. Cierre la instancia previa o cambie PORT.`);

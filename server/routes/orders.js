@@ -4,7 +4,10 @@ const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../da
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { assertPaymentMethodAllowed, normalizePaymentMethod } = require('../businessRules');
 const { parsePaymentBreakdown, dominantPaymentMethod, round2 } = require('../utils/paymentBreakdown');
+const { appendOrderRemovalNote, hasCompleteOrderItemRemovals } = require('../utils/orderLineRemoval');
+const { getOrderChargeBase } = require('../utils/orderChargeBase');
 const { getOrderWithItems, createOrMergeTableOrderInTransaction, replaceOrderLinesInTransaction, actorFromRequest } = require('../orderCreateService');
+const { loadActiveTableOrders, deriveTableStatus } = require('../services/tableOrdersQueryService');
 const { restoreNonTransformedStockForOrder } = require('../warehouseStock');
 const kardexInventory = require('../services/kardexInventoryService');
 const { emitInventoryUpdate, emitBillingDocumentUpdate } = require('../socketBroadcast');
@@ -66,10 +69,7 @@ const ORDER_TRANSITIONS = {
 };
 
 function getChargeBase(order) {
-  return Math.max(
-    0,
-    Number(order?.subtotal || 0) + Number(order?.delivery_fee || 0)
-  );
+  return getOrderChargeBase(order, order?.items);
 }
 
 function getOrderItemsWithArea(orderId) {
@@ -256,20 +256,22 @@ router.post('/:id/delivery-driver-action', authenticateToken, requireRole('deliv
   res.json(updated);
 });
 
-router.put('/:id/lines', authenticateToken, requireRole('admin', 'master_admin'), (req, res) => {
+router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo', 'master_admin'), (req, res) => {
   const { items } = req.body || {};
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'El pedido debe tener al menos un producto' });
   }
   const orderBefore = queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
   if (!orderBefore) return res.status(404).json({ error: 'Pedido no encontrado' });
-  const existingItems = queryAll('SELECT quantity FROM order_items WHERE order_id = ?', [req.params.id]);
-  const oldQty = existingItems.reduce((sum, row) => sum + Math.max(0, Number(row.quantity || 0)), 0);
-  const newQty = items.reduce((sum, row) => sum + Math.max(0, Number(row.quantity || 0)), 0);
+  const existingItems = queryAll(
+    'SELECT product_id, product_name, variant_name, quantity, unit_price, notes FROM order_items WHERE order_id = ?',
+    [req.params.id],
+  );
   const removalReason = String(req.body?.removal_reason || '').trim();
-  if (newQty < oldQty && removalReason.length < 3) {
+  const requiresRemovalReason = hasCompleteOrderItemRemovals(existingItems, items);
+  if (requiresRemovalReason && removalReason.length < 3) {
     return res.status(400).json({
-      error: 'Indique el motivo por retirar productos de la mesa (mínimo 3 caracteres).',
+      error: 'Indique el motivo al eliminar un producto de la mesa (mínimo 3 caracteres).',
     });
   }
   try {
@@ -278,12 +280,38 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'master_admin')
       item_count: items.length,
     });
     const actor = actorFromRequest(req);
-    withTransaction((tx) => replaceOrderLinesInTransaction(tx, req.params.id, items, actor));
+    const lineResult = withTransaction((tx) =>
+      replaceOrderLinesInTransaction(tx, req.params.id, items, actor),
+    );
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'notes')) {
       runSql('UPDATE orders SET notes = ?, updated_at = datetime(\'now\') WHERE id = ?', [
         String(req.body.notes ?? '').trim(),
         req.params.id,
       ]);
+    }
+    if (requiresRemovalReason && removalReason.length >= 3) {
+      const current = queryOne('SELECT notes FROM orders WHERE id = ?', [req.params.id]);
+      const nextNotes = appendOrderRemovalNote(current?.notes, removalReason);
+      runSql('UPDATE orders SET notes = ?, updated_at = datetime(\'now\') WHERE id = ?', [
+        nextNotes,
+        req.params.id,
+      ]);
+      try {
+        logAudit({
+          actorUserId: req.user?.id || '',
+          actorName: req.user?.full_name || req.user?.username || '',
+          action: 'order.products_removed',
+          resourceType: 'order',
+          resourceId: req.params.id,
+          details: {
+            order_number: orderBefore.order_number,
+            removal_reason: removalReason,
+            table_number: orderBefore.table_number,
+          },
+        });
+      } catch (auditErr) {
+        logRouteError(req, auditErr, { order_id: req.params.id, phase: 'audit_removal' });
+      }
     }
     const order = getOrderWithItems(req.params.id);
     if (!order) {
@@ -295,13 +323,13 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'master_admin')
       /** Cocina/bar: ítems añadidos a mesa existente (solo resalta líneas nuevas cuando hay diff). */
       io.emit('order-lines-updated', {
         order,
-        new_item_ids: [],
+        new_item_ids: lineResult?.newItemIds || [],
         merged: true,
       });
     }
     emitInventoryUpdate({});
     logOrderDebug(req, 'put_lines_ok', { order_id: order.id, order_number: order.order_number });
-    res.json(order);
+    res.json({ ...order, new_item_ids: lineResult?.newItemIds || [] });
   } catch (err) {
     logRouteError(req, err, { order_id: req.params.id, item_count: items?.length });
     const status = err.message && !/interno|base de datos/i.test(err.message) ? 400 : 500;
@@ -395,6 +423,24 @@ router.post('/', authenticateToken, (req, res) => {
         io.emit('new-order', order);
       }
       io.emit('order-update', order);
+    }
+    if (io && String(order.type || '') === 'dine_in') {
+      const tableId = String(order.table_id || '').trim();
+      if (tableId) {
+        const tableRow = queryOne('SELECT * FROM tables WHERE id = ?', [tableId]);
+        if (tableRow) {
+          const tableOrders = loadActiveTableOrders(tableRow);
+          io.emit('table-update', {
+            ...tableRow,
+            orders: tableOrders,
+            order_total: tableOrders.reduce((s, o) => s + (o.total || 0), 0),
+            order_count: tableOrders.length,
+            status: deriveTableStatus(tableRow, tableOrders),
+          });
+        }
+      } else {
+        io.emit('table-update', {});
+      }
     }
     emitInventoryUpdate({});
     recordWorkActivityEvent(req.user?.id, 'order_created', { module: 'pedidos', refId: order?.id });
@@ -537,6 +583,14 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     }
   }
   const allowedNext = ORDER_TRANSITIONS[order.status] || [];
+  if (status === 'delivered' && String(order.status || '') === 'delivered') {
+    return res.json(getOrderWithItems(req.params.id));
+  }
+  const pickupPaidToDelivered =
+    status === 'delivered' &&
+    String(order.type || '') === 'pickup' &&
+    String(order.payment_status || '') === 'paid' &&
+    ['pending', 'preparing', 'ready'].includes(String(order.status || ''));
   if (isKitchenFlow) {
     if (['cancelled', 'delivered'].includes(order.status)) {
       return res.status(400).json({ error: `Transición inválida: ${order.status} -> ${status}` });
@@ -563,8 +617,12 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
         return res.status(400).json({ error: 'Marque la comanda en preparación antes de listo' });
       }
     }
-  } else if (!allowedNext.includes(status)) {
+  } else if (!pickupPaidToDelivered && !allowedNext.includes(status)) {
     return res.status(400).json({ error: `Transición inválida: ${order.status} -> ${status}` });
+  }
+
+  if (status === 'cancelled' && order.status === 'cancelled') {
+    return res.json(getOrderWithItems(req.params.id));
   }
 
   if (status === 'cancelled' && order.status !== 'cancelled') {
@@ -835,7 +893,18 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
     payment_status !== undefined && payment_status !== null
       ? String(payment_status)
       : String(order.payment_status || '');
-  const applyKardexAfter = nextPayEffective === 'paid' && String(order.status || '') === 'delivered';
+  /** Venta rápida / mostrador: cobrar cierra el pedido pickup en la misma operación. */
+  const isPickupSaleCloseout =
+    nextPayEffective === 'paid' &&
+    !wasPaid &&
+    String(order.type || '') === 'pickup' &&
+    ['pending', 'preparing', 'ready'].includes(String(order.status || ''));
+  if (isPickupSaleCloseout) {
+    setParts.push("status = 'delivered'");
+  }
+  const applyKardexAfter =
+    (nextPayEffective === 'paid' && String(order.status || '') === 'delivered') ||
+    isPickupSaleCloseout;
 
   if (applyKardexAfter) {
     try {
@@ -922,6 +991,45 @@ router.put('/:id/discount', authenticateToken, requireRole('admin', 'cajero', 'm
   const io = req.app.get('io');
   if (io) io.emit('order-update', updatedOrder);
   res.json(updatedOrder);
+});
+
+/** Elimina del sistema una venta ya anulada (solo administrador). */
+router.delete('/:id', authenticateToken, requireRole('admin', 'master_admin'), (req, res) => {
+  const order = queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+  if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+  if (String(order.status || '') !== 'cancelled') {
+    return res.status(400).json({ error: 'Solo se pueden eliminar ventas anuladas del sistema' });
+  }
+  try {
+    withTransaction((tx) => {
+      tx.run('DELETE FROM order_items WHERE order_id = ?', [order.id]);
+      tx.run('DELETE FROM electronic_documents WHERE order_id = ?', [order.id]);
+      tx.run('DELETE FROM delivery_assignments WHERE order_id = ?', [order.id]);
+      try {
+        tx.run('DELETE FROM finance_loss_events WHERE order_id = ?', [order.id]);
+      } catch (_) {
+        /* tabla opcional */
+      }
+      tx.run('DELETE FROM orders WHERE id = ?', [order.id]);
+    });
+    logAudit({
+      actorUserId: req.user?.id || '',
+      actorName: req.user?.full_name || req.user?.username || '',
+      action: 'order.purge_cancelled',
+      resourceType: 'order',
+      resourceId: order.id,
+      details: {
+        order_number: order.order_number,
+        cancellation_reason: order.cancellation_reason || '',
+      },
+    });
+    const io = req.app.get('io');
+    if (io) io.emit('order-update', { id: order.id, deleted: true, order_number: order.order_number });
+    res.json({ success: true, id: order.id });
+  } catch (err) {
+    logRouteError(req, err, { order_id: req.params.id, phase: 'purge' });
+    res.status(500).json({ error: publicErrorMessage(err, 'No se pudo eliminar la venta anulada') });
+  }
 });
 
 module.exports = router;

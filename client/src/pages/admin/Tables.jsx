@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { api, formatCurrency } from '../../utils/api';
 import { mergeOrderingCatalog, buildOrderItemsPayload, filterOrderingProducts } from '../../utils/orderingCatalog';
 import { useSocket } from '../../hooks/useSocket';
@@ -14,6 +14,8 @@ import { MdTableRestaurant, MdReceipt, MdClose } from 'react-icons/md';
 import { KITCHEN_TAKEOUT_NOTE } from '../../utils/ticketPlainText';
 import { buildDineInOrderPayload } from '../../utils/mesaOrderLines';
 import { buildTablesBySalon } from '../../utils/salonesUtils';
+import { useMesaOrderLock } from '../../hooks/useMesaOrderLock';
+import { printKitchenBarOnComandaSend } from '../../utils/kitchenBarAutoPrint';
 
 export default function Tables() {
   const { user } = useAuth();
@@ -33,6 +35,7 @@ export default function Tables() {
   const [sourceTableId, setSourceTableId] = useState('');
   const [targetTableId, setTargetTableId] = useState('');
   const [paraLlevarMesa, setParaLlevarMesa] = useState(false);
+  const showMenuRef = useRef(false);
 
   const {
     cart,
@@ -50,6 +53,14 @@ export default function Tables() {
     resetCart,
   } = useStaffOrderCart(modifiers);
 
+  const {
+    lockMesa,
+    clearMesaLock,
+    syncLockRenumber,
+    validateMesaForSubmit,
+    resolveLockedTable,
+  } = useMesaOrderLock();
+
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
   useEffect(() => {
@@ -60,6 +71,12 @@ export default function Tables() {
       document.body.style.overflow = prevOverflow;
     };
   }, [showMenu]);
+
+  useEffect(() => {
+    if (!selectedTable?.id) return;
+    const fresh = tables.find((t) => t.id === selectedTable.id);
+    if (fresh) syncLockRenumber(fresh);
+  }, [tables, selectedTable?.id, syncLockRenumber]);
 
   const loadTables = useCallback(() => {
     Promise.all([
@@ -95,10 +112,20 @@ export default function Tables() {
   }, []);
 
   useEffect(() => {
+    showMenuRef.current = showMenu;
+  }, [showMenu]);
+
+  useEffect(() => {
     loadTables();
     loadProducts();
   }, [loadTables, loadProducts]);
-  useActiveInterval(loadTables, 10000);
+
+  const pollTables = useCallback(() => {
+    if (showMenuRef.current) return;
+    loadTables();
+  }, [loadTables]);
+
+  useActiveInterval(pollTables, 10000);
   useSocket('order-update', loadTables);
   useSocket('table-update', loadTables);
   useSocket('salones-update', loadTables);
@@ -109,6 +136,7 @@ export default function Tables() {
 
   const openMenuForTable = (table) => {
     setSelectedTable(table);
+    lockMesa(table);
     setShowMenu(true);
     setParaLlevarMesa(false);
     resetCart();
@@ -122,6 +150,7 @@ export default function Tables() {
     resetCart();
     setSearch('');
     setSelectedCat('all');
+    clearMesaLock();
   };
 
   const openAction = (type) => {
@@ -156,6 +185,10 @@ export default function Tables() {
         if (!sourceTableId) return toast.error('Selecciona mesa origen');
         if (!targetTableId) return toast.error('Selecciona mesa destino');
         if (sourceTableId === targetTableId) return toast.error('Origen y destino deben ser diferentes');
+        const targetForAction = tables.find((t) => t.id === targetTableId);
+        if (targetForAction?.orders?.length > 0) {
+          toast('La mesa destino ya tiene pedidos; quedarán en la misma cuenta.', { icon: 'ℹ️' });
+        }
         await api.post('/tables/merge', {
           target_table_id: targetTableId,
           source_table_ids: [sourceTableId],
@@ -171,22 +204,28 @@ export default function Tables() {
 
   const submitOrder = async () => {
     if (!selectedTable) return toast.error('Selecciona una mesa');
+    const mesaErr = validateMesaForSubmit(tables, selectedTable);
+    if (mesaErr) return toast.error(mesaErr);
     if (cart.length === 0) return toast.error('Agrega productos al pedido');
     const missingRequiredNote = cart.find(i => Number(i.note_required || 0) === 1 && !String(i.notes || '').trim());
     if (missingRequiredNote) {
       setNoteEditorLineKey(missingRequiredNote.line_key);
       return toast.error(`"${missingRequiredNote.name}" requiere nota obligatoria`);
     }
+    const tableForOrder = resolveLockedTable(tables, selectedTable);
     const tid = toast.loading('Enviando pedido…');
     try {
       const created = await api.post('/orders', buildDineInOrderPayload({
-        table: selectedTable,
+        table: tableForOrder,
         cartItems: buildOrderItemsPayload(cart),
         extra: {
           notes: paraLlevarMesa ? KITCHEN_TAKEOUT_NOTE : '',
         },
       }));
-      toast.success(`Pedido enviado a Mesa ${selectedTable.number}`, { id: tid });
+      void printKitchenBarOnComandaSend(created, {
+        merged: Boolean(created.merged_into_existing),
+      });
+      toast.success(`Pedido enviado a Mesa ${tableForOrder?.number ?? selectedTable.number}`, { id: tid });
       closeMenuPanel();
       loadTables();
     } catch (err) {
@@ -267,6 +306,7 @@ export default function Tables() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 items-stretch">
           {tablesToShow.map(table => {
             const isOccupied = table.status === 'occupied' || (table.orders && table.orders.length > 0);
+            const isActive = showMenu && selectedTable?.id === table.id;
             const cardStyle = isOccupied
               ? { borderColor: '#f87171', backgroundColor: '#fee2e2' }
               : { borderColor: '#34d399', backgroundColor: '#dcfce7' };
@@ -278,7 +318,9 @@ export default function Tables() {
                 key={table.id}
                 type="button"
                 onClick={() => openMenuForTable(table)}
-                className="flex h-full min-h-[7.25rem] flex-col rounded-xl border p-3 text-left transition-all hover:brightness-95"
+                className={`flex h-full min-h-[7.25rem] flex-col rounded-xl border p-3 text-left transition-all hover:brightness-95 ${
+                  isActive ? 'ring-2 ring-[var(--ui-accent)] ring-offset-2' : ''
+                }`}
                 style={cardStyle}
               >
                 <div className="flex min-h-0 flex-1 flex-col justify-between gap-2">

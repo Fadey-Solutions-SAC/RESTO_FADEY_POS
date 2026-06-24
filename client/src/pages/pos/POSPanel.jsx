@@ -52,6 +52,7 @@ import {
   fetchPrintingConfig,
   normalizePaperWidthMm,
 } from '../../utils/printingConfig';
+import { printKitchenBarOnComandaSend } from '../../utils/kitchenBarAutoPrint';
 import { showStockInOrderingUI } from '../../utils/productStockDisplay';
 import {
   mergeOrderingCatalog,
@@ -135,6 +136,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
+import { useMesaOrderLock } from '../../hooks/useMesaOrderLock';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
@@ -273,8 +275,7 @@ function cartRemovalSignature(cart) {
     k: [
       String(i.source_order_id || ''),
       String(i.product_id || ''),
-      String(i.modifier_id || ''),
-      String(i.modifier_option || ''),
+      String(i.modifier_option || '').trim().toLowerCase(),
       String(i.notes || '').trim(),
     ].join('\0'),
     q: Number(i.quantity || 0),
@@ -292,7 +293,7 @@ function cartHasProductRemovals(initialCart, currentCart) {
   const before = sumRows(cartRemovalSignature(initialCart));
   const after = sumRows(cartRemovalSignature(currentCart));
   for (const [key, qty] of before) {
-    if ((after.get(key) || 0) < qty) return true;
+    if (qty > 0 && (after.get(key) || 0) <= 0) return true;
   }
   return false;
 }
@@ -326,7 +327,7 @@ function orderItemsToCart(order, productsById) {
         source_order_id: order.id,
         product_id: it.product_id,
         name: billLineDisplayName(it),
-        price: Number(product?.price ?? it.unit_price ?? 0),
+        price: Number(it.unit_price ?? product?.price ?? 0),
         quantity: 0,
         modifier_id: modId,
         modifier_name: '',
@@ -370,6 +371,12 @@ export default function POSPanel() {
   const location = useLocation();
   const navigate = useNavigate();
   const clientCheckoutOpenedKeyRef = useRef('');
+  const selectedTableIdRef = useRef(null);
+  const tableDetailIdRef = useRef(null);
+  const checkoutInFlightRef = useRef(false);
+  const showBillRef = useRef(false);
+  const showMenuRef = useRef(false);
+  const editSessionInitialParaLlevarRef = useRef(false);
   const [tables, setTables] = useState([]);
   const [salonesConfig, setSalonesConfig] = useState([]);
   const [reservations, setReservations] = useState([]);
@@ -432,6 +439,14 @@ export default function POSPanel() {
     resetCart,
     setCart,
   } = useStaffOrderCart(modifiers);
+  const {
+    lockMesa,
+    clearMesaLock,
+    syncLockRenumber,
+    validateMesaForSubmit,
+    resolveLockedTable,
+    getMesaLock,
+  } = useMesaOrderLock();
   const [editingOrderId, setEditingOrderId] = useState('');
   /** Comanda “principal” (nuevas líneas sin `source_order_id` y nota para llevar). */
   const [editingSessionOrderIds, setEditingSessionOrderIds] = useState([]);
@@ -638,9 +653,10 @@ export default function POSPanel() {
           ? null
           : Number(daily.sales.total_sales || 0)
       );
-      if (selectedTable) {
-        if (isClientCheckoutTable(selectedTable)) {
-          const cid = String(selectedTable.id).slice(CLIENT_CHECKOUT_TABLE_PREFIX.length);
+      if (selectedTableIdRef.current) {
+        const selId = selectedTableIdRef.current;
+        if (isClientCheckoutTable({ id: selId })) {
+          const cid = String(selId).slice(CLIENT_CHECKOUT_TABLE_PREFIX.length);
           const fresh = (ordersData || []).filter(
             (o) =>
               String(o.customer_id || '') === cid &&
@@ -648,32 +664,47 @@ export default function POSPanel() {
               String(o.status || '') !== 'cancelled'
           );
           setSelectedTable((prev) =>
-            prev && isClientCheckoutTable(prev) ? { ...prev, orders: fresh } : prev
+            prev && prev.id === selId && isClientCheckoutTable(prev) ? { ...prev, orders: fresh } : prev
           );
-        } else if (isDeliveryCheckoutTable(selectedTable)) {
+        } else if (isDeliveryCheckoutTable({ id: selId })) {
           const slots = buildDeliveryCajaSlots(ordersData);
-          const next = slots.find((s) => s.id === selectedTable.id);
-          if (next) setSelectedTable(next);
-          else {
-            setSelectedTable(null);
+          const next = slots.find((s) => s.id === selId);
+          setSelectedTable((prev) => {
+            if (!prev || prev.id !== selId) return prev;
+            if (next) return next;
             setShowBill(false);
             setSplitMode(false);
             setSelectedOrderItemIds([]);
-          }
+            return null;
+          });
         } else {
-          const updated = tablesData.find((t) => t.id === selectedTable.id);
-          if (updated) setSelectedTable(updated);
+          const updated = tablesData.find((t) => t.id === selId);
+          setSelectedTable((prev) => {
+            if (!prev || prev.id !== selId) return prev;
+            if (updated) {
+              syncLockRenumber(updated);
+              return updated;
+            }
+            return prev;
+          });
         }
       }
-      if (tableDetail) {
-        if (isDeliveryCheckoutTable(tableDetail)) {
+      if (tableDetailIdRef.current) {
+        const detailId = tableDetailIdRef.current;
+        if (isDeliveryCheckoutTable({ id: detailId })) {
           const slots = buildDeliveryCajaSlots(ordersData);
-          const next = slots.find((s) => s.id === tableDetail.id);
-          if (next) setTableDetail(next);
-          else setTableDetail(null);
+          const next = slots.find((s) => s.id === detailId);
+          setTableDetail((prev) => (prev && prev.id === detailId ? (next || null) : prev));
         } else {
-          const updatedDetail = tablesData.find(t => t.id === tableDetail.id);
-          if (updatedDetail) setTableDetail(updatedDetail);
+          const updatedDetail = tablesData.find((t) => t.id === detailId);
+          setTableDetail((prev) => {
+            if (!prev || prev.id !== detailId) return prev;
+            if (updatedDetail) {
+              syncLockRenumber(updatedDetail);
+              return updatedDetail;
+            }
+            return prev;
+          });
         }
       }
     } catch (err) { console.error(err); }
@@ -714,10 +745,34 @@ export default function POSPanel() {
   };
 
   useEffect(() => {
+    selectedTableIdRef.current = selectedTable?.id ?? null;
+  }, [selectedTable?.id]);
+
+  useEffect(() => {
+    tableDetailIdRef.current = tableDetail?.id ?? null;
+  }, [tableDetail?.id]);
+
+  useEffect(() => {
+    showBillRef.current = showBill;
+  }, [showBill]);
+
+  useEffect(() => {
+    showMenuRef.current = showMenu;
+  }, [showMenu]);
+
+  const pollPosData = useCallback(() => {
+    if (checkoutInFlightRef.current || showBillRef.current || showMenuRef.current) return;
+    void loadData();
+  }, []);
+
+  useEffect(() => {
     loadData();
     loadPrinterConfig();
   }, []);
-  useActiveInterval(loadData, 10000);
+  useActiveInterval(pollPosData, 10000);
+  useSocket('register-update', () => {
+    void loadData();
+  });
   useSocket('order-update', () => {
     void loadData();
     void syncReservationAlertToasts();
@@ -768,6 +823,16 @@ export default function POSPanel() {
       document.body.style.overflow = prevOverflow;
     };
   }, [showMenu]);
+
+  const releasePendingOrderMenu = useCallback(() => {
+    setShowMenu(false);
+    setQuickSaleMode(false);
+    setEditingOrderId('');
+    setEditingSessionOrderIds([]);
+    setParaLlevarMesa(false);
+    resetCart();
+    clearMesaLock();
+  }, [resetCart, clearMesaLock]);
 
   useEffect(() => {
     const requestedView = searchParams.get('view');
@@ -1031,6 +1096,8 @@ export default function POSPanel() {
         }
         setAdminRegisterId('');
       }
+      await loadData();
+      await loadCajaExtras();
     } catch (err) { toast.error(err.message); }
   };
   /** Impresión clásica (diálogo del navegador / impresora USB), no tiketera térmica. */
@@ -1225,6 +1292,14 @@ export default function POSPanel() {
     }
 
     if (clientCheckoutOpenedKeyRef.current === navKey) return;
+
+    if (!register) {
+      clientCheckoutOpenedKeyRef.current = '';
+      toast.error('Abra la caja antes de cobrar la cuenta del cliente.');
+      navigate('/admin/caja?view=cobrar', { replace: true, state: {} });
+      return;
+    }
+
     clientCheckoutOpenedKeyRef.current = navKey;
 
     setActiveCajaOption('cobrar');
@@ -1248,7 +1323,7 @@ export default function POSPanel() {
     }
     toast.success(`Caja: cobrar cuenta de ${payload.customerName || 'cliente'}`);
     navigate('/admin/caja?view=cobrar', { replace: true, state: {} });
-  }, [location.state, allOrders, navigate, setSearchParams]);
+  }, [location.state, allOrders, navigate, setSearchParams, register]);
 
   const billingSuccessSummary = (doc) => {
     const num = String(doc?.full_number || '').trim();
@@ -1353,6 +1428,10 @@ export default function POSPanel() {
 
   const cobrarMesa = async () => {
     if (!selectedTable) return;
+    if (checkoutInFlightRef.current) return;
+    if (!register) return toast.error('Abra la caja antes de cobrar');
+    checkoutInFlightRef.current = true;
+    try {
     const tableOrders = selectedTable.orders || [];
     const useLineSplit = splitMode;
     const chargeToAccount = addToAccountEnabled;
@@ -1418,7 +1497,6 @@ export default function POSPanel() {
         return toast.error('El motivo del descuento o cortesía debe tener al menos 3 caracteres');
       }
     }
-    try {
       if (discountConfig.applied && splitMode && discountConfig.target === 'line' && discountConfig.targetOrderItemId) {
         if (!selectedOrderItemIds.includes(discountConfig.targetOrderItemId)) {
           return toast.error('El producto con descuento debe estar incluido en el cobro.');
@@ -1471,12 +1549,6 @@ export default function POSPanel() {
       }
 
       const issuedDocs = [];
-      if (!chargeToAccount && billingForm.enabled && !useLineSplit) {
-        for (const order of payableOrders) {
-          const doc = await issueElectronicDocument(order.id);
-          issuedDocs.push(doc);
-        }
-      }
 
       const checkoutBody = {
         ...posRegisterBody(),
@@ -1515,7 +1587,7 @@ export default function POSPanel() {
         ? (checkoutRes?.discounts_applied_by_order || {})
         : discountsByOrder;
 
-      if (!chargeToAccount && billingForm.enabled && useLineSplit) {
+      if (!chargeToAccount && billingForm.enabled) {
         for (const order of postPaidOrders) {
           const doc = await issueElectronicDocument(order.id);
           issuedDocs.push(doc);
@@ -1602,6 +1674,8 @@ export default function POSPanel() {
       setDiscountConfig({ ...EMPTY_DISCOUNT_CONFIG });
       clientCheckoutOpenedKeyRef.current = '';
       setSelectedTable(null);
+      setTableDetail(null);
+      setMesaDetailModalOpen(false);
       setAmountReceived('');
       setMultiPayEnabled(false);
       setMultiPayAmounts(emptyMultiPaymentAmounts());
@@ -1610,6 +1684,7 @@ export default function POSPanel() {
       resetBillingForm();
       loadData();
     } catch (err) { toast.error(err.message); }
+    finally { checkoutInFlightRef.current = false; }
   };
 
   const toggleOrderItemSelection = (itemId) => {
@@ -1625,7 +1700,7 @@ export default function POSPanel() {
       setSelectedOrderItemIds(allItemIds);
     } else {
       setSplitMode(true);
-      setSelectedOrderItemIds(allItemIds);
+      setSelectedOrderItemIds([]);
     }
   };
 
@@ -1738,6 +1813,10 @@ export default function POSPanel() {
         if (!sourceId) return toast.error('Selecciona mesa origen');
         if (!targetId) return toast.error('Selecciona mesa destino');
         if (sourceId === targetId) return toast.error('Origen y destino deben ser diferentes');
+        const targetTable = tables.find((t) => t.id === targetId);
+        if (targetTable?.orders?.length > 0) {
+          toast('La mesa destino ya tiene pedidos; quedarán en la misma cuenta.', { icon: 'ℹ️' });
+        }
         await api.post('/tables/merge', { target_table_id: targetId, source_table_ids: [sourceId] });
         toast.success('Mesas unidas correctamente');
       }
@@ -1756,6 +1835,7 @@ export default function POSPanel() {
     setEditingSessionOrderIds([]);
     setParaLlevarMesa(false);
     setSelectedTable(table);
+    lockMesa(table);
     setShowMenu(true);
     resetCart();
     setSearch('');
@@ -1794,7 +1874,9 @@ export default function POSPanel() {
     setEditingSessionOrderIds(editable.map((o) => o.id));
     setEditingOrderId(primary.id);
     setParaLlevarMesa(editable.some((o) => orderHasTakeoutNote(o)));
+    editSessionInitialParaLlevarRef.current = editable.some((o) => orderHasTakeoutNote(o));
     setSelectedTable(tableDetail);
+    lockMesa(tableDetail);
     setSearch('');
     setSelectedCat('all');
     setCart(initialCart);
@@ -1836,6 +1918,28 @@ export default function POSPanel() {
     }
   };
 
+  const tryMarkTableAvailableIfEmpty = async () => {
+    if (
+      !selectedTable ||
+      isClientCheckoutTable(selectedTable) ||
+      isDeliveryCheckoutTable(selectedTable) ||
+      !selectedTable.id
+    ) {
+      return;
+    }
+    try {
+      const updatedTable = await api.get(`/tables/${selectedTable.id}`);
+      const remaining = (updatedTable.orders || []).filter((o) =>
+        ['pending', 'preparing', 'ready'].includes(String(o.status || ''))
+      );
+      if (remaining.length === 0) {
+        await api.patch(`/tables/${selectedTable.id}/status`, { status: 'available' });
+      }
+    } catch (_) {
+      /* noop */
+    }
+  };
+
   const executeMesaOrderCancellations = async (orderIds, reason, tid) => {
     const formatted = formatMesaRemovalReason('Liberar mesa', reason);
     for (const oid of orderIds) {
@@ -1844,20 +1948,7 @@ export default function POSPanel() {
         cancellation_reason: formatted,
       });
     }
-    if (
-      selectedTable &&
-      !isClientCheckoutTable(selectedTable) &&
-      !isDeliveryCheckoutTable(selectedTable) &&
-      selectedTable.id
-    ) {
-      const updatedTable = await api.get(`/tables/${selectedTable.id}`);
-      const remaining = (updatedTable.orders || []).filter((o) =>
-        ['pending', 'preparing', 'ready'].includes(String(o.status || ''))
-      );
-      if (remaining.length === 0) {
-        await api.patch(`/tables/${selectedTable.id}/status`, { status: 'available' });
-      }
-    }
+    await tryMarkTableAvailableIfEmpty();
     toast.success(
       orderIds.length > 1
         ? 'Pedidos anulados. Mesa liberada si no había otros pedidos activos.'
@@ -1876,12 +1967,19 @@ export default function POSPanel() {
     if (!order?.id) return false;
     const ok = window.confirm(`¿Anular el pedido #${order.order_number}? Se devolverá stock si aplica.`);
     if (!ok) return false;
+    let reason = '';
+    try {
+      reason = await promptMesaRemovalReason('cancel');
+    } catch {
+      return false;
+    }
     const tid = toast.loading('Anulando pedido…');
     try {
       await api.put(`/orders/${order.id}/status`, {
         status: 'cancelled',
-        cancellation_reason: 'Anulado desde caja',
+        cancellation_reason: formatMesaRemovalReason('Anulado desde caja', reason),
       });
+      await tryMarkTableAvailableIfEmpty();
       toast.success('Pedido anulado', { id: tid });
       await loadData();
       return true;
@@ -1943,6 +2041,7 @@ export default function POSPanel() {
     setEditingSessionOrderIds([]);
     setParaLlevarMesa(false);
     setSelectedTable(null);
+    clearMesaLock();
     setPaymentMethod('efectivo');
     setMultiPayEnabled(false);
     setMultiPayAmounts(emptyMultiPaymentAmounts());
@@ -1990,6 +2089,9 @@ export default function POSPanel() {
       }
       return toast.error('Agrega productos al pedido');
     }
+    if (quickSaleMode && !register) {
+      return toast.error('Abra la caja antes de registrar una venta rápida');
+    }
     const missingRequiredNote = cart.find(i => Number(i.note_required || 0) === 1 && !String(i.notes || '').trim());
     if (missingRequiredNote) {
       setNoteEditorLineKey(missingRequiredNote.line_key);
@@ -2028,6 +2130,11 @@ export default function POSPanel() {
     );
     try {
       if (editingOrderId) {
+        const mesaErr = validateMesaForSubmit(tables, selectedTable);
+        if (mesaErr) {
+          toast.error(mesaErr, { id: tid });
+          return;
+        }
         const noteOrder = paraLlevarMesa ? KITCHEN_TAKEOUT_NOTE : '';
         const sessionIds =
           editingSessionOrderIds.length > 0 ? editingSessionOrderIds : [editingOrderId];
@@ -2042,11 +2149,13 @@ export default function POSPanel() {
         let removalReason = '';
         if (hasRemovals || willCancelOrders) {
           if (!posAdmin) {
-            return toast.error('Solo un administrador puede quitar productos o liberar la mesa.');
+            toast.error('Solo un administrador puede quitar productos o liberar la mesa.', { id: tid });
+            return;
           }
           try {
             removalReason = await promptMesaRemovalReason(willCancelOrders ? 'liberar' : 'save');
           } catch {
+            toast.dismiss(tid);
             return;
           }
         }
@@ -2073,13 +2182,17 @@ export default function POSPanel() {
           } else {
             const body = {
               items: linesPayload(lines),
-              notes: noteOrder,
             };
-            if (hasRemovals) body.removal_reason = cancelReason;
-            await api.put(`/orders/${oid}/lines`, body);
+            if (paraLlevarMesa || editSessionInitialParaLlevarRef.current) {
+              body.notes = noteOrder;
+            }
+            if (hasRemovals) body.removal_reason = removalReason;
+            const updated = await api.put(`/orders/${oid}/lines`, body);
             updatedOrderIds.push(oid);
+            void printKitchenBarOnComandaSend(updated, { merged: true });
           }
         }
+        await tryMarkTableAvailableIfEmpty();
         toast.success(sessionIds.length > 1 ? 'Pedidos actualizados' : 'Pedido actualizado', { id: tid });
         setShowMenu(false);
         setEditingOrderId('');
@@ -2089,8 +2202,16 @@ export default function POSPanel() {
         loadData();
         return;
       }
+      if (!quickSaleMode) {
+        const mesaErr = validateMesaForSubmit(tables, selectedTable);
+        if (mesaErr) {
+          toast.error(mesaErr, { id: tid });
+          return;
+        }
+      }
+      const tableForOrder = !quickSaleMode ? resolveLockedTable(tables, selectedTable) : selectedTable;
       const createdOrder = await api.post('/orders', buildDineInOrderPayload({
-        table: selectedTable,
+        table: tableForOrder,
         cartItems: buildOrderItemsPayload(cart),
         extra: {
           payment_method: quickSaleMode ? quickPayMethod : paymentMethod,
@@ -2110,7 +2231,6 @@ export default function POSPanel() {
           if (tipVal > 0) payBody.tip_amount = tipVal;
         }
         await api.put(`/orders/${createdOrder.id}/payment`, payBody);
-        await api.put(`/orders/${createdOrder.id}/status`, { status: 'delivered' });
         if (billingForm.enabled && doc) {
           toast.success(`Venta rápida cobrada · ${billingSuccessSummary(doc)}`, { id: tid });
           if (doc?.pdf_url) window.open(resolveMediaUrl(doc.pdf_url), '_blank', 'noopener,noreferrer');
@@ -2124,8 +2244,11 @@ export default function POSPanel() {
             { id: tid },
           );
         } else {
-          toast.success(`Pedido agregado a ${selectedTable.name}`, { id: tid });
+          toast.success(`Pedido agregado a ${tableForOrder?.name || selectedTable?.name || 'mesa'}`, { id: tid });
         }
+        void printKitchenBarOnComandaSend(createdOrder, {
+          merged: Boolean(createdOrder.merged_into_existing),
+        });
       }
       setShowMenu(false);
       setQuickSaleMode(false);
@@ -2134,6 +2257,7 @@ export default function POSPanel() {
       setTipPayEnabled(false);
       setCheckoutTipAmount('');
       resetBillingForm();
+      clearMesaLock();
       loadData();
     } catch (err) {
       const msg = String(err?.message || '').trim();
@@ -2901,12 +3025,19 @@ export default function POSPanel() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
             {selectedSalonTables.map((table) => {
               const isOccupied = Boolean(table.orders && table.orders.length > 0);
-              const isSelected = tableDetail?.id === table.id;
+              const mesaLock = getMesaLock();
+              const isSelected =
+                tableDetail?.id === table.id
+                || (showMenu && !quickSaleMode && mesaLock?.id === table.id);
               return (
                 <button
                   key={table.id}
                   type="button"
                   onClick={() => {
+                    const lock = getMesaLock();
+                    if (showMenu && !quickSaleMode && lock && String(lock.id) !== String(table.id)) {
+                      releasePendingOrderMenu();
+                    }
                     setTableDetail(table);
                     setMesaDetailModalOpen(true);
                   }}
@@ -3122,6 +3253,7 @@ export default function POSPanel() {
                 <button
                   type="button"
                   onClick={() => {
+                    releasePendingOrderMenu();
                     setSelectedTable(tableDetail);
                     void printPrecuenta(tableDetail);
                   }}
@@ -3134,6 +3266,11 @@ export default function POSPanel() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (!register) {
+                      toast.error('Abra la caja antes de cobrar');
+                      return;
+                    }
+                    releasePendingOrderMenu();
                     setMesaDetailModalOpen(false);
                     setSelectedTable(tableDetail);
                     setShowBill(true);
@@ -3421,6 +3558,7 @@ export default function POSPanel() {
           setCheckoutTipAmount('');
           resetBillingForm();
           resetCart();
+          clearMesaLock();
         }}
         title={(() => {
           if (quickSaleMode) return 'Venta rápida';
@@ -3438,7 +3576,7 @@ export default function POSPanel() {
               ? `Modificar pedido #${o.order_number} — ${selectedTable.name || ''}`
               : `Modificar pedido — ${selectedTable.name || ''}`;
           }
-          return `Agregar Pedido — ${selectedTable?.name || ''}`;
+          return `Agregar Pedido — ${getMesaLock()?.name || selectedTable?.name || ''}`;
         })()}
         size="xl"
         maxHeightClass="max-h-[min(92vh,920px)]"
@@ -4866,7 +5004,9 @@ export default function POSPanel() {
         title={
           mesaRemovalModal?.mode === 'liberar'
             ? 'Liberar mesa — motivo obligatorio'
-            : 'Quitar productos — motivo obligatorio'
+            : mesaRemovalModal?.mode === 'cancel'
+              ? 'Anular pedido — motivo obligatorio'
+              : 'Quitar productos — motivo obligatorio'
         }
         size="md"
       >
@@ -4874,7 +5014,9 @@ export default function POSPanel() {
           <p className="text-sm text-[var(--ui-muted)]">
             {mesaRemovalModal?.mode === 'liberar'
               ? 'Solo un administrador puede anular el pedido y liberar la mesa. Indique el motivo (obligatorio).'
-              : 'Solo un administrador puede retirar productos de la mesa. Indique el motivo (obligatorio).'}
+              : mesaRemovalModal?.mode === 'cancel'
+                ? 'Indique el motivo de la anulación (obligatorio). Quedará registrado en ventas y auditoría.'
+                : 'Solo se pide motivo al eliminar un producto por completo (botón Eliminar o cantidad a cero). Reducir con +/− no requiere motivo.'}
           </p>
           <div>
             <label htmlFor="mesa-removal-reason" className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">

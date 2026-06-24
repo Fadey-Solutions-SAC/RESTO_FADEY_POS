@@ -20,6 +20,7 @@ import {
   MdPerson, MdPhone, MdHome, MdEditNote, MdMap,
 } from 'react-icons/md';
 import { buildGoogleMapsSearchUrl } from '../../utils/googleMaps';
+import { printKitchenBarOnComandaSend } from '../../utils/kitchenBarAutoPrint';
 import toast from 'react-hot-toast';
 
 export default function Delivery() {
@@ -176,7 +177,7 @@ export default function Delivery() {
     if (!customerName.trim()) return toast.error('Ingresa el nombre del cliente');
     if (!deliveryAddress.trim()) return toast.error('Ingresa la dirección de entrega');
     try {
-      await api.post('/orders', {
+      const created = await api.post('/orders', {
         items: buildOrderItemsPayload(cart),
         type: 'delivery',
         customer_name: customerName.trim(),
@@ -184,6 +185,7 @@ export default function Delivery() {
         delivery_payment_modality: deliveryPaymentModality,
         notes: customerPhone ? `Tel: ${customerPhone}` : '',
       });
+      void printKitchenBarOnComandaSend(created, { merged: false });
       toast.success('Pedido de delivery creado');
       setShowNewOrder(false);
       setCart([]);

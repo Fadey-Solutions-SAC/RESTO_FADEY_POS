@@ -4,6 +4,14 @@ const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumbe
 const ACTIVE_ORDER_STATUS_SQL =
   "status IN ('pending','preparing','ready') AND IFNULL(TRIM(payment_status), 'pending') != 'paid'";
 
+function deriveTableStatus(table, orders) {
+  const hasActiveOrders = Array.isArray(orders) && orders.length > 0;
+  if (hasActiveOrders) return 'occupied';
+  const dbStatus = String(table?.status || 'available').toLowerCase();
+  if (dbStatus === 'reserved' || dbStatus === 'maintenance') return dbStatus;
+  return 'available';
+}
+
 function orderBelongsToTable(order, table) {
   if (!order || !table) return false;
   const tableId = String(table.id || '').trim();
@@ -31,8 +39,45 @@ function loadActiveTableOrders(tableRef) {
   return matched;
 }
 
+/** Una sola consulta de pedidos activos + ítems; agrupa por mesa (evita N+1 en GET /tables). */
+function loadAllActiveTableOrdersWithItems() {
+  const orders = queryAll(
+    `SELECT * FROM orders WHERE ${ACTIVE_ORDER_STATUS_SQL} ORDER BY created_at DESC`,
+  );
+  if (!orders.length) return [];
+
+  const placeholders = orders.map(() => '?').join(',');
+  const ids = orders.map((o) => o.id);
+  const allItems = queryAll(
+    `SELECT * FROM order_items WHERE order_id IN (${placeholders})`,
+    ids,
+  );
+  const itemsByOrderId = new Map();
+  for (const item of allItems) {
+    if (!itemsByOrderId.has(item.order_id)) itemsByOrderId.set(item.order_id, []);
+    itemsByOrderId.get(item.order_id).push(item);
+  }
+  orders.forEach((o) => {
+    o.items = itemsByOrderId.get(o.id) || [];
+  });
+  return orders;
+}
+
+function attachActiveOrdersToTables(tables, activeOrders) {
+  for (const t of tables) {
+    const orders = activeOrders.filter((o) => orderBelongsToTable(o, t));
+    t.orders = orders;
+    t.order_total = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+    t.order_count = orders.length;
+    t.status = deriveTableStatus(t, orders);
+  }
+}
+
 module.exports = {
   ACTIVE_ORDER_STATUS_SQL,
+  deriveTableStatus,
   orderBelongsToTable,
   loadActiveTableOrders,
+  loadAllActiveTableOrdersWithItems,
+  attachActiveOrdersToTables,
 };

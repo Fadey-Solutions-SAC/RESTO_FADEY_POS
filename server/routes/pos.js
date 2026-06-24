@@ -17,6 +17,7 @@ const {
   round2,
 } = require('../utils/paymentBreakdown');
 const { sendCashCloseNotification, getCashCloseRecipient } = require('../services/cashCloseNotifyService');
+const { getOrderChargeBase } = require('../utils/orderChargeBase');
 
 const router = express.Router();
 
@@ -59,11 +60,8 @@ function distributeTipAcrossOrders(tipGross, orderTotals) {
   return out;
 }
 
-function getChargeBase(order) {
-  return Math.max(
-    0,
-    Number(order?.subtotal || 0) + Number(order?.delivery_fee || 0)
-  );
+function getChargeBase(order, items) {
+  return getOrderChargeBase(order, items);
 }
 
 function lineItemSubtotal(it) {
@@ -230,7 +228,8 @@ function buildExtraDiscountsByOrderTx(tx, orderIds, totalExtraRaw, anchorOrderIt
     const oid = row?.order_id ? String(row.order_id) : '';
     if (oid && orderList.includes(oid)) {
       const o = tx.queryOne('SELECT * FROM orders WHERE id = ?', [oid]);
-      const cap = getChargeBase(o);
+      const items = tx.queryAll('SELECT quantity, unit_price, subtotal FROM order_items WHERE order_id = ?', [oid]);
+      const cap = getChargeBase(o, items);
       out[oid] = Math.max(0, Math.min(t, cap));
       return out;
     }
@@ -238,7 +237,8 @@ function buildExtraDiscountsByOrderTx(tx, orderIds, totalExtraRaw, anchorOrderIt
 
   const weights = orderList.map((id) => {
     const o = tx.queryOne('SELECT * FROM orders WHERE id = ?', [id]);
-    return { id, w: getChargeBase(o) };
+    const items = tx.queryAll('SELECT quantity, unit_price, subtotal FROM order_items WHERE order_id = ?', [id]);
+    return { id, w: getChargeBase(o, items) };
   });
   const sumW = round2(weights.reduce((s, x) => s + x.w, 0));
   if (sumW <= 0) return out;
@@ -725,12 +725,14 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         const extraDiscountRaw = Math.max(0, Number(discountsByOrder[orderId] || 0));
         let extraDiscount = extraDiscountRaw;
         if (isCourtesyCheckout) {
-          const baseTotal = getChargeBase(order);
+          const items = tx.queryAll('SELECT quantity, unit_price, subtotal FROM order_items WHERE order_id = ?', [orderId]);
+          const baseTotal = getChargeBase(order, items);
           extraDiscount = Math.max(extraDiscount, Math.max(0, baseTotal - Number(order.discount || 0)));
         }
         if (extraDiscount > 0) {
           discountsAppliedByOrder[orderId] = extraDiscount;
-          const baseTotal = getChargeBase(order);
+          const items = tx.queryAll('SELECT quantity, unit_price, subtotal FROM order_items WHERE order_id = ?', [orderId]);
+          const baseTotal = getChargeBase(order, items);
           const nextDiscount = Math.max(0, Math.min(baseTotal, Number(order.discount || 0) + extraDiscount));
           const nextTotal = Math.max(0, baseTotal - nextDiscount);
           const note = discountReasonText ? ` [DESCUENTO: ${discountReasonText}]` : '';

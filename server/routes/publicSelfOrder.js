@@ -8,6 +8,8 @@ const { createOrMergeTableOrderInTransaction, getOrderWithItems } = require('../
 const { emitInventoryUpdate } = require('../socketBroadcast');
 const { createRateLimiter } = require('../middleware/rateLimit');
 const { JWT_SECRET } = require('../middleware/auth');
+const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
+const { loadActiveTableOrders } = require('../services/tableOrdersQueryService');
 
 const router = express.Router();
 
@@ -65,9 +67,10 @@ function getAutoPedidoCartas() {
 }
 
 function findTableByMesa(mesaRaw) {
-  const mesa = String(mesaRaw ?? '').trim();
-  if (!mesa) return null;
-  return queryOne('SELECT * FROM tables WHERE TRIM(CAST(number AS TEXT)) = ?', [mesa]);
+  const key = normalizeTableNumber(mesaRaw);
+  if (!key) return null;
+  const tables = queryAll('SELECT * FROM tables');
+  return tables.find((t) => tableNumbersMatch(t.number, key)) || null;
 }
 
 function normalizeProductForClient(p) {
@@ -125,16 +128,9 @@ function loadModifiersPublic() {
   return modifiers;
 }
 
-function activeOrdersForTableNumber(tableNumber) {
-  const key = String(tableNumber);
-  const orders = queryAll(
-    "SELECT * FROM orders WHERE table_number = ? AND status IN ('pending','preparing','ready') ORDER BY created_at DESC",
-    [key]
-  );
-  orders.forEach((o) => {
-    o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]);
-  });
-  return orders;
+function activeOrdersForTable(table) {
+  if (!table) return [];
+  return loadActiveTableOrders(table);
 }
 
 function activeOrdersForCustomerId(customerId) {
@@ -223,7 +219,7 @@ router.get('/orders', (req, res) => {
     if (!mesa) return res.status(400).json({ error: 'Parámetro mesa requerido' });
     const table = findTableByMesa(mesa);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
-    res.json(activeOrdersForTableNumber(table.number));
+    res.json(activeOrdersForTable(table));
   } catch (err) {
     res.status(500).json({ error: err.message || 'Error al listar pedidos' });
   }
@@ -248,6 +244,7 @@ router.get('/client-orders', (req, res) => {
 
 router.post('/orders', selfOrderPostLimiter, (req, res) => {
   const mesa = String(req.body?.mesa || req.body?.table_number || '').trim();
+  const bodyTableId = String(req.body?.table_id || '').trim();
   const cliente = String(req.body?.cliente || '').trim();
   const clientToken = String(req.body?.token || '').trim();
   const { items, payment_method, notes, customer_name } = req.body || {};
@@ -297,6 +294,8 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
         io.emit('new-order', order);
         io.emit('order-update', order);
       }
+      const { scheduleKitchenBarAutoPrint } = require('../services/kitchenBarAutoPrintService');
+      scheduleKitchenBarAutoPrint(order);
       emitInventoryUpdate({});
       return res.status(201).json(order);
     } catch (err) {
@@ -306,11 +305,14 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
 
   if (!mesa) return res.status(400).json({ error: 'Número de mesa requerido' });
 
-  const table = findTableByMesa(mesa);
+  const table = findTableByMesa(mesa) || (bodyTableId ? queryOne('SELECT * FROM tables WHERE id = ?', [bodyTableId]) : null);
   if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
 
-  if (String(req.body?.table_number || '').trim() && String(req.body.table_number).trim() !== String(table.number)) {
-    return res.status(400).json({ error: 'Datos de mesa inconsistentes' });
+  if (String(req.body?.table_number || '').trim()) {
+    const sent = normalizeTableNumber(req.body.table_number);
+    if (sent && !tableNumbersMatch(sent, table.number)) {
+      return res.status(400).json({ error: 'Datos de mesa inconsistentes' });
+    }
   }
 
   const body = {
@@ -340,6 +342,15 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
       }
       io.emit('order-update', order);
       io.emit('table-update', table);
+    }
+    const { scheduleKitchenBarAutoPrint } = require('../services/kitchenBarAutoPrintService');
+    if (result.merged) {
+      scheduleKitchenBarAutoPrint(order, {
+        newItemIds: result.newItemIds || [],
+        fromLinesUpdate: true,
+      });
+    } else {
+      scheduleKitchenBarAutoPrint(order);
     }
     emitInventoryUpdate({});
     res.status(result.merged ? 200 : 201).json({
