@@ -12,15 +12,20 @@ function effectiveMinStock(minStock) {
   return min > 0 ? min : DEFAULT_NON_TRANSFORMED_MIN_STOCK;
 }
 
-/** SQL: umbral efectivo por fila de producto (alias opcional, ej. `p`). */
-function effectiveMinStockExpr(alias = 'p') {
-  const a = alias;
-  return `CASE WHEN IFNULL(${a}.min_stock, 0) > 0 THEN IFNULL(${a}.min_stock, 0) ELSE ${DEFAULT_NON_TRANSFORMED_MIN_STOCK} END`;
+function qualified(alias, column) {
+  const a = String(alias || '').trim();
+  return a ? `${a}.${column}` : column;
+}
+
+/** SQL: umbral efectivo por fila de producto (alias opcional, ej. `p`; vacío = columnas sin prefijo). */
+function effectiveMinStockExpr(alias = '') {
+  const minStock = qualified(alias, 'min_stock');
+  return `CASE WHEN IFNULL(${minStock}, 0) > 0 THEN IFNULL(${minStock}, 0) ELSE ${DEFAULT_NON_TRANSFORMED_MIN_STOCK} END`;
 }
 
 /** SQL: producto no transformado con stock en o por debajo de su mínimo. */
-function isNonTransformedLowStockSql(alias = 'p') {
-  return `IFNULL(${alias}.stock, 0) <= (${effectiveMinStockExpr(alias)})`;
+function isNonTransformedLowStockSql(alias = '') {
+  return `IFNULL(${qualified(alias, 'stock')}, 0) <= (${effectiveMinStockExpr(alias)})`;
 }
 
 function isProductLowStock(stock, minStock) {

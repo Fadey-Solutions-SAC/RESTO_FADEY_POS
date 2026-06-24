@@ -37,6 +37,15 @@ function readBusinessIntelFlat() {
   }
 }
 
+function readDeliveryEnabled() {
+  try {
+    const row = queryOne('SELECT delivery_enabled FROM restaurants LIMIT 1');
+    return Number(row?.delivery_enabled) === 1;
+  } catch (_) {
+    return true;
+  }
+}
+
 /** Ventas «en vivo»: turno de caja abierto; si no, último turno o día según horario del local. */
 function buildLiveSalesPanel(registerOpen) {
   const s = getSalesEventSql();
@@ -125,6 +134,7 @@ function buildLiveSalesPanel(registerOpen) {
 function buildOperationalIntelligence(opts = {}) {
   const s = getSalesEventSql();
   const role = String(opts.role || '');
+  const deliveryEnabled = readDeliveryEnabled();
   const biz = readBusinessIntelFlat();
   const autoAlertsOn = biz.auto_alerts_enabled !== false;
   const stockBizAlertsOn = autoAlertsOn && biz.alert_critical_stock_enabled !== false;
@@ -254,8 +264,8 @@ function buildOperationalIntelligence(opts = {}) {
     });
   }
 
-  const delN = Number(deliveryActive?.count || 0);
-  if (delN > 0) {
+  const delN = deliveryEnabled ? Number(deliveryActive?.count || 0) : 0;
+  if (deliveryEnabled && delN > 0) {
     operationalAlerts.push({
       id: 'delivery',
       severity: 'info',
@@ -263,8 +273,8 @@ function buildOperationalIntelligence(opts = {}) {
       message: `${delN} pedido(s) pendiente(s) de cobro o en curso`,
     });
   }
-  const dStale = Number(deliveryStaleReady?.count || 0);
-  if (dStale > 0) {
+  const dStale = deliveryEnabled ? Number(deliveryStaleReady?.count || 0) : 0;
+  if (deliveryEnabled && dStale > 0) {
     operationalAlerts.push({
       id: 'delivery_listo_demora',
       severity: 'warning',
@@ -403,45 +413,49 @@ function buildOperationalIntelligence(opts = {}) {
   }
 
   if (role === 'admin' || role === 'master_admin') {
-    const fw = financeRolling7dSnapshot();
-    if (marginBizAlertsOn) {
-      const ratioThreshold = lossRatioThresholdPct / 100;
-      if (fw.totalSales >= 400 && fw.lossesCombined > 0) {
-        const ratio = fw.lossesCombined / fw.totalSales;
-        if (ratio >= ratioThreshold) {
+    try {
+      const fw = financeRolling7dSnapshot();
+      if (marginBizAlertsOn) {
+        const ratioThreshold = lossRatioThresholdPct / 100;
+        if (fw.totalSales >= 400 && fw.lossesCombined > 0) {
+          const ratio = fw.lossesCombined / fw.totalSales;
+          if (ratio >= ratioThreshold) {
+            operationalAlerts.push({
+              id: 'gastos_ratio',
+              severity: ratio >= ratioThreshold * 1.75 ? 'warning' : 'info',
+              title: 'Gastos y pérdidas altos (7 días)',
+              message: `Ventas cobradas ~S/ ${fw.totalSales.toFixed(0)} vs salidas ~S/ ${fw.lossesCombined.toFixed(0)} (${(ratio * 100).toFixed(0)}% sobre ventas; umbral ${lossRatioThresholdPct}% en módulo empresarial).`,
+              linkTo: '/admin/informes?seccion=finanzas',
+              linkLabel: 'Informes · Finanzas',
+            });
+          }
+        }
+        if (fw.totalSales >= 500 && fw.approxProfit < 0) {
           operationalAlerts.push({
-            id: 'gastos_ratio',
-            severity: ratio >= ratioThreshold * 1.75 ? 'warning' : 'info',
-            title: 'Gastos y pérdidas altos (7 días)',
-            message: `Ventas cobradas ~S/ ${fw.totalSales.toFixed(0)} vs salidas ~S/ ${fw.lossesCombined.toFixed(0)} (${(ratio * 100).toFixed(0)}% sobre ventas; umbral ${lossRatioThresholdPct}% en módulo empresarial).`,
+            id: 'rentabilidad_negativa',
+            severity: 'warning',
+            title: 'Resultado aproximado negativo (7 días)',
+            message: 'Ventas menos compras y pérdidas/gastos de caja dan saldo negativo en la ventana reciente.',
             linkTo: '/admin/informes?seccion=finanzas',
             linkLabel: 'Informes · Finanzas',
           });
+        } else if (fw.totalSales >= 400 && fw.approxProfit > 0) {
+          const netRat = fw.approxProfit / fw.totalSales;
+          const targetNet = targetNetMarginPct / 100;
+          if (netRat < targetNet) {
+            operationalAlerts.push({
+              id: 'margen_bajo',
+              severity: 'info',
+              title: 'Utilidad neta por debajo del objetivo (7 días)',
+              message: `Utilidad aproximada ${(100 * netRat).toFixed(1)}% sobre ventas cobradas (objetivo ${targetNetMarginPct}% en módulo empresarial).`,
+              linkTo: '/admin/informes?seccion=finanzas',
+              linkLabel: 'Informes · Finanzas',
+            });
+          }
         }
       }
-      if (fw.totalSales >= 500 && fw.approxProfit < 0) {
-        operationalAlerts.push({
-          id: 'rentabilidad_negativa',
-          severity: 'warning',
-          title: 'Resultado aproximado negativo (7 días)',
-          message: 'Ventas menos compras y pérdidas/gastos de caja dan saldo negativo en la ventana reciente.',
-          linkTo: '/admin/informes?seccion=finanzas',
-          linkLabel: 'Informes · Finanzas',
-        });
-      } else if (fw.totalSales >= 400 && fw.approxProfit > 0) {
-        const netRat = fw.approxProfit / fw.totalSales;
-        const targetNet = targetNetMarginPct / 100;
-        if (netRat < targetNet) {
-          operationalAlerts.push({
-            id: 'margen_bajo',
-            severity: 'info',
-            title: 'Utilidad neta por debajo del objetivo (7 días)',
-            message: `Utilidad aproximada ${(100 * netRat).toFixed(1)}% sobre ventas cobradas (objetivo ${targetNetMarginPct}% en módulo empresarial).`,
-            linkTo: '/admin/informes?seccion=finanzas',
-            linkLabel: 'Informes · Finanzas',
-          });
-        }
-      }
+    } catch (err) {
+      console.warn('[reports] finance rolling 7d alerts:', err.message || err);
     }
   }
 
@@ -463,7 +477,7 @@ function buildOperationalIntelligence(opts = {}) {
   const summary = {
     date: today,
     tablesWithActiveOrders: Number(tablesWithActiveOrders?.count || 0),
-    deliveryActiveCount: Number(deliveryActive?.count || 0),
+    deliveryActiveCount: deliveryEnabled ? Number(deliveryActive?.count || 0) : null,
     inKitchenCount: Number(inKitchen?.count || 0),
     activeOrders: actN,
     pendingCount: pendN,
@@ -475,6 +489,7 @@ function buildOperationalIntelligence(opts = {}) {
     deliveryStaleReadyCount: dStale,
     registerOpen: !!registerOpen?.id,
     slowMovingCount: slowN,
+    deliveryEnabled,
   };
 
   const dashPreset = String(biz.dash_kpi_preset || 'basic').trim();
@@ -500,6 +515,7 @@ function buildOperationalIntelligence(opts = {}) {
     tablesWithActiveOrders: summary.tablesWithActiveOrders,
     deliveryActiveCount: summary.deliveryActiveCount,
     inKitchenCount: summary.inKitchenCount,
+    deliveryEnabled,
     generated_at: new Date().toISOString(),
     businessIntel: {
       dash_kpi_preset: dashKpiPreset,
@@ -651,6 +667,7 @@ router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero', 'mast
       generated_at: op.generated_at,
       financeMonth,
       businessIntel: op.businessIntel,
+      deliveryEnabled: op.deliveryEnabled,
     });
   } catch (err) {
     console.error('[reports] GET /dashboard:', err.message || err);
@@ -667,6 +684,7 @@ router.get('/operational-alerts', authenticateToken, requireRole('admin', 'cajer
       insightToday: op.insightToday,
       generated_at: op.generated_at,
       businessIntel: op.businessIntel,
+      deliveryEnabled: op.deliveryEnabled,
     });
   } catch (err) {
     console.error('[reports] GET /operational-alerts:', err.message || err);

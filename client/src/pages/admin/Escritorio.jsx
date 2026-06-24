@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { api, formatCurrency, parseApiDate, toLocalDateKey, PAYMENT_METHODS, formatInstantTime } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
-import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
+import { useDeliverySettings } from '../../hooks/useDeliveryEnabled';
 import { useNavigate, Link } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { MdDateRange, MdKeyboardArrowDown, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning } from 'react-icons/md';
@@ -48,7 +48,7 @@ function ventaMesaKey(order) {
 
 export default function Escritorio() {
   const CHART_COLORS = useChartTheme();
-  const showDeliveryUi = useShowDeliveryUi();
+  const { enabled: deliveryEnabled, loaded: deliverySettingsLoaded } = useDeliverySettings();
   const [orders, setOrders] = useState([]);
   const [liveDash, setLiveDash] = useState(null);
   const [liveDashLoading, setLiveDashLoading] = useState(true);
@@ -63,6 +63,19 @@ export default function Escritorio() {
   const startDateInputRef = useRef(null);
   const endDateInputRef = useRef(null);
   const navigate = useNavigate();
+
+  const deliveryModuleActive = useMemo(() => {
+    if (deliverySettingsLoaded) return deliveryEnabled;
+    if (liveDash?.deliveryEnabled != null) return Boolean(liveDash.deliveryEnabled);
+    return true;
+  }, [deliverySettingsLoaded, deliveryEnabled, liveDash?.deliveryEnabled]);
+
+  const monitoreoSyncLabel = useMemo(() => {
+    const parts = ['Caja', 'Mesas'];
+    if (deliveryModuleActive) parts.push('Delivery');
+    parts.push('inventario');
+    return parts.join(', ');
+  }, [deliveryModuleActive]);
 
   const loadLiveDash = useCallback(async () => {
     setLiveDashLoading(true);
@@ -84,6 +97,7 @@ export default function Escritorio() {
           deliveryActiveCount: op.summary?.deliveryActiveCount ?? 0,
           inKitchenCount: op.summary?.inKitchenCount ?? 0,
           registerOpen: op.summary?.registerOpen ?? false,
+          deliveryEnabled: op.deliveryEnabled,
           openRegisters: [],
           registerOpenSummary: null,
           lowStock: [],
@@ -429,7 +443,7 @@ export default function Escritorio() {
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-[var(--ui-body-text)]">Monitoreo en vivo</h3>
               <p className="text-xs text-[var(--ui-muted)]">
-                Sincronizado con Caja, Mesas, Delivery e inventario
+                Sincronizado con {monitoreoSyncLabel}
                 {liveDash?.generated_at ? (
                   <span className="ml-1">
                     · actualizado {formatInstantTime(liveDash.generated_at, { withSeconds: true })}
@@ -521,7 +535,7 @@ export default function Escritorio() {
               <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{Number(liveDash.tablesWithActiveOrders || 0)}</p>
               <p className="text-[11px] font-medium ui-live-link-rose">Ir a Mesas</p>
             </button>
-            {showDeliveryUi ? (
+            {deliveryModuleActive ? (
             <button
               type="button"
               onClick={() => navigate('/admin/delivery')}
@@ -531,6 +545,18 @@ export default function Escritorio() {
               <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{Number(liveDash.deliveryActiveCount || 0)}</p>
               <p className="text-[11px] font-medium ui-live-link-emerald">Ir a Delivery</p>
             </button>
+            ) : deliverySettingsLoaded ? (
+            <div className="rounded-lg border border-dashed border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">Delivery</p>
+              <p className="text-sm font-semibold text-[var(--ui-muted)]">Desactivado</p>
+              <button
+                type="button"
+                onClick={() => navigate('/admin/mi-restaurant')}
+                className="text-[11px] font-medium text-[var(--ui-accent-muted)] hover:underline underline-offset-2 mt-0.5"
+              >
+                Activar en Mi Restaurante
+              </button>
+            </div>
             ) : null}
             <button
               type="button"
@@ -640,12 +666,18 @@ export default function Escritorio() {
             <p className="text-2xl font-bold text-indigo-800 mt-1">{barQueue}</p>
             <p className="text-xs text-indigo-700">Pedidos en cola</p>
           </div>
-          {showDeliveryUi ? (
+          {deliveryModuleActive ? (
           <button onClick={() => navigate('/admin/delivery')} className="text-left p-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 transition-colors">
             <div className="flex items-center gap-2 text-emerald-700 font-semibold"><MdDeliveryDining /> Delivery</div>
             <p className="text-2xl font-bold text-emerald-800 mt-1">{deliveryReady}</p>
             <p className="text-xs text-emerald-700">Pedidos listos para repartir</p>
           </button>
+          ) : deliverySettingsLoaded ? (
+          <div className="text-left p-3 rounded-xl border border-dashed border-slate-200 bg-slate-50">
+            <div className="flex items-center gap-2 text-slate-600 font-semibold"><MdDeliveryDining /> Delivery</div>
+            <p className="text-sm font-bold text-slate-500 mt-1">Desactivado</p>
+            <p className="text-xs text-slate-500">Actívelo en Mi Restaurante</p>
+          </div>
           ) : null}
           <button onClick={() => navigate('/admin/mesas')} className="text-left p-3 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-colors">
             <div className="flex items-center gap-2 text-rose-700 font-semibold"><MdTableBar /> Mesas</div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, resolveMediaUrl, formatInstantTime, formatDateTime } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../hooks/useSocket';
+import { useDeliverySettings } from '../hooks/useDeliveryEnabled';
 import { getOperationalNotificationQuickLinks } from '../utils/staffModuleAccess';
 import StaffTeamChat from './StaffTeamChat';
 import Modal from './Modal';
@@ -43,9 +44,17 @@ export default function NotificationCenter({ className = '' }) {
   const showOperacionTab = user?.role === 'admin' || user?.role === 'master_admin';
 
   const operacionQuickLinks = useMemo(() => getOperationalNotificationQuickLinks(user), [user]);
+  const { enabled: deliveryEnabled, loaded: deliverySettingsLoaded } = useDeliverySettings();
 
   const [operationalPayload, setOperationalPayload] = useState(undefined);
   const [operationalLoadError, setOperationalLoadError] = useState('');
+
+  const deliveryModuleActive = useMemo(() => {
+    if (deliverySettingsLoaded) return deliveryEnabled;
+    if (operationalPayload?.deliveryEnabled != null) return Boolean(operationalPayload.deliveryEnabled);
+    if (operationalPayload?.summary?.deliveryEnabled != null) return Boolean(operationalPayload.summary.deliveryEnabled);
+    return true;
+  }, [deliverySettingsLoaded, deliveryEnabled, operationalPayload?.deliveryEnabled, operationalPayload?.summary?.deliveryEnabled]);
 
   const loadOperationalAlerts = useCallback(() => {
     if (!showOperacionTab) return;
@@ -295,9 +304,11 @@ export default function NotificationCenter({ className = '' }) {
                             </p>
                           </div>
                           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
-                            <span className="text-[var(--ui-muted)]">Delivery activo</span>
+                            <span className="text-[var(--ui-muted)]">{deliveryModuleActive ? 'Delivery activo' : 'Delivery'}</span>
                             <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
-                              {Number(operationalPayload.summary.deliveryActiveCount ?? 0)}
+                              {deliveryModuleActive
+                                ? Number(operationalPayload.summary.deliveryActiveCount ?? 0)
+                                : 'Desactivado'}
                             </p>
                           </div>
                           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
