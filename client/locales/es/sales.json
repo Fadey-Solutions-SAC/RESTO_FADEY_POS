@@ -5,7 +5,10 @@
     "voided": "Ventas anuladas"
   },
   "totals": {
-    "totalSales": "Total ventas"
+    "totalSales": "Total ventas",
+    "voidedCount": "Registros anulados",
+    "voidedReferenceTotal": "Total de referencia",
+    "voidedReferenceHint": "Montos históricos de comprobantes anulados; no suman a caja ni a ventas activas."
   },
   "paymentMethods": {
     "efectivo": "Efectivo",

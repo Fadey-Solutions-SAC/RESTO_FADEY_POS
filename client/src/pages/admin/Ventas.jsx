@@ -395,6 +395,13 @@ export default function Ventas() {
     transactions: filtered.length,
   };
 
+  const isVoidedTab = saleTab === 'anuladas';
+
+  const handleSaleTabChange = (tabId) => {
+    setSaleTab(tabId);
+    if (tabId === 'anuladas') setStatusFilter('all');
+  };
+
   const openGroupDetail = (group) => {
     setSelectedGroup(group);
     setSelected(group.primary);
@@ -568,7 +575,7 @@ export default function Ventas() {
           <button
             key={tab.id}
             type="button"
-            onClick={() => setSaleTab(tab.id)}
+            onClick={() => handleSaleTabChange(tab.id)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
               saleTab === tab.id
                 ? 'bg-[var(--ui-accent)] text-white border-[color:var(--ui-accent)] shadow-md'
@@ -580,12 +587,27 @@ export default function Ventas() {
         ))}
       </div>
 
+      {isVoidedTab ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+          <div className="card border-l-4 border-l-sky-500">
+            <p className="text-xs text-sky-600">{t('totals.voidedCount')}</p>
+            <p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p>
+            <p className="text-[10px] text-[var(--ui-muted)]">{totals.transactions} comprobante(s)</p>
+          </div>
+          <div className="card border-l-4 border-l-slate-400">
+            <p className="text-xs ui-text-muted">{t('totals.voidedReferenceTotal')}</p>
+            <p className="text-xl font-bold text-[var(--ui-body-text)]">{formatCurrency(totals.total)}</p>
+            <p className="text-[10px] text-[var(--ui-muted)] mt-1">{t('totals.voidedReferenceHint')}</p>
+          </div>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
         <div className="card border-l-4 border-l-slate-400"><p className="text-xs ui-text-muted">Total Ventas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{formatCurrency(totals.total)}</p></div>
         <div className="card border-l-4 border-l-emerald-500"><p className="text-xs text-emerald-600">Cobrado</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totals.paid)}</p></div>
         <div className="card border-l-4 border-l-amber-500"><p className="text-xs text-amber-600">Pendiente</p><p className="text-xl font-bold text-amber-300">{formatCurrency(totals.pending)}</p></div>
         <div className="card border-l-4 border-l-sky-500"><p className="text-xs text-sky-600">Registros</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p><p className="text-[10px] text-[var(--ui-muted)]">{totals.transactions} comprobante(s)</p></div>
       </div>
+      )}
 
       <div className="rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-5">
         <div className="flex flex-wrap gap-3 mb-4">
@@ -600,9 +622,11 @@ export default function Ventas() {
           >
             <MdDownload /> Descargar todas
           </button>
+          {!isVoidedTab ? (
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-field w-auto min-w-[160px] cursor-pointer">
             <option value="all">Todos los pagos</option><option value="paid">Pagado</option><option value="pending">Pendiente</option><option value="refunded">Reembolsado</option>
           </select>
+          ) : null}
           <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="input-field w-auto min-w-[140px] cursor-pointer">
             <option value="all">Todos los tipos</option><option value="dine_in">Mesa</option>{showDeliveryUi ? <option value="delivery">Delivery</option> : null}<option value="pickup">Para llevar</option>
           </select>
@@ -638,7 +662,7 @@ export default function Ventas() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
-              <th className="pb-2 font-medium">Fecha</th><th className="pb-2 font-medium">Mesa</th><th className="pb-2 font-medium">Caja</th><th className="pb-2 font-medium">Mesero</th><th className="pb-2 font-medium">Cliente</th><th className="pb-2 font-medium">Documento</th><th className="pb-2 font-medium">Pagos</th><th className="pb-2 font-medium">Venta</th><th className="pb-2 font-medium">Estado</th><th className="pb-2 font-medium">Opciones</th>
+              <th className="pb-2 font-medium">Fecha</th><th className="pb-2 font-medium">Mesa</th><th className="pb-2 font-medium">Caja</th><th className="pb-2 font-medium">Mesero</th><th className="pb-2 font-medium">Cliente</th><th className="pb-2 font-medium">Documento</th>{!isVoidedTab ? <th className="pb-2 font-medium">Pagos</th> : null}<th className="pb-2 font-medium">{isVoidedTab ? 'Monto ref.' : 'Venta'}</th><th className="pb-2 font-medium">Estado</th><th className="pb-2 font-medium">Opciones</th>
             </tr></thead>
             <tbody>
               {displayGroups.map((group) => {
@@ -658,7 +682,9 @@ export default function Ventas() {
                         {group.comprobanteCount > 1 && !sameDay
                           ? `${formatTime(group.earliestAt)} – ${formatTime(group.latestAt)}`
                           : formatTime(group.latestAt)}
-                        {group.comprobanteCount > 1 ? ` · ${group.comprobanteCount} pagos` : ''}
+                        {group.comprobanteCount > 1
+                          ? ` · ${group.comprobanteCount} ${isVoidedTab ? 'comprobantes' : 'pagos'}`
+                          : ''}
                       </p>
                     </td>
                     <td className="py-2.5 text-[var(--ui-body-text)] font-semibold">{group.mesaLabel}</td>
@@ -680,9 +706,11 @@ export default function Ventas() {
                         </>
                       )}
                     </td>
+                    {!isVoidedTab ? (
                     <td className="py-2.5 font-medium text-[var(--ui-body-text)] text-xs leading-relaxed">
                       {group.paymentSummary || '-'}
                     </td>
+                    ) : null}
                     <td className="py-2.5 font-bold text-[var(--ui-body-text)]">{formatCurrency(group.total)}</td>
                     <td className="py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${statusBadge.className}`}>
@@ -703,6 +731,8 @@ export default function Ventas() {
                         >
                           <MdTableChart />
                         </button>
+                        {!isVoidedTab ? (
+                        <>
                         <button
                           onClick={() => {
                             if (group.comprobanteCount === 1) startEdit(o);
@@ -724,12 +754,14 @@ export default function Ventas() {
                         >
                           <MdCancel />
                         </button>
+                        </>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
                 );
               })}
-              {displayGroups.length === 0 && <tr><td colSpan="10" className="py-8 text-center text-[var(--ui-muted)]">Sin ventas encontradas</td></tr>}
+              {displayGroups.length === 0 && <tr><td colSpan={isVoidedTab ? 9 : 10} className="py-8 text-center text-[var(--ui-muted)]">{isVoidedTab ? 'Sin ventas anuladas' : 'Sin ventas encontradas'}</td></tr>}
             </tbody>
           </table>
         </div>

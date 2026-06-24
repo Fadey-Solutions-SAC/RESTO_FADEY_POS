@@ -51,6 +51,8 @@ export default function Escritorio() {
   const showDeliveryUi = useShowDeliveryUi();
   const [orders, setOrders] = useState([]);
   const [liveDash, setLiveDash] = useState(null);
+  const [liveDashLoading, setLiveDashLoading] = useState(true);
+  const [liveDashError, setLiveDashError] = useState('');
   const [loading, setLoading] = useState(true);
   const [restaurantInfo, setRestaurantInfo] = useState({ name: 'Resto-FADEY', address: '', phone: '' });
   const [datePreset, setDatePreset] = useState('month');
@@ -63,11 +65,38 @@ export default function Escritorio() {
   const navigate = useNavigate();
 
   const loadLiveDash = useCallback(async () => {
+    setLiveDashLoading(true);
     try {
       const d = await api.get('/reports/dashboard');
       setLiveDash(d);
-    } catch {
-      setLiveDash(null);
+      setLiveDashError('');
+    } catch (err) {
+      const msg = String(err?.message || '').trim() || 'No se pudo cargar el monitoreo en vivo';
+      try {
+        const op = await api.get('/reports/operational-alerts');
+        setLiveDash({
+          operationalSummary: op.summary,
+          operationalAlerts: op.alerts,
+          insightToday: op.insightToday,
+          generated_at: op.generated_at,
+          activeOrders: op.summary?.activeOrders ?? 0,
+          tablesWithActiveOrders: op.summary?.tablesWithActiveOrders ?? 0,
+          deliveryActiveCount: op.summary?.deliveryActiveCount ?? 0,
+          inKitchenCount: op.summary?.inKitchenCount ?? 0,
+          registerOpen: op.summary?.registerOpen ?? false,
+          openRegisters: [],
+          registerOpenSummary: null,
+          lowStock: [],
+          liveSales: null,
+          today: null,
+        });
+        setLiveDashError('');
+      } catch {
+        setLiveDash(null);
+        setLiveDashError(msg);
+      }
+    } finally {
+      setLiveDashLoading(false);
     }
   }, []);
 
@@ -90,6 +119,15 @@ export default function Escritorio() {
   useEffect(() => {
     loadLiveDash();
   }, [loadLiveDash]);
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.hash !== '#monitoreo-vivo') return;
+    const el = document.getElementById('monitoreo-vivo');
+    if (!el) return;
+    const t = window.setTimeout(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [loading, liveDashLoading]);
   useActiveInterval(loadLiveDash, 15000);
   useSocket('order-update', () => {
     loadData();
@@ -384,23 +422,23 @@ export default function Escritorio() {
 
   return (
     <div className="space-y-4">
-      {liveDash && (
-        <div className="card p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-          <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <MdBolt className="text-xl text-[var(--ui-accent-muted)] shrink-0" />
-              <div className="min-w-0">
-                <h3 className="text-base font-semibold text-[var(--ui-body-text)]">Panel de control</h3>
-                <p className="text-xs text-[var(--ui-muted)]">
-                  Sincronizado con Caja, Mesas, Delivery e inventario
-                  {liveDash.generated_at && (
-                    <span className="ml-1">
-                      · actualizado {formatInstantTime(liveDash.generated_at, { withSeconds: true })}
-                    </span>
-                  )}
-                </p>
-              </div>
+      <div id="monitoreo-vivo" className="card p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface)] scroll-mt-4">
+        <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <MdBolt className="text-xl text-[var(--ui-accent-muted)] shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold text-[var(--ui-body-text)]">Monitoreo en vivo</h3>
+              <p className="text-xs text-[var(--ui-muted)]">
+                Sincronizado con Caja, Mesas, Delivery e inventario
+                {liveDash?.generated_at ? (
+                  <span className="ml-1">
+                    · actualizado {formatInstantTime(liveDash.generated_at, { withSeconds: true })}
+                  </span>
+                ) : null}
+              </p>
             </div>
+          </div>
+          {liveDash ? (
             <span
               className={`text-xs font-medium px-2 py-1 rounded-lg border ${
                 liveDash.registerOpen ? 'ui-live-badge-open' : 'ui-live-badge-closed'
@@ -414,7 +452,28 @@ export default function Escritorio() {
                     : 'Caja abierta'
                 : 'Sin caja abierta'}
             </span>
+          ) : null}
+        </div>
+
+        {liveDashLoading && !liveDash ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-[var(--ui-muted)]">
+            <div className="animate-spin w-5 h-5 border-2 border-[var(--ui-accent)] border-t-transparent rounded-full" />
+            Cargando monitoreo en vivo…
           </div>
+        ) : null}
+
+        {liveDashError && !liveDash ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <p className="font-medium">No se pudo conectar con el panel en vivo</p>
+            <p className="text-xs mt-1 text-amber-900/90">{liveDashError}</p>
+            <button type="button" onClick={() => void loadLiveDash()} className="btn-secondary text-xs mt-3">
+              Reintentar
+            </button>
+          </div>
+        ) : null}
+
+        {liveDash ? (
+          <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">
             <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2">
               <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">
@@ -547,8 +606,9 @@ export default function Escritorio() {
           ) : (
             <p className="text-xs text-[var(--ui-muted)] border-t border-[color:var(--ui-border)] pt-3">Sin alertas operativas en este momento.</p>
           )}
-        </div>
-      )}
+          </>
+        ) : null}
+      </div>
 
       <div className="card p-4">
         <div className="flex items-center justify-between mb-3">

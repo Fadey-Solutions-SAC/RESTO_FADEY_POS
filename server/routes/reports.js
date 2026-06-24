@@ -211,8 +211,15 @@ function buildOperationalIntelligence(opts = {}) {
        AND IFNULL(process_type, 'transformed') = 'non_transformed'`
   );
 
-  const slowMovingData = autoAlertsOn ? getSlowMovingProductIds() : { product_ids: [], products: [], days: slowMovingDays };
-  const slowMovingCount = autoAlertsOn ? { count: slowMovingData.product_ids.length } : { count: 0 };
+  let slowMovingData = { product_ids: [], products: [], days: slowMovingDays };
+  if (autoAlertsOn) {
+    try {
+      slowMovingData = getSlowMovingProductIds();
+    } catch (err) {
+      console.warn('[reports] slow moving products:', err.message || err);
+    }
+  }
+  const slowMovingCount = { count: slowMovingData.product_ids.length };
 
   const operationalAlerts = [];
   const lowN = Number(lowStock?.length || 0);
@@ -439,8 +446,12 @@ function buildOperationalIntelligence(opts = {}) {
   }
 
   if (['admin', 'cajero'].includes(role)) {
-    const reservationAlerts = getReservationCajaOperationalAlerts();
-    reservationAlerts.forEach((alert) => operationalAlerts.push(alert));
+    try {
+      const reservationAlerts = getReservationCajaOperationalAlerts();
+      reservationAlerts.forEach((alert) => operationalAlerts.push(alert));
+    } catch (err) {
+      console.warn('[reports] reservation caja alerts:', err.message || err);
+    }
   }
 
   let insightToday = '';
@@ -596,57 +607,71 @@ function financeMonthToDateSnapshot() {
   };
 }
 
-router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
-  const s = getSalesEventSql();
-  const today = getLocalTodayDateKey();
-  const todaySales = queryOne(
-    `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER}`
-  );
-  const monthSales = queryOne(`SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_MONTH} = ${s.MONTH} AND ${FINANCIAL_FILTER}`);
-  const topProducts = queryAll(`SELECT oi.product_name, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' AND ${s.ORDER_MONTH} = ${s.MONTH} GROUP BY oi.product_name ORDER BY total_sold DESC LIMIT 10`);
-  const recentOrders = queryAll('SELECT * FROM orders ORDER BY created_at DESC LIMIT 10');
-  recentOrders.forEach(o => { o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]); });
-  const paymentMethods = queryAll(
-    `SELECT payment_method, COUNT(*) as count, SUM(total) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER} GROUP BY payment_method`
-  );
+router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero', 'master_admin'), (req, res) => {
+  try {
+    const s = getSalesEventSql();
+    const todaySales = queryOne(
+      `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER}`
+    );
+    const monthSales = queryOne(`SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_MONTH} = ${s.MONTH} AND ${FINANCIAL_FILTER}`);
+    const topProducts = queryAll(`SELECT oi.product_name, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' AND ${s.ORDER_MONTH} = ${s.MONTH} GROUP BY oi.product_name ORDER BY total_sold DESC LIMIT 10`);
+    const recentOrders = queryAll('SELECT * FROM orders ORDER BY created_at DESC LIMIT 10');
+    recentOrders.forEach(o => { o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]); });
+    const paymentMethods = queryAll(
+      `SELECT payment_method, COUNT(*) as count, SUM(total) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER} GROUP BY payment_method`
+    );
 
-  const op = buildOperationalIntelligence({ role: req.user?.role });
-  const financeMonth = financeMonthToDateSnapshot();
-  const liveSales = buildLiveSalesPanel(op.registerOpen);
+    const op = buildOperationalIntelligence({ role: req.user?.role });
+    let financeMonth = null;
+    try {
+      financeMonth = financeMonthToDateSnapshot();
+    } catch (err) {
+      console.warn('[reports] financeMonthToDateSnapshot:', err.message || err);
+    }
+    const liveSales = buildLiveSalesPanel(op.registerOpen);
 
-  res.json({
-    today: todaySales,
-    liveSales,
-    month: monthSales,
-    activeOrders: op.summary.activeOrders,
-    topProducts,
-    recentOrders,
-    lowStock: op.lowStock,
-    paymentMethods,
-    tablesWithActiveOrders: op.tablesWithActiveOrders,
-    deliveryActiveCount: op.deliveryActiveCount,
-    inKitchenCount: op.inKitchenCount,
-    registerOpen: op.summary.registerOpen,
-    openRegisters: op.openRegisters || [],
-    registerOpenSummary: op.registerOpen,
-    operationalAlerts: op.operationalAlerts,
-    operationalSummary: op.summary,
-    insightToday: op.insightToday,
-    generated_at: op.generated_at,
-    financeMonth,
-    businessIntel: op.businessIntel,
-  });
+    res.json({
+      today: todaySales,
+      liveSales,
+      month: monthSales,
+      activeOrders: op.summary.activeOrders,
+      topProducts,
+      recentOrders,
+      lowStock: op.lowStock,
+      paymentMethods,
+      tablesWithActiveOrders: op.tablesWithActiveOrders,
+      deliveryActiveCount: op.deliveryActiveCount,
+      inKitchenCount: op.inKitchenCount,
+      registerOpen: op.summary.registerOpen,
+      openRegisters: op.openRegisters || [],
+      registerOpenSummary: op.registerOpen,
+      operationalAlerts: op.operationalAlerts,
+      operationalSummary: op.summary,
+      insightToday: op.insightToday,
+      generated_at: op.generated_at,
+      financeMonth,
+      businessIntel: op.businessIntel,
+    });
+  } catch (err) {
+    console.error('[reports] GET /dashboard:', err.message || err);
+    res.status(500).json({ error: 'No se pudo cargar el monitoreo en vivo' });
+  }
 });
 
-router.get('/operational-alerts', authenticateToken, requireRole('admin', 'master_admin'), (req, res) => {
-  const op = buildOperationalIntelligence({ role: req.user?.role });
-  res.json({
-    alerts: op.operationalAlerts,
-    summary: op.summary,
-    insightToday: op.insightToday,
-    generated_at: op.generated_at,
-    businessIntel: op.businessIntel,
-  });
+router.get('/operational-alerts', authenticateToken, requireRole('admin', 'cajero', 'master_admin'), (req, res) => {
+  try {
+    const op = buildOperationalIntelligence({ role: req.user?.role });
+    res.json({
+      alerts: op.operationalAlerts,
+      summary: op.summary,
+      insightToday: op.insightToday,
+      generated_at: op.generated_at,
+      businessIntel: op.businessIntel,
+    });
+  } catch (err) {
+    console.error('[reports] GET /operational-alerts:', err.message || err);
+    res.status(500).json({ error: 'No se pudo cargar alertas operativas' });
+  }
 });
 
 /** Avisos de reserva en caja (toasts POS); no expone el panel Operación completo. */

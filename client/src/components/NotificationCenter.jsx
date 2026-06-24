@@ -45,20 +45,20 @@ export default function NotificationCenter({ className = '' }) {
   const operacionQuickLinks = useMemo(() => getOperationalNotificationQuickLinks(user), [user]);
 
   const [operationalPayload, setOperationalPayload] = useState(undefined);
+  const [operationalLoadError, setOperationalLoadError] = useState('');
 
   const loadOperationalAlerts = useCallback(() => {
     if (!showOperacionTab) return;
     api
       .get('/reports/operational-alerts')
-      .then((data) => setOperationalPayload(data && typeof data === 'object' ? data : {}))
-      .catch(() =>
-        setOperationalPayload({
-          alerts: [],
-          summary: {},
-          insightToday: '',
-          generated_at: null,
-        })
-      );
+      .then((data) => {
+        setOperationalPayload(data && typeof data === 'object' ? data : {});
+        setOperationalLoadError('');
+      })
+      .catch((err) => {
+        setOperationalPayload(null);
+        setOperationalLoadError(String(err?.message || '').trim() || 'No se pudo cargar el estado operativo');
+      });
   }, [showOperacionTab]);
 
   useEffect(() => {
@@ -277,6 +277,13 @@ export default function NotificationCenter({ className = '' }) {
                 <div className="h-full overflow-y-auto space-y-3">
                   {operationalPayload === undefined ? (
                     <p className="text-sm text-[var(--ui-muted)] text-center py-8">Cargando estado operativo…</p>
+                  ) : operationalLoadError && !operationalPayload?.summary ? (
+                    <div className="text-center py-8 space-y-2">
+                      <p className="text-sm text-amber-700">{operationalLoadError}</p>
+                      <button type="button" onClick={loadOperationalAlerts} className="btn-secondary text-xs">
+                        Reintentar
+                      </button>
+                    </div>
                   ) : (
                     <>
                       {operationalPayload.summary && (
@@ -284,25 +291,25 @@ export default function NotificationCenter({ className = '' }) {
                           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
                             <span className="text-[var(--ui-muted)]">Mesas activas</span>
                             <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
-                              {operationalPayload.summary.tablesWithActiveOrders ?? '—'}
+                              {Number(operationalPayload.summary.tablesWithActiveOrders ?? 0)}
                             </p>
                           </div>
                           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
                             <span className="text-[var(--ui-muted)]">Delivery activo</span>
                             <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
-                              {operationalPayload.summary.deliveryActiveCount ?? '—'}
+                              {Number(operationalPayload.summary.deliveryActiveCount ?? 0)}
                             </p>
                           </div>
                           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
                             <span className="text-[var(--ui-muted)]">En cocina</span>
                             <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
-                              {operationalPayload.summary.inKitchenCount ?? '—'}
+                              {Number(operationalPayload.summary.inKitchenCount ?? 0)}
                             </p>
                           </div>
                           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
                             <span className="text-[var(--ui-muted)]">Pedidos activos</span>
                             <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
-                              {operationalPayload.summary.activeOrders ?? '—'}
+                              {Number(operationalPayload.summary.activeOrders ?? 0)}
                             </p>
                           </div>
                         </div>
@@ -339,6 +346,14 @@ export default function NotificationCenter({ className = '' }) {
                           ))}
                         </ul>
                       )}
+                      <Link
+                        to="/admin#monitoreo-vivo"
+                        onClick={() => setOpen(false)}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--ui-accent)] hover:underline underline-offset-2"
+                      >
+                        <MdSpeed className="text-sm" />
+                        Ver monitoreo completo en Escritorio
+                      </Link>
                       {operacionQuickLinks.length > 0 ? (
                         <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[var(--ui-muted)] pt-1 border-t border-[color:var(--ui-border)]">
                           {operacionQuickLinks.map((item) => (

@@ -5,7 +5,10 @@
     "voided": "Voided sales"
   },
   "totals": {
-    "totalSales": "Total sales"
+    "totalSales": "Total sales",
+    "voidedCount": "Voided records",
+    "voidedReferenceTotal": "Reference total",
+    "voidedReferenceHint": "Historical amounts from voided receipts; not included in cash register or active sales."
   },
   "paymentMethods": {
     "efectivo": "Cash",
