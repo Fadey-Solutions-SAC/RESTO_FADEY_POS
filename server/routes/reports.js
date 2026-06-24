@@ -14,6 +14,8 @@ const { emitStaffDataUpdate } = require('../socketBroadcast');
 const { getSlowMovingProductIds } = require('../services/slowMovingProductsService');
 const { getReservationCajaOperationalAlerts } = require('../services/reservationSchedulerService');
 const { KITCHEN_ARRIVAL_ALERT_MIN, KITCHEN_PREP_ALERT_MIN } = require('../constants/kitchenTiming');
+const { getOrderItemsWithProductionArea } = require('../services/orderItemsProductionService');
+const { filterKitchenOrdersForStation } = require('../utils/kitchenStationReady');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
 
 const router = express.Router();
@@ -44,6 +46,25 @@ function readDeliveryEnabled() {
   } catch (_) {
     return true;
   }
+}
+
+/** Pedidos que aún aparecen en panel cocina o bar (misma regla que los módulos de producción). */
+function countVisibleProductionQueueOrders() {
+  const orders = queryAll(
+    `SELECT * FROM orders
+     WHERE status IN ('pending', 'preparing')
+       AND status != 'cancelled'
+       AND IFNULL(payment_status, 'pending') != 'paid'`
+  );
+  if (!orders.length) return 0;
+  const visibleIds = new Set();
+  const getAreaItems = (orderId) => getOrderItemsWithProductionArea(orderId);
+  for (const station of ['cocina', 'bar']) {
+    filterKitchenOrdersForStation(orders, station, getAreaItems).forEach(({ order }) => {
+      if (order?.id) visibleIds.add(order.id);
+    });
+  }
+  return visibleIds.size;
 }
 
 /** Ventas «en vivo»: turno de caja abierto; si no, último turno o día según horario del local. */
@@ -231,6 +252,13 @@ function buildOperationalIntelligence(opts = {}) {
   }
   const slowMovingCount = { count: slowMovingData.product_ids.length };
 
+  let visibleProductionQueue = 0;
+  try {
+    visibleProductionQueue = countVisibleProductionQueueOrders();
+  } catch (err) {
+    console.warn('[reports] visible production queue:', err.message || err);
+  }
+
   const operationalAlerts = [];
   const lowN = Number(lowStock?.length || 0);
   if (stockBizAlertsOn && lowN > 0) {
@@ -332,7 +360,7 @@ function buildOperationalIntelligence(opts = {}) {
     });
   }
   const prepDelayN = Number(kitchenPrepDelayed?.count || 0);
-  if (prepDelayN > 0) {
+  if (prepDelayN > 0 && visibleProductionQueue > 0) {
     operationalAlerts.push({
       id: 'kitchen_prep_demora',
       severity: 'warning',
@@ -343,16 +371,6 @@ function buildOperationalIntelligence(opts = {}) {
     });
   }
   const staleN = Number(staleReady?.count || 0);
-  if (staleN > 0) {
-    operationalAlerts.push({
-      id: 'ready_demora',
-      severity: 'warning',
-      title: 'Demora en pedidos listos',
-      message: `${staleN} pedido(s) llevan más de 25 min en «listo» sin cerrar (mesas, delivery o caja). Ya no aparecen en cocina/bar.`,
-      linkTo: '/admin/mesas',
-      linkLabel: 'Ir a Mesas',
-    });
-  }
   const pendN = Number(pendingCount?.count || 0);
   if (pendN >= 12) {
     operationalAlerts.push({

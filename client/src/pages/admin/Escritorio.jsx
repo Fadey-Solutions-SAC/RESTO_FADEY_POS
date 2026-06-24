@@ -381,6 +381,12 @@ export default function Escritorio() {
     () => orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForBarStation(o)).length,
     [orders]
   );
+  const productionQueueTotal = kitchenQueue + barQueue;
+  const visibleOperationalAlerts = useMemo(() => {
+    const list = Array.isArray(liveDash?.operationalAlerts) ? liveDash.operationalAlerts : [];
+    if (productionQueueTotal > 0) return list;
+    return list.filter((a) => !['kitchen_prep_demora', 'ready_demora', 'kitchen_load'].includes(String(a?.id || '')));
+  }, [liveDash?.operationalAlerts, productionQueueTotal]);
   const deliveryReady = useMemo(
     () => orders.filter(o => o.type === 'delivery' && o.status === 'ready').length,
     [orders]
@@ -545,18 +551,6 @@ export default function Escritorio() {
               <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{Number(liveDash.deliveryActiveCount || 0)}</p>
               <p className="text-[11px] font-medium ui-live-link-emerald">Ir a Delivery</p>
             </button>
-            ) : deliverySettingsLoaded ? (
-            <div className="rounded-lg border border-dashed border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-3 py-2">
-              <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">Delivery</p>
-              <p className="text-sm font-semibold text-[var(--ui-muted)]">Desactivado</p>
-              <button
-                type="button"
-                onClick={() => navigate('/admin/mi-restaurant')}
-                className="text-[11px] font-medium text-[var(--ui-accent-muted)] hover:underline underline-offset-2 mt-0.5"
-              >
-                Activar en Mi Restaurante
-              </button>
-            </div>
             ) : null}
             <button
               type="button"
@@ -588,23 +582,21 @@ export default function Escritorio() {
               <span className="rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-2 py-1 tabular-nums">
                 Listos: <strong>{Number(liveDash.operationalSummary.readyCount ?? 0)}</strong>
               </span>
+              {productionQueueTotal > 0 && Number(liveDash.operationalSummary.staleReadyCount ?? 0) > 0 ? (
               <span
-                className={`rounded-md border px-2 py-1 tabular-nums ${
-                  Number(liveDash.operationalSummary.staleReadyCount ?? 0) > 0
-                    ? 'ui-live-pill-stale'
-                    : 'border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] text-[var(--ui-body-text)]'
-                }`}
+                className="rounded-md border px-2 py-1 tabular-nums ui-live-pill-stale"
               >
                 Listos {'>'}25 min: <strong>{Number(liveDash.operationalSummary.staleReadyCount ?? 0)}</strong>
               </span>
+              ) : null}
             </div>
           ) : null}
           {liveDash.insightToday ? (
             <p className="text-xs text-[var(--ui-accent-muted)] mb-2">{liveDash.insightToday}</p>
           ) : null}
-          {Array.isArray(liveDash.operationalAlerts) && liveDash.operationalAlerts.length > 0 ? (
+          {visibleOperationalAlerts.length > 0 ? (
             <ul className="space-y-1.5 border-t border-[color:var(--ui-border)] pt-3">
-              {liveDash.operationalAlerts.map((a) => (
+              {visibleOperationalAlerts.map((a) => (
                 <li
                   key={a.id}
                   className={`flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 ${
@@ -672,12 +664,6 @@ export default function Escritorio() {
             <p className="text-2xl font-bold text-emerald-800 mt-1">{deliveryReady}</p>
             <p className="text-xs text-emerald-700">Pedidos listos para repartir</p>
           </button>
-          ) : deliverySettingsLoaded ? (
-          <div className="text-left p-3 rounded-xl border border-dashed border-slate-200 bg-slate-50">
-            <div className="flex items-center gap-2 text-slate-600 font-semibold"><MdDeliveryDining /> Delivery</div>
-            <p className="text-sm font-bold text-slate-500 mt-1">Desactivado</p>
-            <p className="text-xs text-slate-500">Actívelo en Mi Restaurante</p>
-          </div>
           ) : null}
           <button onClick={() => navigate('/admin/mesas')} className="text-left p-3 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-colors">
             <div className="flex items-center gap-2 text-rose-700 font-semibold"><MdTableBar /> Mesas</div>

@@ -303,14 +303,14 @@ export default function NotificationCenter({ className = '' }) {
                               {Number(operationalPayload.summary.tablesWithActiveOrders ?? 0)}
                             </p>
                           </div>
+                          {deliveryModuleActive ? (
                           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
-                            <span className="text-[var(--ui-muted)]">{deliveryModuleActive ? 'Delivery activo' : 'Delivery'}</span>
+                            <span className="text-[var(--ui-muted)]">Delivery activo</span>
                             <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
-                              {deliveryModuleActive
-                                ? Number(operationalPayload.summary.deliveryActiveCount ?? 0)
-                                : 'Desactivado'}
+                              {Number(operationalPayload.summary.deliveryActiveCount ?? 0)}
                             </p>
                           </div>
+                          ) : null}
                           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
                             <span className="text-[var(--ui-muted)]">En cocina</span>
                             <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
