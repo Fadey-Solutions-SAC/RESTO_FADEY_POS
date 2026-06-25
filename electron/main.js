@@ -353,6 +353,32 @@ function escapeHtmlAttr(u) {
     .replace(/'/g, '&#39;');
 }
 
+function isSpaceCenteredThermalLine(line) {
+  const raw = String(line || '').replace(/\r/g, '');
+  const core = raw.trim();
+  if (!core) return false;
+  if (raw === core) return false;
+  const lead = raw.length - raw.trimStart().length;
+  const trail = raw.length - raw.trimEnd().length;
+  return lead >= 1 && Math.abs(lead - trail) <= 1;
+}
+
+function thermalPlainToGdiHtml(plain, fontPx) {
+  const px = Math.max(9, Number(fontPx) || 11);
+  const mono = "Consolas,'Courier New',monospace";
+  return String(plain || '')
+    .split('\n')
+    .map((line) => {
+      const raw = String(line || '').replace(/\r/g, '');
+      if (!raw.trim()) return `<div style="height:0.55em" aria-hidden="true"></div>`;
+      if (isSpaceCenteredThermalLine(raw)) {
+        return `<div style="text-align:center;font-family:${mono};font-size:${px}px;line-height:1.25;font-weight:500;white-space:pre-wrap;word-break:keep-all;margin:0;padding:0">${escapeHtmlPre(raw.trim())}</div>`;
+      }
+      return `<div style="font-family:${mono};font-size:${px}px;line-height:1.25;font-weight:500;white-space:pre;overflow:visible;margin:0;padding:0">${escapeHtmlPre(raw)}</div>`;
+    })
+    .join('');
+}
+
 function printUSB(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
   if (printerLib && typeof printerLib.printDirect === 'function') {
     return new Promise((resolve, reject) => {
@@ -382,7 +408,6 @@ function printUSB(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
     const restaurantBrand = String(gdiOpts.restaurantBrand || '').trim();
     const plain = bufferToThermalPlain(buffer);
     const { banner, body } = splitBrandFromThermalPlain(plain, restaurantBrand);
-    const safeBody = escapeHtmlPre(body.length ? body : '—');
     const fontPx = getThermalGdiFontPx(paperMm, { viaNetwork: false });
     const brandScale = Number(thermalPrintLayoutJson.gdiBrandFontScale);
     const brandMult =
@@ -391,13 +416,14 @@ function printUSB(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
     /** Micrómetros (1 mm = 1000) para `pageSize`; ancho = rollo configurado. */
     const pageW = Math.round(paperMm * 1000);
     const logoBlock = logoUrl
-      ? `<div style="text-align:center;margin:0 auto 5px"><img src="${escapeHtmlAttr(logoUrl)}" alt="" style="max-width:100%;max-height:24mm;object-fit:contain"/></div>`
+      ? `<div style="text-align:center;margin:0 auto 5px;width:100%"><img src="${escapeHtmlAttr(logoUrl)}" alt="" style="display:block;margin:0 auto;max-width:92%;max-height:24mm;object-fit:contain;image-orientation:from-image"/></div>`
       : '';
     const brandBlock = banner
-      ? `<div style="text-align:center;font-weight:700;font-size:${brandPx}px;line-height:1.2;margin:0 auto 6px;padding:0;font-family:Consolas,'Courier New',monospace">${escapeHtmlPre(banner)}</div>`
+      ? `<div style="text-align:center;font-weight:700;font-size:${brandPx}px;line-height:1.2;margin:0 auto 6px;padding:0;width:100%;font-family:Consolas,'Courier New',monospace">${escapeHtmlPre(banner)}</div>`
       : '';
+    const bodyHtml = thermalPlainToGdiHtml(body.length ? body : '—', fontPx);
     const footSpacer = '<div style="height:8mm" aria-hidden="true"></div>';
-    const html = `<!DOCTYPE html><meta charset="utf-8"><style>@page{margin:0}html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;overflow:visible}body{width:${paperMm}mm;max-width:${paperMm}mm;margin:0 auto;box-sizing:border-box;overflow:visible}pre{font-family:Consolas,'Courier New',monospace;white-space:pre!important;word-break:keep-all;overflow-wrap:normal;margin:0;padding:0;font-size:${fontPx}px!important;font-weight:500;line-height:1.2;text-align:left;width:100%;box-sizing:border-box;overflow:visible}</style>${logoBlock}${brandBlock}<pre>${safeBody}</pre>${footSpacer}`;
+    const html = `<!DOCTYPE html><meta charset="utf-8"><style>@page{margin:0}html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;overflow:visible}body{width:${paperMm}mm;max-width:${paperMm}mm;margin:0 auto;box-sizing:border-box;overflow:visible}</style>${logoBlock}${brandBlock}${bodyHtml}${footSpacer}`;
     const printWin = new BrowserWindow({
       show: false,
       webPreferences: { offscreen: true },

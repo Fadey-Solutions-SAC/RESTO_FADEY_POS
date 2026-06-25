@@ -85,8 +85,8 @@ function escPosAsciiLine(s) {
     .replace(/[^\x20-\x7E]/g, '?');
 }
 
-/** Espacios tras cada línea de texto: margen derecho para que no se recorte el último carácter en la térmica. */
-const THERMAL_LINE_TRAILING_MARGIN = 2;
+/** Espacios finales dentro del ancho útil (evita salto de línea que desalinea el ticket). */
+const THERMAL_LINE_TRAILING_MARGIN = 0;
 
 /**
  * Centrado solo con espacios, línea exactamente `w` caracteres.
@@ -120,6 +120,7 @@ function preformattedLineOut(line, w) {
 
 /** Reinicio + alineación izquierda (sin tamaño; el GS ! va tras el logo si hay). */
 const INIT_LEFT = Buffer.from('\x1B\x40\x1B\x61\x00', 'binary');
+const ALIGN_CENTER = Buffer.from('\x1B\x61\x01', 'binary');
 const CUT_PARTIAL = Buffer.from('\x1D\x56\x41', 'binary');
 
 function magnifyStartBuffer(options = {}) {
@@ -178,7 +179,9 @@ async function buildTicket(moduleName, data = {}, options = {}) {
     if (embedRaster) {
       const raster = await logoToEscPosRaster(String(logoUrl).trim(), paperW);
       if (raster && raster.length) {
+        chunks.push(ALIGN_CENTER);
         chunks.push(raster);
+        chunks.push(INIT_LEFT);
         chunks.push(Buffer.from('\n', 'latin1'));
       }
     }

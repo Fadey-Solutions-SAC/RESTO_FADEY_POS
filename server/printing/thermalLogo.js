@@ -118,6 +118,9 @@ async function logoToEscPosRaster(logoUrl, paperWidthMm) {
   if (!Jimp) return null;
 
   try {
+    if (typeof image.exifRotate === 'function') {
+      image.exifRotate();
+    }
     const maxW = maxLogoWidthDots(paperWidthMm);
     const maxH = 220;
     image.contain(maxW, maxH);

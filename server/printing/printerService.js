@@ -17,10 +17,10 @@ function isValidIp(value) {
 
 function printUsb(printerName, buffer) {
   if (!printerName) {
-    throw new Error('impresora no encontrada: nombre USB vacío');
+    throw new Error('impresora no encontrada: nombre USB vac?o');
   }
   if (!printerLib || typeof printerLib.printDirect !== 'function') {
-    throw new Error('módulo "printer" no disponible en este entorno');
+    throw new Error('m?dulo "printer" no disponible en este entorno');
   }
   return new Promise((resolve, reject) => {
     printerLib.printDirect({
@@ -38,7 +38,7 @@ function printRed(ip, port, buffer) {
   const host = String(ip || '').trim();
   const safePort = Number(port || 9100);
   if (!isValidIp(host)) {
-    throw new Error(`IP inválida: ${host}`);
+    throw new Error(`IP inv?lida: ${host}`);
   }
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
@@ -49,12 +49,12 @@ function printRed(ip, port, buffer) {
     });
     socket.on('error', (err) => {
       console.error('[printing] error red:', err.message || err);
-      reject(new Error(`error de conexión: ${err.message}`));
+      reject(new Error(`error de conexi?n: ${err.message}`));
     });
     socket.on('timeout', () => {
       socket.destroy();
       console.error('[printing] error red: timeout');
-      reject(new Error('error de conexión: timeout'));
+      reject(new Error('error de conexi?n: timeout'));
     });
     socket.on('close', () => resolve({ ok: true }));
   });
@@ -83,7 +83,7 @@ function checkRed(ip, port) {
 async function getPrinterStatus(moduleName) {
   const moduleKey = String(moduleName || '').toLowerCase();
   if (!['caja', 'cocina', 'bar'].includes(moduleKey)) {
-    throw new Error('módulo inválido para estado de impresora');
+    throw new Error('m?dulo inv?lido para estado de impresora');
   }
   const cfg = loadConfig();
   const moduleCfg = cfg[moduleKey];
@@ -118,7 +118,7 @@ async function printTest(moduleName) {
 async function print(moduleName, data = {}) {
   const moduleKey = String(moduleName || '').toLowerCase();
   if (!['caja', 'cocina', 'bar'].includes(moduleKey)) {
-    throw new Error('módulo inválido para impresión');
+    throw new Error('m?dulo inv?lido para impresi?n');
   }
   const cfg = loadConfig();
   const moduleCfg = cfg[moduleKey];
@@ -133,13 +133,13 @@ async function print(moduleName, data = {}) {
   const target = moduleCfg.tipo === 'usb'
     ? moduleCfg.nombre
     : `${moduleCfg.ip}:${moduleCfg.puerto}`;
-  console.log(`[printing] módulo=${moduleKey} tipo=${moduleCfg.tipo} impresora=${target}`);
+  console.log(`[printing] m?dulo=${moduleKey} tipo=${moduleCfg.tipo} impresora=${target}`);
 
   if (moduleCfg.tipo === 'usb') {
     try {
       await printUsb(moduleCfg.nombre, ticket);
     } catch (err) {
-      console.error(`[printing] error módulo=${moduleKey} tipo=usb impresora=${moduleCfg.nombre}:`, err.message || err);
+      console.error(`[printing] error m?dulo=${moduleKey} tipo=usb impresora=${moduleCfg.nombre}:`, err.message || err);
       throw err;
     }
     return { ok: true, via: 'usb', module: moduleKey };
@@ -147,7 +147,7 @@ async function print(moduleName, data = {}) {
   try {
     await printRed(moduleCfg.ip, moduleCfg.puerto, ticket);
   } catch (err) {
-    console.error(`[printing] error módulo=${moduleKey} tipo=red impresora=${moduleCfg.ip}:${moduleCfg.puerto}:`, err.message || err);
+    console.error(`[printing] error m?dulo=${moduleKey} tipo=red impresora=${moduleCfg.ip}:${moduleCfg.puerto}:`, err.message || err);
     throw err;
   }
   return { ok: true, via: 'red', module: moduleKey };

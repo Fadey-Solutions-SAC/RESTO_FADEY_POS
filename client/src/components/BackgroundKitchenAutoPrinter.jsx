@@ -3,7 +3,6 @@ import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import {
   printKitchenBarOrder,
-  wasRecentlyAutoPrintedByPos,
 } from '../utils/kitchenBarAutoPrint';
 
 export default function BackgroundKitchenAutoPrinter() {
@@ -23,7 +22,6 @@ export default function BackgroundKitchenAutoPrinter() {
       const scopedIds = Array.isArray(incomingOrder?.new_item_ids) ? incomingOrder.new_item_ids : [];
       if (!scopedIds.length) return;
     }
-    if (wasRecentlyAutoPrintedByPos(orderId)) return;
     const dedupeKey = `${orderId}:${incomingOrder?.updated_at || incomingOrder?.created_at || 'x'}`;
     if (printedKeysRef.current.has(dedupeKey)) return;
     printedKeysRef.current.add(dedupeKey);

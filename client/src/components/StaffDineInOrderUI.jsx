@@ -21,6 +21,8 @@ function CartLineItems({
   updateItemNote,
   /** Texto «Eliminar» junto al icono (p. ej. al modificar pedido en caja). */
   showLineDeleteLabel = false,
+  /** Si false, oculta eliminar y no permite bajar cantidad por debajo de 1. */
+  canDeleteLine = true,
 }) {
   if (cart.length === 0) {
     return <p className="py-4 text-center text-sm text-[var(--ui-accent)]">Selecciona productos arriba</p>;
@@ -50,7 +52,8 @@ function CartLineItems({
               <button
                 type="button"
                 onClick={() => updateQty(item.line_key, -1)}
-                className="flex h-6 w-6 items-center justify-center rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+                disabled={!canDeleteLine && Number(item.quantity || 0) <= 1}
+                className="flex h-6 w-6 items-center justify-center rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <MdRemove className="text-xs" />
               </button>
@@ -67,19 +70,21 @@ function CartLineItems({
               <span className="min-w-[4.5rem] shrink-0 text-right font-semibold tabular-nums text-[var(--ui-body-text)]">
                 {formatCurrency(lineTotal)}
               </span>
-              <button
-                type="button"
-                onClick={() => removeFromCart(item.line_key)}
-                className={
-                  showLineDeleteLabel
-                    ? 'shrink-0 inline-flex items-center gap-1 rounded-md border border-red-500/45 bg-red-950/40 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-900/55'
-                    : 'shrink-0 p-0.5 text-[var(--ui-accent)] hover:text-[var(--ui-body-text)]'
-                }
-                aria-label={showLineDeleteLabel ? 'Eliminar producto' : 'Quitar'}
-              >
-                <MdDelete className="text-sm" />
-                {showLineDeleteLabel ? <span>Eliminar</span> : null}
-              </button>
+              {canDeleteLine ? (
+                <button
+                  type="button"
+                  onClick={() => removeFromCart(item.line_key)}
+                  className={
+                    showLineDeleteLabel
+                      ? 'shrink-0 inline-flex items-center gap-1 rounded-md border border-red-500/45 bg-red-950/40 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-900/55'
+                      : 'shrink-0 p-0.5 text-[var(--ui-accent)] hover:text-[var(--ui-body-text)]'
+                  }
+                  aria-label={showLineDeleteLabel ? 'Eliminar producto' : 'Quitar'}
+                >
+                  <MdDelete className="text-sm" />
+                  {showLineDeleteLabel ? <span>Eliminar</span> : null}
+                </button>
+              ) : null}
             </div>
           </div>
           {Number(item.note_required || 0) === 1 && (
@@ -136,7 +141,8 @@ function CartLineItems({
           <button
             type="button"
             onClick={() => updateQty(item.line_key, -1)}
-            className="flex h-6 w-6 items-center justify-center rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+            disabled={!canDeleteLine && Number(item.quantity || 0) <= 1}
+            className="flex h-6 w-6 items-center justify-center rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <MdRemove className="text-xs" />
           </button>
@@ -149,19 +155,21 @@ function CartLineItems({
             <MdAdd className="text-xs" />
           </button>
         </div>
-        <button
-          type="button"
-          onClick={() => removeFromCart(item.line_key)}
-          className={
-            showLineDeleteLabel
-              ? 'inline-flex shrink-0 items-center gap-1 rounded-md border border-red-500/45 bg-red-950/40 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-900/55'
-              : 'shrink-0 text-[var(--ui-accent)] hover:text-[var(--ui-body-text)]'
-          }
-          aria-label={showLineDeleteLabel ? 'Eliminar producto' : 'Quitar'}
-        >
-          <MdDelete className="text-sm" />
-          {showLineDeleteLabel ? <span>Eliminar</span> : null}
-        </button>
+        {canDeleteLine ? (
+          <button
+            type="button"
+            onClick={() => removeFromCart(item.line_key)}
+            className={
+              showLineDeleteLabel
+                ? 'inline-flex shrink-0 items-center gap-1 rounded-md border border-red-500/45 bg-red-950/40 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-900/55'
+                : 'shrink-0 text-[var(--ui-accent)] hover:text-[var(--ui-body-text)]'
+            }
+            aria-label={showLineDeleteLabel ? 'Eliminar producto' : 'Quitar'}
+          >
+            <MdDelete className="text-sm" />
+            {showLineDeleteLabel ? <span>Eliminar</span> : null}
+          </button>
+        ) : null}
       </div>
       {(noteEditorLineKey === item.line_key || item.notes?.trim()) && (
         <div className="mt-2">
@@ -212,6 +220,7 @@ export default function StaffDineInOrderUI({
   showProductThumbnail = false,
   hideProductStock = false,
   showLineDeleteLabel = false,
+  canDeleteLine = true,
   /** Panel con altura del contenedor padre (modal Mesas / Caja). */
   fillParentHeight = false,
 }) {
@@ -406,6 +415,7 @@ export default function StaffDineInOrderUI({
           removeFromCart={removeFromCart}
           updateItemNote={updateItemNote}
           showLineDeleteLabel={showLineDeleteLabel}
+          canDeleteLine={canDeleteLine}
         />
       </div>
       {footer ? (
@@ -442,6 +452,7 @@ export default function StaffDineInOrderUI({
               removeFromCart={removeFromCart}
               updateItemNote={updateItemNote}
               showLineDeleteLabel={showLineDeleteLabel}
+              canDeleteLine={canDeleteLine}
             />
           </div>
           {footer ? <div className="mt-3 space-y-2 border-t border-[color:var(--ui-border)] pt-3">{footer}</div> : null}

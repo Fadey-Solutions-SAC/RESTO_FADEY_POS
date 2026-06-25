@@ -159,6 +159,33 @@ import {
 /** Mesa sintética al cobrar cuenta desde Clientes (no existe fila en `tables`). */
 const POS_ADMIN_REGISTER_KEY = 'posAdminRegisterId';
 
+function readPersistedAdminRegisterId() {
+  try {
+    return String(
+      localStorage.getItem(POS_ADMIN_REGISTER_KEY)
+        || sessionStorage.getItem(POS_ADMIN_REGISTER_KEY)
+        || '',
+    ).trim();
+  } catch {
+    return '';
+  }
+}
+
+function persistAdminRegisterId(registerId) {
+  const rid = String(registerId || '').trim();
+  try {
+    if (rid) {
+      localStorage.setItem(POS_ADMIN_REGISTER_KEY, rid);
+      sessionStorage.setItem(POS_ADMIN_REGISTER_KEY, rid);
+    } else {
+      localStorage.removeItem(POS_ADMIN_REGISTER_KEY);
+      sessionStorage.removeItem(POS_ADMIN_REGISTER_KEY);
+    }
+  } catch {
+    /* noop */
+  }
+}
+
 const CLIENT_CHECKOUT_TABLE_PREFIX = 'client-checkout:';
 function isClientCheckoutTable(table) {
   return Boolean(table && String(table.id || '').startsWith(CLIENT_CHECKOUT_TABLE_PREFIX));
@@ -546,13 +573,7 @@ export default function POSPanel() {
     };
   }, [user?.padron_quota, padronUsedBump]);
   const [cajaStations, setCajaStations] = useState([]);
-  const [adminRegisterId, setAdminRegisterId] = useState(() => {
-    try {
-      return String(sessionStorage.getItem(POS_ADMIN_REGISTER_KEY) || '').trim();
-    } catch {
-      return '';
-    }
-  });
+  const [adminRegisterId, setAdminRegisterId] = useState(() => readPersistedAdminRegisterId());
 
   const appendPosRegisterId = useCallback(
     (path) => {
@@ -607,13 +628,23 @@ export default function POSPanel() {
         api.get('/restaurant').catch(() => null),
       ]);
       setCajaStations(Array.isArray(stationsRes?.stations) ? stationsRes.stations : []);
-      if (String(user?.role || '').toLowerCase() === 'admin' && adminRid && !reg) {
-        try {
-          sessionStorage.removeItem(POS_ADMIN_REGISTER_KEY);
-        } catch (_) {
-          /* noop */
+      let regResolved = reg;
+      if (String(user?.role || '').toLowerCase() === 'admin' && adminRid && !regResolved) {
+        const stations = Array.isArray(stationsRes?.stations) ? stationsRes.stations : [];
+        const stillOpen = stations.some((s) => String(s.open_register?.id || '') === adminRid);
+        if (stillOpen) {
+          try {
+            regResolved = await api.get(
+              `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`,
+            );
+          } catch {
+            /* noop */
+          }
         }
-        setAdminRegisterId('');
+        if (!regResolved && !stillOpen) {
+          persistAdminRegisterId('');
+          setAdminRegisterId('');
+        }
       }
       setPrintRestaurantInfo({
         name: String(restaurantRes?.name || '').trim(),
@@ -638,7 +669,7 @@ export default function POSPanel() {
       setSalonesConfig(Array.isArray(salonesRes?.salones) ? salonesRes.salones : []);
       setReservations(reservationsData || []);
       setAllOrders(ordersData || []);
-      setRegister(reg);
+      setRegister(regResolved);
       setRegisterStatus(status);
       setProducts(visibleProducts);
       setModifiers(Array.isArray(modifiersData) ? modifiersData : []);
@@ -995,11 +1026,7 @@ export default function POSPanel() {
     if (!sid) return toast.error('Caja no válida');
     try {
       const reg = await api.post('/pos/open-register', { opening_amount: amount, caja_station_id: sid });
-      try {
-        sessionStorage.setItem(POS_ADMIN_REGISTER_KEY, reg.id);
-      } catch (_) {
-        /* noop */
-      }
+      persistAdminRegisterId(reg.id);
       setAdminRegisterId(reg.id);
       setRegister(reg);
       setRegisterStatus({ is_open: true, register: { user_id: user?.id, cajero_name: user?.full_name, opened_at: reg.opened_at } });
@@ -1012,21 +1039,13 @@ export default function POSPanel() {
   const attachAdminToRegister = async (registerId) => {
     const rid = String(registerId || '').trim();
     if (!rid) return;
-    try {
-      sessionStorage.setItem(POS_ADMIN_REGISTER_KEY, rid);
-    } catch (_) {
-      /* noop */
-    }
+    persistAdminRegisterId(rid);
     setAdminRegisterId(rid);
     await loadData({ adminRegisterOverride: rid });
   };
 
   const clearAdminRegisterContext = async () => {
-    try {
-      sessionStorage.removeItem(POS_ADMIN_REGISTER_KEY);
-    } catch (_) {
-      /* noop */
-    }
+    persistAdminRegisterId('');
     setAdminRegisterId('');
     await loadData({ adminRegisterOverride: '' });
   };
@@ -1089,11 +1108,7 @@ export default function POSPanel() {
       setClosingAtPreview(null);
       setRegister(null);
       if (String(user?.role || '').toLowerCase() === 'admin') {
-        try {
-          sessionStorage.removeItem(POS_ADMIN_REGISTER_KEY);
-        } catch (_) {
-          /* noop */
-        }
+        persistAdminRegisterId('');
         setAdminRegisterId('');
       }
       await loadData();
@@ -1846,10 +1861,6 @@ export default function POSPanel() {
 
   /** @returns {boolean} si se abrió el editor */
   const openEditOrderFromToolbar = () => {
-    if (!posAdmin) {
-      toast.error('Solo un administrador puede modificar o quitar productos de la mesa.');
-      return false;
-    }
     const list = tableDetail?.orders || [];
     const editable = list.filter((o) => canEditOrderLines(o));
     if (editable.length === 0) {
@@ -2012,19 +2023,20 @@ export default function POSPanel() {
     }
   };
 
-  const guardedUpdateQty = (lineKey, qty) => {
-    if (editingOrderId && !posAdmin) {
-      toast.error('Solo un administrador puede modificar productos de la mesa.');
-      return;
-    }
+  const guardedUpdateQty = (lineKey, delta) => {
     if (editingOrderId) {
       const line = cart.find((c) => c.line_key === lineKey);
-      if (line && qty < Number(line.quantity || 0) && !posAdmin) {
-        toast.error('Solo un administrador puede quitar productos de la mesa.');
-        return;
+      if (line) {
+        const nextQty = Number(line.quantity || 0) + Number(delta || 0);
+        if (nextQty < 1) {
+          if (!posAdmin) {
+            toast.error('Solo un administrador puede eliminar productos del pedido.');
+            return;
+          }
+        }
       }
     }
-    updateQty(lineKey, qty);
+    updateQty(lineKey, delta);
   };
 
   const guardedRemoveFromCart = (lineKey) => {
@@ -2149,14 +2161,23 @@ export default function POSPanel() {
         let removalReason = '';
         if (hasRemovals || willCancelOrders) {
           if (!posAdmin) {
-            toast.error('Solo un administrador puede quitar productos o liberar la mesa.', { id: tid });
+            toast.error('Solo un administrador puede eliminar productos o liberar la mesa.', { id: tid });
             return;
           }
-          try {
-            removalReason = await promptMesaRemovalReason(willCancelOrders ? 'liberar' : 'save');
-          } catch {
-            toast.dismiss(tid);
-            return;
+          if (hasRemovals) {
+            try {
+              removalReason = await promptMesaRemovalReason(willCancelOrders ? 'liberar' : 'save');
+            } catch {
+              toast.dismiss(tid);
+              return;
+            }
+          } else {
+            try {
+              removalReason = await promptMesaRemovalReason('liberar');
+            } catch {
+              toast.dismiss(tid);
+              return;
+            }
           }
         }
         const linesPayload = (lines) =>
@@ -3217,10 +3238,9 @@ export default function POSPanel() {
                 )}
                 <button
                   type="button"
-                  title={posAdmin ? 'Modificar pedido' : 'Solo administrador'}
+                  title="Modificar pedido"
                   onClick={openEditOrderFromToolbar}
                   disabled={
-                    !posAdmin ||
                     !tableDetail.orders?.length ||
                     isClientCheckoutTable(tableDetail) ||
                     !(tableDetail.orders || []).some((o) => canEditOrderLines(o))
@@ -3867,7 +3887,8 @@ export default function POSPanel() {
               cartTotal={cartTotal}
               formatCurrency={formatCurrency}
               className="min-h-0 flex-1"
-              showLineDeleteLabel={Boolean(editingOrderId)}
+              showLineDeleteLabel={Boolean(editingOrderId && posAdmin)}
+              canDeleteLine={!editingOrderId || posAdmin}
               footer={
                 editingOrderId ? (
                   cart.length > 0 ? (

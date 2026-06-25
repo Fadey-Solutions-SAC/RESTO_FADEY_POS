@@ -269,6 +269,11 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo
   );
   const removalReason = String(req.body?.removal_reason || '').trim();
   const requiresRemovalReason = hasCompleteOrderItemRemovals(existingItems, items);
+  const actorRole = String(req.user?.role || '').toLowerCase();
+  const isAdminRole = actorRole === 'admin' || actorRole === 'master_admin';
+  if (requiresRemovalReason && !isAdminRole) {
+    return res.status(403).json({ error: 'Solo un administrador puede eliminar productos del pedido.' });
+  }
   if (requiresRemovalReason && removalReason.length < 3) {
     return res.status(400).json({
       error: 'Indique el motivo al eliminar un producto de la mesa (mínimo 3 caracteres).',

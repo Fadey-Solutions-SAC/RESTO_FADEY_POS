@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, electronPrinting, hasElectronPrinting } from './api';
 import {
   orderHasTakeoutNote,
   buildPedidoMesaTicketPlainText,
@@ -7,36 +7,57 @@ import {
 import { isBarProductionItemForStation, isKitchenProductionItemForStation } from './productionArea';
 import { isPrintingModuleEnabled } from './printingConfig';
 
-export const POS_RECENT_AUTOPRINT_KEY = 'resto_pos_recent_kitchen_autoprint';
+const KITCHEN_PRINT_DEDUPE_KEY = 'resto_kitchen_print_dedupe';
+const KITCHEN_PRINT_DEDUPE_MS = 15000;
 
 const normalizePaperWidthMm = normalizeThermalPaperWidthMm;
 
-export function markRecentKitchenAutoPrint(orderId) {
-  if (!orderId || typeof window === 'undefined') return;
+/** App instalada (Electron): mismo canal IPC que precuenta/caja; navegador: bridge HTTP local. */
+async function postKitchenBarPrint(moduleKey, payload) {
+  if (hasElectronPrinting()) {
+    await electronPrinting.printModule(moduleKey, payload);
+    return;
+  }
+  await api.printing.post(`/printing/print/${moduleKey}`, payload);
+}
+
+function buildKitchenPrintDedupeKey(orderId, newItemIds, fromLinesUpdate) {
+  if (fromLinesUpdate && Array.isArray(newItemIds) && newItemIds.length) {
+    return `${orderId}:partial:${[...newItemIds].sort().join(',')}`;
+  }
+  return `${orderId}:full`;
+}
+
+/** Evita comanda duplicada (POS + socket, varias pestañas) en la misma sesión del navegador. */
+function claimKitchenPrintDedupe(dedupeKey) {
+  if (!dedupeKey || typeof window === 'undefined') return true;
   try {
-    const raw = window.sessionStorage.getItem(POS_RECENT_AUTOPRINT_KEY);
+    const raw = window.sessionStorage.getItem(KITCHEN_PRINT_DEDUPE_KEY);
     const data = raw ? JSON.parse(raw) : {};
-    data[String(orderId)] = Date.now();
-    window.sessionStorage.setItem(POS_RECENT_AUTOPRINT_KEY, JSON.stringify(data));
+    const now = Date.now();
+    for (const [k, ts] of Object.entries(data)) {
+      if (now - Number(ts) > KITCHEN_PRINT_DEDUPE_MS) delete data[k];
+    }
+    const prev = Number(data[dedupeKey] || 0);
+    if (prev && now - prev < KITCHEN_PRINT_DEDUPE_MS) return false;
+    data[dedupeKey] = now;
+    window.sessionStorage.setItem(KITCHEN_PRINT_DEDUPE_KEY, JSON.stringify(data));
+    return true;
   } catch (_) {
-    /* noop */
+    return true;
   }
 }
 
-export function wasRecentlyAutoPrintedByPos(orderId) {
-  if (!orderId || typeof window === 'undefined') return false;
+/** Libera la reserva si la impresión falló (permite reintento por socket). */
+function releaseKitchenPrintDedupe(dedupeKey) {
+  if (!dedupeKey || typeof window === 'undefined') return;
   try {
-    const raw = window.sessionStorage.getItem(POS_RECENT_AUTOPRINT_KEY);
+    const raw = window.sessionStorage.getItem(KITCHEN_PRINT_DEDUPE_KEY);
     const data = raw ? JSON.parse(raw) : {};
-    const ts = Number(data[String(orderId)] || 0);
-    if (!ts) return false;
-    const recent = Date.now() - ts < 12000;
-    if (recent) return true;
-    delete data[String(orderId)];
-    window.sessionStorage.setItem(POS_RECENT_AUTOPRINT_KEY, JSON.stringify(data));
-    return false;
+    delete data[dedupeKey];
+    window.sessionStorage.setItem(KITCHEN_PRINT_DEDUPE_KEY, JSON.stringify(data));
   } catch (_) {
-    return false;
+    /* noop */
   }
 }
 
@@ -66,6 +87,9 @@ export async function printKitchenBarOrder(orderOrId, { newItemIds = null, fromL
     if (!scoped.length) return false;
   }
 
+  const dedupeKey = buildKitchenPrintDedupeKey(orderId, newItemIds, fromLinesUpdate);
+  if (!claimKitchenPrintDedupe(dedupeKey)) return false;
+
   try {
     const hasInlineItems =
       typeof orderOrId === 'object' &&
@@ -74,7 +98,7 @@ export async function printKitchenBarOrder(orderOrId, { newItemIds = null, fromL
       orderOrId.items.length > 0;
 
     const [cfg, fullOrder] = await Promise.all([
-      api.printing.get('/printing/config'),
+      hasElectronPrinting() ? electronPrinting.getConfig() : api.printing.get('/printing/config'),
       hasInlineItems ? Promise.resolve(orderOrId) : api.get(`/orders/${orderId}`),
     ]);
 
@@ -113,7 +137,7 @@ export async function printKitchenBarOrder(orderOrId, { newItemIds = null, fromL
         printedAt: new Date(),
         orderType: fullOrder?.type || 'dine_in',
       });
-      await api.printing.post('/printing/print/cocina', {
+      await postKitchenBarPrint('cocina', {
         text,
         preformatted: true,
         paperWidth: paperC,
@@ -133,7 +157,7 @@ export async function printKitchenBarOrder(orderOrId, { newItemIds = null, fromL
         printedAt: new Date(),
         orderType: fullOrder?.type || 'dine_in',
       });
-      await api.printing.post('/printing/print/bar', {
+      await postKitchenBarPrint('bar', {
         text,
         preformatted: true,
         paperWidth: paperB,
@@ -144,19 +168,18 @@ export async function printKitchenBarOrder(orderOrId, { newItemIds = null, fromL
 
     return printed;
   } catch (err) {
+    releaseKitchenPrintDedupe(dedupeKey);
     console.warn('[printing] auto cocina/bar:', err?.message || err);
     return false;
   }
 }
 
-/** Tras enviar comanda desde POS/mesas: imprime y evita duplicado por socket. */
+/** Tras enviar comanda desde POS/mesas: imprime como antes; el socket no duplica (dedupe en sesión). */
 export async function printKitchenBarOnComandaSend(order, { merged = false } = {}) {
   if (!order?.id) return false;
   const newIds = Array.isArray(order.new_item_ids) ? order.new_item_ids : [];
-  const printed = await printKitchenBarOrder(order, {
+  return printKitchenBarOrder(order, {
     newItemIds: merged ? newIds : null,
     fromLinesUpdate: merged,
   });
-  if (printed) markRecentKitchenAutoPrint(order.id);
-  return printed;
 }

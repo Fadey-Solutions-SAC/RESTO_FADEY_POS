@@ -653,29 +653,37 @@ export function parseLocalNaiveDateTime(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Apertura de caja: prioriza naive local; si no, parseApiDate. */
+/** Apertura de caja: timestamps naive del API se interpretan como UTC (SQLite en nube). */
 export function parseCashRegisterOpenedAt(value) {
-  const naive = parseLocalNaiveDateTime(value);
-  if (naive) return naive;
   return parseApiDate(value);
 }
 
-/** Fecha local dd/mm/aaaa (sin depender del locale del navegador). */
+/** Fecha local dd/mm/aaaa en zona del negocio. */
 function formatPeDateDdMmYyyy(d) {
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  const parts = new Intl.DateTimeFormat('es-PE', {
+    timeZone: APP_DISPLAY_TIMEZONE,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).formatToParts(d);
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${map.day}/${map.month}/${map.year}`;
 }
 
-/** Hora local 12 h, minutos con dos dígitos, sin segundos (ej. 9:05 a.m., 9:50 p.m.). */
+/** Hora 12 h en zona del negocio (ej. 3:29 p.m.). */
 function formatPeTime12hNoSeconds(d) {
-  const h24 = d.getHours();
-  const min = d.getMinutes();
-  let h12 = h24 % 12;
+  const parts = new Intl.DateTimeFormat('es-PE', {
+    timeZone: APP_DISPLAY_TIMEZONE,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(d);
+  const map = Object.fromEntries(parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
+  let h12 = Number(map.hour) || 12;
+  if (h12 > 12) h12 = h12 % 12 || 12;
   if (h12 === 0) h12 = 12;
-  const mm = String(min).padStart(2, '0');
-  const suffix = h24 < 12 ? 'a.m.' : 'p.m.';
+  const mm = String(map.minute || '0').padStart(2, '0');
+  const suffix = String(map.dayPeriod || '').toLowerCase().includes('p') ? 'p.m.' : 'a.m.';
   return `${h12}:${mm} ${suffix}`;
 }
 
