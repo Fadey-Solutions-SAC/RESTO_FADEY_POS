@@ -88,6 +88,7 @@ export default function Productos() {
 
   const [combos, setCombos] = useState([]);
   const [showComboModal, setShowComboModal] = useState(false);
+  const [editCombo, setEditCombo] = useState(null);
   const [comboForm, setComboForm] = useState({ name: '', description: '', price: '', items: [] });
   const [comboSuggestions, setComboSuggestions] = useState(null);
   const [comboSuggestLoading, setComboSuggestLoading] = useState(false);
@@ -164,10 +165,86 @@ export default function Productos() {
   );
 
   const openComboModal = () => {
+    setEditCombo(null);
     setComboForm({ name: '', description: '', price: '', items: [] });
     setComboSuggestions(null);
     setComboSuggestLoading(false);
     setShowComboModal(true);
+  };
+
+  const openEditCombo = (combo) => {
+    const itemIds = (Array.isArray(combo.items) ? combo.items : [])
+      .map((it) => it.product_id)
+      .filter(Boolean);
+    setEditCombo(combo);
+    setComboForm({
+      name: combo.name || '',
+      description: combo.description || '',
+      price: combo.price != null ? String(combo.price) : '',
+      items: itemIds,
+    });
+    setComboSuggestions(null);
+    setComboSuggestLoading(false);
+    setShowComboModal(true);
+  };
+
+  const deleteCombo = async (combo) => {
+    if (!confirm(`¿Eliminar el combo "${combo.name}"?`)) return;
+    try {
+      await api.delete(`/admin-modules/combos/${combo.id}`);
+      toast.success('Combo eliminado');
+      load();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo eliminar el combo');
+    }
+  };
+
+  const toggleComboActive = async (combo) => {
+    try {
+      await api.put(`/admin-modules/combos/${combo.id}`, {
+        active: Number(combo.active ?? 1) === 1 ? 0 : 1,
+      });
+      toast.success(Number(combo.active ?? 1) === 1 ? 'Combo desactivado' : 'Combo activado');
+      load();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo actualizar el combo');
+    }
+  };
+
+  const buildComboItemsPayload = () =>
+    comboForm.items
+      .map((id) => products.find((p) => String(p.id) === String(id)))
+      .filter(Boolean)
+      .map((p) => ({ product_id: p.id, quantity: 1 }));
+
+  const handleComboSubmit = async (e) => {
+    e.preventDefault();
+    const items = buildComboItemsPayload();
+    if (!items.length) {
+      toast.error('Selecciona al menos un producto para el combo');
+      return;
+    }
+    try {
+      const body = {
+        name: comboForm.name,
+        description: comboForm.description,
+        price: parseFloat(comboForm.price),
+        items,
+      };
+      if (editCombo) {
+        await api.put(`/admin-modules/combos/${editCombo.id}`, body);
+        toast.success('Combo actualizado');
+      } else {
+        await api.post('/admin-modules/combos', body);
+        toast.success('Combo creado');
+      }
+      setShowComboModal(false);
+      setEditCombo(null);
+      setComboSuggestions(null);
+      load();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo guardar el combo');
+    }
   };
 
   const applyComboSuggestions = () => {
@@ -812,11 +889,38 @@ export default function Productos() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {combos.map(c => (
-                <div key={c.id} className="bg-white rounded-xl border border-slate-200 p-5">
-                  <h3 className="font-bold rf-section-title">{c.name}</h3>
+                <div key={c.id} className={`bg-white rounded-xl border border-slate-200 p-5 ${Number(c.active ?? 1) === 0 ? 'opacity-50' : ''}`}>
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <h3 className="font-bold rf-section-title">{c.name}</h3>
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openEditCombo(c)}
+                        className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
+                        title="Editar"
+                      >
+                        <MdEdit className="text-base" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteCombo(c)}
+                        className="p-1.5 rounded-lg hover:bg-red-50 text-[var(--ui-muted)] hover:text-red-600"
+                        title="Eliminar"
+                      >
+                        <MdDelete className="text-base" />
+                      </button>
+                    </div>
+                  </div>
                   <p className="text-sm ui-text-muted mt-1">{c.description}</p>
                   <p className="text-xl font-bold text-gold-600 mt-2">{formatCurrency(c.price)}</p>
                   <p className="text-xs text-[var(--ui-muted)] mt-2">Incluye: {(Array.isArray(c.items) ? c.items.map(i => i.product_name || i.name).filter(Boolean).join(', ') : '') || '-'}</p>
+                  <button
+                    type="button"
+                    onClick={() => toggleComboActive(c)}
+                    className="mt-3 text-xs px-3 py-1.5 bg-slate-100 rounded-lg hover:bg-slate-200 text-[var(--ui-muted)]"
+                  >
+                    {Number(c.active ?? 1) === 1 ? 'Desactivar' : 'Activar'}
+                  </button>
                 </div>
               ))}
             </div>
@@ -1266,27 +1370,8 @@ export default function Productos() {
         </form>
       </Modal>
 
-      <Modal isOpen={showComboModal} onClose={() => setShowComboModal(false)} title="Nuevo Combo" size="md">
-        <form onSubmit={async (e) => {
-          e.preventDefault();
-          try {
-            await api.post('/admin-modules/combos', {
-              name: comboForm.name,
-              description: comboForm.description,
-              price: parseFloat(comboForm.price),
-              items: comboForm.items
-                .map((id) => products.find((p) => String(p.id) === String(id)))
-                .filter(Boolean)
-                .map((p) => ({ product_id: p.id, quantity: 1 })),
-            });
-            setShowComboModal(false);
-            setComboSuggestions(null);
-            toast.success('Combo creado');
-            load();
-          } catch (err) {
-            toast.error(err.message);
-          }
-        }} className="space-y-4">
+      <Modal isOpen={showComboModal} onClose={() => { setShowComboModal(false); setEditCombo(null); }} title={editCombo ? 'Editar Combo' : 'Nuevo Combo'} size="md">
+        <form onSubmit={handleComboSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Productos incluidos</label>
             <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1">
@@ -1383,7 +1468,7 @@ export default function Productos() {
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre del Combo</label><input value={comboForm.name} onChange={e => setComboForm({ ...comboForm, name: e.target.value })} className="input-field" required placeholder="Ej: Duo Arroz Chaufa + Lomo Fino" /></div>
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Descripción</label><textarea value={comboForm.description} onChange={e => setComboForm({ ...comboForm, description: e.target.value })} className="input-field" rows="2" placeholder="Describe qué incluye el combo y el beneficio para el cliente" /></div>
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Precio</label><input type="number" step="0.01" min="0" value={comboForm.price} onChange={e => setComboForm({ ...comboForm, price: e.target.value })} className="input-field" required placeholder="Precio final del combo" /></div>
-          <div className="flex gap-3"><button type="button" onClick={() => setShowComboModal(false)} className="btn-secondary flex-1">Cancelar</button><button type="submit" className="btn-primary flex-1">Crear Combo</button></div>
+          <div className="flex gap-3"><button type="button" onClick={() => { setShowComboModal(false); setEditCombo(null); }} className="btn-secondary flex-1">Cancelar</button><button type="submit" className="btn-primary flex-1">{editCombo ? 'Guardar cambios' : 'Crear Combo'}</button></div>
         </form>
       </Modal>
 

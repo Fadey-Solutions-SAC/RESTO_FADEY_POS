@@ -5,7 +5,7 @@ import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../.
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
-import { MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline } from 'react-icons/md';
+import { MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline, MdEdit } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import LogisticaKardexModule from '../../components/LogisticaKardexModule';
 import InsumoCreateModal from '../../components/InsumoCreateModal';
@@ -273,7 +273,15 @@ export default function Almacen() {
   });
   const [createModalAfterReception, setCreateModalAfterReception] = useState(false);
   const [receptionNotes, setReceptionNotes] = useState('');
+  /** Filas marcadas para incluir en el registro de recepción (`req:productId` | `extra:lineId`). */
+  const [receptionSelectedKeys, setReceptionSelectedKeys] = useState([]);
   const [expenseHistory, setExpenseHistory] = useState([]);
+  const [expenseEditGroupId, setExpenseEditGroupId] = useState(null);
+  const [expenseEditDraft, setExpenseEditDraft] = useState({});
+  const [expenseEditNotes, setExpenseEditNotes] = useState('');
+  const [showExpensePasswordModal, setShowExpensePasswordModal] = useState(false);
+  const [expenseAdminPassword, setExpenseAdminPassword] = useState('');
+  const [expenseSavePending, setExpenseSavePending] = useState(false);
   const [kardexBajoMin, setKardexBajoMin] = useState([]);
   const [kardexInsumos, setKardexInsumos] = useState([]);
   /** En almacén de insumos: ver todos, solo cocina o solo bar. */
@@ -343,6 +351,26 @@ export default function Almacen() {
 
   const receptionPickListEmpty = receptionPickProducts.length === 0 && receptionPickInsumos.length === 0;
   const sameWarehouseId = (a, b) => String(a || '') === String(b || '');
+
+  const receptionReqKey = (productId) => `req:${productId}`;
+  const receptionExtraKey = (lineId) => `extra:${lineId}`;
+
+  const allReceptionRowKeys = useMemo(() => {
+    const reqKeys = (latestRequirement?.items || []).map((item) => receptionReqKey(item.product_id));
+    const extraKeys = receptionExtraLines.map((line) => receptionExtraKey(line.lineId));
+    return [...reqKeys, ...extraKeys];
+  }, [latestRequirement, receptionExtraLines]);
+
+  const selectAllReceptionRows = () => setReceptionSelectedKeys(allReceptionRowKeys);
+  const deselectAllReceptionRows = () => setReceptionSelectedKeys([]);
+
+  const toggleReceptionRow = (key) => {
+    setReceptionSelectedKeys((prev) => (
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    ));
+  };
+
+  const isReceptionRowSelected = (key) => receptionSelectedKeys.includes(key);
   const getDefaultCreateWarehouseId = () => {
     if (selectedWarehouseView && warehouses.some(w => sameWarehouseId(w.id, selectedWarehouseView))) {
       return String(selectedWarehouseView);
@@ -423,6 +451,7 @@ export default function Almacen() {
             };
           });
           setReceptionForm(nextForm);
+          setReceptionSelectedKeys((requirement?.items || []).map((item) => receptionReqKey(item.product_id)));
         }
         if (activeView === 'ir_modulo_gastos') {
           const expenses = await api.get('/inventory/expenses');
@@ -582,6 +611,82 @@ export default function Almacen() {
       return acc;
     }, {})
   ).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+  const startExpenseGroupEdit = (group) => {
+    const draft = {};
+    (group.items || []).forEach((item) => {
+      draft[item.id] = {
+        quantity: String(Number(item.quantity || 0)),
+        unit_cost: String(Number(item.unit_cost || 0)),
+      };
+    });
+    setExpenseEditGroupId(group.id);
+    setExpenseEditDraft(draft);
+    setExpenseEditNotes(String(group.notes || ''));
+  };
+
+  const cancelExpenseGroupEdit = () => {
+    setExpenseEditGroupId(null);
+    setExpenseEditDraft({});
+    setExpenseEditNotes('');
+    setExpenseAdminPassword('');
+    setShowExpensePasswordModal(false);
+  };
+
+  const expenseEditDraftTotal = (group) => (group.items || []).reduce((sum, item) => {
+    const row = expenseEditDraft[item.id] || {};
+    const qty = Number(row.quantity || 0);
+    const cost = Number(row.unit_cost || 0);
+    return sum + qty * cost;
+  }, 0);
+
+  const requestSaveExpenseGroup = (group) => {
+    if (!group?.items?.length) return;
+    for (const item of group.items) {
+      const row = expenseEditDraft[item.id] || {};
+      const qty = Number(row.quantity || 0);
+      const cost = Number(row.unit_cost || 0);
+      if (!Number.isFinite(qty) || qty < 0) {
+        toast.error('Revisa las cantidades ingresadas');
+        return;
+      }
+      if (!Number.isFinite(cost) || cost < 0) {
+        toast.error('Revisa los precios unitarios ingresados');
+        return;
+      }
+    }
+    setShowExpensePasswordModal(true);
+  };
+
+  const saveExpenseGroupEdit = async (group) => {
+    if (!group?.items?.length) return;
+    const pwd = String(expenseAdminPassword || '').trim();
+    if (!pwd) {
+      toast.error('Ingresa la contraseña de administrador');
+      return;
+    }
+    setExpenseSavePending(true);
+    try {
+      await api.put('/inventory/expenses', {
+        admin_password: pwd,
+        requirement_id: group.requirement_id || null,
+        notes: expenseEditNotes,
+        updates: group.items.map((item) => ({
+          id: item.id,
+          quantity: Number(expenseEditDraft[item.id]?.quantity || 0),
+          unit_cost: Number(expenseEditDraft[item.id]?.unit_cost || 0),
+        })),
+      });
+      toast.success('Gasto actualizado');
+      cancelExpenseGroupEdit();
+      const expenses = await api.get('/inventory/expenses');
+      setExpenseHistory(expenses || []);
+    } catch (err) {
+      toast.error(err.message || 'No se pudo guardar');
+    } finally {
+      setExpenseSavePending(false);
+    }
+  };
 
   const handleStock = async (type) => {
     const amount = parseInt(stockChange);
@@ -792,6 +897,7 @@ export default function Almacen() {
         };
       });
       setReceptionForm(nextForm);
+      setReceptionSelectedKeys((requirement.items || []).map((item) => receptionReqKey(item.product_id)));
 
       const rows = (requirement.items || []).map((p) => {
         const suggested = Math.max(0, Number(p.suggested_qty || 0));
@@ -863,6 +969,7 @@ export default function Almacen() {
     }
 
     const payloadFromReq = (latestRequirement.items || [])
+      .filter((item) => isReceptionRowSelected(receptionReqKey(item.product_id)))
       .map(item => {
         const draft = receptionForm[item.product_id] || {};
         return {
@@ -874,7 +981,9 @@ export default function Almacen() {
       })
       .filter(item => item.quantity > 0);
 
-    const payloadExtra = receptionExtraLines.map((line) => ({
+    const payloadExtra = receptionExtraLines
+      .filter((line) => isReceptionRowSelected(receptionExtraKey(line.lineId)))
+      .map((line) => ({
       product_id: line.product_id,
       warehouse_id: line.warehouse_id || principalWarehouse?.id || '',
       quantity: Number(line.quantity || 0),
@@ -884,7 +993,7 @@ export default function Almacen() {
     const payloadItems = [...payloadFromReq, ...payloadExtra];
 
     if (!payloadItems.length) {
-      toast.error('Ingresa cantidades para recepcionar');
+      toast.error('Selecciona al menos un producto e ingresa cantidades para recepcionar');
       return;
     }
     const invalidCost = payloadItems.some(item => Number(item.unit_cost || 0) <= 0);
@@ -907,6 +1016,16 @@ export default function Almacen() {
         api.get('/inventory/expenses'),
       ]);
       setLatestRequirement(requirement);
+      const nextForm = {};
+      (requirement?.items || []).forEach((item) => {
+        nextForm[item.product_id] = {
+          quantity: String(Number(item.suggested_qty || 0)),
+          unit_cost: String(Number(item.unit_cost || 0)),
+          warehouse_id: item.warehouse_id || '',
+        };
+      });
+      setReceptionForm(nextForm);
+      setReceptionSelectedKeys((requirement?.items || []).map((item) => receptionReqKey(item.product_id)));
       setExpenseHistory(expenses || []);
       await load();
     } catch (err) {
@@ -951,10 +1070,11 @@ export default function Almacen() {
     } else {
       label = products.find((p) => p.id === pid)?.name || 'Producto';
     }
+    const newLineId = `rx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setReceptionExtraLines((prev) => [
       ...prev,
       {
-        lineId: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        lineId: newLineId,
         lineKind,
         product_id: pid,
         product_name: label,
@@ -963,6 +1083,7 @@ export default function Almacen() {
         unit_cost: String(cost),
       },
     ]);
+    setReceptionSelectedKeys((prev) => [...prev, receptionExtraKey(newLineId)]);
     setShowReceptionAddModal(false);
   };
 
@@ -974,6 +1095,7 @@ export default function Almacen() {
 
   const removeReceptionExtraLine = (lineId) => {
     setReceptionExtraLines((prev) => prev.filter((l) => l.lineId !== lineId));
+    setReceptionSelectedKeys((prev) => prev.filter((k) => k !== receptionExtraKey(lineId)));
   };
 
   const calcReceptionTotal = (productId) => {
@@ -1020,15 +1142,32 @@ export default function Almacen() {
                 <div className="text-xs ui-text-muted">
                   Requerimiento: <strong>{latestRequirement.id?.slice(0, 8)}</strong> · Estado: <strong>{latestRequirement.status}</strong>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 items-center">
                   <button type="button" className="btn-secondary text-sm flex items-center gap-1" onClick={openReceptionAddModal}>
                     <MdAdd className="text-lg" /> Agregar producto adicional
                   </button>
+                  <button type="button" className="btn-secondary text-sm" onClick={selectAllReceptionRows}>
+                    Seleccionar todo
+                  </button>
+                  <button type="button" className="btn-secondary text-sm" onClick={deselectAllReceptionRows}>
+                    Deseleccionar todo
+                  </button>
+                  <span className="text-xs ui-text-muted">
+                    {receptionSelectedKeys.length} de {allReceptionRowKeys.length} seleccionado(s)
+                  </span>
                 </div>
                 <div className="overflow-x-auto border border-slate-200 rounded-lg">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="text-left p-2.5 font-medium w-12">
+                          <input
+                            type="checkbox"
+                            checked={allReceptionRowKeys.length > 0 && receptionSelectedKeys.length === allReceptionRowKeys.length}
+                            onChange={(e) => (e.target.checked ? selectAllReceptionRows() : deselectAllReceptionRows())}
+                            title="Seleccionar todo"
+                          />
+                        </th>
                         <th className="text-left p-2.5 font-medium">Producto</th>
                         <th className="text-left p-2.5 font-medium">Stock</th>
                         <th className="text-left p-2.5 font-medium">Almacén</th>
@@ -1040,7 +1179,14 @@ export default function Almacen() {
                     </thead>
                     <tbody>
                       {latestRequirement.items.map(item => (
-                        <tr key={item.id} className="border-b border-slate-100">
+                        <tr key={item.id} className={`border-b border-slate-100 ${!isReceptionRowSelected(receptionReqKey(item.product_id)) ? 'opacity-50' : ''}`}>
+                          <td className="p-2.5">
+                            <input
+                              type="checkbox"
+                              checked={isReceptionRowSelected(receptionReqKey(item.product_id))}
+                              onChange={() => toggleReceptionRow(receptionReqKey(item.product_id))}
+                            />
+                          </td>
                           <td className="p-2.5 font-medium text-slate-700">{item.product_name}</td>
                           <td className="p-2.5 text-red-600 font-semibold">{item.current_stock}</td>
                           <td className="p-2.5 text-[var(--ui-muted)]">{item.warehouse_name || '-'}</td>
@@ -1068,7 +1214,14 @@ export default function Almacen() {
                         </tr>
                       ))}
                       {receptionExtraLines.map((line) => (
-                        <tr key={line.lineId} className="border-b border-slate-100 bg-sky-50/40">
+                        <tr key={line.lineId} className={`border-b border-slate-100 bg-sky-50/40 ${!isReceptionRowSelected(receptionExtraKey(line.lineId)) ? 'opacity-50' : ''}`}>
+                          <td className="p-2.5">
+                            <input
+                              type="checkbox"
+                              checked={isReceptionRowSelected(receptionExtraKey(line.lineId))}
+                              onChange={() => toggleReceptionRow(receptionExtraKey(line.lineId))}
+                            />
+                          </td>
                           <td className="p-2.5 font-medium text-slate-800">
                             {line.product_name}
                             <span className="ml-2 text-[10px] uppercase tracking-wide text-sky-700 font-semibold">Adicional</span>
@@ -1149,19 +1302,58 @@ export default function Almacen() {
         {activeView === 'ir_modulo_gastos' && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
             <h3 className="font-bold rf-section-title mb-2">Módulo de gastos</h3>
-            <p className="ui-text-muted mb-4">Gastos separados por compra, con fecha y detalle de productos recepcionados.</p>
+            <p className="ui-text-muted mb-4">
+              Gastos separados por compra, con fecha y detalle de productos recepcionados.
+              Para guardar cambios se solicita la contraseña de un usuario administrador.
+            </p>
             <div className="space-y-4">
               {expenseGroups.length === 0 && (
                 <p className="text-sm ui-text-muted">Aún no hay gastos registrados.</p>
               )}
-              {expenseGroups.map(group => (
+              {expenseGroups.map(group => {
+                const isEditing = expenseEditGroupId === group.id;
+                const displayTotal = isEditing ? expenseEditDraftTotal(group) : group.total;
+                return (
                 <div key={group.id} className="border border-slate-200 rounded-xl p-4 bg-slate-50/60">
-                  <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-start justify-between gap-3 mb-3">
                     <p className="font-semibold rf-section-title">
                       Compra {group.requirement_id ? `· Req ${group.requirement_id.slice(0, 8)}` : ''}
                     </p>
-                    <p className="text-xs ui-text-muted">{formatDateTime(group.created_at)}</p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <p className="text-xs ui-text-muted">{formatDateTime(group.created_at)}</p>
+                      {!isEditing ? (
+                        <button
+                          type="button"
+                          onClick={() => startExpenseGroupEdit(group)}
+                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-slate-200 text-slate-800 hover:bg-slate-300"
+                        >
+                          <MdEdit className="text-sm" /> Editar
+                        </button>
+                      ) : (
+                        <>
+                          <button type="button" onClick={cancelExpenseGroupEdit} className="text-xs px-2.5 py-1.5 rounded-lg btn-secondary">
+                            Cancelar
+                          </button>
+                          <button type="button" onClick={() => requestSaveExpenseGroup(group)} className="text-xs px-2.5 py-1.5 rounded-lg btn-primary">
+                            Guardar
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
+                  {isEditing ? (
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Notas de la compra</label>
+                      <input
+                        className="input-field text-sm py-1.5"
+                        value={expenseEditNotes}
+                        onChange={(e) => setExpenseEditNotes(e.target.value)}
+                        placeholder="Observaciones (opcional)"
+                      />
+                    </div>
+                  ) : group.notes ? (
+                    <p className="text-xs ui-text-muted mb-2">{group.notes}</p>
+                  ) : null}
                   <div className="grid grid-cols-12 text-xs ui-text-muted border-b border-slate-200 pb-1 mb-1.5">
                     <div className="col-span-7">Lista de productos</div>
                     <div className="col-span-3 text-right">Precio por unidad</div>
@@ -1169,21 +1361,111 @@ export default function Almacen() {
                   </div>
                   <div className="space-y-1.5">
                     {group.items.map(item => (
-                      <div key={item.id} className="text-sm grid grid-cols-12 items-center border-b border-slate-200/70 pb-1">
+                      <div key={item.id} className="text-sm grid grid-cols-12 items-center gap-1 border-b border-slate-200/70 pb-1">
                         <span className="col-span-7 text-slate-700">{item.product_name || 'Producto'}</span>
-                        <span className="col-span-3 text-right text-slate-700">{formatCurrency(item.unit_cost)}</span>
-                        <span className="col-span-2 text-right text-slate-700">{item.quantity}</span>
+                        {isEditing ? (
+                          <>
+                            <div className="col-span-3">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="input-field py-1 text-sm text-right"
+                                value={expenseEditDraft[item.id]?.unit_cost ?? ''}
+                                onChange={(e) => setExpenseEditDraft((prev) => ({
+                                  ...prev,
+                                  [item.id]: { ...prev[item.id], unit_cost: e.target.value },
+                                }))}
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                className="input-field py-1 text-sm text-right"
+                                value={expenseEditDraft[item.id]?.quantity ?? ''}
+                                onChange={(e) => setExpenseEditDraft((prev) => ({
+                                  ...prev,
+                                  [item.id]: { ...prev[item.id], quantity: e.target.value },
+                                }))}
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <span className="col-span-3 text-right text-slate-700">{formatCurrency(item.unit_cost)}</span>
+                            <span className="col-span-2 text-right text-slate-700">{item.quantity}</span>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
                   <div className="mt-3 flex justify-end">
-                    <p className="font-bold text-red-700">Total compra: {formatCurrency(group.total)}</p>
+                    <p className="font-bold text-red-700">Total compra: {formatCurrency(displayTotal)}</p>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           </div>
         )}
+
+        <Modal
+          isOpen={showExpensePasswordModal}
+          onClose={() => {
+            if (expenseSavePending) return;
+            setShowExpensePasswordModal(false);
+            setExpenseAdminPassword('');
+          }}
+          title="Confirmar con contraseña admin"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-[var(--ui-muted)]">
+              Ingresa la contraseña de un usuario <strong>administrador</strong> para guardar los cambios en este gasto.
+            </p>
+            <input
+              type="password"
+              className="input-field"
+              value={expenseAdminPassword}
+              onChange={(e) => setExpenseAdminPassword(e.target.value)}
+              placeholder="Contraseña de administrador"
+              autoComplete="current-password"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const group = expenseGroups.find((g) => g.id === expenseEditGroupId);
+                  if (group) void saveExpenseGroupEdit(group);
+                }
+              }}
+            />
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="btn-secondary flex-1"
+                disabled={expenseSavePending}
+                onClick={() => {
+                  setShowExpensePasswordModal(false);
+                  setExpenseAdminPassword('');
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary flex-1"
+                disabled={expenseSavePending}
+                onClick={() => {
+                  const group = expenseGroups.find((g) => g.id === expenseEditGroupId);
+                  if (group) void saveExpenseGroupEdit(group);
+                }}
+              >
+                {expenseSavePending ? 'Guardando…' : 'Confirmar y guardar'}
+              </button>
+            </div>
+          </div>
+        </Modal>
 
         {activeView === 'ir_modulo_logistica' && <LogisticaKardexModule />}
         <CreateProductModal
@@ -1316,6 +1598,22 @@ export default function Almacen() {
               Incluye productos de almacén bajo su stock mínimo e <strong>insumos kardex</strong> bajo el mínimo (en U o en kg/L,
               según se configuró al crear el insumo). Puedes desmarcar filas.
             </p>
+            <div className="flex flex-wrap gap-2 items-center mb-2">
+              <button
+                type="button"
+                className="btn-secondary text-sm"
+                onClick={() => setSelectedRequirementIds(lowStockGlobal.map((p) => p.id))}
+              >
+                Seleccionar todo
+              </button>
+              <button
+                type="button"
+                className="btn-secondary text-sm"
+                onClick={() => setSelectedRequirementIds([])}
+              >
+                Deseleccionar todo
+              </button>
+            </div>
             <div className="max-h-[340px] overflow-y-auto border border-slate-200 rounded-lg">
               <table className="w-full text-sm">
                 <thead>

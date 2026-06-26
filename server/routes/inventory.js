@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../database');
 const kardexInventory = require('../services/kardexInventoryService');
@@ -696,15 +697,27 @@ router.post('/receptions/receive', authenticateToken, requireRole('admin'), (req
   }
 });
 
+function verifyAdminPassword(password) {
+  const pwd = String(password || '');
+  if (!pwd) return false;
+  const admins = queryAll(
+    `SELECT password_hash FROM users
+     WHERE lower(trim(coalesce(role, ''))) IN ('admin', 'master_admin')
+       AND coalesce(is_active, 1) = 1`,
+  );
+  return admins.some((row) => row.password_hash && bcrypt.compareSync(pwd, row.password_hash));
+}
+
 router.get('/expenses', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     ensureWarehouseTables();
     const expenses = queryAll(
       `SELECT ie.*,
-              p.name as product_name,
+              COALESCE(p.name, ins.nombre, 'Producto') as product_name,
               wl.name as warehouse_name
        FROM inventory_expenses ie
        LEFT JOIN products p ON p.id = ie.product_id
+       LEFT JOIN insumos ins ON ins.id = ie.product_id
        LEFT JOIN warehouse_locations wl ON wl.id = ie.warehouse_id
        ORDER BY ie.created_at DESC
        LIMIT 100`
@@ -712,6 +725,81 @@ router.get('/expenses', authenticateToken, requireRole('admin'), (req, res) => {
     res.json(expenses);
   } catch (err) {
     res.status(500).json({ error: err.message || 'No se pudo listar gastos' });
+  }
+});
+
+router.put('/expenses', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    ensureWarehouseTables();
+    const { admin_password, updates, notes, requirement_id } = req.body || {};
+    if (!verifyAdminPassword(admin_password)) {
+      return res.status(403).json({ error: 'Contraseña de administrador incorrecta' });
+    }
+    const rows = Array.isArray(updates) ? updates : [];
+    if (!rows.length && notes === undefined) {
+      return res.status(400).json({ error: 'No hay cambios para guardar' });
+    }
+
+    let changed = 0;
+    rows.forEach((row) => {
+      const id = String(row?.id || '').trim();
+      if (!id) return;
+      const existing = queryOne('SELECT * FROM inventory_expenses WHERE id = ?', [id]);
+      if (!existing) return;
+
+      const qty = row.quantity != null ? Number(row.quantity) : Number(existing.quantity || 0);
+      const unitCost = row.unit_cost != null ? Number(row.unit_cost) : Number(existing.unit_cost || 0);
+      if (!Number.isFinite(qty) || qty < 0) {
+        throw new Error('Cantidad inválida en uno de los ítems');
+      }
+      if (!Number.isFinite(unitCost) || unitCost < 0) {
+        throw new Error('Precio unitario inválido en uno de los ítems');
+      }
+      const totalCost = Math.round(qty * unitCost * 100) / 100;
+
+      runSql(
+        `UPDATE inventory_expenses
+         SET quantity = ?, unit_cost = ?, total_cost = ?
+         WHERE id = ?`,
+        [qty, unitCost, totalCost, id],
+      );
+      changed += 1;
+
+      if (existing.requirement_id && existing.product_id) {
+        runSql(
+          `UPDATE inventory_requirement_items
+           SET received_qty = ?, unit_cost = ?, total_cost = ?
+           WHERE requirement_id = ? AND (product_id = ? OR insumo_id = ?)`,
+          [qty, unitCost, totalCost, existing.requirement_id, existing.product_id, existing.product_id],
+        );
+      }
+    });
+
+    if (notes !== undefined && requirement_id) {
+      runSql(
+        'UPDATE inventory_expenses SET notes = ? WHERE requirement_id = ?',
+        [String(notes || ''), String(requirement_id)],
+      );
+    }
+
+    if (changed === 0 && notes === undefined) {
+      return res.status(400).json({ error: 'No se encontraron registros para actualizar' });
+    }
+
+    logAudit({
+      actorUserId: req.user.id,
+      actorName: req.user.full_name || req.user.username || '',
+      action: 'inventory.expenses.update',
+      resourceType: 'inventory_expense',
+      resourceId: requirement_id || rows[0]?.id || '',
+      details: { updated_rows: changed },
+    });
+
+    res.json({ success: true, updated: changed });
+  } catch (err) {
+    res.status(err.message?.includes('inválid') ? 400 : 500).json({
+      error: err.message || 'No se pudo actualizar el gasto',
+    });
   }
 });
 
