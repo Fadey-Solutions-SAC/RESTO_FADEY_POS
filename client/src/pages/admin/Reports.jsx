@@ -119,6 +119,67 @@ function buildProductSalesCsv(report) {
   return rows.map((r) => r.map(esc).join(',')).join('\n');
 }
 
+function sumProductSalesQty(products) {
+  return (products || []).reduce((s, r) => s + Number(r.total_qty || 0), 0);
+}
+
+function sumProductSalesAmount(products) {
+  return (products || []).reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
+}
+
+function ProductSalesTable({ products, showOrders = false, emptyMessage = 'No hay productos vendidos en el periodo.' }) {
+  const rows = products || [];
+  if (!rows.length) {
+    return <p className="text-sm text-[var(--ui-muted)]">{emptyMessage}</p>;
+  }
+  const totalQty = sumProductSalesQty(rows);
+  const totalAmount = sumProductSalesAmount(rows);
+  return (
+    <div className="overflow-x-auto rounded-xl border border-[color:var(--ui-border)]">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 px-3 py-2 bg-[var(--ui-surface-2)] border-b border-[color:var(--ui-border)] text-xs text-[var(--ui-muted)]">
+        <span><strong className="text-[var(--ui-body-text)]">{rows.length}</strong> producto(s)</span>
+        <span><strong className="text-[var(--ui-body-text)]">{totalQty}</strong> unidades vendidas</span>
+        <span>Total ventas: <strong className="text-emerald-600">{formatCurrency(totalAmount)}</strong></span>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
+            <th className="text-left py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Producto</th>
+            <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Cantidad</th>
+            <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Precio U</th>
+            <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Precio total</th>
+            {showOrders ? (
+              <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Pedidos</th>
+            ) : null}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.product_id}-${row.product_name}`} className="border-b border-[color:var(--ui-border)]">
+              <td className="py-2 px-3 font-medium">{row.product_name}</td>
+              <td className="py-2 px-3 text-right tabular-nums font-semibold text-[#3B82F6]">{Number(row.total_qty || 0)}</td>
+              <td className="py-2 px-3 text-right tabular-nums text-[var(--ui-muted)]">{formatCurrency(row.unit_price || 0)}</td>
+              <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(row.total_amount || 0)}</td>
+              {showOrders ? (
+                <td className="py-2 px-3 text-right tabular-nums text-[var(--ui-muted)]">{Number(row.order_count || 0)}</td>
+              ) : null}
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="bg-[var(--ui-surface-2)] font-bold border-t border-[color:var(--ui-border)]">
+            <td className="py-3 px-3 text-[var(--ui-body-text)]">TOTAL ({rows.length} productos)</td>
+            <td className="py-3 px-3 text-right tabular-nums text-[#3B82F6]">{totalQty}</td>
+            <td className="py-3 px-3" />
+            <td className="py-3 px-3 text-right tabular-nums text-emerald-600">{formatCurrency(totalAmount)}</td>
+            {showOrders ? <td className="py-3 px-3" /> : null}
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
 const DENOMINATION_VALUES = {
   b200: 200,
   b100: 100,
@@ -562,6 +623,34 @@ export default function Reports() {
   ), [inventoryReconciliations]);
 
   useEffect(() => { loadRanking(rankingPeriod); }, [rankingPeriod]);
+
+  useEffect(() => {
+    if (reportSection !== 'productos') return undefined;
+    let cancelled = false;
+    (async () => {
+      setProductoCurrentLoading(true);
+      try {
+        const current = await api.get('/reports/product-sales?current=1');
+        if (!cancelled) setProductoCurrentReport(current);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!cancelled) setProductoCurrentLoading(false);
+      }
+      if (!productoFrom || !productoTo || cancelled) return;
+      setProductoTotalLoading(true);
+      try {
+        const params = new URLSearchParams({ from: productoFrom, to: productoTo });
+        const total = await api.get(`/reports/product-sales?${params.toString()}`);
+        if (!cancelled) setProductoTotalReport(total);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!cancelled) setProductoTotalLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [reportSection]);
   useEffect(() => {
     if (reportSection !== 'finanzas') return undefined;
     let cancelled = false;
@@ -689,16 +778,15 @@ export default function Reports() {
     }
   };
 
-  const loadProductoCurrentReport = async () => {
+  const loadProductoCurrentReport = async ({ silent = false } = {}) => {
     setProductoCurrentLoading(true);
-    setProductoCurrentReport(null);
+    if (!silent) setProductoCurrentReport(null);
     try {
       const report = await api.get('/reports/product-sales?current=1');
-      if (!report?.register_open) {
-        toast.error('No hay caja abierta en este momento');
-        return;
-      }
       setProductoCurrentReport(report);
+      if (!report?.register_open && !silent) {
+        toast.error('No hay caja abierta en este momento');
+      }
     } catch (err) {
       toast.error(err.message || 'No se pudo cargar la caja actual');
     } finally {
@@ -1240,35 +1328,21 @@ export default function Reports() {
                   </p>
                 ))}
                 {(productoCurrentReport.sold_products || []).length > 0 ? (
-                  <div className="overflow-x-auto rounded-xl border border-[color:var(--ui-border)]">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                          <th className="text-left py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Producto</th>
-                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Cantidad</th>
-                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {productoCurrentReport.sold_products.map((row) => (
-                          <tr key={`${row.product_id}-${row.product_name}`} className="border-b border-[color:var(--ui-border)]">
-                            <td className="py-2 px-3">{row.product_name}</td>
-                            <td className="py-2 px-3 text-right tabular-nums font-medium">{Number(row.total_qty || 0)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(row.total_amount || 0)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ProductSalesTable
+                    products={productoCurrentReport.sold_products}
+                    emptyMessage="Aún no hay ventas de productos en este turno."
+                  />
                 ) : (
                   <p className="text-sm text-[var(--ui-muted)]">Aún no hay ventas de productos en este turno.</p>
                 )}
               </div>
             ) : productoCurrentReport && !productoCurrentReport.register_open ? (
-              <p className="text-sm text-[var(--ui-muted)]">No hay caja abierta.</p>
+              <p className="text-sm text-[var(--ui-muted)]">No hay caja abierta. Use el informe total por fechas o seleccione un cierre abajo.</p>
+            ) : productoCurrentLoading ? (
+              <p className="text-sm text-[var(--ui-muted)]">Cargando productos vendidos…</p>
             ) : (
               <p className="text-sm text-[var(--ui-muted)]">
-                Pulse «Ver turno actual» para cargar las cantidades vendidas del cierre de caja en curso.
+                Pulse «Ver turno actual» para actualizar las cantidades del turno en curso.
               </p>
             )}
           </div>
@@ -1345,43 +1419,21 @@ export default function Reports() {
                 </>
               )}
             </div>
+            {productoTotalLoading && !productoTotalReport && (
+              <p className="text-sm text-[var(--ui-muted)] mb-3">Generando informe de productos vendidos…</p>
+            )}
             {productoTotalReport && (
               <div className="space-y-4">
                 <p className="text-sm text-[var(--ui-muted)]">
                   {productoTotalReport.mode === 'date_range'
-                    ? `Periodo ${productoTotalReport.filters?.from} — ${productoTotalReport.filters?.to} · ${productoTotalReport.sold_products?.length || 0} productos`
-                    : `${productoTotalReport.filters?.register_count || 0} cierre(s) · ${productoTotalReport.sold_products?.length || 0} productos`}
-                  {' · '}
-                  <span className="font-semibold text-emerald-600">{formatCurrency(productoTotalReport.product_sales_total || 0)}</span>
+                    ? `Periodo ${productoTotalReport.filters?.from} — ${productoTotalReport.filters?.to}`
+                    : `${productoTotalReport.filters?.register_count || 0} cierre(s) seleccionado(s)`}
                 </p>
-                {(productoTotalReport.sold_products || []).length > 0 ? (
-                  <div className="overflow-x-auto rounded-xl border border-[color:var(--ui-border)]">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                          <th className="text-left py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Producto</th>
-                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Cantidad vendida</th>
-                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">P. unit.</th>
-                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Total</th>
-                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Pedidos</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {productoTotalReport.sold_products.map((row) => (
-                          <tr key={`${row.product_id}-${row.product_name}`} className="border-b border-[color:var(--ui-border)]">
-                            <td className="py-2 px-3 font-medium">{row.product_name}</td>
-                            <td className="py-2 px-3 text-right tabular-nums font-semibold text-[#3B82F6]">{Number(row.total_qty || 0)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums text-[var(--ui-muted)]">{formatCurrency(row.unit_price || 0)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(row.total_amount || 0)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums text-[var(--ui-muted)]">{Number(row.order_count || 0)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-sm text-[var(--ui-muted)]">No hay ventas de productos en el periodo indicado.</p>
-                )}
+                <ProductSalesTable
+                  products={productoTotalReport.sold_products}
+                  showOrders
+                  emptyMessage="No hay ventas de productos en el periodo indicado."
+                />
               </div>
             )}
           </div>
@@ -1540,47 +1592,7 @@ export default function Reports() {
                 {!(productoInformeDetail.sold_products || []).length ? (
                   <p className="text-[color:var(--ui-muted)] py-4">No hay líneas de producto en el periodo de este cierre.</p>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl border border-[color:var(--ui-border)]">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                          <th className="text-left py-2.5 px-3 text-xs font-semibold text-[color:var(--ui-muted)] uppercase">Producto</th>
-                          <th className="text-right py-2.5 px-3 text-xs font-semibold text-[color:var(--ui-muted)] uppercase">Cantidad</th>
-                          <th className="text-right py-2.5 px-3 text-xs font-semibold text-[color:var(--ui-muted)] uppercase">Precio unit.</th>
-                          <th className="text-right py-2.5 px-3 text-xs font-semibold text-[color:var(--ui-muted)] uppercase">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(productoInformeDetail.sold_products || []).map((row) => (
-                          <tr key={`${row.product_id}-${row.product_name}`} className="border-b border-[color:var(--ui-border)]">
-                            <td className="py-2 px-3 font-medium text-[color:var(--ui-body-text)]">{row.product_name}</td>
-                            <td className="py-2 px-3 text-right tabular-nums text-[color:var(--ui-body-text)]">{Number(row.total_qty || 0)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums text-[color:var(--ui-muted)]">{formatCurrency(row.unit_price || 0)}</td>
-                            <td className="py-2 px-3 text-right font-medium tabular-nums text-[color:var(--ui-body-text)]">
-                              {formatCurrency(row.total_amount || 0)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-[var(--ui-surface-2)] font-bold border-t border-[color:var(--ui-border)]">
-                          <td colSpan={3} className="py-3 px-3 text-right text-[color:var(--ui-body-text)]">
-                            Total ventas (productos)
-                          </td>
-                          <td className="py-3 px-3 text-right text-emerald-500 tabular-nums">
-                            {formatCurrency(
-                              productoInformeDetail.product_sales_total != null
-                                ? productoInformeDetail.product_sales_total
-                                : (productoInformeDetail.sold_products || []).reduce(
-                                    (s, r) => s + (Number(r.total_amount) || 0),
-                                    0
-                                  )
-                            )}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  <ProductSalesTable products={productoInformeDetail.sold_products} />
                 )}
               </div>
             )}
