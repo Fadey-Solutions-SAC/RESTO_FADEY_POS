@@ -48,11 +48,6 @@ const DENOMINATION_LABELS = {
   c20: 'Moneda S/0.20',
   c10: 'Moneda S/0.10',
 };
-const formatDateTime = (dateValue) => {
-  if (!dateValue) return '-';
-  return new Date(`${dateValue}`.includes('T') ? dateValue : `${dateValue}Z`)
-    .toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
 
 function downloadBlobFile(filename, content, mime = 'text/plain;charset=utf-8') {
   const blob = new Blob([content], { type: mime });
