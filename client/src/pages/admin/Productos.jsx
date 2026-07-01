@@ -91,6 +91,7 @@ export default function Productos() {
   const [editCombo, setEditCombo] = useState(null);
   const [comboForm, setComboForm] = useState({ name: '', description: '', price: '', items: [] });
   const [comboProductSearch, setComboProductSearch] = useState('');
+  const [comboProductCategoryFilter, setComboProductCategoryFilter] = useState('');
   const [comboSuggestions, setComboSuggestions] = useState(null);
   const [comboSuggestLoading, setComboSuggestLoading] = useState(false);
   const comboSuggestTimerRef = useRef(null);
@@ -169,6 +170,7 @@ export default function Productos() {
     setEditCombo(null);
     setComboForm({ name: '', description: '', price: '', items: [] });
     setComboProductSearch('');
+    setComboProductCategoryFilter('');
     setComboSuggestions(null);
     setComboSuggestLoading(false);
     setShowComboModal(true);
@@ -186,6 +188,7 @@ export default function Productos() {
       items: itemIds,
     });
     setComboProductSearch('');
+    setComboProductCategoryFilter('');
     setComboSuggestions(null);
     setComboSuggestLoading(false);
     setShowComboModal(true);
@@ -330,11 +333,30 @@ export default function Productos() {
     () => visibleProducts.filter((p) => Number(p.is_active ?? 1) === 1),
     [visibleProducts],
   );
+  const comboCategoryNameById = useMemo(() => {
+    const map = new Map();
+    for (const c of categories) {
+      map.set(String(c.id), String(c.name || '').trim());
+    }
+    return map;
+  }, [categories]);
+  const comboPickerCategories = useMemo(() => {
+    const ids = new Set(comboPickerProducts.map((p) => String(p.category_id || '')).filter(Boolean));
+    return categories
+      .filter((c) => ids.has(String(c.id)))
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'));
+  }, [comboPickerProducts, categories]);
   const filteredComboPickerProducts = useMemo(() => {
     const q = comboProductSearch.trim().toLowerCase();
-    if (!q) return comboPickerProducts;
-    return comboPickerProducts.filter((p) => String(p.name || '').toLowerCase().includes(q));
-  }, [comboPickerProducts, comboProductSearch]);
+    const catId = String(comboProductCategoryFilter || '').trim();
+    return comboPickerProducts.filter((p) => {
+      if (catId && String(p.category_id || '') !== catId) return false;
+      if (!q) return true;
+      const name = String(p.name || '').toLowerCase();
+      const catName = String(comboCategoryNameById.get(String(p.category_id || '')) || '').toLowerCase();
+      return name.includes(q) || catName.includes(q);
+    });
+  }, [comboPickerProducts, comboProductSearch, comboProductCategoryFilter, comboCategoryNameById]);
   const selectedComboIdSet = useMemo(() => new Set(comboForm.items.map(String)), [comboForm.items]);
 
   useEffect(() => {
@@ -1395,17 +1417,37 @@ export default function Productos() {
         </form>
       </Modal>
 
-      <Modal isOpen={showComboModal} onClose={() => { setShowComboModal(false); setEditCombo(null); }} title={editCombo ? 'Editar Combo' : 'Nuevo Combo'} size="md">
+      <Modal isOpen={showComboModal} onClose={() => { setShowComboModal(false); setEditCombo(null); setComboProductSearch(''); setComboProductCategoryFilter(''); }} title={editCombo ? 'Editar Combo' : 'Nuevo Combo'} size="md">
         <form onSubmit={handleComboSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Productos incluidos</label>
-            <input
-              type="search"
-              value={comboProductSearch}
-              onChange={(e) => setComboProductSearch(e.target.value)}
-              className="input-field mb-2"
-              placeholder="Buscar producto…"
-            />
+            <div className="flex flex-col sm:flex-row gap-2 mb-2">
+              <div className="relative flex-1">
+                <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] pointer-events-none" />
+                <input
+                  type="search"
+                  value={comboProductSearch}
+                  onChange={(e) => setComboProductSearch(e.target.value)}
+                  className="input-field pl-9 w-full"
+                  placeholder="Buscar producto o categoría…"
+                  autoComplete="off"
+                />
+              </div>
+              <select
+                value={comboProductCategoryFilter}
+                onChange={(e) => setComboProductCategoryFilter(e.target.value)}
+                className="input-field sm:max-w-[200px]"
+              >
+                <option value="">Todas las categorías</option>
+                {comboPickerCategories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <p className="text-xs text-[var(--ui-muted)] mb-2">
+              {filteredComboPickerProducts.length} de {comboPickerProducts.length} producto{comboPickerProducts.length === 1 ? '' : 's'}
+              {(comboProductSearch.trim() || comboProductCategoryFilter) ? ' (filtrados)' : ''}
+            </p>
             <div className="flex flex-wrap gap-2 mb-2">
               <button
                 type="button"
@@ -1437,11 +1479,21 @@ export default function Productos() {
                     onChange={(e) => toggleComboProduct(p.id, e.target.checked)}
                     className="rounded text-gold-500"
                   />
-                  {p.name} <span className="text-[var(--ui-muted)] ml-auto">{formatCurrency(p.price)}</span>
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  {comboCategoryNameById.get(String(p.category_id || '')) ? (
+                    <span className="text-[10px] text-[var(--ui-muted)] shrink-0 max-w-[90px] truncate">
+                      {comboCategoryNameById.get(String(p.category_id || ''))}
+                    </span>
+                  ) : null}
+                  <span className="text-[var(--ui-muted)] shrink-0 tabular-nums">{formatCurrency(p.price)}</span>
                 </label>
               ))}
               {filteredComboPickerProducts.length === 0 ? (
-                <p className="text-xs text-[var(--ui-muted)] px-2 py-3 text-center">No hay productos que coincidan</p>
+                <p className="text-xs text-[var(--ui-muted)] px-2 py-3 text-center">
+                  {comboPickerProducts.length === 0
+                    ? 'No hay productos activos disponibles'
+                    : 'No hay productos que coincidan con la búsqueda'}
+                </p>
               ) : null}
             </div>
             {selectedComboProducts.length > 0 ? (
