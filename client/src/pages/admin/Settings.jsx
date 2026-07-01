@@ -71,6 +71,11 @@ const ALL_MODULES = [
   { id: 'configuracion', label: 'Configuración', icon: MdSettings, defaultRoles: ['admin'] },
 ];
 
+const CAJA_EXTRA_PERMISSIONS = [
+  { key: 'caja:eliminar_liberar_mesa', label: 'Eliminar y liberar mesa', hint: 'Permite quitar productos y liberar mesas desde caja' },
+  { key: 'caja:ajuste_bar_auto_dismiss', label: 'Bar: quitar productos tras 30 min', hint: 'Activa el ajuste automático en bar desde caja' },
+];
+
 const ROLES = {
   admin: { label: 'Administrador', icon: MdAdminPanelSettings, color: 'bg-sky-100 text-sky-700', desc: 'Acceso completo al sistema' },
   cajero: { label: 'Cajero', icon: MdPointOfSale, color: 'bg-sky-100 text-sky-700', desc: 'Caja, cobros e informes' },
@@ -2706,6 +2711,9 @@ function UsersSection({
       ALL_MODULES.forEach(m => {
         defaults[m.id] = data[m.id] === true;
       });
+      CAJA_EXTRA_PERMISSIONS.forEach((p) => {
+        defaults[p.key] = data[p.key] === true;
+      });
       setPerms(defaults);
     } catch {
       const defaults = {};
@@ -2985,6 +2993,40 @@ function UsersSection({
                 );
               })}
             </div>
+
+            {(perms.caja || permsUser?.role === 'cajero') && (
+              <div className="mt-4 pt-4 border-t border-slate-200">
+                <p className="text-sm font-semibold text-[var(--ui-body-text)] mb-2">Permisos extra de caja</p>
+                <div className="space-y-1">
+                  {CAJA_EXTRA_PERMISSIONS.map((extra) => {
+                    const isEnabled = Boolean(perms[extra.key]);
+                    return (
+                      <div
+                        key={extra.key}
+                        className={`flex items-center justify-between p-3 rounded-xl border transition-colors cursor-pointer ${
+                          isEnabled ? 'bg-sky-50 border-sky-200' : 'bg-slate-50 border-slate-200'
+                        }`}
+                        onClick={() => setPerms((prev) => ({ ...prev, [extra.key]: !prev[extra.key] }))}
+                      >
+                        <div>
+                          <p className={`text-sm font-medium ${isEnabled ? 'text-sky-800' : 'ui-text-muted'}`}>{extra.label}</p>
+                          <p className="text-[10px] text-[var(--ui-muted)]">{extra.hint}</p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isEnabled}
+                            onChange={() => setPerms((prev) => ({ ...prev, [extra.key]: !prev[extra.key] }))}
+                            className="sr-only peer"
+                          />
+                          <div className="w-10 h-5 bg-slate-300 peer-checked:bg-sky-500 rounded-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5" />
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-3 pt-4 mt-4 border-t border-slate-200">
               <button onClick={() => setShowPermsModal(false)} className="btn-secondary flex-1">Cancelar</button>

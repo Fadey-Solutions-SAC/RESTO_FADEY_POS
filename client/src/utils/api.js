@@ -508,7 +508,11 @@ export const api = {
   post: (endpoint, body) => request(endpoint, { method: 'POST', body: JSON.stringify(body) }),
   put: (endpoint, body) => request(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
   patch: (endpoint, body) => request(endpoint, { method: 'PATCH', body: JSON.stringify(body) }),
-  delete: (endpoint) => request(endpoint, { method: 'DELETE' }),
+  delete: (endpoint, body) =>
+    request(endpoint, {
+      method: 'DELETE',
+      ...(body != null ? { body: JSON.stringify(body) } : {}),
+    }),
   /** Mismo token que el API principal; base URL puede ser el Node local (USB / RAW). */
   printing: {
     get: (endpoint, options = {}) => printingRequest(endpoint, { method: 'GET', cache: 'no-store', ...options }),
@@ -724,6 +728,17 @@ export const toLocalDateKey = (value) => {
   const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
   return `${map.year}-${map.month}-${map.day}`;
 };
+
+/** Rango inclusivo yyyy-MM-dd (desde/hasta incluidos) en zona America/Lima. */
+export function isDateKeyInInclusiveRange(value, fromKey, toKey) {
+  const dateKey = toLocalDateKey(value);
+  if (!dateKey) return false;
+  const from = String(fromKey || '').trim();
+  const to = String(toKey || '').trim();
+  if (from && dateKey < from) return false;
+  if (to && dateKey > to) return false;
+  return true;
+}
 
 export const formatCurrency = (amount, symbol = 'S/') => {
   return `${symbol} ${Number(amount || 0).toFixed(2)}`;

@@ -1947,6 +1947,41 @@ async function initDatabase() {
       }
     }
 
+    const productRemovalsTableDone = queryOne(
+      'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
+      ['2026-06-order-product-removals-v1']
+    );
+    if (!productRemovalsTableDone?.ok) {
+      try {
+        runSql(
+          `CREATE TABLE IF NOT EXISTS order_product_removals (
+            id TEXT PRIMARY KEY,
+            order_id TEXT NOT NULL,
+            order_number INTEGER,
+            product_id TEXT,
+            product_name TEXT NOT NULL,
+            quantity_removed REAL NOT NULL DEFAULT 1,
+            unit_price REAL NOT NULL DEFAULT 0,
+            line_total REAL NOT NULL DEFAULT 0,
+            removal_reason TEXT NOT NULL DEFAULT '',
+            table_number TEXT,
+            order_type TEXT,
+            actor_user_id TEXT,
+            actor_name TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )`,
+        );
+        runSql('CREATE INDEX IF NOT EXISTS idx_order_product_removals_created ON order_product_removals(created_at)');
+        runSql('CREATE INDEX IF NOT EXISTS idx_order_product_removals_order ON order_product_removals(order_id)');
+        runSql('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', [
+          '2026-06-order-product-removals-v1',
+        ]);
+        console.log('[migration] order_product_removals table ready');
+      } catch (e) {
+        console.error('[migration] order_product_removals:', e.message || e);
+      }
+    }
+
     db.run('CREATE INDEX IF NOT EXISTS idx_customers_doc_number ON customers(doc_number)');
     db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_doc_number_unique ON customers(doc_number) WHERE COALESCE(doc_number, '') != ''");
     db.run('CREATE INDEX IF NOT EXISTS idx_app_settings_history_created_at ON app_settings_history(created_at)');

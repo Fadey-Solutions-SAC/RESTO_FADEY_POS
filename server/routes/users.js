@@ -16,6 +16,8 @@ const {
   parseDateKey,
   ensureOpenWorkSession,
 } = require('../services/workSessionService');
+const { cajaSubPermissionKey, CAJA_USER_OPT_IN_SUBS } = require('../planModuleCatalog');
+const { getRawUserPermissionsJson } = require('../lib/cajaPermissions');
 
 const router = express.Router();
 const VALID_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery']);
@@ -432,12 +434,14 @@ router.patch('/work-sessions/:sessionId/attendance', authenticateToken, requireR
 });
 
 router.get('/:id/permissions', authenticateToken, requireRole('admin'), (req, res) => {
-  const row = queryOne('SELECT permissions FROM user_permissions WHERE user_id = ?', [req.params.id]);
-  const parsed = row ? JSON.parse(row.permissions || '{}') : {};
+  const parsed = getRawUserPermissionsJson(req.params.id);
   const permissions = MODULE_IDS.reduce((acc, id) => {
     acc[id] = isPermissionEnabled(parsed[id]);
     return acc;
   }, {});
+  for (const subId of CAJA_USER_OPT_IN_SUBS) {
+    permissions[cajaSubPermissionKey(subId)] = isPermissionEnabled(parsed[cajaSubPermissionKey(subId)]);
+  }
   res.json(permissions);
 });
 
@@ -448,6 +452,9 @@ router.put('/:id/permissions', authenticateToken, requireRole('admin'), (req, re
     acc[id] = isPermissionEnabled(permissions[id]);
     return acc;
   }, {});
+  for (const subId of CAJA_USER_OPT_IN_SUBS) {
+    normalized[cajaSubPermissionKey(subId)] = isPermissionEnabled(permissions[cajaSubPermissionKey(subId)]);
+  }
   const existing = queryOne('SELECT id FROM user_permissions WHERE user_id = ?', [req.params.id]);
   const json = JSON.stringify(normalized);
   if (existing) {

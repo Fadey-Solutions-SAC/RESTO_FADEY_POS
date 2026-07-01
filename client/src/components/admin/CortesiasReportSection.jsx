@@ -7,7 +7,8 @@ import {
   adjustmentAmountCharged,
   isCourtesyOrder,
 } from '../../utils/mesaOrderLines';
-import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdInventory2 } from 'react-icons/md';
+import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdInventory2, MdDelete, MdRemoveCircleOutline } from 'react-icons/md';
+import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
 
 function toInputDate(d) {
@@ -20,12 +21,31 @@ function toInputDate(d) {
 function kindLabel(kind) {
   if (kind === 'cortesia') return 'Cortesía';
   if (kind === 'descuento') return 'Descuento';
+  if (kind === 'eliminado') return 'Eliminado';
   return '—';
 }
 
 function kindBadgeClass(kind) {
   if (kind === 'cortesia') return 'bg-violet-500/15 text-violet-600 dark:text-violet-300 border-violet-400/30';
+  if (kind === 'eliminado') return 'bg-red-500/15 text-red-600 dark:text-red-300 border-red-400/30';
   return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-400/30';
+}
+
+function rowReason(o) {
+  if (o.adjustment_kind === 'eliminado') {
+    return String(o.adjustment_reason || o.removal_reason || '').trim() || 'Sin motivo registrado';
+  }
+  return parseAdjustmentReason(o) || 'Sin motivo registrado';
+}
+
+function rowProductLine(o) {
+  if (o.adjustment_kind === 'eliminado') {
+    const it = (o.items || [])[0];
+    if (!it) return o.product_name || '—';
+    return `${Number(it.quantity || 0)}× ${it.product_name} · ${formatCurrency(it.unit_price || 0)} c/u`;
+  }
+  const items = o.items || [];
+  return items.map((it) => `${it.quantity}× ${it.product_name}`).join(', ');
 }
 
 export default function CortesiasReportSection() {
@@ -51,6 +71,9 @@ export default function CortesiasReportSection() {
     },
     orders: [],
   });
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -91,19 +114,39 @@ export default function CortesiasReportSection() {
     load();
   }, [fromDate, toDate]);
 
+  const confirmDeleteAdjustment = async () => {
+    if (!deleteTarget) return;
+    const pwd = String(adminPassword || '').trim();
+    if (!pwd) return toast.error('Ingrese la contraseña de administrador');
+    setDeleteBusy(true);
+    try {
+      await api.delete(`/reports/sales-adjustments/${deleteTarget.id}`, { admin_password: pwd });
+      toast.success('Registro eliminado');
+      setDeleteTarget(null);
+      setAdminPassword('');
+      await load();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo eliminar');
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   const filtered = useMemo(() => {
     let rows = data.orders;
     if (kindFilter === 'cortesia') rows = rows.filter((o) => o.adjustment_kind === 'cortesia');
     if (kindFilter === 'descuento') rows = rows.filter((o) => o.adjustment_kind === 'descuento');
+    if (kindFilter === 'eliminado') rows = rows.filter((o) => o.adjustment_kind === 'eliminado');
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((o) => {
-      const reason = parseAdjustmentReason(o).toLowerCase();
+      const reason = rowReason(o).toLowerCase();
       const mesa = String(o.table_number || '').toLowerCase();
       const mesero = String(o.created_by_user_name || o.customer_name || '').toLowerCase();
       const num = String(o.order_number || '');
       const kind = kindLabel(o.adjustment_kind).toLowerCase();
-      return reason.includes(q) || mesa.includes(q) || mesero.includes(q) || num.includes(q) || kind.includes(q);
+      const productLine = rowProductLine(o).toLowerCase();
+      return reason.includes(q) || mesa.includes(q) || mesero.includes(q) || num.includes(q) || kind.includes(q) || productLine.includes(q);
     });
   }, [data.orders, search, kindFilter]);
 
@@ -114,6 +157,8 @@ export default function CortesiasReportSection() {
     let discountAmount = 0;
     let amountCharged = 0;
     let kardexPending = 0;
+    let eliminadoCount = 0;
+    let eliminadoReference = 0;
     for (const o of filtered) {
       const kind = o.adjustment_kind;
       const ref = adjustmentReferenceAmount(o);
@@ -125,15 +170,20 @@ export default function CortesiasReportSection() {
         discountCount += 1;
         discountAmount += ref;
         amountCharged += charged;
+      } else if (kind === 'eliminado') {
+        eliminadoCount += 1;
+        eliminadoReference += Number(o.reference_amount ?? o.discount_amount ?? ref ?? 0);
       }
-      if (!o.kardex_applied) kardexPending += 1;
+      if (kind !== 'eliminado' && !o.kardex_applied) kardexPending += 1;
     }
     return {
       count: filtered.length,
       courtesy_count: courtesyCount,
       discount_count: discountCount,
+      eliminado_count: eliminadoCount,
       courtesy_reference_total: courtesyReference,
       discount_amount_total: discountAmount,
+      eliminado_reference_total: eliminadoReference,
       amount_charged_total: amountCharged,
       kardex_pending: kardexPending,
     };
@@ -149,12 +199,12 @@ export default function CortesiasReportSection() {
 
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
         <div className="card border-l-4 border-l-violet-500">
           <p className="text-xs ui-text-muted">Registros totales</p>
           <p className="text-2xl font-bold text-[var(--ui-body-text)]">{filteredSummary.count}</p>
           <p className="text-xs text-[var(--ui-muted)] mt-1">
-            {filteredSummary.courtesy_count} cortesías · {filteredSummary.discount_count} descuentos
+            {filteredSummary.courtesy_count} cortesías · {filteredSummary.discount_count} descuentos · {filteredSummary.eliminado_count} eliminados
           </p>
         </div>
         <div className="card border-l-4 border-l-amber-500">
@@ -168,6 +218,11 @@ export default function CortesiasReportSection() {
           <p className="text-xs ui-text-muted">Cobrado (solo descuentos parciales)</p>
           <p className="text-2xl font-bold text-emerald-600">{formatCurrency(filteredSummary.amount_charged_total)}</p>
           <p className="text-xs text-[var(--ui-muted)] mt-1">Cortesías cobran S/ 0.00</p>
+        </div>
+        <div className="card border-l-4 border-l-red-500">
+          <p className="text-xs ui-text-muted">Productos eliminados (valor)</p>
+          <p className="text-2xl font-bold text-red-600">{formatCurrency(filteredSummary.eliminado_reference_total)}</p>
+          <p className="text-xs text-[var(--ui-muted)] mt-1">{filteredSummary.eliminado_count} registro(s) de baja en mesa</p>
         </div>
         <div className="card border-l-4 border-l-sky-500">
           <p className="text-xs ui-text-muted">Inventario pendiente</p>
@@ -192,6 +247,7 @@ export default function CortesiasReportSection() {
               <option value="all">Todos</option>
               <option value="cortesia">Cortesías</option>
               <option value="descuento">Descuentos</option>
+              <option value="eliminado">Eliminados</option>
             </select>
           </div>
           <div className="flex-1 min-w-[200px]">
@@ -223,7 +279,7 @@ export default function CortesiasReportSection() {
           )}
         </div>
         <p className="text-xs text-[var(--ui-muted)] mt-3">
-          Descuentos y cortesías descuentan inventario al cobrar. No alteran los totales de ventas de cortesía (S/ 0).
+          Descuentos y cortesías descuentan inventario al cobrar. Los productos eliminados de mesa se registran aquí con motivo (no afectan caja).
           Si trabajaste sin inventario configurado, usa «Aplicar inventario histórico» para registrar salidas con la fecha del cobro.
         </p>
       </div>
@@ -239,33 +295,43 @@ export default function CortesiasReportSection() {
               <th className="py-2 pr-3 font-medium">Registró</th>
               <th className="py-2 pr-3 font-medium">Motivo</th>
               <th className="py-2 pr-3 font-medium">Productos</th>
-              <th className="py-2 pr-3 font-medium text-right">Descuento</th>
+              <th className="py-2 pr-3 font-medium text-right">Precio / valor</th>
               <th className="py-2 pr-3 font-medium text-right">Cobrado</th>
               <th className="py-2 font-medium text-center">Inventario</th>
+              <th className="py-2 font-medium text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((o) => {
-              const items = o.items || [];
-              const productLine = items.map((it) => `${it.quantity}× ${it.product_name}`).join(', ');
+              const productLine = rowProductLine(o);
               const channel = o.type === 'dine_in'
                 ? (o.table_number ? `Mesa ${o.table_number}` : 'Salón')
                 : o.type === 'delivery'
                   ? 'Delivery'
                   : 'Mostrador';
               const kind = o.adjustment_kind;
-              const reason = parseAdjustmentReason(o) || 'Sin motivo registrado';
+              const reason = rowReason(o);
               const isCourtesy = kind === 'cortesia' || isCourtesyOrder(o);
+              const isEliminado = kind === 'eliminado';
+              const refAmount = isEliminado
+                ? Number(o.reference_amount ?? o.discount_amount ?? 0)
+                : adjustmentReferenceAmount(o);
               return (
                 <tr key={o.id} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
                   <td className="py-2.5 pr-3 whitespace-nowrap">{formatDateTime(o.updated_at || o.created_at)}</td>
                   <td className="py-2.5 pr-3">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${kindBadgeClass(kind)}`}>
-                      {isCourtesy ? <MdVolunteerActivism className="shrink-0" /> : <MdLocalOffer className="shrink-0" />}
+                      {isEliminado ? (
+                        <MdRemoveCircleOutline className="shrink-0" />
+                      ) : isCourtesy ? (
+                        <MdVolunteerActivism className="shrink-0" />
+                      ) : (
+                        <MdLocalOffer className="shrink-0" />
+                      )}
                       {kindLabel(kind)}
                     </span>
                   </td>
-                  <td className="py-2.5 pr-3 font-medium">#{o.order_number}</td>
+                  <td className="py-2.5 pr-3 font-medium">{o.order_number ? `#${o.order_number}` : '—'}</td>
                   <td className="py-2.5 pr-3">
                     {o.type === 'dine_in' && o.table_number ? formatMesaLabel(o.table_number) : channel}
                   </td>
@@ -273,31 +339,71 @@ export default function CortesiasReportSection() {
                   <td className="py-2.5 pr-3 max-w-[220px]">{reason}</td>
                   <td className="py-2.5 pr-3 max-w-[260px] truncate" title={productLine}>{productLine || '—'}</td>
                   <td className="py-2.5 pr-3 text-right tabular-nums text-amber-600">
-                    {formatCurrency(adjustmentReferenceAmount(o))}
+                    {formatCurrency(refAmount)}
                   </td>
                   <td className="py-2.5 pr-3 text-right tabular-nums font-semibold text-emerald-600">
-                    {formatCurrency(adjustmentAmountCharged(o))}
+                    {isEliminado ? '—' : formatCurrency(adjustmentAmountCharged(o))}
                   </td>
                   <td className="py-2.5 text-center">
-                    {o.kardex_applied ? (
+                    {isEliminado ? (
+                      <span className="text-xs text-[var(--ui-muted)]">N/A</span>
+                    ) : o.kardex_applied ? (
                       <span className="text-xs text-emerald-600">OK</span>
                     ) : (
                       <span className="text-xs text-amber-600">Pendiente</span>
                     )}
+                  </td>
+                  <td className="py-2.5 text-center">
+                    <button
+                      type="button"
+                      onClick={() => { setDeleteTarget(o); setAdminPassword(''); }}
+                      className="p-1.5 rounded-lg text-[var(--ui-muted)] hover:bg-red-50 hover:text-red-600"
+                      title="Eliminar registro"
+                    >
+                      <MdDelete />
+                    </button>
                   </td>
                 </tr>
               );
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-10 text-center text-[var(--ui-muted)]">
-                  No hay descuentos ni cortesías en el periodo seleccionado
+                <td colSpan={11} className="py-10 text-center text-[var(--ui-muted)]">
+                  No hay descuentos, cortesías ni eliminaciones en el periodo seleccionado
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      <Modal isOpen={!!deleteTarget} onClose={() => { if (!deleteBusy) { setDeleteTarget(null); setAdminPassword(''); } }} title="Eliminar registro" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm ui-text-muted">
+            {deleteTarget?.adjustment_kind === 'eliminado'
+              ? `Se eliminará el registro de producto eliminado «${(deleteTarget?.items?.[0]?.product_name) || '—'}».`
+              : `Se eliminará el pedido #${deleteTarget?.order_number} (${kindLabel(deleteTarget?.adjustment_kind)}).`}
+            {' '}Ingrese la contraseña de un administrador para confirmar.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Contraseña admin</label>
+            <input
+              type="password"
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+              className="input-field"
+              autoFocus
+              disabled={deleteBusy}
+            />
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={() => { setDeleteTarget(null); setAdminPassword(''); }} className="btn-secondary flex-1" disabled={deleteBusy}>Cancelar</button>
+            <button type="button" onClick={() => void confirmDeleteAdjustment()} className="btn-primary flex-1 bg-red-600 hover:bg-red-700" disabled={deleteBusy}>
+              {deleteBusy ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

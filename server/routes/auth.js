@@ -13,6 +13,7 @@ const {
 } = require('../masterAdminService');
 const { normalizePlan } = require('../servicePlan');
 const { getEffectivePermissions, buildSubPermissions } = require('../planModuleCatalog');
+const { getRawUserPermissionsJson } = require('../lib/cajaPermissions');
 const { advanceStaffChatCycleIfDue, markAllStaffOfflineIfNeeded } = require('../staffChatService');
 const { getActiveCajaById } = require('../cajaSettings');
 const {
@@ -217,7 +218,7 @@ router.post('/login', (req, res) => {
   const plan = normalizePlan(control.service_plan);
   const moduleOverrides = control.service_plan_module_overrides || {};
   const permissions = getEffectivePermissions(plan, user.role, getUserPermissions(user.id), moduleOverrides);
-  const sub_permissions = buildSubPermissions(plan, moduleOverrides, permissions);
+  const sub_permissions = buildSubPermissions(plan, moduleOverrides, permissions, getRawUserPermissionsJson(user.id));
   const padron_quota = getPadronQuotaPublic();
   try {
     const { syncUserLogin } = require('../services/centralSyncService');
@@ -343,7 +344,7 @@ router.get('/me', authenticateToken, (req, res) => {
   const plan = normalizePlan(control.service_plan);
   const moduleOverrides = control.service_plan_module_overrides || {};
   const permissions = getEffectivePermissions(plan, user.role, getUserPermissions(req.user.id), moduleOverrides);
-  const sub_permissions = buildSubPermissions(plan, moduleOverrides, permissions);
+  const sub_permissions = buildSubPermissions(plan, moduleOverrides, permissions, getRawUserPermissionsJson(req.user.id));
   const padron_quota = getPadronQuotaPublic();
   const caja =
     String(user?.role || '').toLowerCase() === 'cajero'

@@ -38,7 +38,16 @@ const CAJA_SUBS = [
   { id: 'notas_debito', label: 'Notas de débito' },
   { id: 'consulta_precios', label: 'Consulta de precios' },
   { id: 'impresora', label: 'Impresora' },
+  { id: 'eliminar_liberar_mesa', label: 'Eliminar y liberar mesa' },
+  { id: 'ajuste_bar_auto_dismiss', label: 'Bar: quitar productos tras 30 min' },
 ];
+
+/** Subpermisos de caja que el admin activa por usuario (opt-in, no vienen del plan). */
+const CAJA_USER_OPT_IN_SUBS = new Set(['eliminar_liberar_mesa', 'ajuste_bar_auto_dismiss']);
+
+function cajaSubPermissionKey(subId) {
+  return `caja:${String(subId || '').trim()}`;
+}
 
 const MI_RESTAURANT_SUBS = [
   { id: 'mi_empresa', label: 'Mi empresa' },
@@ -186,7 +195,7 @@ function getEffectivePermissions(planKey, role, rawPerms = {}, moduleOverrides =
  * @param {Record<string, boolean>} moduleOverrides
  * @param {Record<string, boolean>} topLevelPermissions — resultado de getEffectivePermissions
  */
-function buildSubPermissions(planKey, moduleOverrides, topLevelPermissions) {
+function buildSubPermissions(planKey, moduleOverrides, topLevelPermissions, rawUserPerms = {}) {
   const ov = parseModuleOverrides(moduleOverrides);
   const out = { caja: {}, mi_restaurant: {}, almacen: {} };
   for (const parent of PARENTS_WITH_SUBS) {
@@ -194,7 +203,10 @@ function buildSubPermissions(planKey, moduleOverrides, topLevelPermissions) {
     const children = getSubmoduleListForPlan(planKey, parent);
     for (const ch of children) {
       const key = `${parent}:${ch.id}`;
-      const subOn = parentOn && ov[key] !== false;
+      let subOn = parentOn && ov[key] !== false;
+      if (parent === 'caja' && CAJA_USER_OPT_IN_SUBS.has(ch.id)) {
+        subOn = parentOn && isPermissionEnabled(rawUserPerms[cajaSubPermissionKey(ch.id)]);
+      }
       out[parent][ch.id] = subOn;
     }
   }
@@ -204,6 +216,8 @@ function buildSubPermissions(planKey, moduleOverrides, topLevelPermissions) {
 module.exports = {
   MODULE_LABELS,
   PARENTS_WITH_SUBS,
+  CAJA_USER_OPT_IN_SUBS,
+  cajaSubPermissionKey,
   buildPlanModuleTreeForPlan,
   buildPlanModuleTrees,
   parseModuleOverrides,
@@ -212,4 +226,5 @@ module.exports = {
   getEffectivePermissions,
   buildSubPermissions,
   getSubmoduleListForPlan,
+  isPermissionEnabled,
 };

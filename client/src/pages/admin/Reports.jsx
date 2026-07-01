@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { api, formatCurrency, resolveMediaUrl } from '../../utils/api';
+import { api, formatCurrency, formatDateTime, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import {
@@ -20,6 +20,8 @@ import {
   MdAutoGraph,
   MdLocalOffer,
   MdPayments,
+  MdWarning,
+  MdInventory2,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
@@ -51,6 +53,76 @@ const formatDateTime = (dateValue) => {
   return new Date(`${dateValue}`.includes('T') ? dateValue : `${dateValue}Z`)
     .toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
+
+function downloadBlobFile(filename, content, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function buildProductSalesTxt(report, title = 'INFORME DE PRODUCTOS') {
+  const lines = [title, '='.repeat(Math.min(title.length, 40)), ''];
+  const filters = report?.filters || {};
+  if (report?.mode === 'current') {
+    lines.push('Periodo: caja actual (turno abierto)');
+  } else if (report?.mode === 'date_range') {
+    lines.push(`Periodo: ${filters.from || '—'} al ${filters.to || '—'}`);
+  } else if (report?.mode === 'registers') {
+    lines.push(`Cierres seleccionados: ${(filters.register_ids || []).length}`);
+  }
+  lines.push('');
+
+  const writeProducts = (products, heading) => {
+    if (heading) {
+      lines.push(heading);
+      lines.push('-'.repeat(40));
+    }
+    (products || []).forEach((row) => {
+      lines.push(
+        `${row.product_name}\tCant: ${Number(row.total_qty || 0)}\tP.unit: ${formatCurrency(row.unit_price || 0)}\tTotal: ${formatCurrency(row.total_amount || 0)}`
+      );
+    });
+    if (!(products || []).length) lines.push('(Sin productos)');
+    lines.push('');
+  };
+
+  if (Array.isArray(report?.by_register) && report.by_register.length > 1) {
+    report.by_register.forEach((block, idx) => {
+      const label = block.is_open
+        ? `Turno abierto · ${block.user_name || '—'} · desde ${formatDateTime(block.opened_at)}`
+        : `Cierre ${idx + 1} · ${block.user_name || '—'} · ${formatDateTime(block.closed_at)}`;
+      writeProducts(block.sold_products, label);
+    });
+    lines.push('TOTAL CONSOLIDADO');
+    lines.push('-'.repeat(40));
+  }
+
+  writeProducts(report?.sold_products || []);
+  lines.push(`TOTAL VENTAS (productos): ${formatCurrency(report?.product_sales_total ?? 0)}`);
+  return `${lines.join('\n')}\n`;
+}
+
+function buildProductSalesCsv(report) {
+  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const rows = [['Producto', 'Cantidad', 'Precio unit.', 'Total', 'Pedidos']];
+  (report?.sold_products || []).forEach((row) => {
+    rows.push([
+      row.product_name,
+      Number(row.total_qty || 0),
+      Number(row.unit_price || 0).toFixed(2),
+      Number(row.total_amount || 0).toFixed(2),
+      Number(row.order_count || 0),
+    ]);
+  });
+  rows.push(['TOTAL', '', '', Number(report?.product_sales_total || 0).toFixed(2), '']);
+  return rows.map((r) => r.map(esc).join(',')).join('\n');
+}
 
 const DENOMINATION_VALUES = {
   b200: 200,
@@ -377,6 +449,7 @@ export default function Reports() {
   const [purchaseExpenses, setPurchaseExpenses] = useState([]);
   const [inventoryReconciliations, setInventoryReconciliations] = useState([]);
   const [inventoryAlerts, setInventoryAlerts] = useState([]);
+  const [inventoryMovementsTab, setInventoryMovementsTab] = useState('stock_minimo');
   const [billingDocuments, setBillingDocuments] = useState([]);
   const [billingStatusFilter, setBillingStatusFilter] = useState('all');
   const [billingTypeFilter, setBillingTypeFilter] = useState('all');
@@ -391,6 +464,18 @@ export default function Reports() {
   const [productoInformeLoading, setProductoInformeLoading] = useState(false);
   const [productoInformeRegisterId, setProductoInformeRegisterId] = useState('');
   const [productoInformeModalOpen, setProductoInformeModalOpen] = useState(false);
+  const [productoTotalMode, setProductoTotalMode] = useState('fechas');
+  const [productoFrom, setProductoFrom] = useState(() => {
+    const t = new Date();
+    t.setDate(t.getDate() - 30);
+    return t.toISOString().split('T')[0];
+  });
+  const [productoTo, setProductoTo] = useState(() => new Date().toISOString().split('T')[0]);
+  const [productoSelectedIds, setProductoSelectedIds] = useState(() => new Set());
+  const [productoTotalReport, setProductoTotalReport] = useState(null);
+  const [productoTotalLoading, setProductoTotalLoading] = useState(false);
+  const [productoCurrentReport, setProductoCurrentReport] = useState(null);
+  const [productoCurrentLoading, setProductoCurrentLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [financeFrom, setFinanceFrom] = useState(() => {
@@ -465,6 +550,21 @@ export default function Reports() {
       setReportSection('descuentos');
     }
   }, [searchParams]);
+
+  const inventoryCuadreLines = useMemo(() => (
+    inventoryReconciliations.flatMap((rec) =>
+      (rec.items || [])
+        .filter((item) => Number(item.difference || 0) !== 0)
+        .map((item) => ({
+          id: `${rec.id}-${item.id}`,
+          created_at: rec.created_at,
+          warehouse_name: rec.warehouse_name || 'Almacén',
+          product_name: item.product_name,
+          counted_stock: Number(item.counted_stock || 0),
+          difference: Number(item.difference || 0),
+        }))
+    ).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+  ), [inventoryReconciliations]);
 
   useEffect(() => { loadRanking(rankingPeriod); }, [rankingPeriod]);
   useEffect(() => {
@@ -548,6 +648,81 @@ export default function Reports() {
     } finally {
       setProductoInformeLoading(false);
     }
+  };
+
+  const downloadProductSalesReport = (report, baseName, format = 'both') => {
+    if (!report?.sold_products?.length && !(report?.by_register || []).some((b) => b.sold_products?.length)) {
+      toast.error('No hay productos para descargar');
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (format === 'txt' || format === 'both') {
+      downloadBlobFile(`${baseName}-${stamp}.txt`, buildProductSalesTxt(report));
+    }
+    if (format === 'csv' || format === 'both') {
+      downloadBlobFile(`${baseName}-${stamp}.csv`, buildProductSalesCsv(report), 'text/csv;charset=utf-8');
+    }
+    if (format === 'both') toast.success('Descargados TXT y CSV');
+  };
+
+  const loadProductoTotalReport = async () => {
+    setProductoTotalLoading(true);
+    setProductoTotalReport(null);
+    try {
+      const params = new URLSearchParams();
+      if (productoTotalMode === 'fechas') {
+        if (!productoFrom || !productoTo) {
+          toast.error('Seleccione fecha desde y hasta');
+          return;
+        }
+        params.set('from', productoFrom);
+        params.set('to', productoTo);
+      } else {
+        const ids = [...productoSelectedIds];
+        if (!ids.length) {
+          toast.error('Seleccione al menos un cierre de caja');
+          return;
+        }
+        params.set('register_ids', ids.join(','));
+      }
+      const report = await api.get(`/reports/product-sales?${params.toString()}`);
+      setProductoTotalReport(report);
+    } catch (err) {
+      toast.error(err.message || 'No se pudo generar el informe total');
+    } finally {
+      setProductoTotalLoading(false);
+    }
+  };
+
+  const loadProductoCurrentReport = async () => {
+    setProductoCurrentLoading(true);
+    setProductoCurrentReport(null);
+    try {
+      const report = await api.get('/reports/product-sales?current=1');
+      if (!report?.register_open) {
+        toast.error('No hay caja abierta en este momento');
+        return;
+      }
+      setProductoCurrentReport(report);
+    } catch (err) {
+      toast.error(err.message || 'No se pudo cargar la caja actual');
+    } finally {
+      setProductoCurrentLoading(false);
+    }
+  };
+
+  const toggleProductoRegisterSelect = (registerId) => {
+    setProductoSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(registerId)) next.delete(registerId);
+      else next.add(registerId);
+      return next;
+    });
+  };
+
+  const selectAllProductoRegisters = () => {
+    const ids = (monthlyData?.closedRegisters || []).map((r) => r.id).filter(Boolean);
+    setProductoSelectedIds(new Set(ids));
   };
 
   const openClosedRegisterDetail = async (register) => {
@@ -730,8 +905,8 @@ export default function Reports() {
   ];
   const sectionCards = [
     { id: 'ventas', title: 'Informe de Ventas', desc: 'Diversos informes de las ventas realizadas en la empresa.' },
-    { id: 'descuentos', title: 'Descuentos y Cortesías', desc: 'Descuentos y cortesías al cobrar. Descuentan inventario; las cortesías no suman a ventas (S/ 0.00).' },
-    { id: 'productos', title: 'Informe de productos', desc: 'Detalle de productos vendidos por cada cierre de caja (se genera al cerrar turno).' },
+    { id: 'descuentos', title: 'Descuentos y Cortesías', desc: 'Descuentos, cortesías y productos eliminados de mesa. Descuentan inventario al cobrar; los eliminados quedan registrados con motivo (no afectan caja).' },
+    { id: 'productos', title: 'Informe de productos', desc: 'Cantidades vendidas por cierre, informe total por fechas o cierres, y descarga CSV/TXT (incluye caja actual).' },
     { id: 'caja', title: 'Informe de Caja', desc: 'Historial de cajas cerradas, detalle del cierre y descarga del reporte.' },
     { id: 'compras', title: 'Informe de Compras', desc: 'Las compras que has realizado.' },
     { id: 'finanzas', title: 'Informe de Finanzas', desc: 'Todo lo concerniente al flujo de dinero en las cajas.' },
@@ -1018,6 +1193,205 @@ export default function Reports() {
 
       {reportSection === 'productos' && (
         <div className="space-y-6">
+          {/* Caja actual */}
+          <div className="card border-l-4 border-l-emerald-500">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="font-bold rf-section-title flex items-center gap-2">
+                  <MdPointOfSale className="text-emerald-600" /> Caja actual
+                </h3>
+                <p className="text-xs text-[var(--ui-muted)] mt-1">
+                  Productos vendidos en el turno abierto (desde la apertura hasta ahora).
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadProductoCurrentReport()}
+                  disabled={productoCurrentLoading}
+                  className="text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 inline-flex items-center gap-1 disabled:opacity-50"
+                >
+                  <MdRefresh className={productoCurrentLoading ? 'animate-spin' : ''} />
+                  {productoCurrentLoading ? 'Cargando…' : 'Ver turno actual'}
+                </button>
+                {productoCurrentReport?.register_open && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => downloadProductSalesReport(productoCurrentReport, 'productos-caja-actual', 'csv')}
+                      className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
+                    >
+                      <MdDownload /> CSV
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => downloadProductSalesReport(productoCurrentReport, 'productos-caja-actual', 'txt')}
+                      className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
+                    >
+                      <MdDownload /> TXT
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            {productoCurrentReport?.register_open ? (
+              <div className="space-y-3">
+                {(productoCurrentReport.by_register || []).map((block) => (
+                  <p key={block.register_id} className="text-sm text-[var(--ui-muted)]">
+                    {block.user_name || 'Cajero'} · abierta {formatDateTime(block.opened_at)} ·{' '}
+                    <span className="font-semibold text-[var(--ui-body-text)]">
+                      {block.sold_products?.length || 0} productos · {block.sold_products?.reduce((s, r) => s + Number(r.total_qty || 0), 0) || 0} unidades
+                    </span>
+                  </p>
+                ))}
+                {(productoCurrentReport.sold_products || []).length > 0 ? (
+                  <div className="overflow-x-auto rounded-xl border border-[color:var(--ui-border)]">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
+                          <th className="text-left py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Producto</th>
+                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Cantidad</th>
+                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {productoCurrentReport.sold_products.map((row) => (
+                          <tr key={`${row.product_id}-${row.product_name}`} className="border-b border-[color:var(--ui-border)]">
+                            <td className="py-2 px-3">{row.product_name}</td>
+                            <td className="py-2 px-3 text-right tabular-nums font-medium">{Number(row.total_qty || 0)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(row.total_amount || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[var(--ui-muted)]">Aún no hay ventas de productos en este turno.</p>
+                )}
+              </div>
+            ) : productoCurrentReport && !productoCurrentReport.register_open ? (
+              <p className="text-sm text-[var(--ui-muted)]">No hay caja abierta.</p>
+            ) : (
+              <p className="text-sm text-[var(--ui-muted)]">
+                Pulse «Ver turno actual» para cargar las cantidades vendidas del cierre de caja en curso.
+              </p>
+            )}
+          </div>
+
+          {/* Informe total */}
+          <div className="card border-l-4 border-l-[#3B82F6]">
+            <h3 className="font-bold rf-section-title mb-1 flex items-center gap-2">
+              <MdAutoGraph className="text-[#3B82F6]" /> Informe total de productos
+            </h3>
+            <p className="text-xs text-[var(--ui-muted)] mb-4">
+              Consolida cantidades vendidas por producto en un rango de fechas o en los cierres que elija.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setProductoTotalMode('fechas')}
+                className={`text-xs px-3 py-1.5 rounded-lg border ${productoTotalMode === 'fechas' ? 'bg-[#3B82F6] text-white border-transparent' : 'border-[color:var(--ui-border)]'}`}
+              >
+                Por fechas
+              </button>
+              <button
+                type="button"
+                onClick={() => setProductoTotalMode('cierres')}
+                className={`text-xs px-3 py-1.5 rounded-lg border ${productoTotalMode === 'cierres' ? 'bg-[#3B82F6] text-white border-transparent' : 'border-[color:var(--ui-border)]'}`}
+              >
+                Por cierres seleccionados
+              </button>
+            </div>
+            {productoTotalMode === 'fechas' ? (
+              <div className="flex flex-wrap gap-3 items-end mb-4">
+                <div>
+                  <label className="text-xs text-[var(--ui-muted)] block mb-1">Desde</label>
+                  <input type="date" value={productoFrom} onChange={(e) => setProductoFrom(e.target.value)} className="input-field" />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--ui-muted)] block mb-1">Hasta</label>
+                  <input type="date" value={productoTo} onChange={(e) => setProductoTo(e.target.value)} className="input-field" />
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-[var(--ui-muted)] mb-3">
+                Marque los cierres en la tabla inferior ({productoSelectedIds.size} seleccionado{productoSelectedIds.size === 1 ? '' : 's'}).
+                <button type="button" onClick={selectAllProductoRegisters} className="ml-2 text-[#3B82F6] hover:underline">
+                  Seleccionar todos
+                </button>
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => void loadProductoTotalReport()}
+                disabled={productoTotalLoading}
+                className="btn-primary text-sm inline-flex items-center gap-1 disabled:opacity-50"
+              >
+                <MdRefresh className={productoTotalLoading ? 'animate-spin' : ''} />
+                {productoTotalLoading ? 'Generando…' : 'Generar informe'}
+              </button>
+              {productoTotalReport && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'csv')}
+                    className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
+                  >
+                    <MdDownload /> Descargar CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'txt')}
+                    className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
+                  >
+                    <MdDownload /> Descargar TXT
+                  </button>
+                </>
+              )}
+            </div>
+            {productoTotalReport && (
+              <div className="space-y-4">
+                <p className="text-sm text-[var(--ui-muted)]">
+                  {productoTotalReport.mode === 'date_range'
+                    ? `Periodo ${productoTotalReport.filters?.from} — ${productoTotalReport.filters?.to} · ${productoTotalReport.sold_products?.length || 0} productos`
+                    : `${productoTotalReport.filters?.register_count || 0} cierre(s) · ${productoTotalReport.sold_products?.length || 0} productos`}
+                  {' · '}
+                  <span className="font-semibold text-emerald-600">{formatCurrency(productoTotalReport.product_sales_total || 0)}</span>
+                </p>
+                {(productoTotalReport.sold_products || []).length > 0 ? (
+                  <div className="overflow-x-auto rounded-xl border border-[color:var(--ui-border)]">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
+                          <th className="text-left py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Producto</th>
+                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Cantidad vendida</th>
+                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">P. unit.</th>
+                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Total</th>
+                          <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Pedidos</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {productoTotalReport.sold_products.map((row) => (
+                          <tr key={`${row.product_id}-${row.product_name}`} className="border-b border-[color:var(--ui-border)]">
+                            <td className="py-2 px-3 font-medium">{row.product_name}</td>
+                            <td className="py-2 px-3 text-right tabular-nums font-semibold text-[#3B82F6]">{Number(row.total_qty || 0)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums text-[var(--ui-muted)]">{formatCurrency(row.unit_price || 0)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(row.total_amount || 0)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums text-[var(--ui-muted)]">{Number(row.order_count || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[var(--ui-muted)]">No hay ventas de productos en el periodo indicado.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Por cierre */}
           <div className="card">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <div className="flex items-center gap-2">
@@ -1039,9 +1413,13 @@ export default function Reports() {
                 <table className="informe-productos-table w-full text-sm">
                   <thead>
                     <tr className="border-b border-[color:var(--ui-border)]">
+                      {productoTotalMode === 'cierres' && (
+                        <th className="py-2 px-2 text-xs text-[color:var(--ui-muted)] uppercase w-10">Sel.</th>
+                      )}
                       <th className="text-left py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Fecha cierre</th>
                       <th className="text-left py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Cajero</th>
                       <th className="text-left py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Apertura</th>
+                      <th className="text-right py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Unidades</th>
                       <th className="text-right py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Venta turno</th>
                       <th className="text-right py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase" />
                     </tr>
@@ -1054,9 +1432,23 @@ export default function Reports() {
                           productoInformeModalOpen && productoInformeRegisterId === r.id ? 'informe-productos-row-selected' : ''
                         }`}
                       >
+                        {productoTotalMode === 'cierres' && (
+                          <td className="py-2 px-2 text-center">
+                            <input
+                              type="checkbox"
+                              checked={productoSelectedIds.has(r.id)}
+                              onChange={() => toggleProductoRegisterSelect(r.id)}
+                              className="rounded"
+                            />
+                          </td>
+                        )}
                         <td className="py-2 px-3 text-[color:var(--ui-body-text)]">{formatDateTime(r.closed_at)}</td>
                         <td className="py-2 px-3 font-medium text-[color:var(--ui-body-text)]">{r.user_name || '-'}</td>
                         <td className="py-2 px-3 text-[color:var(--ui-muted)] text-xs">{formatDateTime(r.opened_at)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums font-medium text-[#3B82F6]">
+                          {Number(r.sold_units_total ?? 0)}
+                          <span className="text-[10px] text-[var(--ui-muted)] ml-1">({Number(r.sold_products_count ?? 0)} prod.)</span>
+                        </td>
                         <td className="py-2 px-3 text-right font-semibold text-emerald-600">{formatCurrency(r.total_sales || 0)}</td>
                         <td className="py-2 px-3 text-right">
                           <button
@@ -1097,29 +1489,58 @@ export default function Reports() {
                   <p className="text-sm text-[color:var(--ui-muted)]">
                     Cierre: {formatDateTime(productoInformeDetail.closed_at)} · {productoInformeDetail.user_name || '—'}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const lines = (productoInformeDetail.sold_products || [])
-                        .map(
-                          (row) =>
-                            `${row.product_name}\t${Number(row.total_qty || 0)}\t${formatCurrency(row.unit_price || 0)}\t${formatCurrency(row.total_amount || 0)}`
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        downloadProductSalesReport(
+                          {
+                            mode: 'registers',
+                            sold_products: productoInformeDetail.sold_products || [],
+                            product_sales_total: productoInformeDetail.product_sales_total,
+                            by_register: [
+                              {
+                                user_name: productoInformeDetail.user_name,
+                                opened_at: productoInformeDetail.opened_at,
+                                closed_at: productoInformeDetail.closed_at,
+                                sold_products: productoInformeDetail.sold_products || [],
+                              },
+                            ],
+                          },
+                          `informe-productos-${String(productoInformeDetail.id || 'cierre').slice(0, 8)}`,
+                          'csv'
                         )
-                        .join('\n');
-                      const head = 'Producto\tCantidad\tP. unit.\tTotal\n';
-                      const tot = `TOTAL\t\t\t${formatCurrency(productoInformeDetail.product_sales_total ?? 0)}`;
-                      const blob = new Blob([`${head}${lines}\n${tot}`], { type: 'text/plain;charset=utf-8' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `informe-productos-${String(productoInformeDetail.id || 'cierre').slice(0, 8)}.txt`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
-                    className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg text-[color:var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1 shrink-0"
-                  >
-                    <MdDownload /> Copiar / guardar
-                  </button>
+                      }
+                      className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg text-[color:var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1"
+                    >
+                      <MdDownload /> CSV
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        downloadProductSalesReport(
+                          {
+                            mode: 'registers',
+                            sold_products: productoInformeDetail.sold_products || [],
+                            product_sales_total: productoInformeDetail.product_sales_total,
+                            by_register: [
+                              {
+                                user_name: productoInformeDetail.user_name,
+                                opened_at: productoInformeDetail.opened_at,
+                                closed_at: productoInformeDetail.closed_at,
+                                sold_products: productoInformeDetail.sold_products || [],
+                              },
+                            ],
+                          },
+                          `informe-productos-${String(productoInformeDetail.id || 'cierre').slice(0, 8)}`,
+                          'txt'
+                        )
+                      }
+                      className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg text-[color:var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1"
+                    >
+                      <MdDownload /> TXT
+                    </button>
+                  </div>
                 </div>
                 {!(productoInformeDetail.sold_products || []).length ? (
                   <p className="text-[color:var(--ui-muted)] py-4">No hay líneas de producto en el periodo de este cierre.</p>
@@ -1632,24 +2053,91 @@ export default function Reports() {
       {reportSection === 'inventario' && (
         <div className="card">
           <h3 className="font-bold rf-section-title mb-4">Movimientos de inventario</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div className="bg-red-50 rounded-lg p-3">
-              <p className="text-xs text-red-600">Productos con stock bajo</p>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <button
+              type="button"
+              onClick={() => setInventoryMovementsTab('stock_minimo')}
+              className={`rounded-lg px-4 py-3 text-left border transition-colors min-w-[200px] flex-1 sm:flex-none ${
+                inventoryMovementsTab === 'stock_minimo'
+                  ? 'bg-red-50 border-red-300 ring-2 ring-red-200'
+                  : 'bg-white border-slate-200 hover:border-red-200'
+              }`}
+            >
+              <p className="text-xs text-red-600">Stock mínimo</p>
               <p className="text-xl font-bold text-red-700">{inventoryAlerts.length}</p>
-            </div>
-            <div className="bg-sky-50 rounded-lg p-3">
-              <p className="text-xs text-sky-600">Cuadres de almacén</p>
+              <p className="text-xs text-[var(--ui-muted)] mt-1">Productos bajo el mínimo</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setInventoryMovementsTab('cuadres')}
+              className={`rounded-lg px-4 py-3 text-left border transition-colors min-w-[200px] flex-1 sm:flex-none ${
+                inventoryMovementsTab === 'cuadres'
+                  ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-200'
+                  : 'bg-white border-slate-200 hover:border-sky-200'
+              }`}
+            >
+              <p className="text-xs text-sky-600">Cuadres de inventario</p>
               <p className="text-xl font-bold text-sky-700">{inventoryReconciliations.length}</p>
-            </div>
+              <p className="text-xs text-[var(--ui-muted)] mt-1">{inventoryCuadreLines.length} ajuste(s) registrado(s)</p>
+            </button>
           </div>
-          {inventoryAlerts.length > 0 && (
-            <div className="space-y-1">
-              {inventoryAlerts.slice(0, 10).map(item => (
-                <div key={item.id} className="text-sm flex justify-between border-b border-slate-100 py-1">
-                  <span>{item.name}</span>
-                  <span className="font-medium text-red-700">{item.stock}</span>
+
+          {inventoryMovementsTab === 'stock_minimo' ? (
+            inventoryAlerts.length > 0 ? (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="font-bold text-red-700 flex items-center gap-2 mb-3">
+                  <MdWarning /> Productos con stock bajo
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {inventoryAlerts.map((item) => (
+                    <span
+                      key={item.id}
+                      className="px-3 py-1 bg-white rounded-full text-sm border border-red-200 text-red-700"
+                    >
+                      {item.name}: <strong>{item.stock}</strong>
+                    </span>
+                  ))}
                 </div>
-              ))}
+              </div>
+            ) : (
+              <p className="text-sm text-[var(--ui-muted)] py-6 text-center">
+                No hay productos con stock bajo en este momento.
+              </p>
+            )
+          ) : inventoryCuadreLines.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
+                    <th className="py-2 pr-3 font-medium">Fecha y hora</th>
+                    <th className="py-2 pr-3 font-medium">Almacén</th>
+                    <th className="py-2 pr-3 font-medium">Producto</th>
+                    <th className="py-2 pr-3 font-medium text-right">Contado</th>
+                    <th className="py-2 font-medium text-right">Cantidad ajustada</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventoryCuadreLines.map((line) => (
+                    <tr key={line.id} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
+                      <td className="py-2.5 pr-3 whitespace-nowrap">{formatDateTime(line.created_at)}</td>
+                      <td className="py-2.5 pr-3">{line.warehouse_name}</td>
+                      <td className="py-2.5 pr-3 font-medium">{line.product_name}</td>
+                      <td className="py-2.5 pr-3 text-right tabular-nums">{line.counted_stock}</td>
+                      <td className={`py-2.5 text-right tabular-nums font-semibold ${
+                        line.difference > 0 ? 'text-sky-600' : 'text-red-600'
+                      }`}
+                      >
+                        {line.difference > 0 ? `+${line.difference}` : line.difference}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="py-8 text-center text-[var(--ui-muted)]">
+              <MdInventory2 className="mx-auto text-3xl mb-2 opacity-50" />
+              <p className="text-sm">No hay cuadres de inventario registrados.</p>
             </div>
           )}
         </div>

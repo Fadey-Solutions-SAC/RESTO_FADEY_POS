@@ -9,6 +9,9 @@ export default function Descuentos() {
   const [descuentos, setDescuentos] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ name: '', type: 'percentage', value: '', appliesTo: 'all', conditions: '' });
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -54,14 +57,28 @@ export default function Descuentos() {
       toast.error(err.message);
     }
   };
-  const deleteDesc = async (id) => {
-    if (!confirm('¿Eliminar?')) return;
+  const deleteDesc = (id) => {
+    const current = descuentos.find((d) => d.id === id);
+    if (!current) return;
+    setDeleteTarget(current);
+    setAdminPassword('');
+  };
+
+  const confirmDeleteDesc = async () => {
+    if (!deleteTarget) return;
+    const pwd = String(adminPassword || '').trim();
+    if (!pwd) return toast.error('Ingrese la contraseña de administrador');
+    setDeleteBusy(true);
     try {
-      await api.delete(`/admin-modules/discounts/${id}`);
+      await api.delete(`/admin-modules/discounts/${deleteTarget.id}`, { admin_password: pwd });
       toast.success('Eliminado');
+      setDeleteTarget(null);
+      setAdminPassword('');
       load();
     } catch (err) {
       toast.error(err.message);
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -113,6 +130,32 @@ export default function Descuentos() {
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Condiciones</label><textarea value={form.conditions} onChange={e => setForm({ ...form, conditions: e.target.value })} className="input-field" rows="2" placeholder="Condiciones para aplicar el descuento" /></div>
           <div className="flex gap-3"><button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1">Cancelar</button><button type="submit" className="btn-primary flex-1">Crear</button></div>
         </form>
+      </Modal>
+
+      <Modal isOpen={!!deleteTarget} onClose={() => { if (!deleteBusy) { setDeleteTarget(null); setAdminPassword(''); } }} title="Eliminar descuento" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm ui-text-muted">
+            Se eliminará permanentemente «<span className="font-semibold text-[var(--ui-body-text)]">{deleteTarget?.name}</span>».
+            Ingrese la contraseña de un administrador para confirmar.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Contraseña admin</label>
+            <input
+              type="password"
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+              className="input-field"
+              autoFocus
+              disabled={deleteBusy}
+            />
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={() => { setDeleteTarget(null); setAdminPassword(''); }} className="btn-secondary flex-1" disabled={deleteBusy}>Cancelar</button>
+            <button type="button" onClick={() => void confirmDeleteDesc()} className="btn-primary flex-1 bg-red-600 hover:bg-red-700" disabled={deleteBusy}>
+              {deleteBusy ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

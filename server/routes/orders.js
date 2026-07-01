@@ -4,7 +4,8 @@ const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../da
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { assertPaymentMethodAllowed, normalizePaymentMethod } = require('../businessRules');
 const { parsePaymentBreakdown, dominantPaymentMethod, round2 } = require('../utils/paymentBreakdown');
-const { appendOrderRemovalNote, hasCompleteOrderItemRemovals } = require('../utils/orderLineRemoval');
+const { appendOrderRemovalNote, hasCompleteOrderItemRemovals, computeQuantityRemovals, removalsFromOrderItemRows } = require('../utils/orderLineRemoval');
+const { insertProductRemovals } = require('../services/productRemovalLogService');
 const { getOrderChargeBase } = require('../utils/orderChargeBase');
 const { getOrderWithItems, createOrMergeTableOrderInTransaction, replaceOrderLinesInTransaction, actorFromRequest } = require('../orderCreateService');
 const { loadActiveTableOrders, deriveTableStatus } = require('../services/tableOrdersQueryService');
@@ -19,6 +20,7 @@ const {
   resolveKitchenStation,
   userCanManageKitchenOrderForStation,
 } = require('../services/staffModuleAccessService');
+const { userCanEliminarLiberarMesa, userCanAjusteBarAutoDismiss } = require('../lib/cajaPermissions');
 const { orderHasBarItems, orderHasKitchenItems, stripKitchenItemMeta, filterItemsForKitchenStation } = require('../utils/productionArea');
 const { getOrderItemsWithProductionArea, enrichOrderItemsWithComboAreas } = require('../services/orderItemsProductionService');
 const { ensureOrdersSchema } = require('../utils/ensureOrdersSchema');
@@ -195,13 +197,21 @@ const {
 
 router.get('/bar-station-settings', authenticateToken, (req, res) => {
   const role = String(req.user?.role || '').toLowerCase();
-  if (!['admin', 'bar', 'master_admin'].includes(role)) {
+  const canRead =
+    ['admin', 'bar', 'master_admin'].includes(role) || userCanAjusteBarAutoDismiss(req.user);
+  if (!canRead) {
     return res.status(403).json({ error: 'No tienes permiso para ver ajustes de bar' });
   }
   res.json(readBarStationSettings());
 });
 
-router.put('/bar-station-settings', authenticateToken, requireRole('admin', 'bar', 'master_admin'), (req, res) => {
+router.put('/bar-station-settings', authenticateToken, (req, res) => {
+  const role = String(req.user?.role || '').toLowerCase();
+  const canWrite =
+    ['admin', 'bar', 'master_admin'].includes(role) || userCanAjusteBarAutoDismiss(req.user);
+  if (!canWrite) {
+    return res.status(403).json({ error: 'No tienes permiso para cambiar ajustes de bar' });
+  }
   try {
     const saved = saveBarStationSettings(req.body || {});
     const io = req.app.get('io');
@@ -271,7 +281,8 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo
   const requiresRemovalReason = hasCompleteOrderItemRemovals(existingItems, items);
   const actorRole = String(req.user?.role || '').toLowerCase();
   const isAdminRole = actorRole === 'admin' || actorRole === 'master_admin';
-  if (requiresRemovalReason && !isAdminRole) {
+  const canRemoveLines = isAdminRole || userCanEliminarLiberarMesa(req.user);
+  if (requiresRemovalReason && !canRemoveLines) {
     return res.status(403).json({ error: 'Solo un administrador puede eliminar productos del pedido.' });
   }
   if (requiresRemovalReason && removalReason.length < 3) {
@@ -301,6 +312,14 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo
         nextNotes,
         req.params.id,
       ]);
+      const removedLines = computeQuantityRemovals(existingItems, items);
+      if (removedLines.length) {
+        try {
+          insertProductRemovals(removedLines, orderBefore, actor, removalReason);
+        } catch (logErr) {
+          logRouteError(req, logErr, { order_id: req.params.id, phase: 'product_removal_log' });
+        }
+      }
       try {
         logAudit({
           actorUserId: req.user?.id || '',
@@ -639,7 +658,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       order.status === 'delivered' ||
       String(order.payment_status || '') === 'paid' ||
       isUnpaidActive;
-    if (isUnpaidActive && !['admin', 'master_admin'].includes(roleLc)) {
+    if (isUnpaidActive && !['admin', 'master_admin'].includes(roleLc) && !userCanEliminarLiberarMesa(req.user)) {
       return res.status(403).json({
         error: 'Solo un administrador puede quitar productos o liberar la mesa.',
       });
@@ -655,6 +674,21 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       return res.status(400).json({ error: err.message || 'No se pudo revertir el kardex de esta venta' });
     }
     restoreNonTransformedStockForOrder(order.id);
+    const itemsBeforeCancel = queryAll('SELECT * FROM order_items WHERE order_id = ?', [order.id]);
+    if (itemsBeforeCancel.length && reason.length >= 3) {
+      try {
+        const cancelActor = {
+          user: {
+            id: req.user?.id,
+            full_name: req.user?.full_name,
+            username: req.user?.username,
+          },
+        };
+        insertProductRemovals(removalsFromOrderItemRows(itemsBeforeCancel), order, cancelActor, reason);
+      } catch (logErr) {
+        logRouteError(req, logErr, { order_id: order.id, phase: 'product_removal_cancel' });
+      }
+    }
     runSql(
       "UPDATE orders SET status = 'cancelled', cancellation_reason = ?, updated_at = datetime('now') WHERE id = ?",
       [reason, req.params.id]

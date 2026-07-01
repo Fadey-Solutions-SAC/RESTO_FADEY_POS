@@ -1,4 +1,4 @@
-const { queryAll } = require('../database');
+const { queryAll, queryOne } = require('../database');
 const {
   SALES_ADJUSTMENT_WHERE_SQL,
   classifySalesAdjustment,
@@ -7,6 +7,7 @@ const {
   adjustmentAmountCharged,
 } = require('../businessRules');
 const { orderHasKardexVenta } = require('./kardexBackfillService');
+const { listProductRemovals, enrichRemovalForReport } = require('./productRemovalLogService');
 
 const SALES_EVENT_AT_SQL = 'COALESCE(updated_at, created_at)';
 const SALES_EVENT_LOCAL_SQL = `datetime(${SALES_EVENT_AT_SQL}, 'localtime')`;
@@ -58,14 +59,24 @@ function listSalesAdjustments({ from, to, limit = 500 } = {}) {
      LIMIT ${cap}`,
     params
   );
-  return (rows || []).map(enrichAdjustmentOrder);
+  const orderRows = (rows || []).map(enrichAdjustmentOrder);
+  const removalRows = listProductRemovals({ from, to, limit: cap }).map(enrichRemovalForReport);
+  return [...orderRows, ...removalRows]
+    .sort((a, b) => {
+      const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+      const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+      return tb - ta;
+    })
+    .slice(0, cap);
 }
 
 function summarizeSalesAdjustments(orders = []) {
   let courtesyCount = 0;
   let discountCount = 0;
+  let eliminadoCount = 0;
   let courtesyReference = 0;
   let discountAmountTotal = 0;
+  let eliminadoReference = 0;
   let amountChargedTotal = 0;
   let kardexPending = 0;
 
@@ -80,16 +91,21 @@ function summarizeSalesAdjustments(orders = []) {
       discountCount += 1;
       discountAmountTotal += disc;
       amountChargedTotal += charged;
+    } else if (kind === 'eliminado') {
+      eliminadoCount += 1;
+      eliminadoReference += Number(o.reference_amount ?? o.discount_amount ?? disc);
     }
-    if (!o.kardex_applied) kardexPending += 1;
+    if (kind !== 'eliminado' && !o.kardex_applied) kardexPending += 1;
   }
 
   return {
     count: orders.length,
     courtesy_count: courtesyCount,
     discount_count: discountCount,
+    eliminado_count: eliminadoCount,
     courtesy_reference_total: round2(courtesyReference),
     discount_amount_total: round2(discountAmountTotal),
+    eliminado_reference_total: round2(eliminadoReference),
     amount_charged_total: round2(amountChargedTotal),
     /** Monto que NO ingresa como venta adicional (cortesías + parte descontada). */
     not_counted_as_extra_sales: round2(courtesyReference + discountAmountTotal),

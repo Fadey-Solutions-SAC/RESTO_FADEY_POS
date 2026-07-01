@@ -144,6 +144,7 @@ import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
 import StaffMesaPedidoTabs from '../../components/StaffMesaPedidoTabs';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
+import { canPosDeleteOrReleaseTable, canAjusteBarAutoDismiss } from '../../utils/posPermissions';
 import { buildTablesBySalon } from '../../utils/salonesUtils';
 import {
   MdPointOfSale, MdTableRestaurant, MdReceipt,
@@ -220,6 +221,7 @@ const CAJA_OPTIONS = [
   { id: 'consulta_precios', label: 'Consulta de precios' },
   { id: 'impresora', label: 'Impresora' },
 ];
+const BAR_AUTO_DISMISS_MINUTE_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 
 async function printCajaTicket(payload) {
   try {
@@ -290,11 +292,6 @@ function canEditOrderLines(order) {
     ['pending', 'preparing', 'ready'].includes(String(order.status || '')) &&
     String(order.payment_status || 'pending') === 'pending'
   );
-}
-
-function isPosAdminUser(user) {
-  const role = String(user?.role || '').toLowerCase();
-  return role === 'admin' || role === 'master_admin';
 }
 
 function cartRemovalSignature(cart) {
@@ -550,13 +547,20 @@ export default function POSPanel() {
     company_ruc: '',
   });
   const { user } = useAuth();
-  const posAdmin = isPosAdminUser(user);
+  const posCanDeleteRelease = canPosDeleteOrReleaseTable(user);
+  const posCanBarAutoDismiss = canAjusteBarAutoDismiss(user);
   const cajaOptionsForRole = useMemo(() => {
+    let opts;
     if (String(user?.role || '').toLowerCase() === 'cajero') {
-      return CAJA_OPTIONS.filter((o) => CAJA_OPTIONS_CAJERO_IDS.has(o.id));
+      opts = CAJA_OPTIONS.filter((o) => CAJA_OPTIONS_CAJERO_IDS.has(o.id));
+    } else {
+      opts = CAJA_OPTIONS;
     }
-    return CAJA_OPTIONS;
-  }, [user?.role]);
+    if (posCanBarAutoDismiss) {
+      opts = [...opts, { id: 'bar_ajuste', label: 'Bar: auto 30 min' }];
+    }
+    return opts;
+  }, [user?.role, posCanBarAutoDismiss]);
   useEffect(() => {
     setPadronUsedBump(0);
   }, [user?.padron_quota?.month, user?.id]);
@@ -574,6 +578,10 @@ export default function POSPanel() {
   }, [user?.padron_quota, padronUsedBump]);
   const [cajaStations, setCajaStations] = useState([]);
   const [adminRegisterId, setAdminRegisterId] = useState(() => readPersistedAdminRegisterId());
+  const [barAutoDismiss, setBarAutoDismiss] = useState(false);
+  const [barAutoDismissMinutes, setBarAutoDismissMinutes] = useState(30);
+  const [barSettingsLoaded, setBarSettingsLoaded] = useState(false);
+  const [barSettingsSaving, setBarSettingsSaving] = useState(false);
 
   const appendPosRegisterId = useCallback(
     (path) => {
@@ -885,6 +893,60 @@ export default function POSPanel() {
   useEffect(() => {
     if (activeCajaOption !== 'cobrar') setMesaDetailModalOpen(false);
   }, [activeCajaOption]);
+
+  useEffect(() => {
+    if (!posCanBarAutoDismiss) return undefined;
+    let cancelled = false;
+    api
+      .get('/orders/bar-station-settings')
+      .then((data) => {
+        if (cancelled) return;
+        setBarAutoDismiss(Boolean(data?.autoDismissPendingAfter30Min));
+        if (data?.autoDismissMinutes != null) {
+          setBarAutoDismissMinutes(Number(data.autoDismissMinutes));
+        }
+        setBarSettingsLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setBarSettingsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [posCanBarAutoDismiss]);
+
+  const saveBarAutoDismissSettings = async ({ enabled, minutes } = {}) => {
+    setBarSettingsSaving(true);
+    try {
+      const payload = {};
+      if (enabled !== undefined) payload.autoDismissPendingAfter30Min = Boolean(enabled);
+      if (minutes !== undefined) payload.autoDismissMinutes = Number(minutes);
+      const saved = await api.put('/orders/bar-station-settings', payload);
+      setBarAutoDismiss(Boolean(saved?.autoDismissPendingAfter30Min));
+      if (saved?.autoDismissMinutes != null) {
+        setBarAutoDismissMinutes(Number(saved.autoDismissMinutes));
+      }
+      toast.success(
+        enabled !== undefined
+          ? (saved?.autoDismissPendingAfter30Min
+            ? `Ajuste activo: ${saved.autoDismissMinutes} min`
+            : 'Ajuste desactivado')
+          : `Tiempo guardado: ${saved?.autoDismissMinutes} min`,
+      );
+    } catch (err) {
+      toast.error(err?.message || 'No se pudo guardar el ajuste de bar');
+    } finally {
+      setBarSettingsSaving(false);
+    }
+  };
+
+  useSocket('bar-station-settings-update', (payload) => {
+    if (!payload || !posCanBarAutoDismiss) return;
+    setBarAutoDismiss(Boolean(payload.autoDismissPendingAfter30Min));
+    if (payload.autoDismissMinutes != null) {
+      setBarAutoDismissMinutes(Number(payload.autoDismissMinutes));
+    }
+  });
 
   const loadCajaExtras = async () => {
     try {
@@ -2003,8 +2065,8 @@ export default function POSPanel() {
   /** Modificar pedido: carrito vacío → anular pedido y liberar mesa si no quedan pedidos activos. */
   const liberarMesaDesdeEdicionPedidoVacio = async () => {
     if (!editingOrderId || !selectedTable) return;
-    if (!posAdmin) {
-      toast.error('Solo un administrador puede liberar la mesa.');
+    if (!posCanDeleteRelease) {
+      toast.error('No tiene permiso para liberar la mesa.');
       return;
     }
     const idsToCancel =
@@ -2029,8 +2091,8 @@ export default function POSPanel() {
       if (line) {
         const nextQty = Number(line.quantity || 0) + Number(delta || 0);
         if (nextQty < 1) {
-          if (!posAdmin) {
-            toast.error('Solo un administrador puede eliminar productos del pedido.');
+          if (!posCanDeleteRelease) {
+            toast.error('No tiene permiso para eliminar productos del pedido.');
             return;
           }
         }
@@ -2040,8 +2102,8 @@ export default function POSPanel() {
   };
 
   const guardedRemoveFromCart = (lineKey) => {
-    if (editingOrderId && !posAdmin) {
-      toast.error('Solo un administrador puede quitar productos de la mesa.');
+    if (editingOrderId && !posCanDeleteRelease) {
+      toast.error('No tiene permiso para quitar productos de la mesa.');
       return;
     }
     removeFromCart(lineKey);
@@ -2094,8 +2156,8 @@ export default function POSPanel() {
   const submitOrder = async () => {
     if (cart.length === 0) {
       if (editingOrderId) {
-        if (!posAdmin) {
-          return toast.error('Solo un administrador puede liberar la mesa.');
+        if (!posCanDeleteRelease) {
+          return toast.error('No tiene permiso para liberar la mesa.');
         }
         return void liberarMesaDesdeEdicionPedidoVacio();
       }
@@ -2160,8 +2222,8 @@ export default function POSPanel() {
         const hasRemovals = cartHasProductRemovals(editSessionInitialCartRef.current, cart);
         let removalReason = '';
         if (hasRemovals || willCancelOrders) {
-          if (!posAdmin) {
-            toast.error('Solo un administrador puede eliminar productos o liberar la mesa.', { id: tid });
+          if (!posCanDeleteRelease) {
+            toast.error('No tiene permiso para eliminar productos o liberar la mesa.', { id: tid });
             return;
           }
           if (hasRemovals) {
@@ -3560,6 +3622,43 @@ export default function POSPanel() {
           />
         </div>
       )}
+      {activeCajaOption === 'bar_ajuste' && (
+        <div className="card max-w-xl space-y-4">
+          <h3 className="font-bold rf-section-title">Bar: quitar comandas sin atender</h3>
+          <p className="text-sm ui-text-muted">
+            Si está activo, las comandas de bar que no se marquen en preparación se retiran solas después del tiempo indicado.
+          </p>
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 rounded"
+              checked={barAutoDismiss}
+              disabled={barSettingsSaving || !barSettingsLoaded}
+              onChange={(e) => void saveBarAutoDismissSettings({ enabled: e.target.checked })}
+            />
+            <span>
+              <span className="block text-sm font-medium">Activar retiro automático</span>
+              <span className="block text-xs ui-text-muted mt-1">Afecta solo la pantalla de bar, no elimina el pedido de la mesa.</span>
+            </span>
+          </label>
+          {barAutoDismiss ? (
+            <label className="block">
+              <span className="block text-sm font-medium mb-1">Minutos sin atender</span>
+              <select
+                className="input-field"
+                value={barAutoDismissMinutes}
+                disabled={barSettingsSaving || !barSettingsLoaded}
+                onChange={(e) => void saveBarAutoDismissSettings({ minutes: Number(e.target.value) })}
+              >
+                {BAR_AUTO_DISMISS_MINUTE_OPTIONS.map((mins) => (
+                  <option key={mins} value={mins}>{mins} minutos</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {barSettingsSaving ? <p className="text-xs ui-text-muted">Guardando…</p> : null}
+        </div>
+      )}
       </div>
 
       {/* Modal tomar pedido / venta rápida */}
@@ -3887,8 +3986,8 @@ export default function POSPanel() {
               cartTotal={cartTotal}
               formatCurrency={formatCurrency}
               className="min-h-0 flex-1"
-              showLineDeleteLabel={Boolean(editingOrderId && posAdmin)}
-              canDeleteLine={!editingOrderId || posAdmin}
+              showLineDeleteLabel={Boolean(editingOrderId && posCanDeleteRelease)}
+              canDeleteLine={!editingOrderId || posCanDeleteRelease}
               footer={
                 editingOrderId ? (
                   cart.length > 0 ? (
@@ -5031,7 +5130,7 @@ export default function POSPanel() {
         <div className="space-y-4">
           <p className="text-sm text-[var(--ui-muted)]">
             {mesaRemovalModal?.mode === 'liberar'
-              ? 'Solo un administrador puede anular el pedido y liberar la mesa. Indique el motivo (obligatorio).'
+              ? 'Indique el motivo para anular el pedido y liberar la mesa (obligatorio).'
               : mesaRemovalModal?.mode === 'cancel'
                 ? 'Indique el motivo de la anulación (obligatorio). Quedará registrado en ventas y auditoría.'
                 : 'Solo se pide motivo al eliminar un producto por completo (botón Eliminar o cantidad a cero). Reducir con +/− no requiere motivo.'}

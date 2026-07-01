@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, formatCurrency, formatDateTime, formatDate, formatTime, parseApiDate } from '../../utils/api';
+import { api, formatCurrency, formatDateTime, formatDate, formatTime, parseApiDate, isDateKeyInInclusiveRange } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
 import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel, MdDownload } from 'react-icons/md';
@@ -364,13 +364,8 @@ export default function Ventas() {
     if (waiterFilter !== 'all') {
       f = f.filter(o => (o.created_by_user_name || o.customer_name || '-').toLowerCase() === waiterFilter.toLowerCase());
     }
-    if (fromDate) {
-      const from = new Date(`${fromDate}T00:00:00`);
-      f = f.filter(o => new Date(`${o.created_at}Z`) >= from);
-    }
-    if (toDate) {
-      const to = new Date(`${toDate}T23:59:59`);
-      f = f.filter(o => new Date(`${o.created_at}Z`) <= to);
+    if (fromDate || toDate) {
+      f = f.filter((o) => isDateKeyInInclusiveRange(o.updated_at || o.created_at, fromDate, toDate));
     }
     if (saleTab === 'activas') f = f.filter((o) => o.status !== 'cancelled');
     else f = f.filter((o) => o.status === 'cancelled');

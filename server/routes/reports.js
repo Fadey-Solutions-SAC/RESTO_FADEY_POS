@@ -767,13 +767,20 @@ router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, re
 
 router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
   const s = getSalesEventSql();
+  const { querySoldProductsBetween } = require('../services/productSalesReportService');
   const closedRegisters = queryAll(
     "SELECT cr.*, u.full_name as user_name FROM cash_registers cr LEFT JOIN users u ON u.id = cr.user_id WHERE cr.closed_at IS NOT NULL ORDER BY cr.closed_at DESC LIMIT 60"
   );
-  const closedRegistersWithDetails = closedRegisters.map((r) => ({
-    ...r,
-    arqueo: parseArqueoData(r.arqueo_data),
-  }));
+  const closedRegistersWithDetails = closedRegisters.map((r) => {
+    const sold = querySoldProductsBetween(r.opened_at, r.closed_at);
+    const sold_units_total = sold.reduce((sum, row) => sum + (Number(row.total_qty) || 0), 0);
+    return {
+      ...r,
+      arqueo: parseArqueoData(r.arqueo_data),
+      sold_products_count: sold.length,
+      sold_units_total,
+    };
+  });
 
   const dailySales = queryAll(
     `SELECT ${s.EVENT_DATE} as date, COUNT(*) as orders, COALESCE(SUM(total), 0) as total, COALESCE(SUM(tax), 0) as tax FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_DATE} >= date(${s.TODAY}, '-30 days') GROUP BY ${s.EVENT_DATE} ORDER BY date DESC`
@@ -876,6 +883,19 @@ router.get('/closed-registers/:id', authenticateToken, requireRole('admin', 'caj
     }));
   }
   res.json(register);
+});
+
+router.get('/product-sales', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  try {
+    const { buildProductSalesReport } = require('../services/productSalesReportService');
+    const report = buildProductSalesReport(req.query || {});
+    if (report.error && report.mode === 'none') {
+      return res.status(400).json({ error: report.error });
+    }
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo generar informe de productos' });
+  }
 });
 
 router.get('/ranking', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
@@ -1128,6 +1148,85 @@ router.get('/sales-adjustments', authenticateToken, requireRole('admin', 'cajero
     });
   } catch (err) {
     res.status(500).json({ error: err.message || 'No se pudo cargar informe de descuentos y cortesías' });
+  }
+});
+
+router.delete('/sales-adjustments/:orderId', authenticateToken, requireRole('admin'), (req, res) => {
+  const { verifyAdminPassword } = require('../lib/adminPassword');
+  const { classifySalesAdjustment, SALES_ADJUSTMENT_WHERE_SQL } = require('../businessRules');
+  const { deleteProductRemoval } = require('../services/productRemovalLogService');
+  const kardexInventory = require('../services/kardexInventoryService');
+  const { withTransaction, runSql, queryOne, logAudit } = require('../database');
+  const { restoreNonTransformedStockForOrder } = require('../warehouseStock');
+  const { emitInventoryUpdate } = require('../socketBroadcast');
+
+  if (!verifyAdminPassword(req.body?.admin_password)) {
+    return res.status(403).json({ error: 'Contraseña de administrador incorrecta' });
+  }
+  const recordId = String(req.params.orderId || '').trim();
+
+  const removalRow = queryOne('SELECT * FROM order_product_removals WHERE id = ?', [recordId]);
+  if (removalRow?.id) {
+    try {
+      deleteProductRemoval(removalRow.id);
+      logAudit({
+        actorUserId: req.user?.id || '',
+        actorName: req.user?.full_name || req.user?.username || '',
+        action: 'product_removal.delete',
+        resourceType: 'order_product_removal',
+        resourceId: removalRow.id,
+        details: {
+          product_name: removalRow.product_name,
+          order_number: removalRow.order_number,
+        },
+      });
+      return res.json({ success: true });
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'No se pudo eliminar el registro' });
+    }
+  }
+
+  const order = queryOne(`SELECT * FROM orders WHERE id = ? AND ${SALES_ADJUSTMENT_WHERE_SQL}`, [recordId]);
+  if (!order) {
+    return res.status(404).json({ error: 'Registro no encontrado o no es descuento/cortesía' });
+  }
+  try {
+    if (String(order.status || '') !== 'cancelled') {
+      withTransaction((tx) => {
+        kardexInventory.revertirSalidasVentaPedido(tx, order.id, req.user.id);
+      });
+      restoreNonTransformedStockForOrder(order.id);
+      runSql(
+        "UPDATE orders SET status = 'cancelled', cancellation_reason = ?, updated_at = datetime('now') WHERE id = ?",
+        ['Eliminado por administrador (descuento/cortesía)', order.id],
+      );
+      emitInventoryUpdate({});
+    }
+    withTransaction((tx) => {
+      tx.run('DELETE FROM order_items WHERE order_id = ?', [order.id]);
+      tx.run('DELETE FROM electronic_documents WHERE order_id = ?', [order.id]);
+      tx.run('DELETE FROM delivery_assignments WHERE order_id = ?', [order.id]);
+      try {
+        tx.run('DELETE FROM finance_loss_events WHERE order_id = ?', [order.id]);
+      } catch (_) {
+        /* opcional */
+      }
+      tx.run('DELETE FROM orders WHERE id = ?', [order.id]);
+    });
+    logAudit({
+      actorUserId: req.user?.id || '',
+      actorName: req.user?.full_name || req.user?.username || '',
+      action: 'sales_adjustment.delete',
+      resourceType: 'order',
+      resourceId: order.id,
+      details: {
+        order_number: order.order_number,
+        adjustment_kind: classifySalesAdjustment(order),
+      },
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo eliminar el registro' });
   }
 });
 

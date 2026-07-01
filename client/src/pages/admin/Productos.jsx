@@ -90,6 +90,7 @@ export default function Productos() {
   const [showComboModal, setShowComboModal] = useState(false);
   const [editCombo, setEditCombo] = useState(null);
   const [comboForm, setComboForm] = useState({ name: '', description: '', price: '', items: [] });
+  const [comboProductSearch, setComboProductSearch] = useState('');
   const [comboSuggestions, setComboSuggestions] = useState(null);
   const [comboSuggestLoading, setComboSuggestLoading] = useState(false);
   const comboSuggestTimerRef = useRef(null);
@@ -167,6 +168,7 @@ export default function Productos() {
   const openComboModal = () => {
     setEditCombo(null);
     setComboForm({ name: '', description: '', price: '', items: [] });
+    setComboProductSearch('');
     setComboSuggestions(null);
     setComboSuggestLoading(false);
     setShowComboModal(true);
@@ -174,7 +176,7 @@ export default function Productos() {
 
   const openEditCombo = (combo) => {
     const itemIds = (Array.isArray(combo.items) ? combo.items : [])
-      .map((it) => it.product_id)
+      .map((it) => String(it.product_id || it.id || '').trim())
       .filter(Boolean);
     setEditCombo(combo);
     setComboForm({
@@ -183,9 +185,22 @@ export default function Productos() {
       price: combo.price != null ? String(combo.price) : '',
       items: itemIds,
     });
+    setComboProductSearch('');
     setComboSuggestions(null);
     setComboSuggestLoading(false);
     setShowComboModal(true);
+  };
+
+  const toggleComboProduct = (productId, checked) => {
+    const id = String(productId);
+    setComboForm((prev) => {
+      const ids = prev.items.map(String);
+      if (checked) {
+        if (ids.includes(id)) return prev;
+        return { ...prev, items: [...ids, id] };
+      }
+      return { ...prev, items: ids.filter((i) => i !== id) };
+    });
   };
 
   const deleteCombo = async (combo) => {
@@ -311,6 +326,16 @@ export default function Productos() {
     .filter(c => !hiddenCategoryIds.has(c.id))
     .filter(c => !categoryFilter || (c.name || '').toLowerCase().includes(categoryFilter.toLowerCase()));
   const visibleProducts = products.filter(p => !hiddenCategoryIds.has(p.category_id) && !!p.category_id);
+  const comboPickerProducts = useMemo(
+    () => visibleProducts.filter((p) => Number(p.is_active ?? 1) === 1),
+    [visibleProducts],
+  );
+  const filteredComboPickerProducts = useMemo(() => {
+    const q = comboProductSearch.trim().toLowerCase();
+    if (!q) return comboPickerProducts;
+    return comboPickerProducts.filter((p) => String(p.name || '').toLowerCase().includes(q));
+  }, [comboPickerProducts, comboProductSearch]);
+  const selectedComboIdSet = useMemo(() => new Set(comboForm.items.map(String)), [comboForm.items]);
 
   useEffect(() => {
     if (!selectedCat) return;
@@ -1374,23 +1399,50 @@ export default function Productos() {
         <form onSubmit={handleComboSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Productos incluidos</label>
-            <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1">
-              {products.filter(p => p.is_active).map(p => (
+            <input
+              type="search"
+              value={comboProductSearch}
+              onChange={(e) => setComboProductSearch(e.target.value)}
+              className="input-field mb-2"
+              placeholder="Buscar producto…"
+            />
+            <div className="flex flex-wrap gap-2 mb-2">
+              <button
+                type="button"
+                className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[var(--ui-muted)]"
+                onClick={() => {
+                  const ids = filteredComboPickerProducts.map((p) => String(p.id));
+                  setComboForm((prev) => ({
+                    ...prev,
+                    items: [...new Set([...prev.items.map(String), ...ids])],
+                  }));
+                }}
+              >
+                Seleccionar visibles
+              </button>
+              <button
+                type="button"
+                className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[var(--ui-muted)]"
+                onClick={() => setComboForm((prev) => ({ ...prev, items: [] }))}
+              >
+                Deseleccionar todo
+              </button>
+            </div>
+            <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1">
+              {filteredComboPickerProducts.map(p => (
                 <label key={p.id} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded cursor-pointer text-sm">
-                  <input type="checkbox" checked={comboForm.items.includes(p.id)} onChange={e => {
-                    if (e.target.checked) {
-                      setComboForm((prev) => (
-                        prev.items.includes(p.id)
-                          ? prev
-                          : { ...prev, items: [...prev.items, p.id] }
-                      ));
-                    } else {
-                      setComboForm((prev) => ({ ...prev, items: prev.items.filter((i) => i !== p.id) }));
-                    }
-                  }} className="rounded text-gold-500" />
+                  <input
+                    type="checkbox"
+                    checked={selectedComboIdSet.has(String(p.id))}
+                    onChange={(e) => toggleComboProduct(p.id, e.target.checked)}
+                    className="rounded text-gold-500"
+                  />
                   {p.name} <span className="text-[var(--ui-muted)] ml-auto">{formatCurrency(p.price)}</span>
                 </label>
               ))}
+              {filteredComboPickerProducts.length === 0 ? (
+                <p className="text-xs text-[var(--ui-muted)] px-2 py-3 text-center">No hay productos que coincidan</p>
+              ) : null}
             </div>
             {selectedComboProducts.length > 0 ? (
               <p className="text-xs text-[var(--ui-muted)] mt-2">

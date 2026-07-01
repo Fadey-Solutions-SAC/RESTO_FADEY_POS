@@ -49,7 +49,54 @@ function sumLineQuantities(rows, keyFn) {
   return m;
 }
 
-/** Verdadero si alguna línea pasó de cantidad &gt; 0 a 0 (eliminar producto), no si solo bajó cantidad. */
+function computeQuantityRemovals(beforeRows, afterPayloadItems) {
+  const before = sumLineQuantities(beforeRows, dbOrderItemLineKey);
+  const after = sumLineQuantities(afterPayloadItems, payloadItemLineKey);
+  const metaByKey = new Map();
+  for (const row of beforeRows || []) {
+    const k = dbOrderItemLineKey(row);
+    if (!metaByKey.has(k)) metaByKey.set(k, row);
+  }
+  const removed = [];
+  for (const [key, beforeQty] of before) {
+    const afterQty = after.get(key) || 0;
+    if (beforeQty > afterQty) {
+      const meta = metaByKey.get(key) || {};
+      const qtyRemoved = beforeQty - afterQty;
+      const unitPrice = Number(meta.unit_price || 0);
+      removed.push({
+        product_id: String(meta.product_id || '').trim(),
+        product_name: String(meta.product_name || 'Producto').trim() || 'Producto',
+        variant_name: String(meta.variant_name || '').trim(),
+        quantity_removed: qtyRemoved,
+        unit_price: unitPrice,
+        line_total: Math.round(qtyRemoved * unitPrice * 100) / 100,
+      });
+    }
+  }
+  return removed;
+}
+
+function removalsFromOrderItemRows(orderItems) {
+  const out = [];
+  for (const row of orderItems || []) {
+    const qty = Math.max(0, Number(row.quantity || 0));
+    if (qty <= 0) continue;
+    const unitPrice = Number(row.unit_price || 0);
+    const subtotal = Number(row.subtotal || 0);
+    out.push({
+      product_id: String(row.product_id || '').trim(),
+      product_name: String(row.product_name || 'Producto').trim() || 'Producto',
+      variant_name: String(row.variant_name || '').trim(),
+      quantity_removed: qty,
+      unit_price: unitPrice,
+      line_total: subtotal > 0 ? subtotal : Math.round(qty * unitPrice * 100) / 100,
+    });
+  }
+  return out;
+}
+
+/** Verdadero si alguna línea pasó de cantidad > 0 a 0 (eliminar producto), no si solo bajó cantidad. */
 function hasCompleteLineRemovals(beforeRows, afterRows, { beforeKeyFn, afterKeyFn } = {}) {
   const beforeFn = beforeKeyFn || staffLineKey;
   const afterFn = afterKeyFn || staffLineKey;
@@ -128,4 +175,6 @@ module.exports = {
   hasCompleteOrderItemRemovals,
   appendOrderRemovalNote,
   computeAddedLineIds,
+  computeQuantityRemovals,
+  removalsFromOrderItemRows,
 };

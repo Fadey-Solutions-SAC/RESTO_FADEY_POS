@@ -13,6 +13,7 @@ const {
 const { getOrderWithItems } = require('../orderCreateService');
 const { restoreNonTransformedStockForOrder } = require('../warehouseStock');
 const { emitInventoryUpdate, emitStaffDataUpdate } = require('../socketBroadcast');
+const { verifyAdminPassword } = require('../lib/adminPassword');
 
 function broadcastStaffData(domain) {
   emitStaffDataUpdate({ domain: String(domain || '') });
@@ -1063,6 +1064,9 @@ router.put('/discounts/:id', requireRole('admin'), (req, res) => {
 });
 
 router.delete('/discounts/:id', requireRole('admin'), (req, res) => {
+  if (!verifyAdminPassword(req.body?.admin_password)) {
+    return res.status(403).json({ error: 'Contraseña de administrador incorrecta' });
+  }
   runSql('DELETE FROM discounts_catalog WHERE id = ?', [req.params.id]);
   broadcastStaffData('discounts');
   res.json({ success: true });

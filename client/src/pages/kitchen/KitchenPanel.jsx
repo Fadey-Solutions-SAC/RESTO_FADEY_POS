@@ -21,6 +21,7 @@ import {
 } from '../../utils/ticketPlainText';
 import { isBarProductionItemForStation, isKitchenProductionItemForStation } from '../../utils/productionArea';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
+import { canAjusteBarAutoDismiss } from '../../utils/posPermissions';
 
 /** Pedido auto-pedido con cuenta de cliente (sin mesa física). */
 function isCuentaClienteSelfOrder(order) {
@@ -78,6 +79,10 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const panelTitle = isBar ? t('panel.barTitle') : t('panel.kitchenTitle');
   const stationLabel = isBar ? t('panel.stationBar') : t('panel.stationKitchen');
   const canReturnToAdmin = user?.role === 'admin' && !location.pathname.startsWith('/admin');
+  const canEditBarSettings =
+    isBar &&
+    (['admin', 'bar', 'master_admin'].includes(String(user?.role || '').toLowerCase()) ||
+      canAjusteBarAutoDismiss(user));
 
   const playStationAlert = () => {
     try {
@@ -530,7 +535,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold">{panelTitle}</h1>
-              {isBar && (
+              {canEditBarSettings && (
                 <button
                   type="button"
                   onClick={() => setBarSettingsOpen(true)}
@@ -614,7 +619,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
                 type="checkbox"
                 className="mt-1 h-4 w-4 rounded border-[color:var(--ui-border)]"
                 checked={barAutoDismiss}
-                disabled={barSettingsSaving || !barSettingsLoaded}
+                disabled={barSettingsSaving || !barSettingsLoaded || !canEditBarSettings}
                 onChange={(e) => void saveBarSettings({ enabled: e.target.checked })}
               />
               <span>
@@ -634,7 +639,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
                 <select
                   className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-sm text-[var(--ui-body-text)]"
                   value={barAutoDismissMinutes}
-                  disabled={barSettingsSaving || !barSettingsLoaded}
+                  disabled={barSettingsSaving || !barSettingsLoaded || !canEditBarSettings}
                   onChange={(e) => void saveBarSettings({ minutes: Number(e.target.value) })}
                 >
                   {BAR_AUTO_DISMISS_MINUTE_OPTIONS.map((mins) => (
