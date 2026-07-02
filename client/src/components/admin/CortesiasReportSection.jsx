@@ -7,7 +7,7 @@ import {
   adjustmentAmountCharged,
   isCourtesyOrder,
 } from '../../utils/mesaOrderLines';
-import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdInventory2, MdDelete, MdRemoveCircleOutline } from 'react-icons/md';
+import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdInventory2, MdDelete, MdRemoveCircleOutline, MdVisibility } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
 
@@ -72,6 +72,7 @@ export default function CortesiasReportSection() {
     orders: [],
   });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [detailTarget, setDetailTarget] = useState(null);
   const [adminPassword, setAdminPassword] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
 
@@ -336,7 +337,19 @@ export default function CortesiasReportSection() {
                     {o.type === 'dine_in' && o.table_number ? formatMesaLabel(o.table_number) : channel}
                   </td>
                   <td className="py-2.5 pr-3">{o.created_by_user_name || o.customer_name || '—'}</td>
-                  <td className="py-2.5 pr-3 max-w-[220px]">{reason}</td>
+                  <td className="py-2.5 pr-3 max-w-[220px]">
+                    {isEliminado ? (
+                      <button
+                        type="button"
+                        onClick={() => setDetailTarget(o)}
+                        className="text-xs text-[#3B82F6] hover:underline inline-flex items-center gap-1"
+                      >
+                        <MdVisibility className="text-sm" /> Observar motivo
+                      </button>
+                    ) : (
+                      reason
+                    )}
+                  </td>
                   <td className="py-2.5 pr-3 max-w-[260px] truncate" title={productLine}>{productLine || '—'}</td>
                   <td className="py-2.5 pr-3 text-right tabular-nums text-amber-600">
                     {formatCurrency(refAmount)}
@@ -354,14 +367,26 @@ export default function CortesiasReportSection() {
                     )}
                   </td>
                   <td className="py-2.5 text-center">
-                    <button
-                      type="button"
-                      onClick={() => { setDeleteTarget(o); setAdminPassword(''); }}
-                      className="p-1.5 rounded-lg text-[var(--ui-muted)] hover:bg-red-50 hover:text-red-600"
-                      title="Eliminar registro"
-                    >
-                      <MdDelete />
-                    </button>
+                    <div className="inline-flex items-center gap-1">
+                      {isEliminado ? (
+                        <button
+                          type="button"
+                          onClick={() => setDetailTarget(o)}
+                          className="p-1.5 rounded-lg text-[var(--ui-muted)] hover:bg-sky-50 hover:text-sky-600"
+                          title="Observar eliminación"
+                        >
+                          <MdVisibility />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => { setDeleteTarget(o); setAdminPassword(''); }}
+                        className="p-1.5 rounded-lg text-[var(--ui-muted)] hover:bg-red-50 hover:text-red-600"
+                        title="Eliminar registro"
+                      >
+                        <MdDelete />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -376,6 +401,69 @@ export default function CortesiasReportSection() {
           </tbody>
         </table>
       </div>
+
+      <Modal
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title="Producto eliminado de mesa"
+        size="md"
+      >
+        {detailTarget?.adjustment_kind === 'eliminado' && (() => {
+          const it = (detailTarget.items || [])[0];
+          const mesaLabel = detailTarget.type === 'dine_in' && detailTarget.table_number
+            ? formatMesaLabel(detailTarget.table_number)
+            : detailTarget.type === 'delivery'
+              ? 'Delivery'
+              : 'Mostrador';
+          const motivo = rowReason(detailTarget);
+          const refAmount = Number(detailTarget.reference_amount ?? detailTarget.discount_amount ?? 0);
+          return (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${kindBadgeClass('eliminado')}`}>
+                  <MdRemoveCircleOutline /> {kindLabel('eliminado')}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-lg border border-[color:var(--ui-border)] p-3">
+                  <p className="text-xs text-[var(--ui-muted)] mb-1">Fecha y hora</p>
+                  <p className="font-medium">{formatDateTime(detailTarget.updated_at || detailTarget.created_at)}</p>
+                </div>
+                <div className="rounded-lg border border-[color:var(--ui-border)] p-3">
+                  <p className="text-xs text-[var(--ui-muted)] mb-1">Mesa / canal</p>
+                  <p className="font-medium">{mesaLabel}</p>
+                </div>
+                <div className="rounded-lg border border-[color:var(--ui-border)] p-3 sm:col-span-2">
+                  <p className="text-xs text-[var(--ui-muted)] mb-1">Producto</p>
+                  <p className="font-semibold text-[var(--ui-body-text)]">
+                    {it ? `${Number(it.quantity || 0)}× ${it.product_name}` : '—'}
+                  </p>
+                  {it ? (
+                    <p className="text-xs text-[var(--ui-muted)] mt-1">
+                      Precio unitario: {formatCurrency(it.unit_price || 0)} · Total línea: {formatCurrency(refAmount)}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="rounded-lg border border-red-200 bg-red-50/80 p-3 sm:col-span-2">
+                  <p className="text-xs text-red-700 font-medium mb-1">Motivo de eliminación</p>
+                  <p className="text-sm text-red-900 whitespace-pre-wrap leading-relaxed">{motivo}</p>
+                </div>
+                <div className="rounded-lg border border-[color:var(--ui-border)] p-3">
+                  <p className="text-xs text-[var(--ui-muted)] mb-1">Registró</p>
+                  <p className="font-medium">{detailTarget.created_by_user_name || '—'}</p>
+                </div>
+                <div className="rounded-lg border border-[color:var(--ui-border)] p-3">
+                  <p className="text-xs text-[var(--ui-muted)] mb-1">Pedido</p>
+                  <p className="font-medium">{detailTarget.order_number ? `#${detailTarget.order_number}` : '—'}</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setDetailTarget(null)} className="btn-secondary w-full">
+                Cerrar
+              </button>
+            </div>
+          );
+        })()}
+      </Modal>
 
       <Modal isOpen={!!deleteTarget} onClose={() => { if (!deleteBusy) { setDeleteTarget(null); setAdminPassword(''); } }} title="Eliminar registro" size="sm">
         <div className="space-y-4">

@@ -312,14 +312,32 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo
         nextNotes,
         req.params.id,
       ]);
-      const removedLines = computeQuantityRemovals(existingItems, items);
-      if (removedLines.length) {
-        try {
-          insertProductRemovals(removedLines, orderBefore, actor, removalReason);
-        } catch (logErr) {
-          logRouteError(req, logErr, { order_id: req.params.id, phase: 'product_removal_log' });
-        }
+    }
+    const removedLines = computeQuantityRemovals(existingItems, items);
+    if (removedLines.length > 0 && removalReason.length >= 3) {
+      try {
+        insertProductRemovals(removedLines, orderBefore, actor, removalReason);
+      } catch (logErr) {
+        logRouteError(req, logErr, { order_id: req.params.id, phase: 'product_removal_log' });
       }
+      try {
+        logAudit({
+          actorUserId: req.user?.id || '',
+          actorName: req.user?.full_name || req.user?.username || '',
+          action: 'order.products_removed',
+          resourceType: 'order',
+          resourceId: req.params.id,
+          details: {
+            order_number: orderBefore.order_number,
+            removal_reason: removalReason,
+            table_number: orderBefore.table_number,
+            lines_removed: removedLines.length,
+          },
+        });
+      } catch (auditErr) {
+        logRouteError(req, auditErr, { order_id: req.params.id, phase: 'audit_removal' });
+      }
+    } else if (requiresRemovalReason && removalReason.length >= 3) {
       try {
         logAudit({
           actorUserId: req.user?.id || '',
