@@ -12,10 +12,16 @@ const { recordWorkActivityEvent } = require('../services/workActivityTracker');
 const {
   parsePaymentBreakdown,
   splitBreakdownAcrossOrders,
-  addOrderToSalesTotals,
   dominantPaymentMethod,
   round2,
 } = require('../utils/paymentBreakdown');
+const {
+  queryRegisterSessionSales,
+  getMovementTotals,
+  getCashNoteTotals,
+  computeExpectedCash,
+  SALES_EVENT_AT_SQL,
+} = require('../services/registerSessionSales');
 const { sendCashCloseNotification, getCashCloseRecipient } = require('../services/cashCloseNotifyService');
 const { getOrderChargeBase } = require('../utils/orderChargeBase');
 
@@ -285,65 +291,12 @@ function resolvePosRegister(req) {
   return getOpenRegister(user.id) || null;
 }
 
-function getMovementTotals(registerId) {
-  return queryOne(
-    `SELECT
-      COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as total_income,
-      COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_expense
-     FROM cash_movements
-     WHERE register_id = ?`,
-    [registerId]
-  ) || { total_income: 0, total_expense: 0 };
-}
-const SALES_EVENT_AT_SQL = 'COALESCE(updated_at, created_at)';
-
-/** Ventas del turno de caja (pedidos pagados desde apertura): totales y desglose por método (incl. online y multipago). */
-function queryRegisterSessionSales(openedAt) {
-  if (!openedAt) {
-    return {
-      total_sales: 0,
-      total_cash: 0,
-      total_yape: 0,
-      total_plin: 0,
-      total_card: 0,
-      total_online: 0,
-      total_tips: 0,
-      order_count: 0,
-    };
-  }
-  const rows =
-    queryAll(
-      `SELECT total, payment_method, payment_breakdown, tip_amount
-       FROM orders
-       WHERE ${SALES_EVENT_AT_SQL} >= ?
-         AND status != 'cancelled'
-         AND payment_status = 'paid'`,
-      [openedAt]
-    ) || [];
-  const totals = {
-    total_sales: 0,
-    total_cash: 0,
-    total_yape: 0,
-    total_plin: 0,
-    total_card: 0,
-    total_online: 0,
-    total_tips: 0,
-    order_count: 0,
-  };
-  rows.forEach((row) => {
-    totals.order_count += 1;
-    addOrderToSalesTotals(row, totals);
-  });
-  return {
-    total_sales: round2(totals.total_sales),
-    total_cash: round2(totals.total_cash),
-    total_yape: round2(totals.total_yape),
-    total_plin: round2(totals.total_plin),
-    total_card: round2(totals.total_card),
-    total_online: round2(totals.total_online),
-    total_tips: round2(Number(totals.total_tips || 0)),
-    order_count: Number(totals.order_count || 0),
-  };
+function buildRegisterSnapshot(register) {
+  const sales = queryRegisterSessionSales(register);
+  const movements = getMovementTotals(register.id);
+  const notes = getCashNoteTotals(register.id);
+  const expectedCash = roundMoneySoles(computeExpectedCash(register, sales, movements, notes));
+  return { sales, movements, notes, expectedCash };
 }
 
 router.get('/caja-stations', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
@@ -453,22 +406,13 @@ router.get('/current-register', authenticateToken, requireRole('admin', 'cajero'
   const register = resolvePosRegister(req);
   if (!register) return res.json(null);
 
-  const sales = queryRegisterSessionSales(register.opened_at);
+  const { sales, movements, notes, expectedCash } = buildRegisterSnapshot(register);
 
-  const movements = getMovementTotals(register.id);
-  const expectedCash = roundMoneySoles(
-    Number(register.opening_amount || 0)
-      + Number(sales.total_cash || 0)
-      + Number(sales.total_tips || 0)
-      + Number(movements.total_income || 0)
-      - Number(movements.total_expense || 0)
-  );
-
-  res.json({ ...register, ...sales, ...movements, expected_cash: expectedCash });
+  res.json({ ...register, ...sales, ...movements, ...notes, expected_cash: expectedCash });
 });
 
 router.post('/close-register', authenticateToken, requireRole('admin', 'cajero'), async (req, res) => {
-  const { closing_amount, notes, arqueo } = req.body;
+  const { closing_amount, notes: closingNotesText, arqueo } = req.body;
   const register = resolvePosRegister(req);
   if (!register) return res.status(400).json({ error: 'No tienes una caja abierta' });
   if (closing_amount === undefined || closing_amount === null || Number.isNaN(Number(closing_amount))) {
@@ -478,16 +422,7 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
     return res.status(400).json({ error: 'El efectivo contado no puede ser negativo' });
   }
 
-  const sales = queryRegisterSessionSales(register.opened_at);
-
-  const movements = getMovementTotals(register.id);
-  const expectedCash = roundMoneySoles(
-    Number(register.opening_amount || 0)
-      + Number(sales.total_cash || 0)
-      + Number(sales.total_tips || 0)
-      + Number(movements.total_income || 0)
-      - Number(movements.total_expense || 0)
-  );
+  const { sales, movements, notes: cashNotes, expectedCash } = buildRegisterSnapshot(register);
   const countedCash = roundMoneySoles(Number(closing_amount));
   const diff = roundMoneySoles(countedCash - expectedCash);
   const closedAtIso = new Date().toISOString();
@@ -511,17 +446,21 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
       income: Number(movements.total_income || 0),
       expense: Number(movements.total_expense || 0),
     },
+    cash_notes: {
+      credit: Number(cashNotes.notes_credit || 0),
+      debit: Number(cashNotes.notes_debit || 0),
+    },
     total_sales: Number(sales.total_sales || 0),
     total_tips: Number(sales.total_tips || 0),
     order_count: Number(sales.order_count || 0),
-    observations: arqueo?.observations || notes || '',
+    observations: arqueo?.observations || closingNotesText || '',
     closed_by: req.user.id,
     closed_by_name: req.user.full_name,
     closed_at: closedAtIso,
   });
 
   runSql("UPDATE cash_registers SET closed_at = datetime('now'), closing_amount = ?, total_sales = ?, total_cash = ?, total_yape = ?, total_plin = ?, total_card = ?, notes = ?, arqueo_data = ? WHERE id = ?",
-    [countedCash, sales.total_sales, sales.total_cash, sales.total_yape, sales.total_plin, sales.total_card, notes || '', arqueoData, register.id]);
+    [countedCash, sales.total_sales, sales.total_cash, sales.total_yape, sales.total_plin, sales.total_card, closingNotesText || '', arqueoData, register.id]);
   /** Cierre de caja: reinicio de numeración para el próximo turno / apertura. */
   runSql('UPDATE order_sequence SET current_number = 0 WHERE id = 1');
   logAudit({
@@ -543,7 +482,7 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
       expectedCash,
       countedCash,
       difference: diff,
-      notes: notes || '',
+      notes: closingNotesText || '',
       closedByName: req.user.full_name || req.user.username || '',
     });
   } catch (notifyErr) {
@@ -562,7 +501,7 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
 });
 
 router.post('/send-close-email', authenticateToken, requireRole('admin', 'cajero'), async (req, res) => {
-  const { closing_amount, notes, arqueo } = req.body || {};
+  const { closing_amount, notes: closingNotesText, arqueo } = req.body || {};
   const register = resolvePosRegister(req);
   if (!register) return res.status(400).json({ error: 'No tienes una caja abierta' });
   if (closing_amount === undefined || closing_amount === null || Number.isNaN(Number(closing_amount))) {
@@ -572,15 +511,7 @@ router.post('/send-close-email', authenticateToken, requireRole('admin', 'cajero
     return res.status(400).json({ error: 'El efectivo contado no puede ser negativo' });
   }
 
-  const sales = queryRegisterSessionSales(register.opened_at);
-  const movements = getMovementTotals(register.id);
-  const expectedCash = roundMoneySoles(
-    Number(register.opening_amount || 0)
-      + Number(sales.total_cash || 0)
-      + Number(sales.total_tips || 0)
-      + Number(movements.total_income || 0)
-      - Number(movements.total_expense || 0)
-  );
+  const { sales, movements, expectedCash } = buildRegisterSnapshot(register);
   const countedCash = roundMoneySoles(Number(closing_amount));
   const diff = roundMoneySoles(countedCash - expectedCash);
 
@@ -593,7 +524,7 @@ router.post('/send-close-email', authenticateToken, requireRole('admin', 'cajero
       expectedCash,
       countedCash,
       difference: diff,
-      notes: String(arqueo?.observations || notes || '').trim(),
+      notes: String(arqueo?.observations || closingNotesText || '').trim(),
       closedByName: req.user.full_name || req.user.username || '',
     });
     if (result?.warning) {
@@ -794,8 +725,9 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         } else {
           tx.run(
             `UPDATE orders SET payment_method = ?, payment_status = 'paid', status = ?,
-              payment_breakdown = ?, tip_amount = ?, updated_at = datetime('now') WHERE id = ?`,
-            [primaryMethod, nextStatus, br, tipForOrder, row.id]
+              payment_breakdown = ?, tip_amount = ?, cash_register_id = ?,
+              paid_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+            [primaryMethod, nextStatus, br, tipForOrder, register.id, row.id]
           );
           if (primaryMethod !== COURTESY_PAYMENT_METHOD) {
             tx.run(
@@ -1007,31 +939,39 @@ router.get('/notes', authenticateToken, requireRole('admin', 'cajero'), (req, re
 router.get('/sales-monitor', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
   const register = resolvePosRegister(req);
   if (!register) return res.json({ hourly: [], by_payment: [], order_count: 0, total_sales: 0 });
+  const registerId = String(register.id || '').trim();
+  const openedAt = register.opened_at;
+  const salesWhere = registerId
+    ? `(IFNULL(cash_register_id, '') = ? OR (IFNULL(cash_register_id, '') = '' AND ${SALES_EVENT_AT_SQL} >= ?))`
+    : `${SALES_EVENT_AT_SQL} >= ?`;
+  const salesParams = registerId ? [registerId, openedAt] : [openedAt];
+  const paidFilter = `status != 'cancelled' AND payment_status = 'paid'
+    AND IFNULL(payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')`;
   const hourly = queryAll(
-    `SELECT strftime('%H', created_at) as hour,
+    `SELECT strftime('%H', ${SALES_EVENT_AT_SQL}) as hour,
             COUNT(*) as orders,
             COALESCE(SUM(total), 0) as total
      FROM orders
-     WHERE ${SALES_EVENT_AT_SQL} >= ? AND status != 'cancelled' AND payment_status = 'paid'
-     GROUP BY strftime('%H', created_at)
+     WHERE ${salesWhere} AND ${paidFilter}
+     GROUP BY strftime('%H', ${SALES_EVENT_AT_SQL})
      ORDER BY hour`,
-    [register.opened_at]
+    salesParams
   );
   const byPayment = queryAll(
     `SELECT payment_method,
             COUNT(*) as count,
             COALESCE(SUM(total), 0) as total
      FROM orders
-     WHERE ${SALES_EVENT_AT_SQL} >= ? AND status != 'cancelled' AND payment_status = 'paid'
+     WHERE ${salesWhere} AND ${paidFilter}
      GROUP BY payment_method
      ORDER BY total DESC`,
-    [register.opened_at]
+    salesParams
   );
   const summary = queryOne(
     `SELECT COUNT(*) as order_count, COALESCE(SUM(total), 0) as total_sales
      FROM orders
-     WHERE ${SALES_EVENT_AT_SQL} >= ? AND status != 'cancelled' AND payment_status = 'paid'`,
-    [register.opened_at]
+     WHERE ${salesWhere} AND ${paidFilter}`,
+    salesParams
   );
   res.json({ hourly, by_payment: byPayment, ...summary });
 });

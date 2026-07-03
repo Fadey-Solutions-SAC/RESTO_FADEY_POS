@@ -1982,6 +1982,30 @@ async function initDatabase() {
       }
     }
 
+    const ordersRegisterColDone = queryOne(
+      'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
+      ['2026-07-orders-cash-register-v1'],
+    );
+    if (!ordersRegisterColDone?.ok) {
+      try {
+        const orderCols = queryAll('PRAGMA table_info(orders)');
+        const names = new Set(orderCols.map((c) => c.name));
+        if (!names.has('cash_register_id')) {
+          runSql("ALTER TABLE orders ADD COLUMN cash_register_id TEXT DEFAULT ''");
+        }
+        if (!names.has('paid_at')) {
+          runSql("ALTER TABLE orders ADD COLUMN paid_at TEXT DEFAULT NULL");
+        }
+        runSql('CREATE INDEX IF NOT EXISTS idx_orders_cash_register_id ON orders(cash_register_id)');
+        runSql('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', [
+          '2026-07-orders-cash-register-v1',
+        ]);
+        console.log('[migration] orders.cash_register_id + paid_at ready');
+      } catch (e) {
+        console.error('[migration] orders cash register cols:', e.message || e);
+      }
+    }
+
     db.run('CREATE INDEX IF NOT EXISTS idx_customers_doc_number ON customers(doc_number)');
     db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_doc_number_unique ON customers(doc_number) WHERE COALESCE(doc_number, '') != ''");
     db.run('CREATE INDEX IF NOT EXISTS idx_app_settings_history_created_at ON app_settings_history(created_at)');

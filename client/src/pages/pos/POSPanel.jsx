@@ -2479,7 +2479,14 @@ export default function POSPanel() {
   const totalCard = register?.total_card || 0;
   const totalIncome = register?.total_income || 0;
   const totalExpense = register?.total_expense || 0;
-  const expectedCash = register?.expected_cash ?? (openingAmt + totalCash + totalIncome - totalExpense);
+  const totalTips = register?.total_tips || 0;
+  const notesCredit = register?.notes_credit || 0;
+  const notesDebit = register?.notes_debit || 0;
+  const expectedCash =
+    register?.expected_cash ??
+    roundMoneySoles(
+      openingAmt + totalCash + totalTips + totalIncome - totalExpense + notesCredit - notesDebit,
+    );
   const expectedRounded = roundMoneySoles(expectedCash);
 
   const closingAmt =
@@ -4966,7 +4973,7 @@ export default function POSPanel() {
               )}
               <div className="sep"></div>
               <div className="row bold"><span>EFECTIVO ESPERADO</span><span>{formatCurrency(expectedRounded)}</span></div>
-              <div className="row"><span style={{ fontSize: '10px', color: '#94a3b8' }}>(Apertura + ventas en efectivo del turno)</span></div>
+              <div className="row"><span style={{ fontSize: '10px', color: '#94a3b8' }}>(Apertura + efectivo + propinas + ingresos − egresos ± notas de caja)</span></div>
               <div className="sep"></div>
               <div className="row bold"><span>DETALLE ARQUEO</span><span></span></div>
               {denomDefs
@@ -5034,6 +5041,14 @@ export default function POSPanel() {
                     <label className="block text-xs font-medium text-[#cbd5e1] mb-1">Efectivo esperado en caja</label>
                     <div className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
                       <p className="font-bold text-lg text-[#f9fafb] tabular-nums">{formatCurrency(expectedRounded)}</p>
+                      <p className="text-[10px] text-[#94a3b8] mt-1 leading-snug">
+                        Apertura {formatCurrency(openingAmt)} + efectivo {formatCurrency(totalCash)}
+                        {totalTips > 0 ? ` + propinas ${formatCurrency(totalTips)}` : ''}
+                        {totalIncome > 0 ? ` + ingresos ${formatCurrency(totalIncome)}` : ''}
+                        {totalExpense > 0 ? ` − egresos ${formatCurrency(totalExpense)}` : ''}
+                        {notesCredit > 0 ? ` + notas crédito ${formatCurrency(notesCredit)}` : ''}
+                        {notesDebit > 0 ? ` − notas débito ${formatCurrency(notesDebit)}` : ''}
+                      </p>
                     </div>
                   </div>
                   <div>

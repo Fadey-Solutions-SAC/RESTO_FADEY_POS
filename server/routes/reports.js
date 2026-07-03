@@ -86,7 +86,7 @@ function buildLiveSalesPanel(registerOpen) {
   const venue = computeOpenStatus(scheduleJson);
 
   if (registerOpen?.id && registerOpen?.opened_at) {
-    const session = queryRegisterSessionSales(registerOpen.opened_at);
+    const session = queryRegisterSessionSales(registerOpen);
     return {
       mode: 'register_open',
       register_open: true,
@@ -108,7 +108,11 @@ function buildLiveSalesPanel(registerOpen) {
   );
   let lastSession = { total_sales: 0, order_count: 0 };
   if (lastClosed?.opened_at) {
-    lastSession = queryRegisterSessionSalesBetween(lastClosed.opened_at, lastClosed.closed_at);
+    lastSession = queryRegisterSessionSalesBetween(
+      lastClosed.opened_at,
+      lastClosed.closed_at,
+      lastClosed.id,
+    );
   }
 
   if (!venue.is_open) {

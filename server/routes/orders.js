@@ -922,6 +922,12 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
     return res.status(400).json({ error: 'Sin cambios de pago' });
   }
 
+  const wasPaid = String(order.payment_status || '') === 'paid';
+  const nextPayEffective =
+    payment_status !== undefined && payment_status !== null
+      ? String(payment_status)
+      : String(order.payment_status || '');
+
   const setParts = [];
   const params = [];
   if (nextPaymentMethod !== null) {
@@ -941,15 +947,25 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
     setParts.push('payment_status = ?');
     params.push(payment_status);
   }
+  if (nextPayEffective === 'paid' && !wasPaid) {
+    const role = String(req.user?.role || '').toLowerCase();
+    const openReg = queryOne(
+      'SELECT id FROM cash_registers WHERE user_id = ? AND closed_at IS NULL',
+      [req.user.id],
+    );
+    if (role === 'cajero' && !openReg?.id) {
+      return res.status(400).json({ error: 'Debe abrir caja antes de registrar cobros' });
+    }
+    if (openReg?.id) {
+      setParts.push('cash_register_id = ?');
+      params.push(openReg.id);
+    }
+    setParts.push("paid_at = COALESCE(paid_at, datetime('now'))");
+  }
   setParts.push("updated_at = datetime('now')");
   params.push(req.params.id);
 
   const docPm = nextPaymentMethod !== null ? nextPaymentMethod : order.payment_method;
-  const wasPaid = String(order.payment_status || '') === 'paid';
-  const nextPayEffective =
-    payment_status !== undefined && payment_status !== null
-      ? String(payment_status)
-      : String(order.payment_status || '');
   /** Venta rápida / mostrador: cobrar cierra el pedido pickup en la misma operación. */
   const isPickupSaleCloseout =
     nextPayEffective === 'paid' &&
