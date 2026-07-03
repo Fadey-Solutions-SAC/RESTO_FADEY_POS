@@ -13,6 +13,7 @@ import { mergeOrderingCatalog, buildOrderItemsPayload, filterOrderingProducts } 
 import { showStockInOrderingUI } from '../../utils/productStockDisplay';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
+import { UI_BADGE } from '../../utils/uiBadges';
 import Modal from '../../components/Modal';
 import {
   MdDeliveryDining, MdLocationOn, MdCheck, MdTimer, MdAdd,
@@ -99,7 +100,13 @@ export default function Delivery() {
         ? todayDeliveries
         : completedOrders;
 
-  const statusColors = { pending: 'bg-gold-100 text-gold-700', preparing: 'bg-sky-100 text-sky-700', ready: 'bg-sky-100 text-sky-700', delivered: 'bg-emerald-100 text-emerald-700', cancelled: 'bg-red-100 text-red-700' };
+  const statusColors = {
+    pending: UI_BADGE.amber,
+    preparing: UI_BADGE.blue,
+    ready: UI_BADGE.sky,
+    delivered: UI_BADGE.emerald,
+    cancelled: UI_BADGE.red,
+  };
   const statusNames = { pending: 'Pendiente', preparing: 'Preparando', ready: 'Listo para enviar', delivered: 'Entregado', cancelled: 'Cancelado' };
 
   const updateStatus = async (id, status) => {
@@ -242,7 +249,7 @@ export default function Delivery() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-lg">#{o.order_number}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[o.status]}`}>{statusNames[o.status]}</span>
+                      <span className={statusColors[o.status] || UI_BADGE.slate}>{statusNames[o.status]}</span>
                     </div>
                     <p className="text-xs text-[var(--ui-muted)]">{formatDateTime(o.created_at)}</p>
                   </div>

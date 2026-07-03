@@ -9,6 +9,7 @@ import {
 } from '../../utils/mesaOrderLines';
 import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdInventory2, MdDelete, MdRemoveCircleOutline, MdVisibility } from 'react-icons/md';
 import Modal from '../../components/Modal';
+import { adjustmentKindBadge } from '../../utils/uiBadges';
 import toast from 'react-hot-toast';
 
 function toInputDate(d) {
@@ -26,9 +27,7 @@ function kindLabel(kind) {
 }
 
 function kindBadgeClass(kind) {
-  if (kind === 'cortesia') return 'bg-violet-500/15 text-violet-600 dark:text-violet-300 border-violet-400/30';
-  if (kind === 'eliminado') return 'bg-red-500/15 text-red-600 dark:text-red-300 border-red-400/30';
-  return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-400/30';
+  return adjustmentKindBadge(kind);
 }
 
 function rowReason(o) {
@@ -321,7 +320,7 @@ export default function CortesiasReportSection() {
                 <tr key={o.id} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
                   <td className="py-2.5 pr-3 whitespace-nowrap">{formatDateTime(o.updated_at || o.created_at)}</td>
                   <td className="py-2.5 pr-3">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${kindBadgeClass(kind)}`}>
+                    <span className={kindBadgeClass(kind)}>
                       {isEliminado ? (
                         <MdRemoveCircleOutline className="shrink-0" />
                       ) : isCourtesy ? (
@@ -420,7 +419,7 @@ export default function CortesiasReportSection() {
           return (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${kindBadgeClass('eliminado')}`}>
+                <span className={kindBadgeClass('eliminado')}>
                   <MdRemoveCircleOutline /> {kindLabel('eliminado')}
                 </span>
               </div>

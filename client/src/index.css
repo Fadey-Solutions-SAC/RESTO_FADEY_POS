@@ -475,14 +475,30 @@ html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] .text-
 }
 
 /* Badges: colores definidos en @layer con utilidades embebidas */
-html[data-ui-color-scheme='light'] #root .badge-pending,
-html[data-ui-color-scheme='light'] #root .badge-preparing,
-html[data-ui-color-scheme='light'] #root .badge-ready,
+html[data-ui-color-scheme='light'] #root .badge-pending {
+  background-color: #dbeafe !important;
+  color: #1e40af !important;
+  border: 1px solid #93c5fd !important;
+}
+html[data-ui-color-scheme='light'] #root .badge-preparing {
+  background-color: #bfdbfe !important;
+  color: #1e3a8a !important;
+  border: 1px solid #60a5fa !important;
+}
+html[data-ui-color-scheme='light'] #root .badge-ready {
+  background-color: #d1fae5 !important;
+  color: #047857 !important;
+  border: 1px solid #6ee7b7 !important;
+}
 html[data-ui-color-scheme='light'] #root .badge-delivered {
-  color: #000000 !important;
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  border: 1px solid #94a3b8 !important;
 }
 html[data-ui-color-scheme='light'] #root .badge-cancelled {
-  color: #ffffff !important;
+  background-color: #fee2e2 !important;
+  color: #b91c1c !important;
+  border: 1px solid #fca5a5 !important;
 }
 
 @layer components {
@@ -936,22 +952,128 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     color: #f9fafb !important;
   }
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border;
   }
   .badge-pending {
-    @apply bg-[#3B82F6]/20 text-[#F9FAFB];
+    @apply bg-blue-500/25 text-blue-100 border-blue-400/40;
   }
   .badge-preparing {
-    @apply bg-[#3B82F6]/30 text-[#F9FAFB];
+    @apply bg-blue-500/30 text-blue-50 border-blue-400/45;
   }
   .badge-ready {
-    @apply bg-emerald-500/25 text-[#F9FAFB];
+    @apply bg-emerald-500/25 text-emerald-100 border-emerald-400/40;
   }
   .badge-delivered {
-    @apply bg-[#374151] text-[#F9FAFB];
+    @apply bg-slate-600/40 text-slate-100 border-slate-400/40;
   }
   .badge-cancelled {
-    @apply bg-[#1E40AF] text-white;
+    @apply bg-red-600/30 text-red-50 border-red-400/45;
+  }
+
+  /* Etiquetas de estado — alto contraste en claro y oscuro (no usar dark: de Tailwind) */
+  .ui-badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border;
+  }
+  .ui-badge--violet {
+    background: #ede9fe;
+    color: #5b21b6;
+    border-color: #a78bfa;
+  }
+  .ui-badge--red {
+    background: #fee2e2;
+    color: #b91c1c;
+    border-color: #fca5a5;
+  }
+  .ui-badge--amber {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fcd34d;
+  }
+  .ui-badge--emerald {
+    background: #d1fae5;
+    color: #047857;
+    border-color: #6ee7b7;
+  }
+  .ui-badge--sky {
+    background: #e0f2fe;
+    color: #0369a1;
+    border-color: #7dd3fc;
+  }
+  .ui-badge--blue {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-color: #93c5fd;
+  }
+  .ui-badge--slate {
+    background: #e2e8f0;
+    color: #334155;
+    border-color: #94a3b8;
+  }
+  .ui-badge--orange {
+    background: #ffedd5;
+    color: #c2410c;
+    border-color: #fdba74;
+  }
+  .ui-badge--indigo {
+    background: #e0e7ff;
+    color: #4338ca;
+    border-color: #a5b4fc;
+  }
+  .ui-badge--purple {
+    background: #f3e8ff;
+    color: #7e22ce;
+    border-color: #d8b4fe;
+  }
+
+  html[data-ui-color-scheme='dark'] .ui-badge--violet {
+    background: rgba(139, 92, 246, 0.22);
+    color: #ddd6fe;
+    border-color: rgba(167, 139, 250, 0.5);
+  }
+  html[data-ui-color-scheme='dark'] .ui-badge--red {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fecaca;
+    border-color: rgba(248, 113, 113, 0.45);
+  }
+  html[data-ui-color-scheme='dark'] .ui-badge--amber {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fde68a;
+    border-color: rgba(251, 191, 36, 0.45);
+  }
+  html[data-ui-color-scheme='dark'] .ui-badge--emerald {
+    background: rgba(16, 185, 129, 0.2);
+    color: #a7f3d0;
+    border-color: rgba(52, 211, 153, 0.45);
+  }
+  html[data-ui-color-scheme='dark'] .ui-badge--sky {
+    background: rgba(14, 165, 233, 0.2);
+    color: #bae6fd;
+    border-color: rgba(56, 189, 248, 0.45);
+  }
+  html[data-ui-color-scheme='dark'] .ui-badge--blue {
+    background: rgba(59, 130, 246, 0.22);
+    color: #bfdbfe;
+    border-color: rgba(96, 165, 250, 0.45);
+  }
+  html[data-ui-color-scheme='dark'] .ui-badge--slate {
+    background: rgba(100, 116, 139, 0.25);
+    color: #e2e8f0;
+    border-color: rgba(148, 163, 184, 0.45);
+  }
+  html[data-ui-color-scheme='dark'] .ui-badge--orange {
+    background: rgba(249, 115, 22, 0.2);
+    color: #fed7aa;
+    border-color: rgba(251, 146, 60, 0.45);
+  }
+  html[data-ui-color-scheme='dark'] .ui-badge--indigo {
+    background: rgba(99, 102, 241, 0.22);
+    color: #c7d2fe;
+    border-color: rgba(129, 140, 248, 0.45);
+  }
+  html[data-ui-color-scheme='dark'] .ui-badge--purple {
+    background: rgba(168, 85, 247, 0.22);
+    color: #e9d5ff;
+    border-color: rgba(192, 132, 252, 0.45);
   }
 
   /* Texto legible dentro de modales oscuros (evita labels slate sobre fondo oscuro / forzado por SO) */

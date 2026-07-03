@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSocket } from '../../hooks/useSocket';
 import { useSearchParams } from 'react-router-dom';
 import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
-import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
+import { UI_BADGE } from '../../utils/uiBadges';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline, MdEdit } from 'react-icons/md';
@@ -1836,20 +1836,20 @@ export default function Almacen() {
                 const est = insumoEstadoStock(i);
                 const badgeClass =
                   est === 'normal'
-                    ? 'bg-emerald-500/20 text-emerald-300'
+                    ? UI_BADGE.emerald
                     : est === 'bajo'
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : 'bg-red-500/20 text-red-300';
+                      ? UI_BADGE.amber
+                      : UI_BADGE.red;
                 const badgeLabel = est === 'normal' ? 'Normal' : est === 'bajo' ? 'Bajo' : 'Agotado';
                 return (
                   <tr key={i.id} className="border-b border-slate-600/30">
                     <td className="py-3 font-medium text-[var(--ui-body-text)]">
                       <span
-                        className={`mr-2 inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                        className={`mr-2 ${
                           String(i.insumo_area || 'cocina').toLowerCase() === 'bar'
-                            ? 'bg-indigo-500/15 text-indigo-300'
-                            : 'bg-sky-500/15 text-sky-300'
-                        }`}
+                            ? UI_BADGE.indigo
+                            : UI_BADGE.sky
+                        } text-[10px] uppercase tracking-wide`}
                       >
                         {String(i.insumo_area || 'cocina').toLowerCase() === 'bar' ? 'Bar' : 'Cocina'}
                       </span>
@@ -1865,7 +1865,7 @@ export default function Almacen() {
                     </td>
                     <td className="py-3 text-right text-[var(--ui-body-text)] tabular-nums">{formatCurrency(valor)}</td>
                     <td className="py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badgeClass}`}>{badgeLabel}</span>
+                      <span className={badgeClass}>{badgeLabel}</span>
                     </td>
                     <td className="py-3 text-right">
                       <button
@@ -1921,13 +1921,13 @@ export default function Almacen() {
                   <td className="py-3 font-bold">{p.stock_kitchen || 0}</td>
                   <td className="py-3 font-bold">{p.stock}</td>
                   <td className="py-3">{formatCurrency(p.price * p.stock)}</td>
-                  <td className="py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  <td className="py-3"><span className={
                     productStockStatus(p.stock, p.min_stock) === 'normal'
-                      ? 'bg-emerald-100 text-emerald-700'
+                      ? UI_BADGE.emerald
                       : productStockStatus(p.stock, p.min_stock) === 'low'
-                        ? 'bg-gold-100 text-gold-700'
-                        : 'bg-red-100 text-red-700'
-                  }`}>{productStockStatus(p.stock, p.min_stock) === 'normal' ? 'Normal' : productStockStatus(p.stock, p.min_stock) === 'low' ? 'Bajo' : 'Agotado'}</span></td>
+                        ? UI_BADGE.amber
+                        : UI_BADGE.red
+                  }>{productStockStatus(p.stock, p.min_stock) === 'normal' ? 'Normal' : productStockStatus(p.stock, p.min_stock) === 'low' ? 'Bajo' : 'Agotado'}</span></td>
                   <td className="py-3">
                     <button
                       type="button"

@@ -5,14 +5,16 @@ import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
 import { MdAdd, MdEdit, MdDelete, MdToggleOn, MdToggleOff } from 'react-icons/md';
 
+import { UI_BADGE } from '../../utils/uiBadges';
+
 const ROLES = { admin: 'Administrador', cajero: 'Cajero', mozo: 'Mozo', cocina: 'Cocina', bar: 'Bar', delivery: 'Delivery' };
 const ROLE_COLORS = {
-  admin: 'bg-purple-100 text-purple-700',
-  cajero: 'bg-blue-100 text-blue-700',
-  mozo: 'bg-sky-100 text-sky-700',
-  cocina: 'bg-amber-100 text-amber-700',
-  bar: 'bg-indigo-100 text-indigo-700',
-  delivery: 'bg-emerald-100 text-emerald-700',
+  admin: UI_BADGE.purple,
+  cajero: UI_BADGE.blue,
+  mozo: UI_BADGE.sky,
+  cocina: UI_BADGE.amber,
+  bar: UI_BADGE.indigo,
+  delivery: UI_BADGE.emerald,
 };
 const EMPTY_FORM = { username: '', email: '', password: '', full_name: '', role: 'mozo', phone: '', caja_station_id: '' };
 
@@ -147,9 +149,9 @@ export default function Users() {
                 </td>
                 <td className="py-3 px-4 text-sm">{u.full_name}</td>
                 <td className="py-3 px-4 text-sm text-gray-500">{u.email}</td>
-                <td className="py-3 px-4"><span className={`badge ${ROLE_COLORS[u.role]}`}>{ROLES[u.role]}</span></td>
+                <td className="py-3 px-4"><span className={ROLE_COLORS[u.role] || UI_BADGE.slate}>{ROLES[u.role]}</span></td>
                 <td className="py-3 px-4">
-                  <span className={`badge ${u.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                  <span className={u.is_active ? UI_BADGE.emerald : UI_BADGE.slate}>
                     {u.is_active ? 'Activo' : 'Inactivo'}
                   </span>
                 </td>

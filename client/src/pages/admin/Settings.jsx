@@ -33,6 +33,7 @@ import {
   MdAutoGraph,
 } from 'react-icons/md';
 import { applyUiThemeFromAppSettings } from '../../theme/uiTheme';
+import { UI_BADGE } from '../../utils/uiBadges';
 import {
   cachePrintingConfig,
   normalizePrintingConfig,
@@ -77,12 +78,12 @@ const CAJA_EXTRA_PERMISSIONS = [
 ];
 
 const ROLES = {
-  admin: { label: 'Administrador', icon: MdAdminPanelSettings, color: 'bg-sky-100 text-sky-700', desc: 'Acceso completo al sistema' },
-  cajero: { label: 'Cajero', icon: MdPointOfSale, color: 'bg-sky-100 text-sky-700', desc: 'Caja, cobros e informes' },
-  mozo: { label: 'Mozo', icon: MdRoomService, color: 'bg-emerald-100 text-emerald-700', desc: 'Mesas y pedidos' },
-  cocina: { label: 'Cocina', icon: MdKitchen, color: 'bg-amber-100 text-amber-700', desc: 'Preparación de cocina' },
-  bar: { label: 'Bar', icon: MdLocalBar, color: 'bg-indigo-100 text-indigo-700', desc: 'Preparación de bebidas y barra' },
-  delivery: { label: 'Delivery', icon: MdDeliveryDining, color: 'bg-emerald-100 text-emerald-700', desc: 'Reparto y entregas' },
+  admin: { label: 'Administrador', icon: MdAdminPanelSettings, color: UI_BADGE.purple, desc: 'Acceso completo al sistema' },
+  cajero: { label: 'Cajero', icon: MdPointOfSale, color: UI_BADGE.blue, desc: 'Caja, cobros e informes' },
+  mozo: { label: 'Mozo', icon: MdRoomService, color: UI_BADGE.emerald, desc: 'Mesas y pedidos' },
+  cocina: { label: 'Cocina', icon: MdKitchen, color: UI_BADGE.amber, desc: 'Preparación de cocina' },
+  bar: { label: 'Bar', icon: MdLocalBar, color: UI_BADGE.indigo, desc: 'Preparación de bebidas y barra' },
+  delivery: { label: 'Delivery', icon: MdDeliveryDining, color: UI_BADGE.sky, desc: 'Reparto y entregas' },
 };
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
@@ -2816,7 +2817,7 @@ function UsersSection({
                     </div>
                   </td>
                   <td className="p-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1 ${roleInfo.color}`}>
+                    <span className={`${roleInfo.color} px-3 py-1 inline-flex items-center gap-1`}>
                       <RoleIcon className="text-sm" /> {roleInfo.label}
                     </span>
                     {String(u.role || '').toLowerCase() === 'cajero' && String(u.caja_station_id || '').trim() && (
@@ -2826,7 +2827,7 @@ function UsersSection({
                     )}
                   </td>
                   <td className="p-3 text-center">
-                    <button onClick={() => toggleActive(u)} className={`px-3 py-1 rounded-full text-xs font-bold ${u.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-[var(--ui-surface-2)] text-[var(--ui-muted)] border border-[color:var(--ui-border)]'}`}>
+                    <button onClick={() => toggleActive(u)} className={`px-3 py-1 text-xs font-bold ${u.is_active ? UI_BADGE.emerald : UI_BADGE.slate}`}>
                       {u.is_active ? 'ACTIVO' : 'INACTIVO'}
                     </button>
                   </td>

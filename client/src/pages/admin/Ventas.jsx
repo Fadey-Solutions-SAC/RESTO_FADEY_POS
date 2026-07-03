@@ -9,11 +9,7 @@ import i18n from '../../i18n';
 import { buildSalesDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch } from '../../utils/mesaOrderLines';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 
-const PAYMENT_STATUS_STYLES = {
-  paid: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
-  pending: 'bg-amber-500/20 text-amber-300 border border-amber-500/40',
-  refunded: 'bg-orange-500/20 text-orange-300 border border-orange-500/40',
-};
+import { UI_BADGE, saleStatusBadge } from '../../utils/uiBadges';
 
 function productRemovalNotesFromOrder(notes) {
   const parts = String(notes || '')
@@ -25,38 +21,38 @@ function productRemovalNotesFromOrder(notes) {
 }
 
 function getSaleStatusBadge(order, t) {
+  const base = saleStatusBadge(order);
   if (order.status === 'cancelled') {
-    return { label: 'Anulada', className: 'bg-red-500/20 text-red-300 border border-red-500/50' };
+    return { label: t('status.cancelled', { defaultValue: 'Anulada' }), className: UI_BADGE.red };
   }
   if (String(order.payment_method || '').trim().toLowerCase() === 'cortesia') {
-    return { label: 'Cortesía', className: 'bg-violet-500/20 text-violet-300 border border-violet-500/40' };
+    return { label: 'Cortesía', className: UI_BADGE.violet };
   }
   const ps = String(order.payment_status || 'pending');
-  const label = t(`status.${ps}`, { defaultValue: ps === 'paid' ? 'Pagado' : ps === 'pending' ? 'Pendiente' : ps });
-  const className = PAYMENT_STATUS_STYLES[ps] || 'bg-slate-500/20 text-slate-300 border border-slate-500/30';
-  return { label, className };
+  const label = t(`status.${ps}`, { defaultValue: base.label });
+  return { label, className: base.className };
 }
 
 function getSalesGroupStatusBadge(group, t) {
   const orders = group?.orders || [];
   if (orders.length === 0) return getSaleStatusBadge({}, t);
   if (orders.every((o) => o.status === 'cancelled')) {
-    return { label: 'Anulada', className: 'bg-red-500/20 text-red-300 border border-red-500/50' };
+    return { label: 'Anulada', className: UI_BADGE.red };
   }
   const salesOrders = orders.filter((o) => o.status !== 'cancelled' && !isCourtesyOrder(o));
   const courtesyOrders = orders.filter((o) => o.status !== 'cancelled' && isCourtesyOrder(o));
   if (salesOrders.length === 0 && courtesyOrders.length > 0) {
-    return { label: 'Cortesía', className: 'bg-violet-500/20 text-violet-300 border border-violet-500/40' };
+    return { label: 'Cortesía', className: UI_BADGE.violet };
   }
   const paid = salesOrders.filter((o) => o.payment_status === 'paid').length;
   const pending = salesOrders.filter((o) => String(o.payment_status || 'pending') === 'pending').length;
   if (paid === salesOrders.length && salesOrders.length > 0) return getSaleStatusBadge({ payment_status: 'paid' }, t);
   if (pending === salesOrders.length && salesOrders.length > 0) return getSaleStatusBadge({ payment_status: 'pending' }, t);
   if (paid > 0 && pending > 0) {
-    return { label: 'Parcial', className: 'bg-sky-500/20 text-sky-200 border border-sky-500/40' };
+    return { label: 'Parcial', className: UI_BADGE.sky };
   }
   if (courtesyOrders.length > 0 && salesOrders.length > 0) {
-    return { label: 'Mixto', className: 'bg-slate-500/20 text-slate-200 border border-slate-500/40' };
+    return { label: 'Mixto', className: UI_BADGE.slate };
   }
   return getSaleStatusBadge(orders[0], t);
 }
@@ -708,7 +704,7 @@ export default function Ventas() {
                     ) : null}
                     <td className="py-2.5 font-bold text-[var(--ui-body-text)]">{formatCurrency(group.total)}</td>
                     <td className="py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${statusBadge.className}`}>
+                      <span className={`${statusBadge.className} uppercase tracking-wide`}>
                         {statusBadge.label}
                       </span>
                     </td>
@@ -857,7 +853,7 @@ export default function Ventas() {
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${badge.className}`}>{badge.label}</span>
+                        <span className={`${badge.className} uppercase text-[10px]`}>{badge.label}</span>
                         <button type="button" onClick={() => startEdit(ord)} className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600" title="Editar"><MdEdit /></button>
                         <button
                           type="button"

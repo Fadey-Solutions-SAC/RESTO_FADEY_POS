@@ -1,6 +1,7 @@
 /** Líneas de producto a partir de pedidos de mesa (u órdenes con items). */
 
 import { toLocalDateKey } from './api';
+import { UI_BADGE } from './uiBadges';
 
 /**
  * Identidad de línea para mesa / precuenta / cobro: mismo producto, variante, notas y precio unitario → se agrupan cantidades.
@@ -157,15 +158,16 @@ export function groupItemsByProductNameForBill(items) {
   }));
 }
 
+
 export function getStaffOrderStatusUi(status) {
   const value = String(status || '').toLowerCase();
-  if (value === '__mixed__') return { label: 'Varios', classes: 'bg-slate-600/35 text-[#F9FAFB] border border-slate-400/35' };
-  if (value === 'pending') return { label: 'Pendiente', classes: 'bg-[#3B82F6]/20 text-[#F9FAFB] border border-[#3B82F6]/40' };
-  if (value === 'preparing') return { label: 'Preparando', classes: 'bg-[#2563EB]/20 text-[#F9FAFB] border border-[#2563EB]/40' };
-  if (value === 'ready') return { label: 'Listo', classes: 'bg-emerald-500/20 text-emerald-100 border border-emerald-300/40' };
-  if (value === 'delivered') return { label: 'Entregado', classes: 'bg-[#1F2937] text-[#F9FAFB] border border-[#3B82F6]/30' };
-  if (value === 'cancelled') return { label: 'Cancelado', classes: 'bg-[#1E40AF]/25 text-[#F9FAFB] border border-[#3B82F6]/40' };
-  return { label: value || 'Sin estado', classes: 'bg-[#1F2937] text-[#F9FAFB] border border-[#3B82F6]/30' };
+  if (value === '__mixed__') return { label: 'Varios', classes: UI_BADGE.slate };
+  if (value === 'pending') return { label: 'Pendiente', classes: UI_BADGE.blue };
+  if (value === 'preparing') return { label: 'Preparando', classes: UI_BADGE.blue };
+  if (value === 'ready') return { label: 'Listo', classes: UI_BADGE.emerald };
+  if (value === 'delivered') return { label: 'Entregado', classes: UI_BADGE.slate };
+  if (value === 'cancelled') return { label: 'Cancelado', classes: UI_BADGE.red };
+  return { label: value || 'Sin estado', classes: UI_BADGE.slate };
 }
 
 /** Fecha local (YYYY-MM-DD) del pedido para agrupar ventas por día. */

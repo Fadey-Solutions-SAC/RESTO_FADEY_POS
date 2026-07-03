@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
+import { UI_BADGE } from '../../utils/uiBadges';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import { mergeOrderingCatalog, filterVisibleOrderingProducts, buildOrderItemsPayload, filterOrderingProducts } from '../../utils/orderingCatalog';
 import { MdAdd, MdExpandMore, MdEventSeat, MdPerson, MdPhone, MdCalendarToday, MdAccessTime } from 'react-icons/md';
@@ -244,10 +245,10 @@ export default function Reservas() {
   const visibleReservas = reservas.filter((r) => !['cancelled', 'cancelada'].includes(String(r.status || '').toLowerCase()));
   const todayReservas = visibleReservas.filter((r) => r.date === today);
   const statusColors = {
-    confirmed: 'bg-emerald-100 text-emerald-700',
-    pending: 'bg-gold-100 text-gold-700',
-    cancelled: 'bg-red-100 text-red-700',
-    completed: 'bg-sky-100 text-sky-700',
+    confirmed: UI_BADGE.emerald,
+    pending: UI_BADGE.amber,
+    cancelled: UI_BADGE.red,
+    completed: UI_BADGE.sky,
   };
   const statusNames = { confirmed: 'Confirmada', pending: 'Pendiente', cancelled: 'Cancelada', completed: 'Completada' };
 
@@ -349,7 +350,7 @@ export default function Reservas() {
                       </option>
                     ))}
                   </select>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[r.status]}`}>
+                  <span className={statusColors[r.status] || UI_BADGE.slate}>
                     {statusNames[r.status]}
                   </span>
                   {r.status !== 'cancelled' && (
