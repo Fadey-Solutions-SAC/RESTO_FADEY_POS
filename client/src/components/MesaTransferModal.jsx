@@ -20,6 +20,8 @@ export default function MesaTransferModal({
   mode,
   tables = [],
   initialSourceId = '',
+  /** En Mesas: siempre elegir origen y destino (sin prellenar). */
+  pickSourceAndTarget = false,
   onComplete,
 }) {
   const [sourceId, setSourceId] = useState('');
@@ -38,9 +40,16 @@ export default function MesaTransferModal({
   );
   const sourceOrders = sourceTable?.orders || [];
 
+  const sourceOptions = useMemo(() => {
+    if (pickSourceAndTarget) {
+      return tables.filter((t) => t.id && tableIsOccupied(t));
+    }
+    return tables.filter((t) => t.id);
+  }, [tables, pickSourceAndTarget]);
+
   useEffect(() => {
     if (!open) return;
-    const sid = initialSourceId || '';
+    const sid = pickSourceAndTarget ? '' : (initialSourceId || '');
     setSourceId(sid);
     setTargetId('');
     setOccupiedPrompt(false);
@@ -51,7 +60,7 @@ export default function MesaTransferModal({
     } else {
       setSelectedOrderIds([]);
     }
-  }, [open, initialSourceId, mode, tables]);
+  }, [open, initialSourceId, mode, tables, pickSourceAndTarget]);
 
   const handleSourceChange = (nextSourceId) => {
     setSourceId(nextSourceId);
@@ -131,9 +140,11 @@ export default function MesaTransferModal({
     <Modal isOpen={open} onClose={onClose} title={title} size="md">
       <div className="space-y-4">
         <p className="text-sm text-[var(--ui-muted)]">
-          {isMoveTable
-            ? 'Traslada toda la cuenta (todos los pedidos activos) a otra mesa.'
-            : 'Selecciona los pedidos cuyos productos deseas enviar a otra mesa.'}
+          {pickSourceAndTarget
+            ? 'Seleccione la mesa origen y la mesa destino antes de confirmar la acción.'
+            : isMoveTable
+              ? 'Traslada toda la cuenta (todos los pedidos activos) a otra mesa.'
+              : 'Selecciona los pedidos cuyos productos deseas enviar a otra mesa.'}
         </p>
 
         <div>
@@ -143,13 +154,21 @@ export default function MesaTransferModal({
             onChange={(e) => handleSourceChange(e.target.value)}
             className="input-field"
           >
-            <option value="">Seleccionar…</option>
-            {tables.map((t) => (
+            <option value="">Seleccionar mesa origen…</option>
+            {sourceOptions.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name}{tableIsOccupied(t) ? ' (ocupada)' : ' (libre)'}
+                {t.name}
+                {pickSourceAndTarget
+                  ? ` · ${t.orders?.length || 0} pedido(s)`
+                  : tableIsOccupied(t)
+                    ? ' (ocupada)'
+                    : ' (libre)'}
               </option>
             ))}
           </select>
+          {pickSourceAndTarget && sourceOptions.length === 0 && (
+            <p className="mt-1 text-xs text-[var(--ui-muted)]">No hay mesas con pedidos activos.</p>
+          )}
         </div>
 
         {mode === 'move_orders' && sourceOrders.length > 0 && (
@@ -216,7 +235,7 @@ export default function MesaTransferModal({
             className="input-field"
             disabled={!sourceId}
           >
-            <option value="">Seleccionar…</option>
+            <option value="">Seleccionar mesa destino…</option>
             {targetOptions.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}{tableIsOccupied(t) ? ` (ocupada · ${t.orders.length} ped.)` : ' (libre)'}

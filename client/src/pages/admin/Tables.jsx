@@ -205,19 +205,14 @@ export default function Tables() {
   const filteredProducts = filterOrderingProducts(products, { search, selectedCat });
   const activeOrdersForTable = selectedTable?.orders || [];
 
-  const openMesaTableAction = (mode) => {
-    if (!selectedTable) return;
-    if (!(selectedTable.orders?.length)) {
-      toast.error('La mesa no tiene pedidos activos para mover');
-      return;
-    }
-    setMesaTransfer({ mode, sourceId: selectedTable.id });
+  const openMesaTransfer = (mode) => {
+    setMesaTransfer({ mode });
   };
 
-  const mesaMoveTableBtnClass =
-    'inline-flex min-h-[36px] items-center justify-center gap-1 rounded-lg border-2 border-sky-500/60 bg-sky-500/15 px-2 py-1.5 text-xs font-bold text-sky-800 shadow-sm transition-colors hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-40';
-  const mesaMoveOrdersBtnClass =
-    'inline-flex min-h-[36px] items-center justify-center gap-1 rounded-lg border-2 border-amber-500/60 bg-amber-500/15 px-2 py-1.5 text-xs font-bold text-amber-900 shadow-sm transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-40';
+  const mesaToolbarMoveTableClass =
+    'inline-flex items-center gap-1.5 rounded-lg border border-sky-700 bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
+  const mesaToolbarMoveOrdersClass =
+    'inline-flex items-center gap-1.5 rounded-lg border border-amber-700 bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400';
 
   if (loading) return <div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--ui-accent)] border-t-transparent" /></div>;
 
@@ -228,21 +223,39 @@ export default function Tables() {
         <p className="mt-1 text-sm text-[var(--ui-muted)]">Gestión de salón y consumo por mesa</p>
       </div>
 
-      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {salonOptions.map(salonId => (
-            <button
-              key={salonId}
-              onClick={() => setSelectedSalon(salonId)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors ${
-                selectedSalon === salonId
-                  ? 'border-[color:var(--ui-border)] bg-[var(--ui-accent)] text-white shadow-sm'
-                  : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-              }`}
-            >
-              {salonLabel(salonId)}
-            </button>
-          ))}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {salonOptions.map(salonId => (
+          <button
+            key={salonId}
+            onClick={() => setSelectedSalon(salonId)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors ${
+              selectedSalon === salonId
+                ? 'border-[color:var(--ui-border)] bg-[var(--ui-accent)] text-white shadow-sm'
+                : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+            }`}
+          >
+            {salonLabel(salonId)}
+          </button>
+        ))}
+        <div className="mt-1 flex w-full flex-wrap items-center gap-2 border-t border-[color:var(--ui-border)] pt-2 sm:ml-auto sm:mt-0 sm:w-auto sm:border-t-0 sm:pt-0">
+          <button
+            type="button"
+            onClick={() => openMesaTransfer('move_table')}
+            className={mesaToolbarMoveTableClass}
+            title="Mover toda la cuenta a otra mesa"
+          >
+            <MdOpenWith className="text-base" />
+            Mover mesa
+          </button>
+          <button
+            type="button"
+            onClick={() => openMesaTransfer('move_orders')}
+            className={mesaToolbarMoveOrdersClass}
+            title="Mover pedidos seleccionados a otra mesa"
+          >
+            <MdSwapHoriz className="text-base" />
+            Mover pedidos
+          </button>
         </div>
       </div>
 
@@ -307,38 +320,14 @@ export default function Tables() {
               </h3>
               <p className="text-xs text-[var(--ui-muted)]">Mesa {selectedTable.number}</p>
             </div>
-            <div className="flex items-center gap-2">
-              {activeOrdersForTable.length > 0 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => openMesaTableAction('move_table')}
-                    className={mesaMoveTableBtnClass}
-                    title="Mover toda la cuenta a otra mesa"
-                  >
-                    <MdOpenWith className="text-base" />
-                    <span className="hidden sm:inline">Mover mesa</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openMesaTableAction('move_orders')}
-                    className={mesaMoveOrdersBtnClass}
-                    title="Mover pedidos seleccionados a otra mesa"
-                  >
-                    <MdSwapHoriz className="text-base" />
-                    <span className="hidden sm:inline">Mover pedidos</span>
-                  </button>
-                </>
-              )}
-              <button
-                type="button"
-                onClick={closeMenuPanel}
-                className="rounded-lg p-2 text-[var(--ui-muted)] hover:bg-[var(--ui-sidebar-hover)] hover:text-[var(--ui-body-text)]"
-                aria-label="Cerrar ventana"
-              >
-                <MdClose className="text-xl" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={closeMenuPanel}
+              className="rounded-lg p-2 text-[var(--ui-muted)] hover:bg-[var(--ui-sidebar-hover)] hover:text-[var(--ui-body-text)]"
+              aria-label="Cerrar ventana"
+            >
+              <MdClose className="text-xl" />
+            </button>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ui-body-bg)] p-3 sm:p-4">
@@ -418,7 +407,7 @@ export default function Tables() {
         onClose={() => setMesaTransfer(null)}
         mode={mesaTransfer?.mode}
         tables={tables}
-        initialSourceId={mesaTransfer?.sourceId || ''}
+        pickSourceAndTarget
         onComplete={() => loadTables()}
       />
     </div>
