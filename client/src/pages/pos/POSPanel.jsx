@@ -140,6 +140,7 @@ import { useMesaOrderLock } from '../../hooks/useMesaOrderLock';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
+import MesaTransferModal from '../../components/MesaTransferModal';
 import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
 import StaffMesaPedidoTabs from '../../components/StaffMesaPedidoTabs';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
@@ -154,7 +155,7 @@ import {
   MdAccessTime, MdPersonAdd, MdSearch,
   MdDeliveryDining,
   MdEdit, MdDelete, MdPrint, MdSave,
-  MdSwapHoriz, MdMerge,
+  MdSwapHoriz, MdOpenWith,
 } from 'react-icons/md';
 
 /** Mesa sintética al cobrar cuenta desde Clientes (no existe fila en `tables`). */
@@ -413,8 +414,8 @@ export default function POSPanel() {
   const [tableDetail, setTableDetail] = useState(null);
   /** Detalle de mesa (productos + acciones) en ventana superpuesta. */
   const [mesaDetailModalOpen, setMesaDetailModalOpen] = useState(false);
-  /** Modal mover/unir mesas (misma API que Admin → Mesas). */
-  const [mesaTableAction, setMesaTableAction] = useState(null);
+  /** Modal mover mesa / mover pedidos. */
+  const [mesaTransfer, setMesaTransfer] = useState(null);
   /** Zona/salón activo en mapa de mesas (pestañas tipo categoría). */
   const [selectedPosSalon, setSelectedPosSalon] = useState('');
   const [showBill, setShowBill] = useState(false);
@@ -1864,44 +1865,14 @@ export default function POSPanel() {
     setDiscountConfig((prev) => ({ ...prev, target: 'whole', targetOrderItemId: '' }));
   };
 
-  const openMesaTableAction = (type) => {
+  const openMesaTableAction = (mode) => {
     if (!tableDetail || isDeliveryCheckoutTable(tableDetail)) return;
-    setMesaDetailModalOpen(false);
-    setMesaTableAction({ type, sourceId: tableDetail.id, targetId: '' });
-  };
-
-  const executeMesaTableAction = async () => {
-    if (!mesaTableAction?.type) return;
-    const { type, sourceId, targetId } = mesaTableAction;
-    const src = tables.find((t) => t.id === sourceId);
-    try {
-      if (type === 'move') {
-        if (!sourceId) return toast.error('Selecciona mesa origen');
-        if (!src?.id) return toast.error('La mesa origen ya no está disponible');
-        if (!targetId) return toast.error('Selecciona mesa destino');
-        if (sourceId === targetId) return toast.error('Origen y destino deben ser diferentes');
-        const targetTable = tables.find((t) => t.id === targetId);
-        if (targetTable?.orders?.length > 0) {
-          return toast.error('La mesa destino debe estar libre (sin pedidos activos)');
-        }
-        await api.post('/tables/move-orders', { source_table_id: sourceId, target_table_id: targetId });
-        toast.success('Pedidos movidos correctamente');
-      } else if (type === 'merge') {
-        if (!sourceId) return toast.error('Selecciona mesa origen');
-        if (!targetId) return toast.error('Selecciona mesa destino');
-        if (sourceId === targetId) return toast.error('Origen y destino deben ser diferentes');
-        const targetTable = tables.find((t) => t.id === targetId);
-        if (targetTable?.orders?.length > 0) {
-          toast('La mesa destino ya tiene pedidos; quedarán en la misma cuenta.', { icon: 'ℹ️' });
-        }
-        await api.post('/tables/merge', { target_table_id: targetId, source_table_ids: [sourceId] });
-        toast.success('Mesas unidas correctamente');
-      }
-      setMesaTableAction(null);
-      await loadData();
-    } catch (err) {
-      toast.error(err.message || 'No se pudo completar la acción');
+    if (!(tableDetail.orders?.length)) {
+      toast.error('La mesa no tiene pedidos activos para mover');
+      return;
     }
+    setMesaDetailModalOpen(false);
+    setMesaTransfer({ mode, sourceId: tableDetail.id });
   };
 
   const openMenuForTable = (table) => {
@@ -2399,10 +2370,6 @@ export default function POSPanel() {
     () => mesaPhysicalTables.filter((t) => t.orders && t.orders.length > 0),
     [mesaPhysicalTables]
   );
-  const freeTablesForMove = useMemo(
-    () => mesaPhysicalTables.filter((t) => !(t.orders && t.orders.length > 0)),
-    [mesaPhysicalTables]
-  );
   const reservationQueue = useMemo(() => {
     const normalize = (value) => String(value || '').trim().toLowerCase();
     const pendingReservations = (reservations || []).filter((r) => {
@@ -2884,6 +2851,10 @@ export default function POSPanel() {
     }
   };
 
+  const mesaMapMoveTableBtnClass =
+    'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-lg text-[11px] sm:text-sm font-bold border-2 border-sky-500/60 bg-sky-500/15 text-sky-800 dark:text-sky-100 shadow-sm hover:bg-sky-500/25 transition-colors inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
+  const mesaMapMoveOrdersBtnClass =
+    'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-lg text-[11px] sm:text-sm font-bold border-2 border-amber-500/60 bg-amber-500/15 text-amber-900 dark:text-amber-100 shadow-sm hover:bg-amber-500/25 transition-colors inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400';
   /** Botones de acciones del detalle de mesa (tema app, sin fondos fijos claros). */
   const mesaMapActionBtnClass =
     'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-lg text-[11px] sm:text-sm font-semibold border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] shadow-sm hover:bg-[var(--ui-sidebar-hover)] transition-colors inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
@@ -3322,21 +3293,25 @@ export default function POSPanel() {
                 {!isDeliveryCheckoutTable(tableDetail) && (
                   <button
                     type="button"
-                    onClick={() => openMesaTableAction('move')}
-                    className={mesaMapActionBtnClass}
+                    onClick={() => openMesaTableAction('move_table')}
+                    disabled={!tableDetail.orders?.length}
+                    className={mesaMapMoveTableBtnClass}
+                    title="Mover toda la cuenta a otra mesa"
                   >
-                    <MdSwapHoriz className="shrink-0 text-lg" />
-                    <span className="truncate">Mover</span>
+                    <MdOpenWith className="shrink-0 text-lg" />
+                    <span className="truncate">Mover mesa</span>
                   </button>
                 )}
                 {!isDeliveryCheckoutTable(tableDetail) && (
                   <button
                     type="button"
-                    onClick={() => openMesaTableAction('merge')}
-                    className={mesaMapActionBtnClass}
+                    onClick={() => openMesaTableAction('move_orders')}
+                    disabled={!tableDetail.orders?.length}
+                    className={mesaMapMoveOrdersBtnClass}
+                    title="Mover pedidos seleccionados a otra mesa"
                   >
-                    <MdMerge className="shrink-0 text-lg" />
-                    <span className="truncate">Unir</span>
+                    <MdSwapHoriz className="shrink-0 text-lg" />
+                    <span className="truncate">Mover pedidos</span>
                   </button>
                 )}
                 <button
@@ -4074,75 +4049,14 @@ export default function POSPanel() {
         </div>
       </Modal>
 
-      <Modal
-        isOpen={Boolean(mesaTableAction?.type)}
-        onClose={() => setMesaTableAction(null)}
-        title={mesaTableAction?.type === 'merge' ? 'Unir mesas' : 'Mover pedidos'}
-        size="md"
-      >
-        <div className="space-y-3">
-          {mesaTableAction?.type && (mesaTableAction.type === 'move' || mesaTableAction.type === 'merge') && (
-            <div>
-              <label className="block text-sm text-[var(--ui-body-text)] mb-1">
-                {mesaTableAction.type === 'merge' ? 'Primera mesa' : 'Mesa origen'}
-              </label>
-              <select
-                value={mesaTableAction.sourceId || ''}
-                onChange={(e) => {
-                  const nextSource = e.target.value;
-                  setMesaTableAction((prev) => {
-                    if (!prev) return prev;
-                    let { targetId } = prev;
-                    if (targetId === nextSource) targetId = '';
-                    return { ...prev, sourceId: nextSource, targetId };
-                  });
-                }}
-                className="input-field"
-              >
-                <option value="">Seleccionar...</option>
-                {mesaPhysicalTables.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          {mesaTableAction?.type && (mesaTableAction.type === 'merge' || mesaTableAction.type === 'move') && (
-            <div>
-              <label className="block text-sm text-[var(--ui-body-text)] mb-1">
-                {mesaTableAction.type === 'merge' ? 'Segunda mesa' : 'Mesa destino (libre)'}
-              </label>
-              <select
-                value={mesaTableAction.targetId || ''}
-                onChange={(e) => setMesaTableAction((prev) => (prev ? { ...prev, targetId: e.target.value } : prev))}
-                className="input-field"
-              >
-                <option value="">Seleccionar...</option>
-                {(mesaTableAction.type === 'move' ? freeTablesForMove : mesaPhysicalTables)
-                  .filter((t) => t.id !== mesaTableAction.sourceId)
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-              </select>
-              {mesaTableAction.type === 'move' &&
-                freeTablesForMove.filter((t) => t.id !== mesaTableAction.sourceId).length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">No hay mesas libres para mover el pedido.</p>
-                )}
-            </div>
-          )}
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={() => setMesaTableAction(null)} className="btn-secondary flex-1">
-              Cancelar
-            </button>
-            <button type="button" onClick={() => void executeMesaTableAction()} className="btn-primary flex-1">
-              Ejecutar
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <MesaTransferModal
+        open={Boolean(mesaTransfer?.mode)}
+        onClose={() => setMesaTransfer(null)}
+        mode={mesaTransfer?.mode}
+        tables={mesaPhysicalTables}
+        initialSourceId={mesaTransfer?.sourceId || ''}
+        onComplete={() => void loadData()}
+      />
 
       <Modal
         isOpen={Boolean(viewOrdersModal?.table)}

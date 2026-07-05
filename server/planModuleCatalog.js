@@ -43,7 +43,7 @@ const CAJA_SUBS = [
 ];
 
 /** Subpermisos de caja que el admin activa por usuario (opt-in, no vienen del plan). */
-const CAJA_USER_OPT_IN_SUBS = new Set(['eliminar_liberar_mesa', 'ajuste_bar_auto_dismiss']);
+const CAJA_USER_OPT_IN_SUBS = new Set(['eliminar_liberar_mesa']);
 
 function cajaSubPermissionKey(subId) {
   return `caja:${String(subId || '').trim()}`;

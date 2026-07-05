@@ -281,9 +281,9 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo
   const requiresRemovalReason = hasCompleteOrderItemRemovals(existingItems, items);
   const actorRole = String(req.user?.role || '').toLowerCase();
   const isAdminRole = actorRole === 'admin' || actorRole === 'master_admin';
-  const canRemoveLines = isAdminRole || userCanEliminarLiberarMesa(req.user);
+  const canRemoveLines = isAdminRole || (actorRole === 'cajero' && userCanEliminarLiberarMesa(req.user));
   if (requiresRemovalReason && !canRemoveLines) {
-    return res.status(403).json({ error: 'Solo un administrador puede eliminar productos del pedido.' });
+    return res.status(403).json({ error: 'Solo caja (admin o cajero autorizado) puede eliminar productos del pedido.' });
   }
   if (requiresRemovalReason && removalReason.length < 3) {
     return res.status(400).json({
@@ -676,9 +676,12 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       order.status === 'delivered' ||
       String(order.payment_status || '') === 'paid' ||
       isUnpaidActive;
-    if (isUnpaidActive && !['admin', 'master_admin'].includes(roleLc) && !userCanEliminarLiberarMesa(req.user)) {
+    const canCancelUnpaidActive =
+      ['admin', 'master_admin'].includes(roleLc)
+      || (roleLc === 'cajero' && userCanEliminarLiberarMesa(req.user));
+    if (isUnpaidActive && !canCancelUnpaidActive) {
       return res.status(403).json({
-        error: 'Solo un administrador puede quitar productos o liberar la mesa.',
+        error: 'Solo caja (admin o cajero autorizado) puede quitar productos o liberar la mesa.',
       });
     }
     if (mustReason && reason.length < 3) {

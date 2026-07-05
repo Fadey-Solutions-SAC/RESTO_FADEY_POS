@@ -20,11 +20,16 @@ function userHasCajaSubPermission(userId, role, subId) {
 }
 
 function userCanEliminarLiberarMesa(user) {
+  const roleLc = String(user?.role || '').toLowerCase();
+  if (roleLc === 'admin' || roleLc === 'master_admin') return true;
+  if (roleLc !== 'cajero') return false;
   return userHasCajaSubPermission(user?.id, user?.role, 'eliminar_liberar_mesa');
 }
 
 function userCanAjusteBarAutoDismiss(user) {
-  return userHasCajaSubPermission(user?.id, user?.role, 'ajuste_bar_auto_dismiss');
+  const roleLc = String(user?.role || '').toLowerCase();
+  if (roleLc === 'admin' || roleLc === 'master_admin') return true;
+  return roleLc === 'cajero';
 }
 
 module.exports = {

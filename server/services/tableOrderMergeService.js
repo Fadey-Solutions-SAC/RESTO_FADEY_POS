@@ -1,4 +1,6 @@
 const { tableNumbersMatch, normalizeTableNumber } = require('../utils/tableNumberMatch');
+const { resolveProductionArea, orderHasBarItems, orderHasKitchenItems } = require('../utils/productionArea');
+const { isCocinaStationComplete, isBarStationComplete } = require('../utils/kitchenStationReady');
 
 const TABLE_ORDER_MERGE_WINDOW_MINUTES = 40;
 
@@ -42,8 +44,107 @@ function isWithinMergeWindowTx(tx, order) {
   return Number(within?.ok || 0) === 1;
 }
 
+function enrichOrderItemsWithComboAreasTx(tx, items) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  return items.map((item) => {
+    if (String(item.variant_name || '').toLowerCase() !== 'combo') return item;
+    const comboName = String(item.product_name || '').trim();
+    if (!comboName) return item;
+    const combo = tx.queryOne(
+      'SELECT id FROM combos WHERE name = ? AND IFNULL(active, 1) = 1 ORDER BY updated_at DESC LIMIT 1',
+      [comboName],
+    );
+    if (!combo) return item;
+    const components = tx.queryAll(
+      `SELECT
+         COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') AS production_area,
+         LOWER(COALESCE(c.name, '')) AS category_name_lc,
+         p.name AS product_name
+       FROM combo_items ci
+       JOIN products p ON p.id = ci.product_id
+       LEFT JOIN categories c ON c.id = p.category_id
+       WHERE ci.combo_id = ?`,
+      [combo.id],
+    );
+    if (!components.length) return item;
+    return { ...item, _comboComponents: components };
+  });
+}
+
+function getOrderAreaItemsTx(tx, orderId) {
+  const items = tx.queryAll(
+    `SELECT oi.*,
+            COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') AS production_area,
+            LOWER(COALESCE(c.name, '')) AS category_name_lc
+     FROM order_items oi
+     LEFT JOIN products p ON p.id = oi.product_id
+     LEFT JOIN categories c ON c.id = p.category_id
+     WHERE oi.order_id = ?`,
+    [orderId],
+  );
+  return enrichOrderItemsWithComboAreasTx(items);
+}
+
+/** Clasifica ítems entrantes (POST mesa) por estación cocina/bar. */
+function classifyIncomingItemsProductionTx(tx, items) {
+  let hasKitchen = false;
+  let hasBar = false;
+  if (!Array.isArray(items)) return { hasKitchen, hasBar };
+
+  for (const item of items) {
+    const comboId = String(item.combo_id || '').trim();
+    if (comboId) {
+      const comboItems = tx.queryAll(
+        `SELECT COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') AS production_area
+         FROM combo_items ci
+         LEFT JOIN products p ON p.id = ci.product_id
+         WHERE ci.combo_id = ?`,
+        [comboId],
+      );
+      for (const ci of comboItems) {
+        if (resolveProductionArea(ci.production_area) === 'bar') hasBar = true;
+        else hasKitchen = true;
+      }
+      continue;
+    }
+    const product = tx.queryOne('SELECT production_area FROM products WHERE id = ?', [item.product_id]);
+    if (resolveProductionArea(product?.production_area) === 'bar') hasBar = true;
+    else hasKitchen = true;
+  }
+  return { hasKitchen, hasBar };
+}
+
+/**
+ * Si la estación (cocina/bar) del pedido entrante ya cerró/despachó la comanda,
+ * no fusionar: el caller debe crear una comanda nueva.
+ */
+function isMergeBlockedByDispatchedStation(tx, order, incomingItems) {
+  if (!order?.id || !Array.isArray(incomingItems) || !incomingItems.length) return false;
+
+  const { hasKitchen, hasBar } = classifyIncomingItemsProductionTx(tx, incomingItems);
+  if (!hasKitchen && !hasBar) return false;
+
+  const areaItems = getOrderAreaItemsTx(tx, order.id);
+
+  if (
+    hasKitchen &&
+    orderHasKitchenItems(areaItems) &&
+    isCocinaStationComplete(order, areaItems)
+  ) {
+    return true;
+  }
+  if (
+    hasBar &&
+    orderHasBarItems(areaItems) &&
+    isBarStationComplete(order, areaItems)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /** Última comanda activa de la mesa enviada hace menos de 40 minutos. */
-function findMergeableTableOrderTx(tx, tableNumberRaw, { tableId } = {}) {
+function findMergeableTableOrderTx(tx, tableNumberRaw, { tableId, incomingItems } = {}) {
   const tableKey = normalizeTableNumber(tableNumberRaw);
   if (!tableKey && !String(tableId || '').trim()) return null;
 
@@ -59,12 +160,13 @@ function findMergeableTableOrderTx(tx, tableNumberRaw, { tableId } = {}) {
   for (const row of candidates) {
     if (!orderMatchesTableScope(row, { tableId, tableNumberRaw: tableKey })) continue;
     if (!isWithinMergeWindowTx(tx, row)) continue;
+    if (incomingItems?.length && isMergeBlockedByDispatchedStation(tx, row, incomingItems)) continue;
     return row;
   }
   return null;
 }
 
-function resolveExplicitMergeTargetTx(tx, targetOrderId, { tableId, tableNumberRaw } = {}) {
+function resolveExplicitMergeTargetTx(tx, targetOrderId, { tableId, tableNumberRaw, incomingItems } = {}) {
   const id = String(targetOrderId || '').trim();
   if (!id) return null;
   const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [id]);
@@ -72,6 +174,7 @@ function resolveExplicitMergeTargetTx(tx, targetOrderId, { tableId, tableNumberR
   if (!isOrderMergeableState(order)) return null;
   if (!orderMatchesTableScope(order, { tableId, tableNumberRaw })) return null;
   if (!isWithinMergeWindowTx(tx, order)) return null;
+  if (incomingItems?.length && isMergeBlockedByDispatchedStation(tx, order, incomingItems)) return null;
   return order;
 }
 
@@ -83,4 +186,7 @@ module.exports = {
   orderMatchesTableScope,
   isOrderMergeableState,
   isWithinMergeWindowTx,
+  classifyIncomingItemsProductionTx,
+  isMergeBlockedByDispatchedStation,
+  getOrderAreaItemsTx,
 };

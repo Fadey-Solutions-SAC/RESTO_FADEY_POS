@@ -250,7 +250,10 @@ async function request(endpoint, options = {}) {
     if (import.meta.env.DEV) {
       console.warn('[api]', options.method || 'GET', endpoint, res.status, data || text?.slice(0, 200));
     }
-    throw new Error(message);
+    const err = new Error(message);
+    if (data?.code) err.code = data.code;
+    if (data?.target_table) err.targetTable = data.target_table;
+    throw err;
   }
 
   return data;

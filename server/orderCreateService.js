@@ -11,8 +11,10 @@ const {
   findMergeableTableOrderTx,
   resolveExplicitMergeTargetTx,
   isOrderMergeableState,
-  isWithinMergeWindowTx,
+  isMergeBlockedByDispatchedStation,
+  getOrderAreaItemsTx,
 } = require('./services/tableOrderMergeService');
+const { isCocinaStationComplete, isBarStationComplete } = require('./utils/kitchenStationReady');
 const { tableNumbersMatch } = require('./utils/tableNumberMatch');
 
 function resolveDineInTableContextTx(tx, { tableId: tableIdRaw, tableNumber: tableNumberRaw } = {}) {
@@ -223,6 +225,9 @@ function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew =
 
 function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
   if (!lineIds.length) return;
+  const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
+  if (!order) return;
+
   const ph = lineIds.map(() => '?').join(',');
   const rows = tx.queryAll(
     `SELECT oi.id,
@@ -234,7 +239,12 @@ function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
   );
   const hasKitchen = rows.some((r) => String(r.production_area || '').toLowerCase() !== 'bar');
   const hasBar = rows.some((r) => String(r.production_area || '').toLowerCase() === 'bar');
-  if (hasKitchen) {
+
+  const allAreaItems = getOrderAreaItemsTx(tx, orderId);
+  const lineIdSet = new Set(lineIds.map(String));
+  const previousItems = allAreaItems.filter((item) => !lineIdSet.has(String(item.id)));
+
+  if (hasKitchen && !isCocinaStationComplete(order, previousItems)) {
     tx.run(
       `UPDATE orders SET station_cocina_ready_at = NULL,
         station_cocina_preparing_at = CASE
@@ -245,7 +255,7 @@ function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
       [orderId]
     );
   }
-  if (hasBar) {
+  if (hasBar && !isBarStationComplete(order, previousItems)) {
     tx.run(
       `UPDATE orders SET station_bar_ready_at = NULL,
         station_bar_preparing_at = CASE
@@ -330,6 +340,7 @@ function tryAppendToMergeableOrderTx(tx, targetOrder, body, actor, tableId) {
   if (!targetOrder?.id) return null;
   if (!isOrderMergeableState(targetOrder)) return null;
   if (!isWithinMergeWindowTx(tx, targetOrder)) return null;
+  if (isMergeBlockedByDispatchedStation(tx, targetOrder, body?.items)) return null;
   try {
     syncOrderTableIdTx(tx, targetOrder.id, tableId);
     return appendItemsToOrderInTransaction(tx, targetOrder.id, body.items, actor, { notes: body.notes });
@@ -363,11 +374,15 @@ function createOrMergeTableOrderInTransaction(tx, orderId, body, actor) {
       customer_name: String(body.customer_name || '').trim() || resolved.tableName,
     };
     if (targetOrderId) {
-      const explicit = resolveExplicitMergeTargetTx(tx, targetOrderId, { tableId, tableNumberRaw: tableNumber });
+      const explicit = resolveExplicitMergeTargetTx(tx, targetOrderId, {
+        tableId,
+        tableNumberRaw: tableNumber,
+        incomingItems: body.items,
+      });
       const merged = tryAppendToMergeableOrderTx(tx, explicit, body, actor, tableId);
       if (merged) return merged;
     }
-    const existing = findMergeableTableOrderTx(tx, tableNumber, { tableId });
+    const existing = findMergeableTableOrderTx(tx, tableNumber, { tableId, incomingItems: body.items });
     const merged = tryAppendToMergeableOrderTx(tx, existing, body, actor, tableId);
     if (merged) return merged;
   }

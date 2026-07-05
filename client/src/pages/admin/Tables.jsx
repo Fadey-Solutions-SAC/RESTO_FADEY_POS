@@ -6,11 +6,12 @@ import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useAuth } from '../../context/AuthContext';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import Modal from '../../components/Modal';
+import MesaTransferModal from '../../components/MesaTransferModal';
 import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
 import StaffMesaPedidoTabs from '../../components/StaffMesaPedidoTabs';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import toast from 'react-hot-toast';
-import { MdTableRestaurant, MdReceipt, MdClose } from 'react-icons/md';
+import { MdTableRestaurant, MdReceipt, MdClose, MdOpenWith, MdSwapHoriz } from 'react-icons/md';
 import { KITCHEN_TAKEOUT_NOTE } from '../../utils/ticketPlainText';
 import { buildDineInOrderPayload } from '../../utils/mesaOrderLines';
 import { buildTablesBySalon } from '../../utils/salonesUtils';
@@ -30,11 +31,8 @@ export default function Tables() {
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState('all');
   const [selectedSalon, setSelectedSalon] = useState('all');
-  const [showActionModal, setShowActionModal] = useState(false);
-  const [actionType, setActionType] = useState('');
-  const [sourceTableId, setSourceTableId] = useState('');
-  const [targetTableId, setTargetTableId] = useState('');
   const [paraLlevarMesa, setParaLlevarMesa] = useState(false);
+  const [mesaTransfer, setMesaTransfer] = useState(null);
   const showMenuRef = useRef(false);
 
   const {
@@ -153,55 +151,6 @@ export default function Tables() {
     clearMesaLock();
   };
 
-  const openAction = (type) => {
-    if (!type) return;
-    const initialSourceId = selectedTable?.id || '';
-    setActionType(type);
-    setSourceTableId(initialSourceId);
-    setTargetTableId('');
-    setShowActionModal(true);
-  };
-
-  const executeAction = async () => {
-    try {
-      if (!actionType) return toast.error('Selecciona una acción');
-      const sourceForAction = tables.find((t) => t.id === sourceTableId) || null;
-      if (actionType === 'move') {
-        if (!sourceTableId) return toast.error('Selecciona mesa origen');
-        if (!sourceForAction?.id) return toast.error('La mesa origen ya no está disponible, vuelve a seleccionarla');
-        if (!targetTableId) return toast.error('Selecciona mesa destino');
-        if (sourceForAction?.id === targetTableId) return toast.error('Origen y destino deben ser diferentes');
-        const targetForAction = tables.find((t) => t.id === targetTableId);
-        if (targetForAction?.orders?.length > 0) {
-          return toast.error('La mesa destino debe estar libre (sin pedidos activos)');
-        }
-        await api.post('/tables/move-orders', {
-          source_table_id: sourceForAction.id,
-          target_table_id: targetTableId,
-        });
-        toast.success('Pedidos movidos correctamente');
-      }
-      if (actionType === 'merge') {
-        if (!sourceTableId) return toast.error('Selecciona mesa origen');
-        if (!targetTableId) return toast.error('Selecciona mesa destino');
-        if (sourceTableId === targetTableId) return toast.error('Origen y destino deben ser diferentes');
-        const targetForAction = tables.find((t) => t.id === targetTableId);
-        if (targetForAction?.orders?.length > 0) {
-          toast('La mesa destino ya tiene pedidos; quedarán en la misma cuenta.', { icon: 'ℹ️' });
-        }
-        await api.post('/tables/merge', {
-          target_table_id: targetTableId,
-          source_table_ids: [sourceTableId],
-        });
-        toast.success('Mesas unidas correctamente');
-      }
-      setShowActionModal(false);
-      loadTables();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  };
-
   const submitOrder = async () => {
     if (!selectedTable) return toast.error('Selecciona una mesa');
     const mesaErr = validateMesaForSubmit(tables, selectedTable);
@@ -252,13 +201,23 @@ export default function Tables() {
   const tablesToShow = selectedSalon === 'all'
     ? tables
     : tables.filter(t => String(t.zone || 'principal') === selectedSalon);
-  const actionOptions = [
-    { id: 'move', label: 'Mover pedidos' },
-    { id: 'merge', label: 'Unir mesas' },
-  ];
 
   const filteredProducts = filterOrderingProducts(products, { search, selectedCat });
   const activeOrdersForTable = selectedTable?.orders || [];
+
+  const openMesaTableAction = (mode) => {
+    if (!selectedTable) return;
+    if (!(selectedTable.orders?.length)) {
+      toast.error('La mesa no tiene pedidos activos para mover');
+      return;
+    }
+    setMesaTransfer({ mode, sourceId: selectedTable.id });
+  };
+
+  const mesaMoveTableBtnClass =
+    'inline-flex min-h-[36px] items-center justify-center gap-1 rounded-lg border-2 border-sky-500/60 bg-sky-500/15 px-2 py-1.5 text-xs font-bold text-sky-800 shadow-sm transition-colors hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-40';
+  const mesaMoveOrdersBtnClass =
+    'inline-flex min-h-[36px] items-center justify-center gap-1 rounded-lg border-2 border-amber-500/60 bg-amber-500/15 px-2 py-1.5 text-xs font-bold text-amber-900 shadow-sm transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-40';
 
   if (loading) return <div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--ui-accent)] border-t-transparent" /></div>;
 
@@ -285,21 +244,6 @@ export default function Tables() {
             </button>
           ))}
         </div>
-
-        {actionOptions.length > 0 && (
-          <div className="flex flex-wrap gap-2 md:justify-end">
-            {actionOptions.map((action) => (
-              <button
-                key={action.id}
-                type="button"
-                onClick={() => openAction(action.id)}
-                className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-1.5 text-xs font-medium text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
-              >
-                {action.label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="card">
@@ -363,14 +307,38 @@ export default function Tables() {
               </h3>
               <p className="text-xs text-[var(--ui-muted)]">Mesa {selectedTable.number}</p>
             </div>
-            <button
-              type="button"
-              onClick={closeMenuPanel}
-              className="rounded-lg p-2 text-[var(--ui-muted)] hover:bg-[var(--ui-sidebar-hover)] hover:text-[var(--ui-body-text)]"
-              aria-label="Cerrar ventana"
-            >
-              <MdClose className="text-xl" />
-            </button>
+            <div className="flex items-center gap-2">
+              {activeOrdersForTable.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openMesaTableAction('move_table')}
+                    className={mesaMoveTableBtnClass}
+                    title="Mover toda la cuenta a otra mesa"
+                  >
+                    <MdOpenWith className="text-base" />
+                    <span className="hidden sm:inline">Mover mesa</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openMesaTableAction('move_orders')}
+                    className={mesaMoveOrdersBtnClass}
+                    title="Mover pedidos seleccionados a otra mesa"
+                  >
+                    <MdSwapHoriz className="text-base" />
+                    <span className="hidden sm:inline">Mover pedidos</span>
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={closeMenuPanel}
+                className="rounded-lg p-2 text-[var(--ui-muted)] hover:bg-[var(--ui-sidebar-hover)] hover:text-[var(--ui-body-text)]"
+                aria-label="Cerrar ventana"
+              >
+                <MdClose className="text-xl" />
+              </button>
+            </div>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ui-body-bg)] p-3 sm:p-4">
@@ -436,66 +404,6 @@ export default function Tables() {
         </div>
       )}
 
-      <Modal
-        isOpen={showActionModal}
-        onClose={() => setShowActionModal(false)}
-        title={actionType === 'merge' ? 'Unir mesas' : 'Mover pedidos'}
-        size="md"
-      >
-        <div className="space-y-3">
-          {actionType && (actionType === 'move' || actionType === 'merge') && (
-            <div>
-              <label className="mb-1 block text-sm text-[var(--ui-body-text)]">
-                {actionType === 'merge' ? 'Primera mesa' : 'Mesa origen'}
-              </label>
-              <select
-                value={sourceTableId}
-                onChange={(e) => {
-                  const nextSourceId = e.target.value;
-                  setSourceTableId(nextSourceId);
-                }}
-                className="input-field"
-              >
-                <option value="">Seleccionar...</option>
-                {tables.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {actionType && (actionType === 'merge' || actionType === 'move') && (
-            <div>
-              <label className="mb-1 block text-sm text-[var(--ui-body-text)]">
-                {actionType === 'merge' ? 'Segunda mesa' : 'Mesa destino (libre)'}
-              </label>
-              <select value={targetTableId} onChange={e => setTargetTableId(e.target.value)} className="input-field">
-                <option value="">Seleccionar...</option>
-                {(actionType === 'move'
-                  ? tables.filter((t) => !(t.orders && t.orders.length > 0))
-                  : tables
-                )
-                  .filter(t => t.id !== sourceTableId)
-                  .map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-              </select>
-              {actionType === 'move' &&
-                tables.filter((t) => t.id !== sourceTableId && !(t.orders && t.orders.length > 0)).length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">No hay mesas libres para mover el pedido.</p>
-                )}
-            </div>
-          )}
-
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => setShowActionModal(false)} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={executeAction} disabled={!actionType} className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
-              Ejecutar
-            </button>
-          </div>
-        </div>
-      </Modal>
-
       <StaffModifierPromptModal
         open={modifierPrompt.open}
         onClose={() => setModifierPrompt({ open: false, product: null, modifier: null, selectedOption: '' })}
@@ -503,6 +411,15 @@ export default function Tables() {
         setModifierPrompt={setModifierPrompt}
         onConfirm={confirmModifierForCart}
         onSkipOptional={addProductWithoutOptionalModifier}
+      />
+
+      <MesaTransferModal
+        open={Boolean(mesaTransfer?.mode)}
+        onClose={() => setMesaTransfer(null)}
+        mode={mesaTransfer?.mode}
+        tables={tables}
+        initialSourceId={mesaTransfer?.sourceId || ''}
+        onComplete={() => loadTables()}
       />
     </div>
   );

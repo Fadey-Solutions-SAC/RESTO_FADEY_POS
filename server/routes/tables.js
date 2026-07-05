@@ -204,9 +204,17 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
     if (!selected.length) return res.status(400).json({ error: 'No hay pedidos activos para mover' });
 
     const targetActiveOrders = loadActiveTableOrders(target);
-    if (targetActiveOrders.length > 0) {
-      return res.status(400).json({
-        error: `La mesa destino (${target.name || target.number}) no está libre. Solo puede mover a una mesa sin pedidos activos.`,
+    const confirmMerge = req.body?.confirm_merge === true || req.body?.confirm_merge === 1 || req.body?.confirm_merge === '1';
+    if (targetActiveOrders.length > 0 && !confirmMerge) {
+      return res.status(409).json({
+        error: `La mesa ${target.name || target.number} está ocupada (${targetActiveOrders.length} pedido(s) activo(s)). Confirme si desea unir la cuenta.`,
+        code: 'TARGET_OCCUPIED',
+        target_table: {
+          id: target.id,
+          number: target.number,
+          name: target.name,
+          order_count: targetActiveOrders.length,
+        },
       });
     }
 
@@ -224,7 +232,11 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
       action: 'table.move_orders',
       resourceType: 'table',
       resourceId: `${source.id}->${target.id}`,
-      details: { moved_orders: selected.map(o => o.id) },
+      details: {
+        moved_orders: selected.map((o) => o.id),
+        confirm_merge: confirmMerge,
+        target_had_orders: targetActiveOrders.length > 0,
+      },
     });
 
     const io = req.app.get('io');

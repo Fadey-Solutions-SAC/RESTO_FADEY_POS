@@ -73,8 +73,7 @@ const ALL_MODULES = [
 ];
 
 const CAJA_EXTRA_PERMISSIONS = [
-  { key: 'caja:eliminar_liberar_mesa', label: 'Eliminar y liberar mesa', hint: 'Permite quitar productos y liberar mesas desde caja' },
-  { key: 'caja:ajuste_bar_auto_dismiss', label: 'Bar: quitar productos tras 30 min', hint: 'Activa el ajuste automático en bar desde caja' },
+  { key: 'caja:eliminar_liberar_mesa', label: 'Eliminar y liberar mesa', hint: 'Solo cajeros: quitar productos y liberar mesas desde caja' },
 ];
 
 const ROLES = {
