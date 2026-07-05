@@ -11,10 +11,12 @@ const {
   findMergeableTableOrderTx,
   resolveExplicitMergeTargetTx,
   isOrderMergeableState,
+  isWithinMergeWindowTx,
   isMergeBlockedByDispatchedStation,
   getOrderAreaItemsTx,
 } = require('./services/tableOrderMergeService');
-const { isCocinaStationComplete, isBarStationComplete } = require('./utils/kitchenStationReady');
+const { isCocinaStationComplete, isBarStationComplete, allRequiredStationsReady } = require('./utils/kitchenStationReady');
+const { orderHasBarItems, orderHasKitchenItems } = require('./utils/productionArea');
 const { tableNumbersMatch } = require('./utils/tableNumberMatch');
 
 function resolveDineInTableContextTx(tx, { tableId: tableIdRaw, tableNumber: tableNumberRaw } = {}) {
@@ -243,28 +245,36 @@ function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
   const allAreaItems = getOrderAreaItemsTx(tx, orderId);
   const lineIdSet = new Set(lineIds.map(String));
   const previousItems = allAreaItems.filter((item) => !lineIdSet.has(String(item.id)));
+  const hadKitchenItems = orderHasKitchenItems(previousItems);
+  const hadBarItems = orderHasBarItems(previousItems);
 
-  if (hasKitchen && !isCocinaStationComplete(order, previousItems)) {
-    tx.run(
-      `UPDATE orders SET station_cocina_ready_at = NULL,
-        station_cocina_preparing_at = CASE
-          WHEN TRIM(COALESCE(station_cocina_preparing_at, '')) != '' THEN station_cocina_preparing_at
-          ELSE datetime('now') END,
-        updated_at = datetime('now')
-       WHERE id = ?`,
-      [orderId]
-    );
+  if (hasKitchen) {
+    const kitchenWasComplete = isCocinaStationComplete(order, previousItems);
+    if (!kitchenWasComplete || !hadKitchenItems) {
+      tx.run(
+        `UPDATE orders SET station_cocina_ready_at = NULL,
+          station_cocina_preparing_at = CASE
+            WHEN TRIM(COALESCE(station_cocina_preparing_at, '')) != '' THEN station_cocina_preparing_at
+            ELSE datetime('now') END,
+          updated_at = datetime('now')
+         WHERE id = ?`,
+        [orderId]
+      );
+    }
   }
-  if (hasBar && !isBarStationComplete(order, previousItems)) {
-    tx.run(
-      `UPDATE orders SET station_bar_ready_at = NULL,
-        station_bar_preparing_at = CASE
-          WHEN TRIM(COALESCE(station_bar_preparing_at, '')) != '' THEN station_bar_preparing_at
-          ELSE datetime('now') END,
-        updated_at = datetime('now')
-       WHERE id = ?`,
-      [orderId]
-    );
+  if (hasBar) {
+    const barWasComplete = isBarStationComplete(order, previousItems);
+    if (!barWasComplete || !hadBarItems) {
+      tx.run(
+        `UPDATE orders SET station_bar_ready_at = NULL,
+          station_bar_preparing_at = CASE
+            WHEN TRIM(COALESCE(station_bar_preparing_at, '')) != '' THEN station_bar_preparing_at
+            ELSE datetime('now') END,
+          updated_at = datetime('now')
+         WHERE id = ?`,
+        [orderId]
+      );
+    }
   }
 }
 
@@ -321,6 +331,25 @@ function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes } = 
   }
 
   reopenProductionStationsForNewLines(tx, orderId, newItemIds);
+
+  if (newItemIds.length) {
+    const refreshed = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
+    const areaItems = getOrderAreaItemsTx(tx, orderId);
+    if (
+      String(refreshed?.status || '') === 'ready' &&
+      !allRequiredStationsReady(refreshed, areaItems)
+    ) {
+      tx.run(
+        "UPDATE orders SET status = 'preparing', preparing_at = COALESCE(preparing_at, datetime('now')), updated_at = datetime('now') WHERE id = ?",
+        [orderId],
+      );
+    } else if (String(refreshed?.status || '') === 'pending' && newItemIds.length) {
+      tx.run(
+        "UPDATE orders SET status = 'preparing', preparing_at = COALESCE(preparing_at, datetime('now')), updated_at = datetime('now') WHERE id = ?",
+        [orderId],
+      );
+    }
+  }
 
   return { orderId, newItemIds, merged: true };
 }

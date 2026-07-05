@@ -1,6 +1,6 @@
 const { tableNumbersMatch, normalizeTableNumber } = require('../utils/tableNumberMatch');
 const { resolveProductionArea, orderHasBarItems, orderHasKitchenItems } = require('../utils/productionArea');
-const { isCocinaStationComplete, isBarStationComplete } = require('../utils/kitchenStationReady');
+const { isCocinaStationComplete, isBarStationComplete, isStationMarkedReady } = require('../utils/kitchenStationReady');
 
 const TABLE_ORDER_MERGE_WINDOW_MINUTES = 40;
 
@@ -126,24 +126,22 @@ function isMergeBlockedByDispatchedStation(tx, order, incomingItems) {
 
   const areaItems = getOrderAreaItemsTx(tx, order.id);
 
-  if (
-    hasKitchen &&
-    orderHasKitchenItems(areaItems) &&
-    isCocinaStationComplete(order, areaItems)
-  ) {
-    return true;
+  if (hasKitchen) {
+    const kitchenDispatched =
+      isStationMarkedReady(order, 'cocina') ||
+      (orderHasKitchenItems(areaItems) && isCocinaStationComplete(order, areaItems));
+    if (kitchenDispatched) return true;
   }
-  if (
-    hasBar &&
-    orderHasBarItems(areaItems) &&
-    isBarStationComplete(order, areaItems)
-  ) {
-    return true;
+  if (hasBar) {
+    const barDispatched =
+      isStationMarkedReady(order, 'bar') ||
+      (orderHasBarItems(areaItems) && isBarStationComplete(order, areaItems));
+    if (barDispatched) return true;
   }
   return false;
 }
 
-/** Última comanda activa de la mesa enviada hace menos de 40 minutos. */
+/** Última comanda activa de la mesa (solo la más reciente; no fusionar en comandas antiguas). */
 function findMergeableTableOrderTx(tx, tableNumberRaw, { tableId, incomingItems } = {}) {
   const tableKey = normalizeTableNumber(tableNumberRaw);
   if (!tableKey && !String(tableId || '').trim()) return null;
@@ -159,8 +157,8 @@ function findMergeableTableOrderTx(tx, tableNumberRaw, { tableId, incomingItems 
 
   for (const row of candidates) {
     if (!orderMatchesTableScope(row, { tableId, tableNumberRaw: tableKey })) continue;
-    if (!isWithinMergeWindowTx(tx, row)) continue;
-    if (incomingItems?.length && isMergeBlockedByDispatchedStation(tx, row, incomingItems)) continue;
+    if (!isWithinMergeWindowTx(tx, row)) return null;
+    if (incomingItems?.length && isMergeBlockedByDispatchedStation(tx, row, incomingItems)) return null;
     return row;
   }
   return null;

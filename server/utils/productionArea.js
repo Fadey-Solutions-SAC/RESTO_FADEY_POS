@@ -57,6 +57,7 @@ function stripKitchenItemMeta(item) {
 
 module.exports = {
   normalizeProductionArea,
+  resolveProductionArea,
   isBarProductionItem,
   isKitchenProductionItem,
   isBarOnlyOrderItems,
