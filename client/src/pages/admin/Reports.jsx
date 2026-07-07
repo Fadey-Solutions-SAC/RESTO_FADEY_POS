@@ -637,20 +637,32 @@ export default function Reports() {
       } finally {
         if (!cancelled) setProductoCurrentLoading(false);
       }
-      if (!productoFrom || !productoTo || cancelled) return;
-      setProductoTotalLoading(true);
-      try {
-        const params = new URLSearchParams({ from: productoFrom, to: productoTo });
-        const total = await api.get(`/reports/product-sales?${params.toString()}`);
-        if (!cancelled) setProductoTotalReport(total);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (!cancelled) setProductoTotalLoading(false);
-      }
     })();
     return () => { cancelled = true; };
   }, [reportSection]);
+
+  useEffect(() => {
+    setProductoTotalReport(null);
+  }, [productoTotalMode]);
+
+  const closedRegistersList = useMemo(
+    () => monthlyData?.closedRegisters || [],
+    [monthlyData?.closedRegisters],
+  );
+
+  useEffect(() => {
+    if (productoTotalMode !== 'cierres') return;
+    if (!closedRegistersList.length) {
+      setProductoSelectedIds(new Set());
+      setProductoTotalReport(null);
+      return;
+    }
+    setProductoSelectedIds((prev) => {
+      const valid = [...prev].filter((id) => closedRegistersList.some((r) => r.id === id));
+      if (valid.length) return new Set(valid);
+      return new Set([closedRegistersList[0].id]);
+    });
+  }, [productoTotalMode, closedRegistersList]);
   useEffect(() => {
     if (reportSection !== 'finanzas') return undefined;
     let cancelled = false;
@@ -719,6 +731,10 @@ export default function Reports() {
 
   const openProductoInforme = async (register) => {
     if (!register?.id) return;
+    if (productoTotalMode === 'cierres') {
+      setProductoSelectedIds(new Set([register.id]));
+      return;
+    }
     setProductoInformeModalOpen(true);
     setProductoInformeRegisterId(register.id);
     setProductoInformeLoading(true);
@@ -749,6 +765,36 @@ export default function Reports() {
     if (format === 'both') toast.success('Descargados TXT y CSV');
   };
 
+  const productoSelectedKey = useMemo(
+    () => [...productoSelectedIds].sort().join(','),
+    [productoSelectedIds],
+  );
+
+  useEffect(() => {
+    if (productoTotalMode !== 'cierres') return undefined;
+    const ids = productoSelectedKey ? productoSelectedKey.split(',').filter(Boolean) : [];
+    if (!ids.length) {
+      setProductoTotalReport(null);
+      return undefined;
+    }
+    let cancelled = false;
+    void (async () => {
+      setProductoTotalLoading(true);
+      try {
+        const report = await api.get(`/reports/product-sales?register_ids=${encodeURIComponent(ids.join(','))}`);
+        if (!cancelled) setProductoTotalReport(report);
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(err.message || 'No se pudo cargar el informe de cierres');
+          setProductoTotalReport(null);
+        }
+      } finally {
+        if (!cancelled) setProductoTotalLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [productoTotalMode, productoSelectedKey]);
+
   const loadProductoTotalReport = async () => {
     setProductoTotalLoading(true);
     setProductoTotalReport(null);
@@ -762,12 +808,8 @@ export default function Reports() {
         params.set('from', productoFrom);
         params.set('to', productoTo);
       } else {
-        const ids = [...productoSelectedIds];
-        if (!ids.length) {
-          toast.error('Seleccione al menos un cierre de caja');
-          return;
-        }
-        params.set('register_ids', ids.join(','));
+        toast.error('Seleccione al menos un cierre de caja en la lista');
+        return;
       }
       const report = await api.get(`/reports/product-sales?${params.toString()}`);
       setProductoTotalReport(report);
@@ -777,6 +819,24 @@ export default function Reports() {
       setProductoTotalLoading(false);
     }
   };
+
+  const productoDisplayedProducts = useMemo(() => {
+    if (!productoTotalReport) return [];
+    return productoTotalReport.sold_products || [];
+  }, [productoTotalReport]);
+
+  const productoCierresSummary = useMemo(() => {
+    if (productoTotalMode !== 'cierres') return '';
+    const count = productoSelectedIds.size;
+    if (!count) return 'Seleccione uno o más cierres';
+    if (count === 1) {
+      const reg = closedRegistersList.find((r) => productoSelectedIds.has(r.id));
+      if (reg) {
+        return `Cierre ${formatDateTime(reg.closed_at)} · ${reg.user_name || '—'}`;
+      }
+    }
+    return `${count} cierres consolidados`;
+  }, [productoTotalMode, productoSelectedIds, closedRegistersList]);
 
   const loadProductoCurrentReport = async ({ silent = false } = {}) => {
     setProductoCurrentLoading(true);
@@ -804,8 +864,12 @@ export default function Reports() {
   };
 
   const selectAllProductoRegisters = () => {
-    const ids = (monthlyData?.closedRegisters || []).map((r) => r.id).filter(Boolean);
+    const ids = closedRegistersList.map((r) => r.id).filter(Boolean);
     setProductoSelectedIds(new Set(ids));
+  };
+
+  const clearProductoRegisterSelection = () => {
+    setProductoSelectedIds(new Set());
   };
 
   const openClosedRegisterDetail = async (register) => {
@@ -1372,73 +1436,183 @@ export default function Reports() {
               </button>
             </div>
             {productoTotalMode === 'fechas' ? (
-              <div className="flex flex-wrap gap-3 items-end mb-4">
-                <div>
-                  <label className="text-xs text-[var(--ui-muted)] block mb-1">Desde</label>
-                  <input type="date" value={productoFrom} onChange={(e) => setProductoFrom(e.target.value)} className="input-field" />
+              <>
+                <div className="flex flex-wrap gap-3 items-end mb-4">
+                  <div>
+                    <label className="text-xs text-[var(--ui-muted)] block mb-1">Desde</label>
+                    <input type="date" value={productoFrom} onChange={(e) => setProductoFrom(e.target.value)} className="input-field" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--ui-muted)] block mb-1">Hasta</label>
+                    <input type="date" value={productoTo} onChange={(e) => setProductoTo(e.target.value)} className="input-field" />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs text-[var(--ui-muted)] block mb-1">Hasta</label>
-                  <input type="date" value={productoTo} onChange={(e) => setProductoTo(e.target.value)} className="input-field" />
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => void loadProductoTotalReport()}
+                    disabled={productoTotalLoading}
+                    className="btn-primary text-sm inline-flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <MdRefresh className={productoTotalLoading ? 'animate-spin' : ''} />
+                    {productoTotalLoading ? 'Generando…' : 'Generar informe'}
+                  </button>
+                  {productoTotalReport && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'csv')}
+                        className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
+                      >
+                        <MdDownload /> Descargar CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'txt')}
+                        className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
+                      >
+                        <MdDownload /> Descargar TXT
+                      </button>
+                    </>
+                  )}
                 </div>
-              </div>
+                {productoTotalLoading && !productoTotalReport && (
+                  <p className="text-sm text-[var(--ui-muted)] mb-3">Generando informe de productos vendidos…</p>
+                )}
+                {productoTotalReport && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-[var(--ui-muted)]">
+                      Periodo {productoTotalReport.filters?.from} — {productoTotalReport.filters?.to}
+                    </p>
+                    <ProductSalesTable
+                      products={productoDisplayedProducts}
+                      showOrders
+                      emptyMessage="No hay ventas de productos en el periodo indicado."
+                    />
+                  </div>
+                )}
+              </>
             ) : (
-              <p className="text-xs text-[var(--ui-muted)] mb-3">
-                Marque los cierres en la tabla inferior ({productoSelectedIds.size} seleccionado{productoSelectedIds.size === 1 ? '' : 's'}).
-                <button type="button" onClick={selectAllProductoRegisters} className="ml-2 text-[#3B82F6] hover:underline">
-                  Seleccionar todos
-                </button>
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2 mb-4">
-              <button
-                type="button"
-                onClick={() => void loadProductoTotalReport()}
-                disabled={productoTotalLoading}
-                className="btn-primary text-sm inline-flex items-center gap-1 disabled:opacity-50"
-              >
-                <MdRefresh className={productoTotalLoading ? 'animate-spin' : ''} />
-                {productoTotalLoading ? 'Generando…' : 'Generar informe'}
-              </button>
-              {productoTotalReport && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'csv')}
-                    className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-                  >
-                    <MdDownload /> Descargar CSV
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'txt')}
-                    className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-                  >
-                    <MdDownload /> Descargar TXT
-                  </button>
-                </>
-              )}
-            </div>
-            {productoTotalLoading && !productoTotalReport && (
-              <p className="text-sm text-[var(--ui-muted)] mb-3">Generando informe de productos vendidos…</p>
-            )}
-            {productoTotalReport && (
-              <div className="space-y-4">
-                <p className="text-sm text-[var(--ui-muted)]">
-                  {productoTotalReport.mode === 'date_range'
-                    ? `Periodo ${productoTotalReport.filters?.from} — ${productoTotalReport.filters?.to}`
-                    : `${productoTotalReport.filters?.register_count || 0} cierre(s) seleccionado(s)`}
+              <>
+                <p className="text-xs text-[var(--ui-muted)] mb-4">
+                  Se muestra el último cierre por defecto. Marque uno o más cierres a la izquierda; los productos se actualizan a la derecha.
                 </p>
-                <ProductSalesTable
-                  products={productoTotalReport.sold_products}
-                  showOrders
-                  emptyMessage="No hay ventas de productos en el periodo indicado."
-                />
-              </div>
+                {!closedRegistersList.length ? (
+                  <p className="text-[var(--ui-muted)]">Aún no hay cierres de caja registrados.</p>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,340px)_1fr] gap-4 items-start">
+                    <div className="rounded-xl border border-[color:var(--ui-border)] overflow-hidden flex flex-col max-h-[min(70vh,640px)]">
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-[var(--ui-surface-2)] border-b border-[color:var(--ui-border)]">
+                        <p className="text-xs font-semibold text-[var(--ui-body-text)]">
+                          Cierres ({productoSelectedIds.size}/{closedRegistersList.length})
+                        </p>
+                        <div className="flex flex-wrap gap-2 text-[11px]">
+                          <button type="button" onClick={selectAllProductoRegisters} className="text-[#3B82F6] hover:underline">
+                            Todos
+                          </button>
+                          <button type="button" onClick={clearProductoRegisterSelection} className="text-[var(--ui-muted)] hover:underline">
+                            Ninguno
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => loadMonthly().then(setMonthlyData).catch(console.error)}
+                            className="text-[var(--ui-muted)] hover:underline inline-flex items-center gap-0.5"
+                          >
+                            <MdRefresh className="text-sm" /> Actualizar
+                          </button>
+                        </div>
+                      </div>
+                      <div className="overflow-y-auto flex-1 divide-y divide-[color:var(--ui-border)]">
+                        {closedRegistersList.map((r) => {
+                          const selected = productoSelectedIds.has(r.id);
+                          return (
+                            <label
+                              key={r.id}
+                              className={`flex gap-3 px-3 py-3 cursor-pointer hover:bg-[var(--ui-sidebar-hover)] ${
+                                selected ? 'informe-productos-row-selected' : ''
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => toggleProductoRegisterSelect(r.id)}
+                                className="mt-1 rounded shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-[var(--ui-body-text)] truncate">
+                                  {r.user_name || 'Cajero'}
+                                </p>
+                                <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                                  {formatDateTime(r.closed_at)}
+                                </p>
+                                <p className="text-[11px] text-[var(--ui-muted)] mt-1">
+                                  Apertura {formatDateTime(r.opened_at)}
+                                </p>
+                                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2 text-xs">
+                                  <span className="text-[#3B82F6] font-medium tabular-nums">
+                                    {Number(r.sold_units_total ?? 0)} uds.
+                                  </span>
+                                  <span className="text-emerald-600 font-semibold tabular-nums">
+                                    {formatCurrency(r.total_sales || 0)}
+                                  </span>
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="min-w-0 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm text-[var(--ui-muted)]">
+                          {productoCierresSummary}
+                          {productoTotalLoading && productoTotalReport ? (
+                            <span className="ml-2 inline-flex items-center gap-1 text-[11px]">
+                              <MdRefresh className="animate-spin text-sm" /> Actualizando…
+                            </span>
+                          ) : null}
+                        </p>
+                        {productoTotalReport && productoSelectedIds.size > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'csv')}
+                              className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
+                            >
+                              <MdDownload /> CSV
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'txt')}
+                              className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
+                            >
+                              <MdDownload /> TXT
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {productoTotalLoading && !productoTotalReport && productoSelectedIds.size > 0 && (
+                        <p className="text-sm text-[var(--ui-muted)]">Cargando productos del cierre…</p>
+                      )}
+                      {!productoSelectedIds.size && (
+                        <p className="text-sm text-[var(--ui-muted)]">Seleccione al menos un cierre para ver los productos.</p>
+                      )}
+                      {productoSelectedIds.size > 0 && productoTotalReport && (
+                        <ProductSalesTable
+                          products={productoDisplayedProducts}
+                          showOrders
+                          emptyMessage="No hay ventas de productos en los cierres seleccionados."
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
-          {/* Por cierre */}
+          {/* Por cierre — solo en modo fechas (referencia y modal) */}
+          {productoTotalMode === 'fechas' && (
           <div className="card">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <div className="flex items-center gap-2">
@@ -1453,16 +1627,13 @@ export default function Reports() {
                 <MdRefresh className="text-sm" /> Actualizar lista
               </button>
             </div>
-            {!(monthlyData?.closedRegisters || []).length ? (
+            {!closedRegistersList.length ? (
               <p className="text-[var(--ui-muted)]">Aún no hay cierres de caja. Tras un cierre, aparecerá aquí y podrás abrir el informe.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="informe-productos-table w-full text-sm">
                   <thead>
                     <tr className="border-b border-[color:var(--ui-border)]">
-                      {productoTotalMode === 'cierres' && (
-                        <th className="py-2 px-2 text-xs text-[color:var(--ui-muted)] uppercase w-10">Sel.</th>
-                      )}
                       <th className="text-left py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Fecha cierre</th>
                       <th className="text-left py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Cajero</th>
                       <th className="text-left py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Apertura</th>
@@ -1472,23 +1643,15 @@ export default function Reports() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(monthlyData.closedRegisters || []).map((r) => (
+                    {closedRegistersList.map((r) => (
                       <tr
                         key={r.id}
-                        className={`border-b border-[color:var(--ui-border)] ${
-                          productoInformeModalOpen && productoInformeRegisterId === r.id ? 'informe-productos-row-selected' : ''
+                        className={`border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)] ${
+                          productoInformeModalOpen && productoInformeRegisterId === r.id
+                            ? 'informe-productos-row-selected'
+                            : ''
                         }`}
                       >
-                        {productoTotalMode === 'cierres' && (
-                          <td className="py-2 px-2 text-center">
-                            <input
-                              type="checkbox"
-                              checked={productoSelectedIds.has(r.id)}
-                              onChange={() => toggleProductoRegisterSelect(r.id)}
-                              className="rounded"
-                            />
-                          </td>
-                        )}
                         <td className="py-2 px-3 text-[color:var(--ui-body-text)]">{formatDateTime(r.closed_at)}</td>
                         <td className="py-2 px-3 font-medium text-[color:var(--ui-body-text)]">{r.user_name || '-'}</td>
                         <td className="py-2 px-3 text-[color:var(--ui-muted)] text-xs">{formatDateTime(r.opened_at)}</td>
@@ -1513,6 +1676,7 @@ export default function Reports() {
               </div>
             )}
           </div>
+          )}
 
           <Modal
             isOpen={productoInformeModalOpen}

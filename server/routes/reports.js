@@ -776,7 +776,7 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
     "SELECT cr.*, u.full_name as user_name FROM cash_registers cr LEFT JOIN users u ON u.id = cr.user_id WHERE cr.closed_at IS NOT NULL ORDER BY cr.closed_at DESC LIMIT 60"
   );
   const closedRegistersWithDetails = closedRegisters.map((r) => {
-    const sold = querySoldProductsBetween(r.opened_at, r.closed_at);
+    const sold = querySoldProductsBetween(r.opened_at, r.closed_at, r.id);
     const sold_units_total = sold.reduce((sum, row) => sum + (Number(row.total_qty) || 0), 0);
     return {
       ...r,
@@ -819,35 +819,14 @@ router.get('/closed-registers/:id', authenticateToken, requireRole('admin', 'caj
     "SELECT cn.*, u.full_name as user_name FROM cash_notes cn LEFT JOIN users u ON u.id = cn.user_id WHERE cn.register_id = ? ORDER BY cn.created_at ASC",
     [register.id]
   );
-  const soldRows = queryAll(
-    `SELECT
-      oi.product_id,
-      oi.product_name,
-      COALESCE(SUM(oi.quantity), 0) as total_qty,
-      COALESCE(SUM(oi.subtotal), 0) as total_amount,
-      COUNT(DISTINCT oi.order_id) as order_count
-     FROM order_items oi
-     JOIN orders o ON o.id = oi.order_id
-     WHERE o.status != 'cancelled'
-       AND o.payment_status = 'paid'
-       AND IFNULL(o.payment_method, '') != 'cortesia'
-       AND COALESCE(o.updated_at, o.created_at) >= ?
-       AND COALESCE(o.updated_at, o.created_at) <= ?
-     GROUP BY oi.product_id, oi.product_name
-     ORDER BY oi.product_name ASC, total_amount DESC`,
-    [register.opened_at, register.closed_at || new Date().toISOString()]
+  const { querySoldProductsBetween } = require('../services/productSalesReportService');
+  const sold_products = querySoldProductsBetween(
+    register.opened_at,
+    register.closed_at,
+    register.id,
   );
-  register.sold_products = soldRows.map((row) => {
-    const qty = Number(row.total_qty) || 0;
-    const amt = Number(row.total_amount) || 0;
-    return {
-      ...row,
-      total_qty: qty,
-      total_amount: amt,
-      unit_price: qty > 0 ? amt / qty : 0,
-    };
-  });
-  register.product_sales_total = register.sold_products.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
+  register.sold_products = sold_products;
+  register.product_sales_total = sold_products.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
   register.sales_orders = queryAll(
     `SELECT
       o.id,
