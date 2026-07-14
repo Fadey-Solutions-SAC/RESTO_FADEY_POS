@@ -882,6 +882,40 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
   });
 });
 
+router.get('/closed-registers', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  try {
+    const { querySoldProductsBetween } = require('../services/productSalesReportService');
+    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+    const month = parseReportMonth(req.query.month);
+    let sql = `
+      SELECT cr.*, u.full_name as user_name
+      FROM cash_registers cr
+      LEFT JOIN users u ON u.id = cr.user_id
+      WHERE cr.closed_at IS NOT NULL
+    `;
+    const params = [];
+    if (month) {
+      sql += ` AND strftime('%Y-%m', datetime(cr.closed_at, 'localtime')) = ?`;
+      params.push(month);
+    }
+    sql += ` ORDER BY cr.closed_at DESC LIMIT ${limit}`;
+    const rows = queryAll(sql, params);
+    const enriched = rows.map((r) => {
+      const sold = querySoldProductsBetween(r.opened_at, r.closed_at, r.id);
+      const sold_units_total = sold.reduce((sum, row) => sum + (Number(row.total_qty) || 0), 0);
+      return {
+        ...r,
+        arqueo: parseArqueoData(r.arqueo_data),
+        sold_products_count: sold.length,
+        sold_units_total,
+      };
+    });
+    res.json(enriched);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo listar cierres de caja' });
+  }
+});
+
 router.get('/closed-registers/:id', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
   const register = queryOne(
     "SELECT cr.*, u.full_name as user_name FROM cash_registers cr LEFT JOIN users u ON u.id = cr.user_id WHERE cr.id = ? AND cr.closed_at IS NOT NULL",

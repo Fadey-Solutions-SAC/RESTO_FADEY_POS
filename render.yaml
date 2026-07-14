@@ -1,11 +1,12 @@
 # Blueprint de referencia — Web Service Node (no Docker).
 # Si ya tienes servicios creados a mano, copia build/start en Settings → Build & Deploy.
 #
-# POLLERIA-KUELAP y ZOILAS SUITE ESCAPE deben usar:
+# POLLERIA-KUELAP, SISTEMA_DEMO y ZOILAS SUITE ESCAPE deben usar:
 #   Runtime: Node
 #   Root Directory: (vacío)
 #   Build Command: bash scripts/render-build.sh
 #   Start Command: bash scripts/render-start.sh
+#   (NO usar "node electron/main.js" — Electron es solo para escritorio Windows)
 
 services:
   - type: web

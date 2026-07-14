@@ -4,7 +4,6 @@ import {
   formatMesaLabel,
   parseAdjustmentReason,
   adjustmentReferenceAmount,
-  adjustmentAmountCharged,
   isCourtesyOrder,
 } from '../../utils/mesaOrderLines';
 import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdDelete, MdRemoveCircleOutline, MdVisibility } from 'react-icons/md';
@@ -181,20 +180,17 @@ export default function CortesiasReportSection({
     let discountCount = 0;
     let courtesyReference = 0;
     let discountAmount = 0;
-    let amountCharged = 0;
     let eliminadoCount = 0;
     let eliminadoReference = 0;
     for (const o of filtered) {
       const kind = o.adjustment_kind;
       const ref = adjustmentReferenceAmount(o);
-      const charged = adjustmentAmountCharged(o);
       if (kind === 'cortesia') {
         courtesyCount += 1;
         courtesyReference += ref;
       } else if (kind === 'descuento') {
         discountCount += 1;
         discountAmount += ref;
-        amountCharged += charged;
       } else if (kind === 'eliminado') {
         eliminadoCount += 1;
         eliminadoReference += Number(o.reference_amount ?? o.discount_amount ?? ref ?? 0);
@@ -208,7 +204,6 @@ export default function CortesiasReportSection({
       courtesy_reference_total: courtesyReference,
       discount_amount_total: discountAmount,
       eliminado_reference_total: eliminadoReference,
-      amount_charged_total: amountCharged,
     };
   }, [filtered]);
 
@@ -222,30 +217,27 @@ export default function CortesiasReportSection({
 
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="card border-l-4 border-l-violet-500">
-          <p className="text-xs ui-text-muted">Registros totales</p>
-          <p className="text-2xl font-bold text-[var(--ui-body-text)]">{filteredSummary.count}</p>
+          <p className="text-xs ui-text-muted">Cortesías</p>
+          <p className="text-2xl font-bold text-violet-600">{filteredSummary.courtesy_count}</p>
           <p className="text-xs text-[var(--ui-muted)] mt-1">
-            {filteredSummary.courtesy_count} cortesías · {filteredSummary.discount_count} descuentos · {filteredSummary.eliminado_count} eliminados
+            Valor referencia: {formatCurrency(filteredSummary.courtesy_reference_total)}
           </p>
         </div>
         <div className="card border-l-4 border-l-amber-500">
-          <p className="text-xs ui-text-muted">Valor descontado / referencia</p>
-          <p className="text-2xl font-bold text-amber-600">
-            {formatCurrency(filteredSummary.courtesy_reference_total + filteredSummary.discount_amount_total)}
+          <p className="text-xs ui-text-muted">Descuentos</p>
+          <p className="text-2xl font-bold text-amber-600">{filteredSummary.discount_count}</p>
+          <p className="text-xs text-[var(--ui-muted)] mt-1">
+            Valor descontado: {formatCurrency(filteredSummary.discount_amount_total)}
           </p>
-          <p className="text-xs text-[var(--ui-muted)] mt-1">Informativo; no suma como ingreso extra</p>
-        </div>
-        <div className="card border-l-4 border-l-emerald-500">
-          <p className="text-xs ui-text-muted">Cobrado (solo descuentos parciales)</p>
-          <p className="text-2xl font-bold text-emerald-600">{formatCurrency(filteredSummary.amount_charged_total)}</p>
-          <p className="text-xs text-[var(--ui-muted)] mt-1">Cortesías cobran S/ 0.00</p>
         </div>
         <div className="card border-l-4 border-l-red-500">
-          <p className="text-xs ui-text-muted">Productos eliminados (valor)</p>
-          <p className="text-2xl font-bold text-red-600">{formatCurrency(filteredSummary.eliminado_reference_total)}</p>
-          <p className="text-xs text-[var(--ui-muted)] mt-1">{filteredSummary.eliminado_count} registro(s) de baja en mesa</p>
+          <p className="text-xs ui-text-muted">Eliminados</p>
+          <p className="text-2xl font-bold text-red-600">{filteredSummary.eliminado_count}</p>
+          <p className="text-xs text-[var(--ui-muted)] mt-1">
+            Valor referencia: {formatCurrency(filteredSummary.eliminado_reference_total)}
+          </p>
         </div>
       </div>
 
@@ -301,8 +293,7 @@ export default function CortesiasReportSection({
               <th className="py-2 pr-3 font-medium">Registró</th>
               <th className="py-2 pr-3 font-medium">Motivo</th>
               <th className="py-2 pr-3 font-medium">Productos</th>
-              <th className="py-2 pr-3 font-medium text-right">Precio / valor</th>
-              <th className="py-2 pr-3 font-medium text-right">Cobrado</th>
+              <th className="py-2 pr-3 font-medium text-right">Valor</th>
               <th className="py-2 font-medium text-center">Inventario</th>
               <th className="py-2 font-medium text-center">Acciones</th>
             </tr>
@@ -362,11 +353,8 @@ export default function CortesiasReportSection({
                     )}
                   </td>
                   <td className="py-2.5 pr-3 max-w-[260px] truncate" title={productLine}>{productLine || '—'}</td>
-                  <td className="py-2.5 pr-3 text-right tabular-nums text-amber-600">
+                  <td className="py-2.5 pr-3 text-right tabular-nums font-semibold text-[var(--ui-body-text)]">
                     {formatCurrency(refAmount)}
-                  </td>
-                  <td className="py-2.5 pr-3 text-right tabular-nums font-semibold text-emerald-600">
-                    {isEliminado ? '—' : formatCurrency(adjustmentAmountCharged(o))}
                   </td>
                   <td className="py-2.5 text-center">
                     {isEliminado ? (
@@ -404,7 +392,7 @@ export default function CortesiasReportSection({
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={11} className="py-10 text-center text-[var(--ui-muted)]">
+                <td colSpan={10} className="py-10 text-center text-[var(--ui-muted)]">
                   No hay descuentos, cortesías ni eliminaciones en el periodo seleccionado
                 </td>
               </tr>

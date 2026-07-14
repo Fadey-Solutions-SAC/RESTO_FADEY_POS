@@ -15,7 +15,6 @@ import {
   MdPointOfSale,
   MdDownload,
   MdPrint,
-  MdShoppingCart,
   MdVolunteerActivism,
   MdAutoGraph,
   MdLocalOffer,
@@ -77,12 +76,13 @@ function csvCell(value) {
 }
 
 function buildInventoryCuadresCsv(groups = []) {
-  const rows = [['Fecha', 'Hora', 'Almacén', 'Producto', 'Contado', 'Ajuste'].map(csvCell).join(',')];
+  const rows = [['Cuadre ID', 'Fecha', 'Hora', 'Almacén', 'Producto', 'Contado', 'Ajuste'].map(csvCell).join(',')];
   for (const group of groups) {
     for (const session of group.sessions || []) {
       const timeLabel = formatDateTime(session.created_at);
       for (const line of session.lines || []) {
         rows.push([
+          session.id,
           group.dateLabel,
           timeLabel,
           session.warehouse_name,
@@ -94,6 +94,64 @@ function buildInventoryCuadresCsv(groups = []) {
     }
   }
   return `${rows.join('\n')}\n`;
+}
+
+function buildInventoryCuadreCsv(session = {}, group = {}) {
+  return buildInventoryCuadresCsv([{ dateLabel: group.dateLabel || formatDate(group.dateKey), sessions: [session] }]);
+}
+
+function buildInventoryCuadreTxt(session = {}, group = {}) {
+  const idShort = String(session.id || '').slice(0, 8);
+  const lines = [
+    'CUADRE DE INVENTARIO',
+    '='.repeat(24),
+    `ID: ${session.id}`,
+    `Referencia: Cuadre ${idShort}`,
+    `Fecha: ${group.dateLabel || formatDate(group.dateKey)}`,
+    `Hora: ${formatDateTime(session.created_at)}`,
+    `Almacén: ${session.warehouse_name || 'Almacén'}`,
+    `Ajustes: ${session.lines?.length || 0}`,
+    '',
+    'Detalle:',
+    '-'.repeat(40),
+  ];
+  for (const line of session.lines || []) {
+    const adj = line.difference > 0 ? `+${line.difference}` : String(line.difference);
+    lines.push(`  · ${line.product_name} | Contado: ${line.counted_stock} | Ajuste: ${adj}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function downloadInventoryCuadreSession(session, group, format = 'csv') {
+  if (!session?.lines?.length) {
+    toast.error('Este cuadre no tiene ajustes para descargar');
+    return;
+  }
+  const idShort = String(session.id || 'cuadre').slice(0, 8);
+  const dateKey = group?.dateKey || toLocalDateKey(session.created_at) || new Date().toISOString().slice(0, 10);
+  const baseName = `cuadre-${idShort}-${dateKey}`;
+  if (format === 'txt') {
+    downloadBlobFile(`${baseName}.txt`, buildInventoryCuadreTxt(session, group));
+    toast.success('Cuadre descargado (TXT)');
+    return;
+  }
+  downloadBlobFile(`${baseName}.csv`, buildInventoryCuadreCsv(session, group), 'text/csv;charset=utf-8');
+  toast.success('Cuadre descargado (CSV)');
+}
+
+function downloadInventoryCuadresByDate(group, format = 'csv') {
+  if (!group?.sessions?.length) {
+    toast.error('No hay cuadres en esta fecha');
+    return;
+  }
+  const baseName = `cuadres-${group.dateKey}`;
+  if (format === 'txt') {
+    downloadBlobFile(`${baseName}.txt`, buildInventoryCuadresTxt([group]));
+    toast.success(`Cuadres del ${group.dateLabel} descargados (TXT)`);
+    return;
+  }
+  downloadBlobFile(`${baseName}.csv`, buildInventoryCuadresCsv([group]), 'text/csv;charset=utf-8');
+  toast.success(`Cuadres del ${group.dateLabel} descargados (CSV)`);
 }
 
 function buildPurchaseCsv(group = {}) {
@@ -157,10 +215,10 @@ function downloadPurchaseGroup(group, format = 'csv') {
 function buildInventoryCuadresTxt(groups = []) {
   const lines = ['CUADRES DE INVENTARIO', '='.repeat(24), ''];
   for (const group of groups) {
-    lines.push(`Fecha: ${group.dateLabel} (${group.lineCount} ajuste(s))`);
+    lines.push(`Fecha: ${group.dateLabel} (${group.sessions?.length || 0} cuadre(s) · ${group.lineCount} ajuste(s))`);
     lines.push('-'.repeat(40));
     for (const session of group.sessions || []) {
-      lines.push(`  ${formatDateTime(session.created_at)} · ${session.warehouse_name}`);
+      lines.push(`  Cuadre ${String(session.id || '').slice(0, 8)} · ${formatDateTime(session.created_at)} · ${session.warehouse_name}`);
       for (const line of session.lines || []) {
         const adj = line.difference > 0 ? `+${line.difference}` : String(line.difference);
         lines.push(`    · ${line.product_name} | Contado: ${line.counted_stock} | Ajuste: ${adj}`);
@@ -608,6 +666,28 @@ function localTodayYmd() {
   return toLocalDateKey(new Date().toISOString());
 }
 
+function localMonthStartYmd() {
+  const today = localTodayYmd();
+  const [y, m] = today.split('-');
+  return `${y}-${m}-01`;
+}
+
+function buildProductSalesDownloadBaseName(report) {
+  const filters = report?.filters || {};
+  if (report?.mode === 'current') {
+    return `productos-caja-actual-${localTodayYmd()}`;
+  }
+  if (report?.mode === 'date_range' && filters.from && filters.to) {
+    return `productos-${filters.from}_${filters.to}`;
+  }
+  if (report?.mode === 'registers') {
+    const ids = (filters.register_ids || []).map((id) => String(id).slice(0, 8)).filter(Boolean);
+    if (ids.length === 1) return `productos-cierre-${ids[0]}`;
+    if (ids.length > 1) return `productos-${ids.length}-cierres`;
+  }
+  return `productos-${localTodayYmd()}`;
+}
+
 function localMonthYm() {
   const t = new Date();
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
@@ -671,17 +751,15 @@ export default function Reports() {
   const [productoInformeRegisterId, setProductoInformeRegisterId] = useState('');
   const [productoInformeModalOpen, setProductoInformeModalOpen] = useState(false);
   const [productoTotalMode, setProductoTotalMode] = useState('fechas');
-  const [productoFrom, setProductoFrom] = useState(() => {
-    const t = new Date();
-    t.setDate(t.getDate() - 30);
-    return t.toISOString().split('T')[0];
-  });
-  const [productoTo, setProductoTo] = useState(() => new Date().toISOString().split('T')[0]);
+  const [productoFrom, setProductoFrom] = useState(localMonthStartYmd);
+  const [productoTo, setProductoTo] = useState(localTodayYmd);
   const [productoSelectedIds, setProductoSelectedIds] = useState(() => new Set());
   const [productoTotalReport, setProductoTotalReport] = useState(null);
   const [productoTotalLoading, setProductoTotalLoading] = useState(false);
   const [productoCurrentReport, setProductoCurrentReport] = useState(null);
   const [productoCurrentLoading, setProductoCurrentLoading] = useState(false);
+  const [closedRegistersList, setClosedRegistersList] = useState([]);
+  const [closedRegistersLoading, setClosedRegistersLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [financeFrom, setFinanceFrom] = useState(() => {
@@ -849,6 +927,10 @@ export default function Reports() {
         id: rec.id,
         created_at: rec.created_at,
         warehouse_name: rec.warehouse_name || 'Almacén',
+        total_items: rec.total_items,
+        total_shortage: rec.total_shortage,
+        total_surplus: rec.total_surplus,
+        notes: rec.notes,
         lines,
       });
     }
@@ -867,24 +949,10 @@ export default function Reports() {
     [inventoryCuadreGroupsByDate],
   );
 
-  const downloadInventoryCuadres = (format = 'both') => {
-    if (!inventoryCuadreGroupsByDate.length) {
-      toast.error('No hay cuadres para descargar');
-      return;
-    }
-    const stamp = new Date().toISOString().slice(0, 10);
-    if (format === 'txt' || format === 'both') {
-      downloadBlobFile(`cuadres-inventario-${stamp}.txt`, buildInventoryCuadresTxt(inventoryCuadreGroupsByDate));
-    }
-    if (format === 'csv' || format === 'both') {
-      downloadBlobFile(
-        `cuadres-inventario-${stamp}.csv`,
-        buildInventoryCuadresCsv(inventoryCuadreGroupsByDate),
-        'text/csv;charset=utf-8',
-      );
-    }
-    if (format === 'both') toast.success('Descargados TXT y CSV');
-  };
+  const inventoryCuadreCount = useMemo(
+    () => inventoryCuadreGroupsByDate.reduce((sum, group) => sum + (group.sessions?.length || 0), 0),
+    [inventoryCuadreGroupsByDate],
+  );
 
   useEffect(() => { loadRanking(rankingPeriod); }, [rankingPeriod]);
 
@@ -905,14 +973,27 @@ export default function Reports() {
     return () => { cancelled = true; };
   }, [reportSection]);
 
+  const loadClosedRegisters = useCallback(async () => {
+    setClosedRegistersLoading(true);
+    try {
+      const rows = await api.get('/reports/closed-registers?limit=200');
+      setClosedRegistersList(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error(err);
+      setClosedRegistersList([]);
+    } finally {
+      setClosedRegistersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (reportSection !== 'caja' && reportSection !== 'productos') return;
+    loadClosedRegisters();
+  }, [reportSection, loadClosedRegisters]);
+
   useEffect(() => {
     setProductoTotalReport(null);
   }, [productoTotalMode]);
-
-  const closedRegistersList = useMemo(
-    () => monthlyData?.closedRegisters || [],
-    [monthlyData?.closedRegisters],
-  );
 
   useEffect(() => {
     if (productoTotalMode !== 'cierres') return;
@@ -995,10 +1076,6 @@ export default function Reports() {
 
   const openProductoInforme = async (register) => {
     if (!register?.id) return;
-    if (productoTotalMode === 'cierres') {
-      setProductoSelectedIds(new Set([register.id]));
-      return;
-    }
     setProductoInformeModalOpen(true);
     setProductoInformeRegisterId(register.id);
     setProductoInformeLoading(true);
@@ -1014,19 +1091,19 @@ export default function Reports() {
     }
   };
 
-  const downloadProductSalesReport = (report, baseName, format = 'both') => {
+  const downloadProductSalesReport = (report, format = 'csv') => {
     if (!report?.sold_products?.length && !(report?.by_register || []).some((b) => b.sold_products?.length)) {
       toast.error('No hay productos para descargar');
       return;
     }
-    const stamp = new Date().toISOString().slice(0, 10);
-    if (format === 'txt' || format === 'both') {
-      downloadBlobFile(`${baseName}-${stamp}.txt`, buildProductSalesTxt(report));
+    const baseName = buildProductSalesDownloadBaseName(report);
+    if (format === 'txt') {
+      downloadBlobFile(`${baseName}.txt`, buildProductSalesTxt(report));
+      toast.success('Informe descargado (TXT)');
+      return;
     }
-    if (format === 'csv' || format === 'both') {
-      downloadBlobFile(`${baseName}-${stamp}.csv`, buildProductSalesCsv(report), 'text/csv;charset=utf-8');
-    }
-    if (format === 'both') toast.success('Descargados TXT y CSV');
+    downloadBlobFile(`${baseName}.csv`, buildProductSalesCsv(report), 'text/csv;charset=utf-8');
+    toast.success('Informe descargado (CSV)');
   };
 
   const productoSelectedKey = useMemo(
@@ -1035,7 +1112,32 @@ export default function Reports() {
   );
 
   useEffect(() => {
-    if (productoTotalMode !== 'cierres') return undefined;
+    if (reportSection !== 'productos' || productoTotalMode !== 'fechas') return undefined;
+    if (!productoFrom || !productoTo || productoFrom > productoTo) {
+      setProductoTotalReport(null);
+      return undefined;
+    }
+    let cancelled = false;
+    void (async () => {
+      setProductoTotalLoading(true);
+      try {
+        const params = new URLSearchParams({ from: productoFrom, to: productoTo });
+        const report = await api.get(`/reports/product-sales?${params.toString()}`);
+        if (!cancelled) setProductoTotalReport(report);
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(err.message || 'No se pudo cargar el informe de productos');
+          setProductoTotalReport(null);
+        }
+      } finally {
+        if (!cancelled) setProductoTotalLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [reportSection, productoTotalMode, productoFrom, productoTo]);
+
+  useEffect(() => {
+    if (reportSection !== 'productos' || productoTotalMode !== 'cierres') return undefined;
     const ids = productoSelectedKey ? productoSelectedKey.split(',').filter(Boolean) : [];
     if (!ids.length) {
       setProductoTotalReport(null);
@@ -1057,32 +1159,7 @@ export default function Reports() {
       }
     })();
     return () => { cancelled = true; };
-  }, [productoTotalMode, productoSelectedKey]);
-
-  const loadProductoTotalReport = async () => {
-    setProductoTotalLoading(true);
-    setProductoTotalReport(null);
-    try {
-      const params = new URLSearchParams();
-      if (productoTotalMode === 'fechas') {
-        if (!productoFrom || !productoTo) {
-          toast.error('Seleccione fecha desde y hasta');
-          return;
-        }
-        params.set('from', productoFrom);
-        params.set('to', productoTo);
-      } else {
-        toast.error('Seleccione al menos un cierre de caja en la lista');
-        return;
-      }
-      const report = await api.get(`/reports/product-sales?${params.toString()}`);
-      setProductoTotalReport(report);
-    } catch (err) {
-      toast.error(err.message || 'No se pudo generar el informe total');
-    } finally {
-      setProductoTotalLoading(false);
-    }
-  };
+  }, [reportSection, productoTotalMode, productoSelectedKey]);
 
   const productoDisplayedProducts = useMemo(() => {
     if (!productoTotalReport) return [];
@@ -1760,14 +1837,14 @@ export default function Reports() {
                   <>
                     <button
                       type="button"
-                      onClick={() => downloadProductSalesReport(productoCurrentReport, 'productos-caja-actual', 'csv')}
+                      onClick={() => downloadProductSalesReport(productoCurrentReport, 'csv')}
                       className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
                     >
                       <MdDownload /> CSV
                     </button>
                     <button
                       type="button"
-                      onClick={() => downloadProductSalesReport(productoCurrentReport, 'productos-caja-actual', 'txt')}
+                      onClick={() => downloadProductSalesReport(productoCurrentReport, 'txt')}
                       className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
                     >
                       <MdDownload /> TXT
@@ -1841,43 +1918,34 @@ export default function Reports() {
                     <label className="text-xs text-[var(--ui-muted)] block mb-1">Hasta</label>
                     <input type="date" value={productoTo} onChange={(e) => setProductoTo(e.target.value)} className="input-field" />
                   </div>
-                </div>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <button
-                    type="button"
-                    onClick={() => void loadProductoTotalReport()}
-                    disabled={productoTotalLoading}
-                    className="btn-primary text-sm inline-flex items-center gap-1 disabled:opacity-50"
-                  >
-                    <MdRefresh className={productoTotalLoading ? 'animate-spin' : ''} />
-                    {productoTotalLoading ? 'Generando…' : 'Generar informe'}
-                  </button>
                   {productoTotalReport && (
-                    <>
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'csv')}
+                        onClick={() => downloadProductSalesReport(productoTotalReport, 'csv')}
                         className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
                       >
                         <MdDownload /> Descargar CSV
                       </button>
                       <button
                         type="button"
-                        onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'txt')}
+                        onClick={() => downloadProductSalesReport(productoTotalReport, 'txt')}
                         className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
                       >
                         <MdDownload /> Descargar TXT
                       </button>
-                    </>
+                    </div>
                   )}
                 </div>
-                {productoTotalLoading && !productoTotalReport && (
-                  <p className="text-sm text-[var(--ui-muted)] mb-3">Generando informe de productos vendidos…</p>
+                {productoTotalLoading && (
+                  <p className="text-sm text-[var(--ui-muted)] mb-3 inline-flex items-center gap-2">
+                    <MdRefresh className="animate-spin" /> Actualizando informe…
+                  </p>
                 )}
                 {productoTotalReport && (
                   <div className="space-y-4">
                     <p className="text-sm text-[var(--ui-muted)]">
-                      Periodo {productoTotalReport.filters?.from} — {productoTotalReport.filters?.to}
+                      Periodo {formatDate(productoTotalReport.filters?.from)} — {formatDate(productoTotalReport.filters?.to)}
                     </p>
                     <ProductSalesTable
                       products={productoDisplayedProducts}
@@ -1893,7 +1961,9 @@ export default function Reports() {
                   Se muestra el último cierre por defecto. Marque uno o más cierres a la izquierda; los productos se actualizan a la derecha.
                 </p>
                 {!closedRegistersList.length ? (
-                  <p className="text-[var(--ui-muted)]">Aún no hay cierres de caja registrados.</p>
+                  <p className="text-[var(--ui-muted)]">
+                    {closedRegistersLoading ? 'Cargando cierres de caja…' : 'Aún no hay cierres de caja registrados.'}
+                  </p>
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,340px)_1fr] gap-4 items-start">
                     <div className="rounded-xl border border-[color:var(--ui-border)] overflow-hidden flex flex-col max-h-[min(70vh,640px)]">
@@ -1910,7 +1980,7 @@ export default function Reports() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => loadMonthly().then(setMonthlyData).catch(console.error)}
+                            onClick={() => void loadClosedRegisters()}
                             className="text-[var(--ui-muted)] hover:underline inline-flex items-center gap-0.5"
                           >
                             <MdRefresh className="text-sm" /> Actualizar
@@ -1921,38 +1991,48 @@ export default function Reports() {
                         {closedRegistersList.map((r) => {
                           const selected = productoSelectedIds.has(r.id);
                           return (
-                            <label
+                            <div
                               key={r.id}
-                              className={`flex gap-3 px-3 py-3 cursor-pointer hover:bg-[var(--ui-sidebar-hover)] ${
+                              className={`flex gap-2 px-3 py-3 hover:bg-[var(--ui-sidebar-hover)] ${
                                 selected ? 'informe-productos-row-selected' : ''
                               }`}
                             >
-                              <input
-                                type="checkbox"
-                                checked={selected}
-                                onChange={() => toggleProductoRegisterSelect(r.id)}
-                                className="mt-1 rounded shrink-0"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-[var(--ui-body-text)] truncate">
-                                  {r.user_name || 'Cajero'}
-                                </p>
-                                <p className="text-xs text-[var(--ui-muted)] mt-0.5">
-                                  {formatDateTime(r.closed_at)}
-                                </p>
-                                <p className="text-[11px] text-[var(--ui-muted)] mt-1">
-                                  Apertura {formatDateTime(r.opened_at)}
-                                </p>
-                                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2 text-xs">
-                                  <span className="text-[#3B82F6] font-medium tabular-nums">
-                                    {Number(r.sold_units_total ?? 0)} uds.
-                                  </span>
-                                  <span className="text-emerald-600 font-semibold tabular-nums">
-                                    {formatCurrency(r.total_sales || 0)}
-                                  </span>
+                              <label className="flex gap-3 flex-1 min-w-0 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  onChange={() => toggleProductoRegisterSelect(r.id)}
+                                  className="mt-1 rounded shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium text-[var(--ui-body-text)] truncate">
+                                    {r.user_name || 'Cajero'}
+                                  </p>
+                                  <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                                    {formatDateTime(r.closed_at)}
+                                  </p>
+                                  <p className="text-[11px] text-[var(--ui-muted)] mt-1">
+                                    Apertura {formatDateTime(r.opened_at)}
+                                  </p>
+                                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2 text-xs">
+                                    <span className="text-[#3B82F6] font-medium tabular-nums">
+                                      {Number(r.sold_units_total ?? 0)} uds.
+                                    </span>
+                                    <span className="text-emerald-600 font-semibold tabular-nums">
+                                      {formatCurrency(r.total_sales || 0)}
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                            </label>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => void openProductoInforme(r)}
+                                className="shrink-0 self-start p-2 rounded-lg text-[var(--ui-muted)] hover:bg-sky-50 hover:text-sky-600"
+                                title="Ver productos del cierre"
+                              >
+                                <MdVisibility />
+                              </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -1971,14 +2051,14 @@ export default function Reports() {
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'csv')}
+                              onClick={() => downloadProductSalesReport(productoTotalReport, 'csv')}
                               className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
                             >
                               <MdDownload /> CSV
                             </button>
                             <button
                               type="button"
-                              onClick={() => downloadProductSalesReport(productoTotalReport, 'informe-productos-total', 'txt')}
+                              onClick={() => downloadProductSalesReport(productoTotalReport, 'txt')}
                               className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
                             >
                               <MdDownload /> TXT
@@ -2005,73 +2085,6 @@ export default function Reports() {
               </>
             )}
           </div>
-
-          {/* Por cierre — solo en modo fechas (referencia y modal) */}
-          {productoTotalMode === 'fechas' && (
-          <div className="card">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <div className="flex items-center gap-2">
-                <MdShoppingCart className="text-[#3B82F6] text-xl" />
-                <h3 className="font-bold rf-section-title">Cierres de caja con ventas</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => loadMonthly().then(setMonthlyData).catch(console.error)}
-                className="text-xs px-2 py-1 rounded-lg border border-slate-200 text-[var(--ui-muted)] hover:bg-slate-50 inline-flex items-center gap-1"
-              >
-                <MdRefresh className="text-sm" /> Actualizar lista
-              </button>
-            </div>
-            {!closedRegistersList.length ? (
-              <p className="text-[var(--ui-muted)]">Aún no hay cierres de caja. Tras un cierre, aparecerá aquí y podrás abrir el informe.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="informe-productos-table w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[color:var(--ui-border)]">
-                      <th className="text-left py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Fecha cierre</th>
-                      <th className="text-left py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Cajero</th>
-                      <th className="text-left py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Apertura</th>
-                      <th className="text-right py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Unidades</th>
-                      <th className="text-right py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase">Venta turno</th>
-                      <th className="text-right py-2 px-3 text-xs text-[color:var(--ui-muted)] uppercase" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {closedRegistersList.map((r) => (
-                      <tr
-                        key={r.id}
-                        className={`border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)] ${
-                          productoInformeModalOpen && productoInformeRegisterId === r.id
-                            ? 'informe-productos-row-selected'
-                            : ''
-                        }`}
-                      >
-                        <td className="py-2 px-3 text-[color:var(--ui-body-text)]">{formatDateTime(r.closed_at)}</td>
-                        <td className="py-2 px-3 font-medium text-[color:var(--ui-body-text)]">{r.user_name || '-'}</td>
-                        <td className="py-2 px-3 text-[color:var(--ui-muted)] text-xs">{formatDateTime(r.opened_at)}</td>
-                        <td className="py-2 px-3 text-right tabular-nums font-medium text-[#3B82F6]">
-                          {Number(r.sold_units_total ?? 0)}
-                          <span className="text-[10px] text-[var(--ui-muted)] ml-1">({Number(r.sold_products_count ?? 0)} prod.)</span>
-                        </td>
-                        <td className="py-2 px-3 text-right font-semibold text-emerald-600">{formatCurrency(r.total_sales || 0)}</td>
-                        <td className="py-2 px-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => openProductoInforme(r)}
-                            className="text-xs px-3 py-1.5 bg-[#3B82F6] text-white rounded-lg hover:bg-[#2563EB] inline-flex items-center gap-1"
-                          >
-                            <MdVisibility /> Ver productos
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          )}
 
           <Modal
             isOpen={productoInformeModalOpen}
@@ -2102,6 +2115,7 @@ export default function Reports() {
                         downloadProductSalesReport(
                           {
                             mode: 'registers',
+                            filters: { register_ids: [productoInformeDetail.id].filter(Boolean) },
                             sold_products: productoInformeDetail.sold_products || [],
                             product_sales_total: productoInformeDetail.product_sales_total,
                             by_register: [
@@ -2113,8 +2127,7 @@ export default function Reports() {
                               },
                             ],
                           },
-                          `informe-productos-${String(productoInformeDetail.id || 'cierre').slice(0, 8)}`,
-                          'csv'
+                          'csv',
                         )
                       }
                       className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg text-[color:var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1"
@@ -2127,6 +2140,7 @@ export default function Reports() {
                         downloadProductSalesReport(
                           {
                             mode: 'registers',
+                            filters: { register_ids: [productoInformeDetail.id].filter(Boolean) },
                             sold_products: productoInformeDetail.sold_products || [],
                             product_sales_total: productoInformeDetail.product_sales_total,
                             by_register: [
@@ -2138,8 +2152,7 @@ export default function Reports() {
                               },
                             ],
                           },
-                          `informe-productos-${String(productoInformeDetail.id || 'cierre').slice(0, 8)}`,
-                          'txt'
+                          'txt',
                         )
                       }
                       className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg text-[color:var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1"
@@ -2161,16 +2174,28 @@ export default function Reports() {
 
       {reportSection === 'caja' && (
         <div className="card">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <MdPointOfSale className="text-[#3B82F6] text-xl" />
               <h3 className="font-bold rf-section-title">Reporte de Caja</h3>
             </div>
-            <span className="text-xs text-[var(--ui-muted)]">
-              Cierres registrados: {(monthlyData?.closedRegisters || []).length}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-[var(--ui-muted)]">
+                Cierres registrados: {closedRegistersList.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadClosedRegisters()}
+                disabled={closedRegistersLoading}
+                className="text-xs px-2 py-1 rounded-lg border border-slate-200 text-[var(--ui-muted)] hover:bg-slate-50 inline-flex items-center gap-1 disabled:opacity-50"
+              >
+                <MdRefresh className={closedRegistersLoading ? 'animate-spin text-sm' : 'text-sm'} /> Actualizar
+              </button>
+            </div>
           </div>
-          {(monthlyData?.closedRegisters || []).length === 0 ? (
+          {closedRegistersLoading && !closedRegistersList.length ? (
+            <p className="text-[var(--ui-muted)]">Cargando cierres de caja…</p>
+          ) : closedRegistersList.length === 0 ? (
             <p className="text-[var(--ui-muted)]">No hay cierres de caja registrados todavía.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -2186,7 +2211,7 @@ export default function Reports() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(monthlyData?.closedRegisters || []).map((r) => (
+                  {closedRegistersList.map((r) => (
                     <tr key={r.id} className="border-b border-slate-50">
                       <td className="py-2 px-3 font-medium">{r.id.slice(0, 8).toUpperCase()}</td>
                       <td className="py-2 px-3">{r.user_name || '-'}</td>
@@ -2666,7 +2691,7 @@ export default function Reports() {
               }`}
             >
               <p className="text-lg font-bold text-sky-700 rf-section-title leading-tight">Cuadres de inventario</p>
-              <p className="text-4xl font-bold text-sky-700 tabular-nums">{inventoryReconciliations.length}</p>
+              <p className="text-4xl font-bold text-sky-700 tabular-nums">{inventoryCuadreCount}</p>
               <p className="text-sm text-[var(--ui-muted)]">{inventoryCuadreLines} ajuste(s) registrado(s)</p>
             </button>
           </div>
@@ -2694,68 +2719,96 @@ export default function Reports() {
               </p>
             )
           ) : inventoryCuadreGroupsByDate.length > 0 ? (
-            <div>
-              <div className="flex flex-wrap gap-2 mb-3">
-                <button
-                  type="button"
-                  onClick={() => downloadInventoryCuadres('csv')}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-sky-600 text-white hover:bg-sky-700"
-                >
-                  <MdDownload /> Descargar CSV
-                </button>
-                <button
-                  type="button"
-                  onClick={() => downloadInventoryCuadres('txt')}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-sky-300 text-sky-700 bg-sky-50 hover:bg-sky-100"
-                >
-                  <MdDownload /> Descargar TXT
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
-                      <th className="py-2 pr-3 font-medium">Fecha y hora</th>
-                      <th className="py-2 pr-3 font-medium">Almacén</th>
-                      <th className="py-2 pr-3 font-medium">Producto</th>
-                      <th className="py-2 pr-3 font-medium text-right">Contado</th>
-                      <th className="py-2 font-medium text-right">Cantidad ajustada</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inventoryCuadreGroupsByDate.map((group) => (
-                      <Fragment key={group.dateKey}>
-                        <tr className="bg-sky-50/80 border-b border-sky-200">
-                          <td colSpan={5} className="py-2.5 px-3 font-semibold text-sky-800">
-                            {group.dateLabel}
-                            <span className="ml-2 text-xs font-normal text-sky-600">
-                              {group.lineCount} ajuste(s) · {group.sessions.length} cuadre(s)
-                            </span>
-                          </td>
-                        </tr>
-                        {group.sessions.map((session) => (
-                          session.lines.map((line, lineIdx) => (
-                            <tr key={line.id} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
-                              <td className="py-2.5 pr-3 whitespace-nowrap">
-                                {lineIdx === 0 ? formatDateTime(session.created_at) : ''}
-                              </td>
-                              <td className="py-2.5 pr-3">{lineIdx === 0 ? session.warehouse_name : ''}</td>
-                              <td className="py-2.5 pr-3 font-medium">{line.product_name}</td>
-                              <td className="py-2.5 pr-3 text-right tabular-nums">{line.counted_stock}</td>
-                              <td className={`py-2.5 text-right tabular-nums font-semibold ${
+            <div className="space-y-6">
+              {inventoryCuadreGroupsByDate.map((group) => (
+                <div key={group.dateKey} className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 flex-wrap border-b border-sky-200 pb-2">
+                    <div>
+                      <p className="font-bold text-sky-800 rf-section-title">{group.dateLabel}</p>
+                      <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                        {group.sessions.length} cuadre(s) · {group.lineCount} ajuste(s)
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => downloadInventoryCuadresByDate(group, 'csv')}
+                        className="text-xs px-3 py-1.5 border border-sky-300 rounded-lg inline-flex items-center gap-1 text-sky-700 bg-sky-50 hover:bg-sky-100"
+                        title={`Descargar todos los cuadres del ${group.dateLabel}`}
+                      >
+                        <MdDownload /> Fecha CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadInventoryCuadresByDate(group, 'txt')}
+                        className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 hover:bg-[var(--ui-sidebar-hover)]"
+                        title={`Descargar todos los cuadres del ${group.dateLabel}`}
+                      >
+                        <MdDownload /> Fecha TXT
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {group.sessions.map((session) => (
+                      <div key={session.id} className="border border-slate-200 rounded-lg p-3 bg-white">
+                        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+                          <div>
+                            <p className="font-semibold rf-section-title">
+                              Cuadre {String(session.id || '').slice(0, 8)}
+                            </p>
+                            <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                              {formatDateTime(session.created_at)} · {session.warehouse_name}
+                            </p>
+                            <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                              {session.lines.length} ajuste(s)
+                              {Number(session.total_shortage) > 0 ? ` · Faltante: ${session.total_shortage}` : ''}
+                              {Number(session.total_surplus) > 0 ? ` · Sobrante: ${session.total_surplus}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => downloadInventoryCuadreSession(session, group, 'csv')}
+                              className="text-xs px-3 py-1.5 border border-sky-300 rounded-lg inline-flex items-center gap-1 text-sky-700 bg-sky-50 hover:bg-sky-100"
+                              title="Descargar este cuadre en CSV"
+                            >
+                              <MdDownload /> CSV
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => downloadInventoryCuadreSession(session, group, 'txt')}
+                              className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 hover:bg-[var(--ui-sidebar-hover)]"
+                              title="Descargar este cuadre en TXT"
+                            >
+                              <MdDownload /> TXT
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          {session.lines.map((line) => (
+                            <div
+                              key={line.id}
+                              className="text-sm flex items-center justify-between border-b border-slate-100 py-1.5 last:border-b-0"
+                            >
+                              <span className="font-medium pr-3">{line.product_name}</span>
+                              <span className="text-xs text-[var(--ui-muted)] whitespace-nowrap mr-3">
+                                Contado: {line.counted_stock}
+                              </span>
+                              <span className={`font-semibold tabular-nums whitespace-nowrap ${
                                 line.difference > 0 ? 'text-sky-600' : 'text-red-600'
                               }`}
                               >
                                 {line.difference > 0 ? `+${line.difference}` : line.difference}
-                              </td>
-                            </tr>
-                          ))
-                        ))}
-                      </Fragment>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="py-8 text-center text-[var(--ui-muted)]">
