@@ -907,6 +907,15 @@ export default function Reports() {
     return `${count} cierres consolidados`;
   }, [productoTotalMode, productoSelectedIds, closedRegistersList]);
 
+  const dailySalesAccounts = useMemo(() => {
+    const eligible = (dailyData?.orders || []).filter(
+      (o) => o.payment_status === 'paid' && o.status !== 'cancelled' && !isCourtesyOrder(o),
+    );
+    return summarizePaidSalesAccounts(eligible).sort(
+      (a, b) => new Date(String(b.paidAt || 0)).getTime() - new Date(String(a.paidAt || 0)).getTime(),
+    );
+  }, [dailyData?.orders]);
+
   const loadProductoCurrentReport = async ({ silent = false } = {}) => {
     setProductoCurrentLoading(true);
     if (!silent) setProductoCurrentReport(null);
@@ -1132,15 +1141,6 @@ export default function Reports() {
     { id: 'inventario', title: 'Informe de Inventario', desc: 'Movimientos de stock generados por ventas, compras, merma, etc.' },
   ];
   const activeSectionMeta = sectionCards.find(section => section.id === reportSection);
-
-  const dailySalesAccounts = useMemo(() => {
-    const eligible = (dailyData?.orders || []).filter(
-      (o) => o.payment_status === 'paid' && o.status !== 'cancelled' && !isCourtesyOrder(o),
-    );
-    return summarizePaidSalesAccounts(eligible).sort(
-      (a, b) => new Date(String(b.paidAt || 0)).getTime() - new Date(String(a.paidAt || 0)).getTime(),
-    );
-  }, [dailyData?.orders]);
 
   return (
     <div>
