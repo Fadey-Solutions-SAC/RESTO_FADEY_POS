@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { api, formatCurrency, formatDate, formatDateTime, resolveMediaUrl } from '../../utils/api';
+import { api, formatCurrency, formatDate, formatDateTime, formatTime, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import {
@@ -26,7 +26,15 @@ import {
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
 import toast from 'react-hot-toast';
-import { summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
+import { formatMesaLabel, isCourtesyOrder, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
+
+const PAYMENT_METHOD_LABELS = {
+  efectivo: 'Efectivo',
+  yape: 'Yape',
+  plin: 'Plin',
+  tarjeta: 'Tarjeta',
+  online: 'Online',
+};
 
 const FINANCE_LOSS_LABELS = {
   salida_efectivo: 'Salida de efectivo',
@@ -1125,6 +1133,15 @@ export default function Reports() {
   ];
   const activeSectionMeta = sectionCards.find(section => section.id === reportSection);
 
+  const dailySalesAccounts = useMemo(() => {
+    const eligible = (dailyData?.orders || []).filter(
+      (o) => o.payment_status === 'paid' && o.status !== 'cancelled' && !isCourtesyOrder(o),
+    );
+    return summarizePaidSalesAccounts(eligible).sort(
+      (a, b) => new Date(String(b.paidAt || 0)).getTime() - new Date(String(a.paidAt || 0)).getTime(),
+    );
+  }, [dailyData?.orders]);
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-[var(--ui-body-text)] mb-6 rf-page-title">Informes</h1>
@@ -1252,6 +1269,9 @@ export default function Reports() {
                 <div>
                   <p className="text-xs text-[var(--ui-muted)]">Cuentas cobradas</p>
                   <p className="text-xl font-bold text-sky-600">{dailyData.sales?.order_count || 0}</p>
+                  {(dailyData.sales?.comanda_count || 0) > 0 ? (
+                    <p className="text-[10px] text-[var(--ui-muted)]">{dailyData.sales.comanda_count} comanda(s)</p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1295,44 +1315,61 @@ export default function Reports() {
             </div>
           </div>
 
-          {dailyData.orders?.length > 0 && (
+          {dailySalesAccounts.length > 0 && (
             <div className="card">
-              <h3 className="font-bold rf-section-title mb-4">Comandas del día ({dailyData.orders.length})</h3>
+              <h3 className="font-bold rf-section-title mb-4">
+                Cuentas del día ({dailySalesAccounts.length})
+              </h3>
+              <p className="text-xs text-[var(--ui-muted)] mb-4">
+                Una cuenta agrupa las comandas cobradas juntas en el mismo pago de mesa (igual que en Ventas).
+              </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100">
-                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">#</th>
-                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Mesa</th>
-                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Estado</th>
+                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Mesa / Destino</th>
+                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Comandas</th>
+                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Cobro</th>
                       <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Pago</th>
-                      <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Total</th>
+                      <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Total cuenta</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {dailyData.orders.map(o => (
-                      <tr key={o.id} className="border-b border-slate-50">
-                        <td className="py-2 px-3 font-medium">#{o.order_number}</td>
-                        <td className="py-2 px-3">{o.table_number || '—'}</td>
-                        <td className="py-2 px-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${o.status === 'delivered' ? 'bg-emerald-100 text-emerald-700' : o.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-gold-100 text-gold-700'}`}>
-                            {o.status === 'delivered' ? 'Entregado' : o.status === 'cancelled' ? 'Cancelado' : o.status === 'pending' ? 'Pendiente' : o.status === 'preparing' ? 'Preparando' : 'Listo'}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3">
-                          <span className={`text-xs ${
-                            o.payment_status === 'paid'
-                              ? 'text-emerald-600'
-                              : o.payment_status === 'refunded'
-                                ? 'text-red-600'
-                                : 'text-gold-600'
-                          }`}>
-                            {o.payment_status === 'paid' ? 'Pagado' : o.payment_status === 'refunded' ? 'Reembolsado' : 'Pendiente'}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-right font-bold">{formatCurrency(o.total)}</td>
-                      </tr>
-                    ))}
+                    {dailySalesAccounts.map((account) => {
+                      const o = account.primary;
+                      const table = String(o?.table_number || '').trim();
+                      const isMesa = o?.type === 'dine_in' && table;
+                      const destino = isMesa
+                        ? `Mesa ${table}`
+                        : o?.type === 'delivery'
+                          ? 'Delivery'
+                          : o?.type === 'pickup'
+                            ? 'Para llevar'
+                            : (o?.customer_name || 'Mostrador');
+                      const payment = PAYMENT_METHOD_LABELS[String(o?.payment_method || 'efectivo')] || o?.payment_method || '—';
+                      const comandaLabel = account.orders.length === 1
+                        ? `#${o?.order_number || '—'}`
+                        : `${account.orders.length} comandas`;
+                      return (
+                        <tr key={`${account.table}-${account.paidAt}-${o?.id}`} className="border-b border-slate-50">
+                          <td className="py-2 px-3">
+                            <p className="font-medium">{destino}</p>
+                            {isMesa ? (
+                              <p className="text-xs text-[var(--ui-muted)]">{formatMesaLabel(table)}</p>
+                            ) : null}
+                          </td>
+                          <td className="py-2 px-3 text-[var(--ui-muted)]">{comandaLabel}</td>
+                          <td className="py-2 px-3">
+                            <p>{formatTime(account.paidAt)}</p>
+                            <p className="text-xs text-[var(--ui-muted)]">{formatDate(account.paidAt)}</p>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className="text-xs text-emerald-600 font-medium">{payment}</span>
+                          </td>
+                          <td className="py-2 px-3 text-right font-bold">{formatCurrency(account.total)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
