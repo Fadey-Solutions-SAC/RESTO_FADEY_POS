@@ -487,3 +487,206 @@ export function buildSalesDisplayGroups(orders = []) {
     (a, b) => new Date(`${b.latestAt}Z`).getTime() - new Date(`${a.latestAt}Z`).getTime(),
   );
 }
+
+export function getSalesAccountKey(order) {
+  if (!order) return '';
+  const table = String(order.table_number || '').trim();
+  const isMesa = order.type === 'dine_in' && table;
+  if (isMesa) {
+    const registerId = String(order.cash_register_id || '');
+    return `mesa:${table}:${registerId}:${salesAccountPaidAtBucket(order)}`;
+  }
+  const customerId = String(order.customer_id || '').trim();
+  const registerId = String(order.cash_register_id || '');
+  if (customerId) {
+    return `cliente:${customerId}:${registerId}:${salesAccountPaidAtBucket(order)}`;
+  }
+  return `pedido:${order.id || ''}`;
+}
+
+export function parseProductRemovalNotesFromOrder(notes) {
+  const parts = String(notes || '')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts.filter((p) => /productos retirados/i.test(p)).join(' · ');
+}
+
+/** Eventos de auditoría en una cuenta: cortesía, descuento o producto eliminado. */
+export function collectSalesAccountObservations(orders = [], extraAdjustmentRows = []) {
+  const items = [];
+  const seen = new Set();
+
+  const pushItem = (kind, label, detail, recordId) => {
+    const text = String(detail || '').trim();
+    if (!text) return;
+    const id = String(recordId || '').trim();
+    const dedupeKey = id || `${kind}:${text.toLowerCase()}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    items.push({ kind, label, detail: text, recordId: id || null });
+  };
+
+  for (const order of orders || []) {
+    if (isCourtesyOrder(order)) {
+      const products = (order.items || []).map((i) => i.product_name).filter(Boolean).join(', ');
+      const reason = parseCourtesyReason(order);
+      pushItem(
+        'cortesia',
+        'Producto como cortesía',
+        reason || products || `Comanda #${order.order_number || '—'}`,
+        order.id,
+      );
+    }
+    if (isDiscountOrder(order)) {
+      const reason = parseAdjustmentReason(order);
+      const amount = Number(order.discount || 0).toFixed(2);
+      pushItem(
+        'descuento',
+        'Descuento aplicado',
+        reason ? `${reason} (S/ ${amount})` : `S/ ${amount}`,
+        order.id,
+      );
+    }
+    const removalNote = parseProductRemovalNotesFromOrder(order.notes);
+    if (removalNote) {
+      const match = (extraAdjustmentRows || []).find(
+        (row) => row.adjustment_kind === 'eliminado' && String(row.order_id || '') === String(order.id || ''),
+      );
+      pushItem('eliminado', 'Producto eliminado', removalNote, match?.id || order.id);
+    }
+  }
+
+  for (const row of extraAdjustmentRows || []) {
+    const kind = String(row.adjustment_kind || '').trim();
+    if (kind === 'eliminado') {
+      const product = row.items?.[0]?.product_name || row.product_name || 'Producto';
+      const qty = row.items?.[0]?.quantity || row.quantity_removed || 1;
+      const reason = row.adjustment_reason || row.removal_reason || '';
+      pushItem(
+        'eliminado',
+        'Producto eliminado',
+        `${product} × ${qty}${reason ? ` — ${reason}` : ''}`,
+        row.id,
+      );
+    } else if (kind === 'cortesia') {
+      const product = row.items?.[0]?.product_name || 'Producto';
+      pushItem(
+        'cortesia',
+        'Producto como cortesía',
+        row.adjustment_reason || product,
+        row.id,
+      );
+    } else if (kind === 'descuento') {
+      const amount = Number(row.discount_amount ?? row.reference_amount ?? 0).toFixed(2);
+      pushItem(
+        'descuento',
+        'Descuento aplicado',
+        row.adjustment_reason ? `${row.adjustment_reason} (S/ ${amount})` : `S/ ${amount}`,
+        row.id,
+      );
+    }
+  }
+
+  const recordIds = [...new Set(items.map((item) => item.recordId).filter(Boolean))];
+
+  return {
+    observed: items.length > 0,
+    status: items.length > 0 ? 'observado' : 'correcto',
+    items,
+    recordIds,
+  };
+}
+
+export function getObservationRecordIds(observations) {
+  if (Array.isArray(observations?.recordIds) && observations.recordIds.length) {
+    return observations.recordIds;
+  }
+  return [...new Set((observations?.items || []).map((item) => item.recordId).filter(Boolean))];
+}
+
+/**
+ * Agrupa ventas cobradas por cuenta de venta (1 cobro = 1 fila), compatible con la UI de Ventas.
+ */
+export function buildPaidSalesAccountDisplayGroups(orders = [], adjustmentRows = []) {
+  const adjustmentByOrderId = new Map();
+  for (const row of adjustmentRows || []) {
+    const orderId = String(row.order_id || '').trim();
+    if (!orderId) continue;
+    if (!adjustmentByOrderId.has(orderId)) adjustmentByOrderId.set(orderId, []);
+    adjustmentByOrderId.get(orderId).push(row);
+  }
+
+  const paidOrders = (orders || []).filter((o) => o && o.payment_status === 'paid');
+  const accountLists = groupPaidOrdersBySalesAccount(paidOrders);
+
+  return accountLists.map((accountOrders) => {
+    const sorted = [...accountOrders].sort(
+      (a, b) =>
+        new Date(String(b?.paid_at || b?.updated_at || 0)).getTime()
+        - new Date(String(a?.paid_at || a?.updated_at || 0)).getTime(),
+    );
+    const primary = sorted[0];
+    const table = String(primary?.table_number || '').trim();
+    const isMesa = primary?.type === 'dine_in' && Boolean(table);
+    const salesOrders = sorted.filter((o) => !isCourtesyOrder(o));
+    const courtesyOrders = sorted.filter(isCourtesyOrder);
+    const allItems = sorted.flatMap((o) => o.items || []);
+    const groupedProducts = groupItemsByProductNameForBill(allItems);
+    const total = salesOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+    const paidAt = primary?.paid_at || primary?.updated_at || primary?.created_at;
+
+    const payParts = new Map();
+    for (const o of salesOrders) {
+      const method = String(o.payment_method || 'efectivo');
+      payParts.set(method, (payParts.get(method) || 0) + Number(o.total || 0));
+    }
+    if (courtesyOrders.length) payParts.set('cortesia', courtesyOrders.length);
+    const paymentSummary = [...payParts.entries()]
+      .map(([method, amount]) => {
+        if (method === 'cortesia') return `Cortesía × ${amount}`;
+        const labels = { efectivo: 'Efectivo', yape: 'Yape', plin: 'Plin', tarjeta: 'Tarjeta', online: 'Online' };
+        const label = labels[method] || method;
+        return `${label} (S/): ${Number(amount).toFixed(2)}`;
+      })
+      .join(' · ');
+
+    const extraRows = sorted.flatMap((o) => adjustmentByOrderId.get(String(o.id)) || []);
+    const observations = collectSalesAccountObservations(sorted, extraRows);
+
+    return {
+      key: `cuenta:${getSalesAccountKey(primary)}`,
+      isMesa,
+      isSalesAccount: true,
+      mesaLabel: isMesa ? formatMesaLabel(primary.table_number) : '-',
+      orders: sorted,
+      primary,
+      groupedProducts,
+      total,
+      paidTotal: total,
+      pendingTotal: 0,
+      paymentSummary,
+      latestAt: paidAt,
+      earliestAt: sorted[sorted.length - 1]?.paid_at
+        || sorted[sorted.length - 1]?.updated_at
+        || paidAt,
+      comprobanteCount: sorted.length,
+      salesOrderCount: salesOrders.length,
+      courtesyCount: courtesyOrders.length,
+      observations,
+    };
+  }).sort(
+    (a, b) => new Date(String(b.latestAt || 0)).getTime() - new Date(String(a.latestAt || 0)).getTime(),
+  );
+}
+
+export function buildVentasDisplayGroups(filtered = [], adjustmentRows = [], { voidedTab = false } = {}) {
+  if (voidedTab) return buildSalesDisplayGroups(filtered);
+  const paid = filtered.filter((o) => o.payment_status === 'paid');
+  const rest = filtered.filter((o) => o.payment_status !== 'paid');
+  const paidGroups = buildPaidSalesAccountDisplayGroups(paid, adjustmentRows);
+  const restGroups = buildSalesDisplayGroups(rest);
+  return [...paidGroups, ...restGroups].sort(
+    (a, b) => new Date(String(b.latestAt || 0)).getTime() - new Date(String(a.latestAt || 0)).getTime(),
+  );
+}

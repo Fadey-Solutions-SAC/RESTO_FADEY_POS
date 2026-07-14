@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
-import { api, formatCurrency, formatDate, formatDateTime, formatTime, resolveMediaUrl } from '../../utils/api';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { api, formatCurrency, formatDate, formatDateTime, formatTime, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import {
@@ -26,7 +26,7 @@ import {
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
 import toast from 'react-hot-toast';
-import { formatMesaLabel, isCourtesyOrder, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
+import { formatMesaLabel, buildPaidSalesAccountDisplayGroups, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
 
 const PAYMENT_METHOD_LABELS = {
   efectivo: 'Efectivo',
@@ -535,13 +535,17 @@ function openNativeDatePicker(inputEl) {
 }
 
 export default function Reports() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [reportSection, setReportSection] = useState('ventas');
   const [tab, setTab] = useState('daily');
   const [salesDailyDate, setSalesDailyDate] = useState(localTodayYmd);
   const [salesMonth, setSalesMonth] = useState(localMonthYm);
   const [dailyLoading, setDailyLoading] = useState(false);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [dailyAdjustments, setDailyAdjustments] = useState([]);
+  const [descuentosHighlightIds, setDescuentosHighlightIds] = useState([]);
+  const [descuentosHighlightRange, setDescuentosHighlightRange] = useState({ from: '', to: '' });
   const dailyDateInputRef = useRef(null);
   const monthInputRef = useRef(null);
   const [dailyData, setDailyData] = useState(null);
@@ -655,6 +659,13 @@ export default function Reports() {
   }, []);
 
   useEffect(() => {
+    if (reportSection !== 'ventas' || tab !== 'daily' || !salesDailyDate) return;
+    api.get(`/reports/sales-adjustments?from=${encodeURIComponent(salesDailyDate)}&to=${encodeURIComponent(salesDailyDate)}&limit=2000`)
+      .then((res) => setDailyAdjustments(Array.isArray(res?.orders) ? res.orders : []))
+      .catch(() => setDailyAdjustments([]));
+  }, [salesDailyDate, tab, reportSection]);
+
+  useEffect(() => {
     if (reportSection !== 'ventas' || tab !== 'daily') return;
     loadDaily(salesDailyDate);
   }, [salesDailyDate, tab, reportSection, loadDaily]);
@@ -674,7 +685,50 @@ export default function Reports() {
     } else if (searchParams.get('seccion') === 'cortesias' || searchParams.get('seccion') === 'descuentos') {
       setReportSection('descuentos');
     }
+    const resaltar = String(searchParams.get('resaltar') || '').trim();
+    if (resaltar) {
+      setDescuentosHighlightIds(resaltar.split(',').map((id) => id.trim()).filter(Boolean));
+      setReportSection('descuentos');
+    }
+    const desde = searchParams.get('desde') || '';
+    const hasta = searchParams.get('hasta') || '';
+    if (desde || hasta) {
+      setDescuentosHighlightRange({ from: desde, to: hasta || desde });
+    }
   }, [searchParams]);
+
+  const clearDescuentosHighlight = useCallback(() => {
+    setDescuentosHighlightIds([]);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('resaltar');
+      next.delete('desde');
+      next.delete('hasta');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const goToDescuentosHighlight = useCallback((account) => {
+    const recordIds = getObservationRecordIds(account?.observations);
+    if (!recordIds.length) return;
+    const dateKey = toLocalDateKey(account?.paidAt || account?.latestAt || account?.primary?.paid_at);
+    setDescuentosHighlightIds(recordIds);
+    if (dateKey) {
+      setDescuentosHighlightRange({ from: dateKey, to: dateKey });
+    }
+    setReportSection('descuentos');
+    const params = new URLSearchParams();
+    params.set('seccion', 'descuentos');
+    params.set('resaltar', recordIds.join(','));
+    if (dateKey) {
+      params.set('desde', dateKey);
+      params.set('hasta', dateKey);
+    }
+    navigate(`/admin/informes?${params.toString()}`, { replace: true });
+    window.setTimeout(() => {
+      document.getElementById('informes-descuentos-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+  }, [navigate]);
 
   const inventoryCuadreLines = useMemo(() => (
     inventoryReconciliations.flatMap((rec) =>
@@ -908,13 +962,19 @@ export default function Reports() {
   }, [productoTotalMode, productoSelectedIds, closedRegistersList]);
 
   const dailySalesAccounts = useMemo(() => {
-    const eligible = (dailyData?.orders || []).filter(
-      (o) => o.payment_status === 'paid' && o.status !== 'cancelled' && !isCourtesyOrder(o),
+    const paid = (dailyData?.orders || []).filter(
+      (o) => o.payment_status === 'paid' && o.status !== 'cancelled',
     );
-    return summarizePaidSalesAccounts(eligible).sort(
-      (a, b) => new Date(String(b.paidAt || 0)).getTime() - new Date(String(a.paidAt || 0)).getTime(),
-    );
-  }, [dailyData?.orders]);
+    return buildPaidSalesAccountDisplayGroups(paid, dailyAdjustments)
+      .filter((group) => group.salesOrderCount > 0)
+      .map((group) => ({
+        ...group,
+        paidAt: group.latestAt,
+        total: group.total,
+        primary: group.primary,
+        orders: group.orders,
+      }));
+  }, [dailyData?.orders, dailyAdjustments]);
 
   const loadProductoCurrentReport = async ({ silent = false } = {}) => {
     setProductoCurrentLoading(true);
@@ -1165,7 +1225,16 @@ export default function Reports() {
         )}
       </div>
 
-      {reportSection === 'descuentos' && <CortesiasReportSection />}
+      {reportSection === 'descuentos' && (
+        <div id="informes-descuentos-panel">
+          <CortesiasReportSection
+            highlightRecordIds={descuentosHighlightIds}
+            highlightFrom={descuentosHighlightRange.from}
+            highlightTo={descuentosHighlightRange.to}
+            onHighlightClear={clearDescuentosHighlight}
+          />
+        </div>
+      )}
 
       {reportSection === 'ventas' && (
         <>
@@ -1269,9 +1338,6 @@ export default function Reports() {
                 <div>
                   <p className="text-xs text-[var(--ui-muted)]">Cuentas cobradas</p>
                   <p className="text-xl font-bold text-sky-600">{dailyData.sales?.order_count || 0}</p>
-                  {(dailyData.sales?.comanda_count || 0) > 0 ? (
-                    <p className="text-[10px] text-[var(--ui-muted)]">{dailyData.sales.comanda_count} comanda(s)</p>
-                  ) : null}
                 </div>
               </div>
             </div>
@@ -1320,15 +1386,15 @@ export default function Reports() {
               <h3 className="font-bold rf-section-title mb-4">
                 Cuentas del día ({dailySalesAccounts.length})
               </h3>
-              <p className="text-xs text-[var(--ui-muted)] mb-4">
-                Una cuenta agrupa las comandas cobradas juntas en el mismo pago de mesa (igual que en Ventas).
+              <p className="text-xs text-[var(--ui-muted)] mb-4 uppercase tracking-wide font-medium">
+                DETALLES
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100">
                       <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Mesa / Destino</th>
-                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Comandas</th>
+                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Estado</th>
                       <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Cobro</th>
                       <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Pago</th>
                       <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Total cuenta</th>
@@ -1347,18 +1413,31 @@ export default function Reports() {
                             ? 'Para llevar'
                             : (o?.customer_name || 'Mostrador');
                       const payment = PAYMENT_METHOD_LABELS[String(o?.payment_method || 'efectivo')] || o?.payment_method || '—';
-                      const comandaLabel = account.orders.length === 1
-                        ? `#${o?.order_number || '—'}`
-                        : `${account.orders.length} comandas`;
+                      const observed = account.observations?.observed;
                       return (
-                        <tr key={`${account.table}-${account.paidAt}-${o?.id}`} className="border-b border-slate-50">
+                        <tr key={account.key || `${account.paidAt}-${o?.id}`} className="border-b border-slate-50">
                           <td className="py-2 px-3">
                             <p className="font-medium">{destino}</p>
                             {isMesa ? (
                               <p className="text-xs text-[var(--ui-muted)]">{formatMesaLabel(table)}</p>
                             ) : null}
                           </td>
-                          <td className="py-2 px-3 text-[var(--ui-muted)]">{comandaLabel}</td>
+                          <td className="py-2 px-3">
+                            {observed ? (
+                              <button
+                                type="button"
+                                onClick={() => goToDescuentosHighlight(account)}
+                                className="text-xs font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full hover:bg-amber-200"
+                                title="Ver detalle en Descuentos y Cortesías"
+                              >
+                                Observado
+                              </button>
+                            ) : (
+                              <span className="text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                                Correcto
+                              </span>
+                            )}
+                          </td>
                           <td className="py-2 px-3">
                             <p>{formatTime(account.paidAt)}</p>
                             <p className="text-xs text-[var(--ui-muted)]">{formatDate(account.paidAt)}</p>

@@ -1,23 +1,35 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, formatCurrency, formatDateTime, formatDate, formatTime, parseApiDate, isDateKeyInInclusiveRange } from '../../utils/api';
+import { api, formatCurrency, formatDateTime, formatDate, formatTime, parseApiDate, isDateKeyInInclusiveRange, toLocalDateKey } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
 import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel, MdDownload } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
-import { buildSalesDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
+import { buildVentasDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch, parseProductRemovalNotesFromOrder, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
+import { useNavigate } from 'react-router-dom';
+
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 
 import { UI_BADGE, saleStatusBadge } from '../../utils/uiBadges';
 
-function productRemovalNotesFromOrder(notes) {
-  const parts = String(notes || '')
-    .split('|')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const hits = parts.filter((p) => /productos retirados/i.test(p));
-  return hits.join(' · ');
+function getAccountAuditStatusBadge(group) {
+  const orders = group?.orders || [];
+  if (orders.length > 0 && orders.every((o) => o.status === 'cancelled')) {
+    return { label: 'Anulada', className: `${UI_BADGE.red} uppercase tracking-wide`, clickable: false };
+  }
+  if (orders.some((o) => o.status !== 'cancelled' && String(o.payment_status || 'pending') === 'pending')) {
+    return { label: 'Pendiente', className: `${UI_BADGE.amber} uppercase tracking-wide`, clickable: false };
+  }
+  const observations = group?.observations;
+  if (observations?.observed) {
+    return {
+      label: 'Observado',
+      className: `${UI_BADGE.amber} uppercase tracking-wide cursor-pointer hover:opacity-90 underline-offset-2 hover:underline`,
+      clickable: true,
+    };
+  }
+  return { label: 'Correcto', className: `${UI_BADGE.emerald} uppercase tracking-wide`, clickable: false };
 }
 
 function getSaleStatusBadge(order, t) {
@@ -31,30 +43,6 @@ function getSaleStatusBadge(order, t) {
   const ps = String(order.payment_status || 'pending');
   const label = t(`status.${ps}`, { defaultValue: base.label });
   return { label, className: base.className };
-}
-
-function getSalesGroupStatusBadge(group, t) {
-  const orders = group?.orders || [];
-  if (orders.length === 0) return getSaleStatusBadge({}, t);
-  if (orders.every((o) => o.status === 'cancelled')) {
-    return { label: 'Anulada', className: UI_BADGE.red };
-  }
-  const salesOrders = orders.filter((o) => o.status !== 'cancelled' && !isCourtesyOrder(o));
-  const courtesyOrders = orders.filter((o) => o.status !== 'cancelled' && isCourtesyOrder(o));
-  if (salesOrders.length === 0 && courtesyOrders.length > 0) {
-    return { label: 'Cortesía', className: UI_BADGE.violet };
-  }
-  const paid = salesOrders.filter((o) => o.payment_status === 'paid').length;
-  const pending = salesOrders.filter((o) => String(o.payment_status || 'pending') === 'pending').length;
-  if (paid === salesOrders.length && salesOrders.length > 0) return getSaleStatusBadge({ payment_status: 'paid' }, t);
-  if (pending === salesOrders.length && salesOrders.length > 0) return getSaleStatusBadge({ payment_status: 'pending' }, t);
-  if (paid > 0 && pending > 0) {
-    return { label: 'Parcial', className: UI_BADGE.sky };
-  }
-  if (courtesyOrders.length > 0 && salesOrders.length > 0) {
-    return { label: 'Mixto', className: UI_BADGE.slate };
-  }
-  return getSaleStatusBadge(orders[0], t);
 }
 
 function getSaleStatusDetailLabel(order, t) {
@@ -312,6 +300,8 @@ export default function Ventas() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [restaurantName, setRestaurantName] = useState('-');
+  const [adjustmentRows, setAdjustmentRows] = useState([]);
+  const navigate = useNavigate();
   const viewTapRef = useRef({ key: '', count: 0, timer: null });
 
   const load = async () => {
@@ -338,10 +328,24 @@ export default function Ventas() {
 
   const loadRef = useRef(load);
   loadRef.current = load;
+
+  const loadAdjustments = useCallback(async () => {
+    try {
+      const res = await api.get('/reports/sales-adjustments?limit=2000');
+      setAdjustmentRows(Array.isArray(res?.orders) ? res.orders : []);
+    } catch {
+      setAdjustmentRows([]);
+    }
+  }, []);
+
   useSocket('billing-document-update', useCallback(() => { loadRef.current(); }, []));
-  useSocket('order-update', useCallback(() => { loadRef.current(); }, []));
+  useSocket('order-update', useCallback(() => {
+    loadRef.current();
+    void loadAdjustments();
+  }, [loadAdjustments]));
 
   useEffect(() => { load(); }, []);
+  useEffect(() => { void loadAdjustments(); }, [loadAdjustments]);
 
   useEffect(() => {
     let f = orders;
@@ -372,13 +376,14 @@ export default function Ventas() {
     if (!showDeliveryUi && typeFilter === 'delivery') setTypeFilter('all');
   }, [showDeliveryUi, typeFilter]);
 
-  const displayGroups = useMemo(() => buildSalesDisplayGroups(filtered), [filtered]);
+  const isVoidedTab = saleTab === 'anuladas';
+
+  const displayGroups = useMemo(
+    () => buildVentasDisplayGroups(filtered, adjustmentRows, { voidedTab: isVoidedTab }),
+    [filtered, adjustmentRows, isVoidedTab],
+  );
   const paidSalesAccounts = useMemo(
     () => summarizePaidSalesAccounts(filtered.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o))),
-    [filtered],
-  );
-  const paidComandas = useMemo(
-    () => filtered.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o)).length,
     [filtered],
   );
 
@@ -391,15 +396,26 @@ export default function Ventas() {
     paid: filtered.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o)).reduce((s, o) => s + (o.total || 0), 0),
     pending: filtered.filter((o) => o.payment_status === 'pending').reduce((s, o) => s + (o.total || 0), 0),
     count: paidSalesAccounts.length,
-    transactions: paidComandas,
   };
-
-  const isVoidedTab = saleTab === 'anuladas';
 
   const handleSaleTabChange = (tabId) => {
     setSaleTab(tabId);
     if (tabId === 'anuladas') setStatusFilter('all');
   };
+
+  const goToDescuentosHighlight = useCallback((group) => {
+    const recordIds = getObservationRecordIds(group?.observations);
+    if (!recordIds.length) return;
+    const dateKey = toLocalDateKey(group?.latestAt || group?.primary?.paid_at);
+    const params = new URLSearchParams();
+    params.set('seccion', 'descuentos');
+    params.set('resaltar', recordIds.join(','));
+    if (dateKey) {
+      params.set('desde', dateKey);
+      params.set('hasta', dateKey);
+    }
+    navigate(`/admin/informes?${params.toString()}`);
+  }, [navigate]);
 
   const openGroupDetail = (group) => {
     setSelectedGroup(group);
@@ -590,8 +606,7 @@ export default function Ventas() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
           <div className="card border-l-4 border-l-sky-500">
             <p className="text-xs text-sky-600">{t('totals.voidedCount')}</p>
-            <p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p>
-            <p className="text-[10px] text-[var(--ui-muted)]">{totals.transactions} comprobante(s)</p>
+            <p className="text-xl font-bold text-[var(--ui-body-text)]">{displayGroups.length}</p>
           </div>
           <div className="card border-l-4 border-l-slate-400">
             <p className="text-xs ui-text-muted">{t('totals.voidedReferenceTotal')}</p>
@@ -604,7 +619,7 @@ export default function Ventas() {
         <div className="card border-l-4 border-l-slate-400"><p className="text-xs ui-text-muted">Total Ventas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{formatCurrency(totals.total)}</p></div>
         <div className="card border-l-4 border-l-emerald-500"><p className="text-xs text-emerald-600">Cobrado</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totals.paid)}</p></div>
         <div className="card border-l-4 border-l-amber-500"><p className="text-xs text-amber-600">Pendiente</p><p className="text-xl font-bold text-amber-300">{formatCurrency(totals.pending)}</p></div>
-        <div className="card border-l-4 border-l-sky-500"><p className="text-xs text-sky-600">Cuentas cobradas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p><p className="text-[10px] text-[var(--ui-muted)]">{totals.transactions} comanda(s)</p></div>
+        <div className="card border-l-4 border-l-sky-500"><p className="text-xs text-sky-600">Cuentas cobradas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p></div>
       </div>
       )}
 
@@ -668,7 +683,7 @@ export default function Ventas() {
                 const o = group.primary;
                 const doc = getOrderDocument(o);
                 const mesero = o.created_by_user_name || o.customer_name || '-';
-                const statusBadge = getSalesGroupStatusBadge(group, t);
+                const auditBadge = getAccountAuditStatusBadge(group);
                 const latest = parseApiDate(group.latestAt);
                 const earliest = parseApiDate(group.earliestAt);
                 const sameDay = group.comprobanteCount === 1
@@ -681,9 +696,6 @@ export default function Ventas() {
                         {group.comprobanteCount > 1 && !sameDay
                           ? `${formatTime(group.earliestAt)} – ${formatTime(group.latestAt)}`
                           : formatTime(group.latestAt)}
-                        {group.comprobanteCount > 1
-                          ? ` · ${group.comprobanteCount} ${isVoidedTab ? 'comprobantes' : 'pagos'}`
-                          : ''}
                       </p>
                     </td>
                     <td className="py-2.5 text-[var(--ui-body-text)] font-semibold">{group.mesaLabel}</td>
@@ -695,7 +707,7 @@ export default function Ventas() {
                     <td className="py-2.5">
                       {group.comprobanteCount > 1 ? (
                         <>
-                          <p className="font-medium text-[var(--ui-body-text)]">{group.comprobanteCount} comprobantes</p>
+                          <p className="font-medium text-[var(--ui-body-text)]">{group.comprobanteCount} documentos</p>
                           <p className="text-xs text-[var(--ui-muted)]">{docLabel(doc.doc_type)} · {doc.full_number}…</p>
                         </>
                       ) : (
@@ -712,9 +724,18 @@ export default function Ventas() {
                     ) : null}
                     <td className="py-2.5 font-bold text-[var(--ui-body-text)]">{formatCurrency(group.total)}</td>
                     <td className="py-2.5">
-                      <span className={`${statusBadge.className} uppercase tracking-wide`}>
-                        {statusBadge.label}
-                      </span>
+                      {auditBadge.clickable ? (
+                        <button
+                          type="button"
+                          onClick={() => goToDescuentosHighlight(group)}
+                          className={auditBadge.className}
+                          title="Ver en Descuentos y Cortesías"
+                        >
+                          {auditBadge.label}
+                        </button>
+                      ) : (
+                        <span className={auditBadge.className}>{auditBadge.label}</span>
+                      )}
                     </td>
                     <td className="py-2.5">
                       <div className="flex items-center gap-1 relative">
@@ -770,8 +791,10 @@ export default function Ventas() {
         isOpen={!!selected}
         onClose={closeDetail}
         title={
-          selectedGroup?.isMesa && selectedGroup.comprobanteCount > 1
-            ? `Mesa ${selectedGroup.primary.table_number} — ${selectedGroup.comprobanteCount} comprobantes`
+          selectedGroup?.isSalesAccount && selectedGroup?.isMesa
+            ? `Cuenta Mesa ${selectedGroup.primary.table_number}`
+            : selectedGroup?.isMesa && selectedGroup.comprobanteCount > 1
+            ? `Mesa ${selectedGroup.primary.table_number} — ${selectedGroup.comprobanteCount} documentos`
             : `Venta #${selected?.order_number}`
         }
         size="md"
@@ -811,10 +834,10 @@ export default function Ventas() {
                 <span>{selected.cancellation_reason}</span>
               </div>
             ) : null}
-            {selected.status !== 'cancelled' && productRemovalNotesFromOrder(selected.notes) ? (
+            {selected.status !== 'cancelled' && parseProductRemovalNotesFromOrder(selected.notes) ? (
               <div className="rounded-lg border border-amber-500/40 bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm text-[var(--ui-body-text)] shadow-inner">
                 <span className="font-semibold text-[var(--ui-body-text)]">Productos retirados: </span>
-                <span>{productRemovalNotesFromOrder(selected.notes)}</span>
+                <span>{parseProductRemovalNotesFromOrder(selected.notes)}</span>
               </div>
             ) : null}
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -828,7 +851,7 @@ export default function Ventas() {
                 </p>
               </div>
               <div><p className="ui-text-muted">Total mesa</p><p className="font-medium">{formatCurrency(selectedGroup.total)}</p></div>
-              <div><p className="ui-text-muted">Estado</p><p className="font-medium">{getSalesGroupStatusBadge(selectedGroup, t).label}</p></div>
+              <div><p className="ui-text-muted">Estado</p><p className="font-medium">{getAccountAuditStatusBadge(selectedGroup).label}</p></div>
             </div>
             <div className="border-t border-[color:var(--ui-border)] pt-3">
               <p className="font-medium mb-2 text-[var(--ui-body-text)]">
@@ -843,7 +866,7 @@ export default function Ventas() {
             </div>
             {selectedGroup.comprobanteCount > 1 && (
               <div className="border-t border-[color:var(--ui-border)] pt-3 space-y-2">
-                <p className="font-medium text-[var(--ui-body-text)]">Comprobantes por pago</p>
+                <p className="font-medium text-[var(--ui-body-text)]">Documentos de la cuenta</p>
                 {selectedGroup.orders.map((ord) => {
                   const doc = getOrderDocument(ord);
                   const badge = getSaleStatusBadge(ord, t);

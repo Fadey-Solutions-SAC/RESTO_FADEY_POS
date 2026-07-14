@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { api, formatCurrency, formatDateTime } from '../../utils/api';
 import {
   formatMesaLabel,
@@ -47,7 +47,14 @@ function rowProductLine(o) {
   return items.map((it) => `${it.quantity}× ${it.product_name}`).join(', ');
 }
 
-export default function CortesiasReportSection() {
+const HIGHLIGHT_ROW_CLASS = 'bg-amber-100/90 ring-2 ring-inset ring-amber-400 transition-colors duration-500';
+
+export default function CortesiasReportSection({
+  highlightRecordIds = [],
+  highlightFrom = '',
+  highlightTo = '',
+  onHighlightClear,
+}) {
   const [fromDate, setFromDate] = useState(() => {
     const t = new Date();
     t.setDate(t.getDate() - 30);
@@ -72,6 +79,42 @@ export default function CortesiasReportSection() {
   const [detailTarget, setDetailTarget] = useState(null);
   const [adminPassword, setAdminPassword] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [activeHighlightIds, setActiveHighlightIds] = useState(() => new Set());
+  const highlightTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (highlightFrom) setFromDate(highlightFrom);
+    if (highlightTo) setToDate(highlightTo);
+  }, [highlightFrom, highlightTo]);
+
+  useEffect(() => {
+    if (highlightTimerRef.current) {
+      clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = null;
+    }
+    const ids = (highlightRecordIds || []).map(String).filter(Boolean);
+    if (!ids.length) {
+      setActiveHighlightIds(new Set());
+      return undefined;
+    }
+    setActiveHighlightIds(new Set(ids));
+    const scrollTimer = window.setTimeout(() => {
+      const first = document.getElementById(`adjustment-row-${ids[0]}`);
+      first?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 250);
+    highlightTimerRef.current = window.setTimeout(() => {
+      setActiveHighlightIds(new Set());
+      onHighlightClear?.();
+      highlightTimerRef.current = null;
+    }, 20000);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = null;
+      }
+    };
+  }, [highlightRecordIds, data.orders, onHighlightClear]);
 
   const load = async () => {
     setLoading(true);
@@ -280,7 +323,13 @@ export default function CortesiasReportSection() {
                 ? Number(o.reference_amount ?? o.discount_amount ?? 0)
                 : adjustmentReferenceAmount(o);
               return (
-                <tr key={o.id} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
+                <tr
+                  key={o.id}
+                  id={`adjustment-row-${o.id}`}
+                  className={`border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)] ${
+                    activeHighlightIds.has(String(o.id)) ? HIGHLIGHT_ROW_CLASS : ''
+                  }`}
+                >
                   <td className="py-2.5 pr-3 whitespace-nowrap">{formatDateTime(o.updated_at || o.created_at)}</td>
                   <td className="py-2.5 pr-3">
                     <span className={kindBadgeClass(kind)}>

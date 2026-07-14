@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { api, formatCurrency, parseApiDate, PAYMENT_METHODS, formatInstantTime } from '../../utils/api';
+import { api, formatCurrency, parseApiDate, PAYMENT_METHODS, formatInstantTime, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useDeliverySettings } from '../../hooks/useDeliveryEnabled';
 import { useNavigate, Link } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
-import { MdDateRange, MdKeyboardArrowDown, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning } from 'react-icons/md';
+import { MdDateRange, MdKeyboardArrowDown, MdChevronLeft, MdChevronRight, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning } from 'react-icons/md';
 
 import { useChartTheme } from '../../theme/useChartTheme';
 import {
@@ -51,6 +51,59 @@ const formatDateForLabel = (value) => {
   if (!y || !m || !d) return value;
   return `${d}/${m}/${y}`;
 };
+
+function enumerateDateRangeDays(fromYmd, toYmd) {
+  const from = String(fromYmd || '').trim();
+  const to = String(toYmd || '').trim();
+  if (!from || !to) return [];
+  const start = new Date(`${from}T12:00:00`);
+  const end = new Date(`${to}T12:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+  const days = [];
+  for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    days.push(toInputDate(cursor));
+  }
+  return days;
+}
+
+function buildHourlySalesRows(accounts, scheduleCheck) {
+  const byHour = {};
+  for (let h = 0; h < 24; h += 1) byHour[String(h).padStart(2, '0')] = 0;
+  (accounts || []).forEach((account) => {
+    const parsed = parseApiDate(account.paidAt);
+    if (!parsed) return;
+    if (scheduleCheck && !scheduleCheck({
+      paid_at: account.paidAt,
+      updated_at: account.paidAt,
+      created_at: account.paidAt,
+    })) return;
+    const hour = parsed.getHours();
+    byHour[String(hour).padStart(2, '0')] += Number(account.total || 0);
+  });
+  return Object.entries(byHour).map(([hour, total]) => ({
+    hour: `${hour}:00`,
+    sales: Number(Number(total).toFixed(2)),
+  }));
+}
+
+function pickPeakAndLowHour(hourlyRows) {
+  const rows = hourlyRows || [];
+  if (!rows.some((item) => item.sales > 0)) {
+    return {
+      peak: { hour: '--:--', sales: 0 },
+      low: { hour: '--:--', sales: 0 },
+    };
+  }
+  const peak = rows.reduce(
+    (best, item) => (item.sales > best.sales ? item : best),
+    { hour: '--:--', sales: -1 },
+  );
+  const low = rows.reduce(
+    (best, item) => (item.sales < best.sales ? item : best),
+    { hour: '--:--', sales: Number.MAX_VALUE },
+  );
+  return { peak, low };
+}
 
 function isPaidSaleOrder(order) {
   if (!order || order.status === 'cancelled') return false;
@@ -146,6 +199,8 @@ export default function Escritorio() {
   const [selectedCajaStationId, setSelectedCajaStationId] = useState('');
   const [registerPeriodReport, setRegisterPeriodReport] = useState(null);
   const [registerReportLoading, setRegisterReportLoading] = useState(true);
+  const [hourlyHistoryIndex, setHourlyHistoryIndex] = useState(0);
+  const hourlySwipeRef = useRef({ x: 0, active: false });
   const startDateInputRef = useRef(null);
   const endDateInputRef = useRef(null);
   const navigate = useNavigate();
@@ -295,6 +350,9 @@ export default function Escritorio() {
     }
   }, [datePreset]);
   useEffect(() => {
+    setHourlyHistoryIndex(0);
+  }, [startDate, endDate, selectedCajaStationId]);
+  useEffect(() => {
     api
       .get('/restaurant')
       .then((cfg) => {
@@ -377,24 +435,68 @@ export default function Escritorio() {
     [paidSalesAccounts, restaurantInfo]
   );
 
-  const hourlySales = useMemo(() => {
-    const byHour = {};
-    for (let h = 0; h < 24; h += 1) byHour[String(h).padStart(2, '0')] = 0;
-    paidSalesAccounts.forEach((account) => {
-      const parsed = parseApiDate(account.paidAt);
-      if (!parsed) return;
-      if (!isSaleInConfiguredSchedule({ paid_at: account.paidAt, updated_at: account.paidAt, created_at: account.paidAt })) return;
-      const hour = parsed.getHours();
-      byHour[String(hour).padStart(2, '0')] += Number(account.total || 0);
-    });
-    return Object.entries(byHour).map(([hour, total]) => ({
-      hour: `${hour}:00`,
-      sales: Number(total.toFixed(2)),
-    }));
-  }, [paidSalesAccounts, restaurantInfo]);
+  const scheduleSaleCheck = useCallback((order) => isSaleInConfiguredSchedule(order), [restaurantInfo]);
 
-  const peakHour = hourlySales.reduce((best, item) => item.sales > best.sales ? item : best, { hour: '--:--', sales: -1 });
-  const lowHour = hourlySales.reduce((best, item) => item.sales < best.sales ? item : best, { hour: '--:--', sales: Number.MAX_VALUE });
+  const hourlySalesHistory = useMemo(() => {
+    const accountsByDay = new Map();
+    paidSalesAccountsInSchedule.forEach((account) => {
+      const dayKey = toLocalDateKey(account.paidAt);
+      if (!dayKey) return;
+      if (!accountsByDay.has(dayKey)) accountsByDay.set(dayKey, []);
+      accountsByDay.get(dayKey).push(account);
+    });
+    return enumerateDateRangeDays(startDate, endDate)
+      .reverse()
+      .map((dateKey) => {
+        const dayAccounts = accountsByDay.get(dateKey) || [];
+        return {
+          dateKey,
+          dateLabel: formatDateForLabel(dateKey),
+          hourly: buildHourlySalesRows(dayAccounts, scheduleSaleCheck),
+          total: dayAccounts.reduce((sum, account) => sum + Number(account.total || 0), 0),
+          accountCount: dayAccounts.length,
+        };
+      });
+  }, [paidSalesAccountsInSchedule, startDate, endDate, scheduleSaleCheck]);
+
+  useEffect(() => {
+    setHourlyHistoryIndex((prev) => {
+      if (!hourlySalesHistory.length) return 0;
+      return Math.min(prev, hourlySalesHistory.length - 1);
+    });
+  }, [hourlySalesHistory.length]);
+
+  const hourlyHistoryEntry = hourlySalesHistory[hourlyHistoryIndex] || null;
+  const hourlySales = hourlyHistoryEntry?.hourly || buildHourlySalesRows([], scheduleSaleCheck);
+  const { peak: peakHour, low: lowHour } = useMemo(
+    () => pickPeakAndLowHour(hourlySales),
+    [hourlySales],
+  );
+
+  const goToOlderHourlyDay = useCallback(() => {
+    setHourlyHistoryIndex((prev) => Math.min(prev + 1, Math.max(0, hourlySalesHistory.length - 1)));
+  }, [hourlySalesHistory.length]);
+
+  const goToNewerHourlyDay = useCallback(() => {
+    setHourlyHistoryIndex((prev) => Math.max(prev - 1, 0));
+  }, []);
+
+  const onHourlyChartTouchStart = (event) => {
+    hourlySwipeRef.current = {
+      x: event.touches?.[0]?.clientX ?? 0,
+      active: true,
+    };
+  };
+
+  const onHourlyChartTouchEnd = (event) => {
+    if (!hourlySwipeRef.current.active) return;
+    hourlySwipeRef.current.active = false;
+    const endX = event.changedTouches?.[0]?.clientX ?? hourlySwipeRef.current.x;
+    const delta = endX - hourlySwipeRef.current.x;
+    if (Math.abs(delta) < 48) return;
+    if (delta > 0) goToNewerHourlyDay();
+    else goToOlderHourlyDay();
+  };
 
   const salesByPayment = useMemo(() => {
     const map = { efectivo: 0, tarjeta: 0, yape: 0, plin: 0, online: 0 };
@@ -987,35 +1089,79 @@ export default function Escritorio() {
           </div>
 
           <div className="xl:col-span-10">
-            <h3 className="text-center text-[var(--ui-body-text)] mb-2 font-medium">
-              Gráfico por cantidad de ventas / Dinero por ventas
-            </h3>
-            <ResponsiveContainer width="100%" height={170}>
-              <LineChart data={hourlySales}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--ui-border)" strokeOpacity={0.55} />
-                <XAxis dataKey="hour" tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} />
-                <YAxis tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} />
-                <Tooltip
-                  formatter={(v) => formatCurrency(v)}
-                  contentStyle={{
-                    background: 'var(--ui-surface-2)',
-                    border: '1px solid var(--ui-border)',
-                    borderRadius: '8px',
-                    color: 'var(--ui-body-text)',
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="sales"
-                  stroke="#f59e0b"
-                  strokeWidth={3}
-                  fill="#fcd34d"
-                  dot={{ r: 2 }}
-                  activeDot={{ r: 4 }}
-                  name="Cantidad de ventas"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <div className="flex flex-wrap items-center justify-center gap-2 mb-2">
+              <button
+                type="button"
+                onClick={goToOlderHourlyDay}
+                disabled={!hourlySalesHistory.length || hourlyHistoryIndex >= hourlySalesHistory.length - 1}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[var(--ui-accent-muted)]"
+                title="Día anterior"
+                aria-label="Ver día anterior"
+              >
+                <MdChevronLeft className="text-xl" />
+              </button>
+              <div className="text-center min-w-[12rem]">
+                <h3 className="text-[var(--ui-body-text)] font-medium">
+                  Gráfico por cantidad de ventas / Dinero por ventas
+                </h3>
+                <p className="text-xs text-[var(--ui-muted)] tabular-nums">
+                  {hourlyHistoryEntry
+                    ? `${hourlyHistoryEntry.dateLabel} · ${formatCurrency(hourlyHistoryEntry.total)} · ${hourlyHistoryEntry.accountCount} cuenta(s)`
+                    : 'Sin datos en el rango'}
+                  {hourlySalesHistory.length > 1 ? (
+                    <span> · {hourlyHistoryIndex + 1}/{hourlySalesHistory.length}</span>
+                  ) : null}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={goToNewerHourlyDay}
+                disabled={!hourlySalesHistory.length || hourlyHistoryIndex <= 0}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[var(--ui-accent-muted)]"
+                title="Día siguiente"
+                aria-label="Ver día siguiente"
+              >
+                <MdChevronRight className="text-xl" />
+              </button>
+            </div>
+            {hourlySalesHistory.length > 1 ? (
+              <p className="text-[11px] text-center text-[var(--ui-muted)] mb-2">
+                Desliza el gráfico o usa las flechas para recorrer el historial diario
+              </p>
+            ) : null}
+            <div
+              className="touch-pan-y"
+              onTouchStart={onHourlyChartTouchStart}
+              onTouchEnd={onHourlyChartTouchEnd}
+            >
+              <ResponsiveContainer width="100%" height={170}>
+                <LineChart data={hourlySales}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--ui-border)" strokeOpacity={0.55} />
+                  <XAxis dataKey="hour" tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} />
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} />
+                  <Tooltip
+                    formatter={(v) => formatCurrency(v)}
+                    labelFormatter={(label) => `${hourlyHistoryEntry?.dateLabel || ''} ${label}`.trim()}
+                    contentStyle={{
+                      background: 'var(--ui-surface-2)',
+                      border: '1px solid var(--ui-border)',
+                      borderRadius: '8px',
+                      color: 'var(--ui-body-text)',
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="sales"
+                    stroke="#f59e0b"
+                    strokeWidth={3}
+                    fill="#fcd34d"
+                    dot={{ r: 2 }}
+                    activeDot={{ r: 4 }}
+                    name="Ventas del día"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
       </div>
