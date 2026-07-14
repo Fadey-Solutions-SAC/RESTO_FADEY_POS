@@ -7,10 +7,10 @@ import {
   getPersistedPrintingBridgeOrigin,
   getPrintingApiBase,
   hasElectronPrinting,
-  isElectronRuntime,
   normalizeUsbPrinterList,
   printingUnreachableMessage,
 } from '../../utils/api';
+import PrintingAssistantDownloadButton from '../../components/printing/PrintingAssistantDownloadButton';
 import { useAuth } from '../../context/AuthContext';
 import Modal from '../../components/Modal';
 import ContextMenu from '../../components/ContextMenu';
@@ -92,10 +92,6 @@ const DEFAULT_PRINTING_CONFIG = {
   cocina: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
   bar: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
 };
-/** Debe coincidir con el nombre exacto del asset en GitHub Releases (actual: RestoFADEY.Setup.exe). */
-const DESKTOP_SETUP_URL =
-  import.meta.env.VITE_DESKTOP_SETUP_URL ||
-  'https://github.com/MECATRONIC-MEN/RESTAURANT/releases/latest/download/RestoFADEY.Setup.exe';
 const PRINTING_CONFIG_CACHE_KEY = 'resto_printing_config_cache_v1';
 
 const MENU_ITEMS = [
@@ -630,21 +626,6 @@ export default function Settings() {
       })
       .catch((err) => toast.error(err.message || 'No se pudo guardar'))
       .finally(() => setPrintingBusy(false));
-  };
-  const openDesktopInstaller = () => {
-    const url = String(DESKTOP_SETUP_URL || '').trim();
-    if (!url) {
-      toast.error('No hay URL de instalador configurada (VITE_DESKTOP_SETUP_URL).');
-      return;
-    }
-    const a = document.createElement('a');
-    a.href = url;
-    a.rel = 'noopener noreferrer';
-    a.target = '_blank';
-    a.download = 'RestoFADEY-Setup.exe';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
   };
   const verifyPrintingLink = async () => {
     setPrintingLinkStatus((prev) => ({ ...prev, checking: true }));
@@ -1792,6 +1773,7 @@ export default function Settings() {
                   <button type="button" className="btn-secondary text-sm" onClick={() => void verifyPrintingLink()} disabled={printingBusy || printingLinkStatus.checking}>
                     Verificar vínculo
                   </button>
+                  <PrintingAssistantDownloadButton disabled={printingBusy} />
                 </div>
               </div>
               <div className="flex justify-end">
@@ -1978,18 +1960,6 @@ export default function Settings() {
                 </div>
               );
             })}
-            {!isElectronRuntime() && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="btn-secondary text-sm"
-                  onClick={openDesktopInstaller}
-                  disabled={printingBusy}
-                >
-                  Descargar/Reinstalar app de escritorio
-                </button>
-              </div>
-            )}
           </div>
         )}
 

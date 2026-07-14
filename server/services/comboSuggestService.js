@@ -169,7 +169,7 @@ async function fetchOpenAiSuggestions(products, heuristic) {
 }
 
 async function suggestComboProducts(productIds = []) {
-  const ids = [...new Set((Array.isArray(productIds) ? productIds : []).map(String).filter(Boolean))];
+  const ids = (Array.isArray(productIds) ? productIds : []).map(String).filter(Boolean);
   if (!ids.length) {
     return {
       source: 'auto',
@@ -183,12 +183,13 @@ async function suggestComboProducts(productIds = []) {
     };
   }
 
-  const placeholders = ids.map(() => '?').join(', ');
+  const uniqueIds = [...new Set(ids)];
+  const placeholders = uniqueIds.map(() => '?').join(', ');
   const rows = queryAll(
     `SELECT id, name, description, price, category_id
      FROM products
      WHERE id IN (${placeholders}) AND is_active = 1`,
-    ids,
+    uniqueIds,
   );
 
   const rowMap = new Map(rows.map((p) => [String(p.id), p]));

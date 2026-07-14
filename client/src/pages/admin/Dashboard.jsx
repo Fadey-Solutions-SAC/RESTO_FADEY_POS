@@ -36,8 +36,8 @@ export default function Dashboard() {
   const predDays = Number(bi.pred_horizon_days);
 
   const statCards = [
-    { label: 'Ventas Hoy', value: formatCurrency(data.today.total), sub: `${data.today.count} pedidos`, icon: MdAttachMoney, color: 'bg-emerald-500' },
-    { label: 'Ventas del Mes', value: formatCurrency(data.month.total), sub: `${data.month.count} pedidos`, icon: MdTrendingUp, color: 'bg-blue-500' },
+    { label: 'Ventas Hoy', value: formatCurrency(data.today.total), sub: `${data.today.count} cuentas`, icon: MdAttachMoney, color: 'bg-emerald-500' },
+    { label: 'Ventas del Mes', value: formatCurrency(data.month.total), sub: `${data.month.count} cuentas`, icon: MdTrendingUp, color: 'bg-blue-500' },
     { label: 'Pedidos Activos', value: data.activeOrders, sub: 'En proceso', icon: MdShoppingCart, color: 'bg-amber-500' },
     { label: 'Stock Bajo', value: (data.lowStock || []).length, sub: 'Productos', icon: MdWarning, color: 'bg-red-500' },
   ];
@@ -96,7 +96,7 @@ export default function Dashboard() {
             <div className="rounded-xl bg-white border border-gray-100 p-3">
               <p className="text-xs text-gray-500">Ventas cobradas</p>
               <p className="text-lg font-bold text-emerald-700 tabular-nums">{formatCurrency(data.financeMonth.sales_total)}</p>
-              <p className="text-[11px] text-gray-400">{data.financeMonth.orders_count ?? 0} pedidos</p>
+              <p className="text-[11px] text-gray-400">{data.financeMonth.orders_count ?? 0} cuentas</p>
             </div>
             <div className="rounded-xl bg-white border border-gray-100 p-3">
               <p className="text-xs text-gray-500">Compras / insumos</p>

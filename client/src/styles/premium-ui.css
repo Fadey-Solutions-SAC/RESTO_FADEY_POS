@@ -113,7 +113,7 @@ h1, h2, h3, h4 {
 /* —— Premium components —— */
 /* —— Shell —— */
 .rf-shell-header {
-    background: var(--ui-glass) !important;
+    background: color-mix(in srgb, var(--ui-accent-muted) 12%, var(--ui-glass, var(--ui-shell-header-bg))) !important;
     backdrop-filter: blur(12px) saturate(1.2);
     -webkit-backdrop-filter: blur(12px) saturate(1.2);
     box-shadow: var(--ui-shadow-sm);
@@ -126,10 +126,16 @@ h1, h2, h3, h4 {
   .rf-sidebar {
     background: linear-gradient(
       180deg,
-      var(--ui-surface) 0%,
-      color-mix(in srgb, var(--ui-surface) 96%, var(--ui-body-bg)) 100%
+      var(--ui-shell-sidebar-bg) 0%,
+      color-mix(in srgb, var(--ui-accent-muted) 7%, color-mix(in srgb, var(--ui-surface) 94%, var(--ui-body-bg))) 100%
     ) !important;
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
+    box-shadow: 4px 0 24px color-mix(in srgb, var(--ui-accent-muted) 8%, transparent);
+  }
+
+  .rf-sidebar-logo-bar {
+    background: var(--ui-shell-logo-bg) !important;
+    backdrop-filter: blur(8px) saturate(1.15);
+    -webkit-backdrop-filter: blur(8px) saturate(1.15);
   }
 
   .rf-sidebar-brand {
@@ -137,7 +143,7 @@ h1, h2, h3, h4 {
   }
 
   .rf-nav-link {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium;
+    @apply flex items-center gap-2 px-2 py-2 rounded-xl text-sm font-medium;
     color: var(--ui-muted);
     transition: background var(--ui-transition), color var(--ui-transition), transform var(--ui-transition),
       box-shadow var(--ui-transition);
@@ -155,11 +161,11 @@ h1, h2, h3, h4 {
     font-weight: 600;
     box-shadow: var(--ui-shadow-sm);
     border-left: 3px solid var(--ui-accent);
-    padding-left: calc(0.75rem - 3px);
+    padding-left: calc(0.5rem - 3px);
   }
 
   .rf-nav-sublink {
-    @apply block px-3 py-2 rounded-lg text-sm;
+    @apply block px-2 py-1.5 rounded-lg text-sm whitespace-nowrap;
     color: var(--ui-muted);
     transition: background var(--ui-transition), color var(--ui-transition);
   }
@@ -178,6 +184,7 @@ h1, h2, h3, h4 {
   /* —— Cards —— */
   .card {
     border-radius: var(--ui-radius-xl) !important;
+    border: 1px solid var(--ui-card-border, var(--ui-border)) !important;
     box-shadow: var(--ui-shadow-sm);
     transition: box-shadow var(--ui-transition), transform var(--ui-transition), border-color var(--ui-transition);
   }

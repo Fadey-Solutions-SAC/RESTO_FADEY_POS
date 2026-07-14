@@ -9,6 +9,7 @@ const {
   isNonTransformedLowStockSql,
   suggestedReplenishmentQty,
 } = require('../utils/productStockThreshold');
+const { resolvePurchaseDate, parsePurchaseDateInput } = require('../utils/inventoryPurchaseDate');
 
 const router = express.Router();
 
@@ -95,9 +96,19 @@ function ensureWarehouseTables() {
       total_cost REAL DEFAULT 0,
       notes TEXT DEFAULT '',
       created_by TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now')),
+      purchase_date TEXT DEFAULT NULL
     )
   `);
+  const expenseCols = queryAll('PRAGMA table_info(inventory_expenses)');
+  if (!expenseCols.some((c) => c.name === 'purchase_date')) {
+    runSql('ALTER TABLE inventory_expenses ADD COLUMN purchase_date TEXT DEFAULT NULL');
+    runSql(
+      `UPDATE inventory_expenses
+       SET purchase_date = date(datetime(created_at, 'localtime'))
+       WHERE purchase_date IS NULL OR trim(purchase_date) = ''`,
+    );
+  }
   runSql(`
     CREATE TABLE IF NOT EXISTS inventory_reconciliations (
       id TEXT PRIMARY KEY,
@@ -369,8 +380,10 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
     ensureWarehouseTables();
     const selectedProductIds = Array.isArray(req.body?.product_ids) ? req.body.product_ids : null;
     const selectedInsumoIds = Array.isArray(req.body?.insumo_ids) ? req.body.insumo_ids : null;
-    const lowStockProducts = queryAll(
-      `SELECT p.id, p.name, p.stock, p.min_stock, p.stock_warehouse_id, p.price,
+    const categoryId = String(req.body?.category_id || '').trim();
+    const filterByCategory = Boolean(categoryId);
+    let lowStockProducts = queryAll(
+      `SELECT p.id, p.name, p.stock, p.min_stock, p.stock_warehouse_id, p.price, p.category_id,
               c.name as category_name
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
@@ -378,9 +391,18 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
          AND p.process_type = 'non_transformed'
          AND ${isNonTransformedLowStockSql('p')}
        ORDER BY p.stock ASC, p.name ASC`
-    ).filter(p => !selectedProductIds || selectedProductIds.includes(p.id));
+    );
+    if (filterByCategory) {
+      lowStockProducts = lowStockProducts.filter((p) => {
+        if (categoryId === '__none__') return !String(p.category_id || '').trim();
+        return String(p.category_id || '') === categoryId;
+      });
+    }
+    lowStockProducts = lowStockProducts.filter((p) => !selectedProductIds || selectedProductIds.includes(p.id));
 
-    const insumosBajo = queryAll(
+    const insumosBajo = filterByCategory
+      ? []
+      : queryAll(
       `SELECT id, nombre, stock_unidades, minimo_unidades, stock_actual, stock_minimo, unidad_medida, costo_promedio, kg_por_unidad,
               COALESCE(insumo_area, 'cocina') as insumo_area
        FROM insumos
@@ -395,7 +417,11 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
     );
 
     if (!lowStockProducts.length && !insumosBajo.length) {
-      return res.status(400).json({ error: 'No hay productos de almacén ni insumos kardex bajo mínimo para requerimiento' });
+      return res.status(400).json({
+        error: filterByCategory
+          ? 'No hay productos de almacén bajo mínimo en la categoría seleccionada'
+          : 'No hay productos de almacén ni insumos kardex bajo mínimo para requerimiento',
+      });
     }
 
     const principal = getWarehouseByName('Almacen Principal')
@@ -569,9 +595,10 @@ router.get('/requirements/latest', authenticateToken, requireRole('admin'), (req
 router.post('/receptions/receive', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     ensureWarehouseTables();
-    const { requirement_id, items, notes } = req.body;
+    const { requirement_id, items, notes, purchase_date } = req.body;
     if (!requirement_id) return res.status(400).json({ error: 'Requerimiento es requerido' });
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Debes enviar items a recepcionar' });
+    const purchaseDate = resolvePurchaseDate(purchase_date);
 
     const requirement = queryOne('SELECT * FROM inventory_requirements WHERE id = ?', [requirement_id]);
     if (!requirement) return res.status(404).json({ error: 'Requerimiento no encontrado' });
@@ -612,9 +639,9 @@ router.post('/receptions/receive', authenticateToken, requireRole('admin'), (req
           [qty, unitCost, totalCost, requirement_id, ins.id, ins.id]
         );
         runSql(
-          `INSERT INTO inventory_expenses (id, requirement_id, product_id, warehouse_id, quantity, unit_cost, total_cost, notes, created_by)
-             VALUES (?, ?, ?, '', ?, ?, ?, ?, ?)`,
-          [uuidv4(), requirement_id, ins.id, qty, unitCost, totalCost, notes || 'Recepción kardex (insumo)', req.user.id]
+          `INSERT INTO inventory_expenses (id, requirement_id, product_id, warehouse_id, quantity, unit_cost, total_cost, notes, created_by, purchase_date)
+             VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?)`,
+          [uuidv4(), requirement_id, ins.id, qty, unitCost, totalCost, notes || 'Recepción kardex (insumo)', req.user.id, purchaseDate]
         );
         return;
       }
@@ -659,9 +686,9 @@ router.post('/receptions/receive', authenticateToken, requireRole('admin'), (req
       );
 
       runSql(
-        `INSERT INTO inventory_expenses (id, requirement_id, product_id, warehouse_id, quantity, unit_cost, total_cost, notes, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uuidv4(), requirement_id, product.id, warehouse.id, qty, unitCost, totalCost, notes || 'Recepción de compra', req.user.id]
+        `INSERT INTO inventory_expenses (id, requirement_id, product_id, warehouse_id, quantity, unit_cost, total_cost, notes, created_by, purchase_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuidv4(), requirement_id, product.id, warehouse.id, qty, unitCost, totalCost, notes || 'Recepción de compra', req.user.id, purchaseDate]
       );
     });
 
@@ -731,16 +758,35 @@ router.get('/expenses', authenticateToken, requireRole('admin'), (req, res) => {
 router.put('/expenses', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     ensureWarehouseTables();
-    const { admin_password, updates, notes, requirement_id } = req.body || {};
+    const { admin_password, updates, notes, requirement_id, purchase_date } = req.body || {};
     if (!verifyAdminPassword(admin_password)) {
       return res.status(403).json({ error: 'Contraseña de administrador incorrecta' });
     }
     const rows = Array.isArray(updates) ? updates : [];
-    if (!rows.length && notes === undefined) {
+    const hasPurchaseDate = purchase_date !== undefined && purchase_date !== null && String(purchase_date).trim() !== '';
+    const hasNotes = notes !== undefined;
+    if (!rows.length && !hasNotes && !hasPurchaseDate) {
       return res.status(400).json({ error: 'No hay cambios para guardar' });
     }
 
     let changed = 0;
+    if (hasPurchaseDate) {
+      const pd = parsePurchaseDateInput(purchase_date);
+      if (!pd) {
+        return res.status(400).json({ error: 'Fecha de compra inválida (use AAAA-MM-DD)' });
+      }
+      if (requirement_id) {
+        runSql('UPDATE inventory_expenses SET purchase_date = ? WHERE requirement_id = ?', [pd, String(requirement_id)]);
+        changed += 1;
+      } else {
+        rows.forEach((row) => {
+          const id = String(row?.id || '').trim();
+          if (!id) return;
+          runSql('UPDATE inventory_expenses SET purchase_date = ? WHERE id = ?', [pd, id]);
+          changed += 1;
+        });
+      }
+    }
     rows.forEach((row) => {
       const id = String(row?.id || '').trim();
       if (!id) return;
@@ -782,7 +828,7 @@ router.put('/expenses', authenticateToken, requireRole('admin'), (req, res) => {
       );
     }
 
-    if (changed === 0 && notes === undefined) {
+    if (changed === 0 && !hasNotes && !hasPurchaseDate) {
       return res.status(400).json({ error: 'No se encontraron registros para actualizar' });
     }
 
@@ -1073,6 +1119,7 @@ router.put('/purchase-orders/:id/receive', authenticateToken, requireRole('admin
   const principal = getWarehouseByName('Almacen Principal')
     || queryOne('SELECT * FROM warehouse_locations WHERE is_active = 1 ORDER BY name LIMIT 1');
   if (!principal) return res.status(400).json({ error: 'No hay almacenes activos para recepcionar la compra' });
+  const purchaseDate = resolvePurchaseDate(req.body?.purchase_date);
   try {
     withTransaction((tx) => {
       items.forEach((item) => {
@@ -1106,9 +1153,9 @@ router.put('/purchase-orders/:id/receive', authenticateToken, requireRole('admin
           [uuidv4(), item.product_id, qty, previousTotal, newTotal, `Recepción OC ${req.params.id.slice(0, 8)} [${principal.name}]`, req.user.id]
         );
         tx.run(
-          `INSERT INTO inventory_expenses (id, requirement_id, product_id, warehouse_id, quantity, unit_cost, total_cost, notes, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [uuidv4(), '', item.product_id, principal.id, qty, unitCost, qty * unitCost, `Recepción de orden de compra ${req.params.id}`, req.user.id]
+          `INSERT INTO inventory_expenses (id, requirement_id, product_id, warehouse_id, quantity, unit_cost, total_cost, notes, created_by, purchase_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [uuidv4(), '', item.product_id, principal.id, qty, unitCost, qty * unitCost, `Recepción de orden de compra ${req.params.id}`, req.user.id, purchaseDate]
         );
       });
       tx.run("UPDATE purchase_orders SET status = 'received' WHERE id = ? AND status = 'pending'", [req.params.id]);

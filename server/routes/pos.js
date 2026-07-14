@@ -22,6 +22,13 @@ const {
   computeExpectedCash,
   SALES_EVENT_AT_SQL,
 } = require('../services/registerSessionSales');
+const {
+  queryPaidSalesOrders,
+  countSalesAccounts,
+  sumSalesAccountsByHour,
+  summarizePaymentMethodsByAccount,
+  metricsFromPaidOrdersWhere,
+} = require('../utils/salesAccountGrouping');
 const { sendCashCloseNotification, getCashCloseRecipient } = require('../services/cashCloseNotifyService');
 const { getOrderChargeBase } = require('../utils/orderChargeBase');
 
@@ -774,11 +781,13 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     const primaryForAudit = isCourtesyCheckout
       ? COURTESY_PAYMENT_METHOD
       : (paymentBreakdownObj ? dominantPaymentMethod(paymentBreakdownObj) : paymentMethod);
+    const salesOrdersForCount = paidOrders.filter((o) => !courtesyIds.has(o.id));
+    const accountCount = countSalesAccounts(salesOrdersForCount);
     if (salesOrderIds.length) {
       recordWorkActivityEvent(req.user?.id, 'sale_closed', {
         module: 'caja',
         refId: salesOrderIds[0] || paidOrders[0]?.id,
-        meta: { order_count: salesOrderIds.length },
+        meta: { order_count: accountCount, comanda_count: salesOrderIds.length },
       });
     }
     logAudit({
@@ -788,7 +797,8 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       resourceType: 'order_batch',
       resourceId: paidOrders.map((o) => o.id).join(','),
       details: {
-        order_count: paidOrders.length,
+        order_count: accountCount,
+        comanda_count: paidOrders.length,
         payment_method: primaryForAudit,
         payment_breakdown: paymentBreakdownObj || null,
         tip_amount: round2(Math.max(0, Number(tipAmountRaw || 0))),
@@ -799,7 +809,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       title: 'VENTA CERRADA',
       mesa: paidOrders[0]?.table_number || '',
       items: paidItems,
-      text: `Pedidos cobrados: ${paidOrders.length}`,
+      text: `Cuenta(s) cobrada(s): ${accountCount}${paidOrders.length > accountCount ? ` (${paidOrders.length} comanda(s))` : ''}`,
     }).catch((err) => console.error('[printing] caja cierre:', err.message || err));
     const io = req.app.get('io');
     if (io) {
@@ -941,39 +951,29 @@ router.get('/sales-monitor', authenticateToken, requireRole('admin', 'cajero'), 
   if (!register) return res.json({ hourly: [], by_payment: [], order_count: 0, total_sales: 0 });
   const registerId = String(register.id || '').trim();
   const openedAt = register.opened_at;
-  const salesWhere = registerId
-    ? `(IFNULL(cash_register_id, '') = ? OR (IFNULL(cash_register_id, '') = '' AND ${SALES_EVENT_AT_SQL} >= ?))`
-    : `${SALES_EVENT_AT_SQL} >= ?`;
-  const salesParams = registerId ? [registerId, openedAt] : [openedAt];
-  const paidFilter = `status != 'cancelled' AND payment_status = 'paid'
-    AND IFNULL(payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')`;
-  const hourly = queryAll(
-    `SELECT strftime('%H', ${SALES_EVENT_AT_SQL}) as hour,
-            COUNT(*) as orders,
-            COALESCE(SUM(total), 0) as total
-     FROM orders
-     WHERE ${salesWhere} AND ${paidFilter}
-     GROUP BY strftime('%H', ${SALES_EVENT_AT_SQL})
-     ORDER BY hour`,
-    salesParams
-  );
-  const byPayment = queryAll(
-    `SELECT payment_method,
-            COUNT(*) as count,
-            COALESCE(SUM(total), 0) as total
-     FROM orders
-     WHERE ${salesWhere} AND ${paidFilter}
-     GROUP BY payment_method
-     ORDER BY total DESC`,
-    salesParams
-  );
-  const summary = queryOne(
-    `SELECT COUNT(*) as order_count, COALESCE(SUM(total), 0) as total_sales
-     FROM orders
-     WHERE ${salesWhere} AND ${paidFilter}`,
-    salesParams
-  );
-  res.json({ hourly, by_payment: byPayment, ...summary });
+  const endAt = register.closed_at || new Date().toISOString();
+  let where = '1=1';
+  const params = [];
+  if (registerId) {
+    where = `(IFNULL(cash_register_id, '') = ? OR (IFNULL(cash_register_id, '') = '' AND COALESCE(paid_at, updated_at, created_at) >= ? AND COALESCE(paid_at, updated_at, created_at) <= ?))`;
+    params.push(registerId, openedAt, endAt);
+  } else {
+    where = `COALESCE(paid_at, updated_at, created_at) >= ? AND COALESCE(paid_at, updated_at, created_at) <= ?`;
+    params.push(openedAt, endAt);
+  }
+  const paidOrders = queryPaidSalesOrders(where, params);
+  const byHour = sumSalesAccountsByHour(paidOrders);
+  const hourly = Object.entries(byHour)
+    .map(([hour, data]) => ({ hour, orders: data.accounts, total: data.total }))
+    .sort((a, b) => a.hour.localeCompare(b.hour));
+  const byPayment = summarizePaymentMethodsByAccount(paidOrders);
+  const summary = metricsFromPaidOrdersWhere(where, params);
+  res.json({
+    hourly,
+    by_payment: byPayment,
+    order_count: summary.orders,
+    total_sales: summary.sales,
+  });
 });
 
 router.get('/price-lookup', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {

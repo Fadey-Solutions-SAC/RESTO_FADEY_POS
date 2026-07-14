@@ -85,8 +85,8 @@ export default function Layout() {
         mobileOpen={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
       />
-      <div className={`transition-all duration-300 ${isMobile ? 'ml-0' : (collapsed ? 'ml-16' : 'ml-60')}`}>
-        <header className="rf-shell-header h-[var(--ui-shell-header-h)] shrink-0 bg-[var(--ui-surface)] flex items-center justify-between px-3 sm:px-6 sticky top-0 z-30 border-b border-[color:var(--ui-sidebar-border)]">
+      <div className={`transition-all duration-300 ${isMobile ? 'ml-0' : (collapsed ? 'ml-[var(--ui-sidebar-width-collapsed)]' : 'ml-[var(--ui-sidebar-width)]')}`}>
+        <header className="rf-shell-header h-[var(--ui-shell-header-h)] shrink-0 flex items-center justify-between px-3 sm:px-6 sticky top-0 z-30 border-b border-[color:var(--ui-sidebar-border)]">
           <div className="flex items-center gap-4">
             <button
               onClick={() => (isMobile ? setMobileMenuOpen(prev => !prev) : setCollapsed(!collapsed))}

@@ -5,6 +5,17 @@
 const { queryAll, queryOne } = require('../database');
 const { buildRankings, buildProductivityByUser } = require('./workProductivityService');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
+const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurchaseDate');
+const {
+  getPaidSalesEventSql,
+  metricsFromPaidOrdersWhere,
+  queryPaidSalesOrders,
+  summarizePaymentMethodsByAccount,
+  summarizeSalesAccountsByDay,
+  groupPaidOrdersBySalesAccount,
+  countSalesAccounts,
+  sumSalesAccountsByHour,
+} = require('../utils/salesAccountGrouping');
 
 const CACHE_TTL_MS = 12000;
 const hubCache = new Map();
@@ -41,14 +52,14 @@ function defaultRange() {
   return { from: localDateKey(from), to: localDateKey(to) };
 }
 
-function orderDateFilter(from, to, params) {
+function orderDateFilter(from, to, params, ps = getPaidSalesEventSql()) {
   const parts = [];
   if (from) {
-    parts.push(`${SALES_DATE} >= date(?)`);
+    parts.push(`${ps.ORDER_DATE} >= date(?)`);
     params.push(from);
   }
   if (to) {
-    parts.push(`${SALES_DATE} <= date(?)`);
+    parts.push(`${ps.ORDER_DATE} <= date(?)`);
     params.push(to);
   }
   return parts.length ? parts.join(' AND ') : '1=1';
@@ -59,32 +70,20 @@ function getReportsHelpers() {
 }
 
 function buildGeneralKpis(from, to) {
-  const params = [];
-  const od = orderDateFilter(from, to, params);
-  const periodRow = queryOne(
-    `SELECT COUNT(*) AS orders, COALESCE(SUM(o.total), 0) AS sales FROM orders o WHERE ${O_FIN} AND ${od}`,
-    params
-  );
-  const today = new Date().toISOString().split('T')[0];
-  const todayRow = queryOne(
-    `SELECT COUNT(*) AS orders, COALESCE(SUM(o.total), 0) AS sales FROM orders o WHERE ${O_DATE} = date('now', 'localtime') AND ${O_FIN}`
-  );
-  const weekRow = queryOne(
-    `SELECT COUNT(*) AS orders, COALESCE(SUM(o.total), 0) AS sales FROM orders o
-     WHERE ${O_FIN} AND ${O_DATE} >= date('now', 'localtime', '-6 days')`
-  );
-  const monthRow = queryOne(
-    `SELECT COUNT(*) AS orders, COALESCE(SUM(o.total), 0) AS sales FROM orders o
-     WHERE ${O_FIN} AND ${O_MONTH} = strftime('%Y-%m', 'now', 'localtime')`
-  );
+  const ps = getPaidSalesEventSql();
+  const periodParams = [];
+  const periodMetrics = metricsFromPaidOrdersWhere(orderDateFilter(from, to, periodParams, ps), periodParams);
+  const todayMetrics = metricsFromPaidOrdersWhere(`${ps.ORDER_DATE} = date('now', 'localtime')`);
+  const weekMetrics = metricsFromPaidOrdersWhere(`${ps.ORDER_DATE} >= date('now', 'localtime', '-6 days')`);
+  const monthMetrics = metricsFromPaidOrdersWhere(`${ps.ORDER_MONTH} = strftime('%Y-%m', 'now', 'localtime')`);
   const prevMonthRow = queryOne(
     `SELECT COALESCE(SUM(o.total), 0) AS sales FROM orders o
-     WHERE ${O_FIN} AND ${O_MONTH} = strftime('%Y-%m', date('now', 'localtime', '-1 month'))`
+     WHERE ${O_FIN} AND ${ps.ORDER_MONTH} = strftime('%Y-%m', date('now', 'localtime', '-1 month'))`
   );
   const activeOrders = queryOne("SELECT COUNT(*) AS c FROM orders WHERE status IN ('pending','preparing','ready')");
-  const paidToday = Number(todayRow?.orders || 0);
-  const salesToday = Number(todayRow?.sales || 0);
-  const salesMonth = Number(monthRow?.sales || 0);
+  const salesToday = Number(todayMetrics.sales || 0);
+  const paidToday = Number(todayMetrics.orders || 0);
+  const salesMonth = Number(monthMetrics.sales || 0);
   const salesPrevMonth = Number(prevMonthRow?.sales || 0);
   const growthPct = salesPrevMonth > 0 ? ((salesMonth - salesPrevMonth) / salesPrevMonth) * 100 : 0;
 
@@ -92,13 +91,9 @@ function buildGeneralKpis(from, to) {
   const financeMonth = reports.financeMonthToDateSnapshot?.() || {};
   const op = reports.buildOperationalIntelligence?.({ role: 'admin' }) || {};
 
-  const customersServed = queryOne(
-    `SELECT COUNT(DISTINCT COALESCE(NULLIF(trim(customer_id), ''), customer_name)) AS c
-     FROM orders o WHERE ${O_FIN} AND ${O_DATE} = date('now', 'localtime')`
-  );
   const productsSold = queryOne(
     `SELECT COALESCE(SUM(oi.quantity), 0) AS qty FROM order_items oi
-     JOIN orders o ON o.id = oi.order_id WHERE ${O_FIN} AND ${O_DATE} = date('now', 'localtime')`
+     JOIN orders o ON o.id = oi.order_id WHERE ${O_FIN} AND ${ps.ORDER_DATE} = date('now', 'localtime')`
   );
   const reservationsActive = queryOne(
     `SELECT COUNT(*) AS c FROM reservations
@@ -108,14 +103,14 @@ function buildGeneralKpis(from, to) {
   const openSessions = queryOne('SELECT COUNT(*) AS c FROM user_work_sessions WHERE logout_at IS NULL');
 
   return {
-    period_sales: Number(periodRow?.sales || 0),
-    period_orders: Number(periodRow?.orders || 0),
+    period_sales: Number(periodMetrics.sales || 0),
+    period_orders: Number(periodMetrics.orders || 0),
     sales_today: salesToday,
     orders_today: paidToday,
-    sales_week: Number(weekRow?.sales || 0),
-    orders_week: Number(weekRow?.orders || 0),
+    sales_week: Number(weekMetrics.sales || 0),
+    orders_week: Number(weekMetrics.orders || 0),
     sales_month: salesMonth,
-    orders_month: Number(monthRow?.orders || 0),
+    orders_month: Number(monthMetrics.orders || 0),
     net_profit_approx: Number(financeMonth.approx_profit || 0),
     gross_margin_approx: Number(financeMonth.approx_gross_margin || 0),
     operating_expenses: Number(financeMonth.losses_combined_total || 0) + Number(financeMonth.purchases_total || 0),
@@ -126,7 +121,7 @@ function buildGeneralKpis(from, to) {
     delivery_active: Number(op.summary?.deliveryActiveCount || 0),
     kitchen_preparing: Number(op.summary?.inKitchenCount || 0),
     reservations_active: Number(reservationsActive?.c || 0),
-    customers_served_today: Number(customersServed?.c || 0),
+    customers_served_today: paidToday,
     products_sold_today: Number(productsSold?.qty || 0),
     out_of_stock: Number(op.summary?.outOfStockCount || 0),
     critical_stock: Number(op.summary?.lowStockCount || 0),
@@ -138,16 +133,14 @@ function buildGeneralKpis(from, to) {
 }
 
 function buildFinancialSection(from, to) {
+  const ps = getPaidSalesEventSql();
   const params = [from, to];
-  const dateF = `${O_DATE} BETWEEN date(?) AND date(?)`;
-  const salesRow = queryOne(
-    `SELECT COUNT(*) AS orders, COALESCE(SUM(o.total), 0) AS total, COALESCE(SUM(o.subtotal), 0) AS subtotal
-     FROM orders o WHERE ${O_FIN} AND ${dateF}`,
-    params
-  );
+  const dateF = `${ps.ORDER_DATE} BETWEEN date(?) AND date(?)`;
+  const salesMetrics = metricsFromPaidOrdersWhere(`${dateF}`, params);
+  const periodOrders = queryPaidSalesOrders(`${dateF}`, params);
   const purchases = queryOne(
     `SELECT COALESCE(SUM(total_cost), 0) AS total FROM inventory_expenses
-     WHERE date(datetime(created_at, 'localtime')) BETWEEN date(?) AND date(?)`,
+     WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL} BETWEEN date(?) AND date(?)`,
     params
   );
   const cashExp = queryOne(
@@ -160,23 +153,19 @@ function buildFinancialSection(from, to) {
      WHERE date(datetime(occurred_at, 'localtime')) BETWEEN date(?) AND date(?)`,
     params
   );
-  const totalSales = Number(salesRow?.total || 0);
+  const totalSales = Number(salesMetrics.sales || 0);
   const totalPurchases = Number(purchases?.total || 0);
   const totalExpenses = Number(cashExp?.total || 0) + Number(losses?.total || 0);
   const gross = totalSales - totalPurchases;
   const net = gross - totalExpenses;
 
-  const paymentMethods = queryAll(
-    `SELECT o.payment_method, COUNT(*) AS count, COALESCE(SUM(o.total), 0) AS total
-     FROM orders o WHERE ${O_FIN} AND ${dateF} GROUP BY o.payment_method ORDER BY total DESC`,
-    params
-  );
+  const paymentMethods = summarizePaymentMethodsByAccount(periodOrders);
 
-  const dailyTrend = queryAll(
-    `SELECT ${O_DATE} AS day, COUNT(*) AS orders, COALESCE(SUM(o.total), 0) AS sales
-     FROM orders o WHERE ${O_FIN} AND ${dateF} GROUP BY ${O_DATE} ORDER BY day`,
-    params
-  );
+  const dailyTrend = summarizeSalesAccountsByDay(periodOrders).map((row) => ({
+    day: row.date,
+    orders: row.orders,
+    sales: row.total,
+  }));
 
   const cashFlow = queryOne(
     `SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income,
@@ -187,7 +176,7 @@ function buildFinancialSection(from, to) {
 
   return {
     total_sales: totalSales,
-    orders_count: Number(salesRow?.orders || 0),
+    orders_count: Number(salesMetrics.orders || 0),
     gross_profit_approx: gross,
     net_profit_approx: net,
     margin_pct: totalSales > 0 ? Math.round((net / totalSales) * 1000) / 10 : 0,
@@ -266,7 +255,8 @@ function buildOperationalSection(from, to) {
      AND (julianday('now') - julianday(assigned_at)) * 24 * 60 > 35`
   );
   const delParams = [];
-  const delFilter = orderDateFilter(from, to, delParams);
+  const delFilter = `${O_DATE} >= date(?) AND ${O_DATE} <= date(?)`;
+  delParams.push(from, to);
   const deliveredPeriod = queryOne(
     `SELECT COUNT(*) AS c FROM orders o WHERE o.status = 'delivered' AND ${delFilter}`,
     delParams
@@ -276,13 +266,17 @@ function buildOperationalSection(from, to) {
      AND date BETWEEN date(?) AND date(?)`,
     [from, to]
   );
-  const tableRotation = queryOne(
-    `SELECT COUNT(DISTINCT TRIM(o.table_number)) AS tables, COUNT(*) AS orders
-     FROM orders o WHERE ${O_FIN} AND ${delFilter} AND TRIM(IFNULL(o.table_number,'')) != ''`,
-    delParams
+  const ps = getPaidSalesEventSql();
+  const rotParams = [];
+  const rotFilter = orderDateFilter(from, to, rotParams, ps);
+  const periodPaid = queryPaidSalesOrders(`${rotFilter} AND TRIM(IFNULL(table_number, '')) != ''`, rotParams);
+  const mesaAccounts = groupPaidOrdersBySalesAccount(periodPaid).filter(
+    (group) => String(group[0]?.type || 'dine_in') === 'dine_in',
   );
-  const tables = Number(tableRotation?.tables || 0);
-  const tableOrders = Number(tableRotation?.orders || 0);
+  const tables = new Set(
+    mesaAccounts.map((group) => String(group[0]?.table_number || '').trim()).filter(Boolean),
+  );
+  const tableOrders = mesaAccounts.length;
 
   return {
     summary: op.summary || {},
@@ -294,7 +288,7 @@ function buildOperationalSection(from, to) {
     orders_delayed_delivery: Number(delayedDelivery?.c || 0),
     orders_delivered_period: Number(deliveredPeriod?.c || 0),
     reservations_period: Number(reservationsPeriod?.c || 0),
-    table_rotation_avg: tables > 0 ? Math.round((tableOrders / tables) * 10) / 10 : 0,
+    table_rotation_avg: tables.size > 0 ? Math.round((tableOrders / tables.size) * 10) / 10 : 0,
     low_stock: op.lowStock || [],
   };
 }
@@ -344,30 +338,38 @@ function buildInventorySection(from, to) {
 }
 
 function buildCustomersSection(from, to) {
+  const ps = getPaidSalesEventSql();
   const params = [];
-  const od = orderDateFilter(from, to, params);
+  const od = orderDateFilter(from, to, params, ps);
   const totalCustomers = queryOne('SELECT COUNT(*) AS c FROM customers');
   const newCustomers = queryOne(
     `SELECT COUNT(*) AS c FROM customers
      WHERE date(datetime(created_at, 'localtime')) BETWEEN date(?) AND date(?)`,
     [from, to]
   );
-  const frequent = queryAll(
-    `SELECT COALESCE(NULLIF(trim(o.customer_name), ''), 'Sin nombre') AS name,
-            COUNT(*) AS orders,
-            COALESCE(SUM(o.total), 0) AS spent,
-            COALESCE(AVG(o.total), 0) AS avg_ticket
-     FROM orders o WHERE ${O_FIN} AND ${od} AND trim(coalesce(o.customer_name, '')) != ''
-     GROUP BY o.customer_name ORDER BY orders DESC LIMIT 8`,
-    params
+  const periodOrders = queryPaidSalesOrders(od, params).filter(
+    (order) => String(order.customer_name || '').trim(),
   );
-  const vip = queryAll(
-    `SELECT COALESCE(NULLIF(trim(o.customer_name), ''), 'Sin nombre') AS name,
-            COALESCE(SUM(o.total), 0) AS spent
-     FROM orders o WHERE ${O_FIN} AND ${od} AND trim(coalesce(o.customer_name, '')) != ''
-     GROUP BY o.customer_name HAVING spent >= 200 ORDER BY spent DESC LIMIT 5`,
-    params
-  );
+  const byCustomer = new Map();
+  for (const group of groupPaidOrdersBySalesAccount(periodOrders)) {
+    const name = String(group[0]?.customer_name || 'Sin nombre').trim() || 'Sin nombre';
+    const total = group.reduce((sum, row) => sum + Number(row.total || 0), 0);
+    if (!byCustomer.has(name)) byCustomer.set(name, { name, orders: 0, spent: 0 });
+    const entry = byCustomer.get(name);
+    entry.orders += 1;
+    entry.spent += total;
+  }
+  const frequent = [...byCustomer.values()]
+    .map((row) => ({
+      ...row,
+      avg_ticket: row.orders > 0 ? row.spent / row.orders : 0,
+    }))
+    .sort((a, b) => b.orders - a.orders)
+    .slice(0, 8);
+  const vip = [...byCustomer.values()]
+    .filter((row) => row.spent >= 200)
+    .sort((a, b) => b.spent - a.spent)
+    .slice(0, 5);
   const favoriteProducts = queryAll(
     `SELECT oi.product_name, SUM(oi.quantity) AS qty
      FROM order_items oi JOIN orders o ON o.id = oi.order_id
@@ -596,26 +598,34 @@ function buildCharts(from, to, productivity) {
 }
 
 function buildChartsData(from, to) {
+  const ps = getPaidSalesEventSql();
   const params = [];
-  const od = orderDateFilter(from, to, params);
-  const byHour = queryAll(
-    `SELECT ${O_HOUR} AS hour, COUNT(*) AS orders, COALESCE(SUM(o.total), 0) AS sales
-     FROM orders o WHERE ${O_FIN} AND ${od} GROUP BY ${O_HOUR} ORDER BY hour`,
-    params
-  );
-  const byDay = queryAll(
-    `SELECT ${O_DATE} AS day, COUNT(*) AS orders, COALESCE(SUM(o.total), 0) AS sales
-     FROM orders o WHERE ${O_FIN} AND ${od} GROUP BY ${O_DATE} ORDER BY day`,
-    params
-  );
-  const byChannel = queryAll(
-    `SELECT o.type, COUNT(*) AS count, COALESCE(SUM(o.total), 0) AS total
-     FROM orders o WHERE ${O_FIN} AND ${od} GROUP BY o.type`,
-    params
-  );
+  const od = orderDateFilter(from, to, params, ps);
+  const periodOrders = queryPaidSalesOrders(od, params);
+  const byHourMap = sumSalesAccountsByHour(periodOrders);
+  const byHour = Object.entries(byHourMap).map(([hour, data]) => ({
+    hour,
+    orders: data.accounts,
+    sales: data.total,
+  }));
+  const byDay = summarizeSalesAccountsByDay(periodOrders).map((row) => ({
+    day: row.date,
+    orders: row.orders,
+    sales: row.total,
+  }));
+  const byChannelMap = new Map();
+  for (const group of groupPaidOrdersBySalesAccount(periodOrders)) {
+    const type = String(group[0]?.type || 'dine_in');
+    const total = group.reduce((sum, row) => sum + Number(row.total || 0), 0);
+    if (!byChannelMap.has(type)) byChannelMap.set(type, { type, count: 0, total: 0 });
+    const entry = byChannelMap.get(type);
+    entry.count += 1;
+    entry.total += total;
+  }
+  const byChannel = [...byChannelMap.values()];
   const byMonth = queryAll(
-    `SELECT ${O_MONTH} AS month, COALESCE(SUM(o.total), 0) AS sales
-     FROM orders o WHERE ${O_FIN} AND ${od} GROUP BY ${O_MONTH} ORDER BY month`,
+    `SELECT ${ps.ORDER_MONTH} AS month, COALESCE(SUM(o.total), 0) AS sales
+     FROM orders o WHERE ${O_FIN} AND ${od} GROUP BY ${ps.ORDER_MONTH} ORDER BY month`,
     params
   );
   return {

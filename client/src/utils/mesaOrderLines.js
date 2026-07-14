@@ -1,6 +1,6 @@
 /** Líneas de producto a partir de pedidos de mesa (u órdenes con items). */
 
-import { toLocalDateKey } from './api';
+import { toLocalDateKey, parseApiDate, APP_DISPLAY_TIMEZONE } from './api';
 import { UI_BADGE } from './uiBadges';
 
 /**
@@ -175,10 +175,71 @@ export function salesOrderLocalDateKey(order) {
   return toLocalDateKey(order?.updated_at || order?.created_at);
 }
 
+function salesAccountPaidAtBucket(order) {
+  const raw = order?.paid_at || order?.updated_at || order?.created_at || '';
+  const d = parseApiDate(raw);
+  if (!d) return `unknown:${order?.id || ''}`;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_DISPLAY_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${map.year}-${map.month}-${map.day}T${map.hour}:${map.minute}`;
+}
+
 /**
- * Separa cuentas distintas de la misma mesa en un mismo día:
- * cuando la cuenta anterior quedó totalmente cobrada, la siguiente es otra venta.
+ * Agrupa comandas ya cobradas en cuentas de venta (1 cobro de mesa = 1 cuenta).
+ * Salón: mesa + caja + minuto de cobro. Cliente sin mesa: cliente + caja + minuto. Resto: 1 pedido.
  */
+export function groupPaidOrdersBySalesAccount(orders = []) {
+  const buckets = new Map();
+  for (const order of orders) {
+    if (!order) continue;
+    const table = String(order.table_number || '').trim();
+    const isMesa = order.type === 'dine_in' && table;
+    let key;
+    if (isMesa) {
+      const registerId = String(order.cash_register_id || '');
+      key = `mesa:${table}:${registerId}:${salesAccountPaidAtBucket(order)}`;
+    } else {
+      const customerId = String(order.customer_id || '').trim();
+      const registerId = String(order.cash_register_id || '');
+      if (customerId) {
+        key = `cliente:${customerId}:${registerId}:${salesAccountPaidAtBucket(order)}`;
+      } else {
+        key = `pedido:${order.id || ''}`;
+      }
+    }
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(order);
+  }
+  return [...buckets.values()];
+}
+
+export function summarizePaidSalesAccounts(orders = []) {
+  return groupPaidOrdersBySalesAccount(orders).map((accountOrders) => {
+    const sorted = [...accountOrders].sort(
+      (a, b) =>
+        new Date(String(b?.paid_at || b?.updated_at || 0)).getTime()
+        - new Date(String(a?.paid_at || a?.updated_at || 0)).getTime(),
+    );
+    const primary = sorted[0];
+    const total = sorted.reduce((sum, order) => sum + Number(order.total || 0), 0);
+    return {
+      orders: sorted,
+      primary,
+      total,
+      paidAt: primary?.paid_at || primary?.updated_at || primary?.created_at,
+      table: String(primary?.table_number || '').trim(),
+    };
+  });
+}
+
 export function splitMesaAccountSessions(orders = []) {
   const sorted = [...orders].sort(
     (a, b) => new Date(String(a?.created_at || 0)).getTime() - new Date(String(b?.created_at || 0)).getTime(),

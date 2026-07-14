@@ -155,14 +155,14 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const isCollapsed = isMobile ? false : collapsed;
 
   return (
-    <aside className={`rf-sidebar fixed left-0 top-0 h-full bg-[var(--ui-surface)] z-40 transition-all duration-300 flex flex-col border-r border-[color:var(--ui-sidebar-border)] ${
+    <aside className={`rf-sidebar fixed left-0 top-0 h-full z-40 transition-all duration-300 flex flex-col border-r border-[color:var(--ui-sidebar-border)] ${
       isMobile
         ? `w-72 max-w-[85vw] transform ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`
-        : (isCollapsed ? 'w-16' : 'w-60')
+        : (isCollapsed ? 'w-[var(--ui-sidebar-width-collapsed)]' : 'w-[var(--ui-sidebar-width)]')
     }`}>
       <div
-        className={`flex items-center shrink-0 h-[var(--ui-shell-header-h)] border-b border-[color:var(--ui-sidebar-border)] ${
-          isCollapsed ? 'justify-center px-0' : 'gap-3 px-4'
+        className={`rf-sidebar-logo-bar flex items-center shrink-0 h-[var(--ui-shell-header-h)] border-b border-[color:var(--ui-sidebar-border)] ${
+          isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
         }`}
       >
         <div className="rf-sidebar-brand w-9 h-9 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
@@ -171,7 +171,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
         {!isCollapsed && <span className="rf-font-display font-bold text-base text-[var(--ui-body-text)] tracking-tight truncate">{tc('layout.brandName')}</span>}
       </div>
 
-      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto scrollbar-thin">
+      <nav className="flex-1 px-1.5 py-2 space-y-0.5 overflow-y-auto scrollbar-thin">
         {visibleLinks.map(link => (
           <div key={link.to}>
             <NavLink
@@ -214,7 +214,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
               }}
             >
               <link.icon className="text-lg flex-shrink-0" />
-              {!isCollapsed && <span className="truncate">{link.label}</span>}
+              {!isCollapsed && <span className="whitespace-nowrap leading-snug">{link.label}</span>}
             </NavLink>
 
             {!isCollapsed && link.to === '/admin/caja' && isCajaExpanded && (

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSocket } from '../../hooks/useSocket';
 import { useSearchParams } from 'react-router-dom';
-import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
+import { api, formatCurrency, formatDate, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
 import { UI_BADGE } from '../../utils/uiBadges';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -15,6 +15,13 @@ const WAREHOUSE_CATEGORY_NAMES = {
   products: 'PRODUCTOS ALMACEN',
   supplies: 'INSUMOS',
 };
+
+function localDateInputValue(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 const DEFAULT_STOCK_WAREHOUSE = '';
 
@@ -260,6 +267,8 @@ export default function Almacen() {
   const [showInsumoModal, setShowInsumoModal] = useState(false);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
   const [showRequirementModal, setShowRequirementModal] = useState(false);
+  /** '' = todas (+ kardex); id de categoría = solo productos de almacén de esa categoría */
+  const [requirementCategoryId, setRequirementCategoryId] = useState('');
   const [selectedRequirementIds, setSelectedRequirementIds] = useState([]);
   const [latestRequirement, setLatestRequirement] = useState(null);
   const [receptionForm, setReceptionForm] = useState({});
@@ -273,12 +282,14 @@ export default function Almacen() {
   });
   const [createModalAfterReception, setCreateModalAfterReception] = useState(false);
   const [receptionNotes, setReceptionNotes] = useState('');
+  const [receptionPurchaseDate, setReceptionPurchaseDate] = useState(() => localDateInputValue());
   /** Filas marcadas para incluir en el registro de recepción (`req:productId` | `extra:lineId`). */
   const [receptionSelectedKeys, setReceptionSelectedKeys] = useState([]);
   const [expenseHistory, setExpenseHistory] = useState([]);
   const [expenseEditGroupId, setExpenseEditGroupId] = useState(null);
   const [expenseEditDraft, setExpenseEditDraft] = useState({});
   const [expenseEditNotes, setExpenseEditNotes] = useState('');
+  const [expenseEditPurchaseDate, setExpenseEditPurchaseDate] = useState('');
   const [showExpensePasswordModal, setShowExpensePasswordModal] = useState(false);
   const [expenseAdminPassword, setExpenseAdminPassword] = useState('');
   const [expenseSavePending, setExpenseSavePending] = useState(false);
@@ -537,6 +548,31 @@ export default function Almacen() {
     };
   });
   const lowStockGlobal = [...lowFromWarehouse, ...lowFromKardex];
+
+  const requirementCategoryOptions = useMemo(() => {
+    const map = new Map();
+    for (const p of lowFromWarehouse) {
+      const cid = String(p.category_id || '').trim();
+      if (!cid) {
+        map.set('__none__', 'Sin categoría');
+      } else {
+        map.set(cid, String(p.category_name || 'Sin categoría').trim() || 'Sin categoría');
+      }
+    }
+    return [...map.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }, [lowFromWarehouse]);
+
+  const lowStockForRequirement = useMemo(() => {
+    if (!requirementCategoryId) return lowStockGlobal;
+    const filteredProducts = lowFromWarehouse.filter((p) => {
+      if (requirementCategoryId === '__none__') return !String(p.category_id || '').trim();
+      return String(p.category_id || '') === requirementCategoryId;
+    });
+    return filteredProducts;
+  }, [requirementCategoryId, lowStockGlobal, lowFromWarehouse]);
+
   const productsForSelectedWarehouse = selectedWarehouseView
     ? scopedProducts.filter(p =>
       (p.warehouse_stocks || []).some(ws => sameWarehouseId(ws.warehouse_id, selectedWarehouseView))
@@ -598,6 +634,7 @@ export default function Almacen() {
           id: key,
           requirement_id: expense.requirement_id || null,
           created_at: expense.created_at,
+          purchase_date: expense.purchase_date || String(expense.created_at || '').slice(0, 10),
           notes: expense.notes || '',
           total: 0,
           items: [],
@@ -608,9 +645,12 @@ export default function Almacen() {
       if (expense.created_at && expense.created_at > acc[key].created_at) {
         acc[key].created_at = expense.created_at;
       }
+      if (expense.purchase_date) {
+        acc[key].purchase_date = expense.purchase_date;
+      }
       return acc;
     }, {})
-  ).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  ).sort((a, b) => new Date(b.purchase_date || b.created_at || 0) - new Date(a.purchase_date || a.created_at || 0));
 
   const startExpenseGroupEdit = (group) => {
     const draft = {};
@@ -623,12 +663,14 @@ export default function Almacen() {
     setExpenseEditGroupId(group.id);
     setExpenseEditDraft(draft);
     setExpenseEditNotes(String(group.notes || ''));
+    setExpenseEditPurchaseDate(String(group.purchase_date || localDateInputValue()).slice(0, 10));
   };
 
   const cancelExpenseGroupEdit = () => {
     setExpenseEditGroupId(null);
     setExpenseEditDraft({});
     setExpenseEditNotes('');
+    setExpenseEditPurchaseDate('');
     setExpenseAdminPassword('');
     setShowExpensePasswordModal(false);
   };
@@ -671,6 +713,7 @@ export default function Almacen() {
         admin_password: pwd,
         requirement_id: group.requirement_id || null,
         notes: expenseEditNotes,
+        purchase_date: expenseEditPurchaseDate,
         updates: group.items.map((item) => ({
           id: item.id,
           quantity: Number(expenseEditDraft[item.id]?.quantity || 0),
@@ -853,11 +896,15 @@ export default function Almacen() {
   };
 
   const openNewRequirement = () => {
-    if (!lowStockGlobal.length) {
-      toast('No hay productos con stock bajo');
+    if (!lowStockForRequirement.length) {
+      toast.error(
+        requirementCategoryId
+          ? 'No hay productos con stock bajo en la categoría seleccionada'
+          : 'No hay productos con stock bajo',
+      );
       return;
     }
-    setSelectedRequirementIds(lowStockGlobal.map(p => p.id));
+    setSelectedRequirementIds(lowStockForRequirement.map((p) => p.id));
     setShowRequirementModal(true);
   };
 
@@ -876,16 +923,17 @@ export default function Almacen() {
     }
     try {
       const pIds = selectedRequirementIds.filter((id) => {
-        const row = lowStockGlobal.find((x) => x.id === id);
+        const row = lowStockForRequirement.find((x) => x.id === id);
         return row && !row.isKardex;
       });
       const inIds = selectedRequirementIds.filter((id) => {
-        const row = lowStockGlobal.find((x) => x.id === id);
+        const row = lowStockForRequirement.find((x) => x.id === id);
         return row && row.isKardex;
       });
       const requirement = await api.post('/inventory/requirements/low-stock', {
         product_ids: pIds,
         insumo_ids: inIds,
+        category_id: requirementCategoryId || undefined,
       });
       setLatestRequirement(requirement);
       const nextForm = {};
@@ -1006,6 +1054,7 @@ export default function Almacen() {
       await api.post('/inventory/receptions/receive', {
         requirement_id: latestRequirement.id,
         notes: receptionNotes,
+        purchase_date: receptionPurchaseDate,
         items: payloadItems,
       });
       toast.success('Recepción registrada');
@@ -1119,7 +1168,30 @@ export default function Almacen() {
         {activeView === 'requerimiento' && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
             <h3 className="font-bold rf-section-title mb-2">Requerimiento interno</h3>
-            <p className="ui-text-muted mb-4">Nuevo requerimiento tomará todos los productos con stock bajo para descargar plantilla en Excel.</p>
+            <p className="ui-text-muted mb-4">
+              Genere un requerimiento con productos bajo stock mínimo. Puede filtrar por categoría para incluir solo
+              productos de almacén de esa categoría (por ejemplo, cervezas o snacks).
+            </p>
+            <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-4 max-w-xl">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Categoría de productos</label>
+                <select
+                  value={requirementCategoryId}
+                  onChange={(e) => setRequirementCategoryId(e.target.value)}
+                  className="input-field w-full"
+                >
+                  <option value="">Todas las categorías (+ insumos kardex bajo mínimo)</option>
+                  {requirementCategoryOptions.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-[var(--ui-muted)] sm:pb-2">
+                {requirementCategoryId
+                  ? `${lowStockForRequirement.length} producto(s) bajo mínimo en esta categoría`
+                  : `${lowStockGlobal.length} ítem(s) bajo mínimo (productos + kardex)`}
+              </p>
+            </div>
             <button className="btn-primary" onClick={openNewRequirement}>
               Nuevo requerimiento
             </button>
@@ -1283,6 +1355,16 @@ export default function Almacen() {
                   </table>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Fecha de compra</label>
+                  <input
+                    type="date"
+                    value={receptionPurchaseDate}
+                    onChange={(e) => setReceptionPurchaseDate(e.target.value)}
+                    className="input-field w-auto max-w-xs"
+                  />
+                  <p className="text-[10px] text-[var(--ui-muted)] mt-1">Día en que se realizó la compra (puede ser distinto al registro en sistema).</p>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Notas</label>
                   <input
                     value={receptionNotes}
@@ -1319,8 +1401,11 @@ export default function Almacen() {
                     <p className="font-semibold rf-section-title">
                       Compra {group.requirement_id ? `· Req ${group.requirement_id.slice(0, 8)}` : ''}
                     </p>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <p className="text-xs ui-text-muted">{formatDateTime(group.created_at)}</p>
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                      <p className="text-xs font-medium text-[var(--ui-body-text)]">
+                        Compra: {formatDate(group.purchase_date || group.created_at)}
+                      </p>
+                      <p className="text-xs ui-text-muted">Registro: {formatDate(group.created_at)}</p>
                       {!isEditing ? (
                         <button
                           type="button"
@@ -1342,14 +1427,25 @@ export default function Almacen() {
                     </div>
                   </div>
                   {isEditing ? (
-                    <div className="mb-3">
-                      <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Notas de la compra</label>
-                      <input
-                        className="input-field text-sm py-1.5"
-                        value={expenseEditNotes}
-                        onChange={(e) => setExpenseEditNotes(e.target.value)}
-                        placeholder="Observaciones (opcional)"
-                      />
+                    <div className="mb-3 space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Fecha de compra</label>
+                        <input
+                          type="date"
+                          className="input-field text-sm py-1.5 w-auto max-w-xs"
+                          value={expenseEditPurchaseDate}
+                          onChange={(e) => setExpenseEditPurchaseDate(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Notas de la compra</label>
+                        <input
+                          className="input-field text-sm py-1.5"
+                          value={expenseEditNotes}
+                          onChange={(e) => setExpenseEditNotes(e.target.value)}
+                          placeholder="Observaciones (opcional)"
+                        />
+                      </div>
                     </div>
                   ) : group.notes ? (
                     <p className="text-xs ui-text-muted mb-2">{group.notes}</p>
@@ -1595,14 +1691,24 @@ export default function Almacen() {
         >
           <div className="space-y-4">
             <p className="text-sm text-[var(--ui-muted)]">
-              Incluye productos de almacén bajo su stock mínimo e <strong>insumos kardex</strong> bajo el mínimo (en U o en kg/L,
-              según se configuró al crear el insumo). Puedes desmarcar filas.
+              {requirementCategoryId ? (
+                <>
+                  Solo productos de almacén en categoría{' '}
+                  <strong>{requirementCategoryOptions.find((c) => c.id === requirementCategoryId)?.name || 'seleccionada'}</strong>
+                  {' '}con stock bajo. Puede desmarcar filas antes de descargar.
+                </>
+              ) : (
+                <>
+                  Incluye productos de almacén bajo su stock mínimo e <strong>insumos kardex</strong> bajo el mínimo (en U o en kg/L,
+                  según se configuró al crear el insumo). Puedes desmarcar filas.
+                </>
+              )}
             </p>
             <div className="flex flex-wrap gap-2 items-center mb-2">
               <button
                 type="button"
                 className="btn-secondary text-sm"
-                onClick={() => setSelectedRequirementIds(lowStockGlobal.map((p) => p.id))}
+                onClick={() => setSelectedRequirementIds(lowStockForRequirement.map((p) => p.id))}
               >
                 Seleccionar todo
               </button>
@@ -1625,7 +1731,13 @@ export default function Almacen() {
                   </tr>
                 </thead>
                 <tbody>
-                  {lowStockGlobal.map((p) => (
+                  {lowStockForRequirement.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="p-6 text-center text-sm text-[var(--ui-muted)]">
+                        No hay productos bajo mínimo en la categoría seleccionada.
+                      </td>
+                    </tr>
+                  ) : lowStockForRequirement.map((p) => (
                     <tr key={p.id} className="border-b border-slate-100">
                       <td className="p-2.5">
                         <input

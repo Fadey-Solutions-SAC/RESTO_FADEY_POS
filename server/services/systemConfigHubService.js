@@ -6,6 +6,7 @@ const { queryAll, queryOne } = require('../database');
 const { FINANCIAL_FILTER_SQL } = require('../businessRules');
 const { mergeRegional, buildPreview } = require('./regionalFormatService');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
+const { getPaidSalesEventSql, metricsFromPaidOrdersWhere } = require('../utils/salesAccountGrouping');
 
 const FIN = FINANCIAL_FILTER_SQL;
 const DAY_KEYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
@@ -59,10 +60,8 @@ function computeOpenStatus(scheduleJson) {
 
 function buildSectionInsights(settings, restaurant) {
   const today = new Date().toISOString().split('T')[0];
-  const salesToday = queryOne(
-    `SELECT COALESCE(SUM(total), 0) AS t, COUNT(*) AS c FROM orders
-     WHERE date(datetime(COALESCE(updated_at, created_at), 'localtime')) = date('now', 'localtime') AND ${FIN}`
-  );
+  const ps = getPaidSalesEventSql();
+  const todayMetrics = metricsFromPaidOrdersWhere(`${ps.ORDER_DATE} = date('now', 'localtime')`);
   const activeOrders = queryOne("SELECT COUNT(*) AS c FROM orders WHERE status IN ('pending','preparing','ready')");
   const openRegister = queryOne('SELECT id, user_id FROM cash_registers WHERE closed_at IS NULL LIMIT 1');
   const closedRegistersToday = queryOne(
@@ -130,8 +129,8 @@ function buildSectionInsights(settings, restaurant) {
     apariencia: { theme: settings.ui_theme || 'blue' },
     modulo_empresarial: { configured: Boolean(settings.modulo_empresarial || readSettingsBlob().modulo_empresarial) },
     operacion: {
-      sales_today: Number(salesToday?.t || 0),
-      orders_today: Number(salesToday?.c || 0),
+      sales_today: Number(todayMetrics.sales || 0),
+      orders_today: Number(todayMetrics.orders || 0),
       reservations_today: Number(reservationsToday?.c || 0),
     },
   };

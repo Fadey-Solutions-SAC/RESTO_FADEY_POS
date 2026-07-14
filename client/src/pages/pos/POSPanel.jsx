@@ -579,6 +579,10 @@ export default function POSPanel() {
   }, [user?.padron_quota, padronUsedBump]);
   const [cajaStations, setCajaStations] = useState([]);
   const [adminRegisterId, setAdminRegisterId] = useState(() => readPersistedAdminRegisterId());
+  const adminRegisterIdRef = useRef(adminRegisterId);
+  adminRegisterIdRef.current = adminRegisterId;
+  const posUserRef = useRef(user);
+  posUserRef.current = user;
   const [barAutoDismiss, setBarAutoDismiss] = useState(false);
   const [barAutoDismissMinutes, setBarAutoDismissMinutes] = useState(30);
   const [barSettingsLoaded, setBarSettingsLoaded] = useState(false);
@@ -611,12 +615,13 @@ export default function POSPanel() {
 
   const loadData = async (opts = {}) => {
     try {
+      const posRole = String(posUserRef.current?.role || '').toLowerCase();
       const adminRid =
         opts.adminRegisterOverride !== undefined
           ? String(opts.adminRegisterOverride || '').trim()
-          : String(adminRegisterId || '').trim();
+          : String(adminRegisterIdRef.current || '').trim();
       const currentRegPath =
-        String(user?.role || '').toLowerCase() === 'admin' && adminRid
+        posRole === 'admin' && adminRid
           ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`
           : '/pos/current-register';
       const [tablesData, salonesRes, reg, status, stationsRes, prods, cats, modifiersData, combosData, cfg, paymentMethodsRes, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
@@ -638,10 +643,11 @@ export default function POSPanel() {
       ]);
       setCajaStations(Array.isArray(stationsRes?.stations) ? stationsRes.stations : []);
       let regResolved = reg;
-      if (String(user?.role || '').toLowerCase() === 'admin' && adminRid && !regResolved) {
+      let adminRegisterStillOpen = false;
+      if (posRole === 'admin' && adminRid && !regResolved) {
         const stations = Array.isArray(stationsRes?.stations) ? stationsRes.stations : [];
-        const stillOpen = stations.some((s) => String(s.open_register?.id || '') === adminRid);
-        if (stillOpen) {
+        adminRegisterStillOpen = stations.some((s) => String(s.open_register?.id || '') === adminRid);
+        if (adminRegisterStillOpen) {
           try {
             regResolved = await api.get(
               `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`,
@@ -650,7 +656,7 @@ export default function POSPanel() {
             /* noop */
           }
         }
-        if (!regResolved && !stillOpen) {
+        if (!regResolved && !adminRegisterStillOpen) {
           persistAdminRegisterId('');
           setAdminRegisterId('');
         }
@@ -678,7 +684,11 @@ export default function POSPanel() {
       setSalonesConfig(Array.isArray(salonesRes?.salones) ? salonesRes.salones : []);
       setReservations(reservationsData || []);
       setAllOrders(ordersData || []);
-      setRegister(regResolved);
+      setRegister((prev) => {
+        if (regResolved) return regResolved;
+        if (posRole === 'admin' && adminRid && adminRegisterStillOpen && prev) return prev;
+        return regResolved;
+      });
       setRegisterStatus(status);
       setProducts(visibleProducts);
       setModifiers(Array.isArray(modifiersData) ? modifiersData : []);
@@ -800,14 +810,14 @@ export default function POSPanel() {
     showMenuRef.current = showMenu;
   }, [showMenu]);
 
-  const pollPosData = useCallback(() => {
+  const pollPosData = () => {
     if (checkoutInFlightRef.current || showBillRef.current || showMenuRef.current) return;
     void loadData();
-  }, []);
+  };
 
   useEffect(() => {
-    loadData();
-    loadPrinterConfig();
+    void loadData();
+    void loadPrinterConfig();
   }, []);
   useActiveInterval(pollPosData, 10000);
   useSocket('register-update', () => {
@@ -4858,7 +4868,7 @@ export default function POSPanel() {
               ))}
               <div className="sep"></div>
               <div className="row total-row"><span>TOTAL VENTAS</span><span>{formatCurrency(registerSales)}</span></div>
-              <div className="row bold"><span>N° de operaciones</span><span>{closingData.order_count || 0}</span></div>
+              <div className="row bold"><span>N° de cuentas cobradas</span><span>{closingData.order_count || 0}</span></div>
               {registerSoldProducts.length > 0 && (
                 <>
                   <div className="sep"></div>

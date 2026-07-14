@@ -25,6 +25,26 @@ import {
 
 const HIDDEN_PRODUCT_CATEGORY_NAMES = new Set(['PRODUCTOS ALMACEN', 'INSUMOS']);
 
+function normalizeComboFormItems(items) {
+  const merged = new Map();
+  for (const raw of Array.isArray(items) ? items : []) {
+    let product_id = '';
+    let quantity = 1;
+    if (typeof raw === 'string' || typeof raw === 'number') {
+      product_id = String(raw).trim();
+    } else if (raw && typeof raw === 'object') {
+      product_id = String(raw.product_id || raw.id || '').trim();
+      quantity = Math.max(1, Math.min(99, Math.floor(Number(raw.quantity) || 1)));
+    }
+    if (!product_id) continue;
+    merged.set(product_id, {
+      product_id,
+      quantity: (merged.get(product_id)?.quantity || 0) + quantity,
+    });
+  }
+  return [...merged.values()];
+}
+
 function isProductInactive(p) {
   return Number(p?.is_active ?? 1) === 0;
 }
@@ -149,22 +169,38 @@ export default function Productos() {
     if (['combos', 'modifiers', 'discounts', 'offers', 'catalog'].includes(d)) void load();
   });
 
-  const selectedComboProducts = useMemo(
-    () => comboForm.items
-      .map((id) => products.find((p) => String(p.id) === String(id)))
+  const comboFormItems = useMemo(() => normalizeComboFormItems(comboForm.items), [comboForm.items]);
+
+  const selectedComboLines = useMemo(
+    () => comboFormItems
+      .map((it) => {
+        const product = products.find((p) => String(p.id) === String(it.product_id));
+        return product ? { ...it, product } : null;
+      })
       .filter(Boolean),
-    [comboForm.items, products],
+    [comboFormItems, products],
   );
 
   const selectedComboProductIdsKey = useMemo(
-    () => comboForm.items.map(String).sort().join('|'),
-    [comboForm.items],
+    () => comboFormItems.map((it) => `${it.product_id}:${it.quantity}`).sort().join('|'),
+    [comboFormItems],
   );
 
   const selectedComboTotal = useMemo(
-    () => selectedComboProducts.reduce((sum, p) => sum + Number(p.price || 0), 0),
-    [selectedComboProducts],
+    () => selectedComboLines.reduce(
+      (sum, row) => sum + Number(row.product.price || 0) * Number(row.quantity || 1),
+      0,
+    ),
+    [selectedComboLines],
   );
+
+  const setComboFormItems = (updater) => {
+    setComboForm((prev) => {
+      const base = normalizeComboFormItems(prev.items);
+      const nextItems = typeof updater === 'function' ? updater(base) : normalizeComboFormItems(updater);
+      return { ...prev, items: nextItems };
+    });
+  };
 
   const openComboModal = () => {
     setEditCombo(null);
@@ -177,15 +213,18 @@ export default function Productos() {
   };
 
   const openEditCombo = (combo) => {
-    const itemIds = (Array.isArray(combo.items) ? combo.items : [])
-      .map((it) => String(it.product_id || it.id || '').trim())
-      .filter(Boolean);
+    const items = normalizeComboFormItems(
+      (Array.isArray(combo.items) ? combo.items : []).map((it) => ({
+        product_id: it.product_id || it.id,
+        quantity: it.quantity,
+      })),
+    );
     setEditCombo(combo);
     setComboForm({
       name: combo.name || '',
       description: combo.description || '',
       price: combo.price != null ? String(combo.price) : '',
-      items: itemIds,
+      items,
     });
     setComboProductSearch('');
     setComboProductCategoryFilter('');
@@ -196,13 +235,40 @@ export default function Productos() {
 
   const toggleComboProduct = (productId, checked) => {
     const id = String(productId);
-    setComboForm((prev) => {
-      const ids = prev.items.map(String);
+    setComboFormItems((items) => {
+      const exists = items.some((it) => it.product_id === id);
       if (checked) {
-        if (ids.includes(id)) return prev;
-        return { ...prev, items: [...ids, id] };
+        if (exists) return items;
+        return [...items, { product_id: id, quantity: 1 }];
       }
-      return { ...prev, items: ids.filter((i) => i !== id) };
+      return items.filter((it) => it.product_id !== id);
+    });
+  };
+
+  const setComboProductQuantity = (productId, nextQty) => {
+    const id = String(productId);
+    const qty = Math.max(1, Math.min(99, Math.floor(Number(nextQty) || 1)));
+    setComboFormItems((items) => {
+      if (!items.some((it) => it.product_id === id)) {
+        return [...items, { product_id: id, quantity: qty }];
+      }
+      return items.map((it) => (it.product_id === id ? { ...it, quantity: qty } : it));
+    });
+  };
+
+  const adjustComboProductQuantity = (productId, delta) => {
+    const id = String(productId);
+    setComboFormItems((items) => {
+      const row = items.find((it) => it.product_id === id);
+      if (!row) {
+        if (delta <= 0) return items;
+        return [...items, { product_id: id, quantity: 1 }];
+      }
+      const next = row.quantity + delta;
+      if (next <= 0) return items.filter((it) => it.product_id !== id);
+      return items.map((it) => (
+        it.product_id === id ? { ...it, quantity: Math.min(99, next) } : it
+      ));
     });
   };
 
@@ -230,10 +296,10 @@ export default function Productos() {
   };
 
   const buildComboItemsPayload = () =>
-    comboForm.items
-      .map((id) => products.find((p) => String(p.id) === String(id)))
-      .filter(Boolean)
-      .map((p) => ({ product_id: p.id, quantity: 1 }));
+    normalizeComboFormItems(comboForm.items).map(({ product_id, quantity }) => ({
+      product_id,
+      quantity,
+    }));
 
   const handleComboSubmit = async (e) => {
     e.preventDefault();
@@ -283,7 +349,7 @@ export default function Productos() {
       clearTimeout(comboSuggestTimerRef.current);
     }
 
-    if (selectedComboProducts.length === 0) {
+    if (selectedComboLines.length === 0) {
       comboSuggestRequestRef.current += 1;
       setComboSuggestions(null);
       setComboSuggestLoading(false);
@@ -291,7 +357,9 @@ export default function Productos() {
     }
 
     const requestId = ++comboSuggestRequestRef.current;
-    const productIds = selectedComboProducts.map((p) => p.id);
+    const productIds = selectedComboLines.flatMap((row) => (
+      Array.from({ length: Number(row.quantity || 1) }, () => row.product.id)
+    ));
 
     setComboSuggestions(null);
     setComboSuggestLoading(true);
@@ -318,7 +386,7 @@ export default function Productos() {
     return () => {
       if (comboSuggestTimerRef.current) clearTimeout(comboSuggestTimerRef.current);
     };
-  }, [showComboModal, selectedComboProductIdsKey, selectedComboProducts]);
+  }, [showComboModal, selectedComboProductIdsKey, selectedComboLines]);
 
   const hiddenCategoryIds = new Set(
     categories
@@ -357,7 +425,10 @@ export default function Productos() {
       return name.includes(q) || catName.includes(q);
     });
   }, [comboPickerProducts, comboProductSearch, comboProductCategoryFilter, comboCategoryNameById]);
-  const selectedComboIdSet = useMemo(() => new Set(comboForm.items.map(String)), [comboForm.items]);
+  const selectedComboIdSet = useMemo(
+    () => new Set(comboFormItems.map((it) => it.product_id)),
+    [comboFormItems],
+  );
 
   useEffect(() => {
     if (!selectedCat) return;
@@ -960,7 +1031,11 @@ export default function Productos() {
                   </div>
                   <p className="text-sm ui-text-muted mt-1">{c.description}</p>
                   <p className="text-xl font-bold text-gold-600 mt-2">{formatCurrency(c.price)}</p>
-                  <p className="text-xs text-[var(--ui-muted)] mt-2">Incluye: {(Array.isArray(c.items) ? c.items.map(i => i.product_name || i.name).filter(Boolean).join(', ') : '') || '-'}</p>
+                  <p className="text-xs text-[var(--ui-muted)] mt-2">Incluye: {(Array.isArray(c.items) ? c.items : []).map((i) => {
+                    const qty = Number(i.quantity || 1);
+                    const name = i.product_name || i.name || 'Producto';
+                    return qty > 1 ? `${qty}× ${name}` : name;
+                  }).join(', ') || '-'}</p>
                   <button
                     type="button"
                     onClick={() => toggleComboActive(c)}
@@ -1445,19 +1520,64 @@ export default function Productos() {
               </select>
             </div>
             <p className="text-xs text-[var(--ui-muted)] mb-2">
-              {filteredComboPickerProducts.length} de {comboPickerProducts.length} producto{comboPickerProducts.length === 1 ? '' : 's'}
+              Marque varios productos y ajuste la cantidad (ej. 2× Pilsen). {filteredComboPickerProducts.length} de {comboPickerProducts.length} producto{comboPickerProducts.length === 1 ? '' : 's'}
               {(comboProductSearch.trim() || comboProductCategoryFilter) ? ' (filtrados)' : ''}
             </p>
+            {selectedComboLines.length > 0 ? (
+              <div className="mb-3 rounded-lg border border-[color:var(--ui-border)] bg-slate-50/80 p-2 space-y-1.5">
+                <p className="text-xs font-medium text-[var(--ui-body-text)] px-1">En el combo ({selectedComboLines.reduce((s, r) => s + r.quantity, 0)} unidades)</p>
+                {selectedComboLines.map((row) => (
+                  <div key={row.product_id} className="flex items-center gap-2 px-2 py-1.5 bg-white rounded-lg border border-slate-100 text-sm">
+                    <span className="min-w-0 flex-1 truncate font-medium">{row.product.name}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => adjustComboProductQuantity(row.product_id, -1)}
+                        className="w-7 h-7 rounded-md border border-slate-200 text-[var(--ui-muted)] hover:bg-slate-100"
+                        aria-label="Quitar una unidad"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={row.quantity}
+                        onChange={(e) => setComboProductQuantity(row.product_id, e.target.value)}
+                        className="input-field w-14 text-center text-sm py-1 px-1 tabular-nums"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => adjustComboProductQuantity(row.product_id, 1)}
+                        className="w-7 h-7 rounded-md border border-slate-200 text-[var(--ui-muted)] hover:bg-slate-100"
+                        aria-label="Agregar una unidad"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <span className="text-xs text-[var(--ui-muted)] tabular-nums shrink-0 w-16 text-right">
+                      {formatCurrency(Number(row.product.price || 0) * row.quantity)}
+                    </span>
+                  </div>
+                ))}
+                <p className="text-xs text-[var(--ui-muted)] px-1 pt-1">
+                  Total referencia: <span className="font-semibold text-[var(--ui-body-text)]">{formatCurrency(selectedComboTotal)}</span>
+                </p>
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2 mb-2">
               <button
                 type="button"
                 className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[var(--ui-muted)]"
                 onClick={() => {
-                  const ids = filteredComboPickerProducts.map((p) => String(p.id));
-                  setComboForm((prev) => ({
-                    ...prev,
-                    items: [...new Set([...prev.items.map(String), ...ids])],
-                  }));
+                  setComboFormItems((items) => {
+                    const map = new Map(items.map((it) => [it.product_id, it.quantity]));
+                    for (const p of filteredComboPickerProducts) {
+                      const id = String(p.id);
+                      if (!map.has(id)) map.set(id, 1);
+                    }
+                    return [...map.entries()].map(([product_id, quantity]) => ({ product_id, quantity }));
+                  });
                 }}
               >
                 Seleccionar visibles
@@ -1465,28 +1585,38 @@ export default function Productos() {
               <button
                 type="button"
                 className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[var(--ui-muted)]"
-                onClick={() => setComboForm((prev) => ({ ...prev, items: [] }))}
+                onClick={() => setComboFormItems([])}
               >
                 Deseleccionar todo
               </button>
             </div>
             <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1">
               {filteredComboPickerProducts.map(p => (
-                <label key={p.id} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded cursor-pointer text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedComboIdSet.has(String(p.id))}
-                    onChange={(e) => toggleComboProduct(p.id, e.target.checked)}
-                    className="rounded text-gold-500"
-                  />
-                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                  {comboCategoryNameById.get(String(p.category_id || '')) ? (
-                    <span className="text-[10px] text-[var(--ui-muted)] shrink-0 max-w-[90px] truncate">
-                      {comboCategoryNameById.get(String(p.category_id || ''))}
-                    </span>
-                  ) : null}
-                  <span className="text-[var(--ui-muted)] shrink-0 tabular-nums">{formatCurrency(p.price)}</span>
-                </label>
+                <div key={p.id} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded text-sm">
+                  <label className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedComboIdSet.has(String(p.id))}
+                      onChange={(e) => toggleComboProduct(p.id, e.target.checked)}
+                      className="rounded text-gold-500 shrink-0"
+                    />
+                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                    {comboCategoryNameById.get(String(p.category_id || '')) ? (
+                      <span className="text-[10px] text-[var(--ui-muted)] shrink-0 max-w-[90px] truncate">
+                        {comboCategoryNameById.get(String(p.category_id || ''))}
+                      </span>
+                    ) : null}
+                    <span className="text-[var(--ui-muted)] shrink-0 tabular-nums">{formatCurrency(p.price)}</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => adjustComboProductQuantity(p.id, 1)}
+                    className="text-xs px-2 py-1 rounded-md border border-slate-200 hover:bg-slate-100 shrink-0"
+                    title="Agregar al combo"
+                  >
+                    +1
+                  </button>
+                </div>
               ))}
               {filteredComboPickerProducts.length === 0 ? (
                 <p className="text-xs text-[var(--ui-muted)] px-2 py-3 text-center">
@@ -1496,15 +1626,16 @@ export default function Productos() {
                 </p>
               ) : null}
             </div>
-            {selectedComboProducts.length > 0 ? (
+            {selectedComboLines.length > 0 ? (
               <p className="text-xs text-[var(--ui-muted)] mt-2">
-                {selectedComboProducts.length} producto{selectedComboProducts.length === 1 ? '' : 's'} seleccionado{selectedComboProducts.length === 1 ? '' : 's'} · Total:{' '}
+                {selectedComboLines.length} producto{selectedComboLines.length === 1 ? '' : 's'} ·{' '}
+                {selectedComboLines.reduce((s, r) => s + r.quantity, 0)} unidad{selectedComboLines.reduce((s, r) => s + r.quantity, 0) === 1 ? '' : 'es'} · Total:{' '}
                 <span className="font-semibold text-[var(--ui-body-text)]">{formatCurrency(selectedComboTotal)}</span>
               </p>
             ) : null}
           </div>
 
-          {selectedComboProducts.length > 0 ? (
+          {selectedComboLines.length > 0 ? (
             <div className="rounded-xl border border-[color:var(--ui-accent)]/25 bg-[color-mix(in_srgb,var(--ui-accent)_8%,transparent)] p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ui-body-text)]">
@@ -1521,7 +1652,7 @@ export default function Productos() {
               {comboSuggestLoading ? (
                 <div className="flex items-center gap-2 text-sm text-[var(--ui-muted)]">
                   <div className="animate-spin w-4 h-4 border-2 border-[var(--ui-accent)] border-t-transparent rounded-full" />
-                  Analizando {selectedComboProducts.length} producto{selectedComboProducts.length === 1 ? '' : 's'}…
+                  Analizando {selectedComboLines.reduce((s, r) => s + r.quantity, 0)} unidad{selectedComboLines.reduce((s, r) => s + r.quantity, 0) === 1 ? '' : 'es'}…
                 </div>
               ) : comboSuggestions ? (
                 <>

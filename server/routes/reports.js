@@ -13,7 +13,19 @@ const {
 const { emitStaffDataUpdate } = require('../socketBroadcast');
 const { getSlowMovingProductIds } = require('../services/slowMovingProductsService');
 const { getReservationCajaOperationalAlerts } = require('../services/reservationSchedulerService');
-const { KITCHEN_ARRIVAL_ALERT_MIN, KITCHEN_PREP_ALERT_MIN } = require('../constants/kitchenTiming');
+const {
+  getPaidSalesEventSql,
+  metricsFromPaidOrdersWhere,
+  queryPaidSalesOrders,
+  sumSalesAccountsByHour,
+  summarizePaymentMethodsByAccount,
+  summarizeSalesAccountsByDay,
+  summarizeSalesAccountsByMonth,
+  countSalesAccounts,
+  buildOrderAccountKeyMap,
+  queryProductSalesRanking,
+} = require('../utils/salesAccountGrouping');
+const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurchaseDate');
 const { getOrderItemsWithProductionArea } = require('../services/orderItemsProductionService');
 const { filterKitchenOrdersForStation } = require('../utils/kitchenStationReady');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
@@ -69,12 +81,10 @@ function countVisibleProductionQueueOrders() {
 
 /** Ventas «en vivo»: turno de caja abierto; si no, último turno o día según horario del local. */
 function buildLiveSalesPanel(registerOpen) {
-  const s = getSalesEventSql();
-  const todayRow = queryOne(
-    `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER}`
-  );
-  const dayTotal = Number(todayRow?.total || 0);
-  const dayCount = Number(todayRow?.count || 0);
+  const ps = getPaidSalesEventSql();
+  const dayMetrics = metricsFromPaidOrdersWhere(`${ps.EVENT_DATE} = ${ps.TODAY}`);
+  const dayTotal = dayMetrics.sales;
+  const dayCount = dayMetrics.orders;
 
   let scheduleJson = {};
   try {
@@ -595,7 +605,7 @@ function financeRolling7dSnapshot() {
   );
   const purchasesRow = queryOne(
     `SELECT COALESCE(SUM(total_cost), 0) as total FROM inventory_expenses
-     WHERE date(datetime(created_at, '-05:00')) >= date(${s.TODAY}, '-6 days')`
+     WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL} >= date(${s.TODAY}, '-6 days')`
   );
   const totalSales = Number(salesRow?.total_sales || 0);
   const cashExpenses = Number(cashExpensesRow?.total || 0);
@@ -608,13 +618,12 @@ function financeRolling7dSnapshot() {
 
 /** Mes calendario en curso: ventas cobradas, compras, salidas y utilidad aprox. (base Informes · Finanzas). */
 function financeMonthToDateSnapshot() {
+  const ps = getPaidSalesEventSql();
+  const monthMetrics = metricsFromPaidOrdersWhere(`${ps.EVENT_MONTH} = ${ps.MONTH}`);
   const s = getSalesEventSql();
-  const monthSalesRow = queryOne(
-    `SELECT COALESCE(SUM(total), 0) as total_sales, COUNT(*) as orders FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_MONTH} = ${s.MONTH}`
-  );
   const purchasesRow = queryOne(
     `SELECT COALESCE(SUM(total_cost), 0) as total FROM inventory_expenses
-     WHERE strftime('%Y-%m', datetime(created_at, '-05:00')) = ${s.MONTH}`
+     WHERE strftime('%Y-%m', ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL}) = ${s.MONTH}`
   );
   const cashExpensesRow = queryOne(
     `SELECT COALESCE(SUM(amount), 0) as total FROM cash_movements
@@ -625,7 +634,7 @@ function financeMonthToDateSnapshot() {
      WHERE strftime('%Y-%m', datetime(occurred_at, '-05:00')) = ${s.MONTH}`
   );
   const ymRow = { ym: s.MONTH.replace(/'/g, '') };
-  const totalSales = Number(monthSalesRow?.total_sales || 0);
+  const totalSales = Number(monthMetrics.sales || 0);
   const totalPurchases = Number(purchasesRow?.total || 0);
   const cashExpenses = Number(cashExpensesRow?.total || 0);
   const lossEventsTotal = Number(lossEventsRow?.total || 0);
@@ -635,7 +644,7 @@ function financeMonthToDateSnapshot() {
   return {
     month_key: String(ymRow?.ym || ''),
     sales_total: totalSales,
-    orders_count: Number(monthSalesRow?.orders || 0),
+    orders_count: Number(monthMetrics.orders || 0),
     purchases_total: totalPurchases,
     loss_events_total: lossEventsTotal,
     cash_expenses_total: cashExpenses,
@@ -647,17 +656,21 @@ function financeMonthToDateSnapshot() {
 
 router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero', 'master_admin'), (req, res) => {
   try {
-    const s = getSalesEventSql();
-    const todaySales = queryOne(
-      `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER}`
-    );
-    const monthSales = queryOne(`SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_MONTH} = ${s.MONTH} AND ${FINANCIAL_FILTER}`);
+    const ps = getPaidSalesEventSql();
+    const todayMetrics = metricsFromPaidOrdersWhere(`${ps.EVENT_DATE} = ${ps.TODAY}`);
+    const monthMetrics = metricsFromPaidOrdersWhere(`${ps.EVENT_MONTH} = ${ps.MONTH}`);
+    const todaySales = { count: todayMetrics.orders, total: todayMetrics.sales };
+    const monthSales = { count: monthMetrics.orders, total: monthMetrics.sales };
     const topProducts = queryAll(`SELECT oi.product_name, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' AND ${s.ORDER_MONTH} = ${s.MONTH} GROUP BY oi.product_name ORDER BY total_sold DESC LIMIT 10`);
     const recentOrders = queryAll('SELECT * FROM orders ORDER BY created_at DESC LIMIT 10');
     recentOrders.forEach(o => { o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]); });
-    const paymentMethods = queryAll(
-      `SELECT payment_method, COUNT(*) as count, SUM(total) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER} GROUP BY payment_method`
-    );
+    const paymentMethods = summarizePaymentMethodsByAccount(
+      queryPaidSalesOrders(`${ps.EVENT_DATE} = ${ps.TODAY}`)
+    ).map((row) => ({
+      payment_method: row.payment_method,
+      count: row.count,
+      total: row.total,
+    }));
 
     const op = buildOperationalIntelligence({ role: req.user?.role });
     let financeMonth = null;
@@ -727,26 +740,42 @@ router.get('/slow-moving-products', authenticateToken, requireRole('admin', 'caj
 });
 
 router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
-  const s = getSalesEventSql();
+  const ps = getPaidSalesEventSql();
   const today = getLocalTodayDateKey();
+  const dateKey = parseYmd(req.query.date) || today;
+  const isToday = dateKey === today;
 
-  const openRegisters = getOpenRegistersOnActiveStations();
+  const openRegisters = isToday ? getOpenRegistersOnActiveStations() : [];
   const register = openRegisters.length ? openRegisters[openRegisters.length - 1] : null;
 
-  const sales = queryOne(
-    `SELECT COUNT(*) as order_count, COALESCE(SUM(total), 0) as total_sales, COALESCE(SUM(subtotal), 0) as subtotal, COALESCE(SUM(tax), 0) as total_tax, COALESCE(SUM(discount), 0) as total_discount, COALESCE(SUM(tip_amount), 0) as total_tips FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER}`
-  );
+  const dayMetrics = metricsFromPaidOrdersWhere(`${ps.EVENT_DATE} = date(?)`, [dateKey]);
+  const sales = {
+    order_count: dayMetrics.orders,
+    total_sales: dayMetrics.sales,
+    subtotal: dayMetrics.subtotal,
+    total_tax: dayMetrics.tax,
+    total_discount: dayMetrics.discount,
+    total_tips: dayMetrics.tips,
+    comanda_count: dayMetrics.comandas,
+  };
 
-  const hourly = queryAll(
-    `SELECT ${s.EVENT_HOUR} as hour, COUNT(*) as orders, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER} GROUP BY ${s.EVENT_HOUR} ORDER BY hour`
-  );
+  const dayPaidOrders = queryPaidSalesOrders(`${ps.EVENT_DATE} = date(?)`, [dateKey]);
+  const hourlyMap = sumSalesAccountsByHour(dayPaidOrders);
+  const hourly = Object.entries(hourlyMap).map(([hour, data]) => ({
+    hour,
+    orders: data.accounts,
+    total: data.total,
+  }));
 
-  const paymentMethods = queryAll(
-    `SELECT payment_method, COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND ${FINANCIAL_FILTER} GROUP BY payment_method`
-  );
+  const paymentMethods = summarizePaymentMethodsByAccount(dayPaidOrders).map((row) => ({
+    payment_method: row.payment_method,
+    count: row.count,
+    total: row.total,
+  }));
 
   const orders = queryAll(
-    `SELECT * FROM orders WHERE ${s.EVENT_DATE} = ${s.TODAY} AND NOT ${COURTESY_ORDER_WHERE_SQL} ORDER BY ${s.EVENT_AT} DESC`
+    `SELECT * FROM orders WHERE ${ps.EVENT_DATE} = date(?) AND NOT ${COURTESY_ORDER_WHERE_SQL} ORDER BY ${ps.EVENT_AT} DESC`,
+    [dateKey],
   );
   orders.forEach(o => { o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]); });
 
@@ -760,20 +789,54 @@ router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, re
   };
   try {
     const { listSalesAdjustments, summarizeSalesAdjustments } = require('../services/salesAdjustmentsService');
-    const adjustmentOrders = listSalesAdjustments({ from: today, to: today, limit: 2000 });
+    const adjustmentOrders = listSalesAdjustments({ from: dateKey, to: dateKey, limit: 2000 });
     adjustments = summarizeSalesAdjustments(adjustmentOrders);
   } catch (err) {
     console.warn('[reports/daily] adjustments:', err?.message || err);
   }
 
-  res.json({ register_open: openRegisters.length > 0, register, sales, hourly, paymentMethods, orders, adjustments, date: today });
+  res.json({
+    register_open: isToday && openRegisters.length > 0,
+    register: isToday ? register : null,
+    sales,
+    hourly,
+    paymentMethods,
+    orders,
+    adjustments,
+    date: dateKey,
+    is_today: isToday,
+  });
 });
 
+function parseReportMonth(input) {
+  const v = String(input || '').trim();
+  return /^\d{4}-\d{2}$/.test(v) ? v : null;
+}
+
+function monthRangeEndingAt(monthKey, count = 12) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const end = new Date(y, (m || 1) - 1, 1);
+  const start = new Date(end);
+  start.setMonth(start.getMonth() - (count - 1));
+  const startKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
+  return { startKey, endKey: monthKey };
+}
+
 router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
-  const s = getSalesEventSql();
+  const ps = getPaidSalesEventSql();
+  const { getBusinessMonthKey } = require('../utils/appDateTime');
+  const monthKey = parseReportMonth(req.query.month) || getBusinessMonthKey(queryOne);
   const { querySoldProductsBetween } = require('../services/productSalesReportService');
+  const { startKey, endKey } = monthRangeEndingAt(monthKey, 12);
+
   const closedRegisters = queryAll(
-    "SELECT cr.*, u.full_name as user_name FROM cash_registers cr LEFT JOIN users u ON u.id = cr.user_id WHERE cr.closed_at IS NOT NULL ORDER BY cr.closed_at DESC LIMIT 60"
+    `SELECT cr.*, u.full_name as user_name
+     FROM cash_registers cr
+     LEFT JOIN users u ON u.id = cr.user_id
+     WHERE cr.closed_at IS NOT NULL
+       AND strftime('%Y-%m', datetime(cr.closed_at, 'localtime')) = ?
+     ORDER BY cr.closed_at DESC`,
+    [monthKey],
   );
   const closedRegistersWithDetails = closedRegisters.map((r) => {
     const sold = querySoldProductsBetween(r.opened_at, r.closed_at, r.id);
@@ -786,22 +849,37 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
     };
   });
 
-  const dailySales = queryAll(
-    `SELECT ${s.EVENT_DATE} as date, COUNT(*) as orders, COALESCE(SUM(total), 0) as total, COALESCE(SUM(tax), 0) as tax FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_DATE} >= date(${s.TODAY}, '-30 days') GROUP BY ${s.EVENT_DATE} ORDER BY date DESC`
-  );
+  const monthOrders = queryPaidSalesOrders(`strftime('%Y-%m', ${ps.EVENT_LOCAL}) = ?`, [monthKey]);
+  const dailySales = summarizeSalesAccountsByDay(monthOrders);
 
-  const monthlySales = queryAll(
-    `SELECT ${s.EVENT_MONTH} as month, COUNT(*) as orders, COALESCE(SUM(total), 0) as total, COALESCE(SUM(tax), 0) as tax FROM orders WHERE ${FINANCIAL_FILTER} GROUP BY ${s.EVENT_MONTH} ORDER BY month DESC LIMIT 12`
+  const trendOrders = queryPaidSalesOrders(
+    `strftime('%Y-%m', ${ps.EVENT_LOCAL}) >= ? AND strftime('%Y-%m', ${ps.EVENT_LOCAL}) <= ?`,
+    [startKey, endKey],
   );
+  const monthlySales = summarizeSalesAccountsByMonth(trendOrders);
 
-  const totalMonth = queryOne(
-    `SELECT COUNT(*) as orders, COALESCE(SUM(total), 0) as total, COALESCE(SUM(tax), 0) as tax FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_MONTH} = ${s.MONTH}`
-  );
+  const totalMonthMetrics = metricsFromPaidOrdersWhere(`strftime('%Y-%m', ${ps.EVENT_LOCAL}) = ?`, [monthKey]);
+  const totalMonth = {
+    orders: totalMonthMetrics.orders,
+    total: totalMonthMetrics.sales,
+    tax: totalMonthMetrics.tax,
+    comanda_count: totalMonthMetrics.comandas,
+  };
   const closedRegistersMonth = queryOne(
-    "SELECT COUNT(*) as count FROM cash_registers WHERE closed_at IS NOT NULL AND strftime('%Y-%m', closed_at) = strftime('%Y-%m', 'now')"
+    `SELECT COUNT(*) as count FROM cash_registers
+     WHERE closed_at IS NOT NULL
+       AND strftime('%Y-%m', datetime(closed_at, 'localtime')) = ?`,
+    [monthKey],
   );
 
-  res.json({ closedRegisters: closedRegistersWithDetails, closedRegistersMonth: Number(closedRegistersMonth?.count || 0), dailySales, monthlySales, totalMonth });
+  res.json({
+    month: monthKey,
+    closedRegisters: closedRegistersWithDetails,
+    closedRegistersMonth: Number(closedRegistersMonth?.count || 0),
+    dailySales,
+    monthlySales,
+    totalMonth,
+  });
 });
 
 router.get('/closed-registers/:id', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
@@ -882,38 +960,42 @@ router.get('/product-sales', authenticateToken, requireRole('admin', 'cajero'), 
 });
 
 router.get('/ranking', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
-  const s = getSalesEventSql();
+  const ps = getPaidSalesEventSql();
   const { period } = req.query;
-  let dateFilter = '';
-  if (period === 'today') dateFilter = `AND ${s.ORDER_DATE} = ${s.TODAY}`;
-  else if (period === 'week') dateFilter = `AND ${s.ORDER_DATE} >= date(${s.TODAY}, '-6 days')`;
-  else if (period === 'month') dateFilter = `AND ${s.ORDER_MONTH} = ${s.MONTH}`;
+  let dateWhere = '1=1';
+  const params = [];
+  if (period === 'today') dateWhere = `${ps.ORDER_DATE} = ${ps.TODAY}`;
+  else if (period === 'week') dateWhere = `${ps.ORDER_DATE} >= date(${ps.TODAY}, '-6 days')`;
+  else if (period === 'month') dateWhere = `${ps.ORDER_MONTH} = ${ps.MONTH}`;
 
-  const ranking = queryAll(
-    `SELECT oi.product_name, oi.product_id, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue, COUNT(DISTINCT oi.order_id) as order_count FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' ${dateFilter} GROUP BY oi.product_id ORDER BY total_sold DESC`
-  );
-
-  res.json(ranking);
+  res.json(queryProductSalesRanking(dateWhere, params));
 });
 
 router.get('/sales', authenticateToken, requireRole('admin'), (req, res) => {
-  const s = getSalesEventSql();
+  const ps = getPaidSalesEventSql();
   const { period, start_date, end_date } = req.query;
   if (period === 'daily') {
-    res.json(queryAll(`SELECT ${s.EVENT_DATE} as date, COUNT(*) as orders, SUM(total) as total, SUM(tax) as tax, SUM(discount) as discounts FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_DATE} BETWEEN COALESCE(?, date(${s.TODAY}, '-30 days')) AND COALESCE(?, ${s.TODAY}) GROUP BY ${s.EVENT_DATE} ORDER BY date DESC`, [start_date || null, end_date || null]));
+    const params = [start_date || null, end_date || null];
+    const where = `${ps.EVENT_DATE} BETWEEN COALESCE(?, date(${ps.TODAY}, '-30 days')) AND COALESCE(?, ${ps.TODAY})`;
+    const orders = queryPaidSalesOrders(where, params);
+    res.json(summarizeSalesAccountsByDay(orders));
   } else {
-    res.json(queryAll(`SELECT ${s.EVENT_MONTH} as month, COUNT(*) as orders, SUM(total) as total, SUM(tax) as tax, SUM(discount) as discounts FROM orders WHERE ${FINANCIAL_FILTER} GROUP BY ${s.EVENT_MONTH} ORDER BY month DESC LIMIT 12`));
+    const orders = queryPaidSalesOrders('1=1');
+    res.json(summarizeSalesAccountsByMonth(orders).slice(0, 12));
   }
 });
 
 router.get('/products', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
-  res.json(queryAll("SELECT oi.product_name, oi.product_id, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue, COUNT(DISTINCT oi.order_id) as order_count FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' GROUP BY oi.product_id ORDER BY total_sold DESC"));
+  res.json(queryProductSalesRanking('1=1', []));
 });
 
 router.get('/payment-methods', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
-  const s = getSalesEventSql();
+  const ps = getPaidSalesEventSql();
   const { start_date, end_date } = req.query;
-  res.json(queryAll(`SELECT payment_method, COUNT(*) as count, SUM(total) as total FROM orders WHERE ${FINANCIAL_FILTER} AND ${s.EVENT_DATE} BETWEEN COALESCE(?, date(${s.TODAY}, '-30 days')) AND COALESCE(?, ${s.TODAY}) GROUP BY payment_method ORDER BY total DESC`, [start_date || null, end_date || null]));
+  const params = [start_date || null, end_date || null];
+  const where = `${ps.EVENT_DATE} BETWEEN COALESCE(?, date(${ps.TODAY}, '-30 days')) AND COALESCE(?, ${ps.TODAY})`;
+  const orders = queryPaidSalesOrders(where, params);
+  res.json(summarizePaymentMethodsByAccount(orders));
 });
 
 const LOSS_CATEGORIES = new Set(['salida_efectivo', 'gasto_extra', 'merma', 'danio_propiedad', 'reembolso', 'otro']);
@@ -932,15 +1014,12 @@ function defaultFinanceRange() {
 }
 
 router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, res) => {
-  const s = getSalesEventSql();
+  const ps = getPaidSalesEventSql();
   const def = defaultFinanceRange();
   const from = parseYmd(req.query.from) || def.from;
   const to = parseYmd(req.query.to) || def.to;
-  const dateSales = s.EVENT_DATE;
-  const salesRow = queryOne(
-    `SELECT COUNT(*) as orders, COALESCE(SUM(total), 0) as total_sales FROM orders WHERE ${FINANCIAL_FILTER} AND ${dateSales} BETWEEN date(?) AND date(?)`,
-    [from, to]
-  );
+  const salesMetrics = metricsFromPaidOrdersWhere(`${ps.EVENT_DATE} BETWEEN date(?) AND date(?)`, [from, to]);
+  const totalSales = Number(salesMetrics.sales || 0);
   const investmentRow = queryOne(
     `SELECT COALESCE(SUM(amount), 0) as total FROM investment_movements
      WHERE date(datetime(created_at, 'localtime')) BETWEEN date(?) AND date(?)`,
@@ -948,7 +1027,7 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
   );
   const purchasesRow = queryOne(
     `SELECT COALESCE(SUM(total_cost), 0) as total FROM inventory_expenses
-     WHERE date(datetime(created_at, 'localtime')) BETWEEN date(?) AND date(?)`,
+     WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL} BETWEEN date(?) AND date(?)`,
     [from, to]
   );
   const cashExpensesRow = queryOne(
@@ -968,7 +1047,6 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
      GROUP BY category ORDER BY total DESC`,
     [from, to]
   );
-  const totalSales = Number(salesRow?.total_sales || 0);
   const totalInvestment = Number(investmentRow?.total || 0);
   const inventoryInvestmentRow = queryOne(
     `SELECT COALESCE(SUM(stock * purchase_price), 0) AS total FROM products
@@ -1001,7 +1079,7 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
 
   res.json({
     filters: { from, to },
-    sales: { total: totalSales, orders: Number(salesRow?.orders || 0) },
+    sales: { total: totalSales, orders: Number(salesMetrics.orders || 0) },
     investment: {
       /** Movimientos de inversión en el rango (nómina, aportes, etc.). */
       total: totalInvestment,

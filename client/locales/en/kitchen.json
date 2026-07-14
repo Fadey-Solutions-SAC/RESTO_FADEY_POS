@@ -27,6 +27,18 @@
     "timeMinutes": "{{count}} min",
     "timeHours": "{{hours}}h {{minutes}}m"
   },
+  "history": {
+    "button": "History",
+    "modalTitle": "Dispatched tickets — {{station}}",
+    "dateLabel": "Date",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "count": "{{count}} dispatched ticket(s)",
+    "count_one": "{{count}} dispatched ticket",
+    "emptyTitle": "No dispatches on this date",
+    "emptyHint": "Tickets marked READY will appear here",
+    "loadFailed": "Could not load history"
+  },
   "toast": {
     "sentToStation": "Ticket sent to {{station}}",
     "noItems": "This order has no items for {{station}}",

@@ -8,10 +8,10 @@ const {
 } = require('../businessRules');
 const { orderHasKardexVenta } = require('./kardexBackfillService');
 const { listProductRemovals, enrichRemovalForReport } = require('./productRemovalLogService');
+const { sqlBusinessTimestamp } = require('../utils/appDateTime');
 
-const SALES_EVENT_AT_SQL = 'COALESCE(updated_at, created_at)';
-const SALES_EVENT_LOCAL_SQL = `datetime(${SALES_EVENT_AT_SQL}, 'localtime')`;
-const SALES_EVENT_DATE_SQL = `DATE(${SALES_EVENT_LOCAL_SQL})`;
+const SALES_EVENT_AT_SQL = 'COALESCE(paid_at, updated_at, created_at)';
+const SALES_EVENT_DATE_SQL = `DATE(${sqlBusinessTimestamp(SALES_EVENT_AT_SQL, queryOne)})`;
 
 function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;

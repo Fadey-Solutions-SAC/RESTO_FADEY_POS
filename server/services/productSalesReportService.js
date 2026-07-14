@@ -1,5 +1,6 @@
 const { queryAll, queryOne } = require('../database');
-const { getOpenRegistersOnActiveStations } = require('../cajaSettings');
+const { getOpenRegistersOnActiveStations, listCajasWithIds } = require('../cajaSettings');
+const { getMovementTotals, getCashNoteTotals } = require('./registerSessionSales');
 const { sqlBusinessTimestamp, getBusinessTodayDateKey } = require('../utils/appDateTime');
 
 const PAID_SALES_WHERE = `o.status != 'cancelled'
@@ -53,13 +54,12 @@ function registerSalesWindowSql(registerId, openedAt, closedAt) {
 
 function querySoldProductsBetween(openedAt, closedAt, registerId = null) {
   const window = registerSalesWindowSql(registerId, openedAt, closedAt);
-  const rows = queryAll(
+  const qtyRows = queryAll(
     `SELECT
       oi.product_id,
       oi.product_name,
       COALESCE(SUM(oi.quantity), 0) as total_qty,
-      COALESCE(SUM(oi.subtotal), 0) as total_amount,
-      COUNT(DISTINCT oi.order_id) as order_count
+      COALESCE(SUM(oi.subtotal), 0) as total_amount
      FROM order_items oi
      JOIN orders o ON o.id = oi.order_id
      WHERE ${PAID_SALES_WHERE}
@@ -68,7 +68,39 @@ function querySoldProductsBetween(openedAt, closedAt, registerId = null) {
      ORDER BY total_qty DESC, oi.product_name ASC`,
     window.params,
   );
-  return mapSoldRows(rows);
+  const accountRows = queryAll(
+    `SELECT DISTINCT
+      oi.product_id,
+      oi.product_name,
+      o.id,
+      o.type,
+      o.table_number,
+      o.cash_register_id,
+      o.customer_id,
+      o.paid_at,
+      o.updated_at,
+      o.created_at
+     FROM order_items oi
+     JOIN orders o ON o.id = oi.order_id
+     WHERE ${PAID_SALES_WHERE}
+       AND ${window.clause}`,
+    window.params,
+  );
+  const { countSalesAccounts } = require('../utils/salesAccountGrouping');
+  const accountCounts = new Map();
+  const ordersByProduct = new Map();
+  for (const row of accountRows || []) {
+    const productKey = String(row.product_id || row.product_name || '').trim() || row.product_name;
+    if (!ordersByProduct.has(productKey)) ordersByProduct.set(productKey, new Map());
+    ordersByProduct.get(productKey).set(String(row.id), row);
+  }
+  for (const [productKey, orderMap] of ordersByProduct.entries()) {
+    accountCounts.set(productKey, countSalesAccounts([...orderMap.values()]));
+  }
+  return mapSoldRows((qtyRows || []).map((row) => ({
+    ...row,
+    order_count: accountCounts.get(String(row.product_id || row.product_name || '').trim() || row.product_name) || 0,
+  })));
 }
 
 function sumProductTotal(products) {
@@ -99,14 +131,33 @@ function loadClosedRegistersInDateRange(from, to) {
   );
 }
 
+function stationNameForId(cajaStationId) {
+  const id = String(cajaStationId || '').trim();
+  if (!id) return 'Sin caja';
+  const match = listCajasWithIds().find((c) => c.id === id);
+  return match?.name || 'Caja';
+}
+
 function mapRegisterToProductBlock(reg, { isOpen = false } = {}) {
   const sold_products = querySoldProductsBetween(reg.opened_at, isOpen ? null : reg.closed_at, reg.id);
+  const cajaStationId = String(reg.caja_station_id || '').trim();
+  const movements = reg?.id ? getMovementTotals(reg.id) : { total_expense: 0 };
+  const notes = reg?.id ? getCashNoteTotals(reg.id) : { notes_debit: 0 };
   return {
     register_id: reg.id,
+    caja_station_id: cajaStationId,
+    station_name: stationNameForId(cajaStationId),
     user_name: reg.user_name || reg.cajero_name || '',
     opened_at: reg.opened_at,
     closed_at: isOpen ? null : reg.closed_at,
     is_open: isOpen,
+    total_sales: Number(reg.total_sales || 0),
+    total_cash: Number(reg.total_cash || 0),
+    total_card: Number(reg.total_card || 0),
+    total_yape: Number(reg.total_yape || 0),
+    total_plin: Number(reg.total_plin || 0),
+    cash_expenses: Number(movements.total_expense || 0),
+    notes_debit: Number(notes.notes_debit || 0),
     sold_products,
     product_sales_total: sumProductTotal(sold_products),
   };

@@ -27,6 +27,18 @@
     "timeMinutes": "{{count}} min",
     "timeHours": "{{hours}}h {{minutes}}m"
   },
+  "history": {
+    "button": "Historial",
+    "modalTitle": "Comandas despachadas — {{station}}",
+    "dateLabel": "Fecha",
+    "refresh": "Actualizar",
+    "loading": "Cargando…",
+    "count": "{{count}} comanda(s) despachada(s)",
+    "count_one": "{{count}} comanda despachada",
+    "emptyTitle": "Sin despachos en esta fecha",
+    "emptyHint": "Las comandas marcadas como LISTO aparecerán aquí",
+    "loadFailed": "No se pudo cargar el historial"
+  },
   "toast": {
     "sentToStation": "Comanda enviada a {{station}}",
     "noItems": "El pedido no tiene ítems para {{station}}",

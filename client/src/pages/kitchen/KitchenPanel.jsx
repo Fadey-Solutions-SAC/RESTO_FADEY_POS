@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
 import EndShiftModal from '../../components/EndShiftModal';
-import { MdKitchen, MdLocalBar, MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings } from 'react-icons/md';
+import { MdKitchen, MdLocalBar, MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings, MdHistory } from 'react-icons/md';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import PrinterModuleModal from '../../components/printing/PrinterModuleModal';
@@ -50,6 +50,19 @@ function itemHighlightActive(item, highlightIds, orderId) {
 
 const BAR_AUTO_DISMISS_MINUTE_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 
+function localDateInputValue(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function formatDispatchedClock(order, isBarStation) {
+  const raw = order?.station_dispatched_at || (isBarStation ? order?.station_bar_ready_at : order?.station_cocina_ready_at);
+  const parsed = parseApiDate(raw);
+  return parsed ? formatTime(parsed) : '—';
+}
+
 export default function KitchenPanel({ station = 'cocina' }) {
   const { t } = useTranslation('kitchen');
   const [orders, setOrders] = useState([]);
@@ -75,6 +88,10 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const [barAutoDismissMinutes, setBarAutoDismissMinutes] = useState(30);
   const [barSettingsLoaded, setBarSettingsLoaded] = useState(false);
   const [barSettingsSaving, setBarSettingsSaving] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyDate, setHistoryDate] = useState(() => localDateInputValue());
+  const [historyOrders, setHistoryOrders] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const StationIcon = isBar ? MdLocalBar : MdKitchen;
   const panelTitle = isBar ? t('panel.barTitle') : t('panel.kitchenTitle');
   const stationLabel = isBar ? t('panel.stationBar') : t('panel.stationKitchen');
@@ -149,6 +166,29 @@ export default function KitchenPanel({ station = 'cocina' }) {
   }, [filter, station]);
   useActiveInterval(loadOrders, 10000);
   useActiveInterval(() => setClockTick((n) => n + 1), 30000);
+
+  const loadDispatchedHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      qs.set('station', station);
+      if (filter !== 'all') qs.set('type', filter);
+      if (historyDate) qs.set('date', historyDate);
+      const data = await api.get(`/orders/kitchen/dispatched?${qs.toString()}`);
+      setHistoryOrders(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      toast.error(t('history.loadFailed'));
+      setHistoryOrders([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [station, filter, historyDate, t]);
+
+  useEffect(() => {
+    if (!historyOpen) return;
+    void loadDispatchedHistory();
+  }, [historyOpen, loadDispatchedHistory]);
 
   const isKitchenItemHighlighted = useCallback(
     (item, orderId) => !isBar && itemHighlightActive(item, highlightItemIds, orderId),
@@ -368,6 +408,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
         : t('barSettings.autoDismissGeneric', { minutes });
     toast(label, { duration: 7000, icon: 'ℹ️' });
     void loadOrders();
+    if (historyOpen) void loadDispatchedHistory();
   });
 
   useSocket('new-order', (order) => handleKitchenIncomingOrder(order, t('toast.newOrder')));
@@ -455,6 +496,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
       }
       toast.success(status === 'preparing' ? t('toast.preparing') : t('toast.markedReady'));
       void loadOrders();
+      if (historyOpen && status === 'ready') void loadDispatchedHistory();
     } catch (err) {
       toast.error(err.message);
       void loadOrders();
@@ -558,6 +600,15 @@ export default function KitchenPanel({ station = 'cocina' }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
+            title={t('history.button')}
+          >
+            <MdHistory className="text-lg" />
+            {t('history.button')}
+          </button>
           <div className="flex flex-wrap items-center gap-2">
             {[
               { v: 'all', l: t('panel.filterAll') },
@@ -606,6 +657,92 @@ export default function KitchenPanel({ station = 'cocina' }) {
         }}
         moduleKey={printerModuleKey}
       />
+      <Modal
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title={t('history.modalTitle', { station: stationLabel })}
+        size="xl"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="block">
+              <span className="block text-xs font-medium text-[var(--ui-muted)] mb-1">{t('history.dateLabel')}</span>
+              <input
+                type="date"
+                value={historyDate}
+                onChange={(e) => setHistoryDate(e.target.value)}
+                className="input-field w-auto"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void loadDispatchedHistory()}
+              disabled={historyLoading}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-[var(--ui-accent)] text-white hover:bg-[var(--ui-accent-hover)] disabled:opacity-50"
+            >
+              {historyLoading ? t('history.loading') : t('history.refresh')}
+            </button>
+            <p className="text-xs text-[var(--ui-muted)] ml-auto">
+              {t('history.count', { count: historyOrders.length })}
+            </p>
+          </div>
+          {historyLoading ? (
+            <p className="text-sm text-[var(--ui-muted)] py-8 text-center">{t('history.loading')}</p>
+          ) : historyOrders.length === 0 ? (
+            <div className="py-12 text-center">
+              <MdHistory className="text-5xl text-[var(--ui-muted)] mx-auto mb-3" />
+              <p className="text-[var(--ui-body-text)] font-medium">{t('history.emptyTitle')}</p>
+              <p className="text-sm text-[var(--ui-muted)] mt-1">{t('history.emptyHint')}</p>
+            </div>
+          ) : (
+            <div className="max-h-[min(70vh,560px)] overflow-y-auto space-y-3 pr-1">
+              {historyOrders.map((order) => {
+                const TypeIcon = typeIcons[order.type] || MdRestaurant;
+                const cuentaCliente = isCuentaClienteSelfOrder(order);
+                const stationItems = getStationItems(order.items || []);
+                return (
+                  <div
+                    key={order.id}
+                    className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] overflow-hidden"
+                  >
+                    <div className="px-4 py-3 flex items-center justify-between gap-3 border-b border-[color:var(--ui-border)]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {cuentaCliente ? (
+                          <span className="font-semibold truncate">{order.customer_name || t('panel.customer')}</span>
+                        ) : order.type === 'delivery' ? (
+                          <span className="font-semibold">{t('panel.delivery')} #{order.order_number}</span>
+                        ) : (
+                          <span className="font-semibold">#{order.order_number}</span>
+                        )}
+                        <TypeIcon className="text-lg shrink-0 text-[var(--ui-muted)]" />
+                        {order.table_number ? (
+                          <span className="text-xs px-2 py-0.5 rounded border border-[color:var(--ui-border)]">
+                            {t('panel.table', { number: order.table_number })}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-1 text-sm text-[var(--ui-muted)] shrink-0">
+                        <MdAccessTime />
+                        <span>{formatDispatchedClock(order, isBar)}</span>
+                      </div>
+                    </div>
+                    <ul className="px-4 py-3 space-y-1.5">
+                      {stationItems.map((item) => (
+                        <li key={item.id} className="flex items-start gap-2 text-sm">
+                          <span className="w-6 h-6 rounded bg-[var(--ui-surface)] border border-[color:var(--ui-border)] flex items-center justify-center text-xs font-bold shrink-0">
+                            {item.quantity}
+                          </span>
+                          <span className="text-[var(--ui-body-text)]">{item.product_name}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </Modal>
       {isBar && (
         <Modal
           isOpen={barSettingsOpen}

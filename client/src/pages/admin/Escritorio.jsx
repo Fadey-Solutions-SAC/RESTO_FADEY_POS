@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { api, formatCurrency, parseApiDate, toLocalDateKey, PAYMENT_METHODS, formatInstantTime } from '../../utils/api';
+import { api, formatCurrency, parseApiDate, PAYMENT_METHODS, formatInstantTime } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useDeliverySettings } from '../../hooks/useDeliveryEnabled';
 import { useNavigate, Link } from 'react-router-dom';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { MdDateRange, MdKeyboardArrowDown, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning } from 'react-icons/md';
 
 import { useChartTheme } from '../../theme/useChartTheme';
@@ -14,7 +14,7 @@ import {
   orderPendingForBarStation,
   orderPendingForKitchenStation,
 } from '../../utils/productionArea';
-import { isDiscountOrder } from '../../utils/mesaOrderLines';
+import { isCourtesyOrder, isDiscountOrder, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
 
 const PAYMENT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#06b6d4', '#a855f7'];
 const toInputDate = (date) => {
@@ -31,6 +31,20 @@ const getCurrentMonthRange = () => {
     end: toInputDate(now),
   };
 };
+const getCurrentWeekRange = () => {
+  const now = new Date();
+  const dow = now.getDay();
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+  return {
+    start: toInputDate(monday),
+    end: toInputDate(now),
+  };
+};
+const getTotalRange = () => ({
+  start: '2020-01-01',
+  end: toInputDate(new Date()),
+});
 const formatDateForLabel = (value) => {
   if (!value) return '-';
   const [y, m, d] = String(value).split('-');
@@ -38,12 +52,80 @@ const formatDateForLabel = (value) => {
   return `${d}/${m}/${y}`;
 };
 
-/** 1 venta = 1 mesa (mismo table_number) o, sin mesa, 1 pedido (delivery / mostrador). */
-function ventaMesaKey(order) {
-  if (!order) return '';
-  const t = String(order.table_number || '').trim();
-  if (t) return `mesa:${t}`;
-  return `pedido:${order.id || ''}`;
+function isPaidSaleOrder(order) {
+  if (!order || order.status === 'cancelled') return false;
+  if (order.payment_status !== 'paid') return false;
+  const method = String(order.payment_method || '').toLowerCase();
+  return method !== 'cortesia' && method !== 'cuenta_cliente';
+}
+
+function getOrderPaidAtIso(order) {
+  return order?.paid_at || order?.updated_at || order?.created_at || '';
+}
+
+function orderMatchesRegisterWindow(order, registerId, openedAt, closedAt) {
+  if (!isPaidSaleOrder(order)) return false;
+  const paidAt = getOrderPaidAtIso(order);
+  if (!paidAt || !openedAt) return false;
+  const end = closedAt || new Date().toISOString();
+  const regId = String(registerId || '').trim();
+  const orderRegId = String(order.cash_register_id || '').trim();
+  if (regId) {
+    if (orderRegId === regId) return true;
+    if (!orderRegId) return paidAt >= openedAt && paidAt <= end;
+    return false;
+  }
+  return paidAt >= openedAt && paidAt <= end;
+}
+
+const WEEKDAY_CHART_META = [
+  { dow: 1, name: 'Lun', label: 'Lunes' },
+  { dow: 2, name: 'Mar', label: 'Martes' },
+  { dow: 3, name: 'Mié', label: 'Miércoles' },
+  { dow: 4, name: 'Jue', label: 'Jueves' },
+  { dow: 5, name: 'Vie', label: 'Viernes' },
+  { dow: 6, name: 'Sáb', label: 'Sábado' },
+  { dow: 0, name: 'Dom', label: 'Domingo' },
+];
+
+function getChartYAxisMax(values) {
+  const max = Math.max(0, ...values.map((v) => Number(v) || 0));
+  if (max <= 0) return 0;
+  const padded = max * 1.05;
+  if (padded <= 1000) return Math.ceil(padded);
+  if (padded <= 10000) return Math.ceil(padded / 100) * 100;
+  return Math.ceil(padded / 1000) * 1000;
+}
+
+function getChartYAxisTicks(max) {
+  const ceiling = Number(max) || 0;
+  if (ceiling <= 0) return [];
+  const segments = 4;
+  const step = Math.max(1, Math.ceil(ceiling / segments));
+  return Array.from({ length: segments + 1 }, (_, index) => {
+    if (index === segments) return ceiling;
+    return Math.min(ceiling, index * step);
+  });
+}
+
+function formatChartYAxisTick(value) {
+  const n = Number(value) || 0;
+  if (n >= 1000) return `S/ ${Math.round(n / 100) / 10}k`;
+  return formatCurrency(n).replace(/\.00$/, '');
+}
+
+function orderBelongsToRegisterSession(order, registerId, openedAt, closedAt) {
+  if (!order || order.status === 'cancelled') return false;
+  const eventAt = order.payment_status === 'paid'
+    ? getOrderPaidAtIso(order)
+    : (order.updated_at || order.created_at || '');
+  if (!eventAt || !openedAt) return false;
+  const end = closedAt || new Date().toISOString();
+  const regId = String(registerId || '').trim();
+  const orderRegId = String(order.cash_register_id || '').trim();
+  if (regId && orderRegId === regId) return true;
+  if (regId && orderRegId && orderRegId !== regId) return false;
+  return eventAt >= openedAt && eventAt <= end;
 }
 
 export default function Escritorio() {
@@ -60,6 +142,10 @@ export default function Escritorio() {
   const [endDate, setEndDate] = useState(getCurrentMonthRange().end);
   const [datePickStep, setDatePickStep] = useState('idle');
   const [rankingMode, setRankingMode] = useState('dias');
+  const [cajaStations, setCajaStations] = useState([]);
+  const [selectedCajaStationId, setSelectedCajaStationId] = useState('');
+  const [registerPeriodReport, setRegisterPeriodReport] = useState(null);
+  const [registerReportLoading, setRegisterReportLoading] = useState(true);
   const startDateInputRef = useRef(null);
   const endDateInputRef = useRef(null);
   const navigate = useNavigate();
@@ -71,7 +157,7 @@ export default function Escritorio() {
   }, [deliverySettingsLoaded, deliveryEnabled, liveDash?.deliveryEnabled]);
 
   const monitoreoSyncLabel = useMemo(() => {
-    const parts = ['Caja', 'Mesas'];
+    const parts = ['Caja', 'Cocina', 'Bar', 'Mesas'];
     if (deliveryModuleActive) parts.push('Delivery');
     parts.push('inventario');
     return parts.join(', ');
@@ -114,6 +200,26 @@ export default function Escritorio() {
     }
   }, []);
 
+  const loadRegisterPeriodReport = useCallback(async () => {
+    const from = String(startDate || '').trim();
+    const to = String(endDate || '').trim();
+    if (!from || !to) {
+      setRegisterPeriodReport(null);
+      setRegisterReportLoading(false);
+      return;
+    }
+    setRegisterReportLoading(true);
+    try {
+      const report = await api.get(`/reports/product-sales?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+      setRegisterPeriodReport(report);
+    } catch (err) {
+      console.error(err);
+      setRegisterPeriodReport(null);
+    } finally {
+      setRegisterReportLoading(false);
+    }
+  }, [startDate, endDate]);
+
   const loadData = async () => {
     try {
       const allOrders = await api.get('/orders');
@@ -131,6 +237,16 @@ export default function Escritorio() {
   useActiveInterval(loadData, 10000);
 
   useEffect(() => {
+    void loadRegisterPeriodReport();
+  }, [loadRegisterPeriodReport]);
+
+  useEffect(() => {
+    api.get('/pos/caja-stations')
+      .then((res) => setCajaStations(Array.isArray(res?.stations) ? res.stations : []))
+      .catch(() => setCajaStations([]));
+  }, []);
+
+  useEffect(() => {
     loadLiveDash();
   }, [loadLiveDash]);
   useEffect(() => {
@@ -146,19 +262,37 @@ export default function Escritorio() {
   useSocket('order-update', () => {
     loadData();
     void loadLiveDash();
+    void loadRegisterPeriodReport();
   });
   useSocket('table-update', loadLiveDash);
   useSocket('delivery-update', loadLiveDash);
-  useSocket('register-update', loadLiveDash);
+  useSocket('register-update', () => {
+    loadData();
+    void loadLiveDash();
+    void loadRegisterPeriodReport();
+  });
   useSocket('inventory-update', loadLiveDash);
   useSocket('billing-document-update', () => {
     void loadLiveDash();
   });
   useEffect(() => {
-    if (datePreset !== 'month') return;
-    const monthRange = getCurrentMonthRange();
-    setStartDate(monthRange.start);
-    setEndDate(monthRange.end);
+    if (datePreset === 'month') {
+      const monthRange = getCurrentMonthRange();
+      setStartDate(monthRange.start);
+      setEndDate(monthRange.end);
+      return;
+    }
+    if (datePreset === 'week') {
+      const weekRange = getCurrentWeekRange();
+      setStartDate(weekRange.start);
+      setEndDate(weekRange.end);
+      return;
+    }
+    if (datePreset === 'total') {
+      const totalRange = getTotalRange();
+      setStartDate(totalRange.start);
+      setEndDate(totalRange.end);
+    }
   }, [datePreset]);
   useEffect(() => {
     api
@@ -169,17 +303,27 @@ export default function Escritorio() {
       .catch(() => {});
   }, []);
 
+  const activeRegisterBlocks = useMemo(() => {
+    const blocks = Array.isArray(registerPeriodReport?.by_register) ? registerPeriodReport.by_register : [];
+    if (!selectedCajaStationId) return blocks;
+    return blocks.filter((block) => String(block.caja_station_id || '') === selectedCajaStationId);
+  }, [registerPeriodReport, selectedCajaStationId]);
+
+  const selectedCajaLabel = useMemo(() => {
+    if (!selectedCajaStationId) return 'Todas';
+    const match = cajaStations.find((s) => s.id === selectedCajaStationId);
+    return match?.name || registerPeriodReport?.by_register?.find((b) => b.caja_station_id === selectedCajaStationId)?.station_name || 'Caja';
+  }, [selectedCajaStationId, cajaStations, registerPeriodReport]);
+
   const scopedOrdersAll = useMemo(() => {
-    const valid = [...orders];
-    if (datePreset === 'total') return valid;
-    const from = String(startDate || '');
-    const to = String(endDate || '');
-    if (!from || !to) return valid;
-    return valid.filter((o) => {
-      const dateKey = toLocalDateKey(o.updated_at || o.created_at);
-      return dateKey >= from && dateKey <= to;
-    });
-  }, [orders, datePreset, startDate, endDate]);
+    if (registerReportLoading || !registerPeriodReport) return [];
+    if (!activeRegisterBlocks.length) return [];
+    return orders.filter((order) =>
+      activeRegisterBlocks.some((block) =>
+        orderMatchesRegisterWindow(order, block.register_id, block.opened_at, block.closed_at)
+      )
+    );
+  }, [orders, activeRegisterBlocks, registerPeriodReport, registerReportLoading]);
   const scopedOrders = useMemo(
     () => scopedOrdersAll.filter(o => o.status !== 'cancelled'),
     [scopedOrdersAll]
@@ -188,46 +332,66 @@ export default function Escritorio() {
     () => scopedOrders.filter((o) => o.payment_status === 'paid' && String(o.payment_method || '').toLowerCase() !== 'cortesia'),
     [scopedOrders]
   );
-  const todayDateKey = useMemo(() => toInputDate(new Date()), []);
-  const paidOrdersToday = useMemo(
-    () => orders.filter((o) => {
-      if (o.status === 'cancelled' || o.payment_status !== 'paid') return false;
-      if (String(o.payment_method || '').toLowerCase() === 'cortesia') return false;
-      return toLocalDateKey(o.updated_at || o.created_at) === todayDateKey;
-    }),
-    [orders, todayDateKey],
-  );
-  const paidOrdersTodayTotal = useMemo(
-    () => paidOrdersToday.reduce((sum, o) => sum + Number(o.total || 0), 0),
-    [paidOrdersToday],
-  );
-  const paidOrdersCount = useMemo(
-    () => scopedOrdersAll.filter((o) => o.status !== 'cancelled' && o.payment_status === 'paid' && String(o.payment_method || '').toLowerCase() !== 'cortesia').length,
-    [scopedOrdersAll]
-  );
-  const pendingPaymentCount = useMemo(
-    () => scopedOrdersAll.filter(o => o.status !== 'cancelled' && o.payment_status !== 'paid').length,
-    [scopedOrdersAll]
-  );
-  const cancelledOrdersCount = useMemo(
-    () => scopedOrdersAll.filter(o => o.status === 'cancelled').length,
-    [scopedOrdersAll]
+
+  const parseHourToMinutes = (raw) => {
+    const [h = '0', m = '0'] = String(raw || '').split(':');
+    return (Number(h) * 60) + Number(m);
+  };
+  const isSaleInConfiguredSchedule = (order) => {
+    const schedule = restaurantInfo?.schedule;
+    if (!schedule || typeof schedule !== 'object') return true;
+    const date = parseApiDate(order?.paid_at || order?.updated_at || order?.created_at);
+    if (!date) return true;
+    const dayMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKey = dayMap[date.getDay()];
+    const aliases = {
+      sunday: ['sunday', 'domingo', 'dom'],
+      monday: ['monday', 'lunes', 'lun'],
+      tuesday: ['tuesday', 'martes', 'mar'],
+      wednesday: ['wednesday', 'miercoles', 'miércoles', 'mie', 'mié'],
+      thursday: ['thursday', 'jueves', 'jue'],
+      friday: ['friday', 'viernes', 'vie'],
+      saturday: ['saturday', 'sabado', 'sábado', 'sab', 'sáb'],
+    };
+    const cfg = (aliases[dayKey] || [])
+      .map(k => schedule[k])
+      .find(Boolean);
+    if (!cfg) return true;
+    if (cfg.enabled === false || Number(cfg.enabled) === 0) return false;
+    const openMinutes = parseHourToMinutes(cfg.open || '00:00');
+    const closeMinutes = parseHourToMinutes(cfg.close || '23:59');
+    const currentMinutes = (date.getHours() * 60) + date.getMinutes();
+    if (closeMinutes >= openMinutes) {
+      return currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
+    }
+    return currentMinutes >= openMinutes || currentMinutes <= closeMinutes;
+  };
+
+  const paidSalesAccounts = useMemo(() => summarizePaidSalesAccounts(paidOrders), [paidOrders]);
+  const paidSalesAccountsInSchedule = useMemo(
+    () => paidSalesAccounts.filter((account) => isSaleInConfiguredSchedule({
+      paid_at: account.paidAt,
+      updated_at: account.paidAt,
+      created_at: account.paidAt,
+    })),
+    [paidSalesAccounts, restaurantInfo]
   );
 
   const hourlySales = useMemo(() => {
     const byHour = {};
     for (let h = 0; h < 24; h += 1) byHour[String(h).padStart(2, '0')] = 0;
-    paidOrders.forEach((o) => {
-      const parsed = parseApiDate(o.updated_at || o.created_at);
+    paidSalesAccounts.forEach((account) => {
+      const parsed = parseApiDate(account.paidAt);
       if (!parsed) return;
+      if (!isSaleInConfiguredSchedule({ paid_at: account.paidAt, updated_at: account.paidAt, created_at: account.paidAt })) return;
       const hour = parsed.getHours();
-      byHour[String(hour).padStart(2, '0')] += Number(o.total || 0);
+      byHour[String(hour).padStart(2, '0')] += Number(account.total || 0);
     });
     return Object.entries(byHour).map(([hour, total]) => ({
       hour: `${hour}:00`,
       sales: Number(total.toFixed(2)),
     }));
-  }, [paidOrders]);
+  }, [paidSalesAccounts, restaurantInfo]);
 
   const peakHour = hourlySales.reduce((best, item) => item.sales > best.sales ? item : best, { hour: '--:--', sales: -1 });
   const lowHour = hourlySales.reduce((best, item) => item.sales < best.sales ? item : best, { hour: '--:--', sales: Number.MAX_VALUE });
@@ -254,124 +418,121 @@ export default function Escritorio() {
 
   const totalSales = paidOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
 
-  const pagoMasUsado = useMemo(() => {
-    if (!paidOrders.length) return null;
-    const countBy = {};
-    paidOrders.forEach((o) => {
-      const m = o.payment_method || 'efectivo';
-      countBy[m] = (countBy[m] || 0) + 1;
-    });
-    let bestKey = null;
-    let bestN = -1;
-    Object.entries(countBy).forEach(([k, n]) => {
-      if (n > bestN) {
-        bestN = n;
-        bestKey = k;
-      }
-    });
-    if (!bestKey) return null;
-    const monto = salesByPayment[bestKey] || 0;
-    const share = totalSales > 0 ? (monto / totalSales) * 100 : 0;
-    return {
-      label: PAYMENT_METHODS[bestKey] || bestKey,
-      operaciones: bestN,
-      porcentajeMonto: share,
-    };
-  }, [paidOrders, salesByPayment, totalSales]);
-
-  const totalVentasMesas = useMemo(
-    () => new Set(scopedOrdersAll.filter((o) => o.status !== 'cancelled').map(ventaMesaKey)).size,
-    [scopedOrdersAll]
-  );
-  /** Solo pedidos con mesa: una mesa = una venta en el periodo (sin delivery / mostrador). */
-  const totalVentasPorMesa = useMemo(() => {
-    const keys = new Set();
-    scopedOrdersAll
-      .filter((o) => o.status !== 'cancelled' && String(o.table_number || '').trim())
-      .forEach((o) => {
-        keys.add(ventaMesaKey(o));
-      });
-    return keys.size;
-  }, [scopedOrdersAll]);
-  /** Productos distintos con al menos una línea en pedidos cobrados del periodo. */
-  const totalVentasPorProducto = useMemo(() => {
-    const ids = new Set();
-    paidOrders.forEach((o) => {
-      (o.items || []).forEach((it) => {
-        const key = String(it.product_id || it.product_name || '').trim();
-        if (key) ids.add(key);
+  const paidAccountsCount = paidSalesAccounts.length;
+  const averageSaleAmount = paidAccountsCount > 0 ? totalSales / paidAccountsCount : 0;
+  const productsSoldCount = useMemo(() => {
+    let total = 0;
+    paidOrders.forEach((order) => {
+      (order.items || []).forEach((item) => {
+        total += Number(item.quantity || 0);
       });
     });
-    return ids.size;
+    return total;
   }, [paidOrders]);
-  const totalDiscounts = scopedOrders
-    .filter((o) => o.payment_status === 'paid' && isDiscountOrder(o))
-    .reduce((sum, o) => sum + Number(o.discount || 0), 0);
+  const courtesyCount = useMemo(() => {
+    if (registerReportLoading || !activeRegisterBlocks.length) return 0;
+    return orders.reduce((count, order) => {
+      if (order.status === 'cancelled' || order.payment_status !== 'paid' || !isCourtesyOrder(order)) return count;
+      const inSession = activeRegisterBlocks.some((block) =>
+        orderBelongsToRegisterSession(order, block.register_id, block.opened_at, block.closed_at)
+      );
+      return inSession ? count + 1 : count;
+    }, 0);
+  }, [orders, activeRegisterBlocks, registerReportLoading]);
+
+  const totalDiscounts = useMemo(() => {
+    if (registerReportLoading || !activeRegisterBlocks.length) return 0;
+    return orders.reduce((sum, order) => {
+      if (order.status === 'cancelled' || !isDiscountOrder(order)) return sum;
+      const inSession = activeRegisterBlocks.some((block) =>
+        orderBelongsToRegisterSession(order, block.register_id, block.opened_at, block.closed_at)
+      );
+      if (!inSession) return sum;
+      return sum + Number(order.discount || 0);
+    }, 0);
+  }, [orders, activeRegisterBlocks, registerReportLoading]);
+  const totalCashExpenses = useMemo(
+    () => activeRegisterBlocks.reduce((sum, block) => sum + Number(block.cash_expenses || 0), 0),
+    [activeRegisterBlocks]
+  );
+  const totalDebitIncome = useMemo(
+    () => activeRegisterBlocks.reduce((sum, block) => sum + Number(block.notes_debit || 0), 0),
+    [activeRegisterBlocks]
+  );
   const totalCredit = paidOrders
     .filter(o => o.payment_method === 'online')
     .reduce((sum, o) => sum + Number(o.total || 0), 0);
-  const parseHourToMinutes = (raw) => {
-    const [h = '0', m = '0'] = String(raw || '').split(':');
-    return (Number(h) * 60) + Number(m);
-  };
-  const isSaleInConfiguredSchedule = (order) => {
-    const schedule = restaurantInfo?.schedule;
-    if (!schedule || typeof schedule !== 'object') return true;
-    const date = parseApiDate(order?.updated_at || order?.created_at);
-    if (!date) return true;
-    const dayMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const dayKey = dayMap[date.getDay()];
-    const aliases = {
-      sunday: ['sunday', 'domingo', 'dom'],
-      monday: ['monday', 'lunes', 'lun'],
-      tuesday: ['tuesday', 'martes', 'mar'],
-      wednesday: ['wednesday', 'miercoles', 'miércoles', 'mie', 'mié'],
-      thursday: ['thursday', 'jueves', 'jue'],
-      friday: ['friday', 'viernes', 'vie'],
-      saturday: ['saturday', 'sabado', 'sábado', 'sab', 'sáb'],
-    };
-    const cfg = (aliases[dayKey] || [])
-      .map(k => schedule[k])
-      .find(Boolean);
-    if (!cfg) return true;
-    if (cfg.enabled === false || Number(cfg.enabled) === 0) return false;
-    const openMinutes = parseHourToMinutes(cfg.open || '00:00');
-    const closeMinutes = parseHourToMinutes(cfg.close || '23:59');
-    const currentMinutes = (date.getHours() * 60) + date.getMinutes();
-    if (closeMinutes >= openMinutes) {
-      return currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
-    }
-    return currentMinutes >= openMinutes || currentMinutes <= closeMinutes;
-  };
-  const paidOrdersInSchedule = useMemo(
-    () => paidOrders.filter(isSaleInConfiguredSchedule),
-    [paidOrders, restaurantInfo]
-  );
-  const topSalesData = useMemo(() => {
+
+  const topDiasData = useMemo(() => {
+    const dailyTotals = new Map();
+    const from = String(startDate || '').trim();
+    const to = String(endDate || '').trim();
+
+    paidSalesAccountsInSchedule.forEach((account) => {
+      const parsed = parseApiDate(account.paidAt);
+      if (!parsed) return;
+      const dateKey = toInputDate(parsed);
+      if (from && dateKey < from) return;
+      if (to && dateKey > to) return;
+      dailyTotals.set(dateKey, (dailyTotals.get(dateKey) || 0) + Number(account.total || 0));
+    });
+
+    const weekdayTotals = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    dailyTotals.forEach((total, dateKey) => {
+      const parsed = new Date(`${dateKey}T12:00:00`);
+      if (Number.isNaN(parsed.getTime())) return;
+      weekdayTotals[parsed.getDay()] += total;
+    });
+
+    return WEEKDAY_CHART_META.map(({ dow, name, label }) => ({
+      dow,
+      name,
+      label,
+      value: weekdayTotals[dow] || 0,
+    }));
+  }, [paidSalesAccountsInSchedule, startDate, endDate, selectedCajaStationId, datePreset]);
+
+  const topMesasData = useMemo(() => {
     const grouped = {};
-    if (rankingMode === 'mesas') {
-      paidOrdersInSchedule.forEach((o) => {
-        const table = String(o.table_number || '').trim();
-        if (!table) return;
-        const key = `Mesa ${table}`;
-        if (!grouped[key]) grouped[key] = { name: key, value: 0, orders: 0 };
-        grouped[key].value += Number(o.total || 0);
-        grouped[key].orders += 1;
-      });
-    } else {
-      paidOrdersInSchedule.forEach((o) => {
-        const date = parseApiDate(o.updated_at || o.created_at);
-        if (!date) return;
-        const label = date.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
-        if (!grouped[label]) grouped[label] = { name: label, value: 0, orders: 0 };
-        grouped[label].value += Number(o.total || 0);
-        grouped[label].orders += 1;
-      });
-    }
+    const from = String(startDate || '').trim();
+    const to = String(endDate || '').trim();
+
+    paidSalesAccountsInSchedule.forEach((account) => {
+      const table = String(account.table || '').trim();
+      if (!table) return;
+      const parsed = parseApiDate(account.paidAt);
+      if (!parsed) return;
+      const dateKey = toInputDate(parsed);
+      if (from && dateKey < from) return;
+      if (to && dateKey > to) return;
+      if (!grouped[table]) {
+        grouped[table] = {
+          table,
+          name: `M${table}`,
+          label: `Mesa ${table}`,
+          value: 0,
+        };
+      }
+      grouped[table].value += Number(account.total || 0);
+    });
+
     return Object.values(grouped)
       .sort((a, b) => Number(b.value || 0) - Number(a.value || 0))
-      .slice(0, 6);
-  }, [rankingMode, paidOrdersInSchedule]);
+      .slice(0, 7);
+  }, [paidSalesAccountsInSchedule, startDate, endDate, selectedCajaStationId, datePreset]);
+
+  const topDiasHasSales = topDiasData.some((d) => Number(d.value || 0) > 0);
+  const topMesasHasSales = topMesasData.some((m) => Number(m.value || 0) > 0);
+  const topDiasYMax = useMemo(
+    () => (topDiasHasSales ? getChartYAxisMax(topDiasData.map((d) => d.value)) : 0),
+    [topDiasData, topDiasHasSales]
+  );
+  const topMesasYMax = useMemo(
+    () => (topMesasHasSales ? getChartYAxisMax(topMesasData.map((m) => m.value)) : 0),
+    [topMesasData, topMesasHasSales]
+  );
+  const topDiasYTicks = useMemo(() => getChartYAxisTicks(topDiasYMax), [topDiasYMax]);
+  const topMesasYTicks = useMemo(() => getChartYAxisTicks(topMesasYMax), [topMesasYMax]);
 
   const kitchenQueue = useMemo(
     () => orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForKitchenStation(o)).length,
@@ -395,14 +556,6 @@ export default function Escritorio() {
     () => orders.filter(o => o.type === 'dine_in' && ['pending', 'preparing', 'ready'].includes(o.status)).length,
     [orders]
   );
-  const activeKitchenOrders = useMemo(
-    () => orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForKitchenStation(o)),
-    [orders]
-  );
-  const activeBarOrders = useMemo(
-    () => orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForBarStation(o)),
-    [orders]
-  );
   const getQueueLevel = (value) => {
     if (value >= 10) return { label: 'Crítico', pill: 'bg-red-100 text-red-700', card: 'border-red-300 bg-red-50 ring-1 ring-red-300' };
     if (value >= 5) return { label: 'Alto', pill: 'bg-amber-100 text-amber-700', card: 'border-amber-300 bg-amber-50' };
@@ -410,13 +563,28 @@ export default function Escritorio() {
   };
 
   const dateRangeLabel = datePreset === 'total'
-    ? 'Total (desde inicio hasta hoy)'
+    ? 'Total · todos los cierres de caja'
     : `Del ${formatDateForLabel(startDate)} hasta ${formatDateForLabel(endDate)}`;
+  const dateRangeDisplay = datePreset === 'total'
+    ? 'Desde inicio – Hoy'
+    : `${formatDateForLabel(startDate)} – ${formatDateForLabel(endDate)}`;
   const applyMonthRange = () => {
     const monthRange = getCurrentMonthRange();
     setDatePreset('month');
     setStartDate(monthRange.start);
     setEndDate(monthRange.end);
+  };
+  const applyWeekRange = () => {
+    const weekRange = getCurrentWeekRange();
+    setDatePreset('week');
+    setStartDate(weekRange.start);
+    setEndDate(weekRange.end);
+  };
+  const applyTotalRange = () => {
+    const totalRange = getTotalRange();
+    setDatePreset('total');
+    setStartDate(totalRange.start);
+    setEndDate(totalRange.end);
   };
   const openNativeDatePicker = (inputRef) => {
     const input = inputRef?.current;
@@ -442,7 +610,7 @@ export default function Escritorio() {
 
   return (
     <div className="space-y-4">
-      <div id="monitoreo-vivo" className="card p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface)] scroll-mt-4">
+      <div id="monitoreo-vivo" className="card p-4 scroll-mt-4">
         <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
           <div className="flex items-center gap-2 min-w-0">
             <MdBolt className="text-xl text-[var(--ui-accent-muted)] shrink-0" />
@@ -494,15 +662,20 @@ export default function Escritorio() {
 
         {liveDash ? (
           <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">
-            <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2">
-              <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">
-                {liveDash.liveSales?.label || 'Ventas hoy'}
-              </p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => navigate('/admin/caja')}
+              className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-left hover:bg-sky-100 transition-colors"
+            >
+              <div className="flex items-center gap-1.5 text-sky-700 font-semibold text-xs">
+                <MdPointOfSale className="shrink-0" />
+                <span className="truncate">{liveDash.liveSales?.label || 'Caja'}</span>
+              </div>
+              <p className="text-lg font-bold text-sky-800 tabular-nums mt-1">
                 {formatCurrency(Number(liveDash.liveSales?.total ?? liveDash.today?.total ?? 0))}
               </p>
-              <p className="text-[11px] text-[var(--ui-muted)]">
+              <p className="text-[11px] text-sky-700">
                 {Number(liveDash.liveSales?.count ?? liveDash.today?.count ?? 0)} cobradas
                 {liveDash.liveSales?.subtitle ? ` · ${liveDash.liveSales.subtitle}` : ''}
                 {liveDash.registerOpen && liveDash.registerOpenSummary?.user_name
@@ -512,54 +685,89 @@ export default function Escritorio() {
               {liveDash.registerOpen &&
               liveDash.liveSales?.day_total != null &&
               Number(liveDash.liveSales.day_total) !== Number(liveDash.liveSales.total) ? (
-                <p className="text-[10px] text-[var(--ui-muted)] mt-0.5">
-                  Total del día: {formatCurrency(liveDash.liveSales.day_total)} ({liveDash.liveSales.day_count ?? 0} cobradas)
+                <p className="text-[10px] text-sky-600 mt-0.5">
+                  Día: {formatCurrency(liveDash.liveSales.day_total)} ({liveDash.liveSales.day_count ?? 0})
                 </p>
               ) : null}
               {liveDash.liveSales?.mode === 'register_closed' && !liveDash.registerOpen ? (
-                <p className="text-[10px] text-amber-600 mt-0.5">
-                  No hay turno activo ahora · cifra del último cierre de caja
-                </p>
+                <p className="text-[10px] text-amber-600 mt-0.5">Sin turno activo</p>
               ) : null}
               {liveDash.liveSales?.mode === 'venue_closed' && !liveDash.registerOpen ? (
-                <p className="text-[10px] text-[var(--ui-muted)] mt-0.5">
-                  Local fuera de horario · total cobrado hoy
-                </p>
+                <p className="text-[10px] text-sky-600 mt-0.5">Local fuera de horario</p>
               ) : null}
-            </div>
-            <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2">
-              <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">Pedidos activos</p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{Number(liveDash.activeOrders || 0)}</p>
-              <p className="text-[11px] text-[var(--ui-muted)]">Pendiente / prep. / listo</p>
-            </div>
+              <p className="text-[11px] font-medium text-sky-700 mt-0.5">Ir a Caja</p>
+            </button>
             <button
               type="button"
-              onClick={() => navigate('/admin/mesas')}
-              className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-left hover:bg-[var(--ui-sidebar-hover)] transition-colors"
+              onClick={() => navigate('/admin/cocina')}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors hover:opacity-95 ${getQueueLevel(kitchenQueue).card}`}
             >
-              <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">Mesas con cuenta</p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{Number(liveDash.tablesWithActiveOrders || 0)}</p>
-              <p className="text-[11px] font-medium ui-live-link-rose">Ir a Mesas</p>
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1.5 text-amber-700 font-semibold text-xs">
+                  <MdKitchen className="shrink-0" />
+                  Cocina
+                </div>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${getQueueLevel(kitchenQueue).pill}`}>
+                  {getQueueLevel(kitchenQueue).label}
+                </span>
+              </div>
+              <p className="text-lg font-bold text-amber-800 tabular-nums mt-1">{kitchenQueue}</p>
+              <p className="text-[11px] text-amber-700">Pedidos en cola</p>
+              <p className="text-[11px] font-medium ui-live-link-amber mt-0.5">Ir a Cocina</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/admin/bar')}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors hover:opacity-95 ${getQueueLevel(barQueue).card}`}
+            >
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1.5 text-indigo-700 font-semibold text-xs">
+                  <MdLocalBar className="shrink-0" />
+                  Bar
+                </div>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${getQueueLevel(barQueue).pill}`}>
+                  {getQueueLevel(barQueue).label}
+                </span>
+              </div>
+              <p className="text-lg font-bold text-indigo-800 tabular-nums mt-1">{barQueue}</p>
+              <p className="text-[11px] text-indigo-700">Pedidos en cola</p>
+              <p className="text-[11px] font-medium text-indigo-700 mt-0.5">Ir a Bar</p>
             </button>
             {deliveryModuleActive ? (
             <button
               type="button"
               onClick={() => navigate('/admin/delivery')}
-              className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-left hover:bg-[var(--ui-sidebar-hover)] transition-colors"
+              className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left hover:bg-emerald-100 transition-colors"
             >
-              <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">Delivery activo</p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{Number(liveDash.deliveryActiveCount || 0)}</p>
-              <p className="text-[11px] font-medium ui-live-link-emerald">Ir a Delivery</p>
+              <div className="flex items-center gap-1.5 text-emerald-700 font-semibold text-xs">
+                <MdDeliveryDining className="shrink-0" />
+                Delivery
+              </div>
+              <p className="text-lg font-bold text-emerald-800 tabular-nums mt-1">
+                {Number(liveDash.deliveryActiveCount || 0)}
+              </p>
+              <p className="text-[11px] text-emerald-700">
+                En curso · {deliveryReady} listos para repartir
+              </p>
+              <p className="text-[11px] font-medium ui-live-link-emerald mt-0.5">Ir a Delivery</p>
             </button>
             ) : null}
             <button
               type="button"
-              onClick={() => navigate('/admin/cocina')}
-              className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-left hover:bg-[var(--ui-sidebar-hover)] transition-colors"
+              onClick={() => navigate('/admin/mesas')}
+              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-left hover:bg-rose-100 transition-colors"
             >
-              <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">En preparación</p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{Number(liveDash.inKitchenCount || 0)}</p>
-              <p className="text-[11px] font-medium ui-live-link-amber">Ir a Cocina</p>
+              <div className="flex items-center gap-1.5 text-rose-700 font-semibold text-xs">
+                <MdTableBar className="shrink-0" />
+                Mesas
+              </div>
+              <p className="text-lg font-bold text-rose-800 tabular-nums mt-1">
+                {Number(liveDash.tablesWithActiveOrders || 0)}
+              </p>
+              <p className="text-[11px] text-rose-700">
+                Con cuenta · {salonActive} pedidos en salón
+              </p>
+              <p className="text-[11px] font-medium ui-live-link-rose mt-0.5">Ir a Mesas</p>
             </button>
             <button
               type="button"
@@ -567,15 +775,20 @@ export default function Escritorio() {
               className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-left hover:bg-[var(--ui-sidebar-hover)] transition-colors"
             >
               <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">Stock ≤ 10</p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{liveDash.lowStock?.length ?? 0}</p>
+              <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums mt-1">{liveDash.lowStock?.length ?? 0}</p>
               <p className="text-[11px] text-[var(--ui-muted)]">Inventario</p>
+              <p className="text-[11px] font-medium text-[var(--ui-accent-muted)] mt-0.5">Ir a Almacén</p>
             </button>
           </div>
           {liveDash.operationalSummary &&
           (liveDash.operationalSummary.pendingCount != null ||
             liveDash.operationalSummary.readyCount != null ||
-            liveDash.operationalSummary.staleReadyCount != null) ? (
+            liveDash.operationalSummary.staleReadyCount != null ||
+            liveDash.activeOrders != null) ? (
             <div className="flex flex-wrap gap-2 mb-3 text-[11px] text-[var(--ui-body-text)]">
+              <span className="rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-2 py-1 tabular-nums">
+                Activos: <strong>{Number(liveDash.activeOrders ?? 0)}</strong>
+              </span>
               <span className="rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-2 py-1 tabular-nums">
                 Pendientes: <strong>{Number(liveDash.operationalSummary.pendingCount ?? 0)}</strong>
               </span>
@@ -628,98 +841,65 @@ export default function Escritorio() {
         ) : null}
       </div>
 
-      <div className="card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-[var(--ui-body-text)]">Centro Operativo</h3>
-          <p className="text-xs text-[var(--ui-muted)]">Acceso rápido a módulos críticos</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => navigate('/admin/cocina')}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/admin/cocina'); }}
-            className={`text-left p-3 rounded-xl border transition-colors cursor-pointer ${getQueueLevel(kitchenQueue).card}`}
-          >
-            <div className="flex items-center gap-2 text-amber-700 font-semibold"><MdKitchen /> Cocina</div>
-            <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full ${getQueueLevel(kitchenQueue).pill}`}>{getQueueLevel(kitchenQueue).label}</span>
-            <p className="text-2xl font-bold text-amber-800 mt-1">{kitchenQueue}</p>
-            <p className="text-xs text-amber-700">Pedidos en cola</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div className="rounded-lg border border-[color:var(--ui-card-border)] bg-[var(--ui-surface)] px-3 py-2">
+          <label htmlFor="escritorio-caja-filter" className="flex items-center gap-2 text-xs text-[var(--ui-muted)] mb-1">
+            <MdPointOfSale className="shrink-0 text-[var(--ui-accent-muted)]" />
+            Caja
+          </label>
+          <div className="relative">
+            <select
+              id="escritorio-caja-filter"
+              value={selectedCajaStationId}
+              onChange={(e) => setSelectedCajaStationId(e.target.value)}
+              className="w-full appearance-none rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 pr-8 text-sm font-medium text-[var(--ui-body-text)] focus:outline-none focus:border-[var(--ui-accent-muted)]"
+            >
+              <option value="">Todas</option>
+              {cajaStations.map((station) => (
+                <option key={station.id} value={station.id}>
+                  {station.name}
+                </option>
+              ))}
+            </select>
+            <MdKeyboardArrowDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--ui-accent-muted)]" />
           </div>
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => navigate('/admin/bar')}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/admin/bar'); }}
-            className={`text-left p-3 rounded-xl border transition-colors cursor-pointer ${getQueueLevel(barQueue).card}`}
-          >
-            <div className="flex items-center gap-2 text-indigo-700 font-semibold"><MdLocalBar /> Bar</div>
-            <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full ${getQueueLevel(barQueue).pill}`}>{getQueueLevel(barQueue).label}</span>
-            <p className="text-2xl font-bold text-indigo-800 mt-1">{barQueue}</p>
-            <p className="text-xs text-indigo-700">Pedidos en cola</p>
-          </div>
-          {deliveryModuleActive ? (
-          <button onClick={() => navigate('/admin/delivery')} className="text-left p-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 transition-colors">
-            <div className="flex items-center gap-2 text-emerald-700 font-semibold"><MdDeliveryDining /> Delivery</div>
-            <p className="text-2xl font-bold text-emerald-800 mt-1">{deliveryReady}</p>
-            <p className="text-xs text-emerald-700">Pedidos listos para repartir</p>
-          </button>
-          ) : null}
-          <button onClick={() => navigate('/admin/mesas')} className="text-left p-3 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-colors">
-            <div className="flex items-center gap-2 text-rose-700 font-semibold"><MdTableBar /> Mesas</div>
-            <p className="text-2xl font-bold text-rose-800 mt-1">{salonActive}</p>
-            <p className="text-xs text-rose-700">Pedidos activos en salón</p>
-          </button>
-          <button onClick={() => navigate('/admin/caja')} className="text-left p-3 rounded-xl border border-sky-200 bg-sky-50 hover:bg-sky-100 transition-colors">
-            <div className="flex items-center gap-2 text-sky-700 font-semibold"><MdPointOfSale /> Caja</div>
-            <p className="text-2xl font-bold text-sky-800 mt-1">
-              {liveDash?.liveSales?.register_open
-                ? Number(liveDash.liveSales.count ?? 0)
-                : paidOrdersToday.length}
-            </p>
-            <p className="text-xs text-sky-700">
-              {liveDash?.liveSales?.register_open
-                ? `Turno abierto · ${formatCurrency(Number(liveDash.liveSales.total ?? 0))}`
-                : `Cobradas hoy · ${formatCurrency(paidOrdersTodayTotal)}`}
-            </p>
-            {datePreset !== 'total' && paidOrders.length !== paidOrdersToday.length ? (
-              <p className="text-[10px] text-sky-600 mt-0.5">
-                En el período: {paidOrders.length} · {formatCurrency(totalSales)}
-              </p>
+          <p className="text-[11px] text-[var(--ui-muted)] mt-1.5">
+            Ventas según cierres de caja · {selectedCajaLabel}
+            {activeRegisterBlocks.length > 0 ? (
+              <span> · {activeRegisterBlocks.length} turno{activeRegisterBlocks.length === 1 ? '' : 's'}</span>
             ) : null}
-          </button>
+          </p>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
-        <button
-          type="button"
-          className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-left flex items-center justify-between text-sm text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
-        >
-          Cantidad de ventas <MdKeyboardArrowDown className="text-[var(--ui-accent-muted)] shrink-0" />
-        </button>
-        <button
-          type="button"
-          className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-left flex items-center justify-between text-sm text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
-        >
-          Caja: Caja 01 <MdKeyboardArrowDown className="text-[var(--ui-accent-muted)] shrink-0" />
-        </button>
-        <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-left text-sm flex flex-col gap-2">
+        <div className="rounded-lg border border-[color:var(--ui-card-border)] bg-[var(--ui-surface)] px-3 py-2 text-left text-sm flex flex-col gap-2">
           <div className="grid grid-cols-12 gap-2">
             <button
               type="button"
               onClick={startRangeSelection}
-              className="col-span-7 rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5 text-left hover:border-[var(--ui-accent-muted)] transition-colors"
+              className="col-span-6 rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5 text-left hover:border-[var(--ui-accent-muted)] transition-colors min-w-0"
             >
               <div className="flex items-center gap-2 text-[var(--ui-muted)] text-xs">
                 <MdDateRange className="shrink-0 text-[var(--ui-accent-muted)]" />
-                <span>{datePickStep === 'end' ? 'Selecciona FIN' : 'Selecciona INICIO'}</span>
+                <span className="truncate">{datePickStep === 'end' ? 'Selecciona FIN' : 'Selecciona INICIO'}</span>
                 <MdKeyboardArrowDown className="ml-auto shrink-0 text-[var(--ui-accent-muted)]" />
               </div>
-              <div className="mt-0.5 leading-snug text-[13px] font-medium text-[var(--ui-body-text)]">
-                <div>{formatDateForLabel(startDate)}</div>
-                <div>{datePreset === 'total' ? 'Hoy' : formatDateForLabel(endDate)}</div>
-              </div>
+              <p className="mt-0.5 text-[13px] font-medium text-[var(--ui-body-text)] whitespace-nowrap truncate tabular-nums">
+                {dateRangeDisplay}
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                applyWeekRange();
+                setDatePickStep('idle');
+              }}
+              className={`col-span-2 rounded-md border px-2 py-1.5 text-xs font-semibold transition-colors ${
+                datePreset === 'week'
+                  ? 'bg-[var(--ui-accent)] border-[var(--ui-accent)] text-white'
+                  : 'bg-[var(--ui-surface-2)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:border-[var(--ui-accent-muted)]'
+              }`}
+            >
+              Semana
             </button>
             <button
               type="button"
@@ -738,21 +918,22 @@ export default function Escritorio() {
             <button
               type="button"
               onClick={() => {
-                setDatePreset('total');
+                applyTotalRange();
                 setDatePickStep('idle');
               }}
-              className={`col-span-3 rounded-md border px-2 py-1.5 text-xs font-semibold transition-colors ${
+              className={`col-span-2 rounded-md border px-2 py-1.5 text-xs font-semibold transition-colors ${
                 datePreset === 'total'
                   ? 'bg-[var(--ui-accent)] border-[var(--ui-accent)] text-white'
                   : 'bg-[var(--ui-surface-2)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:border-[var(--ui-accent-muted)]'
               }`}
             >
-              Todo
+              Todos
             </button>
             <input
               ref={startDateInputRef}
               type="date"
               value={startDate}
+              max={endDate || undefined}
               onChange={(e) => {
                 setDatePreset('custom');
                 setStartDate(e.target.value);
@@ -766,6 +947,7 @@ export default function Escritorio() {
               ref={endDateInputRef}
               type="date"
               value={endDate}
+              min={startDate || undefined}
               onChange={(e) => {
                 setDatePreset('custom');
                 setEndDate(e.target.value);
@@ -776,15 +958,21 @@ export default function Escritorio() {
               aria-hidden="true"
             />
           </div>
+          <p className="text-[11px] text-[var(--ui-muted)]">
+            {dateRangeLabel}
+            {registerReportLoading ? ' · actualizando…' : null}
+          </p>
         </div>
-        <button
-          type="button"
-          className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-left flex items-center justify-between text-sm text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
-        >
-          Local: Principal <MdKeyboardArrowDown className="text-[var(--ui-accent-muted)] shrink-0" />
-        </button>
       </div>
 
+      {registerReportLoading ? (
+        <div className="flex items-center justify-center gap-2 py-6 text-sm text-[var(--ui-muted)]">
+          <div className="animate-spin w-5 h-5 border-2 border-[var(--ui-accent)] border-t-transparent rounded-full" />
+          Cargando ventas por cierres de caja…
+        </div>
+      ) : null}
+
+      <div className={registerReportLoading ? 'space-y-4 opacity-60 pointer-events-none' : 'space-y-4'}>
       <div className="card p-4">
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <div className="xl:col-span-2 min-w-0 self-start overflow-visible">
@@ -833,85 +1021,161 @@ export default function Escritorio() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <div className="xl:col-span-8 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          <div>
-            <p className="text-sm text-[var(--ui-muted)]">Ventas en efectivo (periodo)</p>
-            <p className="text-4xl font-light text-[var(--ui-body-text)]">{formatCurrency(salesByPayment.efectivo)}</p>
-          </div>
-          <div>
-            <p className="text-sm text-[var(--ui-muted)]">Ventas con tarjeta (periodo)</p>
-            <p className="text-4xl font-light text-[var(--ui-body-text)]">{formatCurrency(salesByPayment.tarjeta)}</p>
-          </div>
-          <div>
-            <p className="text-sm text-[var(--ui-muted)]">Ventas por Yape/Plin (periodo)</p>
-            <p className="text-4xl font-light text-[var(--ui-body-text)]">{formatCurrency((salesByPayment.yape || 0) + (salesByPayment.plin || 0))}</p>
-          </div>
-          <div>
-            <p className="text-sm text-[var(--ui-muted)]">Total de Ventas (periodo)</p>
-            <p className="text-4xl font-light text-[var(--ui-body-text)]">{formatCurrency(totalSales)}</p>
-          </div>
-
-          <div>
-            <p className="text-sm text-[var(--ui-muted)]">Ventas al crédito</p>
-            <p className="text-4xl font-light text-[var(--ui-body-text)]">{formatCurrency(totalCredit)}</p>
-          </div>
-          <div>
-            <p className="text-sm text-[var(--ui-muted)]">Total de egresos de caja</p>
-            <p className="text-4xl font-light text-[var(--ui-body-text)]">S/ 0.00</p>
-          </div>
-          <div>
-            <p className="text-sm text-[var(--ui-muted)]">Total de descuentos</p>
-            <p className="text-4xl font-light text-[var(--ui-body-text)]">{formatCurrency(totalDiscounts)}</p>
-          </div>
-          <div>
-            <p className="text-sm text-[var(--ui-muted)]">Total de Ingreso Débito</p>
-            <p className="text-4xl font-light text-[var(--ui-body-text)]">S/ 0.00</p>
-          </div>
+        <div className="xl:col-span-8 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          {[
+            { label: 'Ventas en efectivo', amount: salesByPayment.efectivo, currency: true },
+            { label: 'Ventas con tarjeta', amount: salesByPayment.tarjeta, currency: true },
+            { label: 'Ventas por Yape/Plin', amount: (salesByPayment.yape || 0) + (salesByPayment.plin || 0), currency: true },
+            { label: 'Total de ventas', amount: totalSales, currency: true },
+            { label: 'Egresos de caja', amount: totalCashExpenses, currency: true },
+            { label: 'Total de descuentos', amount: totalDiscounts, currency: true },
+            { label: 'Ventas al crédito', amount: totalCredit, currency: true },
+            { label: 'Cobro de débito', amount: totalDebitIncome, currency: true },
+            { label: 'Clientes', amount: paidAccountsCount, currency: false },
+            { label: 'Promedio de venta', amount: averageSaleAmount, currency: true },
+            { label: 'Productos vendidos', amount: productsSoldCount, currency: false },
+            { label: 'Cortesías', amount: courtesyCount, currency: false },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="rounded-xl border border-[color:var(--ui-card-border)] bg-[color-mix(in_srgb,var(--ui-accent-muted)_10%,var(--ui-surface))] shadow-sm overflow-hidden"
+            >
+              <p className="text-xs sm:text-sm font-medium text-[var(--ui-body-text)] px-3 py-2 bg-[color-mix(in_srgb,var(--ui-accent-muted)_18%,var(--ui-surface))] border-b border-[color:var(--ui-card-border)]">
+                {item.label}
+              </p>
+              <div className="px-3 py-2.5">
+                {item.currency ? (
+                  <p className="text-xl sm:text-2xl font-light tabular-nums text-[var(--ui-body-text)] flex items-baseline gap-1 whitespace-nowrap leading-none">
+                    <span className="text-sm sm:text-base font-normal text-[var(--ui-accent-muted)]">S/</span>
+                    <span>{Number(item.amount || 0).toFixed(2)}</span>
+                  </p>
+                ) : (
+                  <p className="text-xl sm:text-2xl font-light tabular-nums text-[var(--ui-body-text)] leading-none">
+                    {Number(item.amount || 0)}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
 
-        <div className="xl:col-span-4 card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xl font-light text-[var(--ui-body-text)]">
-              {rankingMode === 'dias' ? 'Top días con más ventas' : 'Top mesas que más venden'}
-            </h3>
-            <div className="inline-flex rounded-lg border border-[color:var(--ui-border)] overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setRankingMode('dias')}
-                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  rankingMode === 'dias' ? 'bg-[var(--ui-accent)] text-white' : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-                }`}
-              >
-                Días
-              </button>
-              <button
-                type="button"
-                onClick={() => setRankingMode('mesas')}
-                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  rankingMode === 'mesas' ? 'bg-[var(--ui-accent)] text-white' : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-                }`}
-              >
-                Mesas
-              </button>
-            </div>
+        <div className="xl:col-span-4 space-y-4">
+        <div className="card p-4">
+          <div className="inline-flex w-full rounded-lg border border-[color:var(--ui-border)] overflow-hidden mb-3">
+            <button
+              type="button"
+              onClick={() => setRankingMode('dias')}
+              className={`flex-1 px-3 py-2 text-sm font-semibold transition-colors ${
+                rankingMode === 'dias' ? 'bg-[var(--ui-accent)] text-white' : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+              }`}
+            >
+              Top días
+            </button>
+            <button
+              type="button"
+              onClick={() => setRankingMode('mesas')}
+              className={`flex-1 px-3 py-2 text-sm font-semibold transition-colors border-l border-[color:var(--ui-border)] ${
+                rankingMode === 'mesas' ? 'bg-[var(--ui-accent)] text-white' : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+              }`}
+            >
+              Top mesas
+            </button>
           </div>
-          {topSalesData.length > 0 ? (
-            <>
+          {rankingMode === 'dias' ? (
+            <div className="relative h-[220px]">
+              {topDiasHasSales ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={topDiasData} margin={{ top: 8, right: 8, left: 4, bottom: 0 }} barCategoryGap="18%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--ui-border)" strokeOpacity={0.55} />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} interval={0} />
+                    <YAxis
+                      domain={[0, topDiasYMax]}
+                      ticks={topDiasYTicks}
+                      allowDecimals={false}
+                      tick={{ fontSize: 10, fill: 'var(--ui-muted)' }}
+                      width={52}
+                      tickFormatter={formatChartYAxisTick}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'color-mix(in srgb, var(--ui-accent-muted) 12%, transparent)' }}
+                      formatter={(v) => [formatCurrency(v), 'Total vendido']}
+                      labelFormatter={(_label, payload) => payload?.[0]?.payload?.label || _label}
+                      contentStyle={{
+                        background: 'var(--ui-surface-2)',
+                        border: '1px solid var(--ui-border)',
+                        borderRadius: '8px',
+                        color: 'var(--ui-body-text)',
+                      }}
+                    />
+                    <Bar dataKey="value" fill="#f59e0b" radius={[6, 6, 0, 0]} maxBarSize={48} name="Ventas" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="absolute inset-0 flex items-center justify-center text-xs text-[var(--ui-muted)] px-4 text-center">
+                  Sin ventas en el periodo por día de la semana.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="relative h-[220px]">
+              {topMesasHasSales ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={topMesasData} margin={{ top: 8, right: 8, left: 4, bottom: 0 }} barCategoryGap="18%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--ui-border)" strokeOpacity={0.55} />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} interval={0} />
+                    <YAxis
+                      domain={[0, topMesasYMax]}
+                      ticks={topMesasYTicks}
+                      allowDecimals={false}
+                      tick={{ fontSize: 10, fill: 'var(--ui-muted)' }}
+                      width={52}
+                      tickFormatter={formatChartYAxisTick}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'color-mix(in srgb, var(--ui-accent-muted) 12%, transparent)' }}
+                      formatter={(v) => [formatCurrency(v), 'Total vendido']}
+                      labelFormatter={(_label, payload) => payload?.[0]?.payload?.label || _label}
+                      contentStyle={{
+                        background: 'var(--ui-surface-2)',
+                        border: '1px solid var(--ui-border)',
+                        borderRadius: '8px',
+                        color: 'var(--ui-body-text)',
+                      }}
+                    />
+                    <Bar dataKey="value" fill="var(--ui-accent-muted)" radius={[6, 6, 0, 0]} maxBarSize={48} name="Ventas" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="absolute inset-0 flex items-center justify-center text-xs text-[var(--ui-muted)] px-4 text-center">
+                  Sin ventas por mesa en el periodo seleccionado.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="card p-4">
+          <p className="text-sm font-semibold text-[var(--ui-body-text)] mb-3">Métodos de pago</p>
+          <div className="relative h-[220px]">
+            {paymentPieData.length > 0 ? (
               <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
+                <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
                   <Pie
-                    data={topSalesData}
+                    data={paymentPieData}
                     dataKey="value"
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={78}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    innerRadius="52%"
+                    outerRadius="78%"
+                    paddingAngle={2}
+                    label={false}
                   >
-                    {topSalesData.map((_, idx) => <Cell key={`rank-${idx}`} fill={CHART_COLORS[idx % CHART_COLORS.length]} />)}
+                    {paymentPieData.map((row, i) => (
+                      <Cell key={row.key} fill={PAYMENT_COLORS[i % PAYMENT_COLORS.length]} stroke="var(--ui-border)" />
+                    ))}
                   </Pie>
                   <Tooltip
-                    formatter={(v) => formatCurrency(v)}
+                    formatter={(v, name) => [formatCurrency(v), name]}
                     contentStyle={{
                       background: 'var(--ui-surface-2)',
                       border: '1px solid var(--ui-border)',
@@ -921,111 +1185,11 @@ export default function Escritorio() {
                   />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="grid grid-cols-1 gap-1 mt-2">
-                {topSalesData.map((item, idx) => (
-                  <div key={`${item.name}-${idx}`} className="flex items-center justify-between text-xs border-b border-[color:var(--ui-border)] py-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[idx % CHART_COLORS.length] }} />
-                      <span className="text-[var(--ui-body-text)] truncate">{item.name}</span>
-                    </div>
-                    <span className="font-semibold text-[var(--ui-body-text)]">{formatCurrency(item.value)}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="h-[220px] flex items-center justify-center text-sm text-[var(--ui-muted)]">
-              Sin ventas en el rango y horario seleccionado.
-            </div>
-          )}
+            ) : null}
+          </div>
+        </div>
         </div>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-        <div className="card p-4">
-          <div className="border-b border-[color:var(--ui-border)] pb-3 mb-3">
-            <p className="text-sm text-[var(--ui-muted)]">Total de ventas por mesa</p>
-            <p className="text-2xl font-light text-[var(--ui-body-text)]">{totalVentasPorMesa}</p>
-            <p className="text-xs text-[var(--ui-muted)] mt-1">
-              Una mesa con pedidos en el periodo = 1 venta (solo cuentan pedidos con mesa asignada).
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-[var(--ui-muted)]">Total de ventas por producto</p>
-            <p className="text-2xl font-light text-[var(--ui-body-text)]">{totalVentasPorProducto}</p>
-            <p className="text-xs text-[var(--ui-muted)] mt-1">
-              Productos distintos con al menos una línea en pedidos <strong className="text-[var(--ui-body-text)]">cobrados</strong> en el
-              periodo.
-            </p>
-          </div>
-          <p className="text-xs text-[var(--ui-muted)] mt-3 pt-3 border-t border-[color:var(--ui-border)]">
-            Pedidos — Cobradas: <strong className="text-[var(--ui-body-text)]">{paidOrdersCount}</strong> · Pendientes:{' '}
-            <strong className="text-[var(--ui-body-text)]">{pendingPaymentCount}</strong> · Canceladas:{' '}
-            <strong className="text-[var(--ui-body-text)]">{cancelledOrdersCount}</strong>
-          </p>
-        </div>
-        <div className="card p-4">
-          <p className="text-sm text-[var(--ui-muted)]">Promedio de consumo por venta (mesa)</p>
-          <p className="text-2xl font-light text-[var(--ui-body-text)]">
-            {formatCurrency(totalVentasMesas ? totalSales / totalVentasMesas : 0)}
-          </p>
-        </div>
-        <div className="card p-4">
-          <p className="text-sm text-[var(--ui-muted)]">Clientes</p>
-          <p className="text-2xl font-light text-[var(--ui-body-text)]">{scopedOrders.length}</p>
-        </div>
-        <div className="card p-4">
-          <p className="text-sm text-[var(--ui-muted)]">Por tipo de pago (monto)</p>
-          {pagoMasUsado && (
-            <p className="text-xs text-amber-700 mb-2 text-center">
-              Más usado: <span className="font-semibold">{pagoMasUsado.label}</span> ({pagoMasUsado.operaciones}{' '}
-              {pagoMasUsado.operaciones === 1 ? 'cobro' : 'cobros'} · {pagoMasUsado.porcentajeMonto.toFixed(0)}% del
-              monto)
-            </p>
-          )}
-          {paymentPieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={168}>
-              <PieChart>
-                <Pie
-                  data={paymentPieData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={28}
-                  outerRadius={52}
-                  paddingAngle={2}
-                  label={({ name, percent }) => (percent > 0.06 ? `${name} ${(percent * 100).toFixed(0)}%` : '')}
-                >
-                  {paymentPieData.map((row, i) => (
-                    <Cell key={row.key} fill={PAYMENT_COLORS[i % PAYMENT_COLORS.length]} stroke="var(--ui-border)" />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(v) => formatCurrency(v)}
-                  contentStyle={{
-                    background: 'var(--ui-surface-2)',
-                    border: '1px solid var(--ui-border)',
-                    borderRadius: '8px',
-                    color: 'var(--ui-body-text)',
-                  }}
-                />
-                <Legend
-                  layout="vertical"
-                  align="right"
-                  verticalAlign="middle"
-                  wrapperStyle={{ color: 'var(--ui-body-text)' }}
-                  formatter={(value, entry) => {
-                    const v = entry?.payload?.value;
-                    return `${value}: ${formatCurrency(v)}`;
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-xs text-[var(--ui-muted)] text-center py-6">Sin cobros en el periodo</p>
-          )}
-        </div>
       </div>
     </div>
   );

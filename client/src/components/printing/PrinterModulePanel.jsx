@@ -2,6 +2,7 @@ import { MdPrint, MdSave } from 'react-icons/md';
 import { hasElectronPrinting } from '../../utils/api';
 import { PRINTING_MODULE_LABELS } from '../../utils/printingConfig';
 import { usePrintingModule } from '../../hooks/usePrintingModule';
+import PrintingAssistantDownloadButton from './PrintingAssistantDownloadButton';
 
 /**
  * Panel unificado de configuración de impresora para caja, cocina o bar.
@@ -66,9 +67,12 @@ export default function PrinterModulePanel({
                 {linkStatus.source}{linkStatus.detail ? ` · ${linkStatus.detail}` : ''}
               </p>
             </div>
-            <button type="button" className="btn-secondary text-sm" onClick={() => void handleRefresh()} disabled={busy || linkStatus.checking}>
-              Verificar vínculo
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="btn-secondary text-sm" onClick={() => void handleRefresh()} disabled={busy || linkStatus.checking}>
+                Verificar vínculo
+              </button>
+              <PrintingAssistantDownloadButton disabled={busy} />
+            </div>
           </div>
           {printerStatus.status ? (
             <p className={`text-xs ${printerStatus.connected ? 'text-emerald-600' : 'text-[var(--ui-muted)]'}`}>
@@ -82,6 +86,7 @@ export default function PrinterModulePanel({
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-sm text-amber-800">
             La detección USB y la impresión térmica requieren la aplicación de escritorio Resto FADEY abierta en esta PC.
+            Use el botón «Descargar asistente de impresión» arriba para instalarla en esta máquina.
           </p>
         </div>
       )}

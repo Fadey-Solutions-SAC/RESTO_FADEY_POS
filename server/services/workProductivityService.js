@@ -7,6 +7,14 @@ const { queryAll, queryOne } = require('../database');
 const { FINANCIAL_FILTER_SQL } = require('../businessRules');
 const { STAFF_IDLE_LOGOUT_MINUTES } = require('../constants/staffSessionPolicy');
 const {
+  getPaidSalesEventSql,
+  queryPaidSalesOrders,
+  groupPaidOrdersBySalesAccount,
+  countSalesAccounts,
+  sumSalesAccountsByHour,
+  metricsFromPaidOrdersWhere,
+} = require('../utils/salesAccountGrouping');
+const {
   rawWorkedMinutesExpr,
   effectiveWorkedMinutesExpr,
   parseDateKey,
@@ -121,11 +129,7 @@ function buildLiveDashboard() {
     [today]
   );
 
-  const salesToday = queryOne(
-    `SELECT COUNT(*) AS orders_paid, COALESCE(SUM(total), 0) AS sales_total
-     FROM orders o WHERE ${FIN}
-       AND date(datetime(COALESCE(o.updated_at, o.created_at), 'localtime')) = date('now', 'localtime')`
-  );
+  const salesToday = metricsFromPaidOrdersWhere(`${getPaidSalesEventSql().ORDER_DATE} = date('now', 'localtime')`);
 
   const inKitchen = queryOne(`SELECT COUNT(*) AS c FROM orders WHERE status = 'preparing'`);
   const deliveryActive = queryOne(
@@ -141,8 +145,8 @@ function buildLiveDashboard() {
     today: {
       sessions: Number(todayStats?.sessions_today || 0),
       worked_minutes: Number(todayStats?.minutes_today || 0),
-      orders_paid: Number(salesToday?.orders_paid || 0),
-      sales_total: Number(salesToday?.sales_total || 0),
+      orders_paid: Number(salesToday.orders || 0),
+      sales_total: Number(salesToday.sales || 0),
     },
     operations: {
       kitchen_preparing: Number(inKitchen?.c || 0),
@@ -150,6 +154,30 @@ function buildLiveDashboard() {
       staff_online: activeStaff?.length || 0,
     },
   };
+}
+
+function buildPaidAccountsByUser(from, to, userId) {
+  const ps = getPaidSalesEventSql();
+  const params = [];
+  const parts = [];
+  if (from) {
+    parts.push(`${ps.ORDER_DATE} >= date(?)`);
+    params.push(from);
+  }
+  if (to) {
+    parts.push(`${ps.ORDER_DATE} <= date(?)`);
+    params.push(to);
+  }
+  const paidOrders = queryPaidSalesOrders(parts.length ? parts.join(' AND ') : '1=1', params);
+  const map = new Map();
+  for (const group of groupPaidOrdersBySalesAccount(paidOrders)) {
+    const sorted = [...group].sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    const uid = String(sorted[0]?.created_by_user_id || '').trim();
+    if (!uid) continue;
+    if (userId && userId !== 'all' && uid !== userId) continue;
+    map.set(uid, (map.get(uid) || 0) + 1);
+  }
+  return map;
 }
 
 function buildProductivityByUser(from, to, userId) {
@@ -199,6 +227,7 @@ function buildProductivityByUser(from, to, userId) {
     opParams
   );
   const orderMap = Object.fromEntries((orderStats || []).map((r) => [r.user_id, r]));
+  const paidAccountsByUser = buildPaidAccountsByUser(from, to, userId);
 
   const delParams = [];
   const delDate = [];
@@ -229,14 +258,15 @@ function buildProductivityByUser(from, to, userId) {
     const op = orderMap[r.user_id] || {};
     const del = delMap[r.user_id] || {};
     const hours = Math.max(0.25, Number(r.worked_minutes || 0) / 60);
+    const paidCount = Number(paidAccountsByUser.get(r.user_id) || 0);
     const productivityScore =
-      Number(op.orders_paid || 0) * 10 +
+      paidCount * 10 +
       Number(del.deliveries || 0) * 8 +
       Number(op.sales_total || 0) / 50;
     return {
       ...r,
       orders_created: Number(op.orders_created || 0),
-      orders_paid: Number(op.orders_paid || 0),
+      orders_paid: Number(paidAccountsByUser.get(r.user_id) || 0),
       sales_total: Number(op.sales_total || 0),
       avg_order_minutes: Math.round(Number(op.avg_order_minutes || 0)),
       deliveries: Number(del.deliveries || 0),
@@ -251,11 +281,26 @@ function buildAreaMetrics(from, to) {
   const op = [];
   const od = orderDateWhere(from, to, op);
 
+  const ps = getPaidSalesEventSql();
+  const paidParams = [];
+  const paidParts = [];
+  if (from) {
+    paidParts.push(`${ps.ORDER_DATE} >= date(?)`);
+    paidParams.push(from);
+  }
+  if (to) {
+    paidParts.push(`${ps.ORDER_DATE} <= date(?)`);
+    paidParams.push(to);
+  }
+  const ticketsPaid = countSalesAccounts(queryPaidSalesOrders(
+    paidParts.length ? paidParts.join(' AND ') : '1=1',
+    paidParams,
+  ));
+
   const caja = queryOne(
     `SELECT
       COUNT(DISTINCT cr.id) AS register_sessions,
       COALESCE(SUM(CASE WHEN ${FIN} THEN o.total ELSE 0 END), 0) AS sales_total,
-      COUNT(CASE WHEN ${FIN} THEN 1 END) AS tickets_paid,
       AVG(CASE WHEN ${FIN} THEN (julianday(COALESCE(o.updated_at, o.created_at)) - julianday(o.created_at)) * 24 * 60 END) AS avg_checkout_minutes
      FROM orders o
      LEFT JOIN cash_registers cr ON cr.user_id = o.created_by_user_id
@@ -313,7 +358,7 @@ function buildAreaMetrics(from, to) {
     caja: {
       register_sessions: Number(caja?.register_sessions || 0),
       sales_total: Number(caja?.sales_total || 0),
-      tickets_paid: Number(caja?.tickets_paid || 0),
+      tickets_paid: ticketsPaid,
       avg_checkout_minutes: Math.round(Number(caja?.avg_checkout_minutes || 0)),
     },
     cocina: {
@@ -350,7 +395,7 @@ function buildRankings(from, to) {
 
   return {
     best_seller: pickTop(productivity, 'sales_total', 'Mejor ventas (S/)'),
-    most_orders: pickTop(productivity, 'orders_paid', 'Más pedidos cobrados'),
+    most_orders: pickTop(productivity, 'orders_paid', 'Más cuentas cobradas'),
     most_productive: pickTop(productivity, 'productivity_per_hour', 'Mayor productividad/hora'),
     fastest_service: pickMin(productivity, 'avg_order_minutes', 'Atención más rápida', (x) => ['cajero', 'mozo', 'admin'].includes(x.role)),
     best_delivery: pickMin(
@@ -491,18 +536,25 @@ function buildInsights(from, to) {
   }
 
   const peakParams = [];
-  const peakOd = orderDateWhere(from, to, peakParams);
-  const peak = queryOne(
-    `SELECT strftime('%H', datetime(COALESCE(o.updated_at, o.created_at), 'localtime')) AS hour,
-            COUNT(*) AS orders
-     FROM orders o WHERE ${FIN} AND ${peakOd}
-     GROUP BY hour ORDER BY orders DESC LIMIT 1`,
-    peakParams
-  );
+  const ps = getPaidSalesEventSql();
+  const peakParts = [];
+  if (from) {
+    peakParts.push(`${ps.ORDER_DATE} >= date(?)`);
+    peakParams.push(from);
+  }
+  if (to) {
+    peakParts.push(`${ps.ORDER_DATE} <= date(?)`);
+    peakParams.push(to);
+  }
+  const peakOrders = queryPaidSalesOrders(peakParts.length ? peakParts.join(' AND ') : '1=1', peakParams);
+  const peakMap = sumSalesAccountsByHour(peakOrders);
+  const peak = Object.entries(peakMap)
+    .map(([hour, data]) => ({ hour, orders: data.accounts }))
+    .sort((a, b) => b.orders - a.orders)[0];
   if (peak?.hour != null) {
     insights.push({
       priority: 'info',
-      message: `Hora pico operativa: ${peak.hour}:00 con ${peak.orders} pedido(s) cobrados.`,
+      message: `Hora pico operativa: ${peak.hour}:00 con ${peak.orders} cuenta(s) cobrada(s).`,
     });
   }
 

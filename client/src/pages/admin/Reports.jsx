@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { api, formatCurrency, formatDateTime, resolveMediaUrl } from '../../utils/api';
+import { api, formatCurrency, formatDate, formatDateTime, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import {
@@ -26,6 +26,7 @@ import {
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
 import toast from 'react-hot-toast';
+import { summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
 
 const FINANCE_LOSS_LABELS = {
   salida_efectivo: 'Salida de efectivo',
@@ -105,7 +106,7 @@ function buildProductSalesTxt(report, title = 'INFORME DE PRODUCTOS') {
 
 function buildProductSalesCsv(report) {
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['Producto', 'Cantidad', 'Precio unit.', 'Total', 'Pedidos']];
+  const rows = [['Producto', 'Cantidad', 'Precio unit.', 'Total', 'Cuentas']];
   (report?.sold_products || []).forEach((row) => {
     rows.push([
       row.product_name,
@@ -149,7 +150,7 @@ function ProductSalesTable({ products, showOrders = false, emptyMessage = 'No ha
             <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Precio U</th>
             <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Precio total</th>
             {showOrders ? (
-              <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Pedidos</th>
+              <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Cuentas</th>
             ) : null}
           </tr>
         </thead>
@@ -494,10 +495,47 @@ function FinanceBusinessIntelPanel({ overview }) {
   );
 }
 
+function localTodayYmd() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+}
+
+function localMonthYm() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatMonthLabel(ym) {
+  if (!ym) return '';
+  const [y, m] = String(ym).split('-');
+  const d = new Date(Number(y), Number(m) - 1, 1);
+  if (Number.isNaN(d.getTime())) return ym;
+  return d.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' });
+}
+
+function openNativeDatePicker(inputEl) {
+  if (!inputEl) return;
+  if (typeof inputEl.showPicker === 'function') {
+    try {
+      inputEl.showPicker();
+      return;
+    } catch (_) {
+      // fallback below
+    }
+  }
+  inputEl.click();
+}
+
 export default function Reports() {
   const [searchParams] = useSearchParams();
   const [reportSection, setReportSection] = useState('ventas');
   const [tab, setTab] = useState('daily');
+  const [salesDailyDate, setSalesDailyDate] = useState(localTodayYmd);
+  const [salesMonth, setSalesMonth] = useState(localMonthYm);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const dailyDateInputRef = useRef(null);
+  const monthInputRef = useRef(null);
   const [dailyData, setDailyData] = useState(null);
   const [monthlyData, setMonthlyData] = useState(null);
   const [ranking, setRanking] = useState([]);
@@ -552,8 +590,23 @@ export default function Reports() {
     occurred_at: '',
   });
 
-  const loadDaily = () => api.get('/reports/daily').then(setDailyData).catch(console.error);
-  const loadMonthly = () => api.get('/reports/monthly').then(setMonthlyData).catch(console.error);
+  const loadDaily = useCallback((date = salesDailyDate) => {
+    setDailyLoading(true);
+    const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+    return api.get(`/reports/daily${qs}`)
+      .then(setDailyData)
+      .catch(console.error)
+      .finally(() => setDailyLoading(false));
+  }, [salesDailyDate]);
+
+  const loadMonthly = useCallback((month = salesMonth) => {
+    setMonthlyLoading(true);
+    const qs = month ? `?month=${encodeURIComponent(month)}` : '';
+    return api.get(`/reports/monthly${qs}`)
+      .then(setMonthlyData)
+      .catch(console.error)
+      .finally(() => setMonthlyLoading(false));
+  }, [salesMonth]);
   const loadRanking = (period) => api.get(`/reports/ranking?period=${period}`).then(setRanking).catch(console.error);
   const loadBillingDocuments = async ({
     status = billingStatusFilter,
@@ -584,8 +637,6 @@ export default function Reports() {
 
   useEffect(() => {
     Promise.all([
-      loadDaily(),
-      loadMonthly(),
       loadRanking('month'),
       api.get('/inventory/expenses').then(setPurchaseExpenses).catch(() => setPurchaseExpenses([])),
       api.get('/inventory/reconciliations').then(setInventoryReconciliations).catch(() => setInventoryReconciliations([])),
@@ -594,6 +645,16 @@ export default function Reports() {
     ])
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (reportSection !== 'ventas' || tab !== 'daily') return;
+    loadDaily(salesDailyDate);
+  }, [salesDailyDate, tab, reportSection, loadDaily]);
+
+  useEffect(() => {
+    if (reportSection !== 'ventas' || tab !== 'monthly') return;
+    loadMonthly(salesMonth);
+  }, [salesMonth, tab, reportSection, loadMonthly]);
 
   useEffect(() => {
     if (searchParams.get('seccion') === 'facturacion') {
@@ -1035,15 +1096,17 @@ export default function Reports() {
         acc[key] = {
           id: key,
           created_at: expense.created_at,
+          purchase_date: expense.purchase_date || String(expense.created_at || '').slice(0, 10),
           total: 0,
           items: [],
         };
       }
       acc[key].items.push(expense);
       acc[key].total += Number(expense.total_cost || 0);
+      if (expense.purchase_date) acc[key].purchase_date = expense.purchase_date;
       return acc;
     }, {})
-  ).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  ).sort((a, b) => new Date(b.purchase_date || b.created_at || 0) - new Date(a.purchase_date || a.created_at || 0));
 
   const tabs = [
     { id: 'daily', label: 'Informe del Día', icon: MdCalendarToday },
@@ -1089,21 +1152,88 @@ export default function Reports() {
 
       {reportSection === 'ventas' && (
         <>
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {tabs.map(t => (
+      <div className="flex gap-2 mb-6 flex-wrap items-center">
+        <input
+          ref={dailyDateInputRef}
+          type="date"
+          value={salesDailyDate}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (!next) return;
+            setSalesDailyDate(next);
+            setTab('daily');
+          }}
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden
+        />
+        <input
+          ref={monthInputRef}
+          type="month"
+          value={salesMonth}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (!next) return;
+            setSalesMonth(next);
+            setTab('monthly');
+          }}
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden
+        />
+        <button
+          type="button"
+          onClick={() => {
+            setTab('daily');
+            openNativeDatePicker(dailyDateInputRef.current);
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${tab === 'daily' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
+        >
+          <MdCalendarToday />
+          <span>
+            Informe del Día
+            <span className={`block text-[10px] font-normal ${tab === 'daily' ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
+              {formatDate(salesDailyDate)}
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setTab('monthly');
+            openNativeDatePicker(monthInputRef.current);
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${tab === 'monthly' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
+        >
+          <MdCalendarMonth />
+          <span>
+            Informe del Mes
+            <span className={`block text-[10px] font-normal capitalize ${tab === 'monthly' ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
+              {formatMonthLabel(salesMonth)}
+            </span>
+          </span>
+        </button>
+        {tabs.filter((t) => t.id === 'ranking').map(t => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${tab === t.id ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}>
             <t.icon /> {t.label}
           </button>
         ))}
       </div>
 
+      {tab === 'daily' && dailyLoading && !dailyData && (
+        <p className="text-sm text-[var(--ui-muted)] mb-4">Cargando informe del día…</p>
+      )}
+
       {tab === 'daily' && dailyData && (
         <div>
-          <div className="flex items-center gap-3 mb-4">
-            <span className={`px-3 py-1 rounded-full text-xs font-medium ${dailyData.register_open ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-[var(--ui-muted)]'}`}>
-              Caja: {dailyData.register_open ? 'Abierta' : 'Cerrada'}
-            </span>
-            <span className="text-sm text-[var(--ui-muted)]">Fecha: {dailyData.date}</span>
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            {dailyData.is_today !== false ? (
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${dailyData.register_open ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-[var(--ui-muted)]'}`}>
+                Caja: {dailyData.register_open ? 'Abierta' : 'Cerrada'}
+              </span>
+            ) : null}
+            <span className="text-sm text-[var(--ui-muted)]">Fecha: {formatDate(dailyData.date)}</span>
+            {dailyLoading ? <span className="text-xs text-[var(--ui-muted)]">Actualizando…</span> : null}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
@@ -1111,7 +1241,7 @@ export default function Reports() {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center"><MdAttachMoney className="text-emerald-600 text-xl" /></div>
                 <div>
-                  <p className="text-xs text-[var(--ui-muted)]">Ventas Hoy</p>
+                  <p className="text-xs text-[var(--ui-muted)]">{dailyData.is_today === false ? 'Ventas del día' : 'Ventas Hoy'}</p>
                   <p className="text-xl font-bold text-emerald-600">{formatCurrency(dailyData.sales?.total_sales)}</p>
                 </div>
               </div>
@@ -1120,7 +1250,7 @@ export default function Reports() {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center"><MdReceipt className="text-sky-600 text-xl" /></div>
                 <div>
-                  <p className="text-xs text-[var(--ui-muted)]">Pedidos</p>
+                  <p className="text-xs text-[var(--ui-muted)]">Cuentas cobradas</p>
                   <p className="text-xl font-bold text-sky-600">{dailyData.sales?.order_count || 0}</p>
                 </div>
               </div>
@@ -1167,7 +1297,7 @@ export default function Reports() {
 
           {dailyData.orders?.length > 0 && (
             <div className="card">
-              <h3 className="font-bold rf-section-title mb-4">Pedidos del Día ({dailyData.orders.length})</h3>
+              <h3 className="font-bold rf-section-title mb-4">Comandas del día ({dailyData.orders.length})</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -1211,13 +1341,21 @@ export default function Reports() {
         </div>
       )}
 
+      {tab === 'monthly' && monthlyLoading && !monthlyData && (
+        <p className="text-sm text-[var(--ui-muted)] mb-4">Cargando informe del mes…</p>
+      )}
+
       {tab === 'monthly' && monthlyData && (
         <div>
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <span className="text-sm text-[var(--ui-muted)] capitalize">Mes: {formatMonthLabel(monthlyData.month || salesMonth)}</span>
+            {monthlyLoading ? <span className="text-xs text-[var(--ui-muted)]">Actualizando…</span> : null}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="card">
               <p className="text-sm text-[var(--ui-muted)]">Ventas del Mes</p>
               <p className="text-2xl font-bold text-emerald-600">{formatCurrency(monthlyData.totalMonth?.total)}</p>
-              <p className="text-xs text-[var(--ui-muted)]">{monthlyData.totalMonth?.orders || 0} pedidos</p>
+              <p className="text-xs text-[var(--ui-muted)]">{monthlyData.totalMonth?.orders || 0} cuentas</p>
             </div>
             <div className="card">
               <p className="text-sm text-[var(--ui-muted)]">IGV del Mes</p>
@@ -1231,7 +1369,7 @@ export default function Reports() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div className="card">
-              <h3 className="font-bold rf-section-title mb-4">Ventas Diarias (último mes)</h3>
+              <h3 className="font-bold rf-section-title mb-4">Ventas diarias del mes</h3>
               {monthlyData.dailySales?.length > 0 ? (
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={[...monthlyData.dailySales].reverse()}>
@@ -1246,7 +1384,7 @@ export default function Reports() {
             </div>
 
             <div className="card">
-              <h3 className="font-bold rf-section-title mb-4">Ventas Mensuales</h3>
+              <h3 className="font-bold rf-section-title mb-4">Tendencia mensual (12 meses)</h3>
               {monthlyData.monthlySales?.length > 0 ? (
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={[...monthlyData.monthlySales].reverse()}>
@@ -1303,7 +1441,7 @@ export default function Reports() {
                       <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Producto</th>
                       <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Vendidos</th>
                       <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Ingresos</th>
-                      <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Pedidos</th>
+                      <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Cuentas</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1840,8 +1978,13 @@ export default function Reports() {
             <div className="space-y-4">
               {purchaseGroups.map(group => (
                 <div key={group.id} className="border border-slate-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="font-semibold rf-section-title">Compra {group.id.slice(0, 8)}</p>
+                  <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
+                    <div>
+                      <p className="font-semibold rf-section-title">Compra {group.id.slice(0, 8)}</p>
+                      <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                        Fecha de compra: {formatDate(group.purchase_date || group.created_at)}
+                      </p>
+                    </div>
                     <p className="font-bold text-red-700">{formatCurrency(group.total)}</p>
                   </div>
                   {group.items.map(item => (
@@ -1901,9 +2044,9 @@ export default function Reports() {
                     <p className="ui-finance-kpi__sub">Foto del stock; no resta en ganancia del rango</p>
                   </div>
                   <div className="ui-finance-kpi ui-finance-kpi--emerald">
-                    <p className="ui-finance-kpi__label">Ventas (pedidos pagados)</p>
+                    <p className="ui-finance-kpi__label">Ventas (cuentas cobradas)</p>
                     <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.sales?.total)}</p>
-                    <p className="ui-finance-kpi__sub">{financeOverview.sales?.orders || 0} pedidos</p>
+                    <p className="ui-finance-kpi__sub">{financeOverview.sales?.orders || 0} cuentas</p>
                   </div>
                   <div className="ui-finance-kpi ui-finance-kpi--sky">
                     <p className="ui-finance-kpi__label">Ganancia aproximada</p>
@@ -2068,9 +2211,9 @@ export default function Reports() {
           <p className="text-[var(--ui-muted)] mb-4">Resumen de comprobantes electrónicos emitidos.</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-xs text-[var(--ui-muted)]">Pedidos pagados hoy</p>
+              <p className="text-xs text-[var(--ui-muted)]">Cuentas cobradas hoy</p>
               <p className="text-xl font-bold text-[var(--ui-body-text)]">
-                {(dailyData?.orders || []).filter(o => o.payment_status === 'paid' && o.status !== 'cancelled').length}
+                {summarizePaidSalesAccounts((dailyData?.orders || []).filter((o) => o.payment_status === 'paid' && o.status !== 'cancelled')).length}
               </p>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">

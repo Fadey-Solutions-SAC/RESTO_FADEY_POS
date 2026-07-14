@@ -65,6 +65,59 @@ function getDbPath() {
   return DB_PATH;
 }
 
+function getDbGuardPath() {
+  return path.join(path.dirname(DB_PATH), '.restaurant_db_guard.json');
+}
+
+function readDbGuard() {
+  try {
+    return JSON.parse(fs.readFileSync(getDbGuardPath(), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeDbGuard(snapshot = {}) {
+  try {
+    const dir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      getDbGuardPath(),
+      JSON.stringify({ ...snapshot, updated_at: new Date().toISOString() }),
+    );
+  } catch (err) {
+    console.warn('[db-guard] no se pudo guardar marcador:', err.message || err);
+  }
+}
+
+function countTableRows(tableName) {
+  try {
+    return Number(queryOne(`SELECT COUNT(*) as c FROM ${tableName}`)?.c) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function assertSafeDbBeforePersist({ usersCount, productsCount, previousBytes }) {
+  const allowReset = String(process.env.ALLOW_EMPTY_DB_BOOT || '').trim() === '1';
+  if (allowReset) {
+    console.warn('[db-guard] ALLOW_EMPTY_DB_BOOT=1 — protección anti-borrado desactivada.');
+    return;
+  }
+  const guard = readDbGuard();
+  const emptyNow = usersCount === 0 && productsCount === 0;
+  if (guard && Number(guard.users || 0) > 0 && emptyNow) {
+    throw new Error(
+      `[SQLite CRÍTICO] ${DB_PATH} quedó vacía pero el marcador en disco registra ${guard.users} usuario(s) y ${guard.products} producto(s). NO se sobrescribirá. Restaure un backup .db o pida snapshot del disco a Render.`,
+    );
+  }
+  if (dbFileExistedBeforeInit && previousBytes > 800000 && emptyNow && guard && Number(guard.users || 0) > 0) {
+    throw new Error(
+      `[SQLite CRÍTICO] ${DB_PATH} (${previousBytes} bytes) no tiene usuarios/productos. Posible pérdida tras deploy. NO se guardará. Restaure backup.`,
+    );
+  }
+}
+
 function createBackupFile() {
   saveDb();
   const backupsDir = path.join(__dirname, '..', 'backups');
@@ -123,6 +176,16 @@ async function restoreDbFromBuffer(fileBuffer) {
   }
 
   const restaurant = queryOne('SELECT name FROM restaurants LIMIT 1');
+  const usersCount = countTableRows('users');
+  const productsCount = countTableRows('products');
+  if (usersCount > 0 || productsCount > 0) {
+    writeDbGuard({
+      users: usersCount,
+      products: productsCount,
+      bytes: fileBuffer.length,
+      restaurant_name: restaurant?.name || '',
+    });
+  }
   console.info('[backup] Restaurado:', restaurant?.name || '(sin nombre)', '→', DB_PATH, `(${fileBuffer.length} bytes)`);
 }
 
@@ -373,11 +436,34 @@ async function initDatabase() {
   dbReady = (async () => {
     const SQL = await initSqlJs();
 
+    let previousBytes = 0;
     dbFileExistedBeforeInit = fs.existsSync(DB_PATH);
     if (dbFileExistedBeforeInit) {
+      previousBytes = fs.statSync(DB_PATH).size;
       const fileBuffer = fs.readFileSync(DB_PATH);
-      db = new SQL.Database(fileBuffer);
+      if (fileBuffer.length < 512) {
+        const guard = readDbGuard();
+        if (guard && Number(guard.users || 0) > 0) {
+          throw new Error(
+            `[SQLite CRÍTICO] ${DB_PATH} existe pero está vacío (${fileBuffer.length} bytes). Restaure backup antes de arrancar.`,
+          );
+        }
+      }
+      try {
+        db = new SQL.Database(fileBuffer);
+        db.run('SELECT 1');
+      } catch (err) {
+        throw new Error(
+          `[SQLite CRÍTICO] No se pudo abrir ${DB_PATH}. Restaure backup. ${err?.message || err}`,
+        );
+      }
     } else {
+      const guard = readDbGuard();
+      if (guard && Number(guard.users || 0) > 0) {
+        throw new Error(
+          `[SQLite CRÍTICO] Falta ${DB_PATH} pero el marcador indica ${guard.users} usuario(s). NO se creará una base nueva. Restaure backup o snapshot de Render.`,
+        );
+      }
       db = new SQL.Database();
     }
 
@@ -2286,7 +2372,19 @@ async function initDatabase() {
     } catch (err) {
       console.warn('[db] user_work_sessions schema check:', err.message || err);
     }
+
+    const usersCount = countTableRows('users');
+    const productsCount = countTableRows('products');
+    assertSafeDbBeforePersist({ usersCount, productsCount, previousBytes });
     saveDb();
+    if (usersCount > 0 || productsCount > 0) {
+      writeDbGuard({
+        users: usersCount,
+        products: productsCount,
+        bytes: fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0,
+      });
+      console.info(`[db-guard] Marcador actualizado: ${usersCount} usuario(s), ${productsCount} producto(s)`);
+    }
     return db;
   })();
 

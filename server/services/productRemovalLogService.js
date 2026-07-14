@@ -1,7 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, runSql } = require('../database');
+const { queryAll, queryOne, runSql } = require('../database');
+const { sqlBusinessTimestamp } = require('../utils/appDateTime');
 
-const REMOVAL_DATE_SQL = "DATE(datetime(created_at, 'localtime'))";
+const REMOVAL_EVENT_DATE_SQL = `DATE(${sqlBusinessTimestamp('created_at', queryOne)})`;
 
 function insertProductRemovals(removals, order, actor, removalReason) {
   const reason = String(removalReason || '').trim() || 'Sin motivo registrado';
@@ -9,9 +10,11 @@ function insertProductRemovals(removals, order, actor, removalReason) {
   const actorName = String(
     actor?.user?.full_name || actor?.user?.username || actor?.full_name || actor?.username || '',
   ).trim();
+  const inserted = [];
   for (const row of removals || []) {
     const qty = Math.max(0, Number(row.quantity_removed || 0));
     if (qty <= 0) continue;
+    const id = uuidv4();
     runSql(
       `INSERT INTO order_product_removals (
         id, order_id, order_number, product_id, product_name, quantity_removed,
@@ -19,7 +22,7 @@ function insertProductRemovals(removals, order, actor, removalReason) {
         actor_user_id, actor_name, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       [
-        uuidv4(),
+        id,
         String(order?.id || '').trim(),
         Number(order?.order_number || 0) || null,
         String(row.product_id || '').trim() || null,
@@ -34,18 +37,24 @@ function insertProductRemovals(removals, order, actor, removalReason) {
         actorName || null,
       ],
     );
+    inserted.push({
+      id,
+      product_id: row.product_id,
+      quantity_removed: qty,
+    });
   }
+  return inserted;
 }
 
 function listProductRemovals({ from, to, limit = 500 } = {}) {
   const params = [];
   let dateSql = '';
   if (from) {
-    dateSql += ` AND ${REMOVAL_DATE_SQL} >= date(?)`;
+    dateSql += ` AND ${REMOVAL_EVENT_DATE_SQL} >= date(?)`;
     params.push(from);
   }
   if (to) {
-    dateSql += ` AND ${REMOVAL_DATE_SQL} <= date(?)`;
+    dateSql += ` AND ${REMOVAL_EVENT_DATE_SQL} <= date(?)`;
     params.push(to);
   }
   const cap = Math.min(Math.max(Number(limit) || 500, 1), 2000);

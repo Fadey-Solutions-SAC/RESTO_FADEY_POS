@@ -45,8 +45,8 @@ export function IndicatorsGeneralPanel({ data }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-        <IndicatorStatCard icon={MdAttachMoney} label="Ventas período" value={formatCurrency(g.period_sales)} sub={`${g.period_orders ?? 0} pedidos`} accent="emerald" />
-        <IndicatorStatCard icon={MdAttachMoney} label="Ventas hoy" value={formatCurrency(g.sales_today)} sub={`${g.orders_today ?? 0} pedidos`} />
+        <IndicatorStatCard icon={MdAttachMoney} label="Ventas período" value={formatCurrency(g.period_sales)} sub={`${g.period_orders ?? 0} cuentas`} accent="emerald" />
+        <IndicatorStatCard icon={MdAttachMoney} label="Ventas hoy" value={formatCurrency(g.sales_today)} sub={`${g.orders_today ?? 0} cuentas`} />
         <IndicatorStatCard icon={MdAttachMoney} label="Ventas semana" value={formatCurrency(g.sales_week)} accent="sky" />
         <IndicatorStatCard icon={MdAttachMoney} label="Ventas mes" value={formatCurrency(g.sales_month)} trend={g.growth_month_pct} />
         <IndicatorStatCard icon={MdAttachMoney} label="Utilidad neta (aprox.)" value={formatCurrency(g.net_profit_approx)} sub="Mes en curso" accent="emerald" />
@@ -157,7 +157,7 @@ export function IndicatorsProductivityPanel({ data }) {
         <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
-              <th className="py-2">Empleado</th><th className="py-2">Horas</th><th className="py-2">Pedidos</th><th className="py-2">Ventas</th><th className="py-2">Prod./h</th>
+              <th className="py-2">Empleado</th><th className="py-2">Horas</th><th className="py-2">Cuentas</th><th className="py-2">Ventas</th><th className="py-2">Prod./h</th>
             </tr>
           </thead>
           <tbody>
@@ -222,7 +222,7 @@ export function IndicatorsCustomersPanel({ data }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-[var(--ui-muted)] text-left border-b border-[color:var(--ui-border)]">
-              <th className="py-2">Nombre</th><th className="py-2">Pedidos</th><th className="py-2">Total</th><th className="py-2">Ticket prom.</th>
+              <th className="py-2">Nombre</th><th className="py-2">Cuentas</th><th className="py-2">Total</th><th className="py-2">Ticket prom.</th>
             </tr>
           </thead>
           <tbody>

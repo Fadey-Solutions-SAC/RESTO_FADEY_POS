@@ -2,7 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { assertPaymentMethodAllowed, normalizePaymentMethod } = require('../businessRules');
+const { assertPaymentMethodAllowed, normalizePaymentMethod, classifySalesAdjustment } = require('../businessRules');
 const { parsePaymentBreakdown, dominantPaymentMethod, round2 } = require('../utils/paymentBreakdown');
 const { appendOrderRemovalNote, hasCompleteOrderItemRemovals, computeQuantityRemovals, removalsFromOrderItemRows } = require('../utils/orderLineRemoval');
 const { insertProductRemovals } = require('../services/productRemovalLogService');
@@ -188,6 +188,57 @@ router.get('/kitchen', authenticateToken, (req, res) => {
       return o;
     }),
   );
+});
+
+function parseKitchenHistoryDate(input) {
+  const v = String(input || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+}
+
+router.get('/kitchen/dispatched', authenticateToken, (req, res) => {
+  if (req.user.type === 'customer') {
+    return res.status(403).json({ error: 'No tienes permisos para cocina' });
+  }
+  if (!userCanAccessKitchenApi(req.user)) {
+    return res.status(403).json({ error: 'No tienes permisos para cocina/bar' });
+  }
+  const stationRequested = resolveKitchenStation(req.user, req.query.station);
+  if (!userCanAccessKitchenStation(req.user, stationRequested)) {
+    return res.status(403).json({ error: 'No tienes permiso para este panel de producción' });
+  }
+  const readyCol = getStationReadyColumn(stationRequested);
+  const { type } = req.query;
+  const dateKey = parseKitchenHistoryDate(req.query.date);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
+
+  let query = `SELECT o.*, o.${readyCol} AS station_dispatched_at
+    FROM orders o
+    WHERE trim(coalesce(o.${readyCol}, '')) != ''`;
+  const params = [];
+  if (dateKey) {
+    query += ` AND date(datetime(o.${readyCol}, 'localtime')) = date(?)`;
+    params.push(dateKey);
+  } else {
+    query += ` AND date(datetime(o.${readyCol}, 'localtime')) = date('now', 'localtime')`;
+  }
+  if (type === 'delivery') query += " AND o.type = 'delivery'";
+  else if (type === 'dine_in') query += " AND o.type = 'dine_in'";
+  else if (type === 'salon') query += " AND o.type IN ('dine_in', 'pickup')";
+  query += ` ORDER BY datetime(o.${readyCol}) DESC LIMIT ?`;
+  params.push(limit);
+
+  const orders = queryAll(query, params);
+  const result = [];
+  for (const o of orders) {
+    const areaItems = getOrderItemsWithArea(o.id);
+    if (!orderHasStationWork(areaItems, stationRequested)) continue;
+    const stationItems = filterItemsForKitchenStation(areaItems, stationRequested);
+    if (!stationItems.length) continue;
+    o.items = stationItems.map(stripKitchenItemMeta);
+    o.station_dispatched_at = o.station_dispatched_at || o[readyCol];
+    result.push(o);
+  }
+  res.json(result);
 });
 
 const {
@@ -705,7 +756,12 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
             username: req.user?.username,
           },
         };
-        insertProductRemovals(removalsFromOrderItemRows(itemsBeforeCancel), order, cancelActor, reason);
+        insertProductRemovals(
+          removalsFromOrderItemRows(itemsBeforeCancel),
+          order,
+          cancelActor,
+          reason,
+        );
       } catch (logErr) {
         logRouteError(req, logErr, { order_id: order.id, phase: 'product_removal_cancel' });
       }
@@ -969,6 +1025,13 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
   params.push(req.params.id);
 
   const docPm = nextPaymentMethod !== null ? nextPaymentMethod : order.payment_method;
+  const projectedAdjustmentKind = nextPayEffective === 'paid'
+    ? classifySalesAdjustment({
+      ...order,
+      payment_status: nextPayEffective,
+      payment_method: docPm,
+    })
+    : null;
   /** Venta rápida / mostrador: cobrar cierra el pedido pickup en la misma operación. */
   const isPickupSaleCloseout =
     nextPayEffective === 'paid' &&
@@ -980,7 +1043,8 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
   }
   const applyKardexAfter =
     (nextPayEffective === 'paid' && String(order.status || '') === 'delivered') ||
-    isPickupSaleCloseout;
+    isPickupSaleCloseout ||
+    (nextPayEffective === 'paid' && !wasPaid && (projectedAdjustmentKind === 'cortesia' || projectedAdjustmentKind === 'descuento'));
 
   if (applyKardexAfter) {
     try {

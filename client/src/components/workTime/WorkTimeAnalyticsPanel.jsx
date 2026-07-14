@@ -38,7 +38,7 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, filters, setFilte
       <div className="space-y-4 animate-in fade-in duration-300">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard label="Personal en turno" value={dashboard?.operations?.staff_online ?? 0} sub="Jornadas abiertas" />
-          <StatCard label="Ventas hoy" value={formatMoney(dashboard?.today?.sales_total)} sub={`${dashboard?.today?.orders_paid ?? 0} pedidos`} accent="emerald" />
+          <StatCard label="Ventas hoy" value={formatMoney(dashboard?.today?.sales_total)} sub={`${dashboard?.today?.orders_paid ?? 0} cuentas`} accent="emerald" />
           <StatCard label="Horas hoy" value={formatMinutes(dashboard?.today?.worked_minutes)} sub={`${dashboard?.today?.sessions ?? 0} sesiones`} />
           <StatCard label="Cocina / Delivery" value={`${dashboard?.operations?.kitchen_preparing ?? 0} / ${dashboard?.operations?.delivery_active ?? 0}`} sub="Activos ahora" accent="amber" />
         </div>
@@ -93,7 +93,7 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, filters, setFilte
               <th className="py-2">Rol</th>
               <th className="py-2">Horas</th>
               <th className="py-2">Activo</th>
-              <th className="py-2">Pedidos</th>
+              <th className="py-2">Cuentas</th>
               <th className="py-2">Ventas</th>
               <th className="py-2">Delivery</th>
               <th className="py-2">Prod./h</th>
@@ -123,7 +123,7 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, filters, setFilte
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <AreaBlock title="Caja" metrics={[
           ['Ventas', formatMoney(areas?.caja?.sales_total)],
-          ['Tickets cobrados', areas?.caja?.tickets_paid],
+          ['Cuentas cobradas', areas?.caja?.tickets_paid],
           ['Velocidad cobro', `${areas?.caja?.avg_checkout_minutes ?? 0} min`],
         ]} />
         <AreaBlock title="Cocina" metrics={[

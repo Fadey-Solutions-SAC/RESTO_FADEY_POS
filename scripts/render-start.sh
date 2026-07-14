@@ -28,10 +28,22 @@ if ! mkdir -p "$OUTPUT_DIR" 2>/dev/null; then
   mkdir -p "$OUTPUT_DIR"
 fi
 
-if [[ -n "${DB_PATH:-}" ]] && [[ "$DB_PATH" == /data/* ]] && [[ ! -d /data ]]; then
-  echo "[render-start] ERROR: DB_PATH=$DB_PATH pero /data no existe."
-  echo "[render-start] Render → Disks → mount path /data, luego Manual Deploy (ver DEPLOY_GITHUB_VERCEL_RENDER.md)."
-  exit 1
+if [[ -n "${DB_PATH:-}" ]] && [[ "$DB_PATH" == /data/* ]]; then
+  for _i in $(seq 1 20); do
+    [[ -d /data ]] && break
+    echo "[render-start] Esperando montaje de /data (${_i}/20)…"
+    sleep 1
+  done
+  if [[ ! -d /data ]]; then
+    echo "[render-start] ERROR: DB_PATH=$DB_PATH pero /data no existe."
+    echo "[render-start] Render → Disks → mount path /data, luego Manual Deploy (ver DEPLOY_GITHUB_VERCEL_RENDER.md)."
+    exit 1
+  fi
+  if [[ -f /data/.restaurant_db_guard.json ]] && [[ ! -f "$DB_PATH" ]]; then
+    echo "[render-start] ERROR: Hay marcador de base con datos pero falta $DB_PATH."
+    echo "[render-start] NO se iniciará con una base vacía. Restaure backup o snapshot de Render."
+    exit 1
+  fi
 fi
 
 cd "$ROOT/server/efact"

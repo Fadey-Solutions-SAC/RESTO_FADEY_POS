@@ -3,6 +3,10 @@
  */
 const { queryAll, queryOne } = require('../database');
 const { addOrderToSalesTotals } = require('../utils/paymentBreakdown');
+const {
+  countSalesAccounts,
+  SALES_ACCOUNT_ORDER_SELECT,
+} = require('../utils/salesAccountGrouping');
 
 const SALES_EVENT_AT_SQL = 'COALESCE(paid_at, updated_at, created_at)';
 
@@ -43,7 +47,7 @@ function buildRegisterSalesSql(register) {
       params.push(closedAt);
     }
     return {
-      sql: `SELECT total, payment_method, payment_breakdown, tip_amount
+      sql: `SELECT ${SALES_ACCOUNT_ORDER_SELECT}
             FROM orders
             WHERE ${baseWhere}
               AND (
@@ -64,7 +68,7 @@ function buildRegisterSalesSql(register) {
     params.push(closedAt);
   }
   return {
-    sql: `SELECT total, payment_method, payment_breakdown, tip_amount
+    sql: `SELECT ${SALES_ACCOUNT_ORDER_SELECT}
           FROM orders
           WHERE ${baseWhere}
             AND ${SALES_EVENT_AT_SQL} >= ?${endSql}`,
@@ -94,12 +98,11 @@ function aggregatePaidOrders(rows) {
     total_card: 0,
     total_online: 0,
     total_tips: 0,
-    order_count: 0,
   };
   (rows || []).forEach((row) => {
-    totals.order_count += 1;
     addOrderToSalesTotals(row, totals);
   });
+  const accountCount = countSalesAccounts(rows || []);
   return {
     total_sales: round2(totals.total_sales),
     total_cash: round2(totals.total_cash),
@@ -108,7 +111,8 @@ function aggregatePaidOrders(rows) {
     total_card: round2(totals.total_card),
     total_online: round2(totals.total_online),
     total_tips: round2(Number(totals.total_tips || 0)),
-    order_count: Number(totals.order_count || 0),
+    order_count: accountCount,
+    comanda_count: (rows || []).length,
   };
 }
 

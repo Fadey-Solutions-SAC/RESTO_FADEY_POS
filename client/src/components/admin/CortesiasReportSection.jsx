@@ -7,7 +7,7 @@ import {
   adjustmentAmountCharged,
   isCourtesyOrder,
 } from '../../utils/mesaOrderLines';
-import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdInventory2, MdDelete, MdRemoveCircleOutline, MdVisibility } from 'react-icons/md';
+import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdDelete, MdRemoveCircleOutline, MdVisibility } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import { adjustmentKindBadge } from '../../utils/uiBadges';
 import toast from 'react-hot-toast';
@@ -57,7 +57,6 @@ export default function CortesiasReportSection() {
   const [search, setSearch] = useState('');
   const [kindFilter, setKindFilter] = useState('all');
   const [loading, setLoading] = useState(true);
-  const [backfilling, setBackfilling] = useState(false);
   const [data, setData] = useState({
     summary: {
       count: 0,
@@ -66,7 +65,6 @@ export default function CortesiasReportSection() {
       courtesy_reference_total: 0,
       discount_amount_total: 0,
       amount_charged_total: 0,
-      kardex_pending: 0,
     },
     orders: [],
   });
@@ -92,21 +90,6 @@ export default function CortesiasReportSection() {
       setData({ summary: {}, orders: [] });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const runKardexBackfill = async () => {
-    setBackfilling(true);
-    try {
-      const res = await api.post('/reports/backfill-kardex-ventas', {});
-      toast.success(
-        `Inventario histórico: ${res.applied || 0} aplicados, ${res.skipped || 0} omitidos${res.no_inventory ? `, ${res.no_inventory} sin receta/insumo` : ''}${res.errors?.length ? `, ${res.errors.length} errores` : ''}`
-      );
-      await load();
-    } catch (err) {
-      toast.error(err.message || 'No se pudo aplicar inventario histórico');
-    } finally {
-      setBackfilling(false);
     }
   };
 
@@ -156,7 +139,6 @@ export default function CortesiasReportSection() {
     let courtesyReference = 0;
     let discountAmount = 0;
     let amountCharged = 0;
-    let kardexPending = 0;
     let eliminadoCount = 0;
     let eliminadoReference = 0;
     for (const o of filtered) {
@@ -174,7 +156,6 @@ export default function CortesiasReportSection() {
         eliminadoCount += 1;
         eliminadoReference += Number(o.reference_amount ?? o.discount_amount ?? ref ?? 0);
       }
-      if (kind !== 'eliminado' && !o.kardex_applied) kardexPending += 1;
     }
     return {
       count: filtered.length,
@@ -185,7 +166,6 @@ export default function CortesiasReportSection() {
       discount_amount_total: discountAmount,
       eliminado_reference_total: eliminadoReference,
       amount_charged_total: amountCharged,
-      kardex_pending: kardexPending,
     };
   }, [filtered]);
 
@@ -199,7 +179,7 @@ export default function CortesiasReportSection() {
 
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="card border-l-4 border-l-violet-500">
           <p className="text-xs ui-text-muted">Registros totales</p>
           <p className="text-2xl font-bold text-[var(--ui-body-text)]">{filteredSummary.count}</p>
@@ -223,11 +203,6 @@ export default function CortesiasReportSection() {
           <p className="text-xs ui-text-muted">Productos eliminados (valor)</p>
           <p className="text-2xl font-bold text-red-600">{formatCurrency(filteredSummary.eliminado_reference_total)}</p>
           <p className="text-xs text-[var(--ui-muted)] mt-1">{filteredSummary.eliminado_count} registro(s) de baja en mesa</p>
-        </div>
-        <div className="card border-l-4 border-l-sky-500">
-          <p className="text-xs ui-text-muted">Inventario pendiente</p>
-          <p className="text-2xl font-bold text-sky-600">{filteredSummary.kardex_pending}</p>
-          <p className="text-xs text-[var(--ui-muted)] mt-1">Sin salida kardex registrada</p>
         </div>
       </div>
 
@@ -266,21 +241,9 @@ export default function CortesiasReportSection() {
           <button type="button" onClick={load} className="btn-secondary flex items-center gap-2">
             <MdRefresh /> Actualizar
           </button>
-          {(data.summary?.kardex_pending > 0 || filteredSummary.kardex_pending > 0) && (
-            <button
-              type="button"
-              onClick={runKardexBackfill}
-              disabled={backfilling}
-              className="btn-primary flex items-center gap-2"
-            >
-              <MdInventory2 />
-              {backfilling ? 'Aplicando…' : 'Aplicar inventario histórico'}
-            </button>
-          )}
         </div>
         <p className="text-xs text-[var(--ui-muted)] mt-3">
-          Descuentos y cortesías descuentan inventario al cobrar. Los productos eliminados de mesa se registran aquí con motivo (no afectan caja).
-          Si trabajaste sin inventario configurado, usa «Aplicar inventario histórico» para registrar salidas con la fecha del cobro.
+          Cortesías y descuentos descuentan inventario al cobrar (el producto sí se entregó). Los eliminados de mesa no afectan inventario.
         </p>
       </div>
 
@@ -358,11 +321,11 @@ export default function CortesiasReportSection() {
                   </td>
                   <td className="py-2.5 text-center">
                     {isEliminado ? (
-                      <span className="text-xs text-[var(--ui-muted)]">N/A</span>
+                      <span className="text-xs text-[var(--ui-muted)]">—</span>
                     ) : o.kardex_applied ? (
                       <span className="text-xs text-emerald-600">OK</span>
                     ) : (
-                      <span className="text-xs text-amber-600">Pendiente</span>
+                      <span className="text-xs text-[var(--ui-muted)]">Sin receta</span>
                     )}
                   </td>
                   <td className="py-2.5 text-center">

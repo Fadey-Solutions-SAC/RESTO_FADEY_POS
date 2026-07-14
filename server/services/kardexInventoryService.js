@@ -267,95 +267,99 @@ function revertirSalidasVentaPedido(tx, orderId, userId) {
   return { skipped: false, reverted: rows.length };
 }
 
-/**
- * Descontar insumos según recetas vinculadas a productos del pedido (misma transacción que el cobro).
- * @param {import('../database').Tx} tx
- * @param {string} orderId
- * @param {string} [userId]
- */
+function salidaInsumosPorProducto(tx, { productId, quantity, referencia, referenciaId, userId, eventAt }) {
+  const pid = String(productId || '').trim();
+  const qtyLine = Number(quantity || 0);
+  if (!pid || qtyLine <= 0) return { skipped: true, reason: 'sin_producto' };
+
+  const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [pid]);
+  const directInsumo = product ? String(product.kardex_insumo_id || '').trim() : '';
+  if (directInsumo) {
+    const modo = String(product.kardex_insumo_modo || 'unidad').toLowerCase();
+    if (modo === 'peso') {
+      const g = Number(product.kardex_insumo_gramos) || 0;
+      const needKg = (g / 1000) * qtyLine;
+      if (needKg <= 0) return { skipped: true, reason: 'sin_masa' };
+      registrarSalida(tx, {
+        insumoId: directInsumo,
+        cantidad: needKg,
+        soloMasa: true,
+        referencia: 'venta_masa',
+        referenciaId,
+        userId,
+        eventAt,
+      });
+      return { skipped: false };
+    }
+    const num = Number(product.kardex_insumo_num);
+    const den = Number(product.kardex_insumo_den);
+    const n = num > 0 && Number.isFinite(num) ? num : 1;
+    const d = den > 0 && Number.isFinite(den) ? den : 1;
+    const fracU = (n / d) * qtyLine;
+    if (fracU <= 0) return { skipped: true, reason: 'sin_unidades' };
+    const insL = tx.queryOne('SELECT kg_por_unidad, stock_unidades, stock_actual FROM insumos WHERE id = ?', [directInsumo]);
+    const kpu0 = insL ? Number(insL.kg_por_unidad) || 0 : 0;
+    if (kpu0 > 1e-12) {
+      const needKg = fracU * kpu0;
+      registrarSalida(tx, {
+        insumoId: directInsumo,
+        cantidad: needKg,
+        unidadesSalida: fracU,
+        referencia: 'venta',
+        referenciaId,
+        userId,
+        eventAt,
+      });
+    } else {
+      registrarSalida(tx, {
+        insumoId: directInsumo,
+        cantidad: fracU,
+        referencia: 'venta',
+        referenciaId,
+        userId,
+        eventAt,
+      });
+    }
+    return { skipped: false };
+  }
+
+  const rec = tx.queryOne(
+    `SELECT * FROM recetas WHERE product_id = ? AND activo = 1 LIMIT 1`,
+    [pid],
+  );
+  if (!rec) return { skipped: true, reason: 'sin_receta' };
+
+  const dets = tx.queryAll('SELECT * FROM receta_detalle WHERE receta_id = ?', [rec.id]);
+  for (const d of dets) {
+    const need = Number(d.cantidad_usada) * qtyLine;
+    if (need <= 0) continue;
+    registrarSalida(tx, {
+      insumoId: d.insumo_id,
+      cantidad: need,
+      referencia: 'venta',
+      referenciaId,
+      userId,
+      eventAt,
+    });
+  }
+  return { skipped: false };
+}
+
+/** Descontar insumos de todas las líneas de un pedido cobrado. */
 function aplicarSalidasVentaPedido(tx, orderId, userId, eventAt) {
   if (yaAplicoVentaEnKardex(tx, orderId)) return { skipped: true, reason: 'ya_procesado' };
 
   const movAt = eventAt || null;
   const items = tx.queryAll('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
   for (const line of items) {
-    const pid = line.product_id;
-    if (!pid) continue;
-    const qtyLine = Number(line.quantity || 0);
-    if (qtyLine <= 0) continue;
-
-    const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [pid]);
-    const directInsumo = product ? String(product.kardex_insumo_id || '').trim() : '';
-    if (directInsumo) {
-      const modo = String(product.kardex_insumo_modo || 'unidad').toLowerCase();
-      if (modo === 'peso') {
-        const g = Number(product.kardex_insumo_gramos) || 0;
-        const needKg = (g / 1000) * qtyLine;
-        if (needKg <= 0) continue;
-        registrarSalida(tx, {
-          insumoId: directInsumo,
-          cantidad: needKg,
-          soloMasa: true,
-          referencia: 'venta_masa',
-          referenciaId: orderId,
-          userId,
-          eventAt: movAt,
-        });
-        continue;
-      }
-      const num = Number(product.kardex_insumo_num);
-      const den = Number(product.kardex_insumo_den);
-      const n = num > 0 && Number.isFinite(num) ? num : 1;
-      const d = den > 0 && Number.isFinite(den) ? den : 1;
-      const fracU = (n / d) * qtyLine;
-      if (fracU <= 0) {
-        continue;
-      }
-      const insL = tx.queryOne('SELECT kg_por_unidad, stock_unidades, stock_actual FROM insumos WHERE id = ?', [directInsumo]);
-      const kpu0 = insL ? Number(insL.kg_por_unidad) || 0 : 0;
-      if (kpu0 > 1e-12) {
-        const needKg = fracU * kpu0;
-        registrarSalida(tx, {
-          insumoId: directInsumo,
-          cantidad: needKg,
-          unidadesSalida: fracU,
-          referencia: 'venta',
-          referenciaId: orderId,
-          userId,
-          eventAt: movAt,
-        });
-      } else {
-        registrarSalida(tx, {
-          insumoId: directInsumo,
-          cantidad: fracU,
-          referencia: 'venta',
-          referenciaId: orderId,
-          userId,
-          eventAt: movAt,
-        });
-      }
-      continue;
-    }
-
-    const rec = tx.queryOne(
-      `SELECT * FROM recetas WHERE product_id = ? AND activo = 1 LIMIT 1`,
-      [pid]
-    );
-    if (!rec) continue;
-
-    const dets = tx.queryAll('SELECT * FROM receta_detalle WHERE receta_id = ?', [rec.id]);
-    for (const d of dets) {
-      const need = Number(d.cantidad_usada) * qtyLine;
-      if (need <= 0) continue;
-      registrarSalida(tx, {
-        insumoId: d.insumo_id,
-        cantidad: need,
-        referencia: 'venta',
-        referenciaId: orderId,
-        userId,
-        eventAt: movAt,
-      });
-    }
+    salidaInsumosPorProducto(tx, {
+      productId: line.product_id,
+      quantity: line.quantity,
+      referencia: 'venta',
+      referenciaId: orderId,
+      userId,
+      eventAt: movAt,
+    });
   }
   return { skipped: false };
 }

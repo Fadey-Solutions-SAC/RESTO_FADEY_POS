@@ -20,7 +20,7 @@ export default function SettingsConfigHubBanner({ hub, loading, onRefresh, secti
         ) : null}
         {op ? (
           <span className="text-xs text-[var(--ui-muted)]">
-            Hoy: {op.orders_today} pedidos · ventas en operación
+            Hoy: {op.orders_today} cuentas · ventas en operación
           </span>
         ) : null}
       </div>

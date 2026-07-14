@@ -6,7 +6,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel, MdDownload } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
-import { buildSalesDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch } from '../../utils/mesaOrderLines';
+import { buildSalesDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 
 import { UI_BADGE, saleStatusBadge } from '../../utils/uiBadges';
@@ -373,6 +373,14 @@ export default function Ventas() {
   }, [showDeliveryUi, typeFilter]);
 
   const displayGroups = useMemo(() => buildSalesDisplayGroups(filtered), [filtered]);
+  const paidSalesAccounts = useMemo(
+    () => summarizePaidSalesAccounts(filtered.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o))),
+    [filtered],
+  );
+  const paidComandas = useMemo(
+    () => filtered.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o)).length,
+    [filtered],
+  );
 
   const waiterOptions = Array.from(
     new Set(orders.map(o => (o.created_by_user_name || o.customer_name || '-')).filter(Boolean))
@@ -382,8 +390,8 @@ export default function Ventas() {
     total: filtered.filter((o) => !isCourtesyOrder(o)).reduce((s, o) => s + (o.total || 0), 0),
     paid: filtered.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o)).reduce((s, o) => s + (o.total || 0), 0),
     pending: filtered.filter((o) => o.payment_status === 'pending').reduce((s, o) => s + (o.total || 0), 0),
-    count: displayGroups.length,
-    transactions: filtered.length,
+    count: paidSalesAccounts.length,
+    transactions: paidComandas,
   };
 
   const isVoidedTab = saleTab === 'anuladas';
@@ -596,7 +604,7 @@ export default function Ventas() {
         <div className="card border-l-4 border-l-slate-400"><p className="text-xs ui-text-muted">Total Ventas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{formatCurrency(totals.total)}</p></div>
         <div className="card border-l-4 border-l-emerald-500"><p className="text-xs text-emerald-600">Cobrado</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totals.paid)}</p></div>
         <div className="card border-l-4 border-l-amber-500"><p className="text-xs text-amber-600">Pendiente</p><p className="text-xl font-bold text-amber-300">{formatCurrency(totals.pending)}</p></div>
-        <div className="card border-l-4 border-l-sky-500"><p className="text-xs text-sky-600">Registros</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p><p className="text-[10px] text-[var(--ui-muted)]">{totals.transactions} comprobante(s)</p></div>
+        <div className="card border-l-4 border-l-sky-500"><p className="text-xs text-sky-600">Cuentas cobradas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p><p className="text-[10px] text-[var(--ui-muted)]">{totals.transactions} comanda(s)</p></div>
       </div>
       )}
 

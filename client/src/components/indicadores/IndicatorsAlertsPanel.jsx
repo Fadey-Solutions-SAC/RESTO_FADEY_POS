@@ -18,12 +18,12 @@ export default function IndicatorsAlertsPanel({ data }) {
           <div className="card p-3">
             <p className="text-[10px] uppercase text-[var(--ui-muted)]">Ventas período</p>
             <p className="text-lg font-bold text-[var(--ui-body-text)]">{formatCurrency(f.total_sales)}</p>
-            <p className="text-xs text-[var(--ui-muted)]">{f.orders_count ?? 0} pedidos cobrados</p>
+            <p className="text-xs text-[var(--ui-muted)]">{f.orders_count ?? 0} cuentas cobradas</p>
           </div>
           <div className="card p-3">
             <p className="text-[10px] uppercase text-[var(--ui-muted)]">Ventas hoy</p>
             <p className="text-lg font-bold text-[var(--ui-body-text)]">{formatCurrency(g.sales_today)}</p>
-            <p className="text-xs text-[var(--ui-muted)]">{g.orders_today ?? 0} pedidos</p>
+            <p className="text-xs text-[var(--ui-muted)]">{g.orders_today ?? 0} cuentas</p>
           </div>
           <div className="card p-3">
             <p className="text-[10px] uppercase text-[var(--ui-muted)]">Pedidos activos</p>

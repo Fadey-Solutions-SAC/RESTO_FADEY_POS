@@ -5,6 +5,8 @@
 /* Temas: Configuración → Apariencia (`data-ui-theme` + `data-ui-color-scheme` en <html>) */
 html {
   --ui-shell-header-h: 3.5rem;
+  --ui-sidebar-width: 13rem;
+  --ui-sidebar-width-collapsed: 4rem;
   --ui-live-success-text: #6ee7b7;
   --ui-live-warning-text: #fcd34d;
   --ui-live-info-text: #7dd3fc;
@@ -28,6 +30,7 @@ html {
   --ui-accent: #2563eb;
   --ui-accent-hover: #1d4ed8;
   --ui-accent-muted: #3b82f6;
+  --ui-card-border: color-mix(in srgb, var(--ui-accent-muted) 28%, transparent);
   --ui-input-bg: #1f2937;
   --ui-input-border: rgba(59, 130, 246, 0.35);
   --ui-focus-ring: #3b82f6;
@@ -37,6 +40,9 @@ html {
   --ui-logo-from: #3b82f6;
   --ui-logo-to: #2563eb;
   --ui-btn-secondary-hover: rgba(255, 255, 255, 0.08);
+  --ui-shell-logo-bg: color-mix(in srgb, var(--ui-accent-muted) 16%, var(--ui-surface));
+  --ui-shell-sidebar-bg: color-mix(in srgb, var(--ui-accent-muted) 11%, var(--ui-surface));
+  --ui-shell-header-bg: color-mix(in srgb, var(--ui-accent-muted) 10%, var(--ui-surface));
   color-scheme: dark;
 }
 
@@ -78,6 +84,9 @@ html[data-ui-color-scheme='light'] {
   --ui-logo-from: #2563eb;
   --ui-logo-to: #1d4ed8;
   --ui-btn-secondary-hover: rgba(0, 0, 0, 0.07);
+  --ui-shell-logo-bg: color-mix(in srgb, var(--ui-accent-muted) 14%, var(--ui-surface));
+  --ui-shell-sidebar-bg: color-mix(in srgb, var(--ui-accent-muted) 9%, var(--ui-surface));
+  --ui-shell-header-bg: color-mix(in srgb, var(--ui-accent-muted) 8%, var(--ui-surface));
   color-scheme: light;
 }
 
@@ -114,6 +123,9 @@ html[data-ui-theme='dark'] {
   --ui-logo-from: #3b82f6;
   --ui-logo-to: #1d4ed8;
   --ui-btn-secondary-hover: rgba(255, 255, 255, 0.06);
+  --ui-shell-logo-bg: color-mix(in srgb, var(--ui-accent-muted) 15%, var(--ui-surface));
+  --ui-shell-sidebar-bg: color-mix(in srgb, var(--ui-accent-muted) 10%, var(--ui-surface));
+  --ui-shell-header-bg: color-mix(in srgb, var(--ui-accent-muted) 9%, var(--ui-surface));
   color-scheme: dark;
 }
 
@@ -136,6 +148,9 @@ html[data-ui-theme='gray'] {
   --ui-logo-from: #71717a;
   --ui-logo-to: #52525b;
   --ui-btn-secondary-hover: rgba(255, 255, 255, 0.08);
+  --ui-shell-logo-bg: color-mix(in srgb, var(--ui-accent-muted) 14%, var(--ui-surface));
+  --ui-shell-sidebar-bg: color-mix(in srgb, var(--ui-accent-muted) 9%, var(--ui-surface));
+  --ui-shell-header-bg: color-mix(in srgb, var(--ui-accent-muted) 8%, var(--ui-surface));
   color-scheme: dark;
 }
 
@@ -158,6 +173,9 @@ html[data-ui-theme='purple'] {
   --ui-logo-from: #7c3aed;
   --ui-logo-to: #5b21b6;
   --ui-btn-secondary-hover: rgba(255, 255, 255, 0.08);
+  --ui-shell-logo-bg: color-mix(in srgb, var(--ui-accent-muted) 14%, var(--ui-surface));
+  --ui-shell-sidebar-bg: color-mix(in srgb, var(--ui-accent-muted) 10%, var(--ui-surface));
+  --ui-shell-header-bg: color-mix(in srgb, var(--ui-accent-muted) 9%, var(--ui-surface));
   color-scheme: dark;
 }
 
@@ -180,6 +198,9 @@ html[data-ui-theme='green'] {
   --ui-logo-from: #34d399;
   --ui-logo-to: #047857;
   --ui-btn-secondary-hover: rgba(255, 255, 255, 0.08);
+  --ui-shell-logo-bg: color-mix(in srgb, var(--ui-accent-muted) 14%, var(--ui-surface));
+  --ui-shell-sidebar-bg: color-mix(in srgb, var(--ui-accent-muted) 10%, var(--ui-surface));
+  --ui-shell-header-bg: color-mix(in srgb, var(--ui-accent-muted) 9%, var(--ui-surface));
   color-scheme: dark;
 }
 
@@ -722,7 +743,7 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     @apply rounded-xl shadow-sm p-6;
     background-color: var(--ui-surface);
     color: var(--ui-body-text);
-    border: 1px solid var(--ui-border);
+    border: 1px solid var(--ui-card-border, var(--ui-border));
   }
   html[data-ui-color-scheme='dark'] .card .text-slate-500 {
     color: #e5e7eb !important;
