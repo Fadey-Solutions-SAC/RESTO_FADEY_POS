@@ -811,11 +811,12 @@ export default function Almacen() {
       }
       toast.success('Producto creado');
       if (createModalAfterReception) {
+        const newLineId = `rx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         setCreateModalAfterReception(false);
         setReceptionExtraLines((prev) => [
           ...prev,
           {
-            lineId: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            lineId: newLineId,
             lineKind: 'product',
             product_id: created.id,
             product_name: created.name || itemForm.name,
@@ -826,6 +827,7 @@ export default function Almacen() {
             ),
           },
         ]);
+        setReceptionSelectedKeys((prev) => [...prev, receptionExtraKey(newLineId)]);
       }
       setShowCreateModal(false);
       setItemForm({
@@ -1246,7 +1248,7 @@ export default function Almacen() {
                         <th className="text-left p-2.5 font-medium">Cantidad compra</th>
                         <th className="text-left p-2.5 font-medium">Costo compra</th>
                         <th className="text-left p-2.5 font-medium">Total</th>
-                        <th className="text-left p-2.5 font-medium w-24"> </th>
+                        <th className="text-left p-2.5 font-medium w-28">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1343,10 +1345,12 @@ export default function Almacen() {
                           <td className="p-2.5">
                             <button
                               type="button"
-                              className="text-xs text-red-600 hover:underline"
+                              className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50"
                               onClick={() => removeReceptionExtraLine(line.lineId)}
+                              title="Eliminar producto adicional"
                             >
-                              Quitar
+                              <MdDeleteOutline className="text-base" />
+                              Eliminar
                             </button>
                           </td>
                         </tr>

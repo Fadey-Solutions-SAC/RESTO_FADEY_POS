@@ -21,6 +21,9 @@ function getAccountAuditStatusBadge(group) {
   if (orders.some((o) => o.status !== 'cancelled' && String(o.payment_status || 'pending') === 'pending')) {
     return { label: 'Pendiente', className: `${UI_BADGE.amber} uppercase tracking-wide`, clickable: false };
   }
+  if (group?.isSalesAccount && group.salesOrderCount === 0 && group.courtesyCount > 0) {
+    return { label: 'Cortesía', className: `${UI_BADGE.violet} uppercase tracking-wide`, clickable: false };
+  }
   const observations = group?.observations;
   if (observations?.observed) {
     return {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { api, formatCurrency, formatDate, formatDateTime, formatTime, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
@@ -68,6 +68,107 @@ function downloadBlobFile(filename, content, mime = 'text/plain;charset=utf-8') 
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function csvCell(value) {
+  const text = String(value ?? '');
+  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function buildInventoryCuadresCsv(groups = []) {
+  const rows = [['Fecha', 'Hora', 'Almacén', 'Producto', 'Contado', 'Ajuste'].map(csvCell).join(',')];
+  for (const group of groups) {
+    for (const session of group.sessions || []) {
+      const timeLabel = formatDateTime(session.created_at);
+      for (const line of session.lines || []) {
+        rows.push([
+          group.dateLabel,
+          timeLabel,
+          session.warehouse_name,
+          line.product_name,
+          line.counted_stock,
+          line.difference > 0 ? `+${line.difference}` : line.difference,
+        ].map(csvCell).join(','));
+      }
+    }
+  }
+  return `${rows.join('\n')}\n`;
+}
+
+function buildPurchaseCsv(group = {}) {
+  const dateStr = formatDate(group.purchase_date || group.created_at);
+  const rows = [['Compra ID', 'Fecha', 'Producto', 'Cantidad', 'Costo unitario', 'Subtotal'].map(csvCell).join(',')];
+  for (const item of group.items || []) {
+    const subtotal = Number(item.total_cost ?? (Number(item.quantity || 0) * Number(item.unit_cost || 0)));
+    rows.push([
+      group.id,
+      dateStr,
+      item.product_name || 'Producto',
+      item.quantity,
+      item.unit_cost,
+      subtotal,
+    ].map(csvCell).join(','));
+  }
+  rows.push(['', '', '', '', 'Total', group.total].map(csvCell).join(','));
+  return `${rows.join('\n')}\n`;
+}
+
+function buildPurchaseTxt(group = {}) {
+  const idShort = String(group.id || '').slice(0, 8);
+  const lines = [
+    'COMPROBANTE DE COMPRA',
+    '='.repeat(24),
+    `ID: ${group.id}`,
+    `Referencia: Compra ${idShort}`,
+    `Fecha de compra: ${formatDate(group.purchase_date || group.created_at)}`,
+    `Total: ${formatCurrency(group.total)}`,
+    '',
+    'Detalle:',
+    '-'.repeat(40),
+  ];
+  for (const item of group.items || []) {
+    const subtotal = Number(item.total_cost ?? (Number(item.quantity || 0) * Number(item.unit_cost || 0)));
+    lines.push(
+      `  · ${item.product_name || 'Producto'} | ${item.quantity} u | ${formatCurrency(item.unit_cost)} c/u | Subtotal: ${formatCurrency(subtotal)}`,
+    );
+  }
+  lines.push('', `Total compra: ${formatCurrency(group.total)}`);
+  return `${lines.join('\n')}\n`;
+}
+
+function downloadPurchaseGroup(group, format = 'csv') {
+  if (!group?.items?.length) {
+    toast.error('No hay líneas para descargar');
+    return;
+  }
+  const idShort = String(group.id || 'compra').slice(0, 8);
+  const dateKey = String(group.purchase_date || group.created_at || '').slice(0, 10);
+  const baseName = `compra-${idShort}-${dateKey || new Date().toISOString().slice(0, 10)}`;
+  if (format === 'txt') {
+    downloadBlobFile(`${baseName}.txt`, buildPurchaseTxt(group));
+    toast.success('Compra descargada (TXT)');
+    return;
+  }
+  downloadBlobFile(`${baseName}.csv`, buildPurchaseCsv(group), 'text/csv;charset=utf-8');
+  toast.success('Compra descargada (CSV)');
+}
+
+function buildInventoryCuadresTxt(groups = []) {
+  const lines = ['CUADRES DE INVENTARIO', '='.repeat(24), ''];
+  for (const group of groups) {
+    lines.push(`Fecha: ${group.dateLabel} (${group.lineCount} ajuste(s))`);
+    lines.push('-'.repeat(40));
+    for (const session of group.sessions || []) {
+      lines.push(`  ${formatDateTime(session.created_at)} · ${session.warehouse_name}`);
+      for (const line of session.lines || []) {
+        const adj = line.difference > 0 ? `+${line.difference}` : String(line.difference);
+        lines.push(`    · ${line.product_name} | Contado: ${line.counted_stock} | Ajuste: ${adj}`);
+      }
+      lines.push('');
+    }
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 function buildProductSalesTxt(report, title = 'INFORME DE PRODUCTOS') {
@@ -504,8 +605,7 @@ function FinanceBusinessIntelPanel({ overview }) {
 }
 
 function localTodayYmd() {
-  const t = new Date();
-  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  return toLocalDateKey(new Date().toISOString());
 }
 
 function localMonthYm() {
@@ -730,20 +830,61 @@ export default function Reports() {
     }, 120);
   }, [navigate]);
 
-  const inventoryCuadreLines = useMemo(() => (
-    inventoryReconciliations.flatMap((rec) =>
-      (rec.items || [])
+  const inventoryCuadreGroupsByDate = useMemo(() => {
+    const map = new Map();
+    for (const rec of inventoryReconciliations) {
+      const dateKey = toLocalDateKey(rec.created_at) || String(rec.created_at || '').slice(0, 10);
+      if (!dateKey) continue;
+      if (!map.has(dateKey)) map.set(dateKey, { dateKey, sessions: [] });
+      const lines = (rec.items || [])
         .filter((item) => Number(item.difference || 0) !== 0)
         .map((item) => ({
           id: `${rec.id}-${item.id}`,
-          created_at: rec.created_at,
-          warehouse_name: rec.warehouse_name || 'Almacén',
           product_name: item.product_name,
           counted_stock: Number(item.counted_stock || 0),
           difference: Number(item.difference || 0),
-        }))
-    ).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
-  ), [inventoryReconciliations]);
+        }));
+      if (!lines.length) continue;
+      map.get(dateKey).sessions.push({
+        id: rec.id,
+        created_at: rec.created_at,
+        warehouse_name: rec.warehouse_name || 'Almacén',
+        lines,
+      });
+    }
+    return [...map.values()]
+      .map((group) => ({
+        ...group,
+        dateLabel: formatDate(group.dateKey),
+        lineCount: group.sessions.reduce((sum, session) => sum + session.lines.length, 0),
+      }))
+      .filter((group) => group.lineCount > 0)
+      .sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+  }, [inventoryReconciliations]);
+
+  const inventoryCuadreLines = useMemo(
+    () => inventoryCuadreGroupsByDate.reduce((sum, group) => sum + group.lineCount, 0),
+    [inventoryCuadreGroupsByDate],
+  );
+
+  const downloadInventoryCuadres = (format = 'both') => {
+    if (!inventoryCuadreGroupsByDate.length) {
+      toast.error('No hay cuadres para descargar');
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (format === 'txt' || format === 'both') {
+      downloadBlobFile(`cuadres-inventario-${stamp}.txt`, buildInventoryCuadresTxt(inventoryCuadreGroupsByDate));
+    }
+    if (format === 'csv' || format === 'both') {
+      downloadBlobFile(
+        `cuadres-inventario-${stamp}.csv`,
+        buildInventoryCuadresCsv(inventoryCuadreGroupsByDate),
+        'text/csv;charset=utf-8',
+      );
+    }
+    if (format === 'both') toast.success('Descargados TXT y CSV');
+  };
 
   useEffect(() => { loadRanking(rankingPeriod); }, [rankingPeriod]);
 
@@ -2101,7 +2242,25 @@ export default function Reports() {
                         Fecha de compra: {formatDate(group.purchase_date || group.created_at)}
                       </p>
                     </div>
-                    <p className="font-bold text-red-700">{formatCurrency(group.total)}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => downloadPurchaseGroup(group, 'csv')}
+                        className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 hover:bg-[var(--ui-sidebar-hover)]"
+                        title="Descargar compra en CSV"
+                      >
+                        <MdDownload /> CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadPurchaseGroup(group, 'txt')}
+                        className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 hover:bg-[var(--ui-sidebar-hover)]"
+                        title="Descargar compra en TXT"
+                      >
+                        <MdDownload /> TXT
+                      </button>
+                      <p className="font-bold text-red-700">{formatCurrency(group.total)}</p>
+                    </div>
                   </div>
                   {group.items.map(item => (
                     <div key={item.id} className="text-sm flex justify-between border-b border-slate-100 py-1">
@@ -2483,32 +2642,32 @@ export default function Reports() {
       {reportSection === 'inventario' && (
         <div className="card">
           <h3 className="font-bold rf-section-title mb-4">Movimientos de inventario</h3>
-          <div className="flex flex-wrap gap-2 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
             <button
               type="button"
               onClick={() => setInventoryMovementsTab('stock_minimo')}
-              className={`rounded-lg px-4 py-3 text-left border transition-colors min-w-[200px] flex-1 sm:flex-none ${
+              className={`rounded-xl px-5 py-5 text-left border transition-colors h-full min-h-[132px] flex flex-col justify-center gap-2 ${
                 inventoryMovementsTab === 'stock_minimo'
                   ? 'bg-red-50 border-red-300 ring-2 ring-red-200'
                   : 'bg-white border-slate-200 hover:border-red-200'
               }`}
             >
-              <p className="text-xs text-red-600">Stock mínimo</p>
-              <p className="text-xl font-bold text-red-700">{inventoryAlerts.length}</p>
-              <p className="text-xs text-[var(--ui-muted)] mt-1">Productos bajo el mínimo</p>
+              <p className="text-lg font-bold text-red-700 rf-section-title leading-tight">Stock mínimo</p>
+              <p className="text-4xl font-bold text-red-700 tabular-nums">{inventoryAlerts.length}</p>
+              <p className="text-sm text-[var(--ui-muted)]">Productos bajo el mínimo</p>
             </button>
             <button
               type="button"
               onClick={() => setInventoryMovementsTab('cuadres')}
-              className={`rounded-lg px-4 py-3 text-left border transition-colors min-w-[200px] flex-1 sm:flex-none ${
+              className={`rounded-xl px-5 py-5 text-left border transition-colors h-full min-h-[132px] flex flex-col justify-center gap-2 ${
                 inventoryMovementsTab === 'cuadres'
                   ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-200'
                   : 'bg-white border-slate-200 hover:border-sky-200'
               }`}
             >
-              <p className="text-xs text-sky-600">Cuadres de inventario</p>
-              <p className="text-xl font-bold text-sky-700">{inventoryReconciliations.length}</p>
-              <p className="text-xs text-[var(--ui-muted)] mt-1">{inventoryCuadreLines.length} ajuste(s) registrado(s)</p>
+              <p className="text-lg font-bold text-sky-700 rf-section-title leading-tight">Cuadres de inventario</p>
+              <p className="text-4xl font-bold text-sky-700 tabular-nums">{inventoryReconciliations.length}</p>
+              <p className="text-sm text-[var(--ui-muted)]">{inventoryCuadreLines} ajuste(s) registrado(s)</p>
             </button>
           </div>
 
@@ -2534,35 +2693,69 @@ export default function Reports() {
                 No hay productos con stock bajo en este momento.
               </p>
             )
-          ) : inventoryCuadreLines.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
-                    <th className="py-2 pr-3 font-medium">Fecha y hora</th>
-                    <th className="py-2 pr-3 font-medium">Almacén</th>
-                    <th className="py-2 pr-3 font-medium">Producto</th>
-                    <th className="py-2 pr-3 font-medium text-right">Contado</th>
-                    <th className="py-2 font-medium text-right">Cantidad ajustada</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inventoryCuadreLines.map((line) => (
-                    <tr key={line.id} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
-                      <td className="py-2.5 pr-3 whitespace-nowrap">{formatDateTime(line.created_at)}</td>
-                      <td className="py-2.5 pr-3">{line.warehouse_name}</td>
-                      <td className="py-2.5 pr-3 font-medium">{line.product_name}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{line.counted_stock}</td>
-                      <td className={`py-2.5 text-right tabular-nums font-semibold ${
-                        line.difference > 0 ? 'text-sky-600' : 'text-red-600'
-                      }`}
-                      >
-                        {line.difference > 0 ? `+${line.difference}` : line.difference}
-                      </td>
+          ) : inventoryCuadreGroupsByDate.length > 0 ? (
+            <div>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => downloadInventoryCuadres('csv')}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-sky-600 text-white hover:bg-sky-700"
+                >
+                  <MdDownload /> Descargar CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadInventoryCuadres('txt')}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-sky-300 text-sky-700 bg-sky-50 hover:bg-sky-100"
+                >
+                  <MdDownload /> Descargar TXT
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
+                      <th className="py-2 pr-3 font-medium">Fecha y hora</th>
+                      <th className="py-2 pr-3 font-medium">Almacén</th>
+                      <th className="py-2 pr-3 font-medium">Producto</th>
+                      <th className="py-2 pr-3 font-medium text-right">Contado</th>
+                      <th className="py-2 font-medium text-right">Cantidad ajustada</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {inventoryCuadreGroupsByDate.map((group) => (
+                      <Fragment key={group.dateKey}>
+                        <tr className="bg-sky-50/80 border-b border-sky-200">
+                          <td colSpan={5} className="py-2.5 px-3 font-semibold text-sky-800">
+                            {group.dateLabel}
+                            <span className="ml-2 text-xs font-normal text-sky-600">
+                              {group.lineCount} ajuste(s) · {group.sessions.length} cuadre(s)
+                            </span>
+                          </td>
+                        </tr>
+                        {group.sessions.map((session) => (
+                          session.lines.map((line, lineIdx) => (
+                            <tr key={line.id} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
+                              <td className="py-2.5 pr-3 whitespace-nowrap">
+                                {lineIdx === 0 ? formatDateTime(session.created_at) : ''}
+                              </td>
+                              <td className="py-2.5 pr-3">{lineIdx === 0 ? session.warehouse_name : ''}</td>
+                              <td className="py-2.5 pr-3 font-medium">{line.product_name}</td>
+                              <td className="py-2.5 pr-3 text-right tabular-nums">{line.counted_stock}</td>
+                              <td className={`py-2.5 text-right tabular-nums font-semibold ${
+                                line.difference > 0 ? 'text-sky-600' : 'text-red-600'
+                              }`}
+                              >
+                                {line.difference > 0 ? `+${line.difference}` : line.difference}
+                              </td>
+                            </tr>
+                          ))
+                        ))}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : (
             <div className="py-8 text-center text-[var(--ui-muted)]">

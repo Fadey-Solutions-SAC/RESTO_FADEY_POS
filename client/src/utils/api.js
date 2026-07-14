@@ -788,8 +788,20 @@ export function formatInsumoWithUnit(qty, unidad) {
   return `${formatInsumoQty(qty)} ${u}`;
 }
 
+/** Clave yyyy-MM-dd → dd/mm/aaaa sin desfase por zona horaria. */
+export function formatDateKey(dateKey) {
+  const ymd = String(dateKey || '').trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '';
+  const [y, m, d] = ymd.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 export const formatDate = (dateStr) => {
   if (!dateStr) return '';
+  const raw = String(dateStr).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return formatDateKey(raw);
+  }
   const d = parseApiDate(dateStr);
   if (!d) return '';
   return d.toLocaleDateString('es-PE', {

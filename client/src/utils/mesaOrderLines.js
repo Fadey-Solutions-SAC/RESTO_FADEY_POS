@@ -512,8 +512,23 @@ export function parseProductRemovalNotesFromOrder(notes) {
   return parts.filter((p) => /productos retirados/i.test(p)).join(' · ');
 }
 
-/** Eventos de auditoría en una cuenta: cortesía, descuento o producto eliminado. */
+/**
+ * Eventos de auditoría dentro de una cuenta de venta (mismo cobro).
+ * Cortesía/descuento/eliminado en otra cuenta (cobro distinto) no marcan Observado aquí.
+ */
 export function collectSalesAccountObservations(orders = [], extraAdjustmentRows = []) {
+  const accountOrders = orders || [];
+  const accountOrderIds = new Set(
+    accountOrders.map((o) => String(o?.id || '').trim()).filter(Boolean),
+  );
+  const salesOrders = accountOrders.filter((o) => !isCourtesyOrder(o));
+  const courtesyOrders = accountOrders.filter(isCourtesyOrder);
+  const isCourtesyOnlyAccount = salesOrders.length === 0;
+
+  if (isCourtesyOnlyAccount) {
+    return { observed: false, status: 'correcto', items: [], recordIds: [] };
+  }
+
   const items = [];
   const seen = new Set();
 
@@ -527,17 +542,7 @@ export function collectSalesAccountObservations(orders = [], extraAdjustmentRows
     items.push({ kind, label, detail: text, recordId: id || null });
   };
 
-  for (const order of orders || []) {
-    if (isCourtesyOrder(order)) {
-      const products = (order.items || []).map((i) => i.product_name).filter(Boolean).join(', ');
-      const reason = parseCourtesyReason(order);
-      pushItem(
-        'cortesia',
-        'Producto como cortesía',
-        reason || products || `Comanda #${order.order_number || '—'}`,
-        order.id,
-      );
-    }
+  for (const order of salesOrders) {
     if (isDiscountOrder(order)) {
       const reason = parseAdjustmentReason(order);
       const amount = Number(order.discount || 0).toFixed(2);
@@ -557,7 +562,23 @@ export function collectSalesAccountObservations(orders = [], extraAdjustmentRows
     }
   }
 
-  for (const row of extraAdjustmentRows || []) {
+  for (const order of courtesyOrders) {
+    const products = (order.items || []).map((i) => i.product_name).filter(Boolean).join(', ');
+    const reason = parseCourtesyReason(order);
+    pushItem(
+      'cortesia',
+      'Producto como cortesía',
+      reason || products || `Comanda #${order.order_number || '—'}`,
+      order.id,
+    );
+  }
+
+  const rowsForAccount = (extraAdjustmentRows || []).filter((row) => {
+    const orderId = String(row.order_id || '').trim();
+    return orderId && accountOrderIds.has(orderId);
+  });
+
+  for (const row of rowsForAccount) {
     const kind = String(row.adjustment_kind || '').trim();
     if (kind === 'eliminado') {
       const product = row.items?.[0]?.product_name || row.product_name || 'Producto';
