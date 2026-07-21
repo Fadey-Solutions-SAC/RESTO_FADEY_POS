@@ -13,7 +13,6 @@ import {
 import PrintingAssistantDownloadButton from '../../components/printing/PrintingAssistantDownloadButton';
 import { useAuth } from '../../context/AuthContext';
 import Modal from '../../components/Modal';
-import ContextMenu from '../../components/ContextMenu';
 import toast from 'react-hot-toast';
 import {
   MdPeople, MdAdd, MdEdit, MdDelete, MdPerson,
@@ -3017,8 +3016,7 @@ function SalonMesasSection() {
   const [editSalon, setEditSalon] = useState(null);
   const [salonForm, setSalonForm] = useState({ name: '', description: '' });
   const [savingSalones, setSavingSalones] = useState(false);
-  const [salonContextMenu, setSalonContextMenu] = useState(null);
-  const [salonOrderModal, setSalonOrderModal] = useState(null);
+  const [salonOrderEditing, setSalonOrderEditing] = useState(false);
   const [salonOrderPosition, setSalonOrderPosition] = useState(1);
 
   const [showMesaModal, setShowMesaModal] = useState(false);
@@ -3063,8 +3061,20 @@ function SalonMesasSection() {
     }
   };
 
-  const openNewSalon = () => { setEditSalon(null); setSalonForm({ name: '', description: '' }); setShowSalonModal(true); };
-  const openEditSalon = (s) => { setEditSalon(s); setSalonForm({ name: s.name, description: s.description || '' }); setShowSalonModal(true); };
+  const openNewSalon = () => {
+    setEditSalon(null);
+    setSalonForm({ name: '', description: '' });
+    setSalonOrderEditing(false);
+    setShowSalonModal(true);
+  };
+  const openEditSalon = (s) => {
+    const currentIdx = salones.findIndex((sal) => sal.id === s.id);
+    setEditSalon(s);
+    setSalonForm({ name: s.name, description: s.description || '' });
+    setSalonOrderPosition(currentIdx >= 0 ? currentIdx + 1 : 1);
+    setSalonOrderEditing(false);
+    setShowSalonModal(true);
+  };
 
   const handleSalonSubmit = async (e) => {
     e.preventDefault();
@@ -3117,26 +3127,19 @@ function SalonMesasSection() {
     }
   };
 
-  const openSalonContextMenu = (e, salon) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setSalonContextMenu({ x: e.clientX, y: e.clientY, salon });
-  };
-
-  const openSalonOrderModal = (salon) => {
-    const currentIdx = salones.findIndex((s) => s.id === salon.id);
-    setSalonOrderPosition(currentIdx >= 0 ? currentIdx + 1 : 1);
-    setSalonOrderModal(salon);
-  };
-
-  const applySalonOrder = async (e) => {
-    e.preventDefault();
-    if (!salonOrderModal) return;
+  const applySalonOrderFromEdit = async () => {
+    if (!editSalon) return;
+    const currentIdx = salones.findIndex((s) => s.id === editSalon.id);
+    if (currentIdx + 1 === salonOrderPosition) {
+      toast.error('El salón ya está en esa posición');
+      return;
+    }
     try {
-      const next = reorderSalonList(salones, salonOrderModal.id, salonOrderPosition);
+      const next = reorderSalonList(salones, editSalon.id, salonOrderPosition);
       await persistSalones(next);
-      toast.success(`"${salonOrderModal.name}" movido a la posición ${salonOrderPosition}`);
-      setSalonOrderModal(null);
+      toast.success(`"${editSalon.name}" movido a la posición ${salonOrderPosition}`);
+      setSalonOrderEditing(false);
+      setShowSalonModal(false);
     } catch (_) {
       /* toast en persistSalones */
     }
@@ -3202,11 +3205,7 @@ function SalonMesasSection() {
                   <MdTableRestaurant className="text-xl text-gold-600" />
                 </div>
                 <div>
-                  <h3
-                    className="font-bold rf-section-title cursor-context-menu select-none"
-                    onContextMenu={(e) => openSalonContextMenu(e, salon)}
-                    title="Clic derecho: mover orden de salón"
-                  >
+                  <h3 className="font-bold rf-section-title">
                     {salon.name}
                   </h3>
                   {salon.description && <p className="text-xs text-[var(--ui-muted)]">{salon.description}</p>}
@@ -3287,60 +3286,61 @@ function SalonMesasSection() {
       })}
 
       {/* SALON MODAL */}
-      <Modal isOpen={showSalonModal} onClose={() => setShowSalonModal(false)} title={editSalon ? 'Editar Salón' : 'Nuevo Salón'} size="sm">
+      <Modal isOpen={showSalonModal} onClose={() => { setShowSalonModal(false); setSalonOrderEditing(false); }} title={editSalon ? 'Editar Salón' : 'Nuevo Salón'} size="sm">
         <form onSubmit={handleSalonSubmit} className="space-y-4">
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre del Salón</label><input value={salonForm.name} onChange={e => setSalonForm({ ...salonForm, name: e.target.value })} className="input-field" required placeholder="Ej: Terraza, Segundo Piso" /></div>
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Descripción</label><textarea value={salonForm.description} onChange={e => setSalonForm({ ...salonForm, description: e.target.value })} className="input-field" rows="2" placeholder="Descripción del salón..." /></div>
-          <div className="flex gap-3"><button type="button" onClick={() => setShowSalonModal(false)} className="btn-secondary flex-1">Cancelar</button><button type="submit" className="btn-primary flex-1">{editSalon ? 'Guardar' : 'Crear Salón'}</button></div>
+          {editSalon ? (
+            <div className="rounded-xl border border-[color:var(--ui-border)] p-3 space-y-3">
+              <p className="text-sm font-medium text-[var(--ui-body-text)]">Orden en listado</p>
+              {!salonOrderEditing ? (
+                <button
+                  type="button"
+                  onClick={() => setSalonOrderEditing(true)}
+                  className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg hover:bg-[var(--ui-sidebar-hover)]"
+                >
+                  Cambiar orden de salón
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-[var(--ui-muted)] mb-1">Nueva posición (1–{salones.length})</label>
+                    <select
+                      value={salonOrderPosition}
+                      onChange={(e) => setSalonOrderPosition(Number(e.target.value))}
+                      className="input-field"
+                    >
+                      {salones.map((s, idx) => (
+                        <option key={s.id} value={idx + 1}>
+                          {idx + 1} — {s.id === editSalon.id ? `${s.name} (actual)` : s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void applySalonOrderFromEdit()}
+                      className="text-xs px-3 py-1.5 bg-[#3B82F6] text-white rounded-lg hover:bg-[#2563EB] disabled:opacity-50"
+                      disabled={savingSalones}
+                    >
+                      Aplicar posición
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSalonOrderEditing(false)}
+                      className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+          <div className="flex gap-3"><button type="button" onClick={() => { setShowSalonModal(false); setSalonOrderEditing(false); }} className="btn-secondary flex-1">Cancelar</button><button type="submit" className="btn-primary flex-1">{editSalon ? 'Guardar' : 'Crear Salón'}</button></div>
         </form>
       </Modal>
-
-      <Modal
-        isOpen={!!salonOrderModal}
-        onClose={() => setSalonOrderModal(null)}
-        title="Mover orden de salón"
-        size="sm"
-      >
-        {salonOrderModal ? (
-          <form onSubmit={applySalonOrder} className="space-y-4">
-            <p className="text-sm text-[var(--ui-muted)]">
-              Salón: <span className="font-semibold text-[var(--ui-body-text)]">{salonOrderModal.name}</span>
-            </p>
-            <div>
-              <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nueva posición (1–{salones.length})</label>
-              <select
-                value={salonOrderPosition}
-                onChange={(e) => setSalonOrderPosition(Number(e.target.value))}
-                className="input-field"
-              >
-                {salones.map((s, idx) => (
-                  <option key={s.id} value={idx + 1}>
-                    {idx + 1} — {s.id === salonOrderModal.id ? `${s.name} (actual)` : s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-3">
-              <button type="button" onClick={() => setSalonOrderModal(null)} className="btn-secondary flex-1">Cancelar</button>
-              <button type="submit" className="btn-primary flex-1" disabled={savingSalones}>Mover</button>
-            </div>
-          </form>
-        ) : null}
-      </Modal>
-
-      <ContextMenu
-        open={!!salonContextMenu}
-        x={salonContextMenu?.x ?? 0}
-        y={salonContextMenu?.y ?? 0}
-        onClose={() => setSalonContextMenu(null)}
-        items={salonContextMenu ? [
-          {
-            id: 'move-order',
-            label: 'Mover orden de salón',
-            onClick: () => openSalonOrderModal(salonContextMenu.salon),
-          },
-        ] : []}
-      />
 
       {/* MESA MODAL */}
       <Modal isOpen={showMesaModal} onClose={() => setShowMesaModal(false)} title={editMesa ? 'Editar Mesa' : 'Nueva Mesa'} size="sm">

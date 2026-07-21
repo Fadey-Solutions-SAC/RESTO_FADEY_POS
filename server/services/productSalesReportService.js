@@ -65,7 +65,7 @@ function querySoldProductsBetween(openedAt, closedAt, registerId = null) {
      WHERE ${PAID_SALES_WHERE}
        AND ${window.clause}
      GROUP BY oi.product_id, oi.product_name
-     ORDER BY total_qty DESC, oi.product_name ASC`,
+     ORDER BY oi.product_name ASC`,
     window.params,
   );
   const accountRows = queryAll(
@@ -179,109 +179,6 @@ function buildRegisterBlocksForDateRange(from, to) {
   return blocks;
 }
 
-function buildProductSalesReport(query = {}) {
-  const from = parseYmd(query.from);
-  const to = parseYmd(query.to);
-  const current = String(query.current || '').trim() === '1' || query.current === true;
-  const registerIdsRaw = String(query.register_ids || query.registerIds || '').trim();
-  const registerIds = registerIdsRaw
-    ? registerIdsRaw.split(',').map((x) => x.trim()).filter(Boolean)
-    : [];
-
-  if (current) {
-    const openRegisters = getOpenRegistersOnActiveStations();
-    if (!openRegisters.length) {
-      return {
-        mode: 'current',
-        register_open: false,
-        sold_products: [],
-        by_register: [],
-        product_sales_total: 0,
-        filters: { current: true },
-      };
-    }
-    const byRegister = openRegisters.map((reg) => {
-      const sold_products = querySoldProductsBetween(reg.opened_at, null, reg.id);
-      return {
-        register_id: reg.id,
-        user_name: reg.user_name || reg.cajero_name || '',
-        opened_at: reg.opened_at,
-        closed_at: null,
-        is_open: true,
-        sold_products,
-        product_sales_total: sumProductTotal(sold_products),
-      };
-    });
-    const merged = mergeSoldProducts(byRegister.flatMap((r) => r.sold_products));
-    return {
-      mode: 'current',
-      register_open: true,
-      sold_products: merged,
-      by_register: byRegister,
-      product_sales_total: sumProductTotal(merged),
-      filters: {
-        current: true,
-        register_count: byRegister.length,
-      },
-    };
-  }
-
-  if (registerIds.length) {
-    const byRegister = [];
-    for (const id of registerIds) {
-      const reg = loadRegisterMeta(id);
-      if (!reg?.id || !reg.closed_at) continue;
-      const sold_products = querySoldProductsBetween(reg.opened_at, reg.closed_at, reg.id);
-      byRegister.push({
-        register_id: reg.id,
-        user_name: reg.user_name || '',
-        opened_at: reg.opened_at,
-        closed_at: reg.closed_at,
-        is_open: false,
-        sold_products,
-        product_sales_total: sumProductTotal(sold_products),
-      });
-    }
-    const merged = mergeSoldProducts(byRegister.flatMap((r) => r.sold_products));
-    return {
-      mode: 'registers',
-      sold_products: merged,
-      by_register: byRegister,
-      product_sales_total: sumProductTotal(merged),
-      filters: {
-        register_ids: byRegister.map((r) => r.register_id),
-        register_count: byRegister.length,
-      },
-    };
-  }
-
-  if (from && to) {
-    const byRegister = buildRegisterBlocksForDateRange(from, to);
-    const sold_products = mergeSoldProducts(byRegister.flatMap((r) => r.sold_products));
-    return {
-      mode: 'date_range',
-      sold_products,
-      by_register: byRegister,
-      product_sales_total: sumProductTotal(sold_products),
-      filters: {
-        from,
-        to,
-        closure_count: byRegister.filter((r) => !r.is_open).length,
-        register_count: byRegister.length,
-      },
-    };
-  }
-
-  return {
-    mode: 'none',
-    sold_products: [],
-    by_register: [],
-    product_sales_total: 0,
-    filters: {},
-    error: 'Indique rango de fechas (from/to), register_ids o current=1',
-  };
-}
-
 function mergeSoldProducts(rows) {
   const m = new Map();
   for (const row of rows || []) {
@@ -303,11 +200,187 @@ function mergeSoldProducts(rows) {
       ...r,
       unit_price: r.total_qty > 0 ? r.total_amount / r.total_qty : 0,
     }))
-    .sort((a, b) => b.total_qty - a.total_qty || String(a.product_name).localeCompare(String(b.product_name), 'es'));
+    .sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), 'es'));
+}
+
+function parseIncludeInventory(query = {}) {
+  const v = String(query.include_inventory ?? query.includeInventory ?? '').trim().toLowerCase();
+  if (v === '0' || v === 'false' || v === 'no') return false;
+  if (v === '1' || v === 'true' || v === 'yes') return true;
+  return false;
+}
+
+function queryWarehouseCatalogProducts() {
+  return queryAll(
+    `SELECT p.id as product_id, p.name as product_name,
+            COALESCE(p.stock, 0) as current_stock,
+            c.name as category_name
+     FROM products p
+     LEFT JOIN categories c ON c.id = p.category_id
+     WHERE p.is_active = 1
+       AND IFNULL(p.process_type, 'transformed') = 'non_transformed'
+     ORDER BY p.name ASC`,
+  );
+}
+
+function mergeSoldWithInventoryCatalog(soldRows) {
+  const soldMap = new Map();
+  for (const row of soldRows || []) {
+    const key = String(row.product_id || row.product_name || '').trim() || row.product_name;
+    soldMap.set(key, row);
+  }
+  const catalog = queryWarehouseCatalogProducts();
+  const seen = new Set();
+  const merged = catalog.map((p) => {
+    const key = String(p.product_id || p.product_name || '').trim();
+    seen.add(key);
+    const sold = soldMap.get(key);
+    if (sold) {
+      return {
+        ...sold,
+        current_stock: Number(p.current_stock || 0),
+        category_name: p.category_name || sold.category_name || '',
+      };
+    }
+    return {
+      product_id: p.product_id,
+      product_name: p.product_name,
+      total_qty: 0,
+      total_amount: 0,
+      order_count: 0,
+      unit_price: 0,
+      current_stock: Number(p.current_stock || 0),
+      category_name: p.category_name || '',
+    };
+  });
+  for (const [key, sold] of soldMap.entries()) {
+    if (seen.has(key)) continue;
+    merged.push({
+      ...sold,
+      current_stock: sold.current_stock != null ? sold.current_stock : null,
+    });
+  }
+  return merged.sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), 'es'));
+}
+
+function applyInventoryToReport(report, includeInventory) {
+  if (!report || !includeInventory) return report;
+  const salesTotal = sumProductTotal(report.sold_products);
+  return {
+    ...report,
+    include_inventory: true,
+    sold_products: mergeSoldWithInventoryCatalog(report.sold_products),
+    product_sales_total: salesTotal,
+  };
+}
+
+function buildProductSalesReport(query = {}) {
+  const includeInventory = parseIncludeInventory(query);
+  const from = parseYmd(query.from);
+  const to = parseYmd(query.to);
+  const current = String(query.current || '').trim() === '1' || query.current === true;
+  const registerIdsRaw = String(query.register_ids || query.registerIds || '').trim();
+  const registerIds = registerIdsRaw
+    ? registerIdsRaw.split(',').map((x) => x.trim()).filter(Boolean)
+    : [];
+
+  if (current) {
+    const openRegisters = getOpenRegistersOnActiveStations();
+    if (!openRegisters.length) {
+      return applyInventoryToReport({
+        mode: 'current',
+        register_open: false,
+        sold_products: [],
+        by_register: [],
+        product_sales_total: 0,
+        filters: { current: true },
+      }, includeInventory);
+    }
+    const byRegister = openRegisters.map((reg) => {
+      const sold_products = querySoldProductsBetween(reg.opened_at, null, reg.id);
+      return {
+        register_id: reg.id,
+        user_name: reg.user_name || reg.cajero_name || '',
+        opened_at: reg.opened_at,
+        closed_at: null,
+        is_open: true,
+        sold_products,
+        product_sales_total: sumProductTotal(sold_products),
+      };
+    });
+    const merged = mergeSoldProducts(byRegister.flatMap((r) => r.sold_products));
+    return applyInventoryToReport({
+      mode: 'current',
+      register_open: true,
+      sold_products: merged,
+      by_register: byRegister,
+      product_sales_total: sumProductTotal(merged),
+      filters: {
+        current: true,
+        register_count: byRegister.length,
+      },
+    }, includeInventory);
+  }
+
+  if (registerIds.length) {
+    const byRegister = [];
+    for (const id of registerIds) {
+      const reg = loadRegisterMeta(id);
+      if (!reg?.id || !reg.closed_at) continue;
+      const sold_products = querySoldProductsBetween(reg.opened_at, reg.closed_at, reg.id);
+      byRegister.push({
+        register_id: reg.id,
+        user_name: reg.user_name || '',
+        opened_at: reg.opened_at,
+        closed_at: reg.closed_at,
+        is_open: false,
+        sold_products,
+        product_sales_total: sumProductTotal(sold_products),
+      });
+    }
+    const merged = mergeSoldProducts(byRegister.flatMap((r) => r.sold_products));
+    return applyInventoryToReport({
+      mode: 'registers',
+      sold_products: merged,
+      by_register: byRegister,
+      product_sales_total: sumProductTotal(merged),
+      filters: {
+        register_ids: byRegister.map((r) => r.register_id),
+        register_count: byRegister.length,
+      },
+    }, includeInventory);
+  }
+
+  if (from && to) {
+    const byRegister = buildRegisterBlocksForDateRange(from, to);
+    const sold_products = mergeSoldProducts(byRegister.flatMap((r) => r.sold_products));
+    return applyInventoryToReport({
+      mode: 'date_range',
+      sold_products,
+      by_register: byRegister,
+      product_sales_total: sumProductTotal(sold_products),
+      filters: {
+        from,
+        to,
+        closure_count: byRegister.filter((r) => !r.is_open).length,
+        register_count: byRegister.length,
+      },
+    }, includeInventory);
+  }
+
+  return applyInventoryToReport({
+    mode: 'none',
+    sold_products: [],
+    by_register: [],
+    product_sales_total: 0,
+    filters: {},
+    error: 'Indique rango de fechas (from/to), register_ids o current=1',
+  }, includeInventory);
 }
 
 module.exports = {
   buildProductSalesReport,
   querySoldProductsBetween,
   mergeSoldProducts,
+  mergeSoldWithInventoryCatalog,
 };

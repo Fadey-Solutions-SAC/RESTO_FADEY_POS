@@ -603,6 +603,20 @@ export default function POSPanel() {
     if (String(user?.role || '').toLowerCase() !== 'admin' || !rid) return {};
     return { register_id: rid };
   }, [user?.role, adminRegisterId]);
+
+  const isPosAdmin = String(user?.role || '').toLowerCase() === 'admin';
+  const adminAttachedRegisterId = String(adminRegisterId || '').trim();
+  const adminAttachedStation = useMemo(() => {
+    if (!adminAttachedRegisterId) return null;
+    return (
+      cajaStations.find((s) => String(s.open_register?.id || '') === adminAttachedRegisterId) || null
+    );
+  }, [cajaStations, adminAttachedRegisterId]);
+  const adminRegisterContextLive = Boolean(adminAttachedStation?.open_register?.id);
+  const adminOpenStations = useMemo(
+    () => cajaStations.filter((s) => s.open_register?.id),
+    [cajaStations],
+  );
   const openCajaView = useCallback(
     (view) => {
       const allowed = cajaOptionsForRole.some((o) => o.id === view);
@@ -629,7 +643,7 @@ export default function POSPanel() {
         api.get('/tables/salones').catch(() => ({ salones: [] })),
         api.get(currentRegPath),
         api.get('/pos/register-status'),
-        api.get('/pos/caja-stations').catch(() => ({ stations: [] })),
+        api.get('/pos/caja-stations').catch(() => null),
         api.get('/products?active_only=true&available_now=true'),
         api.get('/categories/active'),
         api.get('/admin-modules/modifiers').catch(() => []),
@@ -655,8 +669,21 @@ export default function POSPanel() {
           } catch {
             /* noop */
           }
+          if (!regResolved) {
+            const st = stations.find((s) => String(s.open_register?.id || '') === adminRid);
+            const op = st?.open_register;
+            if (op) {
+              regResolved = {
+                id: adminRid,
+                caja_station_id: st.id,
+                user_id: op.user_id,
+                cajero_name: op.cajero_name,
+                opened_at: op.opened_at,
+              };
+            }
+          }
         }
-        if (!regResolved && !adminRegisterStillOpen) {
+        if (!regResolved && stationsRes != null && !adminRegisterStillOpen) {
           persistAdminRegisterId('');
           setAdminRegisterId('');
         }
@@ -810,8 +837,18 @@ export default function POSPanel() {
     showMenuRef.current = showMenu;
   }, [showMenu]);
 
+  const mesaDetailModalOpenRef = useRef(mesaDetailModalOpen);
+  mesaDetailModalOpenRef.current = mesaDetailModalOpen;
+
   const pollPosData = () => {
-    if (checkoutInFlightRef.current || showBillRef.current || showMenuRef.current) return;
+    if (
+      checkoutInFlightRef.current
+      || showBillRef.current
+      || showMenuRef.current
+      || mesaDetailModalOpenRef.current
+    ) {
+      return;
+    }
     void loadData();
   };
 
@@ -1114,6 +1151,18 @@ export default function POSPanel() {
     if (!rid) return;
     persistAdminRegisterId(rid);
     setAdminRegisterId(rid);
+    const station = cajaStations.find((s) => String(s.open_register?.id || '') === rid);
+    const op = station?.open_register;
+    if (op) {
+      setRegister((prev) => ({
+        ...(prev && String(prev.id) === rid ? prev : {}),
+        id: rid,
+        caja_station_id: station.id,
+        user_id: op.user_id,
+        cajero_name: op.cajero_name,
+        opened_at: op.opened_at,
+      }));
+    }
     await loadData({ adminRegisterOverride: rid });
   };
 
@@ -2878,6 +2927,54 @@ export default function POSPanel() {
     </p>
   );
 
+  const renderAdminRegisterBar = () => {
+    if (!isPosAdmin || !adminOpenStations.length) return null;
+    const activeStation = adminAttachedStation;
+    const activeOp = activeStation?.open_register;
+    return (
+      <div className="card mb-4 py-3 px-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-[var(--ui-body-text)] shrink-0">Caja activa</span>
+          {adminOpenStations.map((st) => {
+            const op = st.open_register;
+            const isActive = String(op?.id || '') === adminAttachedRegisterId;
+            return (
+              <button
+                key={st.id}
+                type="button"
+                onClick={() => void attachAdminToRegister(op.id)}
+                className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${
+                  isActive
+                    ? 'border-[color:var(--ui-accent-muted)] bg-[var(--ui-accent)] text-white font-semibold'
+                    : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                }`}
+              >
+                {st.name}
+              </button>
+            );
+          })}
+          {adminAttachedRegisterId ? (
+            <button
+              type="button"
+              onClick={() => void clearAdminRegisterContext()}
+              className="btn-secondary text-sm ml-auto shrink-0"
+            >
+              Cambiar caja
+            </button>
+          ) : null}
+        </div>
+        {adminAttachedRegisterId && activeOp ? (
+          <p className="text-xs ui-text-muted mt-2">
+            Turno de {activeOp.cajero_name || 'cajero'}
+            {activeOp.opened_at ? ` · ${formatPeDateTimeLine(activeOp.opened_at)}` : ''}
+          </p>
+        ) : (
+          <p className="text-xs text-amber-700 mt-2">Seleccione una caja con turno abierto para operar.</p>
+        )}
+      </div>
+    );
+  };
+
   const renderOpenRegisterScreen = () => {
     const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
     if (isAdmin) {
@@ -3019,9 +3116,10 @@ export default function POSPanel() {
 
   return (
     <div>
+      {renderAdminRegisterBar()}
       <div className="mb-4 -mt-4">
       {activeCajaOption === 'cobrar' && (
-        register ? (
+        register || (isPosAdmin && adminRegisterContextLive) ? (
         <>
       <div className="flex flex-wrap items-center justify-between mb-3 gap-2">
         <div

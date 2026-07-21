@@ -279,6 +279,45 @@ function downloadAllSalesExcel(orders) {
 const PAYMENT_METHOD_KEYS = ['efectivo', 'yape', 'plin', 'tarjeta', 'online'];
 const DOC_TYPE_KEYS = ['nota_venta', 'boleta', 'factura'];
 
+function mesaSortValue(group) {
+  const table = String(group?.primary?.table_number || '').trim();
+  const n = parseInt(table.replace(/\D/g, ''), 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 99999;
+}
+
+function sortVentasGroups(groups, sortKey, sortDir) {
+  const dir = sortDir === 'asc' ? 1 : -1;
+  return [...groups].sort((a, b) => {
+    if (sortKey === 'mesa') {
+      const na = mesaSortValue(a);
+      const nb = mesaSortValue(b);
+      if (na !== nb) return (na - nb) * dir;
+      return String(a.mesaLabel || '').localeCompare(String(b.mesaLabel || ''), 'es') * dir;
+    }
+    if (sortKey === 'venta') {
+      return (Number(a.total || 0) - Number(b.total || 0)) * dir;
+    }
+    const ta = parseApiDate(a.latestAt)?.getTime() || 0;
+    const tb = parseApiDate(b.latestAt)?.getTime() || 0;
+    return (ta - tb) * dir;
+  });
+}
+
+function SortableTh({ label, colKey, sortKey, sortDir, onSort }) {
+  const active = sortKey === colKey;
+  return (
+    <th
+      className="pb-2 font-medium cursor-pointer select-none hover:text-[var(--ui-body-text)]"
+      onClick={() => onSort(colKey)}
+      title={active ? (sortDir === 'asc' ? 'Orden ascendente' : 'Orden descendente') : `Ordenar por ${label}`}
+    >
+      {label}
+      {active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+    </th>
+  );
+}
+
 export default function Ventas() {
   const { t } = useTranslation('sales');
   const showDeliveryUi = useShowDeliveryUi();
@@ -304,6 +343,8 @@ export default function Ventas() {
   const [loading, setLoading] = useState(true);
   const [restaurantName, setRestaurantName] = useState('-');
   const [adjustmentRows, setAdjustmentRows] = useState([]);
+  const [sortKey, setSortKey] = useState('fecha');
+  const [sortDir, setSortDir] = useState('desc');
   const navigate = useNavigate();
   const viewTapRef = useRef({ key: '', count: 0, timer: null });
 
@@ -381,10 +422,19 @@ export default function Ventas() {
 
   const isVoidedTab = saleTab === 'anuladas';
 
-  const displayGroups = useMemo(
-    () => buildVentasDisplayGroups(filtered, adjustmentRows, { voidedTab: isVoidedTab }),
-    [filtered, adjustmentRows, isVoidedTab],
-  );
+  const toggleSort = useCallback((key) => {
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === 'fecha' ? 'desc' : 'asc');
+  }, [sortKey]);
+
+  const displayGroups = useMemo(() => {
+    const groups = buildVentasDisplayGroups(filtered, adjustmentRows, { voidedTab: isVoidedTab });
+    return sortVentasGroups(groups, sortKey, sortDir);
+  }, [filtered, adjustmentRows, isVoidedTab, sortKey, sortDir]);
   const paidSalesAccounts = useMemo(
     () => summarizePaidSalesAccounts(filtered.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o))),
     [filtered],
@@ -679,7 +729,9 @@ export default function Ventas() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
-              <th className="pb-2 font-medium">Fecha</th><th className="pb-2 font-medium">Mesa</th><th className="pb-2 font-medium">Caja</th><th className="pb-2 font-medium">Mesero</th><th className="pb-2 font-medium">Cliente</th><th className="pb-2 font-medium">Documento</th>{!isVoidedTab ? <th className="pb-2 font-medium">Pagos</th> : null}<th className="pb-2 font-medium">{isVoidedTab ? 'Monto ref.' : 'Venta'}</th><th className="pb-2 font-medium">Estado</th><th className="pb-2 font-medium">Opciones</th>
+              <SortableTh label="Fecha" colKey="fecha" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              <SortableTh label="Mesa" colKey="mesa" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              <th className="pb-2 font-medium">Caja</th><th className="pb-2 font-medium">Mesero</th><th className="pb-2 font-medium">Cliente</th><th className="pb-2 font-medium">Documento</th>{!isVoidedTab ? <th className="pb-2 font-medium">Pagos</th> : null}<SortableTh label={isVoidedTab ? 'Monto ref.' : 'Venta'} colKey="venta" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} /><th className="pb-2 font-medium">Estado</th><th className="pb-2 font-medium">Opciones</th>
             </tr></thead>
             <tbody>
               {displayGroups.map((group) => {

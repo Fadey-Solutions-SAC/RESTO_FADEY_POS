@@ -9,7 +9,7 @@ import { MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline, MdEd
 import Modal from '../../components/Modal';
 import LogisticaKardexModule from '../../components/LogisticaKardexModule';
 import InsumoCreateModal from '../../components/InsumoCreateModal';
-import { isProductLowStock, productStockStatus } from '../../utils/productStockDisplay';
+import { isProductLowStock, productStockStatus, effectiveProductMinStock, DEFAULT_NON_TRANSFORMED_MIN_STOCK } from '../../utils/productStockDisplay';
 
 const WAREHOUSE_CATEGORY_NAMES = {
   products: 'PRODUCTOS ALMACEN',
@@ -182,6 +182,21 @@ function CreateProductModal({
           />
         </div>
         <div>
+          <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Stock mínimo</label>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={itemForm.min_stock}
+            onChange={e => setItemForm({ ...itemForm, min_stock: e.target.value })}
+            className="input-field"
+            placeholder={`Vacío = ${DEFAULT_NON_TRANSFORMED_MIN_STOCK} (global)`}
+          />
+          <p className="text-xs text-[var(--ui-muted)] mt-1">
+            Alerta y requerimientos usan este mínimo por producto. Si queda en 0, aplica el mínimo global ({DEFAULT_NON_TRANSFORMED_MIN_STOCK}).
+          </p>
+        </div>
+        <div>
           <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Categoría de producto</label>
           <select
             value={itemForm.category_id}
@@ -269,6 +284,8 @@ export default function Almacen() {
   const [showRequirementModal, setShowRequirementModal] = useState(false);
   /** '' = todas (+ kardex); id de categoría = solo productos de almacén de esa categoría */
   const [requirementCategoryId, setRequirementCategoryId] = useState('');
+  /** low_stock = bajo mínimo; all_catalog = todos los no transformables (filtrables por categoría) */
+  const [requirementScope, setRequirementScope] = useState('low_stock');
   const [selectedRequirementIds, setSelectedRequirementIds] = useState([]);
   const [latestRequirement, setLatestRequirement] = useState(null);
   const [receptionForm, setReceptionForm] = useState({});
@@ -304,6 +321,7 @@ export default function Almacen() {
     price: '',
     purchase_price: '',
     stock: '0',
+    min_stock: '',
     category_id: '',
     stock_warehouse: DEFAULT_STOCK_WAREHOUSE,
     note_required: 0,
@@ -549,9 +567,14 @@ export default function Almacen() {
   });
   const lowStockGlobal = [...lowFromWarehouse, ...lowFromKardex];
 
+  const nonTransformedProducts = useMemo(
+    () => products.filter((p) => p.process === 'non_transformed'),
+    [products],
+  );
+
   const requirementCategoryOptions = useMemo(() => {
     const map = new Map();
-    for (const p of lowFromWarehouse) {
+    for (const p of nonTransformedProducts) {
       const cid = String(p.category_id || '').trim();
       if (!cid) {
         map.set('__none__', 'Sin categoría');
@@ -562,16 +585,35 @@ export default function Almacen() {
     return [...map.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name, 'es'));
-  }, [lowFromWarehouse]);
+  }, [nonTransformedProducts]);
 
-  const lowStockForRequirement = useMemo(() => {
+  const requirementListForModal = useMemo(() => {
+    if (requirementScope === 'all_catalog') {
+      let list = nonTransformedProducts;
+      if (requirementCategoryId) {
+        list = list.filter((p) => {
+          if (requirementCategoryId === '__none__') return !String(p.category_id || '').trim();
+          return String(p.category_id || '') === requirementCategoryId;
+        });
+      }
+      return list
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          stock: p.stock,
+          min_stock: p.min_stock,
+          category_name: p.category_name || 'Sin categoría',
+          isKardex: false,
+        }))
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'));
+    }
     if (!requirementCategoryId) return lowStockGlobal;
     const filteredProducts = lowFromWarehouse.filter((p) => {
       if (requirementCategoryId === '__none__') return !String(p.category_id || '').trim();
       return String(p.category_id || '') === requirementCategoryId;
     });
     return filteredProducts;
-  }, [requirementCategoryId, lowStockGlobal, lowFromWarehouse]);
+  }, [requirementScope, requirementCategoryId, lowStockGlobal, lowFromWarehouse, nonTransformedProducts]);
 
   const productsForSelectedWarehouse = selectedWarehouseView
     ? scopedProducts.filter(p =>
@@ -799,6 +841,7 @@ export default function Almacen() {
         category_id: itemForm.category_id || null,
         process_type: 'non_transformed',
         stock_warehouse_id: selectedWarehouseId || '',
+        min_stock: Math.max(0, Math.floor(Number(itemForm.min_stock || 0))),
         note_required: Number(itemForm.note_required || 0) === 1 ? 1 : 0,
       });
 
@@ -836,6 +879,7 @@ export default function Almacen() {
         price: '',
         purchase_price: '',
         stock: '0',
+        min_stock: '',
         category_id: '',
         stock_warehouse: getDefaultCreateWarehouseId(),
         note_required: 0,
@@ -898,15 +942,19 @@ export default function Almacen() {
   };
 
   const openNewRequirement = () => {
-    if (!lowStockForRequirement.length) {
+    if (!requirementListForModal.length) {
       toast.error(
-        requirementCategoryId
-          ? 'No hay productos con stock bajo en la categoría seleccionada'
-          : 'No hay productos con stock bajo',
+        requirementScope === 'all_catalog'
+          ? (requirementCategoryId
+            ? 'No hay productos no transformables en la categoría seleccionada'
+            : 'No hay productos no transformables activos')
+          : requirementCategoryId
+            ? 'No hay productos con stock bajo en la categoría seleccionada'
+            : 'No hay productos con stock bajo',
       );
       return;
     }
-    setSelectedRequirementIds(lowStockForRequirement.map((p) => p.id));
+    setSelectedRequirementIds(requirementListForModal.map((p) => p.id));
     setShowRequirementModal(true);
   };
 
@@ -925,17 +973,18 @@ export default function Almacen() {
     }
     try {
       const pIds = selectedRequirementIds.filter((id) => {
-        const row = lowStockForRequirement.find((x) => x.id === id);
+        const row = requirementListForModal.find((x) => x.id === id);
         return row && !row.isKardex;
       });
       const inIds = selectedRequirementIds.filter((id) => {
-        const row = lowStockForRequirement.find((x) => x.id === id);
+        const row = requirementListForModal.find((x) => x.id === id);
         return row && row.isKardex;
       });
       const requirement = await api.post('/inventory/requirements/low-stock', {
         product_ids: pIds,
         insumo_ids: inIds,
         category_id: requirementCategoryId || undefined,
+        scope: requirementScope,
       });
       setLatestRequirement(requirement);
       const nextForm = {};
@@ -949,13 +998,16 @@ export default function Almacen() {
       setReceptionForm(nextForm);
       setReceptionSelectedKeys((requirement.items || []).map((item) => receptionReqKey(item.product_id)));
 
+      const productById = new Map(nonTransformedProducts.map((p) => [p.id, p]));
       const rows = (requirement.items || []).map((p) => {
         const suggested = Math.max(0, Number(p.suggested_qty || 0));
+        const src = productById.get(p.product_id);
+        const minStock = effectiveProductMinStock(src?.min_stock ?? p.min_stock);
         return [
           p.product_name || '',
           p.category_name || 'Sin categoría',
           String(Number(p.current_stock || 0)),
-          '20',
+          String(minStock),
           String(suggested),
           String(Number(p.price || 0)),
           '',
@@ -965,7 +1017,7 @@ export default function Almacen() {
         'Producto',
         'Categoría',
         'Stock actual',
-        'Stock mínimo sugerido',
+        'Stock mínimo',
         'Cantidad sugerida',
         'Precio unitario',
         'Observación',
@@ -976,9 +1028,10 @@ export default function Almacen() {
         .join('\n');
       const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
       const date = new Date().toISOString().slice(0, 10);
+      const scopeLabel = requirementScope === 'all_catalog' ? 'catalogo' : 'stock-bajo';
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `requerimiento-stock-bajo-${date}.csv`;
+      link.download = `requerimiento-${scopeLabel}-${date}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -987,6 +1040,26 @@ export default function Almacen() {
       toast.success('Plantilla descargada y requerimiento guardado');
     } catch (err) {
       toast.error(err.message || 'No se pudo generar requerimiento');
+    }
+  };
+
+  const deletePendingRequirement = async () => {
+    if (!latestRequirement?.id) return;
+    if (latestRequirement.status !== 'pending') {
+      toast.error('Solo se puede eliminar un requerimiento pendiente');
+      return;
+    }
+    if (!window.confirm('¿Eliminar esta plantilla / requerimiento pendiente? No se puede deshacer.')) return;
+    try {
+      await api.delete(`/inventory/requirements/${latestRequirement.id}`);
+      setLatestRequirement(null);
+      setReceptionForm({});
+      setReceptionExtraLines([]);
+      setReceptionSelectedKeys([]);
+      setReceptionNotes('');
+      toast.success('Plantilla eliminada');
+    } catch (err) {
+      toast.error(err.message || 'No se pudo eliminar la plantilla');
     }
   };
 
@@ -1171,29 +1244,46 @@ export default function Almacen() {
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
             <h3 className="font-bold rf-section-title mb-2">Requerimiento interno</h3>
             <p className="ui-text-muted mb-4">
-              Genere un requerimiento con productos bajo stock mínimo. Puede filtrar por categoría para incluir solo
-              productos de almacén de esa categoría (por ejemplo, cervezas o snacks).
+              Genere una plantilla CSV para compras. Puede incluir solo productos bajo stock mínimo o{' '}
+              <strong>todos los no transformables</strong> de una categoría (cervezas, snacks, etc.).
             </p>
-            <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-4 max-w-xl">
-              <div className="flex-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 max-w-2xl">
+              <div>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Alcance</label>
+                <select
+                  value={requirementScope}
+                  onChange={(e) => setRequirementScope(e.target.value)}
+                  className="input-field w-full"
+                >
+                  <option value="low_stock">Solo stock bajo mínimo (+ insumos kardex)</option>
+                  <option value="all_catalog">Todos los no transformables</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Categoría de productos</label>
                 <select
                   value={requirementCategoryId}
                   onChange={(e) => setRequirementCategoryId(e.target.value)}
                   className="input-field w-full"
                 >
-                  <option value="">Todas las categorías (+ insumos kardex bajo mínimo)</option>
+                  <option value="">
+                    {requirementScope === 'all_catalog'
+                      ? 'Todas las categorías (todos los no transformables)'
+                      : 'Todas las categorías (+ insumos kardex bajo mínimo)'}
+                  </option>
                   {requirementCategoryOptions.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               </div>
-              <p className="text-xs text-[var(--ui-muted)] sm:pb-2">
-                {requirementCategoryId
-                  ? `${lowStockForRequirement.length} producto(s) bajo mínimo en esta categoría`
-                  : `${lowStockGlobal.length} ítem(s) bajo mínimo (productos + kardex)`}
-              </p>
             </div>
+            <p className="text-xs text-[var(--ui-muted)] mb-4">
+              {requirementScope === 'all_catalog'
+                ? `${requirementListForModal.length} producto(s) no transformable(s) en el filtro actual`
+                : requirementCategoryId
+                  ? `${requirementListForModal.length} producto(s) bajo mínimo en esta categoría`
+                  : `${requirementListForModal.length} ítem(s) bajo mínimo (productos + kardex)`}
+            </p>
             <button className="btn-primary" onClick={openNewRequirement}>
               Nuevo requerimiento
             </button>
@@ -1213,8 +1303,20 @@ export default function Almacen() {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="text-xs ui-text-muted">
-                  Requerimiento: <strong>{latestRequirement.id?.slice(0, 8)}</strong> · Estado: <strong>{latestRequirement.status}</strong>
+                <div className="text-xs ui-text-muted flex flex-wrap items-center gap-3">
+                  <span>
+                    Requerimiento: <strong>{latestRequirement.id?.slice(0, 8)}</strong> · Estado:{' '}
+                    <strong>{latestRequirement.status}</strong>
+                  </span>
+                  {latestRequirement.status === 'pending' ? (
+                    <button
+                      type="button"
+                      className="text-red-600 hover:text-red-700 font-medium inline-flex items-center gap-1"
+                      onClick={() => void deletePendingRequirement()}
+                    >
+                      <MdDeleteOutline /> Eliminar plantilla
+                    </button>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
                   <button type="button" className="btn-secondary text-sm flex items-center gap-1" onClick={openReceptionAddModal}>
@@ -1695,7 +1797,17 @@ export default function Almacen() {
         >
           <div className="space-y-4">
             <p className="text-sm text-[var(--ui-muted)]">
-              {requirementCategoryId ? (
+              {requirementScope === 'all_catalog' ? (
+                requirementCategoryId ? (
+                  <>
+                    Todos los productos no transformables en categoría{' '}
+                    <strong>{requirementCategoryOptions.find((c) => c.id === requirementCategoryId)?.name || 'seleccionada'}</strong>.
+                    Puede desmarcar filas antes de descargar.
+                  </>
+                ) : (
+                  <>Todos los productos no transformables activos. Puede desmarcar filas antes de descargar.</>
+                )
+              ) : requirementCategoryId ? (
                 <>
                   Solo productos de almacén en categoría{' '}
                   <strong>{requirementCategoryOptions.find((c) => c.id === requirementCategoryId)?.name || 'seleccionada'}</strong>
@@ -1712,7 +1824,7 @@ export default function Almacen() {
               <button
                 type="button"
                 className="btn-secondary text-sm"
-                onClick={() => setSelectedRequirementIds(lowStockForRequirement.map((p) => p.id))}
+                onClick={() => setSelectedRequirementIds(requirementListForModal.map((p) => p.id))}
               >
                 Seleccionar todo
               </button>
@@ -1732,16 +1844,17 @@ export default function Almacen() {
                     <th className="text-left p-2.5 font-medium">Producto</th>
                     <th className="text-left p-2.5 font-medium">Categoría</th>
                     <th className="text-left p-2.5 font-medium">Stock</th>
+                    <th className="text-left p-2.5 font-medium">Mínimo</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lowStockForRequirement.length === 0 ? (
+                  {requirementListForModal.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="p-6 text-center text-sm text-[var(--ui-muted)]">
-                        No hay productos bajo mínimo en la categoría seleccionada.
+                      <td colSpan={5} className="p-6 text-center text-sm text-[var(--ui-muted)]">
+                        No hay productos en el filtro seleccionado.
                       </td>
                     </tr>
-                  ) : lowStockForRequirement.map((p) => (
+                  ) : requirementListForModal.map((p) => (
                     <tr key={p.id} className="border-b border-slate-100">
                       <td className="p-2.5">
                         <input
@@ -1763,6 +1876,11 @@ export default function Almacen() {
                             ? `${p.stock} U (mín. ${p.minimo} U)`
                             : `${p.stock} ${p.umed} (mín. ${p.minimo} ${p.umed})`)
                           : p.stock}
+                      </td>
+                      <td className="p-2.5 ui-text-muted tabular-nums">
+                        {p.isKardex
+                          ? (p.kardexPorU ? `${p.minimo} U` : `${p.minimo} ${p.umed}`)
+                          : effectiveProductMinStock(p.min_stock)}
                       </td>
                     </tr>
                   ))}

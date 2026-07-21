@@ -29,6 +29,7 @@ const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurch
 const { getOrderItemsWithProductionArea } = require('../services/orderItemsProductionService');
 const { filterKitchenOrdersForStation } = require('../utils/kitchenStationReady');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
+const { KITCHEN_ARRIVAL_ALERT_MIN, KITCHEN_PREP_ALERT_MIN } = require('../constants/kitchenTiming');
 
 const router = express.Router();
 const FINANCIAL_FILTER = FINANCIAL_FILTER_SQL;
@@ -661,7 +662,7 @@ router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero', 'mast
     const monthMetrics = metricsFromPaidOrdersWhere(`${ps.EVENT_MONTH} = ${ps.MONTH}`);
     const todaySales = { count: todayMetrics.orders, total: todayMetrics.sales };
     const monthSales = { count: monthMetrics.orders, total: monthMetrics.sales };
-    const topProducts = queryAll(`SELECT oi.product_name, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' AND ${s.ORDER_MONTH} = ${s.MONTH} GROUP BY oi.product_name ORDER BY total_sold DESC LIMIT 10`);
+    const topProducts = queryAll(`SELECT oi.product_name, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' AND o.payment_status = 'paid' AND IFNULL(o.payment_method, '') != 'cortesia' AND ${ps.ORDER_MONTH} = ${ps.MONTH} GROUP BY oi.product_name ORDER BY total_sold DESC LIMIT 10`);
     const recentOrders = queryAll('SELECT * FROM orders ORDER BY created_at DESC LIMIT 10');
     recentOrders.forEach(o => { o.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [o.id]); });
     const paymentMethods = summarizePaymentMethodsByAccount(

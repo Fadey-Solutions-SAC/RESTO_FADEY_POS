@@ -26,6 +26,20 @@ import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
 import toast from 'react-hot-toast';
 import { formatMesaLabel, buildPaidSalesAccountDisplayGroups, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
+import {
+  downloadBlobFile,
+  buildInventoryCuadresCsv,
+  buildInventoryCuadreCsv,
+  buildInventoryCuadreTxt,
+  buildInventoryCuadresTxt,
+  buildPurchaseCsv,
+  buildPurchaseTxt,
+} from '../../utils/inventoryCuadreExport';
+import {
+  buildProductSalesTxt,
+  buildProductSalesCsv,
+  buildClosedRegisterProductsTxt,
+} from '../../utils/productSalesExport';
 
 const PAYMENT_METHOD_LABELS = {
   efectivo: 'Efectivo',
@@ -57,71 +71,6 @@ const DENOMINATION_LABELS = {
   c10: 'Moneda S/0.10',
 };
 
-function downloadBlobFile(filename, content, mime = 'text/plain;charset=utf-8') {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-function csvCell(value) {
-  const text = String(value ?? '');
-  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-  return text;
-}
-
-function buildInventoryCuadresCsv(groups = []) {
-  const rows = [['Cuadre ID', 'Fecha', 'Hora', 'Almacén', 'Producto', 'Contado', 'Ajuste'].map(csvCell).join(',')];
-  for (const group of groups) {
-    for (const session of group.sessions || []) {
-      const timeLabel = formatDateTime(session.created_at);
-      for (const line of session.lines || []) {
-        rows.push([
-          session.id,
-          group.dateLabel,
-          timeLabel,
-          session.warehouse_name,
-          line.product_name,
-          line.counted_stock,
-          line.difference > 0 ? `+${line.difference}` : line.difference,
-        ].map(csvCell).join(','));
-      }
-    }
-  }
-  return `${rows.join('\n')}\n`;
-}
-
-function buildInventoryCuadreCsv(session = {}, group = {}) {
-  return buildInventoryCuadresCsv([{ dateLabel: group.dateLabel || formatDate(group.dateKey), sessions: [session] }]);
-}
-
-function buildInventoryCuadreTxt(session = {}, group = {}) {
-  const idShort = String(session.id || '').slice(0, 8);
-  const lines = [
-    'CUADRE DE INVENTARIO',
-    '='.repeat(24),
-    `ID: ${session.id}`,
-    `Referencia: Cuadre ${idShort}`,
-    `Fecha: ${group.dateLabel || formatDate(group.dateKey)}`,
-    `Hora: ${formatDateTime(session.created_at)}`,
-    `Almacén: ${session.warehouse_name || 'Almacén'}`,
-    `Ajustes: ${session.lines?.length || 0}`,
-    '',
-    'Detalle:',
-    '-'.repeat(40),
-  ];
-  for (const line of session.lines || []) {
-    const adj = line.difference > 0 ? `+${line.difference}` : String(line.difference);
-    lines.push(`  · ${line.product_name} | Contado: ${line.counted_stock} | Ajuste: ${adj}`);
-  }
-  return `${lines.join('\n')}\n`;
-}
-
 function downloadInventoryCuadreSession(session, group, format = 'csv') {
   if (!session?.lines?.length) {
     toast.error('Este cuadre no tiene ajustes para descargar');
@@ -131,11 +80,11 @@ function downloadInventoryCuadreSession(session, group, format = 'csv') {
   const dateKey = group?.dateKey || toLocalDateKey(session.created_at) || new Date().toISOString().slice(0, 10);
   const baseName = `cuadre-${idShort}-${dateKey}`;
   if (format === 'txt') {
-    downloadBlobFile(`${baseName}.txt`, buildInventoryCuadreTxt(session, group));
+    downloadBlobFile(`${baseName}.txt`, buildInventoryCuadreTxt(session, group, { formatDateTime }));
     toast.success('Cuadre descargado (TXT)');
     return;
   }
-  downloadBlobFile(`${baseName}.csv`, buildInventoryCuadreCsv(session, group), 'text/csv;charset=utf-8');
+  downloadBlobFile(`${baseName}.csv`, buildInventoryCuadreCsv(session, group, { formatDateTime }), 'text/csv;charset=utf-8');
   toast.success('Cuadre descargado (CSV)');
 }
 
@@ -146,53 +95,12 @@ function downloadInventoryCuadresByDate(group, format = 'csv') {
   }
   const baseName = `cuadres-${group.dateKey}`;
   if (format === 'txt') {
-    downloadBlobFile(`${baseName}.txt`, buildInventoryCuadresTxt([group]));
+    downloadBlobFile(`${baseName}.txt`, buildInventoryCuadresTxt([group], { formatDateTime }));
     toast.success(`Cuadres del ${group.dateLabel} descargados (TXT)`);
     return;
   }
-  downloadBlobFile(`${baseName}.csv`, buildInventoryCuadresCsv([group]), 'text/csv;charset=utf-8');
+  downloadBlobFile(`${baseName}.csv`, buildInventoryCuadresCsv([group], { formatDateTime }), 'text/csv;charset=utf-8');
   toast.success(`Cuadres del ${group.dateLabel} descargados (CSV)`);
-}
-
-function buildPurchaseCsv(group = {}) {
-  const dateStr = formatDate(group.purchase_date || group.created_at);
-  const rows = [['Compra ID', 'Fecha', 'Producto', 'Cantidad', 'Costo unitario', 'Subtotal'].map(csvCell).join(',')];
-  for (const item of group.items || []) {
-    const subtotal = Number(item.total_cost ?? (Number(item.quantity || 0) * Number(item.unit_cost || 0)));
-    rows.push([
-      group.id,
-      dateStr,
-      item.product_name || 'Producto',
-      item.quantity,
-      item.unit_cost,
-      subtotal,
-    ].map(csvCell).join(','));
-  }
-  rows.push(['', '', '', '', 'Total', group.total].map(csvCell).join(','));
-  return `${rows.join('\n')}\n`;
-}
-
-function buildPurchaseTxt(group = {}) {
-  const idShort = String(group.id || '').slice(0, 8);
-  const lines = [
-    'COMPROBANTE DE COMPRA',
-    '='.repeat(24),
-    `ID: ${group.id}`,
-    `Referencia: Compra ${idShort}`,
-    `Fecha de compra: ${formatDate(group.purchase_date || group.created_at)}`,
-    `Total: ${formatCurrency(group.total)}`,
-    '',
-    'Detalle:',
-    '-'.repeat(40),
-  ];
-  for (const item of group.items || []) {
-    const subtotal = Number(item.total_cost ?? (Number(item.quantity || 0) * Number(item.unit_cost || 0)));
-    lines.push(
-      `  · ${item.product_name || 'Producto'} | ${item.quantity} u | ${formatCurrency(item.unit_cost)} c/u | Subtotal: ${formatCurrency(subtotal)}`,
-    );
-  }
-  lines.push('', `Total compra: ${formatCurrency(group.total)}`);
-  return `${lines.join('\n')}\n`;
 }
 
 function downloadPurchaseGroup(group, format = 'csv') {
@@ -204,87 +112,12 @@ function downloadPurchaseGroup(group, format = 'csv') {
   const dateKey = String(group.purchase_date || group.created_at || '').slice(0, 10);
   const baseName = `compra-${idShort}-${dateKey || new Date().toISOString().slice(0, 10)}`;
   if (format === 'txt') {
-    downloadBlobFile(`${baseName}.txt`, buildPurchaseTxt(group));
+    downloadBlobFile(`${baseName}.txt`, buildPurchaseTxt(group, { formatCurrency, formatDate }));
     toast.success('Compra descargada (TXT)');
     return;
   }
-  downloadBlobFile(`${baseName}.csv`, buildPurchaseCsv(group), 'text/csv;charset=utf-8');
+  downloadBlobFile(`${baseName}.csv`, buildPurchaseCsv({ ...group, formatDate }), 'text/csv;charset=utf-8');
   toast.success('Compra descargada (CSV)');
-}
-
-function buildInventoryCuadresTxt(groups = []) {
-  const lines = ['CUADRES DE INVENTARIO', '='.repeat(24), ''];
-  for (const group of groups) {
-    lines.push(`Fecha: ${group.dateLabel} (${group.sessions?.length || 0} cuadre(s) · ${group.lineCount} ajuste(s))`);
-    lines.push('-'.repeat(40));
-    for (const session of group.sessions || []) {
-      lines.push(`  Cuadre ${String(session.id || '').slice(0, 8)} · ${formatDateTime(session.created_at)} · ${session.warehouse_name}`);
-      for (const line of session.lines || []) {
-        const adj = line.difference > 0 ? `+${line.difference}` : String(line.difference);
-        lines.push(`    · ${line.product_name} | Contado: ${line.counted_stock} | Ajuste: ${adj}`);
-      }
-      lines.push('');
-    }
-  }
-  return `${lines.join('\n')}\n`;
-}
-
-function buildProductSalesTxt(report, title = 'INFORME DE PRODUCTOS') {
-  const lines = [title, '='.repeat(Math.min(title.length, 40)), ''];
-  const filters = report?.filters || {};
-  if (report?.mode === 'current') {
-    lines.push('Periodo: caja actual (turno abierto)');
-  } else if (report?.mode === 'date_range') {
-    lines.push(`Periodo: ${filters.from || '—'} al ${filters.to || '—'}`);
-  } else if (report?.mode === 'registers') {
-    lines.push(`Cierres seleccionados: ${(filters.register_ids || []).length}`);
-  }
-  lines.push('');
-
-  const writeProducts = (products, heading) => {
-    if (heading) {
-      lines.push(heading);
-      lines.push('-'.repeat(40));
-    }
-    (products || []).forEach((row) => {
-      lines.push(
-        `${row.product_name}\tCant: ${Number(row.total_qty || 0)}\tP.unit: ${formatCurrency(row.unit_price || 0)}\tTotal: ${formatCurrency(row.total_amount || 0)}`
-      );
-    });
-    if (!(products || []).length) lines.push('(Sin productos)');
-    lines.push('');
-  };
-
-  if (Array.isArray(report?.by_register) && report.by_register.length > 1) {
-    report.by_register.forEach((block, idx) => {
-      const label = block.is_open
-        ? `Turno abierto · ${block.user_name || '—'} · desde ${formatDateTime(block.opened_at)}`
-        : `Cierre ${idx + 1} · ${block.user_name || '—'} · ${formatDateTime(block.closed_at)}`;
-      writeProducts(block.sold_products, label);
-    });
-    lines.push('TOTAL CONSOLIDADO');
-    lines.push('-'.repeat(40));
-  }
-
-  writeProducts(report?.sold_products || []);
-  lines.push(`TOTAL VENTAS (productos): ${formatCurrency(report?.product_sales_total ?? 0)}`);
-  return `${lines.join('\n')}\n`;
-}
-
-function buildProductSalesCsv(report) {
-  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['Producto', 'Cantidad', 'Precio unit.', 'Total', 'Cuentas']];
-  (report?.sold_products || []).forEach((row) => {
-    rows.push([
-      row.product_name,
-      Number(row.total_qty || 0),
-      Number(row.unit_price || 0).toFixed(2),
-      Number(row.total_amount || 0).toFixed(2),
-      Number(row.order_count || 0),
-    ]);
-  });
-  rows.push(['TOTAL', '', '', Number(report?.product_sales_total || 0).toFixed(2), '']);
-  return rows.map((r) => r.map(esc).join(',')).join('\n');
 }
 
 function sumProductSalesQty(products) {
@@ -295,11 +128,18 @@ function sumProductSalesAmount(products) {
   return (products || []).reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
 }
 
-function ProductSalesTable({ products, showOrders = false, emptyMessage = 'No hay productos vendidos en el periodo.' }) {
+function productSalesQueryParams(extra = {}, includeInventory = false) {
+  const params = new URLSearchParams(extra);
+  params.set('include_inventory', includeInventory ? '1' : '0');
+  return params;
+}
+
+function ProductSalesTable({ products, showOrders = false, showInventory = false, emptyMessage = 'No hay productos vendidos en el periodo.' }) {
   const rows = products || [];
   if (!rows.length) {
     return <p className="text-sm text-[var(--ui-muted)]">{emptyMessage}</p>;
   }
+  const withStock = showInventory || rows.some((r) => r.current_stock !== undefined && r.current_stock !== null);
   const totalQty = sumProductSalesQty(rows);
   const totalAmount = sumProductSalesAmount(rows);
   return (
@@ -308,6 +148,7 @@ function ProductSalesTable({ products, showOrders = false, emptyMessage = 'No ha
         <span><strong className="text-[var(--ui-body-text)]">{rows.length}</strong> producto(s)</span>
         <span><strong className="text-[var(--ui-body-text)]">{totalQty}</strong> unidades vendidas</span>
         <span>Total ventas: <strong className="text-emerald-600">{formatCurrency(totalAmount)}</strong></span>
+        {withStock ? <span>Incluye catálogo de almacén con stock actual</span> : null}
       </div>
       <table className="w-full text-sm">
         <thead>
@@ -316,6 +157,9 @@ function ProductSalesTable({ products, showOrders = false, emptyMessage = 'No ha
             <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Cantidad</th>
             <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Precio U</th>
             <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Precio total</th>
+            {withStock ? (
+              <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Stock</th>
+            ) : null}
             {showOrders ? (
               <th className="text-right py-2 px-3 text-xs uppercase text-[var(--ui-muted)]">Cuentas</th>
             ) : null}
@@ -328,6 +172,11 @@ function ProductSalesTable({ products, showOrders = false, emptyMessage = 'No ha
               <td className="py-2 px-3 text-right tabular-nums font-semibold text-[#3B82F6]">{Number(row.total_qty || 0)}</td>
               <td className="py-2 px-3 text-right tabular-nums text-[var(--ui-muted)]">{formatCurrency(row.unit_price || 0)}</td>
               <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(row.total_amount || 0)}</td>
+              {withStock ? (
+                <td className={`py-2 px-3 text-right tabular-nums font-medium ${Number(row.current_stock ?? 0) < 0 ? 'text-red-600' : 'text-[var(--ui-muted)]'}`}>
+                  {Number(row.current_stock ?? 0)}
+                </td>
+              ) : null}
               {showOrders ? (
                 <td className="py-2 px-3 text-right tabular-nums text-[var(--ui-muted)]">{Number(row.order_count || 0)}</td>
               ) : null}
@@ -340,6 +189,7 @@ function ProductSalesTable({ products, showOrders = false, emptyMessage = 'No ha
             <td className="py-3 px-3 text-right tabular-nums text-[#3B82F6]">{totalQty}</td>
             <td className="py-3 px-3" />
             <td className="py-3 px-3 text-right tabular-nums text-emerald-600">{formatCurrency(totalAmount)}</td>
+            {withStock ? <td className="py-3 px-3" /> : null}
             {showOrders ? <td className="py-3 px-3" /> : null}
           </tr>
         </tfoot>
@@ -756,6 +606,7 @@ export default function Reports() {
   const [productoSelectedIds, setProductoSelectedIds] = useState(() => new Set());
   const [productoTotalReport, setProductoTotalReport] = useState(null);
   const [productoTotalLoading, setProductoTotalLoading] = useState(false);
+  const [productoIncludeInventory, setProductoIncludeInventory] = useState(true);
   const [productoCurrentReport, setProductoCurrentReport] = useState(null);
   const [productoCurrentLoading, setProductoCurrentLoading] = useState(false);
   const [closedRegistersList, setClosedRegistersList] = useState([]);
@@ -962,7 +813,8 @@ export default function Reports() {
     (async () => {
       setProductoCurrentLoading(true);
       try {
-        const current = await api.get('/reports/product-sales?current=1');
+        const params = productSalesQueryParams({ current: '1' }, productoIncludeInventory);
+        const current = await api.get(`/reports/product-sales?${params.toString()}`);
         if (!cancelled) setProductoCurrentReport(current);
       } catch (err) {
         console.error(err);
@@ -971,7 +823,7 @@ export default function Reports() {
       }
     })();
     return () => { cancelled = true; };
-  }, [reportSection]);
+  }, [reportSection, productoIncludeInventory]);
 
   const loadClosedRegisters = useCallback(async () => {
     setClosedRegistersLoading(true);
@@ -1092,13 +944,15 @@ export default function Reports() {
   };
 
   const downloadProductSalesReport = (report, format = 'csv') => {
-    if (!report?.sold_products?.length && !(report?.by_register || []).some((b) => b.sold_products?.length)) {
+    const hasProducts = (report?.sold_products || []).length > 0
+      || (report?.by_register || []).some((b) => (b.sold_products || []).length > 0);
+    if (!hasProducts) {
       toast.error('No hay productos para descargar');
       return;
     }
     const baseName = buildProductSalesDownloadBaseName(report);
     if (format === 'txt') {
-      downloadBlobFile(`${baseName}.txt`, buildProductSalesTxt(report));
+      downloadBlobFile(`${baseName}.txt`, buildProductSalesTxt(report, { formatCurrency, formatDateTime }));
       toast.success('Informe descargado (TXT)');
       return;
     }
@@ -1121,7 +975,7 @@ export default function Reports() {
     void (async () => {
       setProductoTotalLoading(true);
       try {
-        const params = new URLSearchParams({ from: productoFrom, to: productoTo });
+        const params = productSalesQueryParams({ from: productoFrom, to: productoTo }, productoIncludeInventory);
         const report = await api.get(`/reports/product-sales?${params.toString()}`);
         if (!cancelled) setProductoTotalReport(report);
       } catch (err) {
@@ -1134,7 +988,7 @@ export default function Reports() {
       }
     })();
     return () => { cancelled = true; };
-  }, [reportSection, productoTotalMode, productoFrom, productoTo]);
+  }, [reportSection, productoTotalMode, productoFrom, productoTo, productoIncludeInventory]);
 
   useEffect(() => {
     if (reportSection !== 'productos' || productoTotalMode !== 'cierres') return undefined;
@@ -1147,7 +1001,8 @@ export default function Reports() {
     void (async () => {
       setProductoTotalLoading(true);
       try {
-        const report = await api.get(`/reports/product-sales?register_ids=${encodeURIComponent(ids.join(','))}`);
+        const params = productSalesQueryParams({ register_ids: ids.join(',') }, productoIncludeInventory);
+        const report = await api.get(`/reports/product-sales?${params.toString()}`);
         if (!cancelled) setProductoTotalReport(report);
       } catch (err) {
         if (!cancelled) {
@@ -1159,7 +1014,7 @@ export default function Reports() {
       }
     })();
     return () => { cancelled = true; };
-  }, [reportSection, productoTotalMode, productoSelectedKey]);
+  }, [reportSection, productoTotalMode, productoSelectedKey, productoIncludeInventory]);
 
   const productoDisplayedProducts = useMemo(() => {
     if (!productoTotalReport) return [];
@@ -1198,7 +1053,8 @@ export default function Reports() {
     setProductoCurrentLoading(true);
     if (!silent) setProductoCurrentReport(null);
     try {
-      const report = await api.get('/reports/product-sales?current=1');
+      const params = productSalesQueryParams({ current: '1' }, productoIncludeInventory);
+      const report = await api.get(`/reports/product-sales?${params.toString()}`);
       setProductoCurrentReport(report);
       if (!report?.register_open && !silent) {
         toast.error('No hay caja abierta en este momento');
@@ -1340,14 +1196,7 @@ export default function Reports() {
     lines.push(`Observaciones: ${register.arqueo?.observations || register.notes || 'Sin observaciones'}`);
     if (Array.isArray(register.sold_products) && register.sold_products.length) {
       lines.push('----------------------------------------');
-      lines.push('PRODUCTOS VENDIDOS (DETALLE POR PRODUCTO)');
-      register.sold_products.forEach((item) => {
-        const qty = Number(item.total_qty || 0);
-        const unit = qty > 0 ? Number(item.total_amount || 0) / qty : 0;
-        lines.push(
-          `${item.product_name} | Cantidad: ${qty} | Precio unit.: ${formatCurrency(unit)} | Total: ${formatCurrency(item.total_amount || 0)}`
-        );
-      });
+      lines.push(...buildClosedRegisterProductsTxt(register.sold_products, formatCurrency));
     }
     return `${lines.join('\n')}\n`;
   };
@@ -1812,6 +1661,20 @@ export default function Reports() {
 
       {reportSection === 'productos' && (
         <div className="space-y-6">
+          <label className="flex items-start gap-2 text-sm cursor-pointer max-w-xl">
+            <input
+              type="checkbox"
+              checked={productoIncludeInventory}
+              onChange={(e) => setProductoIncludeInventory(e.target.checked)}
+              className="mt-0.5 rounded border-[color:var(--ui-border)]"
+            />
+            <span>
+              <span className="font-medium text-[var(--ui-body-text)]">Incluir inventario completo de almacén</span>
+              <span className="block text-xs text-[var(--ui-muted)] mt-0.5">
+                Lista todos los productos no transformables con stock actual, aunque no tengan ventas en el periodo.
+              </span>
+            </span>
+          </label>
           {/* Caja actual */}
           <div className="card border-l-4 border-l-emerald-500">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -1866,10 +1729,15 @@ export default function Reports() {
                 {(productoCurrentReport.sold_products || []).length > 0 ? (
                   <ProductSalesTable
                     products={productoCurrentReport.sold_products}
+                    showInventory={productoIncludeInventory}
                     emptyMessage="Aún no hay ventas de productos en este turno."
                   />
                 ) : (
-                  <p className="text-sm text-[var(--ui-muted)]">Aún no hay ventas de productos en este turno.</p>
+                  <p className="text-sm text-[var(--ui-muted)]">
+                    {productoIncludeInventory
+                      ? 'No hay productos de almacén registrados.'
+                      : 'Aún no hay ventas de productos en este turno.'}
+                  </p>
                 )}
               </div>
             ) : productoCurrentReport && !productoCurrentReport.register_open ? (
@@ -1950,7 +1818,10 @@ export default function Reports() {
                     <ProductSalesTable
                       products={productoDisplayedProducts}
                       showOrders
-                      emptyMessage="No hay ventas de productos en el periodo indicado."
+                      showInventory={productoIncludeInventory}
+                      emptyMessage={productoIncludeInventory
+                        ? 'No hay productos de almacén registrados.'
+                        : 'No hay ventas de productos en el periodo indicado.'}
                     />
                   </div>
                 )}
@@ -2076,7 +1947,10 @@ export default function Reports() {
                         <ProductSalesTable
                           products={productoDisplayedProducts}
                           showOrders
-                          emptyMessage="No hay ventas de productos en los cierres seleccionados."
+                          showInventory={productoIncludeInventory}
+                          emptyMessage={productoIncludeInventory
+                            ? 'No hay productos de almacén registrados.'
+                            : 'No hay ventas de productos en los cierres seleccionados.'}
                         />
                       )}
                     </div>

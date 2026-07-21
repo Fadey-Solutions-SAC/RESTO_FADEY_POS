@@ -382,16 +382,24 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
     const selectedInsumoIds = Array.isArray(req.body?.insumo_ids) ? req.body.insumo_ids : null;
     const categoryId = String(req.body?.category_id || '').trim();
     const filterByCategory = Boolean(categoryId);
-    let lowStockProducts = queryAll(
-      `SELECT p.id, p.name, p.stock, p.min_stock, p.stock_warehouse_id, p.price, p.category_id,
-              c.name as category_name
-       FROM products p
-       LEFT JOIN categories c ON c.id = p.category_id
-       WHERE p.is_active = 1
-         AND p.process_type = 'non_transformed'
-         AND ${isNonTransformedLowStockSql('p')}
-       ORDER BY p.stock ASC, p.name ASC`
-    );
+    const scopeAll = String(req.body?.scope || 'low_stock').trim() === 'all_catalog';
+    const productSql = scopeAll
+      ? `SELECT p.id, p.name, p.stock, p.min_stock, p.stock_warehouse_id, p.price, p.category_id,
+                c.name as category_name
+         FROM products p
+         LEFT JOIN categories c ON c.id = p.category_id
+         WHERE p.is_active = 1
+           AND p.process_type = 'non_transformed'
+         ORDER BY p.name ASC`
+      : `SELECT p.id, p.name, p.stock, p.min_stock, p.stock_warehouse_id, p.price, p.category_id,
+                c.name as category_name
+         FROM products p
+         LEFT JOIN categories c ON c.id = p.category_id
+         WHERE p.is_active = 1
+           AND p.process_type = 'non_transformed'
+           AND ${isNonTransformedLowStockSql('p')}
+         ORDER BY p.stock ASC, p.name ASC`;
+    let lowStockProducts = queryAll(productSql);
     if (filterByCategory) {
       lowStockProducts = lowStockProducts.filter((p) => {
         if (categoryId === '__none__') return !String(p.category_id || '').trim();
@@ -400,7 +408,7 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
     }
     lowStockProducts = lowStockProducts.filter((p) => !selectedProductIds || selectedProductIds.includes(p.id));
 
-    const insumosBajo = filterByCategory
+    const insumosBajo = filterByCategory || scopeAll
       ? []
       : queryAll(
       `SELECT id, nombre, stock_unidades, minimo_unidades, stock_actual, stock_minimo, unidad_medida, costo_promedio, kg_por_unidad,
@@ -418,9 +426,13 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
 
     if (!lowStockProducts.length && !insumosBajo.length) {
       return res.status(400).json({
-        error: filterByCategory
-          ? 'No hay productos de almacén bajo mínimo en la categoría seleccionada'
-          : 'No hay productos de almacén ni insumos kardex bajo mínimo para requerimiento',
+        error: scopeAll
+          ? (filterByCategory
+            ? 'No hay productos no transformables en la categoría seleccionada'
+            : 'No hay productos no transformables activos para requerimiento')
+          : filterByCategory
+            ? 'No hay productos de almacén bajo mínimo en la categoría seleccionada'
+            : 'No hay productos de almacén ni insumos kardex bajo mínimo para requerimiento',
       });
     }
 
@@ -589,6 +601,24 @@ router.get('/requirements/latest', authenticateToken, requireRole('admin'), (req
     res.json({ ...requirement, items });
   } catch (err) {
     res.status(500).json({ error: err.message || 'No se pudo obtener requerimiento' });
+  }
+});
+
+router.delete('/requirements/:id', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    ensureWarehouseTables();
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Requerimiento no válido' });
+    const requirement = queryOne('SELECT * FROM inventory_requirements WHERE id = ?', [id]);
+    if (!requirement) return res.status(404).json({ error: 'Requerimiento no encontrado' });
+    if (requirement.status !== 'pending') {
+      return res.status(409).json({ error: 'Solo se puede eliminar un requerimiento pendiente' });
+    }
+    runSql('DELETE FROM inventory_requirement_items WHERE requirement_id = ?', [id]);
+    runSql('DELETE FROM inventory_requirements WHERE id = ?', [id]);
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo eliminar requerimiento' });
   }
 });
 

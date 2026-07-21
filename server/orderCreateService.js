@@ -18,6 +18,7 @@ const {
 const { isCocinaStationComplete, isBarStationComplete, allRequiredStationsReady } = require('./utils/kitchenStationReady');
 const { orderHasBarItems, orderHasKitchenItems } = require('./utils/productionArea');
 const { tableNumbersMatch } = require('./utils/tableNumberMatch');
+const { deductNonTransformedStockTx } = require('./warehouseStock');
 
 function resolveDineInTableContextTx(tx, { tableId: tableIdRaw, tableNumber: tableNumberRaw } = {}) {
   const sentNumber = String(tableNumberRaw ?? '').trim();
@@ -113,17 +114,6 @@ function buildOrderLinesFromPayload(tx, orderId, items, { orderNow, restaurantSc
     assertProductAvailableForOrder(product, orderNow, restaurantSchedule);
     const qty = Number(item.quantity || 0);
     if (qty <= 0) throw new Error(`Cantidad inválida para ${product.name}`);
-    const requiresStock = product.process_type === 'non_transformed';
-    if (requiresStock) {
-      const whSum = tx.queryOne(
-        'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_warehouse_stocks WHERE product_id = ?',
-        [product.id]
-      );
-      const available = Math.max(Number(product.stock || 0), Number(whSum?.total || 0));
-      if (available < qty && !staffInHouseOrder) {
-        throw new Error(`Stock insuficiente para ${product.name}`);
-      }
-    }
     const productModifierId = String(product.modifier_id || '').trim();
     let modifierName = '';
     let modifierOption = '';
@@ -181,30 +171,7 @@ function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew =
   const newIds = [];
   orderItems.forEach((item) => {
     if (item.process_type === 'non_transformed') {
-      const stockRows = tx.queryAll(
-        'SELECT id, quantity FROM inventory_warehouse_stocks WHERE product_id = ? ORDER BY quantity DESC',
-        [item.product_id]
-      );
-      let pending = Number(item.quantity || 0);
-      for (const row of stockRows) {
-        if (pending <= 0) break;
-        const available = Number(row.quantity || 0);
-        if (available <= 0) continue;
-        const consume = Math.min(available, pending);
-        tx.run(
-          'UPDATE inventory_warehouse_stocks SET quantity = ?, updated_at = datetime(\'now\') WHERE id = ?',
-          [available - consume, row.id]
-        );
-        pending -= consume;
-      }
-      if (pending > 0 && !staffInHouseOrder) {
-        throw new Error(`No hay stock suficiente en almacenes para ${item.product_name}`);
-      }
-      const newSum = tx.queryOne(
-        'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_warehouse_stocks WHERE product_id = ?',
-        [item.product_id]
-      );
-      tx.run('UPDATE products SET stock = ?, updated_at = datetime(\'now\') WHERE id = ?', [Number(newSum?.total || 0), item.product_id]);
+      deductNonTransformedStockTx(tx, item.product_id, item.quantity);
     }
     const shouldHighlight =
       highlightNew || (highlightIdSet instanceof Set && highlightIdSet.has(String(item.id)));
@@ -478,17 +445,6 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     assertProductAvailableForOrder(product, orderNow, restaurantSchedule);
     const qty = Number(item.quantity || 0);
     if (qty <= 0) throw new Error(`Cantidad inválida para ${product.name}`);
-    const requiresStock = product.process_type === 'non_transformed';
-    if (requiresStock) {
-      const whSum = tx.queryOne(
-        'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_warehouse_stocks WHERE product_id = ?',
-        [product.id]
-      );
-      const available = Math.max(Number(product.stock || 0), Number(whSum?.total || 0));
-      if (available < qty && !staffInHouseOrder) {
-        throw new Error(`Stock insuficiente para ${product.name}`);
-      }
-    }
     const productModifierId = String(product.modifier_id || '').trim();
     let modifierName = '';
     let modifierOption = '';
@@ -642,30 +598,7 @@ function createOrderInTransaction(tx, orderId, body, actor) {
 
   orderItems.forEach((item) => {
     if (item.process_type === 'non_transformed') {
-      const stockRows = tx.queryAll(
-        'SELECT id, quantity FROM inventory_warehouse_stocks WHERE product_id = ? ORDER BY quantity DESC',
-        [item.product_id]
-      );
-      let pending = Number(item.quantity || 0);
-      for (const row of stockRows) {
-        if (pending <= 0) break;
-        const available = Number(row.quantity || 0);
-        if (available <= 0) continue;
-        const consume = Math.min(available, pending);
-        tx.run(
-          'UPDATE inventory_warehouse_stocks SET quantity = ?, updated_at = datetime(\'now\') WHERE id = ?',
-          [available - consume, row.id]
-        );
-        pending -= consume;
-      }
-      if (pending > 0 && !staffInHouseOrder) {
-        throw new Error(`No hay stock suficiente en almacenes para ${item.product_name}`);
-      }
-      const newSum = tx.queryOne(
-        'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_warehouse_stocks WHERE product_id = ?',
-        [item.product_id]
-      );
-      tx.run('UPDATE products SET stock = ?, updated_at = datetime(\'now\') WHERE id = ?', [Number(newSum?.total || 0), item.product_id]);
+      deductNonTransformedStockTx(tx, item.product_id, item.quantity);
     }
     tx.run(
       'INSERT INTO order_items (id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -749,17 +682,6 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
     assertProductAvailableForOrder(product, orderNow, restaurantSchedule);
     const qty = Number(item.quantity || 0);
     if (qty <= 0) throw new Error(`Cantidad inválida para ${product.name}`);
-    const requiresStock = product.process_type === 'non_transformed';
-    if (requiresStock) {
-      const whSum = tx.queryOne(
-        'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_warehouse_stocks WHERE product_id = ?',
-        [product.id]
-      );
-      const available = Math.max(Number(product.stock || 0), Number(whSum?.total || 0));
-      if (available < qty && !staffInHouseOrder) {
-        throw new Error(`Stock insuficiente para ${product.name}`);
-      }
-    }
     const productModifierId = String(product.modifier_id || '').trim();
     let modifierName = '';
     let modifierOption = '';

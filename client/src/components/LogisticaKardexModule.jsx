@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   api,
   formatCurrency,
+  formatDate,
   API_BASE,
   formatDateTime,
   parseLocaleNumber,
@@ -9,6 +10,7 @@ import {
   formatInsumoWithUnit,
 } from '../utils/api';
 import { formatCatalogNameInput } from '../utils/catalogNameFormat';
+import { downloadReconciliationRecord } from '../utils/inventoryCuadreExport';
 import toast from 'react-hot-toast';
 import { MdDownload, MdWarning, MdInventory2, MdAdd, MdList, MdExpandMore, MdExpandLess } from 'react-icons/md';
 import Modal from './Modal';
@@ -1758,9 +1760,27 @@ export default function LogisticaKardexModule() {
           )}
           {reconciliationHistory.map((rec) => (
             <div key={rec.id} className="border border-[color:var(--ui-border)] rounded-lg p-3 bg-[var(--ui-surface-2)]">
-              <div className="flex items-center justify-between mb-2">
-                <p className="font-semibold text-[var(--ui-body-text)]">{rec.warehouse_name || 'Almacén'}</p>
-                <p className="text-xs text-[var(--ui-muted)]">{formatDateTime(rec.created_at)}</p>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <div>
+                  <p className="font-semibold text-[var(--ui-body-text)]">{rec.warehouse_name || 'Almacén'}</p>
+                  <p className="text-xs text-[var(--ui-muted)]">{formatDateTime(rec.created_at)}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => downloadReconciliationRecord(rec, { format: 'csv', formatDate, formatDateTime, toastFn: toast })}
+                    className="btn-secondary text-xs inline-flex items-center gap-1"
+                  >
+                    <MdDownload /> CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadReconciliationRecord(rec, { format: 'txt', formatDate, formatDateTime, toastFn: toast })}
+                    className="btn-secondary text-xs inline-flex items-center gap-1"
+                  >
+                    <MdDownload /> TXT
+                  </button>
+                </div>
               </div>
               <p className="text-xs text-[var(--ui-muted)] mb-2">
                 Items: {rec.total_items} · Faltante: {rec.total_shortage} · Sobrante: {rec.total_surplus}
