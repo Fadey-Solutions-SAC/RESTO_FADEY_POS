@@ -53,44 +53,44 @@ function recordReferenceAmount(o) {
   return adjustmentReferenceAmount(o);
 }
 
-function expandToProductRows(orders) {
-  const rows = [];
+function groupProductsFromOrders(orders, kindFilter = 'all') {
+  const map = new Map();
   for (const o of orders || []) {
-    const reason = rowReason(o);
     const kind = o.adjustment_kind;
+    const reason = rowReason(o);
     const items = (o.items || []).length ? o.items : [{
       product_id: o.product_id,
       product_name: o.product_name || '—',
       quantity: o.quantity_removed || 0,
     }];
     for (const it of items) {
-      rows.push({
-        key: `${o.id}-${it.product_id || it.product_name}-${it.quantity}`,
-        record: o,
-        recordId: o.id,
+      const productKey = String(it.product_id || it.product_name || '').trim() || String(it.product_name || '—');
+      const groupKey = kindFilter === 'all' ? `${kind}::${productKey}` : productKey;
+      const qty = Number(it.quantity ?? it.quantity_removed ?? 0);
+      const prev = map.get(groupKey) || {
+        key: groupKey,
         product_id: it.product_id,
         product_name: it.product_name || '—',
-        quantity: Number(it.quantity ?? it.quantity_removed ?? 0),
         kind,
+        totalQuantity: 0,
+        occurrences: [],
+      };
+      prev.totalQuantity += qty;
+      prev.occurrences.push({
+        record: o,
+        recordId: o.id,
+        quantity: qty,
         reason,
         fecha: o.updated_at || o.created_at,
         order_number: o.order_number,
         table_number: o.table_number,
         type: o.type,
         created_by: o.created_by_user_name || o.customer_name || '',
-        items,
       });
+      map.set(groupKey, prev);
     }
   }
-  return rows;
-}
-
-function mesaChannelLabel(row) {
-  if (row.type === 'dine_in' && row.table_number) {
-    return formatMesaLabel(row.table_number);
-  }
-  if (row.type === 'delivery') return 'Delivery';
-  return 'Mostrador';
+  return [...map.values()].sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), 'es'));
 }
 
 const HIGHLIGHT_ROW_CLASS = 'bg-amber-100/90 ring-2 ring-inset ring-amber-400 transition-colors duration-500';
@@ -140,7 +140,7 @@ export default function CortesiasReportSection({
     }
     setActiveHighlightIds(new Set(ids));
     const scrollTimer = window.setTimeout(() => {
-      const first = document.getElementById(`adjustment-row-${ids[0]}`);
+      const first = document.getElementById(`adjustment-product-${ids[0]}`);
       first?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 250);
     highlightTimerRef.current = window.setTimeout(() => {
@@ -220,12 +220,16 @@ export default function CortesiasReportSection({
     });
   }, [data.orders, search, kindFilter]);
 
-  const productRows = useMemo(() => expandToProductRows(filteredOrders), [filteredOrders]);
+  const groupedProducts = useMemo(
+    () => groupProductsFromOrders(filteredOrders, kindFilter),
+    [filteredOrders, kindFilter],
+  );
 
   const referenceTotal = useMemo(() => {
     const seen = new Set();
     let total = 0;
     for (const o of filteredOrders) {
+      if (o.adjustment_kind === 'eliminado') continue;
       const id = String(o.id);
       if (seen.has(id)) continue;
       seen.add(id);
@@ -233,6 +237,13 @@ export default function CortesiasReportSection({
     }
     return total;
   }, [filteredOrders]);
+
+  const showReferenceTotal = kindFilter !== 'eliminado';
+
+  const referenceProductCount = useMemo(() => {
+    if (!showReferenceTotal) return 0;
+    return groupedProducts.filter((g) => g.kind !== 'eliminado').length;
+  }, [groupedProducts, showReferenceTotal]);
 
   const filteredSummary = useMemo(() => {
     let courtesyCount = 0;
@@ -249,12 +260,12 @@ export default function CortesiasReportSection({
       courtesy_count: courtesyCount,
       discount_count: discountCount,
       eliminado_count: eliminadoCount,
-      product_lines: productRows.length,
+      product_lines: groupedProducts.length,
     };
-  }, [filteredOrders, productRows.length]);
+  }, [filteredOrders, groupedProducts.length]);
 
   const downloadReport = (format = 'csv') => {
-    if (!productRows.length) {
+    if (!groupedProducts.length) {
       toast.error('No hay productos para descargar en el periodo seleccionado');
       return;
     }
@@ -262,9 +273,9 @@ export default function CortesiasReportSection({
       fromDate,
       toDate,
       kindFilter,
-      productRows,
+      groupedProducts,
       referenceTotal,
-      formatDateTime,
+      showReferenceTotal,
     };
     const baseName = buildSalesAdjustmentsDownloadBaseName(fromDate, toDate, kindFilter);
     if (format === 'txt') {
@@ -334,7 +345,7 @@ export default function CortesiasReportSection({
             type="button"
             onClick={() => downloadReport('csv')}
             className="text-xs px-3 py-2 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-            disabled={!productRows.length}
+            disabled={!groupedProducts.length}
           >
             <MdDownload /> CSV
           </button>
@@ -342,7 +353,7 @@ export default function CortesiasReportSection({
             type="button"
             onClick={() => downloadReport('txt')}
             className="text-xs px-3 py-2 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-            disabled={!productRows.length}
+            disabled={!groupedProducts.length}
           >
             <MdDownload /> TXT
           </button>
@@ -368,7 +379,7 @@ export default function CortesiasReportSection({
         </div>
         <p className="text-xs text-[var(--ui-muted)] mt-3">
           Cortesías y descuentos descuentan inventario al cobrar. Los eliminados de mesa no afectan inventario.
-          El valor referencia es un total consolidado del periodo filtrado.
+          La lista agrupa productos del periodo y filtro seleccionados; use «Ver motivo» para el detalle de cada registro.
         </p>
       </div>
 
@@ -376,75 +387,64 @@ export default function CortesiasReportSection({
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
-              <th className="py-2 pr-3 font-medium">Fecha</th>
-              <th className="py-2 pr-3 font-medium">Tipo</th>
+              {kindFilter === 'all' ? (
+                <th className="py-2 pr-3 font-medium">Tipo</th>
+              ) : null}
               <th className="py-2 pr-3 font-medium">Producto</th>
               <th className="py-2 pr-3 font-medium text-right">Cantidad</th>
-              <th className="py-2 pr-3 font-medium">Mesa / pedido</th>
               <th className="py-2 pr-3 font-medium">Motivo</th>
-              <th className="py-2 font-medium text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {productRows.map((row) => {
-              const isCourtesy = row.kind === 'cortesia';
-              const isEliminado = row.kind === 'eliminado';
+            {groupedProducts.map((group) => {
+              const isCourtesy = group.kind === 'cortesia';
+              const isEliminado = group.kind === 'eliminado';
+              const highlightId = group.occurrences.find((o) => activeHighlightIds.has(String(o.recordId)))?.recordId;
               return (
                 <tr
-                  key={row.key}
-                  id={`adjustment-row-${row.recordId}`}
+                  key={group.key}
+                  id={highlightId ? `adjustment-product-${highlightId}` : undefined}
                   className={`border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)] ${
-                    activeHighlightIds.has(String(row.recordId)) ? HIGHLIGHT_ROW_CLASS : ''
+                    highlightId ? HIGHLIGHT_ROW_CLASS : ''
                   }`}
                 >
-                  <td className="py-2.5 pr-3 whitespace-nowrap">{formatDateTime(row.fecha)}</td>
-                  <td className="py-2.5 pr-3">
-                    <span className={kindBadgeClass(row.kind)}>
-                      {isEliminado ? (
-                        <MdRemoveCircleOutline className="shrink-0" />
-                      ) : isCourtesy ? (
-                        <MdVolunteerActivism className="shrink-0" />
-                      ) : (
-                        <MdLocalOffer className="shrink-0" />
-                      )}
-                      {kindLabel(row.kind)}
-                    </span>
-                  </td>
-                  <td className="py-2.5 pr-3 font-medium">{row.product_name}</td>
+                  {kindFilter === 'all' ? (
+                    <td className="py-2.5 pr-3">
+                      <span className={kindBadgeClass(group.kind)}>
+                        {isEliminado ? (
+                          <MdRemoveCircleOutline className="shrink-0" />
+                        ) : isCourtesy ? (
+                          <MdVolunteerActivism className="shrink-0" />
+                        ) : (
+                          <MdLocalOffer className="shrink-0" />
+                        )}
+                        {kindLabel(group.kind)}
+                      </span>
+                    </td>
+                  ) : null}
+                  <td className="py-2.5 pr-3 font-medium">{group.product_name}</td>
                   <td className="py-2.5 pr-3 text-right tabular-nums font-semibold text-[#3B82F6]">
-                    {row.quantity}
-                  </td>
-                  <td className="py-2.5 pr-3">
-                    <span className="block">{mesaChannelLabel(row)}</span>
-                    {row.order_number ? (
-                      <span className="text-xs text-[var(--ui-muted)]">Pedido #{row.order_number}</span>
-                    ) : null}
+                    {group.totalQuantity}
                   </td>
                   <td className="py-2.5 pr-3">
                     <button
                       type="button"
-                      onClick={() => setDetailTarget(row.record)}
+                      onClick={() => setDetailTarget(group)}
                       className="text-xs text-[#3B82F6] hover:underline inline-flex items-center gap-1"
                     >
-                      <MdVisibility className="text-sm" /> Ver motivo
-                    </button>
-                  </td>
-                  <td className="py-2.5 text-center">
-                    <button
-                      type="button"
-                      onClick={() => { setDeleteTarget(row.record); setAdminPassword(''); }}
-                      className="p-1.5 rounded-lg text-[var(--ui-muted)] hover:bg-red-50 hover:text-red-600"
-                      title="Eliminar registro"
-                    >
-                      <MdDelete />
+                      <MdVisibility className="text-sm" />
+                      Ver motivo
+                      {group.occurrences.length > 1 ? (
+                        <span className="text-[var(--ui-muted)]">({group.occurrences.length})</span>
+                      ) : null}
                     </button>
                   </td>
                 </tr>
               );
             })}
-            {productRows.length === 0 && (
+            {groupedProducts.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-[var(--ui-muted)]">
+                <td colSpan={kindFilter === 'all' ? 4 : 3} className="py-10 text-center text-[var(--ui-muted)]">
                   {datesValid
                     ? 'No hay productos en el periodo y filtro seleccionados'
                     : 'Seleccione un rango de fechas válido'}
@@ -452,12 +452,12 @@ export default function CortesiasReportSection({
               </tr>
             )}
           </tbody>
-          {productRows.length > 0 && (
+          {groupedProducts.length > 0 && showReferenceTotal && (
             <tfoot>
               <tr className="bg-[var(--ui-surface-2)] font-bold border-t border-[color:var(--ui-border)]">
-                <td colSpan={7} className="py-3 px-3 text-right">
+                <td colSpan={kindFilter === 'all' ? 4 : 3} className="py-3 px-3 text-right">
                   <span className="text-[var(--ui-body-text)]">
-                    Total valor referencia ({filteredSummary.product_lines} línea{filteredSummary.product_lines === 1 ? '' : 's'}):{' '}
+                    Total valor referencia ({referenceProductCount} producto{referenceProductCount === 1 ? '' : 's'}):{' '}
                   </span>
                   <span className="tabular-nums text-emerald-600">{formatCurrency(referenceTotal)}</span>
                 </td>
@@ -470,77 +470,74 @@ export default function CortesiasReportSection({
       <Modal
         isOpen={!!detailTarget}
         onClose={() => setDetailTarget(null)}
-        title="Detalle del registro"
+        title={detailTarget ? `Detalle — ${detailTarget.product_name}` : 'Detalle'}
         size="md"
       >
-        {detailTarget && (() => {
-          const kind = detailTarget.adjustment_kind;
-          const mesaLabel = detailTarget.type === 'dine_in' && detailTarget.table_number
-            ? formatMesaLabel(detailTarget.table_number)
-            : detailTarget.type === 'delivery'
-              ? 'Delivery'
-              : 'Mostrador';
-          const motivo = rowReason(detailTarget);
-          const items = detailTarget.items || [];
-          return (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={kindBadgeClass(kind)}>
-                  {kind === 'eliminado' ? <MdRemoveCircleOutline /> : kind === 'cortesia' ? <MdVolunteerActivism /> : <MdLocalOffer />}
-                  {' '}
-                  {kindLabel(kind)}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                <div className="rounded-lg border border-[color:var(--ui-border)] p-3">
-                  <p className="text-xs text-[var(--ui-muted)] mb-1">Fecha y hora</p>
-                  <p className="font-medium">{formatDateTime(detailTarget.updated_at || detailTarget.created_at)}</p>
-                </div>
-                <div className="rounded-lg border border-[color:var(--ui-border)] p-3">
-                  <p className="text-xs text-[var(--ui-muted)] mb-1">Mesa / canal</p>
-                  <p className="font-medium">{mesaLabel}</p>
-                </div>
-                <div className="rounded-lg border border-[color:var(--ui-border)] p-3">
-                  <p className="text-xs text-[var(--ui-muted)] mb-1">Registró</p>
-                  <p className="font-medium">{detailTarget.created_by_user_name || detailTarget.customer_name || '—'}</p>
-                </div>
-                <div className="rounded-lg border border-[color:var(--ui-border)] p-3">
-                  <p className="text-xs text-[var(--ui-muted)] mb-1">Pedido</p>
-                  <p className="font-medium">{detailTarget.order_number ? `#${detailTarget.order_number}` : '—'}</p>
-                </div>
-              </div>
-              <div className="rounded-lg border border-[color:var(--ui-border)] p-3">
-                <p className="text-xs text-[var(--ui-muted)] mb-2 font-medium">Productos</p>
-                {items.length ? (
-                  <ul className="space-y-1.5">
-                    {items.map((it, idx) => (
-                      <li key={`${it.product_id || it.product_name}-${idx}`} className="text-sm">
-                        <span className="font-semibold text-[var(--ui-body-text)]">
-                          {Number(it.quantity ?? it.quantity_removed ?? 0)}× {it.product_name}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-[var(--ui-muted)]">Sin productos registrados</p>
-                )}
-              </div>
-              <div className={`rounded-lg border p-3 sm:col-span-2 ${
-                kind === 'eliminado' ? 'border-red-200 bg-red-50/80' : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]'
-              }`}>
-                <p className={`text-xs font-medium mb-1 ${kind === 'eliminado' ? 'text-red-700' : 'text-[var(--ui-muted)]'}`}>
-                  Motivo
-                </p>
-                <p className={`text-sm whitespace-pre-wrap leading-relaxed ${kind === 'eliminado' ? 'text-red-900' : 'text-[var(--ui-body-text)]'}`}>
-                  {motivo}
-                </p>
-              </div>
-              <button type="button" onClick={() => setDetailTarget(null)} className="btn-secondary w-full">
-                Cerrar
-              </button>
+        {detailTarget?.occurrences?.length ? (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={kindBadgeClass(detailTarget.kind)}>
+                {detailTarget.kind === 'eliminado' ? <MdRemoveCircleOutline /> : detailTarget.kind === 'cortesia' ? <MdVolunteerActivism /> : <MdLocalOffer />}
+                {' '}
+                {kindLabel(detailTarget.kind)}
+              </span>
+              <span className="text-sm text-[var(--ui-muted)]">
+                Total: <strong className="text-[var(--ui-body-text)]">{detailTarget.totalQuantity}</strong> unidad{detailTarget.totalQuantity === 1 ? '' : 'es'}
+              </span>
             </div>
-          );
-        })()}
+            <ul className="space-y-3 max-h-[min(50vh,420px)] overflow-y-auto">
+              {detailTarget.occurrences.map((occ, idx) => {
+                const mesaLabel = occ.type === 'dine_in' && occ.table_number
+                  ? formatMesaLabel(occ.table_number)
+                  : occ.type === 'delivery'
+                    ? 'Delivery'
+                    : 'Mostrador';
+                return (
+                  <li
+                    key={`${occ.recordId}-${idx}`}
+                    className={`rounded-xl border p-3 ${
+                      detailTarget.kind === 'eliminado'
+                        ? 'border-red-200 bg-red-50/60'
+                        : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <p className="text-sm font-semibold text-[var(--ui-body-text)]">
+                        {occ.quantity}× {detailTarget.product_name}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDetailTarget(null);
+                          setDeleteTarget(occ.record);
+                          setAdminPassword('');
+                        }}
+                        className="p-1.5 rounded-lg text-[var(--ui-muted)] hover:bg-red-50 hover:text-red-600 shrink-0"
+                        title="Eliminar registro"
+                      >
+                        <MdDelete />
+                      </button>
+                    </div>
+                    <p className="text-xs text-[var(--ui-muted)] mb-2">
+                      {formatDateTime(occ.fecha)}
+                      {occ.order_number ? ` · Pedido #${occ.order_number}` : ''}
+                      {` · ${mesaLabel}`}
+                      {occ.created_by ? ` · ${occ.created_by}` : ''}
+                    </p>
+                    <p className={`text-sm whitespace-pre-wrap leading-relaxed ${
+                      detailTarget.kind === 'eliminado' ? 'text-red-900' : 'text-[var(--ui-body-text)]'
+                    }`}>
+                      {occ.reason}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+            <button type="button" onClick={() => setDetailTarget(null)} className="btn-secondary w-full">
+              Cerrar
+            </button>
+          </div>
+        ) : null}
       </Modal>
 
       <Modal isOpen={!!deleteTarget} onClose={() => { if (!deleteBusy) { setDeleteTarget(null); setAdminPassword(''); } }} title="Eliminar registro" size="sm">

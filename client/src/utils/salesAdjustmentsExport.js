@@ -7,38 +7,46 @@ function kindLabel(kind) {
   return kind || '—';
 }
 
-function mesaChannelLabel(row) {
-  if (row.type === 'dine_in' && row.table_number) return `Mesa ${row.table_number}`;
-  if (row.type === 'delivery') return 'Delivery';
-  return 'Mostrador';
+function motivesSummary(group) {
+  const parts = (group.occurrences || []).map((occ) => {
+    const base = String(occ.reason || '').trim() || 'Sin motivo';
+    return `${occ.quantity}x: ${base}`;
+  });
+  return parts.join(' | ');
 }
 
-export function buildSalesAdjustmentsCsv({ fromDate, toDate, kindFilter, productRows, referenceTotal, formatDateTime }) {
+export function buildSalesAdjustmentsCsv({ fromDate, toDate, kindFilter, groupedProducts, referenceTotal, showReferenceTotal = true }) {
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const withType = kindFilter === 'all';
+  const header = withType
+    ? ['Producto', 'Cantidad', 'Tipo', 'Motivos']
+    : ['Producto', 'Cantidad', 'Motivos'];
   const lines = [
     ['Informe descuentos y cortesias'],
     ['Desde', fromDate || '—'],
     ['Hasta', toDate || '—'],
     ['Filtro', kindFilter === 'all' ? 'Todos' : kindLabel(kindFilter)],
     [],
-    ['Fecha', 'Tipo', 'Producto', 'Cantidad', 'Mesa/Pedido', 'Motivo'],
+    header,
   ];
-  for (const row of productRows) {
-    lines.push([
-      formatDateTime ? formatDateTime(row.fecha) : row.fecha,
-      kindLabel(row.kind),
-      row.product_name,
-      Number(row.quantity || 0),
-      row.order_number ? `#${row.order_number} · ${mesaChannelLabel(row)}` : mesaChannelLabel(row),
-      row.reason,
-    ]);
+  for (const group of groupedProducts || []) {
+    const row = [
+      group.product_name,
+      Number(group.totalQuantity || 0),
+    ];
+    if (withType) row.push(kindLabel(group.kind));
+    row.push(motivesSummary(group));
+    lines.push(row);
   }
   lines.push([]);
-  lines.push(['Total valor referencia', '', '', '', '', Number(referenceTotal || 0).toFixed(2)]);
+  if (showReferenceTotal && kindFilter !== 'eliminado') {
+    lines.push(['Total valor referencia', '', Number(referenceTotal || 0).toFixed(2)]);
+  }
   return `${lines.map((r) => r.map(esc).join(',')).join('\n')}\n`;
 }
 
-export function buildSalesAdjustmentsTxt({ fromDate, toDate, kindFilter, productRows, referenceTotal, formatDateTime }) {
+export function buildSalesAdjustmentsTxt({ fromDate, toDate, kindFilter, groupedProducts, referenceTotal, showReferenceTotal = true }) {
+  const withType = kindFilter === 'all';
   const lines = [
     'INFORME DESCUENTOS Y CORTESIAS',
     '='.repeat(40),
@@ -46,25 +54,25 @@ export function buildSalesAdjustmentsTxt({ fromDate, toDate, kindFilter, product
     `Filtro: ${kindFilter === 'all' ? 'Todos' : kindLabel(kindFilter)}`,
     '',
   ];
-  if (productRows.length) {
+  if ((groupedProducts || []).length) {
     lines.push(...buildFixedWidthTable({
-      headers: ['Fecha', 'Tipo', 'Producto', 'Cant.', 'Mesa/Ped.', 'Motivo'],
-      widths: [16, 10, 24, 6, 14, 28],
-      aligns: ['left', 'left', 'left', 'right', 'left', 'left'],
-      rows: productRows.map((row) => [
-        formatDateTime ? formatDateTime(row.fecha) : String(row.fecha || ''),
-        kindLabel(row.kind),
-        row.product_name,
-        Number(row.quantity || 0),
-        row.order_number ? `#${row.order_number}` : mesaChannelLabel(row),
-        row.reason,
-      ]),
+      headers: withType ? ['Producto', 'Cant.', 'Tipo', 'Motivos'] : ['Producto', 'Cant.', 'Motivos'],
+      widths: withType ? [28, 6, 10, 34] : [32, 8, 38],
+      aligns: withType ? ['left', 'right', 'left', 'left'] : ['left', 'right', 'left'],
+      rows: groupedProducts.map((group) => {
+        const base = [group.product_name, Number(group.totalQuantity || 0)];
+        if (withType) base.push(kindLabel(group.kind));
+        base.push(motivesSummary(group));
+        return base;
+      }),
     }));
   } else {
     lines.push('(Sin registros en el periodo)');
   }
   lines.push('');
-  lines.push(`TOTAL VALOR REFERENCIA: ${Number(referenceTotal || 0).toFixed(2)}`);
+  if (showReferenceTotal && kindFilter !== 'eliminado') {
+    lines.push(`TOTAL VALOR REFERENCIA: ${Number(referenceTotal || 0).toFixed(2)}`);
+  }
   return `${lines.join('\n')}\n`;
 }
 
