@@ -1,13 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { api, resolveMediaUrl, formatInstantTime, formatDateTime } from '../utils/api';
+import { api, resolveMediaUrl, formatDateTime } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { useSocket } from '../hooks/useSocket';
-import { useDeliverySettings } from '../hooks/useDeliveryEnabled';
-import { getOperationalNotificationQuickLinks } from '../utils/staffModuleAccess';
 import StaffTeamChat from './StaffTeamChat';
 import Modal from './Modal';
-import { MdNotificationsNone, MdClose, MdChat, MdCampaign, MdDelete, MdSpeed } from 'react-icons/md';
+import { MdNotificationsNone, MdClose, MdChat, MdCampaign, MdDelete } from 'react-icons/md';
 import { PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE } from '../constants/masterNotifications';
 
 const DISMISSED_AVISOS_STORAGE_KEY = 'admin_avisos_descartados_v1';
@@ -26,75 +22,25 @@ function saveDismissedAvisoIds(ids) {
   localStorage.setItem(DISMISSED_AVISOS_STORAGE_KEY, JSON.stringify([...new Set(ids.map(String))]));
 }
 
+function defaultTabForUser(hasAvisosTab) {
+  return hasAvisosTab ? 'avisos' : 'chat';
+}
+
 /**
- * Campana de notificaciones: chat del equipo, avisos del maestro y pestaña Operación (solo admin).
+ * Campana de notificaciones: avisos del maestro y chat del equipo.
+ * Las alertas operativas viven solo en Escritorio → Monitoreo en vivo.
  */
 export default function NotificationCenter({ className = '' }) {
   const { user } = useAuth();
+  const showAvisosTab = Boolean(user);
+  const seesPagoUsoAviso = user?.role === 'admin' || user?.role === 'master_admin';
+
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState('chat');
+  const [tab, setTab] = useState(() => defaultTabForUser(showAvisosTab));
   const [unreadChat, setUnreadChat] = useState(0);
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [dismissedAvisoIds, setDismissedAvisoIds] = useState(loadDismissedAvisoIds);
   const [avisoToDismiss, setAvisoToDismiss] = useState(null);
-
-  /** Avisos del maestro: visibles para todo el personal; el aviso de «pago por uso» solo admin / maestro. */
-  const showAvisosTab = Boolean(user);
-  const seesPagoUsoAviso = user?.role === 'admin' || user?.role === 'master_admin';
-  const showOperacionTab = user?.role === 'admin' || user?.role === 'master_admin';
-
-  const operacionQuickLinks = useMemo(() => getOperationalNotificationQuickLinks(user), [user]);
-  const { enabled: deliveryEnabled, loaded: deliverySettingsLoaded } = useDeliverySettings();
-
-  const [operationalPayload, setOperationalPayload] = useState(undefined);
-  const [operationalLoadError, setOperationalLoadError] = useState('');
-
-  const deliveryModuleActive = useMemo(() => {
-    if (deliverySettingsLoaded) return deliveryEnabled;
-    if (operationalPayload?.deliveryEnabled != null) return Boolean(operationalPayload.deliveryEnabled);
-    if (operationalPayload?.summary?.deliveryEnabled != null) return Boolean(operationalPayload.summary.deliveryEnabled);
-    return true;
-  }, [deliverySettingsLoaded, deliveryEnabled, operationalPayload?.deliveryEnabled, operationalPayload?.summary?.deliveryEnabled]);
-
-  const loadOperationalAlerts = useCallback(() => {
-    if (!showOperacionTab) return;
-    api
-      .get('/reports/operational-alerts')
-      .then((data) => {
-        setOperationalPayload(data && typeof data === 'object' ? data : {});
-        setOperationalLoadError('');
-      })
-      .catch((err) => {
-        setOperationalPayload(null);
-        setOperationalLoadError(String(err?.message || '').trim() || 'No se pudo cargar el estado operativo');
-      });
-  }, [showOperacionTab]);
-
-  useEffect(() => {
-    if (!showOperacionTab) return undefined;
-    loadOperationalAlerts();
-    const interval = setInterval(loadOperationalAlerts, 20000);
-    return () => clearInterval(interval);
-  }, [showOperacionTab, loadOperationalAlerts]);
-
-  useSocket('order-update', loadOperationalAlerts);
-  useSocket('table-update', loadOperationalAlerts);
-  useSocket('delivery-update', loadOperationalAlerts);
-  useSocket('register-update', loadOperationalAlerts);
-  useSocket('inventory-update', loadOperationalAlerts);
-  useSocket('billing-document-update', loadOperationalAlerts);
-  useSocket('staff-data-update', (p) => {
-    const d = p?.domain;
-    if (d === 'catalog' || d === 'app_config' || d === 'finance_ops' || d === 'reservations') loadOperationalAlerts();
-  });
-  useSocket('reservation-reminder', () => {
-    loadOperationalAlerts();
-  });
-
-  const operationalWarnings = useMemo(() => {
-    const list = Array.isArray(operationalPayload?.alerts) ? operationalPayload.alerts : [];
-    return list.filter((a) => a?.severity === 'warning').length;
-  }, [operationalPayload]);
 
   const visibleAdminNotifications = useMemo(() => {
     let list = adminNotifications.filter((n) => !dismissedAvisoIds.includes(String(n.id)));
@@ -107,10 +53,6 @@ export default function NotificationCenter({ className = '' }) {
   useEffect(() => {
     if (!showAvisosTab) setTab('chat');
   }, [showAvisosTab]);
-
-  useEffect(() => {
-    if (!showOperacionTab && tab === 'operacion') setTab('chat');
-  }, [showOperacionTab, tab]);
 
   useEffect(() => {
     if (!showAvisosTab) return;
@@ -143,23 +85,20 @@ export default function NotificationCenter({ className = '' }) {
     setAvisoToDismiss(null);
   };
 
-  const totalBadge =
-    unreadChat +
-    (showAvisosTab ? visibleAdminNotifications.length : 0) +
-    (showOperacionTab ? operationalWarnings : 0);
+  const totalBadge = unreadChat + (showAvisosTab ? visibleAdminNotifications.length : 0);
+
+  const openPanel = () => {
+    setOpen((prev) => {
+      if (!prev) setTab(defaultTabForUser(showAvisosTab));
+      return !prev;
+    });
+  };
 
   return (
     <div className={`relative ${className}`}>
       <button
         type="button"
-        onClick={() => {
-          setOpen((p) => {
-            const next = !p;
-            if (next && showOperacionTab) loadOperationalAlerts();
-            return next;
-          });
-          if (!open) setTab('chat');
-        }}
+        onClick={openPanel}
         className="p-2 hover:bg-[var(--ui-sidebar-hover)] rounded-lg transition-colors relative"
         title="Mensajes y notificaciones"
         aria-expanded={open}
@@ -186,15 +125,6 @@ export default function NotificationCenter({ className = '' }) {
                 <div className="flex flex-wrap rounded-lg bg-[var(--ui-body-bg)] p-0.5 gap-0.5 border border-[color:var(--ui-border)] max-w-[min(100%,340px)]">
                   <button
                     type="button"
-                    onClick={() => setTab('chat')}
-                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium ${
-                      tab === 'chat' ? 'bg-[var(--ui-accent)] text-white' : 'text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
-                    }`}
-                  >
-                    <MdChat className="text-base shrink-0" /> Mensajes
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setTab('avisos')}
                     className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium ${
                       tab === 'avisos' ? 'bg-[var(--ui-accent)] text-white' : 'text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
@@ -205,26 +135,18 @@ export default function NotificationCenter({ className = '' }) {
                       <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">{visibleAdminNotifications.length}</span>
                     )}
                   </button>
-                  {showOperacionTab ? (
-                    <button
-                      type="button"
-                      onClick={() => setTab('operacion')}
-                      className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium ${
-                        tab === 'operacion' ? 'bg-[var(--ui-accent)] text-white' : 'text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
-                      }`}
-                    >
-                      <MdSpeed className="text-base shrink-0" /> Operación
-                      {operationalPayload?.alerts?.length > 0 && (
-                        <span
-                          className={`text-[10px] px-1.5 rounded-full font-semibold ${
-                            operationalWarnings > 0 ? 'bg-amber-500 text-white' : 'bg-[var(--ui-accent-muted)]/30 text-[var(--ui-body-text)]'
-                          }`}
-                        >
-                          {operationalPayload.alerts.length}
-                        </span>
-                      )}
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setTab('chat')}
+                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium ${
+                      tab === 'chat' ? 'bg-[var(--ui-accent)] text-white' : 'text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
+                    }`}
+                  >
+                    <MdChat className="text-base shrink-0" /> Mensajes
+                    {unreadChat > 0 && (
+                      <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">{unreadChat > 99 ? '99+' : unreadChat}</span>
+                    )}
+                  </button>
                 </div>
               ) : (
                 <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
@@ -242,9 +164,6 @@ export default function NotificationCenter({ className = '' }) {
             </div>
 
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col p-3">
-              {tab === 'chat' && (
-                <StaffTeamChat isActive={open && tab === 'chat'} onUnreadDelta={onUnreadDelta} />
-              )}
               {tab === 'avisos' && showAvisosTab && (
                 <div className="h-full overflow-y-auto space-y-2">
                   {visibleAdminNotifications.length === 0 ? (
@@ -282,110 +201,8 @@ export default function NotificationCenter({ className = '' }) {
                   )}
                 </div>
               )}
-              {tab === 'operacion' && showOperacionTab && (
-                <div className="h-full overflow-y-auto space-y-3">
-                  {operationalPayload === undefined ? (
-                    <p className="text-sm text-[var(--ui-muted)] text-center py-8">Cargando estado operativo…</p>
-                  ) : operationalLoadError && !operationalPayload?.summary ? (
-                    <div className="text-center py-8 space-y-2">
-                      <p className="text-sm text-amber-700">{operationalLoadError}</p>
-                      <button type="button" onClick={loadOperationalAlerts} className="btn-secondary text-xs">
-                        Reintentar
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      {operationalPayload.summary && (
-                        <div className="grid grid-cols-2 gap-2 text-[11px]">
-                          <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
-                            <span className="text-[var(--ui-muted)]">Mesas activas</span>
-                            <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
-                              {Number(operationalPayload.summary.tablesWithActiveOrders ?? 0)}
-                            </p>
-                          </div>
-                          {deliveryModuleActive ? (
-                          <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
-                            <span className="text-[var(--ui-muted)]">Delivery activo</span>
-                            <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
-                              {Number(operationalPayload.summary.deliveryActiveCount ?? 0)}
-                            </p>
-                          </div>
-                          ) : null}
-                          <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
-                            <span className="text-[var(--ui-muted)]">En cocina</span>
-                            <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
-                              {Number(operationalPayload.summary.inKitchenCount ?? 0)}
-                            </p>
-                          </div>
-                          <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5">
-                            <span className="text-[var(--ui-muted)]">Pedidos activos</span>
-                            <p className="font-semibold text-[var(--ui-body-text)] tabular-nums">
-                              {Number(operationalPayload.summary.activeOrders ?? 0)}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      {operationalPayload.insightToday ? (
-                        <p className="text-xs text-[var(--ui-accent-muted)] border border-[color:var(--ui-border)] rounded-lg px-2 py-1.5 bg-[var(--ui-body-bg)]">
-                          {operationalPayload.insightToday}
-                        </p>
-                      ) : null}
-                      {Array.isArray(operationalPayload.alerts) && operationalPayload.alerts.length === 0 ? (
-                        <p className="text-sm text-[var(--ui-muted)] text-center py-6">Sin alertas operativas en este momento.</p>
-                      ) : (
-                        <ul className="space-y-2">
-                          {(operationalPayload.alerts || []).map((a) => (
-                            <li
-                              key={a.id}
-                              className={`rounded-xl border px-3 py-2 text-xs ${
-                                a.severity === 'warning'
-                                  ? 'border-amber-300/80 bg-amber-500/10 text-[var(--ui-body-text)]'
-                                  : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)]'
-                              }`}
-                            >
-                              <p className="font-semibold leading-snug">{a.title}</p>
-                              <p className="text-[var(--ui-muted)] mt-0.5 leading-snug">{a.message}</p>
-                              {a.linkTo && a.linkLabel ? (
-                                <Link
-                                  to={a.linkTo}
-                                  className="mt-1 inline-block text-[10px] font-semibold text-[var(--ui-accent)] hover:underline underline-offset-2"
-                                >
-                                  {a.linkLabel}
-                                </Link>
-                              ) : null}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      <Link
-                        to="/admin#monitoreo-vivo"
-                        onClick={() => setOpen(false)}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--ui-accent)] hover:underline underline-offset-2"
-                      >
-                        <MdSpeed className="text-sm" />
-                        Ver monitoreo completo en Escritorio
-                      </Link>
-                      {operacionQuickLinks.length > 0 ? (
-                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[var(--ui-muted)] pt-1 border-t border-[color:var(--ui-border)]">
-                          {operacionQuickLinks.map((item) => (
-                            <Link
-                              key={`${item.to}-${item.label}`}
-                              to={item.to}
-                              className="hover:text-[var(--ui-accent)] underline-offset-2 hover:underline"
-                            >
-                              {item.label}
-                            </Link>
-                          ))}
-                        </div>
-                      ) : null}
-                      {operationalPayload.generated_at ? (
-                        <p className="text-[10px] text-[var(--ui-muted)] text-right">
-                          Actualizado {formatInstantTime(operationalPayload.generated_at)}
-                        </p>
-                      ) : null}
-                    </>
-                  )}
-                </div>
+              {tab === 'chat' && (
+                <StaffTeamChat isActive={open && tab === 'chat'} onUnreadDelta={onUnreadDelta} />
               )}
             </div>
           </div>

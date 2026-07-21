@@ -59,7 +59,7 @@ export function getDefaultStaffPath(user) {
 }
 
 /**
- * Enlaces del pie «Operación» en NotificationCenter: rutas alineadas con ADMIN_MODULE_PATHS
+ * Enlaces rápidos operativos (p. ej. monitoreo en vivo en Escritorio).
  * salvo la vista móvil de reparto (`/delivery`).
  */
 const OPERATIONAL_NOTIFICATION_LINK_DEFS = [
