@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const { queryOne, runSql } = require('./database');
 const { proximaFechaFromControlAnchor, addDaysToIsoDate } = require('./pagoUsoBillingSync');
+const { getBusinessTodayDateKey } = require('./utils/appDateTime');
 
 /** Título fijo del aviso automático de comprobante; también filtra quién lo ve en la API. */
 const PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE = 'Pago por uso — subir comprobante';
@@ -377,14 +378,40 @@ function deleteNotification(id) {
 }
 
 function isoDateKeyNow() {
-  return new Date().toISOString().slice(0, 10);
+  return getBusinessTodayDateKey(queryOne);
 }
 
 function diffDays(startDateKey, endDateKey) {
-  const a = new Date(`${startDateKey}T00:00:00Z`);
-  const b = new Date(`${endDateKey}T00:00:00Z`);
+  const a = new Date(`${startDateKey}T12:00:00`);
+  const b = new Date(`${endDateKey}T12:00:00`);
   if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
-  return Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function resolveComprobanteGraceDays(pago = {}) {
+  return Math.max(1, Math.min(14, Number(pago?.comprobante_grace_days_after_due ?? 3)));
+}
+
+/** Último día inclusive con acceso: fecha_proxima_facturación + días de gracia. */
+function resolvePaymentLockDeadlineKey(control, pago = null) {
+  const billing = pago || readSetting(PAGO_USO_APP_KEY, {});
+  const grace = resolveComprobanteGraceDays(billing);
+  const nextDue = String(billing.fecha_proxima_facturacion || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(nextDue)) {
+    return addDaysToIsoDate(nextDue, grace);
+  }
+  const dueDateKey = resolveBillingDueDateKey(control);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dueDateKey)) {
+    return addDaysToIsoDate(dueDateKey, grace);
+  }
+  return '';
+}
+
+function isPastPaymentLockDeadline(today, control, pago = null) {
+  const deadline = resolvePaymentLockDeadlineKey(control, pago);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return false;
+  const daysPast = diffDays(deadline, today);
+  return daysPast !== null && daysPast > 0;
 }
 
 /**
@@ -415,7 +442,11 @@ function tryReleaseAutomaticMoraLock(current, dueDateKey, today) {
     || (by === '' && reason === DEFAULT_MORA_LOCK_REASON);
   if (!looksLikeMoraAuto) return false;
 
-  if (dueDateKey && /^\d{4}-\d{2}-\d{2}$/.test(dueDateKey)) {
+  const pago = readSetting(PAGO_USO_APP_KEY, {});
+  const lockDeadline = resolvePaymentLockDeadlineKey(current, pago);
+  if (lockDeadline && /^\d{4}-\d{2}-\d{2}$/.test(lockDeadline)) {
+    if (isPastPaymentLockDeadline(today, current, pago)) return false;
+  } else if (dueDateKey && /^\d{4}-\d{2}-\d{2}$/.test(dueDateKey)) {
     const daysToDue = diffDays(today, dueDateKey);
     if (daysToDue !== null && daysToDue < 0) return false;
   }
@@ -455,14 +486,22 @@ function evaluateAutomaticBillingRules() {
       changed = true;
     }
 
-    if (daysToDue !== null && daysToDue < 0 && Number(current.auto_block_on_overdue || 0) === 1 && Number(current.global_lock_enabled || 0) !== 1) {
+    const lockDeadline = resolvePaymentLockDeadlineKey(current, pagoBilling);
+    const shouldAutoBlock =
+      Number(current.auto_block_on_overdue || 0) === 1
+      && Number(current.global_lock_enabled || 0) !== 1
+      && isPastPaymentLockDeadline(today, current, pagoBilling);
+
+    if (shouldAutoBlock) {
       current.global_lock_enabled = 1;
       current.global_lock_reason = current.global_lock_reason || DEFAULT_MORA_LOCK_REASON;
       current.lock_enabled_by = 'Sistema automático';
       current.lock_enabled_at = new Date().toISOString();
       addNotification({
         title: 'Sistema bloqueado automáticamente',
-        message: `Se activó bloqueo por falta de pago. Vencimiento del período: ${dueDateKey}.`,
+        message: lockDeadline
+          ? `Se activó bloqueo por falta de pago. Plazo de gracia finalizado el ${lockDeadline}.`
+          : `Se activó bloqueo por falta de pago. Vencimiento del período: ${dueDateKey}.`,
         created_by: 'Sistema automático',
         level: 'danger',
       });
@@ -536,7 +575,9 @@ function evaluatePagoUsoComprobanteWindow() {
     syncPagoUsoComprobanteAvisoFromPolicy({ nextDue, deadline, hasUrl: false });
   }
 
-  if (!hasUrl && /^\d{4}-\d{2}-\d{2}$/.test(deadline) && diffDays(deadline, today) > 0) {
+  const pastComprobanteDeadline = /^\d{4}-\d{2}-\d{2}$/.test(deadline) && diffDays(deadline, today) > 0;
+
+  if (!hasUrl && pastComprobanteDeadline) {
     if (Number(control.global_lock_enabled || 0) !== 1) {
       control.global_lock_enabled = 1;
       control.global_lock_reason = REASON_PAGO_USO_SIN_COMPROBANTE;
@@ -551,6 +592,19 @@ function evaluatePagoUsoComprobanteWindow() {
       });
       controlChanged = true;
     }
+  } else if (
+    !hasUrl
+    && /^\d{4}-\d{2}-\d{2}$/.test(deadline)
+    && !pastComprobanteDeadline
+    && Number(control.global_lock_enabled || 0) === 1
+    && Number(control.pago_uso_comprobante_lock_auto || 0) === 1
+  ) {
+    control.global_lock_enabled = 0;
+    control.pago_uso_comprobante_lock_auto = 0;
+    control.global_lock_reason = '';
+    control.lock_enabled_at = new Date().toISOString();
+    control.lock_enabled_by = 'Sistema automático';
+    controlChanged = true;
   }
 
   if (hasUrl && Number(control.pago_uso_comprobante_lock_auto || 0) === 1) {
