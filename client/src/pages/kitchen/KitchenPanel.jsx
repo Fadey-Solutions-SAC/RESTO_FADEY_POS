@@ -22,6 +22,7 @@ import {
 import { isBarProductionItemForStation, isKitchenProductionItemForStation } from '../../utils/productionArea';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import { canAjusteBarAutoDismiss } from '../../utils/posPermissions';
+import { playNotificationSound, preloadNotificationSound } from '../../utils/playNotificationSound';
 
 /** Pedido auto-pedido con cuenta de cliente (sin mesa física). */
 function isCuentaClienteSelfOrder(order) {
@@ -124,6 +125,10 @@ export default function KitchenPanel({ station = 'cocina' }) {
       // noop: if browser blocks autoplay or audio context
     }
   };
+
+  useEffect(() => {
+    preloadNotificationSound(isBar ? 'bar' : 'kitchen');
+  }, [isBar]);
 
   useEffect(() => {
     if (!showDeliveryUi && filter === 'delivery') setFilter('all');
@@ -301,7 +306,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const handleKitchenIncomingOrder = (order, toastLabel) => {
     if (!orderRelevantToStation(order)) return;
     loadOrders();
-    playStationAlert();
+    playNotificationSound(isBar ? 'bar' : 'kitchen', order?.id);
     const num = order?.order_number;
     toast.success(
       num != null
@@ -325,7 +330,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
     }
     loadOrders();
     if (payload?.merged && stationNewIds.length) {
-      playStationAlert();
+      playNotificationSound(isBar ? 'bar' : 'kitchen', orderId);
       const num = order?.order_number;
       toast.success(
         num != null
