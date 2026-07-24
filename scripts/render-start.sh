@@ -28,21 +28,51 @@ if ! mkdir -p "$OUTPUT_DIR" 2>/dev/null; then
   mkdir -p "$OUTPUT_DIR"
 fi
 
-if [[ -n "${DB_PATH:-}" ]] && [[ "$DB_PATH" == /data/* ]]; then
-  for _i in $(seq 1 20); do
-    [[ -d /data ]] && break
-    echo "[render-start] Esperando montaje de /data (${_i}/20)…"
+ensure_data_volume() {
+  local db_path="${1:-}"
+  local wait_secs="${RENDER_DATA_WAIT_SECS:-90}"
+
+  for _i in $(seq 1 "$wait_secs"); do
+    if [[ -d /data ]]; then
+      if (( _i > 1 )); then
+        echo "[render-start] Disco /data disponible (${_i}/${wait_secs})."
+      fi
+      return 0
+    fi
+    if (( _i == 1 || _i % 10 == 0 )); then
+      echo "[render-start] Esperando montaje de /data (${_i}/${wait_secs})…"
+    fi
     sleep 1
   done
-  if [[ ! -d /data ]]; then
-    echo "[render-start] ERROR: DB_PATH=$DB_PATH pero /data no existe."
-    echo "[render-start] Render → Disks → mount path /data, luego Manual Deploy (ver DEPLOY_GITHUB_VERCEL_RENDER.md)."
-    exit 1
+
+  if [[ -d /data ]]; then
+    return 0
   fi
-  if [[ -f /data/.restaurant_db_guard.json ]] && [[ ! -f "$DB_PATH" ]]; then
+
+  echo "[render-start] ERROR: DB_PATH=$db_path pero /data no existe tras ${wait_secs}s."
+  echo "[render-start] Render → Disks → Add Disk → Mount path /data → Manual Deploy."
+  echo "[render-start] NO se arranca sin disco: evita crear una base vacía sobre clientes reales."
+  return 1
+}
+
+if [[ -n "${DB_PATH:-}" ]] && [[ "$DB_PATH" == /data/* ]]; then
+  ensure_data_volume "$DB_PATH" || exit 1
+  mkdir -p "$(dirname "$DB_PATH")" 2>/dev/null || true
+
+  local_guard="/data/.restaurant_db_guard.json"
+  if [[ -f "$local_guard" ]] && [[ ! -f "$DB_PATH" ]]; then
     echo "[render-start] ERROR: Hay marcador de base con datos pero falta $DB_PATH."
     echo "[render-start] NO se iniciará con una base vacía. Restaure backup o snapshot de Render."
     exit 1
+  fi
+
+  if [[ -f "$DB_PATH" ]]; then
+    db_bytes="$(wc -c < "$DB_PATH" 2>/dev/null | tr -d ' ' || echo 0)"
+    if [[ "${db_bytes:-0}" -lt 512 ]] && [[ -f "$local_guard" ]]; then
+      echo "[render-start] ERROR: $DB_PATH existe pero está vacío/corrupto (${db_bytes} bytes) con marcador de datos."
+      echo "[render-start] NO se arranca para evitar sobrescribir clientes reales. Restaure backup .db."
+      exit 1
+    fi
   fi
 fi
 

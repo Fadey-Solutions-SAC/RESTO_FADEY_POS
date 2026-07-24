@@ -47,10 +47,21 @@ Flujo: tu código vive en **GitHub**; cada `git push` a la rama conectada vuelve
 
 **Importante:** El código del proyecto **no borra** tu base al hacer `git push`. Lo que ocurre es que, en Render, el disco del contenedor es **efímero**: si `restaurant.db` no está en un **Disk** persistente, cada nuevo deploy arranca **sin** ese archivo y el servidor **crea otra base vacía** (parece un “reset”).
 
-1. En el servicio web → **Disks** (Discos) → **Add disk**.
-2. Montaje sugerido: **Mount path** = `/data`, tamaño según plan (p. ej. 1 GB).
-3. **Environment** → variable **`DB_PATH`** = **`/data/restaurant.db`** (ruta absoluta, coincidente con el mount).
-4. **Save** y luego **Manual Deploy** (o un push) para que arranque ya con el disco montado.
+**⚠️ Servicios en producción (clientes reales):**
+
+- **NO** sincronices `render.yaml` como Blueprint sobre un servicio que ya funciona.
+- **NO** añadas un **segundo** disco ni reemplaces el disco existente sin backup.
+- **NO** definas `ALLOW_EMPTY_DB_BOOT=1` salvo recuperación controlada por un técnico.
+- El repo incluye **protecciones** (`render-start.sh` + marcador `.restaurant_db_guard.json`): si falta el `.db` pero había datos, el servicio **no arranca** en lugar de crear una base vacía.
+
+**Solo para un Web Service NUEVO y vacío** (p. ej. demo aparte):
+
+1. En el servicio web → **Disks** → **Add disk** (una sola vez).
+2. Montaje: **Mount path** = `/data`, tamaño según plan (p. ej. 1 GB).
+3. **Environment** → **`DB_PATH`** = **`/data/restaurant.db`**
+4. **Manual Deploy**.
+
+> Copiar `DB_PATH` de otro servicio **no** comparte la base: cada servicio tiene **su propio** disco. Para clonar datos, exporta el `.db` desde el servicio que ya funciona (`/master` → Respaldo) y restáuralo en el nuevo.
 
 **Logos e imágenes (`/uploads`):** con `DB_PATH=/data/restaurant.db`, el servidor guarda subidas en **`/data/uploads`** automáticamente (mismo volumen que la base). Así no se pierden al redeploy. En los logs verás `[uploads] Archivos estáticos en: /data/uploads`. Opcional: fija `UPLOADS_DIR` si quieres otra ruta.
 

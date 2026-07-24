@@ -1,12 +1,16 @@
-# Blueprint de referencia — Web Service Node (no Docker).
-# Si ya tienes servicios creados a mano, copia build/start en Settings → Build & Deploy.
+# Blueprint de REFERENCIA — Web Service Node (no Docker).
+# ⚠️ PRODUCCIÓN: los servicios con clientes reales (POLLERIA-KUELAP, ZOILAS, etc.)
+#    se gestionan A MANO en Render. NO sincronices este archivo como Blueprint
+#    sobre un servicio ya en marcha: podría crear recursos nuevos (disco, env) por error.
 #
-# POLLERIA-KUELAP, SISTEMA_DEMO y ZOILAS SUITE ESCAPE deben usar:
-#   Runtime: Node
-#   Root Directory: (vacío)
+# ⚠️ DISCO PERSISTENTE: NO va en este YAML. Créalo solo a mano en Render → Disks
+#    cuando sea un servicio NUEVO y vacío. Nunca añadas un segundo disco a un servicio
+#    que ya tiene datos en /data.
+#
+# Build / Start estándar del repo:
 #   Build Command: bash scripts/render-build.sh
 #   Start Command: bash scripts/render-start.sh
-#   (NO usar "node electron/main.js" — Electron es solo para escritorio Windows)
+#   DB_PATH=/data/restaurant.db  (solo si ya existe Disco con mount /data)
 
 services:
   - type: web

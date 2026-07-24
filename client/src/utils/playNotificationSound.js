@@ -36,6 +36,30 @@ function shouldSkipDuplicate(type, orderKey) {
   return false;
 }
 
+function playFallbackBeep(type) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = type === 'bar' ? 880 : 660;
+    gainNode.gain.setValueAtTime(0.001, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.38);
+    oscillator.onended = () => {
+      if (ctx.state !== 'closed') ctx.close().catch(() => {});
+    };
+  } catch (_) {
+    // Navegador bloqueó audio sin interacción previa.
+  }
+}
+
 function getPreloadedAudio(type) {
   if (preloadedAudio[type]) return preloadedAudio[type];
   const src = SOUND_FILES[type];
@@ -69,7 +93,10 @@ export function playNotificationSound(type, orderKey = '') {
   if (playingKeys.has(playKey)) return;
 
   const template = getPreloadedAudio(normalized);
-  if (!template) return;
+  if (!template) {
+    playFallbackBeep(normalized);
+    return;
+  }
 
   const audio = template.cloneNode(true);
   audio.currentTime = 0;
@@ -88,6 +115,7 @@ export function playNotificationSound(type, orderKey = '') {
   if (playPromise && typeof playPromise.catch === 'function') {
     playPromise.catch(() => {
       cleanup();
+      playFallbackBeep(normalized);
     });
   }
 }
