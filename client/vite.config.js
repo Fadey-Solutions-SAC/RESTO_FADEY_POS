@@ -8,8 +8,27 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const clientPkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8'));
 const repoRoot = resolve(__dirname, '..');
 
+/** Vercel inyecta VERCEL_URL en build; enlaza cada front con su API Render sin depender de env manual. */
+const VERCEL_HOST_API = {
+  'sistemademo.vercel.app': 'https://sistema-demo-m80e.onrender.com',
+  'zoilas-suite-escape.vercel.app': 'https://zoilas-suite-escape.onrender.com',
+};
+
+function resolveVercelBuildApiUrl() {
+  const explicit = String(process.env.VITE_API_URL || '').trim();
+  if (explicit) return explicit.replace(/\/api\/?$/i, '').replace(/\/$/, '');
+  const vercelHost = String(process.env.VERCEL_URL || process.env.VERCEL_BRANCH_URL || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .toLowerCase();
+  if (vercelHost && VERCEL_HOST_API[vercelHost]) return VERCEL_HOST_API[vercelHost];
+  return '';
+}
+
 export default defineConfig(() => {
   const isDesktopBuild = String(process.env.VITE_DESKTOP_BUILD || '').trim() === '1';
+  const vercelApiUrl = resolveVercelBuildApiUrl();
   return {
     base: isDesktopBuild ? './' : '/',
     define: {
@@ -17,6 +36,10 @@ export default defineConfig(() => {
       /** Instalación Windows: el API embebido escucha en este host (ver `electron/main.js`). */
       ...(isDesktopBuild
         ? { 'import.meta.env.VITE_API_URL': JSON.stringify('http://127.0.0.1:3001') }
+        : {}),
+      /** Build en Vercel: API según dominio del proyecto (VERCEL_URL). */
+      ...(vercelApiUrl && !isDesktopBuild
+        ? { 'import.meta.env.VITE_API_URL': JSON.stringify(vercelApiUrl) }
         : {}),
     },
     resolve: {

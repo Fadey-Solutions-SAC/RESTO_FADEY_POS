@@ -140,7 +140,7 @@ Despliegues conocidos (el front también los detecta por dominio si falta `VITE_
 
 | Vercel | Render |
 |--------|--------|
-| `sistemademo.vercel.app` | `https://sistema-demo.onrender.com` |
+| `sistemademo.vercel.app` | `https://sistema-demo-m80e.onrender.com` |
 | `zoilas-suite-escape.vercel.app` | `https://zoilas-suite-escape.onrender.com` |
 
 - `CORS_ORIGIN` en **Vercel no sirve** — debe estar en **Render**.

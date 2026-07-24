@@ -18,7 +18,7 @@ const LEGACY_DEFAULT_API = 'https://resto-fadey-api.onrender.com';
 
 /** Front Vercel → API Render (sin `/api`). Tiene prioridad sobre VITE_API_URL mal configurada. */
 const VERCEL_HOST_API = Object.freeze({
-  'sistemademo.vercel.app': 'https://sistema-demo.onrender.com',
+  'sistemademo.vercel.app': 'https://sistema-demo-m80e.onrender.com',
   'zoilas-suite-escape.vercel.app': 'https://zoilas-suite-escape.onrender.com',
 });
 
