@@ -73,7 +73,7 @@ function isOriginAllowed(origin) {
 const corsOptions = {
   origin(origin, cb) {
     if (isOriginAllowed(origin)) return cb(null, true);
-    return cb(new Error('Origen no permitido por CORS'));
+    return cb(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Access-Control-Request-Private-Network'],

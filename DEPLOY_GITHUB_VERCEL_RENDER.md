@@ -129,6 +129,25 @@ El script está en el repo: `scripts/render-start.sh`. Build: `scripts/render-bu
 
 8. Vuelve a **Render** y en `CORS_ORIGIN` asegúrate de incluir exactamente esa URL de Vercel (con `https://`). Guarda y redeploy si hace falta.
 
+### 2b) Errores típicos en Vercel («Failed to fetch» en login)
+
+| Dónde | Variable | Valor correcto |
+|-------|----------|----------------|
+| **Vercel** (frontend) | `VITE_API_URL` | `https://TU-SERVICIO.onrender.com` (**sin** `/api`) |
+| **Render** (backend) | `CORS_ORIGIN` | `https://tu-app.vercel.app,http://localhost:5173` |
+
+Despliegues conocidos (el front también los detecta por dominio si falta `VITE_API_URL`):
+
+| Vercel | Render |
+|--------|--------|
+| `sistemademo.vercel.app` | `https://sistema-demo.onrender.com` |
+| `zoilas-suite-escape.vercel.app` | `https://zoilas-suite-escape.onrender.com` |
+
+- `CORS_ORIGIN` en **Vercel no sirve** — debe estar en **Render**.
+- `JWT_SECRET`, `DB_PATH`, `PERU_CONSULTAS_TOKEN`, etc. van en **Render**, no en Vercel.
+- Tras cambiar `VITE_API_URL` hace falta **Redeploy** en Vercel (la variable se embebe en el build).
+- En DevTools → Network, las peticiones deben ir a `onrender.com/api/...`, no a `vercel.app/api/...`.
+
 ---
 
 ## 3) Cada vez que cambies código

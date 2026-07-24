@@ -19,16 +19,25 @@
     "react-hot-toast": "^2.4.1",
     "react-i18next": "^17.0.8",
     "react-icons": "^5.4.0",
-    "react-router-dom": "^6.28.0",
+    "react-router-dom": "^6.30.4",
     "recharts": "^2.13.3",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
-    "sharp": "^0.34.5",
+    "postcss": "^8.5.22",
+    "sharp": "^0.35.3",
     "tailwindcss": "^3.4.16",
-    "vite": "^5.4.11"
+    "vite": "^5.4.21"
+  },
+  "overrides": {
+    "@babel/core": "^7.29.1",
+    "esbuild": "^0.25.0",
+    "lodash": "^4.18.1",
+    "picomatch": "^4.0.4",
+    "rollup": "^4.59.0",
+    "socket.io-parser": "^4.2.7",
+    "ws": "^8.21.1"
   }
 }

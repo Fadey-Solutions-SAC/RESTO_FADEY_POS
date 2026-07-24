@@ -14,19 +14,45 @@ import { translateApiErrorMessage } from '../i18n/translateApiError';
 
 const rawApi = import.meta.env.VITE_API_URL;
 const hasExplicitApi = rawApi !== undefined && rawApi !== null && String(rawApi).trim() !== '';
+const LEGACY_DEFAULT_API = 'https://resto-fadey-api.onrender.com';
+
+/** Front Vercel → API Render (sin `/api`). Tiene prioridad sobre VITE_API_URL mal configurada. */
+const VERCEL_HOST_API = Object.freeze({
+  'sistemademo.vercel.app': 'https://sistema-demo.onrender.com',
+  'zoilas-suite-escape.vercel.app': 'https://zoilas-suite-escape.onrender.com',
+});
+
+function normalizeApiOrigin(url) {
+  let o = String(url || '').trim().replace(/\/$/, '');
+  if (/\/api\/?$/i.test(o)) o = o.replace(/\/api\/?$/i, '');
+  return o;
+}
+
 let API_ORIGIN = '';
 if (hasExplicitApi) {
-  API_ORIGIN = String(rawApi).trim().replace(/\/$/, '');
-  /** Si en Vercel pusieron la URL ya con `/api`, no duplicar en API_BASE. */
-  if (/\/api\/?$/i.test(API_ORIGIN)) {
-    API_ORIGIN = API_ORIGIN.replace(/\/api\/?$/i, '');
-  }
-} else if (import.meta.env.PROD) {
-  API_ORIGIN = 'https://resto-fadey-api.onrender.com';
+  API_ORIGIN = normalizeApiOrigin(String(rawApi).trim());
 }
+
+function resolveHostnameApiOrigin() {
+  if (typeof window === 'undefined') return '';
+  const host = String(window.location.hostname || '').toLowerCase();
+  return VERCEL_HOST_API[host] || '';
+}
+
+/** Origen del API sin `/api` (Vercel por hostname, VITE_API_URL o fallback legacy). */
+export function getConfiguredApiOrigin() {
+  if (typeof window !== 'undefined') {
+    const mapped = resolveHostnameApiOrigin();
+    if (mapped) return mapped;
+  }
+  if (hasExplicitApi && API_ORIGIN) return API_ORIGIN;
+  if (import.meta.env.PROD) return LEGACY_DEFAULT_API;
+  return '';
+}
+
 /** URL efectiva del API (`/api` incluido), con override opcional en localStorage. */
 export function getApiBase() {
-  let origin = API_ORIGIN;
+  let origin = getConfiguredApiOrigin();
   if (typeof window !== 'undefined') {
     const ls = String(window.localStorage?.getItem('resto_api_url') || '').trim();
     if (ls) origin = normalizeApiOrigin(ls);
@@ -42,9 +68,14 @@ export function getApiOrigin() {
     const ls = String(window.localStorage?.getItem('resto_api_url') || '').trim();
     if (ls) return normalizeApiOrigin(ls);
   }
-  if (API_ORIGIN) return API_ORIGIN;
+  const configured = getConfiguredApiOrigin();
+  if (configured) return configured;
   if (typeof window !== 'undefined') return window.location.origin;
   return '';
+}
+
+if (import.meta.env.PROD && typeof window !== 'undefined' && resolveHostnameApiOrigin()) {
+  console.info('[api] Host Vercel → API Render:', resolveHostnameApiOrigin());
 }
 
 function assertBackupApiReachable() {
@@ -61,12 +92,6 @@ function assertBackupApiReachable() {
       'VITE_API_URL apunta a Vercel, no al API. Use la URL de Render (onrender.com), no la del frontend (.vercel.app).',
     );
   }
-}
-
-function normalizeApiOrigin(url) {
-  let o = String(url || '').trim().replace(/\/$/, '');
-  if (/\/api\/?$/i.test(o)) o = o.replace(/\/api\/?$/i, '');
-  return o;
 }
 
 /** Base `/api` del servidor Node local para rutas `/printing/*` (detección USB, impresión RAW). */
@@ -214,7 +239,22 @@ async function request(endpoint, options = {}) {
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const url = `${getApiBase()}${endpoint}`;
-  const res = await fetch(url, { ...options, headers });
+  let res;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/failed to fetch|networkerror|load failed|network/i.test(msg)) {
+      const origin = getApiOrigin() || url;
+      const frontOrigin = typeof window !== 'undefined' ? window.location.origin : 'su dominio Vercel';
+      throw new Error(
+        `No se pudo conectar al API (${origin}). ` +
+          `Vercel → VITE_API_URL = URL de Render (sin /api) y Redeploy. ` +
+          `Render → CORS_ORIGIN debe incluir ${frontOrigin}.`,
+      );
+    }
+    throw err;
+  }
   const refreshedToken = res.headers.get('X-Refreshed-Token');
   if (refreshedToken && typeof window !== 'undefined') {
     try {
