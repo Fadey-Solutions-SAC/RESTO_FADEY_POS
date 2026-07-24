@@ -57,7 +57,7 @@ ensure_data_volume() {
 
 if [[ -n "${DB_PATH:-}" ]] && [[ "$DB_PATH" == /data/* ]]; then
   ensure_data_volume "$DB_PATH" || exit 1
-  mkdir -p "$(dirname "$DB_PATH")" 2>/dev/null || true
+  mkdir -p "$(dirname "$DB_PATH")" /data/uploads 2>/dev/null || true
 
   local_guard="/data/.restaurant_db_guard.json"
   if [[ -f "$local_guard" ]] && [[ ! -f "$DB_PATH" ]]; then
@@ -96,4 +96,5 @@ sleep 1
 
 cd "$ROOT"
 echo "[render-start] Iniciando Node (PORT=${PORT:-3001})…"
+export _RENDER_START_WRAPPER=1
 exec node server/index.js

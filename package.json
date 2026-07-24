@@ -17,7 +17,7 @@
     "install-all": "npm install && cd client && npm install",
     "build": "node scripts/generate-branding-assets.js && cd client && npm install --include=dev && npm run build",
     "branding:assets": "node scripts/generate-branding-assets.js",
-    "start": "node server/index.js",
+    "start": "node scripts/start-server.js",
     "printing-bridge": "node server/index.js",
     "start:render": "bash scripts/render-start.sh",
     "efact-api": "python server/efact/api_server.py",

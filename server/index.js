@@ -1,4 +1,19 @@
 require('dotenv').config();
+const path = require('path');
+
+/** En Render, si arrancan `node server/index.js` sin render-start.sh, redirigir al script correcto. */
+if (String(process.env.RENDER || '').toLowerCase() === 'true' && !process.env._RENDER_START_WRAPPER) {
+  const { spawnSync } = require('child_process');
+  const script = path.join(__dirname, '..', 'scripts', 'render-start.sh');
+  console.warn('[render] Start debe ser bash scripts/render-start.sh — redirigiendo…');
+  const result = spawnSync('bash', [script], {
+    cwd: path.join(__dirname, '..'),
+    stdio: 'inherit',
+    env: process.env,
+  });
+  process.exit(typeof result.status === 'number' ? result.status : 1);
+}
+
 const { getToken: getPadronConsultaToken } = require('./peruConsultaPadron');
 if (!getPadronConsultaToken()) {
   console.warn(
@@ -9,12 +24,11 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
 const crypto = require('crypto');
 const { initDatabase, getDbPath, getDatabasePersistenceInfo } = require('./database');
-const { getUploadsRoot } = require('./uploadsPath');
+const { ensureUploadsRoot } = require('./uploadsPath');
 const jwt = require('jsonwebtoken');
 const { authenticateToken, requireRole, JWT_SECRET } = require('./middleware/auth');
 const { createRateLimiter } = require('./middleware/rateLimit');
@@ -102,8 +116,13 @@ app.use((req, res, next) => {
   next();
 });
 
-const uploadsDir = getUploadsRoot();
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+let uploadsDir;
+try {
+  uploadsDir = ensureUploadsRoot();
+} catch (err) {
+  console.error(err?.message || err);
+  process.exit(1);
+}
 const billingCertsDir = path.join(uploadsDir, 'billing-certs');
 if (!fs.existsSync(billingCertsDir)) fs.mkdirSync(billingCertsDir, { recursive: true });
 app.use('/uploads', express.static(uploadsDir));
