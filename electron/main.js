@@ -81,12 +81,18 @@ function ensureDesktopJwtSecret(userDataDir) {
       const existing = fs.readFileSync(secretFile, 'utf8').trim();
       if (existing.length >= 16) return existing;
     }
-    const generated = crypto.randomBytes(32).toString('hex');
+  } catch (_) {
+    /* continuar a generar */
+  }
+  const generated = crypto.randomBytes(32).toString('hex');
+  try {
+    fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(secretFile, generated, { encoding: 'utf8', mode: 0o600 });
     return generated;
   } catch (err) {
-    console.warn('[electron] no se pudo persistir JWT_SECRET:', err?.message || err);
-    return crypto.randomBytes(32).toString('hex');
+    console.warn('[electron] no se pudo persistir JWT_SECRET; usando secreto derivado estable:', err?.message || err);
+    /** Evita regenerar un secreto distinto en cada arranque (invalidaría sesiones). */
+    return crypto.createHash('sha256').update(`resto-fadey-desktop|${userDataDir}`).digest('hex');
   }
 }
 
@@ -600,8 +606,17 @@ function buildAssistantExpressApp() {
   }));
   assistant.use(express.json({ limit: '2mb' }));
 
-  assistant.get('/health', (_req, res) => res.json({ status: 'ok', mode: 'assistant' }));
-  assistant.get('/api/health', (_req, res) => res.json({ status: 'ok', mode: 'assistant' }));
+  const assistantHealthPayload = () => ({
+    status: 'ok',
+    mode: 'assistant',
+    port: assistantListenPort || null,
+    origin: assistantListenPort ? `http://127.0.0.1:${assistantListenPort}` : '',
+    service: 'resto-fadey-printing-assistant',
+  });
+
+  assistant.get('/health', (_req, res) => res.json(assistantHealthPayload()));
+  assistant.get('/api/health', (_req, res) => res.json(assistantHealthPayload()));
+  assistant.get('/api/printing/bridge', (_req, res) => res.json(assistantHealthPayload()));
   assistant.get('/api/printers', async (_req, res) => {
     try {
       const list = await getPrinters();
@@ -843,11 +858,13 @@ function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
   const dbPath = path.join(userData, 'restaurant.db');
   const uploadsDir = path.join(userData, 'uploads');
   const jwtSecret = String(process.env.JWT_SECRET || '').trim() || ensureDesktopJwtSecret(userData);
+  const printerConfigPath = path.join(userData, 'printer-config.json');
   const env = {
     ...process.env,
     ELECTRON_RUN_AS_NODE: '1',
     DB_PATH: dbPath,
     UPLOADS_DIR: uploadsDir,
+    PRINTING_CONFIG_PATH: printerConfigPath,
     PORT: port,
     LISTEN_HOST: process.env.LISTEN_HOST || '0.0.0.0',
     JWT_SECRET: jwtSecret,
@@ -1005,7 +1022,7 @@ function updateTrayMenu() {
   if (app.isPackaged) {
     const apiPort = embeddedApiListenPort || EMBEDDED_API_DEFAULT_PORT;
     template.push({
-      label: `Abrir sistema (navegador) · ${apiPort}`,
+      label: `Abrir sistema · puerto ${apiPort}`,
       click: () => {
         void shell.openExternal(`http://127.0.0.1:${apiPort}`).catch(() => {});
       },

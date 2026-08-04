@@ -739,6 +739,8 @@ export default function Ventas() {
                 const doc = getOrderDocument(o);
                 const mesero = o.created_by_user_name || o.customer_name || '-';
                 const auditBadge = getAccountAuditStatusBadge(group);
+                const isPendingMesa = Boolean(group.isPendingAccount && group.isMesa);
+                const isCuentaMesa = Boolean(group.isMesa && (group.isSalesAccount || group.isPendingAccount));
                 const latest = parseApiDate(group.latestAt);
                 const earliest = parseApiDate(group.earliestAt);
                 const sameDay = group.comprobanteCount === 1
@@ -746,21 +748,40 @@ export default function Ventas() {
                 return (
                   <tr key={group.key} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
                     <td className="py-2.5">
-                      <p className="font-medium text-[var(--ui-body-text)]">{formatDate(group.latestAt)}</p>
-                      <p className="text-xs text-[var(--ui-muted)]">
-                        {group.comprobanteCount > 1 && !sameDay
-                          ? `${formatTime(group.earliestAt)} – ${formatTime(group.latestAt)}`
-                          : formatTime(group.latestAt)}
-                      </p>
+                      {isPendingMesa ? (
+                        <p className="font-medium text-[var(--ui-muted)]">—</p>
+                      ) : (
+                        <>
+                          <p className="font-medium text-[var(--ui-body-text)]">{formatDate(group.latestAt)}</p>
+                          <p className="text-xs text-[var(--ui-muted)]">
+                            {group.comprobanteCount > 1 && !sameDay
+                              ? `${formatTime(group.earliestAt)} – ${formatTime(group.latestAt)}`
+                              : formatTime(group.latestAt)}
+                          </p>
+                        </>
+                      )}
                     </td>
                     <td className="py-2.5 text-[var(--ui-body-text)] font-semibold">{group.mesaLabel}</td>
                     <td className="py-2.5 text-[var(--ui-muted)]">Caja 01</td>
                     <td className="py-2.5 text-[var(--ui-body-text)]">{mesero}</td>
                     <td className="py-2.5 text-[var(--ui-body-text)]">
-                      {group.isMesa ? `Mesa ${o.table_number}` : (o.customer_name || 'PUBLICO GENERAL')}
+                      {isPendingMesa
+                        ? '—'
+                        : (group.isMesa ? `Mesa ${o.table_number}` : (o.customer_name || 'PUBLICO GENERAL'))}
                     </td>
                     <td className="py-2.5">
-                      {group.comprobanteCount > 1 ? (
+                      {isCuentaMesa ? (
+                        <>
+                          <p className="font-medium text-[var(--ui-body-text)]">Cuenta mesa</p>
+                          {!isPendingMesa && group.comprobanteCount > 1 ? (
+                            <p className="text-xs text-[var(--ui-muted)]">{group.comprobanteCount} comandas cobradas</p>
+                          ) : isPendingMesa ? (
+                            <p className="text-xs text-[var(--ui-muted)]">Sin cobrar</p>
+                          ) : (
+                            <p className="text-xs text-[var(--ui-muted)]">{docLabel(doc.doc_type)} · {doc.full_number}</p>
+                          )}
+                        </>
+                      ) : group.comprobanteCount > 1 ? (
                         <>
                           <p className="font-medium text-[var(--ui-body-text)]">{group.comprobanteCount} documentos</p>
                           <p className="text-xs text-[var(--ui-muted)]">{docLabel(doc.doc_type)} · {doc.full_number}…</p>
@@ -847,9 +868,9 @@ export default function Ventas() {
         onClose={closeDetail}
         title={
           selectedGroup?.isSalesAccount && selectedGroup?.isMesa
-            ? `Cuenta Mesa ${selectedGroup.primary.table_number}`
+            ? `Cuenta Mesa ${selectedGroup.primary.table_number}${selectedGroup.isPendingAccount ? ' (pendiente)' : ''}`
             : selectedGroup?.isMesa && selectedGroup.comprobanteCount > 1
-            ? `Mesa ${selectedGroup.primary.table_number} — ${selectedGroup.comprobanteCount} documentos`
+            ? `Cuenta Mesa ${selectedGroup.primary.table_number}`
             : `Venta #${selected?.order_number}`
         }
         size="md"
@@ -896,7 +917,14 @@ export default function Ventas() {
               </div>
             ) : null}
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><p className="ui-text-muted">Fecha</p><p className="font-medium">{formatDateTime(selectedGroup.latestAt)}</p></div>
+              <div>
+                <p className="ui-text-muted">Fecha</p>
+                <p className="font-medium">
+                  {selectedGroup.isPendingAccount
+                    ? 'Sin cobrar'
+                    : formatDateTime(selectedGroup.latestAt)}
+                </p>
+              </div>
               <div>
                 <p className="ui-text-muted">Tipo</p>
                 <p className="font-medium">
@@ -910,7 +938,7 @@ export default function Ventas() {
             </div>
             <div className="border-t border-[color:var(--ui-border)] pt-3">
               <p className="font-medium mb-2 text-[var(--ui-body-text)]">
-                Productos {selectedGroup.isMesa ? `(agrupados — ${selectedGroup.mesaLabel})` : ''}:
+                Productos {selectedGroup.isMesa ? `(cuenta — ${selectedGroup.mesaLabel})` : ''}:
               </p>
               {selectedGroup.groupedProducts.map((it) => (
                 <div key={it.key} className="flex justify-between text-sm py-1 border-b border-[color:var(--ui-border)] text-[var(--ui-body-text)]">
@@ -919,9 +947,9 @@ export default function Ventas() {
                 </div>
               ))}
             </div>
-            {selectedGroup.comprobanteCount > 1 && (
+            {selectedGroup.comprobanteCount > 1 && !selectedGroup.isPendingAccount && (
               <div className="border-t border-[color:var(--ui-border)] pt-3 space-y-2">
-                <p className="font-medium text-[var(--ui-body-text)]">Documentos de la cuenta</p>
+                <p className="font-medium text-[var(--ui-body-text)]">Comprobantes de la cuenta</p>
                 {selectedGroup.orders.map((ord) => {
                   const doc = getOrderDocument(ord);
                   const badge = getSaleStatusBadge(ord, t);

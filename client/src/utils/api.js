@@ -74,6 +74,36 @@ export function getApiOrigin() {
   return '';
 }
 
+function isLocalHostName(host) {
+  const h = String(host || '').toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+}
+
+/** Resto FADEY instalado: front en http://127.0.0.1:PUERTO (API embebida en la PC). */
+export function isDesktopEmbeddedRuntime() {
+  if (typeof window === 'undefined') return false;
+  const configured = getConfiguredApiOrigin();
+  if (!configured) return false;
+  try {
+    const cfg = new URL(configured);
+    if (!isLocalHostName(cfg.hostname)) return false;
+  } catch (_) {
+    return false;
+  }
+  try {
+    const loc = window.location;
+    if (isLocalHostName(loc.hostname)) return true;
+    if (loc.origin === configured) return true;
+  } catch (_) {
+    /* noop */
+  }
+  return false;
+}
+
+export function usesInstalledLocalPrinting() {
+  return hasElectronPrinting() || isDesktopEmbeddedRuntime();
+}
+
 if (import.meta.env.PROD && typeof window !== 'undefined' && resolveHostnameApiOrigin()) {
   console.info('[api] Host Vercel → API Render:', resolveHostnameApiOrigin());
 }
@@ -96,6 +126,9 @@ function assertBackupApiReachable() {
 
 /** Base `/api` del servidor Node local para rutas `/printing/*` (detección USB, impresión RAW). */
 export function getPrintingApiBase() {
+  if (isDesktopEmbeddedRuntime()) {
+    return getApiBase();
+  }
   if (typeof window !== 'undefined') {
     const injected = window.__RESTO_PRINTING_API__ || window.__RESTO_LOCAL_PRINTING_API__;
     if (injected && String(injected).trim()) {
@@ -291,6 +324,8 @@ async function request(endpoint, options = {}) {
       console.warn('[api]', options.method || 'GET', endpoint, res.status, data || text?.slice(0, 200));
     }
     const err = new Error(message);
+    err.status = res.status;
+    if (data?.error != null) err.apiError = String(data.error);
     if (data?.code) err.code = data.code;
     if (data?.target_table) err.targetTable = data.target_table;
     throw err;
@@ -300,7 +335,7 @@ async function request(endpoint, options = {}) {
 }
 
 function printingUnreachableMessage() {
-  if (isElectronRuntime()) {
+  if (isElectronRuntime() || isDesktopEmbeddedRuntime()) {
     return 'Abra la aplicación Resto FADEY en esta PC (ícono junto al reloj). Si ya está abierta, clic derecho → «Reintentar servicio de impresión».';
   }
   return 'No se encontró el programa de impresión Resto FADEY en esta computadora. Instálelo, manténgalo abierto junto al reloj y pulse «Verificar vínculo».';
@@ -433,7 +468,7 @@ async function discoverAssistantAndPersist() {
  */
 export async function ensureLocalPrintingAssistantDiscovered() {
   if (typeof window === 'undefined') return false;
-  if (hasElectronPrinting()) return true;
+  if (hasElectronPrinting() || isDesktopEmbeddedRuntime()) return true;
   for (let attempt = 0; attempt < 10; attempt += 1) {
     if (await discoverAssistantAndPersist()) return true;
     await new Promise((r) => setTimeout(r, 700 + attempt * 350));
@@ -449,6 +484,27 @@ function getPrintingBridgeOriginOnly() {
 }
 
 export async function checkPrintingHealth() {
+  if (isDesktopEmbeddedRuntime()) {
+    const origin = getApiOrigin();
+    if (!origin) throw new Error('API local no configurada');
+    try {
+      const opts = {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+        mode: 'cors',
+      };
+      if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+        opts.signal = AbortSignal.timeout(5000);
+      }
+      const res = await fetch(`${origin}/api/healthz`, opts);
+      if (res.ok) return true;
+    } catch (_) {
+      /* noop */
+    }
+    throw new Error(printingUnreachableMessage());
+  }
+
   const persisted = getPersistedPrintingBridgeOrigin();
   if (persisted) {
     const probe = await probeOriginHealth(persisted, 4500);

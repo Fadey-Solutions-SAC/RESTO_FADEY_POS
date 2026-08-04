@@ -78,8 +78,12 @@ const EMPTY_PRODUCT_FORM = {
 
 export default function Productos() {
   const { t } = useTranslation('inventory');
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const highlightSlowMoving = searchParams.get('sin_ventas') === '1';
+  const stockFilter = String(searchParams.get('stock') || '').trim().toLowerCase();
+  const highlightLowStock = stockFilter === 'bajo';
+  const highlightOutOfStock = stockFilter === 'agotado';
+  const editProductIdParam = String(searchParams.get('edit') || '').trim();
   const TABS = useMemo(() => [
     { id: 'platos', label: t('tabs.dishes'), icon: MdRestaurantMenu },
     { id: 'combos', label: t('tabs.combos'), icon: MdLunchDining },
@@ -441,12 +445,18 @@ export default function Productos() {
     const matchCat = !selectedCat || p.category_id === selectedCat;
     const matchActive = showInactive ? isProductInactive(p) : !isProductInactive(p);
     const matchSlowMoving = !highlightSlowMoving || slowMovingProductIds.has(String(p.id));
-    return matchSearch && matchCat && matchActive && matchSlowMoving;
+    const status = productStockStatus(p.stock, p.min_stock);
+    const matchStockFilter = highlightOutOfStock
+      ? status === 'out'
+      : highlightLowStock
+        ? status === 'low' || status === 'out'
+        : true;
+    return matchSearch && matchCat && matchActive && matchSlowMoving && matchStockFilter;
   });
 
   useEffect(() => {
-    if (highlightSlowMoving) setActiveTab('platos');
-  }, [highlightSlowMoving]);
+    if (highlightSlowMoving || highlightLowStock || highlightOutOfStock) setActiveTab('platos');
+  }, [highlightSlowMoving, highlightLowStock, highlightOutOfStock]);
 
   const openNewProduct = () => {
     setEditProduct(null);
@@ -533,6 +543,33 @@ export default function Productos() {
     setScheduleWarnings([]);
     setShowProductModal(true);
   };
+
+  const openedEditFromQueryRef = useRef('');
+  useEffect(() => {
+    if (!editProductIdParam || loading) return;
+    if (openedEditFromQueryRef.current === editProductIdParam) return;
+    const p = products.find((x) => String(x.id) === editProductIdParam);
+    if (!p) {
+      if (products.length > 0) {
+        openedEditFromQueryRef.current = editProductIdParam;
+        toast.error('Producto no encontrado');
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('edit');
+          return next;
+        }, { replace: true });
+      }
+      return;
+    }
+    openedEditFromQueryRef.current = editProductIdParam;
+    setActiveTab('platos');
+    openEditProduct(p);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('edit');
+      return next;
+    }, { replace: true });
+  }, [editProductIdParam, loading, products, setSearchParams]);
 
   useEffect(() => {
     if (!showProductModal) return;
@@ -785,6 +822,16 @@ export default function Productos() {
           {highlightSlowMoving ? (
             <div className="mb-4 rounded-xl border border-red-300/50 bg-red-50 px-4 py-3 text-sm text-red-900">
               Mostrando productos con stock sin ventas cobradas desde hace al menos {slowMovingDays} días (desde alta o última venta).
+            </div>
+          ) : null}
+          {highlightOutOfStock ? (
+            <div className="mb-4 rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              Mostrando productos agotados (stock 0), según la alerta del escritorio.
+            </div>
+          ) : null}
+          {highlightLowStock && !highlightOutOfStock ? (
+            <div className="mb-4 rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              Mostrando productos con stock bajo o agotado, según la alerta del escritorio.
             </div>
           ) : null}
           {categoryMergeSourceId ? (

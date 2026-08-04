@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const CONFIG_PATH = path.join(__dirname, 'printer-config.json');
+const CONFIG_PATH = process.env.PRINTING_CONFIG_PATH
+  ? path.resolve(process.env.PRINTING_CONFIG_PATH)
+  : path.join(__dirname, 'printer-config.json');
 
 const DEFAULT_CONFIG = {
   caja: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },

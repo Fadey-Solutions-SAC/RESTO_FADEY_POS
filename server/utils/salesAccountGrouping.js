@@ -2,7 +2,7 @@
  * Cuenta de venta: agrupa comandas cobradas en un mismo cobro (mesa + caja + minuto).
  * Las comandas siguen existiendo para cocina/bar; la venta se cuenta por cuenta.
  */
-const { queryAll, queryOne } = require('../database');
+const { queryAll, queryOne, ensureOrdersPaidAtColumns } = require('../database');
 const { resolveRegionalTimezone } = require('./appDateTime');
 
 const PAID_SALES_BASE_WHERE = `status != 'cancelled'
@@ -13,9 +13,27 @@ const PAID_SALES_JOIN_WHERE = `o.status != 'cancelled'
   AND o.payment_status = 'paid'
   AND IFNULL(o.payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')`;
 
-const SALES_ACCOUNT_ORDER_SELECT = `id, type, table_number, cash_register_id, customer_id,
-  paid_at, updated_at, created_at, total, subtotal, tax, discount, tip_amount,
+function paidAtSql(alias = '') {
+  const p = alias ? `${alias}.` : '';
+  const hasPaidAt = ensureOrdersPaidAtColumns();
+  if (hasPaidAt) return `COALESCE(${p}paid_at, ${p}updated_at, ${p}created_at)`;
+  return `COALESCE(${p}updated_at, ${p}created_at)`;
+}
+
+function salesAccountOrderSelectSql() {
+  const hasPaidAt = ensureOrdersPaidAtColumns();
+  const paidCol = hasPaidAt ? 'paid_at' : 'NULL AS paid_at';
+  let registerCol = "'' AS cash_register_id";
+  try {
+    const cols = queryAll('PRAGMA table_info(orders)') || [];
+    if (cols.some((c) => c.name === 'cash_register_id')) registerCol = 'cash_register_id';
+  } catch {
+    /* ignore */
+  }
+  return `id, type, table_number, ${registerCol}, customer_id,
+  ${paidCol}, updated_at, created_at, total, subtotal, tax, discount, tip_amount,
   payment_method, payment_breakdown, payment_status, status, created_by_user_id`;
+}
 
 function partsFromDate(date, timeZone) {
   const fmt = new Intl.DateTimeFormat('en-CA', {
@@ -90,11 +108,12 @@ function countSalesAccounts(orders = [], queryOneFn = queryOne) {
 }
 
 function queryPaidSalesOrders(whereSql, params = [], queryAllFn = queryAll) {
+  ensureOrdersPaidAtColumns();
   const clause = String(whereSql || '').trim() || '1=1';
   return queryAllFn(
-    `SELECT ${SALES_ACCOUNT_ORDER_SELECT}
-     FROM orders
-     WHERE ${PAID_SALES_BASE_WHERE}
+    `SELECT ${salesAccountOrderSelectSql()}
+     FROM orders o
+     WHERE ${PAID_SALES_JOIN_WHERE}
        AND (${clause})`,
     params,
   ) || [];
@@ -177,9 +196,10 @@ function summarizePaymentMethodsByAccount(orders = [], queryOneFn = queryOne) {
 
 function getPaidSalesEventSql(queryOneFn = queryOne) {
   const { sqlBusinessTimestamp, getBusinessTodayDateKey, getBusinessMonthKey } = require('./appDateTime');
-  const at = 'COALESCE(paid_at, updated_at, created_at)';
+  ensureOrdersPaidAtColumns();
+  const at = paidAtSql('');
   const local = sqlBusinessTimestamp(at, queryOneFn);
-  const orderAt = 'COALESCE(o.paid_at, o.updated_at, o.created_at)';
+  const orderAt = paidAtSql('o');
   const orderLocal = sqlBusinessTimestamp(orderAt, queryOneFn);
   const today = getBusinessTodayDateKey(queryOneFn);
   const month = getBusinessMonthKey(queryOneFn);
@@ -279,7 +299,7 @@ function queryProductSalesRanking(dateWhereSql = '1=1', params = [], queryAllFn 
       o.table_number,
       o.cash_register_id,
       o.customer_id,
-      o.paid_at,
+      ${paidAtSql('o')} AS paid_at,
       o.updated_at,
       o.created_at
      FROM order_items oi
@@ -310,7 +330,14 @@ function queryProductSalesRanking(dateWhereSql = '1=1', params = [], queryAllFn 
 module.exports = {
   PAID_SALES_BASE_WHERE,
   PAID_SALES_JOIN_WHERE,
-  SALES_ACCOUNT_ORDER_SELECT,
+  get SALES_ACCOUNT_ORDER_SELECT() {
+    return salesAccountOrderSelectSql();
+  },
+  get SALES_EVENT_AT_SQL() {
+    return paidAtSql('');
+  },
+  paidAtSql,
+  salesAccountOrderSelectSql,
   salesAccountKey,
   groupPaidOrdersBySalesAccount,
   countSalesAccounts,

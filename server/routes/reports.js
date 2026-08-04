@@ -282,6 +282,8 @@ function buildOperationalIntelligence(opts = {}) {
       severity: lowN >= 5 ? 'warning' : 'info',
       title: 'Stock bajo',
       message: `${lowN} producto(s) con stock ≤ 10`,
+      linkTo: '/admin/productos?stock=bajo',
+      linkLabel: 'Ir a productos',
     });
   }
   const oosN = Number(outOfStockCount?.count || 0);
@@ -291,7 +293,7 @@ function buildOperationalIntelligence(opts = {}) {
       severity: oosN >= 3 ? 'warning' : 'info',
       title: 'Productos agotados',
       message: `${oosN} producto(s) de venta con stock 0 (no transformados).`,
-      linkTo: '/admin/productos',
+      linkTo: '/admin/productos?stock=agotado',
       linkLabel: 'Ir a productos',
     });
   }
@@ -314,6 +316,8 @@ function buildOperationalIntelligence(opts = {}) {
       severity: 'info',
       title: 'Delivery activo',
       message: `${delN} pedido(s) pendiente(s) de cobro o en curso`,
+      linkTo: role === 'delivery' ? '/delivery' : '/admin/delivery',
+      linkLabel: role === 'delivery' ? 'Ir a reparto' : 'Ir a delivery',
     });
   }
   const dStale = deliveryEnabled ? Number(deliveryStaleReady?.count || 0) : 0;
@@ -334,6 +338,8 @@ function buildOperationalIntelligence(opts = {}) {
       severity: 'warning',
       title: 'Cocina cargada',
       message: `${prepN} pedidos en preparación (cocina y bar combinados).`,
+      linkTo: '/admin/cocina',
+      linkLabel: 'Ir a Cocina',
     });
   }
   const barN = Number(barPreparingDistinct?.count || 0);
@@ -343,6 +349,8 @@ function buildOperationalIntelligence(opts = {}) {
       severity: 'info',
       title: 'Bar con cola',
       message: `${barN} pedido(s) con platos/bebidas de bar aún en preparación.`,
+      linkTo: '/admin/bar',
+      linkLabel: 'Ir a Bar',
     });
   }
   if (!registerOpen?.id) {
@@ -372,6 +380,8 @@ function buildOperationalIntelligence(opts = {}) {
       severity: 'warning',
       title: 'Pedidos listos sin retirar',
       message: `${readyN} pedido(s) en estado «listo»; revisar salón, bar o entrega.`,
+      linkTo: '/admin/mesas',
+      linkLabel: 'Ir a Mesas',
     });
   }
   const prepDelayN = Number(kitchenPrepDelayed?.count || 0);
@@ -393,6 +403,8 @@ function buildOperationalIntelligence(opts = {}) {
       severity: 'warning',
       title: 'Cola de pedidos nuevos',
       message: `${pendN} pedido(s) en «pendiente»; revisar cocina o toma de pedidos.`,
+      linkTo: '/admin/cocina',
+      linkLabel: 'Ir a Cocina',
     });
   }
   const actN = Number(activeOrders?.count || 0);
@@ -402,6 +414,8 @@ function buildOperationalIntelligence(opts = {}) {
       severity: 'info',
       title: 'Alto volumen operativo',
       message: `${actN} pedido(s) activos en el sistema.`,
+      linkTo: '/admin/mesas',
+      linkLabel: 'Ir a Mesas',
     });
   }
 

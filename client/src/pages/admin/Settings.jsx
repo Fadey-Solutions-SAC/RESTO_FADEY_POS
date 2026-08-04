@@ -2788,6 +2788,9 @@ function UsersSection({
                     <span className={`${roleInfo.color} px-3 py-1 inline-flex items-center gap-1`}>
                       <RoleIcon className="text-sm" /> {roleInfo.label}
                     </span>
+                    {Number(u.is_buyer_admin || 0) === 1 ? (
+                      <p className="text-[10px] text-amber-700 mt-1 font-medium">Dueño del negocio</p>
+                    ) : null}
                     {String(u.role || '').toLowerCase() === 'cajero' && String(u.caja_station_id || '').trim() && (
                       <p className="text-[10px] text-[var(--ui-muted)] mt-1">
                         Caja: {cajaNameById.get(String(u.caja_station_id).trim()) || '—'}
@@ -2807,7 +2810,7 @@ function UsersSection({
                       <button onClick={() => openPermissions(u)} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 text-xs font-medium border border-emerald-200">
                         <MdSecurity className="text-sm" /> Permisos POS
                       </button>
-                      {u.id !== currentUser?.id && (
+                      {u.id !== currentUser?.id && Number(u.is_buyer_admin || 0) !== 1 && (
                         <button onClick={() => handleDelete(u)} className="p-1.5 hover:bg-[var(--ui-sidebar-hover)] rounded-lg text-[var(--ui-muted)] hover:text-[var(--ui-accent)]">
                           <MdDelete className="text-sm" />
                         </button>

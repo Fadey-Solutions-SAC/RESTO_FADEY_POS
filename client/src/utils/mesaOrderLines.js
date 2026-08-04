@@ -394,16 +394,20 @@ export function adjustmentAmountCharged(order) {
 
 /**
  * Agrupa ventas de salón por mesa + fecha + cuenta; delivery/mostrador quedan como fila individual.
+ * Con `groupOpenMesaByTableOnly`, las cuentas abiertas (pendientes) se agrupan solo por mesa
+ * (una mesa = una cuenta) sin partir por día de comanda.
  * Cortesías no suman al total de venta ni al desglose de pagos en soles.
  */
-export function buildSalesDisplayGroups(orders = []) {
+export function buildSalesDisplayGroups(orders = [], { groupOpenMesaByTableOnly = false } = {}) {
   const mesaBuckets = new Map();
   const standalone = [];
 
   for (const order of orders) {
     const table = String(order.table_number || '').trim();
     if (order.type === 'dine_in' && table) {
-      const bucketKey = `${table}::${salesOrderLocalDateKey(order)}`;
+      const bucketKey = groupOpenMesaByTableOnly
+        ? `open:${table}`
+        : `${table}::${salesOrderLocalDateKey(order)}`;
       if (!mesaBuckets.has(bucketKey)) mesaBuckets.set(bucketKey, []);
       mesaBuckets.get(bucketKey).push(order);
     } else {
@@ -428,7 +432,9 @@ export function buildSalesDisplayGroups(orders = []) {
     const primary = sorted[0];
     const table = String(primary.table_number || '').trim();
     const dateKey = salesOrderLocalDateKey(primary);
-    const key = salesGroupKey(primary, { sessionIndex });
+    const key = groupOpenMesaByTableOnly && primary.type === 'dine_in' && table
+      ? `mesa-open:${table}:${sessionIndex}`
+      : salesGroupKey(primary, { sessionIndex });
     const isMesa = primary.type === 'dine_in' && Boolean(table);
     const salesOrders = sorted.filter((o) => !isCourtesyOrder(o));
     const courtesyOrders = sorted.filter(isCourtesyOrder);
@@ -461,10 +467,18 @@ export function buildSalesDisplayGroups(orders = []) {
 
     const latestAt = sorted[0]?.created_at;
     const earliestAt = sorted[sorted.length - 1]?.created_at;
+    const activeSales = salesOrders.filter((o) => o.status !== 'cancelled');
+    const isPendingAccount =
+      isMesa
+      && activeSales.length > 0
+      && activeSales.every((o) => String(o.payment_status || 'pending') === 'pending');
 
     return {
       key,
       isMesa,
+      /** Cuenta de mesa aún no cobrada: una fila, sin fecha de cobro. */
+      isPendingAccount,
+      isSalesAccount: isPendingAccount,
       mesaLabel: isMesa ? formatMesaLabel(primary.table_number) : '-',
       salesDateKey: dateKey,
       sessionIndex,
@@ -474,7 +488,7 @@ export function buildSalesDisplayGroups(orders = []) {
       total,
       paidTotal,
       pendingTotal,
-      paymentSummary,
+      paymentSummary: isPendingAccount ? '—' : paymentSummary,
       latestAt,
       earliestAt,
       comprobanteCount: sorted.length,
@@ -679,6 +693,7 @@ export function buildPaidSalesAccountDisplayGroups(orders = [], adjustmentRows =
       key: `cuenta:${getSalesAccountKey(primary)}`,
       isMesa,
       isSalesAccount: true,
+      isPendingAccount: false,
       mesaLabel: isMesa ? formatMesaLabel(primary.table_number) : '-',
       orders: sorted,
       primary,
@@ -706,7 +721,8 @@ export function buildVentasDisplayGroups(filtered = [], adjustmentRows = [], { v
   const paid = filtered.filter((o) => o.payment_status === 'paid');
   const rest = filtered.filter((o) => o.payment_status !== 'paid');
   const paidGroups = buildPaidSalesAccountDisplayGroups(paid, adjustmentRows);
-  const restGroups = buildSalesDisplayGroups(rest);
+  // Pendientes: una mesa abierta = una cuenta (sin partir por fecha de comanda).
+  const restGroups = buildSalesDisplayGroups(rest, { groupOpenMesaByTableOnly: true });
   return [...paidGroups, ...restGroups].sort(
     (a, b) => new Date(String(b.latestAt || 0)).getTime() - new Date(String(a.latestAt || 0)).getTime(),
   );

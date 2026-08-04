@@ -249,7 +249,7 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
 
     if (keepId) {
       tx.run("DELETE FROM users WHERE id != ?", [keepId]);
-      tx.run("UPDATE users SET role = 'admin', is_active = 1 WHERE id = ?", [keepId]);
+      tx.run("UPDATE users SET role = 'admin', is_active = 1, is_buyer_admin = 1 WHERE id = ?", [keepId]);
     } else {
       tx.run('DELETE FROM users');
     }
@@ -1517,6 +1517,28 @@ async function initDatabase() {
     addUserColIfMissing('payroll_amount', 'ALTER TABLE users ADD COLUMN payroll_amount REAL DEFAULT 0');
     addUserColIfMissing('payroll_schedule_note', "ALTER TABLE users ADD COLUMN payroll_schedule_note TEXT DEFAULT ''");
     addUserColIfMissing('payroll_payment_day', 'ALTER TABLE users ADD COLUMN payroll_payment_day INTEGER DEFAULT 0');
+    /** Admin dueño del negocio (creado solo desde Administrador maestro). Distinto de admins del personal. */
+    addUserColIfMissing('is_buyer_admin', 'ALTER TABLE users ADD COLUMN is_buyer_admin INTEGER DEFAULT 0');
+    try {
+      const buyerCount = queryOne(
+        `SELECT COUNT(*) AS c FROM users
+         WHERE lower(trim(coalesce(role, ''))) = 'admin' AND COALESCE(is_buyer_admin, 0) = 1`,
+      );
+      if (Number(buyerCount?.c || 0) === 0) {
+        const oldest = queryOne(
+          `SELECT id FROM users
+           WHERE lower(trim(coalesce(role, ''))) = 'admin'
+           ORDER BY datetime(created_at) ASC
+           LIMIT 1`,
+        );
+        if (oldest?.id) {
+          runSql('UPDATE users SET is_buyer_admin = 1 WHERE id = ?', [oldest.id]);
+          console.log('[migration] is_buyer_admin: marcado admin más antiguo como dueño/comprador');
+        }
+      }
+    } catch (e) {
+      console.warn('[migration] is_buyer_admin backfill:', e.message || e);
+    }
     db.run(
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_caja_station_unique
        ON users(caja_station_id)
@@ -2092,6 +2114,9 @@ async function initDatabase() {
       }
     }
 
+    /** Backups restaurados pueden tener migration_key sin columnas nuevas en orders. */
+    ensureOrdersPaidAtColumns();
+
     db.run('CREATE INDEX IF NOT EXISTS idx_customers_doc_number ON customers(doc_number)');
     db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_doc_number_unique ON customers(doc_number) WHERE COALESCE(doc_number, '') != ''");
     db.run('CREATE INDEX IF NOT EXISTS idx_app_settings_history_created_at ON app_settings_history(created_at)');
@@ -2564,6 +2589,40 @@ function seedWarehouses() {
   });
 }
 
+/**
+ * Garantiza columnas de cobro en orders (paid_at / cash_register_id).
+ * Se puede llamar en runtime si un backup antiguo no corrió migraciones.
+ * @returns {boolean} true si paid_at existe tras el ensure
+ */
+function ensureOrdersPaidAtColumns() {
+  try {
+    const cols = queryAll('PRAGMA table_info(orders)') || [];
+    const names = new Set(cols.map((c) => c.name));
+    let repaired = false;
+    if (!names.has('cash_register_id')) {
+      runSql("ALTER TABLE orders ADD COLUMN cash_register_id TEXT DEFAULT ''");
+      repaired = true;
+    }
+    if (!names.has('paid_at')) {
+      runSql("ALTER TABLE orders ADD COLUMN paid_at TEXT DEFAULT NULL");
+      repaired = true;
+    }
+    if (repaired) {
+      runSql('CREATE INDEX IF NOT EXISTS idx_orders_cash_register_id ON orders(cash_register_id)');
+      runSql(
+        `UPDATE orders SET paid_at = COALESCE(updated_at, created_at)
+         WHERE payment_status = 'paid' AND (paid_at IS NULL OR trim(paid_at) = '')`,
+      );
+      console.log('[migration] ensure orders.cash_register_id / paid_at');
+    }
+    const after = queryAll('PRAGMA table_info(orders)') || [];
+    return after.some((c) => c.name === 'paid_at');
+  } catch (e) {
+    console.error('[ensureOrdersPaidAtColumns]', e.message || e);
+    return false;
+  }
+}
+
 module.exports = {
   getDb,
   initDatabase,
@@ -2579,4 +2638,5 @@ module.exports = {
   resetOperationalData,
   withTransaction,
   logAudit,
+  ensureOrdersPaidAtColumns,
 };

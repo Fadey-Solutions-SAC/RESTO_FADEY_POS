@@ -1,6 +1,6 @@
 /** Estilo premium para react-hot-toast (sin cambiar llamadas toast.* en módulos). */
 export const premiumToastOptions = {
-  duration: 3200,
+  duration: 3000,
   style: {
     background: 'var(--ui-surface)',
     color: 'var(--ui-body-text)',

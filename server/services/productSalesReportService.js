@@ -1,14 +1,12 @@
-const { queryAll, queryOne } = require('../database');
+const { queryAll, queryOne, ensureOrdersPaidAtColumns } = require('../database');
 const { getOpenRegistersOnActiveStations, listCajasWithIds } = require('../cajaSettings');
 const { getMovementTotals, getCashNoteTotals } = require('./registerSessionSales');
 const { sqlBusinessTimestamp, getBusinessTodayDateKey } = require('../utils/appDateTime');
+const { paidAtSql } = require('../utils/salesAccountGrouping');
 
 const PAID_SALES_WHERE = `o.status != 'cancelled'
   AND o.payment_status = 'paid'
   AND IFNULL(o.payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')`;
-
-/** Momento real del cobro (igual que arqueo de caja). */
-const PAID_ORDER_EVENT_AT = 'COALESCE(o.paid_at, o.updated_at, o.created_at)';
 
 function parseYmd(input) {
   const v = String(input || '').trim();
@@ -31,6 +29,8 @@ function mapSoldRows(rows) {
 }
 
 function registerSalesWindowSql(registerId, openedAt, closedAt) {
+  ensureOrdersPaidAtColumns();
+  const eventAt = paidAtSql('o');
   const end = closedAt || new Date().toISOString();
   const id = String(registerId || '').trim();
   if (id) {
@@ -39,20 +39,21 @@ function registerSalesWindowSql(registerId, openedAt, closedAt) {
         IFNULL(o.cash_register_id, '') = ?
         OR (
           IFNULL(o.cash_register_id, '') = ''
-          AND ${PAID_ORDER_EVENT_AT} >= ?
-          AND ${PAID_ORDER_EVENT_AT} <= ?
+          AND ${eventAt} >= ?
+          AND ${eventAt} <= ?
         )
       )`,
       params: [id, openedAt, end],
     };
   }
   return {
-    clause: `${PAID_ORDER_EVENT_AT} >= ? AND ${PAID_ORDER_EVENT_AT} <= ?`,
+    clause: `${eventAt} >= ? AND ${eventAt} <= ?`,
     params: [openedAt, end],
   };
 }
 
 function querySoldProductsBetween(openedAt, closedAt, registerId = null) {
+  ensureOrdersPaidAtColumns();
   const window = registerSalesWindowSql(registerId, openedAt, closedAt);
   const qtyRows = queryAll(
     `SELECT
@@ -77,7 +78,7 @@ function querySoldProductsBetween(openedAt, closedAt, registerId = null) {
       o.table_number,
       o.cash_register_id,
       o.customer_id,
-      o.paid_at,
+      ${paidAtSql('o')} AS paid_at,
       o.updated_at,
       o.created_at
      FROM order_items oi

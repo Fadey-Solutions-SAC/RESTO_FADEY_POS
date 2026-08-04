@@ -95,7 +95,8 @@ router.get('/', authenticateToken, requireRole('admin'), (req, res) => {
   res.json(
     queryAll(
       `SELECT id, username, email, full_name, role, is_active, phone, avatar, caja_station_id,
-        payroll_pay_mode, payroll_amount, payroll_schedule_note, payroll_payment_day, created_at
+        payroll_pay_mode, payroll_amount, payroll_schedule_note, payroll_payment_day,
+        COALESCE(is_buyer_admin, 0) AS is_buyer_admin, created_at
        FROM users ORDER BY created_at DESC`
     )
   );
@@ -126,12 +127,17 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     const restaurant = queryOne('SELECT id FROM restaurants LIMIT 1');
     const id = uuidv4();
     const hash = bcrypt.hashSync(password, 10);
+    const isMaster = req.user?.role === 'master_admin';
+    /** Solo el maestro crea al dueño del negocio; admins del personal no llevan esta marca. */
+    const isBuyerAdmin = isMaster && role === 'admin' ? 1 : 0;
     runSql(
-      'INSERT INTO users (id, username, email, password_hash, full_name, role, restaurant_id, phone, is_active, caja_station_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, username, email, hash, fullName, role, restaurant?.id, phone, isActive, cajaStationId]
+      `INSERT INTO users
+        (id, username, email, password_hash, full_name, role, restaurant_id, phone, is_active, caja_station_id, is_buyer_admin)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, username, email, hash, fullName, role, restaurant?.id, phone, isActive, cajaStationId, isBuyerAdmin]
     );
     const permissionsObj =
-      req.user?.role === 'master_admin' && role === 'admin'
+      isMaster && role === 'admin'
         ? createFullPermissions()
         : createEmptyPermissions();
     runSql(
@@ -140,7 +146,8 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     );
     return res.status(201).json(
       queryOne(
-        'SELECT id, username, email, full_name, role, is_active, phone, caja_station_id, created_at FROM users WHERE id = ?',
+        `SELECT id, username, email, full_name, role, is_active, phone, caja_station_id, is_buyer_admin, created_at
+         FROM users WHERE id = ?`,
         [id]
       )
     );
@@ -283,8 +290,23 @@ router.post('/:id/payroll-investment', authenticateToken, requireRole('admin'), 
   }
 });
 
-router.delete('/:id', authenticateToken, requireRole('admin'), (req, res) => {
-  if (req.params.id === req.user.id) return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
+router.delete('/:id', authenticateToken, requireRole('admin', 'master_admin'), (req, res) => {
+  if (req.params.id === req.user.id) {
+    return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
+  }
+  const target = queryOne(
+    'SELECT id, role, COALESCE(is_buyer_admin, 0) AS is_buyer_admin FROM users WHERE id = ?',
+    [req.params.id],
+  );
+  if (!target) {
+    return res.status(404).json({ error: 'Usuario no encontrado' });
+  }
+  /** El dueño (creado por el maestro) solo lo elimina el administrador maestro. */
+  if (Number(target.is_buyer_admin) === 1 && req.user?.role !== 'master_admin') {
+    return res.status(403).json({
+      error: 'El administrador dueño del negocio solo puede eliminarlo el administrador maestro',
+    });
+  }
   runSql('DELETE FROM user_permissions WHERE user_id = ?', [req.params.id]);
   runSql('DELETE FROM users WHERE id = ?', [req.params.id]);
   res.json({ success: true });

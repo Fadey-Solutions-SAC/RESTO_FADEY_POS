@@ -1117,74 +1117,89 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     color: #9ca3af !important;
   }
 
-  /* Vista previa “ARQUEO DE CAJA” en el modal: texto blanco / gris claro (no heredar gris ilegible) */
-  .modal-sheet-body .cash-close-print {
-    color: #e2e8f0 !important;
+  /* Arqueo de caja (modal): siempre contraste con el tema activo */
+  .cash-close-print {
+    color: var(--ui-body-text) !important;
   }
-  .modal-sheet-body .cash-close-print h2 {
-    color: #ffffff !important;
+  .cash-close-print h2 {
+    color: var(--ui-body-text) !important;
     font-size: 1.125rem;
     font-weight: 700;
     letter-spacing: 0.02em;
   }
-  .modal-sheet-body .cash-close-print h3 {
-    color: #cbd5e1 !important;
+  .cash-close-print h3 {
+    color: var(--ui-muted) !important;
     font-size: 0.875rem;
     font-weight: 500;
   }
-  .modal-sheet-body .cash-close-print .row {
+  .cash-close-print .row {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
     gap: 0.75rem;
-    color: #e2e8f0 !important;
+    color: var(--ui-body-text) !important;
   }
-  .modal-sheet-body .cash-close-print .row.bold {
-    color: #f8fafc !important;
+  .cash-close-print .row span {
+    color: inherit !important;
   }
-  .modal-sheet-body .cash-close-print .total-row {
-    color: #f8fafc !important;
+  .cash-close-print .row.bold {
+    color: var(--ui-body-text) !important;
+    font-weight: 700;
   }
-  .modal-sheet-body .cash-close-print .sep {
-    border-top: 1px dashed #64748b;
+  .cash-close-print .total-row {
+    color: var(--ui-body-text) !important;
+    font-weight: 700;
+  }
+  .cash-close-print .sep {
+    border-top: 1px dashed color-mix(in srgb, var(--ui-border) 80%, var(--ui-muted));
     margin: 8px 0;
   }
-  .modal-sheet-body .cash-close-print .diff-pos {
+  .cash-close-print .diff-pos {
+    color: #059669 !important;
+  }
+  .cash-close-print .diff-neg {
+    color: #dc2626 !important;
+  }
+  html[data-ui-color-scheme='dark'] .cash-close-print .diff-pos {
     color: #86efac !important;
   }
-  .modal-sheet-body .cash-close-print .diff-neg {
+  html[data-ui-color-scheme='dark'] .cash-close-print .diff-neg {
     color: #fca5a5 !important;
   }
-  .modal-sheet-body .cash-close-print .section-title {
-    color: #e2e8f0 !important;
+  .cash-close-print .section-title {
+    color: var(--ui-body-text) !important;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     margin: 8px 0 4px;
   }
-  .modal-sheet-body .cash-close-print .products-table {
+  .cash-close-print .products-table {
     width: 100%;
     border-collapse: collapse;
     margin: 4px 0 8px;
     font-size: 11px;
-    color: #e2e8f0 !important;
+    color: var(--ui-body-text) !important;
   }
-  .modal-sheet-body .cash-close-print .products-table th,
-  .modal-sheet-body .cash-close-print .products-table td {
+  .cash-close-print .products-table th,
+  .cash-close-print .products-table td {
     padding: 3px 4px;
-    border-bottom: 1px solid #64748b;
+    border-bottom: 1px solid var(--ui-border);
     text-align: left;
-    color: #e2e8f0 !important;
+    color: var(--ui-body-text) !important;
   }
-  .modal-sheet-body .cash-close-print .products-table th.num,
-  .modal-sheet-body .cash-close-print .products-table td.num {
+  .cash-close-print .products-table th.num,
+  .cash-close-print .products-table td.num {
     text-align: right;
     white-space: nowrap;
   }
-  .modal-sheet-body .cash-close-print .products-table thead th {
+  .cash-close-print .products-table thead th {
     font-size: 10px;
     text-transform: uppercase;
-    color: #94a3b8 !important;
+    color: var(--ui-muted) !important;
+  }
+  .cash-close-print .arqueo-hint {
+    font-size: 10px;
+    color: var(--ui-muted) !important;
   }
 }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSocket } from '../../hooks/useSocket';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api, formatCurrency, formatDate, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
 import { UI_BADGE } from '../../utils/uiBadges';
 import { useAuth } from '../../context/AuthContext';
@@ -9,6 +9,7 @@ import { MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline, MdEd
 import Modal from '../../components/Modal';
 import LogisticaKardexModule from '../../components/LogisticaKardexModule';
 import InsumoCreateModal from '../../components/InsumoCreateModal';
+import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import { isProductLowStock, productStockStatus, effectiveProductMinStock, DEFAULT_NON_TRANSFORMED_MIN_STOCK } from '../../utils/productStockDisplay';
 
 const WAREHOUSE_CATEGORY_NAMES = {
@@ -21,6 +22,12 @@ function localDateInputValue(date = new Date()) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+/** Vacío cuando es 0: el cero se muestra solo como placeholder (evita "03"). */
+function receptionNumberFromQty(qty) {
+  const n = Number(qty || 0);
+  return n > 0 ? String(n) : '';
 }
 
 const DEFAULT_STOCK_WAREHOUSE = '';
@@ -254,6 +261,7 @@ const ALMACEN_VIEWS = [
 
 export default function Almacen() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const planAllowsAlmacenAvanzado = user?.service_plan !== 'basico';
   const almacenViewsForPlan = useMemo(() => {
     const subAlmacen = user?.sub_permissions?.almacen || {};
@@ -295,13 +303,14 @@ export default function Almacen() {
     pickValue: '',
     warehouse_id: '',
     quantity: '1',
-    unit_cost: '0',
+    unit_cost: '',
   });
   const [createModalAfterReception, setCreateModalAfterReception] = useState(false);
   const [receptionNotes, setReceptionNotes] = useState('');
   const [receptionPurchaseDate, setReceptionPurchaseDate] = useState(() => localDateInputValue());
   /** Filas marcadas para incluir en el registro de recepción (`req:productId` | `extra:lineId`). */
   const [receptionSelectedKeys, setReceptionSelectedKeys] = useState([]);
+  const [receptionSubmitting, setReceptionSubmitting] = useState(false);
   const [expenseHistory, setExpenseHistory] = useState([]);
   const [expenseEditGroupId, setExpenseEditGroupId] = useState(null);
   const [expenseEditDraft, setExpenseEditDraft] = useState({});
@@ -474,8 +483,8 @@ export default function Almacen() {
           const nextForm = {};
           (requirement?.items || []).forEach(item => {
             nextForm[item.product_id] = {
-              quantity: String(Number(item.suggested_qty || 0)),
-              unit_cost: String(Number(item.unit_cost || 0)),
+              quantity: receptionNumberFromQty(item.suggested_qty),
+              unit_cost: receptionNumberFromQty(item.unit_cost),
               warehouse_id: item.warehouse_id || '',
             };
           });
@@ -634,6 +643,13 @@ export default function Almacen() {
     (p) => p.process === 'non_transformed' && isProductLowStock(p.stock, p.min_stock)
   );
   const selectedWarehouse = warehouses.find((w) => sameWarehouseId(w.id, selectedWarehouseView));
+  const selectedIsPrincipalWarehouse = Boolean(
+    selectedWarehouse
+    && (
+      String(selectedWarehouse.name || '').toLowerCase() === 'almacen principal'
+      || sameWarehouseId(selectedWarehouse.id, principalWarehouse?.id)
+    )
+  );
   const selectedIsInsumosWarehouse = isInsumosWarehouse(selectedWarehouse);
   const insumosActivos = (kardexInsumos || []).filter((i) => Number(i.activo) !== 0);
   const insumosPorVista =
@@ -865,9 +881,7 @@ export default function Almacen() {
             product_name: created.name || itemForm.name,
             warehouse_id: String(selectedWarehouseId || principalWarehouse?.id || ''),
             quantity: '1',
-            unit_cost: String(
-              parseFloat(itemForm.purchase_price || itemForm.price || '0') || 0
-            ),
+            unit_cost: receptionNumberFromQty(itemForm.purchase_price || itemForm.price),
           },
         ]);
         setReceptionSelectedKeys((prev) => [...prev, receptionExtraKey(newLineId)]);
@@ -990,8 +1004,8 @@ export default function Almacen() {
       const nextForm = {};
       (requirement.items || []).forEach(item => {
         nextForm[item.product_id] = {
-          quantity: String(Number(item.suggested_qty || 0)),
-          unit_cost: '0',
+          quantity: receptionNumberFromQty(item.suggested_qty),
+          unit_cost: '',
           warehouse_id: item.warehouse_id || '',
         };
       });
@@ -1073,19 +1087,28 @@ export default function Almacen() {
     }));
   };
 
+  const clearReceptionWorkspace = () => {
+    setLatestRequirement(null);
+    setReceptionForm({});
+    setReceptionExtraLines([]);
+    setReceptionSelectedKeys([]);
+    setReceptionNotes('');
+  };
+
   const registerReception = async () => {
+    if (receptionSubmitting) return;
     if (!latestRequirement?.id) {
-      toast.error('No hay requerimiento disponible');
+      toast.error('No hay requerimiento disponible', { duration: 3000 });
       return;
     }
     const seenExtra = new Set();
     for (const line of receptionExtraLines) {
       if (receptionRequirementIds.has(line.product_id)) {
-        toast.error(`"${line.product_name}" ya está en el requerimiento; ajusta esa fila.`);
+        toast.error(`"${line.product_name}" ya está en el requerimiento; ajusta esa fila.`, { duration: 3000 });
         return;
       }
       if (seenExtra.has(line.product_id)) {
-        toast.error('Hay productos adicionales duplicados; elimina la fila repetida.');
+        toast.error('Hay productos adicionales duplicados; elimina la fila repetida.', { duration: 3000 });
         return;
       }
       seenExtra.add(line.product_id);
@@ -1116,44 +1139,54 @@ export default function Almacen() {
     const payloadItems = [...payloadFromReq, ...payloadExtra];
 
     if (!payloadItems.length) {
-      toast.error('Selecciona al menos un producto e ingresa cantidades para recepcionar');
+      toast.error('Selecciona al menos un producto e ingresa cantidades para recepcionar', { duration: 3000 });
       return;
     }
     const invalidCost = payloadItems.some(item => Number(item.unit_cost || 0) <= 0);
     if (invalidCost) {
-      toast.error('Debes colocar el precio de compra en todos los productos recepcionados');
+      toast.error('Debes colocar el precio de compra en todos los productos recepcionados', { duration: 3000 });
       return;
     }
 
+    setReceptionSubmitting(true);
     try {
-      await api.post('/inventory/receptions/receive', {
+      const result = await api.post('/inventory/receptions/receive', {
         requirement_id: latestRequirement.id,
         notes: receptionNotes,
         purchase_date: receptionPurchaseDate,
         items: payloadItems,
       });
-      toast.success('Recepción registrada');
-      setReceptionNotes('');
-      setReceptionExtraLines([]);
-      const [requirement, expenses] = await Promise.all([
-        api.get('/inventory/requirements/latest?status=pending'),
-        api.get('/inventory/expenses'),
-      ]);
-      setLatestRequirement(requirement);
-      const nextForm = {};
-      (requirement?.items || []).forEach((item) => {
-        nextForm[item.product_id] = {
-          quantity: String(Number(item.suggested_qty || 0)),
-          unit_cost: String(Number(item.unit_cost || 0)),
-          warehouse_id: item.warehouse_id || '',
-        };
-      });
-      setReceptionForm(nextForm);
-      setReceptionSelectedKeys((requirement?.items || []).map((item) => receptionReqKey(item.product_id)));
-      setExpenseHistory(expenses || []);
+      toast.dismiss();
+      clearReceptionWorkspace();
+      toast.success(
+        result?.already_received ? 'Recepción ya registrada' : 'Recepción registrada',
+        { duration: 3000 }
+      );
+      try {
+        const expenses = await api.get('/inventory/expenses');
+        setExpenseHistory(expenses || []);
+      } catch {
+        /* historial de gastos no bloquea el cierre de recepción */
+      }
       await load();
     } catch (err) {
-      toast.error(err.message || 'No se pudo registrar recepción');
+      const msg = err.message || 'No se pudo registrar recepción';
+      if (/ya fue recepcionado/i.test(msg)) {
+        toast.dismiss();
+        clearReceptionWorkspace();
+        toast.success('Recepción ya registrada', { duration: 3000 });
+        try {
+          const expenses = await api.get('/inventory/expenses');
+          setExpenseHistory(expenses || []);
+        } catch {
+          /* ignore */
+        }
+        await load();
+      } else {
+        toast.error(msg, { duration: 3000 });
+      }
+    } finally {
+      setReceptionSubmitting(false);
     }
   };
 
@@ -1166,7 +1199,7 @@ export default function Almacen() {
       pickValue: '',
       warehouse_id: String(principalWarehouse?.id || warehouses[0]?.id || ''),
       quantity: '1',
-      unit_cost: '0',
+      unit_cost: '',
     });
     setShowReceptionAddModal(true);
   };
@@ -1370,7 +1403,9 @@ export default function Almacen() {
                             <input
                               type="number"
                               min="0"
-                              value={receptionForm[item.product_id]?.quantity || '0'}
+                              placeholder="0"
+                              value={receptionForm[item.product_id]?.quantity ?? ''}
+                              onFocus={(e) => e.target.select()}
                               onChange={e => updateReceptionField(item.product_id, 'quantity', e.target.value)}
                               className="input-field py-1.5"
                             />
@@ -1380,7 +1415,9 @@ export default function Almacen() {
                               type="number"
                               min="0"
                               step="0.01"
-                              value={receptionForm[item.product_id]?.unit_cost || '0'}
+                              placeholder="0"
+                              value={receptionForm[item.product_id]?.unit_cost ?? ''}
+                              onFocus={(e) => e.target.select()}
                               onChange={e => updateReceptionField(item.product_id, 'unit_cost', e.target.value)}
                               className="input-field py-1.5"
                             />
@@ -1426,7 +1463,9 @@ export default function Almacen() {
                             <input
                               type="number"
                               min="0"
-                              value={line.quantity}
+                              placeholder="0"
+                              value={line.quantity ?? ''}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => updateReceptionExtraField(line.lineId, 'quantity', e.target.value)}
                               className="input-field py-1.5"
                             />
@@ -1436,7 +1475,9 @@ export default function Almacen() {
                               type="number"
                               min="0"
                               step="0.01"
-                              value={line.unit_cost}
+                              placeholder="0"
+                              value={line.unit_cost ?? ''}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => updateReceptionExtraField(line.lineId, 'unit_cost', e.target.value)}
                               className="input-field py-1.5"
                             />
@@ -1479,8 +1520,12 @@ export default function Almacen() {
                     placeholder="Observaciones de compra (opcional)"
                   />
                 </div>
-                <button className="btn-primary" onClick={registerReception}>
-                  Registrar recepción
+                <button
+                  className="btn-primary"
+                  onClick={registerReception}
+                  disabled={receptionSubmitting}
+                >
+                  {receptionSubmitting ? 'Registrando…' : 'Registrar recepción'}
                 </button>
               </div>
             )}
@@ -1743,8 +1788,10 @@ export default function Almacen() {
                 <input
                   type="number"
                   min="0"
+                  placeholder="0"
                   className="input-field"
-                  value={receptionAddDraft.quantity}
+                  value={receptionAddDraft.quantity ?? ''}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) => setReceptionAddDraft((d) => ({ ...d, quantity: e.target.value }))}
                 />
               </div>
@@ -1754,8 +1801,10 @@ export default function Almacen() {
                   type="number"
                   min="0"
                   step="0.01"
+                  placeholder="0"
                   className="input-field"
-                  value={receptionAddDraft.unit_cost}
+                  value={receptionAddDraft.unit_cost ?? ''}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) => setReceptionAddDraft((d) => ({ ...d, unit_cost: e.target.value }))}
                 />
               </div>
@@ -2133,7 +2182,9 @@ export default function Almacen() {
                 <th className="pb-2 font-medium">Precio venta</th>
                 <th className="pb-2 font-medium">P. compra</th>
                 <th className="pb-2 font-medium">Principal</th>
-                <th className="pb-2 font-medium">Cocina</th>
+                {!selectedIsPrincipalWarehouse && (
+                  <th className="pb-2 font-medium">Cocina</th>
+                )}
                 <th className="pb-2 font-medium">Stock Total</th>
                 <th className="pb-2 font-medium">Valor</th>
                 <th className="pb-2 font-medium">Estado</th>
@@ -2152,7 +2203,9 @@ export default function Almacen() {
                       : '—'}
                   </td>
                   <td className="py-3 font-bold">{p.stock_main || 0}</td>
-                  <td className="py-3 font-bold">{p.stock_kitchen || 0}</td>
+                  {!selectedIsPrincipalWarehouse && (
+                    <td className="py-3 font-bold">{p.stock_kitchen || 0}</td>
+                  )}
                   <td className="py-3 font-bold">{p.stock}</td>
                   <td className="py-3">{formatCurrency(p.price * p.stock)}</td>
                   <td className="py-3"><span className={
@@ -2163,29 +2216,45 @@ export default function Almacen() {
                         : UI_BADGE.red
                   }>{productStockStatus(p.stock, p.min_stock) === 'normal' ? 'Normal' : productStockStatus(p.stock, p.min_stock) === 'low' ? 'Bajo' : 'Agotado'}</span></td>
                   <td className="py-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStockModal(p);
-                        setStockPurchasePrice(
-                          p.purchase_price != null && Number(p.purchase_price) > 0
-                            ? String(p.purchase_price)
-                            : ''
-                        );
-                        setStockWarehouse(principalWarehouse?.id || '');
-                        setShowDeleteFlow(false);
-                        setDeleteReason('');
-                      }}
-                      className="text-xs px-3 py-1.5 bg-sky-50 text-sky-600 rounded-lg hover:bg-sky-100"
-                    >
-                      Ajustar
-                    </button>
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStockModal(p);
+                          setStockPurchasePrice(
+                            p.purchase_price != null && Number(p.purchase_price) > 0
+                              ? String(p.purchase_price)
+                              : ''
+                          );
+                          setStockWarehouse(
+                            selectedWarehouseView || principalWarehouse?.id || ''
+                          );
+                          setShowDeleteFlow(false);
+                          setDeleteReason('');
+                        }}
+                        className="text-xs px-3 py-1.5 bg-sky-50 text-sky-600 rounded-lg hover:bg-sky-100"
+                      >
+                        Ajustar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/productos?edit=${encodeURIComponent(p.id)}`)}
+                        className="text-xs px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 inline-flex items-center gap-1"
+                        title="Editar producto"
+                      >
+                        <MdEdit className="text-sm" />
+                        Editar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {productsForSelectedWarehouse.length === 0 && (
                 <tr>
-                  <td colSpan="10" className="py-10 text-center text-[var(--ui-muted)]">
+                  <td
+                    colSpan={selectedIsPrincipalWarehouse ? 9 : 10}
+                    className="py-10 text-center text-[var(--ui-muted)]"
+                  >
                     {selectedWarehouseView
                       ? 'No hay productos en este almacén'
                       : 'Selecciona un almacén para ver sus productos'}

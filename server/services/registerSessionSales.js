@@ -1,14 +1,13 @@
 /**
  * Ventas cobradas asociadas a un turno de caja (apertura → cierre o ahora).
  */
-const { queryAll, queryOne } = require('../database');
+const { queryAll, queryOne, ensureOrdersPaidAtColumns } = require('../database');
 const { addOrderToSalesTotals } = require('../utils/paymentBreakdown');
 const {
   countSalesAccounts,
-  SALES_ACCOUNT_ORDER_SELECT,
+  salesAccountOrderSelectSql,
+  paidAtSql,
 } = require('../utils/salesAccountGrouping');
-
-const SALES_EVENT_AT_SQL = 'COALESCE(paid_at, updated_at, created_at)';
 
 function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -30,6 +29,9 @@ function normalizeRegisterArg(registerOrOpenedAt) {
 }
 
 function buildRegisterSalesSql(register) {
+  ensureOrdersPaidAtColumns();
+  const eventAt = paidAtSql('');
+  const selectCols = salesAccountOrderSelectSql();
   const id = String(register?.id || '').trim();
   const openedAt = register?.opened_at;
   const closedAt = register?.closed_at || null;
@@ -43,18 +45,18 @@ function buildRegisterSalesSql(register) {
     const params = [id, openedAt];
     let legacyEnd = '';
     if (closedAt) {
-      legacyEnd = ` AND ${SALES_EVENT_AT_SQL} <= ?`;
+      legacyEnd = ` AND ${eventAt} <= ?`;
       params.push(closedAt);
     }
     return {
-      sql: `SELECT ${SALES_ACCOUNT_ORDER_SELECT}
+      sql: `SELECT ${selectCols}
             FROM orders
             WHERE ${baseWhere}
               AND (
                 IFNULL(cash_register_id, '') = ?
                 OR (
                   IFNULL(cash_register_id, '') = ''
-                  AND ${SALES_EVENT_AT_SQL} >= ?${legacyEnd}
+                  AND ${eventAt} >= ?${legacyEnd}
                 )
               )`,
       params,
@@ -64,14 +66,14 @@ function buildRegisterSalesSql(register) {
   const params = [openedAt];
   let endSql = '';
   if (closedAt) {
-    endSql = ` AND ${SALES_EVENT_AT_SQL} <= ?`;
+    endSql = ` AND ${eventAt} <= ?`;
     params.push(closedAt);
   }
   return {
-    sql: `SELECT ${SALES_ACCOUNT_ORDER_SELECT}
+    sql: `SELECT ${selectCols}
           FROM orders
           WHERE ${baseWhere}
-            AND ${SALES_EVENT_AT_SQL} >= ?${endSql}`,
+            AND ${eventAt} >= ?${endSql}`,
     params,
   };
 }
@@ -183,5 +185,7 @@ module.exports = {
   getMovementTotals,
   getCashNoteTotals,
   computeExpectedCash,
-  SALES_EVENT_AT_SQL,
+  get SALES_EVENT_AT_SQL() {
+    return paidAtSql('');
+  },
 };

@@ -14,6 +14,7 @@ import {
   normalizePaperWidthMm,
   printTestForModule,
   PRINTING_CONFIG_UPDATED_EVENT,
+  PRINTING_LINK_STATUS_EVENT,
   savePrintingModuleConfig,
   verifyPrintingLinkStatus,
   printingUnreachableMessage,
@@ -165,6 +166,16 @@ export function usePrintingModule(moduleKey, { autoLoad = true } = {}) {
     window.addEventListener(PRINTING_CONFIG_UPDATED_EVENT, onUpdated);
     return () => window.removeEventListener(PRINTING_CONFIG_UPDATED_EVENT, onUpdated);
   }, [applyConfig]);
+
+  useEffect(() => {
+    const onLink = (event) => {
+      if (event?.detail) {
+        setLinkStatus({ checking: false, ...event.detail });
+      }
+    };
+    window.addEventListener(PRINTING_LINK_STATUS_EVENT, onLink);
+    return () => window.removeEventListener(PRINTING_LINK_STATUS_EVENT, onLink);
+  }, []);
 
   useActiveInterval(() => {
     if (!autoLoad) return;

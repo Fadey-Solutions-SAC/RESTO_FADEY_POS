@@ -201,6 +201,17 @@ app.post('/api/upload/billing-cert', authenticateToken, requireRole('admin', 'ma
 });
 
 app.get('/api/healthz', (req, res) => res.json({ ok: true, uptime: process.uptime(), bridge: 'restaurant-node' }));
+/** Instalación Windows: el front local descubre impresión sin escanear puertos del asistente. */
+app.get('/api/printing/bridge', (req, res) => {
+  const port = Number(process.env.PORT) || 3001;
+  res.json({
+    status: 'ok',
+    mode: 'embedded',
+    port,
+    origin: `http://127.0.0.1:${port}`,
+    service: 'resto-fadey-embedded-api',
+  });
+});
 app.get('/api/readyz', async (req, res) => {
   try {
     await initDatabase();

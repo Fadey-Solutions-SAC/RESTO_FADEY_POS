@@ -65,9 +65,9 @@ router.get('/dashboard', (req, res) => {
   const control = evaluateAutomaticBillingRules();
   const notifications = getNotifications().slice(0, 50);
   const adminUsers = queryAll(
-    `SELECT id, username, email, full_name, role, is_active, created_at
+    `SELECT id, username, email, full_name, role, is_active, is_buyer_admin, created_at
      FROM users
-     WHERE role = 'admin'
+     WHERE role = 'admin' AND COALESCE(is_buyer_admin, 0) = 1
      ORDER BY created_at DESC`
   );
   res.json({
@@ -153,9 +153,12 @@ router.post('/factory-reset', (req, res) => {
   if (!buyerId) {
     return res.status(400).json({ error: 'Debes seleccionar el administrador comprador a conservar.' });
   }
-  const buyer = queryOne('SELECT id, role FROM users WHERE id = ?', [buyerId]);
-  if (!buyer || buyer.role !== 'admin') {
-    return res.status(400).json({ error: 'El usuario seleccionado no es un administrador válido.' });
+  const buyer = queryOne(
+    'SELECT id, role, COALESCE(is_buyer_admin, 0) AS is_buyer_admin FROM users WHERE id = ?',
+    [buyerId],
+  );
+  if (!buyer || buyer.role !== 'admin' || Number(buyer.is_buyer_admin) !== 1) {
+    return res.status(400).json({ error: 'Seleccione un administrador dueño (creado desde el maestro).' });
   }
   try {
     resetOperationalData({ keepAdminUserId: buyerId });

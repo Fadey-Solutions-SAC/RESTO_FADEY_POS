@@ -682,6 +682,12 @@ function buildHoursRollup(from, to, userId) {
 }
 
 function buildAnalyticsBundle(query = {}) {
+  try {
+    const { ensureOrdersPaidAtColumns } = require('../database');
+    ensureOrdersPaidAtColumns();
+  } catch (_) {
+    /* ignore */
+  }
   const from = parseDateKey(query.from);
   const to = parseDateKey(query.to);
   const userId = String(query.user_id || 'all').trim() || 'all';

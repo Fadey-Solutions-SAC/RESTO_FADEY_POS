@@ -184,13 +184,33 @@ export default function MasterAdmin() {
         ...adminForm,
         role: 'admin',
       });
-      toast.success('Administrador comprador creado');
+      toast.success('Administrador dueño creado');
       setAdminForm({ username: '', full_name: '', email: '', password: '' });
       setShowBuyerPassword(false);
       setShowCreateBuyerModal(false);
       await loadDashboard();
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  const deleteAdminBuyer = async (buyer) => {
+    if (!buyer?.id) return;
+    const label = String(buyer.full_name || buyer.username || 'este administrador').trim();
+    const list = dashboard?.admin_users || [];
+    const isLast = list.length <= 1;
+    const ok = window.confirm(
+      isLast
+        ? `¿Eliminar a «${label}»? Es el único administrador dueño. Hasta crear otro, no habrá dueño del negocio en el maestro.`
+        : `¿Eliminar al administrador dueño «${label}»? Esta acción no se puede deshacer.`,
+    );
+    if (!ok) return;
+    try {
+      await api.delete(`/users/${buyer.id}`);
+      toast.success('Administrador eliminado');
+      await loadDashboard();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo eliminar el administrador');
     }
   };
 
@@ -391,13 +411,18 @@ export default function MasterAdmin() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="card lg:col-span-2">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h3 className="font-semibold rf-section-title">Administradores compradores</h3>
+                <div>
+                  <h3 className="font-semibold rf-section-title">Administrador dueño del negocio</h3>
+                  <p className="text-xs ui-text-muted mt-1">
+                    Solo el dueño creado aquí. Los administradores del personal se crean y eliminan en Configuración → Usuarios dentro del sistema.
+                  </p>
+                </div>
                 <button
                   type="button"
                   className="btn-primary flex items-center gap-2"
                   onClick={() => setShowCreateBuyerModal(true)}
                 >
-                  <MdAdd /> Crear administrador
+                  <MdAdd /> Crear administrador dueño
                 </button>
               </div>
               <div className="space-y-2">
@@ -419,10 +444,18 @@ export default function MasterAdmin() {
                       >
                         <MdEdit />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void deleteAdminBuyer(u)}
+                        className="p-2 rounded bg-rose-50 hover:bg-rose-100 text-rose-700"
+                        aria-label="Eliminar administrador"
+                      >
+                        <MdDelete />
+                      </button>
                     </div>
                   </div>
                 ))}
-                {adminUsers.length === 0 && <p className="text-sm ui-text-muted">No hay administradores registrados.</p>}
+                {adminUsers.length === 0 && <p className="text-sm ui-text-muted">No hay administrador dueño. Cree uno para el negocio.</p>}
               </div>
             </div>
           </div>
@@ -898,7 +931,7 @@ export default function MasterAdmin() {
           setShowCreateBuyerModal(false);
           setShowBuyerPassword(false);
         }}
-        title="Crear administrador comprador"
+        title="Crear administrador dueño del negocio"
       >
         <form onSubmit={createAdminBuyer} className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <input className="input-field" placeholder="Usuario" value={adminForm.username} onChange={(e) => setAdminForm((p) => ({ ...p, username: e.target.value }))} required />
@@ -924,7 +957,7 @@ export default function MasterAdmin() {
           </div>
           <div className="md:col-span-2 flex justify-end gap-2 pt-2">
             <button type="button" className="btn-secondary" onClick={() => setShowCreateBuyerModal(false)}>Cancelar</button>
-            <button className="btn-primary flex items-center justify-center gap-2" type="submit"><MdAdd /> Crear administrador</button>
+            <button className="btn-primary flex items-center justify-center gap-2" type="submit"><MdAdd /> Crear administrador dueño</button>
           </div>
         </form>
       </Modal>
@@ -1020,7 +1053,7 @@ export default function MasterAdmin() {
         </div>
       </Modal>
 
-      <Modal isOpen={showEditBuyerModal} onClose={() => setShowEditBuyerModal(false)} title="Editar credenciales del administrador comprador">
+      <Modal isOpen={showEditBuyerModal} onClose={() => setShowEditBuyerModal(false)} title="Editar administrador dueño">
         <form onSubmit={submitEditBuyer} className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Usuario</label>

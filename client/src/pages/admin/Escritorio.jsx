@@ -911,30 +911,37 @@ export default function Escritorio() {
           ) : null}
           {visibleOperationalAlerts.length > 0 ? (
             <ul className="space-y-1.5 border-t border-[color:var(--ui-border)] pt-3">
-              {visibleOperationalAlerts.map((a) => (
-                <li
-                  key={a.id}
-                  className={`flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 ${
-                    a.severity === 'warning' ? 'ui-live-alert-warning' : 'ui-live-alert-info'
-                  }`}
-                >
-                  <MdWarning className="shrink-0 text-lg ui-live-alert-icon mt-0.5" />
-                  <span>
-                    <span className="font-semibold">{a.title}: </span>
-                    {a.message}
-                    {a.linkTo && a.linkLabel ? (
-                      <span className="block mt-1">
-                        <Link
-                          to={a.linkTo}
-                          className="text-xs font-semibold ui-live-alert-link hover:underline underline-offset-2"
-                        >
+              {visibleOperationalAlerts.map((a) => {
+                const alertBody = (
+                  <>
+                    <MdWarning className="shrink-0 text-lg ui-live-alert-icon mt-0.5" />
+                    <span className="min-w-0 flex-1">
+                      <span className="font-semibold">{a.title}: </span>
+                      {a.message}
+                      {a.linkTo && a.linkLabel ? (
+                        <span className="block mt-1 text-xs font-semibold ui-live-alert-link underline-offset-2 group-hover:underline">
                           {a.linkLabel}
-                        </Link>
-                      </span>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
+                        </span>
+                      ) : null}
+                    </span>
+                  </>
+                );
+                const alertClass = `flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 ${
+                  a.severity === 'warning' ? 'ui-live-alert-warning' : 'ui-live-alert-info'
+                }${a.linkTo ? ' group cursor-pointer hover:brightness-[0.98] transition' : ''}`;
+
+                return (
+                  <li key={a.id}>
+                    {a.linkTo ? (
+                      <Link to={a.linkTo} className={alertClass} title={a.linkLabel || a.title}>
+                        {alertBody}
+                      </Link>
+                    ) : (
+                      <div className={alertClass}>{alertBody}</div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="text-xs text-[var(--ui-muted)] border-t border-[color:var(--ui-border)] pt-3">Sin alertas operativas en este momento.</p>

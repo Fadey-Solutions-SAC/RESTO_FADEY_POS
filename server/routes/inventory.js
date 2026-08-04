@@ -633,7 +633,14 @@ router.post('/receptions/receive', authenticateToken, requireRole('admin'), (req
     const requirement = queryOne('SELECT * FROM inventory_requirements WHERE id = ?', [requirement_id]);
     if (!requirement) return res.status(404).json({ error: 'Requerimiento no encontrado' });
     if (requirement.status === 'received') {
-      return res.status(409).json({ error: 'Este requerimiento ya fue recepcionado' });
+      // Idempotente: evita error si el usuario hace doble clic tras registrar.
+      return res.json({
+        success: true,
+        already_received: true,
+        requirement_id,
+        processed_items: 0,
+        total_expense: 0,
+      });
     }
 
     let totalExpense = 0;

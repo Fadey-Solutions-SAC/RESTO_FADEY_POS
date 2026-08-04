@@ -613,10 +613,6 @@ export default function POSPanel() {
     );
   }, [cajaStations, adminAttachedRegisterId]);
   const adminRegisterContextLive = Boolean(adminAttachedStation?.open_register?.id);
-  const adminOpenStations = useMemo(
-    () => cajaStations.filter((s) => s.open_register?.id),
-    [cajaStations],
-  );
   const openCajaView = useCallback(
     (view) => {
       const allowed = cajaOptionsForRole.some((o) => o.id === view);
@@ -2557,17 +2553,17 @@ export default function POSPanel() {
   const paymentRowAmountClass = (value) => {
     switch (value) {
       case 'efectivo':
-        return 'text-emerald-400';
+        return 'text-emerald-600';
       case 'yape':
-        return 'text-fuchsia-400';
+        return 'text-fuchsia-600';
       case 'plin':
-        return 'text-sky-400';
+        return 'text-sky-600';
       case 'tarjeta':
-        return 'text-amber-300';
+        return 'text-amber-600';
       case 'online':
-        return 'text-violet-400';
+        return 'text-violet-600';
       default:
-        return 'text-[#f9fafb]';
+        return 'text-[var(--ui-body-text)]';
     }
   };
 
@@ -2927,54 +2923,6 @@ export default function POSPanel() {
     </p>
   );
 
-  const renderAdminRegisterBar = () => {
-    if (!isPosAdmin || !adminOpenStations.length) return null;
-    const activeStation = adminAttachedStation;
-    const activeOp = activeStation?.open_register;
-    return (
-      <div className="card mb-4 py-3 px-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-[var(--ui-body-text)] shrink-0">Caja activa</span>
-          {adminOpenStations.map((st) => {
-            const op = st.open_register;
-            const isActive = String(op?.id || '') === adminAttachedRegisterId;
-            return (
-              <button
-                key={st.id}
-                type="button"
-                onClick={() => void attachAdminToRegister(op.id)}
-                className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${
-                  isActive
-                    ? 'border-[color:var(--ui-accent-muted)] bg-[var(--ui-accent)] text-white font-semibold'
-                    : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-                }`}
-              >
-                {st.name}
-              </button>
-            );
-          })}
-          {adminAttachedRegisterId ? (
-            <button
-              type="button"
-              onClick={() => void clearAdminRegisterContext()}
-              className="btn-secondary text-sm ml-auto shrink-0"
-            >
-              Cambiar caja
-            </button>
-          ) : null}
-        </div>
-        {adminAttachedRegisterId && activeOp ? (
-          <p className="text-xs ui-text-muted mt-2">
-            Turno de {activeOp.cajero_name || 'cajero'}
-            {activeOp.opened_at ? ` · ${formatPeDateTimeLine(activeOp.opened_at)}` : ''}
-          </p>
-        ) : (
-          <p className="text-xs text-amber-700 mt-2">Seleccione una caja con turno abierto para operar.</p>
-        )}
-      </div>
-    );
-  };
-
   const renderOpenRegisterScreen = () => {
     const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
     if (isAdmin) {
@@ -3116,8 +3064,7 @@ export default function POSPanel() {
 
   return (
     <div>
-      {renderAdminRegisterBar()}
-      <div className="mb-4 -mt-4">
+      <div className="mb-4">
       {activeCajaOption === 'cobrar' && (
         register || (isPosAdmin && adminRegisterContextLive) ? (
         <>
@@ -3147,6 +3094,16 @@ export default function POSPanel() {
             >
               <MdDeliveryDining className="text-base shrink-0" />
               Delivery
+            </button>
+          ) : null}
+          {isPosAdmin && adminAttachedRegisterId ? (
+            <button
+              type="button"
+              onClick={() => void clearAdminRegisterContext()}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              title="Volver a elegir caja / turno"
+            >
+              Cambiar caja
             </button>
           ) : null}
           <button
@@ -3352,11 +3309,13 @@ export default function POSPanel() {
                         {lines.map((row) => (
                           <li
                             key={row.key}
-                            className="flex justify-between gap-2 border-b border-[color:var(--ui-border)] pb-1.5 last:border-0 last:pb-0"
+                            className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 items-baseline border-b border-[color:var(--ui-border)] pb-1.5 last:border-0 last:pb-0"
                           >
-                            <span className="min-w-0">
-                              <span className="font-medium text-[var(--ui-body-text)]">{row.name}</span>
-                              <span className="text-[var(--ui-muted)]"> × {row.qty}</span>
+                            <span className="tabular-nums font-semibold text-[var(--ui-body-text)] text-right">
+                              {row.qty}
+                            </span>
+                            <span className="min-w-0 font-medium text-[var(--ui-body-text)] break-words">
+                              {row.name}
                             </span>
                             <span className="shrink-0 tabular-nums font-medium text-[var(--ui-accent-muted)]">
                               {formatCurrency(row.subtotal)}
@@ -4191,13 +4150,17 @@ export default function POSPanel() {
                   {lines.map((row) => (
                     <li
                       key={row.key}
-                      className="flex justify-between gap-2 border-b border-[#374151]/80 pb-1.5 last:border-0 last:pb-0"
+                      className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 items-baseline border-b border-[#374151]/80 pb-1.5 last:border-0 last:pb-0"
                     >
-                      <span className="min-w-0">
-                        <span className="font-medium text-white">{row.name}</span>
-                        <span className="text-[#9CA3AF]"> × {row.qty}</span>
+                      <span className="tabular-nums font-semibold text-white text-right">
+                        {row.qty}
                       </span>
-                      <span className="shrink-0 tabular-nums font-medium text-[#BFDBFE]">{formatCurrency(row.subtotal)}</span>
+                      <span className="min-w-0 font-medium text-white break-words">
+                        {row.name}
+                      </span>
+                      <span className="shrink-0 tabular-nums font-medium text-[#BFDBFE]">
+                        {formatCurrency(row.subtotal)}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -4936,7 +4899,7 @@ export default function POSPanel() {
       {/* Modal Cerrar Caja / Arqueo */}
       <Modal isOpen={showCloseModal} onClose={() => { setShowCloseModal(false); setClosingAtPreview(null); }} title="Arqueo y Cierre de Caja" size="wide">
         {closingData && (
-          <div className="text-[#e2e8f0]">
+          <div className="text-[var(--ui-body-text)]">
             <div ref={printRef} className="cash-close-print space-y-0.5">
               <h2>ARQUEO DE CAJA</h2>
               <h3>{user?.full_name} — {arqueoHeaderDayLabel}</h3>
@@ -4944,15 +4907,15 @@ export default function POSPanel() {
               <div className="row">
                 <span>Apertura: </span>
                 <span className="flex flex-wrap items-baseline justify-end gap-x-3 gap-y-0.5 text-right">
-                  <span className="text-[#f8fafc]">{arqueoOpeningParts.date}</span>
-                  <span className="tabular-nums text-[#cbd5e1]">{arqueoOpeningParts.time}</span>
+                  <span>{arqueoOpeningParts.date}</span>
+                  <span className="tabular-nums">{arqueoOpeningParts.time}</span>
                 </span>
               </div>
               <div className="row">
                 <span>Cierre: </span>
                 <span className="flex flex-wrap items-baseline justify-end gap-x-3 gap-y-0.5 text-right">
-                  <span className="text-[#f8fafc]">{arqueoClosingParts.date}</span>
-                  <span className="tabular-nums text-[#cbd5e1]">{arqueoClosingParts.time}</span>
+                  <span>{arqueoClosingParts.date}</span>
+                  <span className="tabular-nums">{arqueoClosingParts.time}</span>
                 </span>
               </div>
               <div className="sep"></div>
@@ -4995,7 +4958,7 @@ export default function POSPanel() {
               )}
               <div className="sep"></div>
               <div className="row bold"><span>EFECTIVO ESPERADO</span><span>{formatCurrency(expectedRounded)}</span></div>
-              <div className="row"><span style={{ fontSize: '10px', color: '#94a3b8' }}>(Apertura + efectivo + propinas + ingresos − egresos ± notas de caja)</span></div>
+              <div className="row"><span className="arqueo-hint">(Apertura + efectivo + propinas + ingresos − egresos ± notas de caja)</span></div>
               <div className="sep"></div>
               <div className="row bold"><span>DETALLE ARQUEO</span><span></span></div>
               {denomDefs
@@ -5012,30 +4975,30 @@ export default function POSPanel() {
             </div>
 
             <div className="mt-4 space-y-4">
-              <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-                <h3 className="font-semibold text-[#f8fafc] mb-3 flex items-center gap-2"><MdAccountBalanceWallet className="text-[#93c5fd]" /> Resumen de ventas (métodos activos)</h3>
+              <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
+                <h3 className="font-semibold text-[var(--ui-body-text)] mb-3 flex items-center gap-2"><MdAccountBalanceWallet className="text-[var(--ui-accent)]" /> Resumen de ventas (métodos activos)</h3>
                 <div className={`grid gap-3 ${registerPaymentRows.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
                   {registerPaymentRows.map((row) => (
-                    <div key={row.value} className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                      <p className="text-xs text-[#94a3b8]">{row.label}</p>
+                    <div key={row.value} className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+                      <p className="text-xs text-[var(--ui-muted)]">{row.label}</p>
                       <p className={`font-bold text-lg ${paymentRowAmountClass(row.value)}`}>{formatCurrency(row.amount)}</p>
                     </div>
                   ))}
                 </div>
                 <div className="flex justify-between items-center mt-3 pt-3 border-t border-[color:var(--ui-border)]">
-                  <span className="font-bold text-[#f1f5f9]">Total ventas</span>
-                  <span className="font-bold text-xl text-emerald-400">{formatCurrency(registerSales)}</span>
+                  <span className="font-bold text-[var(--ui-body-text)]">Total ventas</span>
+                  <span className="font-bold text-xl text-emerald-600">{formatCurrency(registerSales)}</span>
                 </div>
               </div>
 
-              <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-                <h3 className="font-semibold text-[#f8fafc] mb-1">Conteo de efectivo</h3>
+              <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
+                <h3 className="font-semibold text-[var(--ui-body-text)] mb-1">Conteo de efectivo</h3>
                 <div className="mb-3">
-                  <p className="text-xs font-semibold text-[#cbd5e1] mb-2">Arqueo por denominación (soles)</p>
+                  <p className="text-xs font-semibold text-[var(--ui-muted)] mb-2">Arqueo por denominación (soles)</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                     {denomDefs.map(d => (
-                      <div key={d.key} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-2">
-                        <label className="block text-xs text-[#cbd5e1] mb-1">{d.label}</label>
+                      <div key={d.key} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-2">
+                        <label className="block text-xs text-[var(--ui-muted)] mb-1">{d.label}</label>
                         <div className="flex items-center gap-2">
                           <input
                             type="number"
@@ -5046,24 +5009,24 @@ export default function POSPanel() {
                             className="input-field py-1.5 text-sm"
                             placeholder="0"
                           />
-                          <span className="text-xs font-semibold text-[#e2e8f0] min-w-16 text-right tabular-nums">
+                          <span className="text-xs font-semibold text-[var(--ui-body-text)] min-w-16 text-right tabular-nums">
                             {formatCurrency((parseFloat(denominations[d.key]) || 0) * d.value)}
                           </span>
                         </div>
                       </div>
                     ))}
                   </div>
-                  <div className="flex justify-between items-center mt-2 p-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                    <span className="text-xs font-medium text-[#cbd5e1]">Total por arqueo</span>
-                    <span className="font-bold text-amber-300 tabular-nums">{formatCurrency(calculateDenominationTotal())}</span>
+                  <div className="flex justify-between items-center mt-2 p-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+                    <span className="text-xs font-medium text-[var(--ui-muted)]">Total por arqueo</span>
+                    <span className="font-bold text-amber-600 tabular-nums">{formatCurrency(calculateDenominationTotal())}</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
-                    <label className="block text-xs font-medium text-[#cbd5e1] mb-1">Efectivo esperado en caja</label>
-                    <div className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                      <p className="font-bold text-lg text-[#f9fafb] tabular-nums">{formatCurrency(expectedRounded)}</p>
-                      <p className="text-[10px] text-[#94a3b8] mt-1 leading-snug">
+                    <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Efectivo esperado en caja</label>
+                    <div className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+                      <p className="font-bold text-lg text-[var(--ui-body-text)] tabular-nums">{formatCurrency(expectedRounded)}</p>
+                      <p className="text-[10px] text-[var(--ui-muted)] mt-1 leading-snug">
                         Apertura {formatCurrency(openingAmt)} + efectivo {formatCurrency(totalCash)}
                         {totalTips > 0 ? ` + propinas ${formatCurrency(totalTips)}` : ''}
                         {totalIncome > 0 ? ` + ingresos ${formatCurrency(totalIncome)}` : ''}
@@ -5074,9 +5037,9 @@ export default function POSPanel() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#cbd5e1] mb-1">Efectivo contado real</label>
+                    <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Efectivo contado real</label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94a3b8] font-medium text-sm">S/</span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] font-medium text-sm">S/</span>
                       <input
                         type="number"
                         step="0.01"
@@ -5091,29 +5054,29 @@ export default function POSPanel() {
                 </div>
 
                 {denominationMismatch && (
-                  <p className="text-sm text-amber-300 mb-3 px-1 rounded-lg border border-amber-600/40 bg-amber-950/30 py-2">
+                  <p className="text-sm text-amber-700 mb-3 px-1 rounded-lg border border-amber-500/40 bg-amber-500/10 py-2">
                     El total por denominación ({formatCurrency(denomTotalRounded)}) no coincide con el efectivo contado ingresado ({formatCurrency(closingAmt)}). La diferencia se calcula respecto al esperado usando el importe contado que escribió.
                   </p>
                 )}
 
                 {closingAmount !== '' && (
                   <div className={`flex items-center justify-between p-3 rounded-lg border ${
-                    difference === 0 ? 'bg-emerald-950/50 border-emerald-600/60' :
-                    difference > 0 ? 'bg-sky-950/40 border-sky-600/50' :
-                    'bg-red-950/40 border-red-600/50'
+                    difference === 0 ? 'bg-emerald-500/10 border-emerald-500/50' :
+                    difference > 0 ? 'bg-sky-500/10 border-sky-500/40' :
+                    'bg-red-500/10 border-red-500/40'
                   }`}>
-                    <div className="flex items-center gap-2 text-[#e2e8f0]">
-                      {difference === 0 ? <MdCheckCircle className="text-emerald-400 text-xl" /> :
-                       difference > 0 ? <MdTrendingUp className="text-sky-400 text-xl" /> :
-                       <MdTrendingDown className="text-red-400 text-xl" />}
+                    <div className="flex items-center gap-2 text-[var(--ui-body-text)]">
+                      {difference === 0 ? <MdCheckCircle className="text-emerald-500 text-xl" /> :
+                       difference > 0 ? <MdTrendingUp className="text-sky-500 text-xl" /> :
+                       <MdTrendingDown className="text-red-500 text-xl" />}
                       <span className="font-medium text-sm">
                         {difference === 0 ? 'Caja cuadrada' :
                          difference > 0 ? 'Sobrante' : 'Faltante'}
                       </span>
                     </div>
                     <span className={`font-bold text-lg tabular-nums ${
-                      difference === 0 ? 'text-emerald-300' :
-                      difference > 0 ? 'text-sky-300' : 'text-red-300'
+                      difference === 0 ? 'text-emerald-600' :
+                      difference > 0 ? 'text-sky-600' : 'text-red-600'
                     }`}>
                       {difference > 0 ? '+' : ''}{formatCurrency(difference)}
                     </span>
@@ -5122,7 +5085,7 @@ export default function POSPanel() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#cbd5e1] mb-1">Observaciones</label>
+                <label className="block text-sm font-medium text-[var(--ui-muted)] mb-1">Observaciones</label>
                 <textarea
                   value={closingNotes}
                   onChange={e => setClosingNotes(e.target.value)}

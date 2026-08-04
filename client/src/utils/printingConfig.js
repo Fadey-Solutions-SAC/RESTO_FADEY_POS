@@ -3,10 +3,13 @@ import {
   checkPrintingHealth,
   electronPrinting,
   ensureLocalPrintingAssistantDiscovered,
+  getApiOrigin,
   hasElectronPrinting,
+  isDesktopEmbeddedRuntime,
   normalizeUsbPrinterList,
   printingUnreachableMessage,
   getPersistedPrintingBridgeOrigin,
+  usesInstalledLocalPrinting,
 } from './api';
 import { tryWakePrintingAssistant } from './printingAssistantWake';
 import { normalizeThermalPaperWidthMm } from './ticketPlainText';
@@ -138,7 +141,7 @@ export async function maintainPrintingAssistantLink({ tryWake = false } = {}) {
     /* continuar con descubrimiento */
   }
 
-  if (!hasElectronPrinting()) {
+  if (!usesInstalledLocalPrinting()) {
     await ensureLocalPrintingAssistantDiscovered();
     if (tryWake) {
       const afterDiscover = await verifyPrintingLinkStatus();
@@ -174,6 +177,7 @@ export async function maintainPrintingAssistantLink({ tryWake = false } = {}) {
 }
 
 export async function verifyPrintingLinkStatus() {
+  let status;
   try {
     if (hasElectronPrinting()) {
       await electronPrinting.health();
@@ -184,26 +188,37 @@ export async function verifyPrintingLinkStatus() {
       } catch (_) {
         /* noop */
       }
-      return {
+      status = {
         connected: true,
         source: 'Aplicación Resto FADEY',
         detail,
       };
+    } else if (isDesktopEmbeddedRuntime()) {
+      await checkPrintingHealth();
+      const origin = getApiOrigin();
+      status = {
+        connected: true,
+        source: 'Aplicación Resto FADEY instalada',
+        detail: origin ? `Servicio local · ${origin}` : 'Servicio local en esta PC',
+      };
+    } else {
+      await checkPrintingHealth();
+      const persisted = getPersistedPrintingBridgeOrigin();
+      status = {
+        connected: true,
+        source: 'Asistente local vinculado',
+        detail: persisted || '',
+      };
     }
-    await checkPrintingHealth();
-    const persisted = getPersistedPrintingBridgeOrigin();
-    return {
-      connected: true,
-      source: 'Asistente local vinculado',
-      detail: persisted || '',
-    };
   } catch (err) {
-    return {
+    status = {
       connected: false,
       source: 'Sin vínculo',
       detail: err?.message || printingUnreachableMessage(),
     };
   }
+  emitPrintingLinkStatus(status);
+  return status;
 }
 
 export async function detectUsbPrintersForModule(moduleKey) {

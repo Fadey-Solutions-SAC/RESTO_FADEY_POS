@@ -1,4 +1,4 @@
-const { queryAll, queryOne } = require('../database');
+const { queryAll, queryOne, ensureOrdersPaidAtColumns } = require('../database');
 const {
   SALES_ADJUSTMENT_WHERE_SQL,
   classifySalesAdjustment,
@@ -9,9 +9,7 @@ const {
 const { orderHasKardexVenta } = require('./kardexBackfillService');
 const { listProductRemovals, enrichRemovalForReport } = require('./productRemovalLogService');
 const { sqlBusinessTimestamp } = require('../utils/appDateTime');
-
-const SALES_EVENT_AT_SQL = 'COALESCE(paid_at, updated_at, created_at)';
-const SALES_EVENT_DATE_SQL = `DATE(${sqlBusinessTimestamp(SALES_EVENT_AT_SQL, queryOne)})`;
+const { paidAtSql } = require('../utils/salesAccountGrouping');
 
 function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -38,14 +36,17 @@ function enrichAdjustmentOrder(o) {
 }
 
 function listSalesAdjustments({ from, to, limit = 500 } = {}) {
+  ensureOrdersPaidAtColumns();
+  const eventAt = paidAtSql('');
+  const eventDate = `DATE(${sqlBusinessTimestamp(eventAt, queryOne)})`;
   const params = [];
   let dateSql = '';
   if (from) {
-    dateSql += ` AND ${SALES_EVENT_DATE_SQL} >= date(?)`;
+    dateSql += ` AND ${eventDate} >= date(?)`;
     params.push(from);
   }
   if (to) {
-    dateSql += ` AND ${SALES_EVENT_DATE_SQL} <= date(?)`;
+    dateSql += ` AND ${eventDate} <= date(?)`;
     params.push(to);
   }
   const cap = Math.min(Math.max(Number(limit) || 500, 1), 2000);
@@ -55,7 +56,7 @@ function listSalesAdjustments({ from, to, limit = 500 } = {}) {
        AND payment_status = 'paid'
        AND ${SALES_ADJUSTMENT_WHERE_SQL}
        ${dateSql}
-     ORDER BY ${SALES_EVENT_AT_SQL} DESC
+     ORDER BY ${eventAt} DESC
      LIMIT ${cap}`,
     params
   );
