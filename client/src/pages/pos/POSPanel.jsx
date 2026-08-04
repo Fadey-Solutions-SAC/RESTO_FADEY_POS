@@ -3064,21 +3064,36 @@ export default function POSPanel() {
 
   return (
     <div>
-      <div className="mb-4">
+      <div className="mb-3">
       {activeCajaOption === 'cobrar' && (
         register || (isPosAdmin && adminRegisterContextLive) ? (
         <>
-      <div className="flex flex-wrap items-center justify-between mb-3 gap-2">
-        <div
-          className={`inline-flex items-center justify-center w-9 h-9 rounded-full border ${
-            billingStatus.provider_reachable
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
-              : 'bg-red-50 border-red-200 text-red-600'
-          }`}
-          title={billingStatus.provider_reachable ? 'En línea' : 'Sin conexión'}
-        >
-          {billingStatus.provider_reachable ? <MdCheckCircle className="text-xl" /> : <MdClose className="text-xl" />}
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h2 className="font-semibold text-slate-700 flex items-center gap-2 text-base sm:text-lg min-w-0">
+          <span
+            className={`inline-flex items-center justify-center w-7 h-7 rounded-full border shrink-0 ${
+              billingStatus.provider_reachable
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                : 'bg-red-50 border-red-200 text-red-600'
+            }`}
+            title={
+              billingStatus.provider_reachable
+                ? 'Facturación en línea'
+                : 'Sin conexión a facturación'
+            }
+            aria-label={
+              billingStatus.provider_reachable
+                ? 'Facturación en línea'
+                : 'Sin conexión a facturación'
+            }
+          >
+            {billingStatus.provider_reachable
+              ? <MdCheckCircle className="text-lg" />
+              : <MdClose className="text-lg" />}
+          </span>
+          <MdTableRestaurant className="shrink-0" />
+          <span>Mapa de mesas</span>
+        </h2>
         <div className="flex flex-wrap items-center gap-2">
           {showDeliveryUi ? (
             <button
@@ -3114,11 +3129,6 @@ export default function POSPanel() {
             <MdPointOfSale className="text-base" /> Venta rápida
           </button>
         </div>
-      </div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold text-slate-700 flex items-center gap-2 text-base sm:text-lg">
-          <MdTableRestaurant /> Mapa de mesas
-        </h2>
       </div>
 
       {tablesBySalon.length > 0 && (
