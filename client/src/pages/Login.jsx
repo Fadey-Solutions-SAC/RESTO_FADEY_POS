@@ -33,6 +33,7 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [brandLogo, setBrandLogo] = useState('');
+  const [coverImage, setCoverImage] = useState('');
   const [restaurantName, setRestaurantName] = useState(FALLBACK_RESTAURANT_NAME);
 
   const photosRequired = attendancePolicy.loginRequired;
@@ -50,6 +51,12 @@ export default function Login() {
         const n = String(r?.name || '').trim();
         setRestaurantName(n || FALLBACK_RESTAURANT_NAME);
         setBrandLogo(String(r?.logo || '').trim());
+        const cover = String(
+          r?.profile_effective?.branding?.favicon ||
+            r?.profile?.branding?.favicon ||
+            ''
+        ).trim();
+        setCoverImage(cover);
       })
       .catch(() => {});
   }, []);
@@ -118,20 +125,34 @@ export default function Login() {
       <div className="rf-login-page__content rf-login-page__content--visible">
         <div className="w-full max-w-md relative z-10 px-4">
           <div className="text-center mb-8">
-            <div className="w-20 h-20 rounded-2xl mx-auto mb-4 shadow-lg overflow-hidden flex items-center justify-center bg-[var(--ui-surface)] ring-1 ring-[color:var(--ui-border)]">
-              {brandLogo ? (
-                <img
-                  src={resolveMediaUrl(brandLogo)}
-                  alt={restaurantName}
-                  className="h-full w-full object-cover object-center"
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-[var(--ui-accent)] to-[var(--ui-accent-hover)] flex items-center justify-center">
-                  <MdStorefront className="text-white text-4xl" />
+            <div className="rf-login-brand relative mx-auto mb-3">
+              <div className="rf-login-cover relative h-36 sm:h-40 w-full rounded-2xl overflow-hidden ring-1 ring-white/10 shadow-xl bg-gradient-to-br from-[#0a1a2e] via-[#0d2844] to-[#001428]">
+                {coverImage ? (
+                  <img
+                    src={resolveMediaUrl(coverImage)}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover object-center"
+                  />
+                ) : null}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/15 to-transparent pointer-events-none" aria-hidden />
+              </div>
+              <div className="relative -mt-14 flex justify-center">
+                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl shadow-2xl overflow-hidden flex items-center justify-center bg-[var(--ui-surface)] ring-4 ring-[#000414]">
+                  {brandLogo ? (
+                    <img
+                      src={resolveMediaUrl(brandLogo)}
+                      alt={restaurantName}
+                      className="h-full w-full object-cover object-center"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-[var(--ui-accent)] to-[var(--ui-accent-hover)] flex items-center justify-center">
+                      <MdStorefront className="text-white text-5xl" />
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
-            <h1 className="rf-font-display text-3xl font-bold text-[#e8f4fc] tracking-tight px-1">
+            <h1 className="rf-font-display text-3xl font-bold text-[#e8f4fc] tracking-tight px-1 mt-3">
               {restaurantName}
             </h1>
           </div>
@@ -141,17 +162,17 @@ export default function Login() {
               <>
                 <h2 className="rf-font-display text-xl font-bold text-[var(--ui-body-text)] mb-1">{t('login.title')}</h2>
                 <p className="text-sm text-[var(--ui-muted)] mb-6">{t('login.subtitle')}</p>
-                <form onSubmit={handleContinue} className="space-y-5">
+                <form onSubmit={handleContinue} className="space-y-4 max-w-[240px] mx-auto">
                   <div>
                     <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1.5">{t('login.username')}</label>
                     <div className="relative">
-                      <MdPerson className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-xl pointer-events-none" />
+                      <MdPerson className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-lg pointer-events-none" />
                       <input
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         placeholder={t('login.usernamePlaceholder')}
-                        className="input-field pl-10"
+                        className="input-field pl-9 py-1.5 text-sm"
                         required
                         autoComplete="username"
                       />
@@ -161,22 +182,22 @@ export default function Login() {
                   <div>
                     <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1.5">{t('login.password')}</label>
                     <div className="relative">
-                      <MdLock className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-xl pointer-events-none" />
+                      <MdLock className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-lg pointer-events-none" />
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder={t('login.passwordPlaceholder')}
-                        className="input-field pl-10 pr-10"
+                        className="input-field pl-9 pr-9 py-1.5 text-sm"
                         required
                         autoComplete="current-password"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] hover:text-[var(--ui-body-text)] transition-colors"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] hover:text-[var(--ui-body-text)] transition-colors"
                       >
-                        {showPassword ? <MdVisibilityOff className="text-xl" /> : <MdVisibility className="text-xl" />}
+                        {showPassword ? <MdVisibilityOff className="text-lg" /> : <MdVisibility className="text-lg" />}
                       </button>
                     </div>
                   </div>
@@ -184,7 +205,7 @@ export default function Login() {
                   <button
                     type="submit"
                     disabled={loading || !policyReady}
-                    className="w-full py-3 btn-primary rounded-lg font-semibold text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full py-2.5 btn-primary rounded-lg font-semibold text-base shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {!policyReady ? (
                       <span className="flex items-center justify-center gap-2">
