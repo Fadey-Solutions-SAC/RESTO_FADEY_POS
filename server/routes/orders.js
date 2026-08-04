@@ -14,6 +14,7 @@ const kardexInventory = require('../services/kardexInventoryService');
 const { emitInventoryUpdate, emitBillingDocumentUpdate } = require('../socketBroadcast');
 const { recordWorkActivityEvent } = require('../services/workActivityTracker');
 const { logRouteError, publicErrorMessage } = require('../utils/routeErrors');
+const { sqlBusinessTimestamp, getBusinessTodayDateKey } = require('../utils/appDateTime');
 const {
   userCanAccessKitchenApi,
   userCanAccessKitchenStation,
@@ -208,19 +209,17 @@ router.get('/kitchen/dispatched', authenticateToken, (req, res) => {
   }
   const readyCol = getStationReadyColumn(stationRequested);
   const { type } = req.query;
-  const dateKey = parseKitchenHistoryDate(req.query.date);
+  const dateKey = parseKitchenHistoryDate(req.query.date) || getBusinessTodayDateKey(queryOne);
   const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
+
+  // Zona del restaurante (Lima), no localtime del servidor (en Render es UTC y “pierde” el día).
+  const readyAtBusiness = sqlBusinessTimestamp(`o.${readyCol}`, queryOne);
 
   let query = `SELECT o.*, o.${readyCol} AS station_dispatched_at
     FROM orders o
-    WHERE trim(coalesce(o.${readyCol}, '')) != ''`;
-  const params = [];
-  if (dateKey) {
-    query += ` AND date(datetime(o.${readyCol}, 'localtime')) = date(?)`;
-    params.push(dateKey);
-  } else {
-    query += ` AND date(datetime(o.${readyCol}, 'localtime')) = date('now', 'localtime')`;
-  }
+    WHERE trim(coalesce(o.${readyCol}, '')) != ''
+      AND date(${readyAtBusiness}) = date(?)`;
+  const params = [dateKey];
   if (type === 'delivery') query += " AND o.type = 'delivery'";
   else if (type === 'dine_in') query += " AND o.type = 'dine_in'";
   else if (type === 'salon') query += " AND o.type IN ('dine_in', 'pickup')";
