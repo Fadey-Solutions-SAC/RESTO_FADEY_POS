@@ -288,6 +288,7 @@ export default function Almacen() {
   const [stockWarehouse, setStockWarehouse] = useState(DEFAULT_STOCK_WAREHOUSE);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInsumoModal, setShowInsumoModal] = useState(false);
+  const [editingInsumo, setEditingInsumo] = useState(null);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
   const [showRequirementModal, setShowRequirementModal] = useState(false);
   /** '' = todas (+ kardex); id de categoría = solo productos de almacén de esa categoría */
@@ -1976,6 +1977,7 @@ export default function Almacen() {
           <button
             onClick={() => {
               if (selectedIsInsumosWarehouse) {
+                setEditingInsumo(null);
                 setShowInsumoModal(true);
                 return;
               }
@@ -2107,7 +2109,7 @@ export default function Almacen() {
                 <th className="pb-2 font-medium text-right text-[var(--ui-body-text)]">Stock (U)</th>
                 <th className="pb-2 font-medium text-right text-[var(--ui-body-text)]">Valor</th>
                 <th className="pb-2 font-medium text-[var(--ui-body-text)]">Estado</th>
-                <th className="pb-2 font-medium text-right text-[var(--ui-body-text)] w-28"></th>
+                <th className="pb-2 font-medium text-right text-[var(--ui-body-text)] w-40"></th>
               </tr>
             </thead>
             <tbody>
@@ -2151,15 +2153,29 @@ export default function Almacen() {
                       <span className={badgeClass}>{badgeLabel}</span>
                     </td>
                     <td className="py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteInsumo(i)}
-                        className="text-xs px-2.5 py-1.5 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/15 inline-flex items-center gap-1"
-                        title="Eliminar insumo"
-                      >
-                        <MdDeleteOutline className="text-base" />
-                        Eliminar
-                      </button>
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingInsumo(i);
+                            setShowInsumoModal(true);
+                          }}
+                          className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 inline-flex items-center gap-1"
+                          title="Editar insumo"
+                        >
+                          <MdEdit className="text-sm" />
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteInsumo(i)}
+                          className="text-xs px-2.5 py-1.5 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/15 inline-flex items-center gap-1"
+                          title="Eliminar insumo"
+                        >
+                          <MdDeleteOutline className="text-base" />
+                          Eliminar
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -2238,7 +2254,7 @@ export default function Almacen() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => navigate(`/productos?edit=${encodeURIComponent(p.id)}`)}
+                        onClick={() => navigate(`/admin/productos?edit=${encodeURIComponent(p.id)}`)}
                         className="text-xs px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 inline-flex items-center gap-1"
                         title="Editar producto"
                       >
@@ -2429,7 +2445,11 @@ export default function Almacen() {
 
       <InsumoCreateModal
         isOpen={showInsumoModal}
-        onClose={() => setShowInsumoModal(false)}
+        insumo={editingInsumo}
+        onClose={() => {
+          setShowInsumoModal(false);
+          setEditingInsumo(null);
+        }}
         onSaved={() => load()}
       />
     </div>

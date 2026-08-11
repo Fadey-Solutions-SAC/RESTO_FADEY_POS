@@ -640,6 +640,12 @@ function financeMonthToDateSnapshot() {
     `SELECT COALESCE(SUM(total_cost), 0) as total FROM inventory_expenses
      WHERE strftime('%Y-%m', ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL}) = ${s.MONTH}`
   );
+  const kardexCogsRow = queryOne(
+    `SELECT COALESCE(SUM(costo_total), 0) as total FROM kardex
+     WHERE tipo_movimiento = 'salida'
+       AND referencia IN ('venta', 'venta_masa')
+       AND strftime('%Y-%m', fecha) = ${s.MONTH}`
+  );
   const cashExpensesRow = queryOne(
     `SELECT COALESCE(SUM(amount), 0) as total FROM cash_movements
      WHERE type = 'expense' AND strftime('%Y-%m', datetime(created_at, '-05:00')) = ${s.MONTH}`
@@ -651,16 +657,19 @@ function financeMonthToDateSnapshot() {
   const ymRow = { ym: s.MONTH.replace(/'/g, '') };
   const totalSales = Number(monthMetrics.sales || 0);
   const totalPurchases = Number(purchasesRow?.total || 0);
+  const totalKardexCogs = Number(kardexCogsRow?.total || 0);
   const cashExpenses = Number(cashExpensesRow?.total || 0);
   const lossEventsTotal = Number(lossEventsRow?.total || 0);
   const lossesCombined = lossEventsTotal + cashExpenses;
-  const approxGrossMargin = totalSales - totalPurchases;
-  const approxProfit = totalSales - totalPurchases - lossesCombined;
+  const investmentTotal = totalPurchases + totalKardexCogs;
+  const approxGrossMargin = totalSales - investmentTotal;
+  const approxProfit = totalSales - investmentTotal - lossesCombined;
   return {
     month_key: String(ymRow?.ym || ''),
     sales_total: totalSales,
     orders_count: Number(monthMetrics.orders || 0),
     purchases_total: totalPurchases,
+    kardex_cogs_total: totalKardexCogs,
     loss_events_total: lossEventsTotal,
     cash_expenses_total: cashExpenses,
     losses_combined_total: lossesCombined,

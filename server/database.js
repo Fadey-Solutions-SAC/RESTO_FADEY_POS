@@ -1585,6 +1585,26 @@ async function initDatabase() {
       )
     `);
 
+    db.run(`
+      CREATE TABLE IF NOT EXISTS operational_delay_events (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        station TEXT NOT NULL,
+        order_number TEXT DEFAULT '',
+        table_number TEXT DEFAULT '',
+        order_type TEXT DEFAULT '',
+        status_at_detect TEXT DEFAULT '',
+        threshold_minutes REAL NOT NULL DEFAULT 0,
+        elapsed_minutes REAL NOT NULL DEFAULT 0,
+        detected_at TEXT NOT NULL,
+        resolved_at TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.run('CREATE INDEX IF NOT EXISTS idx_op_delay_detected ON operational_delay_events(detected_at)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_op_delay_order_station ON operational_delay_events(order_id, station)');
+
     const electronicDocCols = queryAll('PRAGMA table_info(electronic_documents)');
     const electronicDocColNames = new Set((electronicDocCols || []).map((c) => c.name));
     if (!electronicDocColNames.has('customer_phone')) {

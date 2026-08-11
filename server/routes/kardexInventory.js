@@ -12,18 +12,22 @@ const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 const router = express.Router();
 router.use(authenticateToken, requireRole('admin'));
 
-/** U.M. de masa/volumen (kg, L, …) sin números accidentales p. ej. "kg5". */
+/** U.M. (unidad, kg, L, …) sin números accidentales p. ej. "kg5". Por defecto: unidad. */
 function sanitizeUnidadMasa(raw) {
   const s = String(raw || '')
     .replace(/[0-9]/g, '')
     .replace(/\s+/g, '')
     .trim()
     .toLowerCase();
-  if (!s) return '';
-  const allow = new Set(['kg', 'g', 'mg', 't', 'l', 'ml', 'lt']);
-  if (allow.has(s)) return s;
-  if (s === 'litro' || s === 'lt') return 'L';
-  return s.length <= 8 ? s : s.slice(0, 8);
+  if (!s || s === 'und' || s === 'u' || s === 'unidades' || s === 'unidad') return 'unidad';
+  if (s === 'oz' || s === 'onz' || s === 'ounce' || s === 'onza') return 'onza';
+  if (s === 'litro' || s === 'litros' || s === 'lt' || s === 'l') return 'L';
+  if (s === 'kilogramo' || s === 'kilogramos' || s === 'kg') return 'kg';
+  if (s === 'gramo' || s === 'gramos' || s === 'g') return 'g';
+  if (s === 'mililitro' || s === 'mililitros' || s === 'ml') return 'ml';
+  if (s === 'mg') return 'mg';
+  if (s === 't' || s === 'tonelada' || s === 'toneladas') return 'onza';
+  return 'unidad';
 }
 
 /** Área de costeo / almacén lógico: cocina vs bar (misma tabla `insumos`, kardex compartido por id). */

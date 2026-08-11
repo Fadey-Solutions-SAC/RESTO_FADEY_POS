@@ -6,7 +6,7 @@ import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useDeliverySettings } from '../../hooks/useDeliveryEnabled';
 import { useNavigate, Link } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
-import { MdDateRange, MdKeyboardArrowDown, MdChevronLeft, MdChevronRight, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning } from 'react-icons/md';
+import { MdDateRange, MdKeyboardArrowDown, MdChevronLeft, MdChevronRight, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning, MdNotificationsActive } from 'react-icons/md';
 
 import { useChartTheme } from '../../theme/useChartTheme';
 import {
@@ -909,43 +909,60 @@ export default function Escritorio() {
           {liveDash.insightToday ? (
             <p className="text-xs text-[var(--ui-accent-muted)] mb-2">{liveDash.insightToday}</p>
           ) : null}
-          {visibleOperationalAlerts.length > 0 ? (
-            <ul className="space-y-1.5 border-t border-[color:var(--ui-border)] pt-3">
-              {visibleOperationalAlerts.map((a) => {
-                const alertBody = (
-                  <>
-                    <MdWarning className="shrink-0 text-lg ui-live-alert-icon mt-0.5" />
-                    <span className="min-w-0 flex-1">
-                      <span className="font-semibold">{a.title}: </span>
-                      {a.message}
-                      {a.linkTo && a.linkLabel ? (
-                        <span className="block mt-1 text-xs font-semibold ui-live-alert-link underline-offset-2 group-hover:underline">
-                          {a.linkLabel}
+          <div className="border-t border-[color:var(--ui-border)] pt-3 flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              {visibleOperationalAlerts.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {visibleOperationalAlerts.map((a) => {
+                    const alertBody = (
+                      <>
+                        <MdWarning className="shrink-0 text-lg ui-live-alert-icon mt-0.5" />
+                        <span className="min-w-0 flex-1">
+                          <span className="font-semibold">{a.title}: </span>
+                          {a.message}
+                          {a.linkTo && a.linkLabel ? (
+                            <span className="block mt-1 text-xs font-semibold ui-live-alert-link underline-offset-2 group-hover:underline">
+                              {a.linkLabel}
+                            </span>
+                          ) : null}
                         </span>
-                      ) : null}
-                    </span>
-                  </>
-                );
-                const alertClass = `flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 ${
-                  a.severity === 'warning' ? 'ui-live-alert-warning' : 'ui-live-alert-info'
-                }${a.linkTo ? ' group cursor-pointer hover:brightness-[0.98] transition' : ''}`;
+                      </>
+                    );
+                    const alertClass = `flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 ${
+                      a.severity === 'warning' ? 'ui-live-alert-warning' : 'ui-live-alert-info'
+                    }${a.linkTo ? ' group cursor-pointer hover:brightness-[0.98] transition' : ''}`;
 
-                return (
-                  <li key={a.id}>
-                    {a.linkTo ? (
-                      <Link to={a.linkTo} className={alertClass} title={a.linkLabel || a.title}>
-                        {alertBody}
-                      </Link>
-                    ) : (
-                      <div className={alertClass}>{alertBody}</div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="text-xs text-[var(--ui-muted)] border-t border-[color:var(--ui-border)] pt-3">Sin alertas operativas en este momento.</p>
-          )}
+                    return (
+                      <li key={a.id}>
+                        {a.linkTo ? (
+                          <Link to={a.linkTo} className={alertClass} title={a.linkLabel || a.title}>
+                            {alertBody}
+                          </Link>
+                        ) : (
+                          <div className={alertClass}>{alertBody}</div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-xs text-[var(--ui-muted)]">Sin alertas operativas en este momento.</p>
+              )}
+            </div>
+            <Link
+              to="/admin/indicadores?tab=alertas"
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] transition-colors"
+              title="Ver alertas en Indicadores"
+            >
+              <MdNotificationsActive className="text-base text-[var(--ui-accent)]" />
+              Alertas
+              {visibleOperationalAlerts.length > 0 ? (
+                <span className="min-w-[1.15rem] h-[1.15rem] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold inline-flex items-center justify-center tabular-nums">
+                  {visibleOperationalAlerts.length > 99 ? '99+' : visibleOperationalAlerts.length}
+                </span>
+              ) : null}
+            </Link>
+          </div>
           </>
         ) : null}
       </div>

@@ -613,6 +613,10 @@ export default function POSPanel() {
     );
   }, [cajaStations, adminAttachedRegisterId]);
   const adminRegisterContextLive = Boolean(adminAttachedStation?.open_register?.id);
+  /** Solo con 2+ cajas activas el admin puede cambiar de caja. */
+  const canSwitchCaja = isPosAdmin && cajaStations.length > 1 && Boolean(adminAttachedRegisterId);
+  /** Admin opera el mapa solo con caja elegida; cajero con su turno abierto. */
+  const posRegisterReady = isPosAdmin ? adminRegisterContextLive : Boolean(register);
   const openCajaView = useCallback(
     (view) => {
       const allowed = cajaOptionsForRole.some((o) => o.id === view);
@@ -626,20 +630,33 @@ export default function POSPanel() {
   const loadData = async (opts = {}) => {
     try {
       const posRole = String(posUserRef.current?.role || '').toLowerCase();
-      const adminRid =
+      let adminRid =
         opts.adminRegisterOverride !== undefined
           ? String(opts.adminRegisterOverride || '').trim()
           : String(adminRegisterIdRef.current || '').trim();
+      const stationsResEarly = await api.get('/pos/caja-stations').catch(() => null);
+      const stationsList = Array.isArray(stationsResEarly?.stations) ? stationsResEarly.stations : [];
+      setCajaStations(stationsList);
+      /** Una sola caja activa: adjuntar automáticamente el turno abierto (sin botón Cambiar caja). */
+      if (posRole === 'admin' && !adminRid && stationsList.length === 1) {
+        const onlyOpenId = String(stationsList[0]?.open_register?.id || '').trim();
+        if (onlyOpenId) {
+          adminRid = onlyOpenId;
+          persistAdminRegisterId(onlyOpenId);
+          setAdminRegisterId(onlyOpenId);
+        }
+      }
       const currentRegPath =
-        posRole === 'admin' && adminRid
-          ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`
+        posRole === 'admin'
+          ? (adminRid
+            ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`
+            : null)
           : '/pos/current-register';
-      const [tablesData, salonesRes, reg, status, stationsRes, prods, cats, modifiersData, combosData, cfg, paymentMethodsRes, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
+      const [tablesData, salonesRes, regRaw, status, prods, cats, modifiersData, combosData, cfg, paymentMethodsRes, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
         api.get('/tables'),
         api.get('/tables/salones').catch(() => ({ salones: [] })),
-        api.get(currentRegPath),
+        currentRegPath ? api.get(currentRegPath).catch(() => null) : Promise.resolve(null),
         api.get('/pos/register-status'),
-        api.get('/pos/caja-stations').catch(() => null),
         api.get('/products?active_only=true&available_now=true'),
         api.get('/categories/active'),
         api.get('/admin-modules/modifiers').catch(() => []),
@@ -651,38 +668,31 @@ export default function POSPanel() {
         api.get('/orders?limit=600').catch(() => []),
         api.get('/restaurant').catch(() => null),
       ]);
-      setCajaStations(Array.isArray(stationsRes?.stations) ? stationsRes.stations : []);
-      let regResolved = reg;
+      const stationsRes = stationsResEarly;
+      let regResolved = regRaw;
       let adminRegisterStillOpen = false;
       if (posRole === 'admin' && adminRid && !regResolved) {
-        const stations = Array.isArray(stationsRes?.stations) ? stationsRes.stations : [];
-        adminRegisterStillOpen = stations.some((s) => String(s.open_register?.id || '') === adminRid);
+        adminRegisterStillOpen = stationsList.some((s) => String(s.open_register?.id || '') === adminRid);
         if (adminRegisterStillOpen) {
-          try {
-            regResolved = await api.get(
-              `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`,
-            );
-          } catch {
-            /* noop */
-          }
-          if (!regResolved) {
-            const st = stations.find((s) => String(s.open_register?.id || '') === adminRid);
-            const op = st?.open_register;
-            if (op) {
-              regResolved = {
-                id: adminRid,
-                caja_station_id: st.id,
-                user_id: op.user_id,
-                cajero_name: op.cajero_name,
-                opened_at: op.opened_at,
-              };
-            }
+          const st = stationsList.find((s) => String(s.open_register?.id || '') === adminRid);
+          const op = st?.open_register;
+          if (op) {
+            regResolved = {
+              id: adminRid,
+              caja_station_id: st.id,
+              user_id: op.user_id,
+              cajero_name: op.cajero_name,
+              opened_at: op.opened_at,
+            };
           }
         }
         if (!regResolved && stationsRes != null && !adminRegisterStillOpen) {
           persistAdminRegisterId('');
           setAdminRegisterId('');
         }
+      }
+      if (posRole === 'admin' && !adminRid) {
+        regResolved = null;
       }
       setPrintRestaurantInfo({
         name: String(restaurantRes?.name || '').trim(),
@@ -1165,6 +1175,7 @@ export default function POSPanel() {
   const clearAdminRegisterContext = async () => {
     persistAdminRegisterId('');
     setAdminRegisterId('');
+    setRegister(null);
     await loadData({ adminRegisterOverride: '' });
   };
 
@@ -3066,7 +3077,7 @@ export default function POSPanel() {
     <div>
       <div className="mb-3">
       {activeCajaOption === 'cobrar' && (
-        register || (isPosAdmin && adminRegisterContextLive) ? (
+        posRegisterReady ? (
         <>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h2 className="font-semibold text-slate-700 flex items-center gap-2 text-base sm:text-lg min-w-0">
@@ -3111,7 +3122,7 @@ export default function POSPanel() {
               Delivery
             </button>
           ) : null}
-          {isPosAdmin && adminAttachedRegisterId ? (
+          {canSwitchCaja ? (
             <button
               type="button"
               onClick={() => void clearAdminRegisterContext()}
@@ -3818,7 +3829,7 @@ export default function POSPanel() {
                           />
                         </div>
                       ))}
-                      <p className={`text-xs ${Math.abs(multiPaySumProof - cartTotal) <= 0.05 ? 'text-emerald-400' : 'text-amber-300'}`}>
+                      <p className={`text-xs font-semibold ${Math.abs(multiPaySumProof - cartTotal) <= 0.05 ? 'text-emerald-700' : 'text-red-600'}`}>
                         Suma: {formatCurrency(multiPaySumProof)} · Total {formatCurrency(cartTotal)}
                       </p>
                     </div>
@@ -3867,12 +3878,13 @@ export default function POSPanel() {
                         placeholder="0.00"
                       />
                     </div>
-                    <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/35 p-2 text-sm">
-                      <p className="text-[#9CA3AF]">
-                        Vuelto: <span className="font-bold text-emerald-300">{formatCurrency(quickSaleChange)}</span>
+                    <div className="text-sm py-0.5">
+                      <p className="text-[var(--ui-muted)]">
+                        Vuelto:{' '}
+                        <span className="font-bold text-emerald-700 tabular-nums">{formatCurrency(quickSaleChange)}</span>
                       </p>
                       {quickSaleMissing > 0 && (
-                        <p className="text-xs text-red-400 mt-1">Falta: {formatCurrency(quickSaleMissing)}</p>
+                        <p className="text-xs font-semibold text-red-600 mt-1">Falta: {formatCurrency(quickSaleMissing)}</p>
                       )}
                     </div>
                   </>
@@ -4607,7 +4619,7 @@ export default function POSPanel() {
                               />
                             </div>
                           ))}
-                          <p className={`text-xs ${Math.abs(multiPaySumProof - payableTotal) <= 0.05 ? 'text-emerald-400' : 'text-amber-300'}`}>
+                          <p className={`text-xs font-semibold ${Math.abs(multiPaySumProof - payableTotal) <= 0.05 ? 'text-emerald-700' : 'text-red-600'}`}>
                             Suma: {formatCurrency(multiPaySumProof)} · Debe ser {formatCurrency(payableTotal)}
                           </p>
                         </div>
@@ -4715,15 +4727,15 @@ export default function POSPanel() {
                           disabled={multiPayEnabled || paymentMethod !== 'efectivo'}
                         />
                       </div>
-                      <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/35 px-3 py-2 flex flex-col justify-center">
-                        <p className="text-xs text-[#9CA3AF]">Vuelto</p>
-                        <p className="text-lg font-bold text-emerald-300 tabular-nums">
+                      <div className="flex flex-col justify-center py-0.5">
+                        <p className="text-xs text-[var(--ui-muted)]">Vuelto</p>
+                        <p className="text-lg font-bold text-emerald-700 tabular-nums">
                           {!multiPayEnabled && paymentMethod === 'efectivo'
                             ? formatCurrency(Math.max(0, receivedAmount - payableTotal))
                             : formatCurrency(0)}
                         </p>
                         {!multiPayEnabled && paymentMethod === 'efectivo' && receivedAmount < payableTotal && (
-                          <p className="text-xs text-red-400">Falta: {formatCurrency(payableTotal - receivedAmount)}</p>
+                          <p className="text-xs font-semibold text-red-600">Falta: {formatCurrency(payableTotal - receivedAmount)}</p>
                         )}
                       </div>
                     </div>

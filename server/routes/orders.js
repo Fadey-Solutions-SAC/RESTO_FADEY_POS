@@ -182,6 +182,12 @@ router.get('/kitchen', authenticateToken, (req, res) => {
   query += ' ORDER BY created_at ASC';
 
   const orders = queryAll(query, params);
+  try {
+    const { syncOperationalDelays } = require('../services/operationalDelayService');
+    syncOperationalDelays();
+  } catch (_) {
+    /* ignore */
+  }
   const filtered = filterKitchenOrdersForStation(orders, stationRequested, getOrderItemsWithArea);
   res.json(
     filtered.map(({ order: o, stationItems }) => {
@@ -908,6 +914,12 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
   }
 
   const updated = getOrderWithItems(req.params.id);
+  try {
+    const { syncOperationalDelays } = require('../services/operationalDelayService');
+    syncOperationalDelays();
+  } catch (_) {
+    /* no bloquear cambio de estado */
+  }
   const io = req.app.get('io');
   if (io) {
     io.emit('order-update', updated);

@@ -113,7 +113,10 @@ function buildGeneralKpis(from, to) {
     orders_month: Number(monthMetrics.orders || 0),
     net_profit_approx: Number(financeMonth.approx_profit || 0),
     gross_margin_approx: Number(financeMonth.approx_gross_margin || 0),
-    operating_expenses: Number(financeMonth.losses_combined_total || 0) + Number(financeMonth.purchases_total || 0),
+    operating_expenses:
+      Number(financeMonth.losses_combined_total || 0)
+      + Number(financeMonth.purchases_total || 0)
+      + Number(financeMonth.kardex_cogs_total || 0),
     total_revenue_month: salesMonth,
     avg_ticket: paidToday > 0 ? salesToday / paidToday : 0,
     active_orders: Number(activeOrders?.c || 0),
@@ -128,7 +131,10 @@ function buildGeneralKpis(from, to) {
     growth_month_pct: Math.round(growthPct * 10) / 10,
     register_open: Boolean(op.summary?.registerOpen),
     staff_on_shift: Number(openSessions?.c || 0),
-    operating_expenses_period: Number(financeMonth.losses_combined_total || 0) + Number(financeMonth.purchases_total || 0),
+    operating_expenses_period:
+      Number(financeMonth.losses_combined_total || 0)
+      + Number(financeMonth.purchases_total || 0)
+      + Number(financeMonth.kardex_cogs_total || 0),
   };
 }
 
@@ -143,6 +149,14 @@ function buildFinancialSection(from, to) {
      WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL} BETWEEN date(?) AND date(?)`,
     params
   );
+  /** Costo de insumos consumidos en ventas (ej. 3 alitas × S/ 3 = S/ 9 por plato). */
+  const kardexCogs = queryOne(
+    `SELECT COALESCE(SUM(costo_total), 0) AS total FROM kardex
+     WHERE tipo_movimiento = 'salida'
+       AND referencia IN ('venta', 'venta_masa')
+       AND date(fecha) BETWEEN date(?) AND date(?)`,
+    params
+  );
   const cashExp = queryOne(
     `SELECT COALESCE(SUM(amount), 0) AS total FROM cash_movements
      WHERE type = 'expense' AND date(datetime(created_at, 'localtime')) BETWEEN date(?) AND date(?)`,
@@ -155,9 +169,11 @@ function buildFinancialSection(from, to) {
   );
   const totalSales = Number(salesMetrics.sales || 0);
   const totalPurchases = Number(purchases?.total || 0);
+  const totalKardexCogs = Number(kardexCogs?.total || 0);
+  const investmentTotal = totalPurchases + totalKardexCogs;
   const totalExpenses = Number(cashExp?.total || 0) + Number(losses?.total || 0);
-  const gross = totalSales - totalPurchases;
-  const net = gross - totalExpenses;
+  const gross = totalSales - investmentTotal;
+  const net = totalSales - investmentTotal - totalExpenses;
 
   const paymentMethods = summarizePaymentMethodsByAccount(periodOrders);
 
@@ -181,7 +197,9 @@ function buildFinancialSection(from, to) {
     net_profit_approx: net,
     margin_pct: totalSales > 0 ? Math.round((net / totalSales) * 1000) / 10 : 0,
     purchases_total: totalPurchases,
-    operating_expenses: totalExpenses,
+    kardex_cogs_total: totalKardexCogs,
+    /** Compras + costo de insumos en ventas + caja/pérdidas (inversión y gastos del período). */
+    operating_expenses: totalExpenses + investmentTotal,
     cash_flow_in: Number(cashFlow?.income || 0),
     cash_flow_out: Number(cashFlow?.expense || 0),
     payment_methods: paymentMethods || [],
@@ -230,9 +248,30 @@ function compareSalesPeriods(from, to) {
   return { current: curS, previous: prevS, change_pct: pct };
 }
 
+function mapOrderDetailRow(o) {
+  return {
+    id: o.id,
+    order_number: o.order_number,
+    table_number: o.table_number || '',
+    type: o.type || 'dine_in',
+    status: o.status,
+    total: Number(o.total || 0),
+    created_at: o.created_at,
+    updated_at: o.updated_at,
+  };
+}
+
 function buildOperationalSection(from, to) {
   const reports = getReportsHelpers();
   const op = reports.buildOperationalIntelligence?.({ role: 'admin' }) || {};
+  let delaySvc = null;
+  try {
+    delaySvc = require('./operationalDelayService');
+    delaySvc.syncOperationalDelays();
+  } catch (err) {
+    console.warn('[indicators] operational delays sync:', err.message || err);
+  }
+
   const kitchenAvg = queryOne(
     `SELECT AVG((julianday(COALESCE(updated_at, created_at)) - julianday(created_at)) * 24 * 60) AS avg_min
      FROM orders WHERE status = 'delivered' AND type != 'delivery'
@@ -243,17 +282,18 @@ function buildOperationalSection(from, to) {
      FROM delivery_assignments WHERE status = 'delivered' AND delivered_at IS NOT NULL
        AND date(datetime(assigned_at, 'localtime')) >= date('now', 'localtime', '-7 days')`
   );
-  const delayedKitchen = queryOne(
-    `SELECT COUNT(*) AS c FROM orders WHERE status IN ('pending','preparing')
-     AND (
-       (status = 'pending' AND (julianday('now') - julianday(created_at)) * 24 * 60 > 15)
-       OR (status = 'preparing' AND (julianday('now') - julianday(COALESCE(preparing_at, updated_at, created_at))) * 24 * 60 > 25)
-     )`
-  );
-  const delayedDelivery = queryOne(
-    `SELECT COUNT(*) AS c FROM delivery_assignments WHERE status != 'delivered'
-     AND (julianday('now') - julianday(assigned_at)) * 24 * 60 > 35`
-  );
+
+  const delayedKitchenBarPeriod = delaySvc
+    ? delaySvc.countDelayEvents({ stations: ['cocina', 'bar'], from, to })
+    : 0;
+  const delayedKitchenBarOpen = delaySvc
+    ? delaySvc.countOpenDelays(['cocina', 'bar'])
+    : 0;
+  const delayedDeliveryPeriod = delaySvc
+    ? delaySvc.countDelayEvents({ stations: ['delivery'], from, to })
+    : 0;
+  const delayedDeliveryOpen = delaySvc ? delaySvc.countOpenDelays(['delivery']) : 0;
+
   const delParams = [];
   const delFilter = `${O_DATE} >= date(?) AND ${O_DATE} <= date(?)`;
   delParams.push(from, to);
@@ -278,18 +318,65 @@ function buildOperationalSection(from, to) {
   );
   const tableOrders = mesaAccounts.length;
 
+  const activeOrders = queryAll(
+    `SELECT id, order_number, table_number, type, status, total, created_at, updated_at
+     FROM orders WHERE status IN ('pending', 'preparing')
+     ORDER BY datetime(created_at) DESC LIMIT 40`
+  ).map(mapOrderDetailRow);
+  const pendingOrders = queryAll(
+    `SELECT id, order_number, table_number, type, status, total, created_at, updated_at
+     FROM orders WHERE status = 'pending'
+     ORDER BY datetime(created_at) DESC LIMIT 40`
+  ).map(mapOrderDetailRow);
+  const readyOrders = queryAll(
+    `SELECT id, order_number, table_number, type, status, total, created_at, updated_at
+     FROM orders WHERE status = 'ready'
+     ORDER BY datetime(updated_at) DESC LIMIT 40`
+  ).map(mapOrderDetailRow);
+  const deliveredOrders = queryAll(
+    `SELECT o.id, o.order_number, o.table_number, o.type, o.status, o.total, o.created_at, o.updated_at
+     FROM orders o WHERE o.status = 'delivered' AND ${delFilter}
+     ORDER BY datetime(COALESCE(o.updated_at, o.created_at)) DESC LIMIT 40`,
+    delParams
+  ).map(mapOrderDetailRow);
+  const reservations = queryAll(
+    `SELECT id, client_name, guests, date, time, status, table_id, phone
+     FROM reservations
+     WHERE status IN ('confirmed','pending','completed')
+       AND date BETWEEN date(?) AND date(?)
+     ORDER BY date ASC, time ASC LIMIT 40`,
+    [from, to]
+  );
+
   return {
     summary: op.summary || {},
     alerts: op.operationalAlerts || [],
     insight_today: op.insightToday || '',
     avg_kitchen_minutes: Math.round(Number(kitchenAvg?.avg_min || 0)),
     avg_delivery_minutes: Math.round(Number(deliveryAvg?.avg_min || 0)),
-    orders_delayed_kitchen: Number(delayedKitchen?.c || 0),
-    orders_delayed_delivery: Number(delayedDelivery?.c || 0),
+    /** Histórico del período (cocina + bar). */
+    orders_delayed_kitchen: delayedKitchenBarPeriod,
+    orders_delayed_kitchen_bar: delayedKitchenBarPeriod,
+    orders_delayed_kitchen_bar_open: delayedKitchenBarOpen,
+    orders_delayed_delivery: delayedDeliveryPeriod,
+    orders_delayed_delivery_open: delayedDeliveryOpen,
     orders_delivered_period: Number(deliveredPeriod?.c || 0),
     reservations_period: Number(reservationsPeriod?.c || 0),
     table_rotation_avg: tables.size > 0 ? Math.round((tableOrders / tables.size) * 10) / 10 : 0,
     low_stock: op.lowStock || [],
+    details: {
+      active_orders: activeOrders,
+      pending: pendingOrders,
+      ready: readyOrders,
+      delays_kitchen_bar: delaySvc
+        ? delaySvc.listDelayEvents({ stations: ['cocina', 'bar'], from, to })
+        : [],
+      delays_delivery: delaySvc
+        ? delaySvc.listDelayEvents({ stations: ['delivery'], from, to })
+        : [],
+      delivered: deliveredOrders,
+      reservations,
+    },
   };
 }
 
@@ -440,20 +527,30 @@ function buildUnifiedAlerts(payload) {
       message: `${payload.inventory.oos_count} sin stock`,
     });
   }
-  if (payload.operational?.orders_delayed_kitchen > 2) {
+  const kitchenBarOpen = Number(
+    payload.operational?.orders_delayed_kitchen_bar_open
+      ?? payload.operational?.orders_delayed_kitchen
+      ?? 0
+  );
+  if (kitchenBarOpen > 2) {
     push({
       id: 'kitchen-delay',
       severity: 'warning',
-      title: 'Cocina saturada',
-      message: `${payload.operational.orders_delayed_kitchen} pedidos con demora`,
+      title: 'Cocina/bar saturada',
+      message: `${kitchenBarOpen} pedidos con demora en cocina/bar`,
     });
   }
-  if (payload.operational?.orders_delayed_delivery > 1) {
+  const deliveryOpen = Number(
+    payload.operational?.orders_delayed_delivery_open
+      ?? payload.operational?.orders_delayed_delivery
+      ?? 0
+  );
+  if (deliveryOpen > 1) {
     push({
       id: 'delivery-delay',
       severity: 'warning',
       title: 'Delivery demorado',
-      message: `${payload.operational.orders_delayed_delivery} repartos pendientes`,
+      message: `${deliveryOpen} repartos con demora`,
     });
   }
   const cmp = payload.financial?.comparison_prev_period;

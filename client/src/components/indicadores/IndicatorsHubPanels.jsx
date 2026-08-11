@@ -24,8 +24,10 @@ import {
   AreaChart,
   Area,
 } from 'recharts';
-import { formatCurrency } from '../../utils/api';
+import { useState } from 'react';
+import { formatCurrency, formatDateTime } from '../../utils/api';
 import IndicatorStatCard from './IndicatorStatCard';
+import Modal from '../Modal';
 
 const COLORS = ['#de3024', '#f04438', '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b'];
 
@@ -118,23 +120,197 @@ export function IndicatorsFinancialPanel({ data }) {
   );
 }
 
+function orderTypeLabel(type) {
+  if (type === 'delivery') return 'Delivery';
+  if (type === 'pickup') return 'Llevar';
+  return 'Salón';
+}
+
+function OperationalDetailBody({ detailKey, rows }) {
+  if (!rows?.length) {
+    return <p className="text-sm text-[var(--ui-muted)] py-4 text-center">Sin registros en este período.</p>;
+  }
+  if (detailKey === 'delays_kitchen_bar' || detailKey === 'delays_delivery') {
+    return (
+      <div className="overflow-x-auto max-h-[60vh]">
+        <table className="w-full text-sm min-w-[560px]">
+          <thead>
+            <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
+              <th className="py-2 pr-2">Pedido</th>
+              <th className="py-2 pr-2">Estación</th>
+              <th className="py-2 pr-2">Mesa</th>
+              <th className="py-2 pr-2">Min</th>
+              <th className="py-2 pr-2">Límite</th>
+              <th className="py-2 pr-2">Detectado</th>
+              <th className="py-2">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-[color:var(--ui-border)] last:border-0">
+                <td className="py-2 pr-2 font-medium">#{r.order_number || '—'}</td>
+                <td className="py-2 pr-2 capitalize">{r.station || '—'}</td>
+                <td className="py-2 pr-2">{r.table_number || '—'}</td>
+                <td className="py-2 pr-2 tabular-nums">{r.elapsed_minutes ?? '—'}</td>
+                <td className="py-2 pr-2 tabular-nums">{r.threshold_minutes ?? '—'}</td>
+                <td className="py-2 pr-2 whitespace-nowrap">{formatDateTime(r.detected_at)}</td>
+                <td className="py-2">
+                  <span className={r.active ? 'text-amber-600 font-medium' : 'text-[var(--ui-muted)]'}>
+                    {r.active ? 'Activo' : 'Resuelto'}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  if (detailKey === 'reservations') {
+    return (
+      <div className="overflow-x-auto max-h-[60vh]">
+        <table className="w-full text-sm min-w-[480px]">
+          <thead>
+            <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
+              <th className="py-2 pr-2">Cliente</th>
+              <th className="py-2 pr-2">Fecha</th>
+              <th className="py-2 pr-2">Hora</th>
+              <th className="py-2 pr-2">Pers.</th>
+              <th className="py-2">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-[color:var(--ui-border)] last:border-0">
+                <td className="py-2 pr-2 font-medium">{r.client_name || '—'}</td>
+                <td className="py-2 pr-2">{r.date || '—'}</td>
+                <td className="py-2 pr-2">{r.time || '—'}</td>
+                <td className="py-2 pr-2">{r.guests ?? '—'}</td>
+                <td className="py-2 capitalize">{r.status || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-x-auto max-h-[60vh]">
+      <table className="w-full text-sm min-w-[520px]">
+        <thead>
+          <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
+            <th className="py-2 pr-2">Pedido</th>
+            <th className="py-2 pr-2">Tipo</th>
+            <th className="py-2 pr-2">Mesa</th>
+            <th className="py-2 pr-2">Estado</th>
+            <th className="py-2 pr-2">Total</th>
+            <th className="py-2">Creado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className="border-b border-[color:var(--ui-border)] last:border-0">
+              <td className="py-2 pr-2 font-medium">#{r.order_number || '—'}</td>
+              <td className="py-2 pr-2">{orderTypeLabel(r.type)}</td>
+              <td className="py-2 pr-2">{r.table_number || '—'}</td>
+              <td className="py-2 pr-2 capitalize">{r.status || '—'}</td>
+              <td className="py-2 pr-2 tabular-nums">{formatCurrency(r.total)}</td>
+              <td className="py-2 whitespace-nowrap">{formatDateTime(r.created_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function IndicatorsOperationalPanel({ data }) {
   const o = data?.operational || {};
   const s = o.summary || {};
+  const d = o.details || {};
+  const [detail, setDetail] = useState(null);
+
+  const openDetail = (key, title) => {
+    setDetail({ key, title, rows: d[key] || [] });
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <IndicatorStatCard label="Pedidos activos" value={s.activeOrders ?? 0} />
-        <IndicatorStatCard label="Pendientes" value={s.pendingCount ?? 0} accent="amber" />
-        <IndicatorStatCard label="Listos" value={s.readyCount ?? 0} />
-        <IndicatorStatCard label="Tiempo cocina (7d)" value={`${o.avg_kitchen_minutes ?? 0} min`} />
-        <IndicatorStatCard label="Tiempo delivery (7d)" value={`${o.avg_delivery_minutes ?? 0} min`} />
-        <IndicatorStatCard label="Retraso cocina" value={o.orders_delayed_kitchen ?? 0} accent="amber" />
-        <IndicatorStatCard label="Retraso delivery" value={o.orders_delayed_delivery ?? 0} accent="amber" />
-        <IndicatorStatCard label="Entregados período" value={o.orders_delivered_period ?? 0} accent="emerald" />
-        <IndicatorStatCard label="Reservas" value={o.reservations_period ?? 0} />
-        <IndicatorStatCard label="Rotación mesas" value={o.table_rotation_avg ?? 0} />
+        <IndicatorStatCard
+          label="Pedidos activos"
+          value={s.activeOrders ?? 0}
+          onClick={() => openDetail('active_orders', 'Pedidos activos')}
+        />
+        <IndicatorStatCard
+          label="Pendientes"
+          value={s.pendingCount ?? 0}
+          accent="amber"
+          onClick={() => openDetail('pending', 'Pedidos pendientes')}
+        />
+        <IndicatorStatCard
+          label="Listos"
+          value={s.readyCount ?? 0}
+          onClick={() => openDetail('ready', 'Pedidos listos')}
+        />
+        <IndicatorStatCard
+          label="Tiempo cocina (7d)"
+          value={`${o.avg_kitchen_minutes ?? 0} min`}
+          sub="Solo informativo"
+        />
+        <IndicatorStatCard
+          label="Tiempo delivery (7d)"
+          value={`${o.avg_delivery_minutes ?? 0} min`}
+          sub="Solo informativo"
+        />
+        <IndicatorStatCard
+          label="Retraso cocina/bar"
+          value={o.orders_delayed_kitchen_bar ?? o.orders_delayed_kitchen ?? 0}
+          sub={
+            Number(o.orders_delayed_kitchen_bar_open || 0) > 0
+              ? `${o.orders_delayed_kitchen_bar_open} activos ahora`
+              : 'Registrados en el período'
+          }
+          accent="amber"
+          onClick={() => openDetail('delays_kitchen_bar', 'Retrasos cocina/bar')}
+        />
+        <IndicatorStatCard
+          label="Retraso delivery"
+          value={o.orders_delayed_delivery ?? 0}
+          sub={
+            Number(o.orders_delayed_delivery_open || 0) > 0
+              ? `${o.orders_delayed_delivery_open} activos ahora`
+              : 'Registrados en el período'
+          }
+          accent="amber"
+          onClick={() => openDetail('delays_delivery', 'Retrasos delivery')}
+        />
+        <IndicatorStatCard
+          label="Entregados período"
+          value={o.orders_delivered_period ?? 0}
+          accent="emerald"
+          onClick={() => openDetail('delivered', 'Entregados del período')}
+        />
+        <IndicatorStatCard
+          label="Reservas"
+          value={o.reservations_period ?? 0}
+          onClick={() => openDetail('reservations', 'Reservas del período')}
+        />
+        <IndicatorStatCard
+          label="Rotación mesas"
+          value={o.table_rotation_avg ?? 0}
+          sub="Solo informativo"
+        />
       </div>
+
+      <Modal
+        isOpen={Boolean(detail)}
+        onClose={() => setDetail(null)}
+        title={detail?.title || 'Detalle'}
+        size="lg"
+      >
+        {detail ? <OperationalDetailBody detailKey={detail.key} rows={detail.rows} /> : null}
+      </Modal>
     </div>
   );
 }

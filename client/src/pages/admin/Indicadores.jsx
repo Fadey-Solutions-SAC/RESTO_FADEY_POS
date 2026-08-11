@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, formatInstantTime } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { getPresetRange } from '../../utils/indicatorsDatePresets';
@@ -46,8 +47,12 @@ const TABS = [
   { id: 'ia', label: 'IA analítica', icon: MdPsychology },
 ];
 
+const TAB_IDS = new Set(TABS.map((t) => t.id));
+
 export default function Indicadores() {
-  const [tab, setTab] = useState('general');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = String(searchParams.get('tab') || '').trim();
+  const [tab, setTab] = useState(() => (TAB_IDS.has(tabFromUrl) ? tabFromUrl : 'general'));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -57,6 +62,19 @@ export default function Indicadores() {
   const [livePulse, setLivePulse] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const debounceRef = useRef(null);
+
+  useEffect(() => {
+    const next = String(searchParams.get('tab') || '').trim();
+    if (TAB_IDS.has(next) && next !== tab) setTab(next);
+  }, [searchParams, tab]);
+
+  const selectTab = (id) => {
+    setTab(id);
+    const next = new URLSearchParams(searchParams);
+    if (id && id !== 'general') next.set('tab', id);
+    else next.delete('tab');
+    setSearchParams(next, { replace: true });
+  };
 
   const loadHub = useCallback(async (soft = false) => {
     if (!soft) setLoading(true);
@@ -208,7 +226,7 @@ export default function Indicadores() {
           <button
             key={t.id}
             type="button"
-            onClick={() => setTab(t.id)}
+            onClick={() => selectTab(t.id)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition ${
               tab === t.id
                 ? 'bg-gold-600 text-white border-gold-600'
