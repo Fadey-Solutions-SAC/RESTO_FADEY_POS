@@ -3588,63 +3588,63 @@ export default function POSPanel() {
         <button
           type="button"
           onClick={() => openCajaView('reservas')}
-          className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0 hover:border-indigo-300"
+          className="card flex flex-row items-center gap-2.5 px-3 py-2.5 min-h-[3.75rem] hover:border-indigo-300"
         >
-          <div className="w-7 h-7 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
-            <MdReceipt className="text-indigo-600 text-base" />
+          <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdReceipt className="text-indigo-600 text-xl" />
           </div>
           <div className="min-w-0 text-left">
-            <p className="text-[10px] leading-tight ui-text-muted">Reservas</p>
-            <p className="text-sm font-bold text-indigo-700 leading-tight tabular-nums">{reservationQueue.length}</p>
+            <p className="text-xs leading-tight ui-text-muted">Reservas</p>
+            <p className="text-base font-bold text-indigo-700 leading-tight tabular-nums">{reservationQueue.length}</p>
           </div>
         </button>
         )}
-        <div className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0">
-          <div className="w-7 h-7 bg-sky-100 rounded-lg flex items-center justify-center shrink-0">
-            <MdTableRestaurant className="text-sky-600 text-base" />
+        <div className="card flex flex-row items-center gap-2.5 px-3 py-2.5 min-h-[3.75rem]">
+          <div className="w-10 h-10 bg-sky-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdTableRestaurant className="text-sky-600 text-xl" />
           </div>
           <div className="min-w-0 text-left">
-            <p className="text-[10px] leading-tight ui-text-muted">Total Mesas</p>
-            <p className="text-sm font-bold leading-tight tabular-nums">{mesaPhysicalTables.length}</p>
+            <p className="text-xs leading-tight ui-text-muted">Total Mesas</p>
+            <p className="text-base font-bold leading-tight tabular-nums">{mesaPhysicalTables.length}</p>
           </div>
         </div>
-        <div className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0">
-          <div className="w-7 h-7 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
-            <MdPeople className="text-red-600 text-base" />
+        <div className="card flex flex-row items-center gap-2.5 px-3 py-2.5 min-h-[3.75rem]">
+          <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdPeople className="text-red-600 text-xl" />
           </div>
           <div className="min-w-0 text-left">
-            <p className="text-[10px] leading-tight ui-text-muted">Ocupadas</p>
-            <p className="text-sm font-bold text-red-600 leading-tight tabular-nums">{occupiedTables.length}</p>
+            <p className="text-xs leading-tight ui-text-muted">Ocupadas</p>
+            <p className="text-base font-bold text-red-600 leading-tight tabular-nums">{occupiedTables.length}</p>
           </div>
         </div>
-        <div className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0">
-          <div className="w-7 h-7 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
-            <MdCheckCircle className="text-emerald-600 text-base" />
+        <div className="card flex flex-row items-center gap-2.5 px-3 py-2.5 min-h-[3.75rem]">
+          <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdCheckCircle className="text-emerald-600 text-xl" />
           </div>
           <div className="min-w-0 text-left">
-            <p className="text-[10px] leading-tight ui-text-muted">Disponibles</p>
-            <p className="text-sm font-bold text-emerald-600 leading-tight tabular-nums">{mesaPhysicalTables.length - occupiedTables.length}</p>
+            <p className="text-xs leading-tight ui-text-muted">Disponibles</p>
+            <p className="text-base font-bold text-emerald-600 leading-tight tabular-nums">{mesaPhysicalTables.length - occupiedTables.length}</p>
           </div>
         </div>
-        <div className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0">
-          <div className="w-7 h-7 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
-            <MdAttachMoney className="text-emerald-600 text-base" />
+        <div className="card flex flex-row items-center gap-2.5 px-3 py-2.5 min-h-[3.75rem]">
+          <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdAttachMoney className="text-emerald-600 text-xl" />
           </div>
           <div className="min-w-0 text-left">
-            <p className="text-[10px] leading-tight text-emerald-600">Ventas del día</p>
-            <p className="text-sm font-bold text-emerald-700 leading-tight tabular-nums">{formatCurrency(todaySales)}</p>
+            <p className="text-xs leading-tight text-emerald-600">Ventas del día</p>
+            <p className="text-base font-bold text-emerald-700 leading-tight tabular-nums">{formatCurrency(todaySales)}</p>
           </div>
         </div>
         <button
           type="button"
           onClick={prepareClose}
           disabled={!register}
-          className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0 hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="card flex flex-row items-center gap-2.5 px-3 py-2.5 min-h-[3.75rem] hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <div className="w-7 h-7 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
-            <MdClose className="text-red-600 text-base" />
+          <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdClose className="text-red-600 text-xl" />
           </div>
-          <p className="text-sm font-bold text-red-700 leading-tight">Cerrar Caja</p>
+          <p className="text-base font-bold text-red-700 leading-tight">Cerrar Caja</p>
         </button>
       </div>
         </>
