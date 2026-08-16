@@ -313,6 +313,20 @@ function syncAreaUserLinksFromUsers() {
   return saveProductionAreas(next);
 }
 
+/** Convierte encargados ya vinculados (incl. mozos) al rol de producción o bar/cocina. */
+function syncEncargadoUserRoles() {
+  const { assignUserProductionRole } = require('../database');
+  for (const area of readProductionAreas()) {
+    for (const uid of area.encargado_user_ids || []) {
+      try {
+        assignUserProductionRole(uid, area.id);
+      } catch (err) {
+        console.warn('[production-areas] rol encargado:', err.message || err);
+      }
+    }
+  }
+}
+
 /**
  * @param {string} orderId
  * @param {string} areaId
@@ -401,4 +415,5 @@ module.exports = {
   getOrderStationStates,
   ensureSalonesHaveCajaId,
   normalizeProductionAreasList,
+  syncEncargadoUserRoles,
 };

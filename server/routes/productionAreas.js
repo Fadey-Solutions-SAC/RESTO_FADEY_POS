@@ -8,14 +8,17 @@ const {
   deleteProductionArea,
   syncAreaUserLinksFromUsers,
   listActiveProductionAreas,
+  syncEncargadoUserRoles,
 } = require('../services/productionAreasService');
-const { queryAll } = require('../database');
+const { queryAll, assignUserProductionRole } = require('../database');
 
 const router = express.Router();
 
 router.get('/', authenticateToken, (req, res) => {
   try {
     ensureProductionAreasSeeded();
+    syncEncargadoUserRoles();
+    try { syncAreaUserLinksFromUsers(); } catch (_) { /* ignore */ }
     const areas = readProductionAreas();
     return res.json(areas);
   } catch (err) {
@@ -40,12 +43,8 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
       encargado_user_ids: req.body?.encargado_user_ids,
     });
     const encargados = Array.isArray(req.body?.encargado_user_ids) ? req.body.encargado_user_ids : [];
-    const { runSql } = require('../database');
     for (const uid of encargados) {
-      runSql(
-        `UPDATE users SET role = 'produccion', production_area_id = ? WHERE id = ?`,
-        [row.id, uid]
-      );
+      assignUserProductionRole(uid, row.id);
     }
     try { syncAreaUserLinksFromUsers(); } catch (_) { /* ignore */ }
     return res.status(201).json(row);
@@ -77,12 +76,10 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
         }
       }
       for (const uid of encargados) {
-        runSql(
-          `UPDATE users SET role = 'produccion', production_area_id = ? WHERE id = ?`,
-          [row.id, uid]
-        );
+        assignUserProductionRole(uid, row.id);
       }
     }
+    try { syncEncargadoUserRoles(); } catch (_) { /* ignore */ }
     try { syncAreaUserLinksFromUsers(); } catch (_) { /* ignore */ }
     return res.json(updateProductionArea(req.params.id, {}));
   } catch (err) {
@@ -102,6 +99,8 @@ router.delete('/:id', authenticateToken, requireRole('admin'), (req, res) => {
 
 router.get('/candidates/users', authenticateToken, requireRole('admin'), (req, res) => {
   try {
+    ensureProductionAreasSeeded();
+    syncEncargadoUserRoles();
     const users = queryAll(
       `SELECT id, full_name, username, role, production_area_id, is_active
        FROM users

@@ -85,6 +85,16 @@ const ROLES = {
   delivery: { label: 'Delivery', icon: MdDeliveryDining, color: UI_BADGE.sky, desc: 'Reparto y entregas' },
 };
 
+function uiStaffRole(role) {
+  const r = String(role || '').toLowerCase();
+  if (r === 'cocina' || r === 'bar') return 'produccion';
+  return r;
+}
+
+function isProductionStaffRole(role) {
+  return ['produccion', 'cocina', 'bar'].includes(String(role || '').toLowerCase());
+}
+
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
 const DAY_NAMES = { lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles', jueves: 'Jueves', viernes: 'Viernes', sabado: 'Sábado', domingo: 'Domingo' };
 const DEFAULT_PRINTING_CONFIG = {
@@ -2800,7 +2810,7 @@ function UsersSection({
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         {Object.entries(ROLES).map(([key, role]) => {
-          const count = users.filter(u => u.role === key).length;
+          const count = users.filter((u) => uiStaffRole(u.role) === key).length;
           const Icon = role.icon;
           return (
             <div key={key} className="card flex items-center gap-3">
@@ -2823,7 +2833,7 @@ function UsersSection({
           </thead>
           <tbody>
             {users.map(u => {
-              const roleInfo = ROLES[u.role] || ROLES.mozo;
+              const roleInfo = ROLES[uiStaffRole(u.role)] || ROLES.mozo;
               const RoleIcon = roleInfo.icon;
               return (
                 <tr key={u.id} className={`border-b border-slate-50 hover:bg-slate-50 transition-colors ${!u.is_active ? 'opacity-50' : ''}`}>
@@ -2851,7 +2861,7 @@ function UsersSection({
                         Caja: {cajaNameById.get(String(u.caja_station_id).trim()) || '—'}
                       </p>
                     )}
-                    {String(u.role || '').toLowerCase() === 'produccion' && String(u.production_area_id || '').trim() && (
+                    {isProductionStaffRole(u.role) && String(u.production_area_id || '').trim() && (
                       <p className="text-[10px] text-[var(--ui-muted)] mt-1">
                         Área: {areaNameById.get(String(u.production_area_id).trim()) || u.production_area_id}
                       </p>
@@ -3014,7 +3024,7 @@ function UsersSection({
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-sm ui-text-muted">Rol actual: <span className="font-semibold text-slate-700">{ROLES[permsUser?.role]?.label}</span></p>
+                <p className="text-sm ui-text-muted">Rol actual: <span className="font-semibold text-slate-700">{ROLES[uiStaffRole(permsUser?.role)]?.label}</span></p>
                 <p className="text-xs text-[var(--ui-muted)] mt-0.5">Los módulos marcados serán accesibles para este usuario</p>
               </div>
               <button onClick={resetToDefaults} className="text-xs px-3 py-1.5 bg-slate-100 text-[var(--ui-muted)] rounded-lg hover:bg-slate-200">
@@ -3025,7 +3035,7 @@ function UsersSection({
             <div className="space-y-1 max-h-96 overflow-y-auto">
               {ALL_MODULES.map(mod => {
                 const Icon = mod.icon;
-                const isDefault = mod.defaultRoles.includes(permsUser?.role);
+                const isDefault = mod.defaultRoles.includes(uiStaffRole(permsUser?.role));
                 const isEnabled = perms[mod.id] || false;
                 return (
                   <div
@@ -3041,7 +3051,7 @@ function UsersSection({
                       </div>
                       <div>
                         <p className={`text-sm font-medium ${isEnabled ? 'text-emerald-800' : 'ui-text-muted'}`}>{mod.label}</p>
-                        {isDefault && <p className="text-[10px] text-[var(--ui-muted)]">Incluido por defecto en rol {ROLES[permsUser?.role]?.label}</p>}
+                        {isDefault && <p className="text-[10px] text-[var(--ui-muted)]">Incluido por defecto en rol {ROLES[uiStaffRole(permsUser?.role)]?.label}</p>}
                       </div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer" onClick={e => e.stopPropagation()}>

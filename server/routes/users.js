@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, queryOne, runSql, hasUsersColumn, ensureUsersSchemaColumns, ensureUsersRoleAllowsProduccion } = require('../database');
+const { queryAll, queryOne, runSql, hasUsersColumn, ensureUsersSchemaColumns, ensureUsersRoleAllowsProduccion, persistedProductionRole } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { getActiveCajaById, getFirstAutoAssignCajaId } = require('../cajaSettings');
 const { syncAreaUserLinksFromUsers } = require('../services/productionAreasService');
@@ -177,6 +177,10 @@ function listUsersRows() {
 
 router.get('/', authenticateToken, requireRole('admin'), (req, res) => {
   try {
+    try {
+      const { syncEncargadoUserRoles } = require('../services/productionAreasService');
+      syncEncargadoUserRoles();
+    } catch (_) { /* ignore */ }
     res.json(listUsersRows().map(withPublicEmail));
   } catch (err) {
     res.status(500).json({ error: err.message || 'No se pudieron listar usuarios' });
@@ -212,7 +216,9 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     const cajaStationId = cajaNorm.caja_station_id;
 
     const prodNorm = normalizeProductionFields(role, req.body || {});
-    const finalRole = prodNorm.role;
+    const finalRole = prodNorm.role === 'produccion'
+      ? persistedProductionRole(prodNorm.production_area_id)
+      : prodNorm.role;
 
     const restaurant = queryOne('SELECT id FROM restaurants LIMIT 1');
     const hash = bcrypt.hashSync(password, 10);
@@ -241,15 +247,20 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
       if (['id', 'username', 'email', 'password_hash', 'full_name', 'role'].includes(col)) return true;
       return hasUsersColumn(col);
     });
-    runSql(
-      `INSERT INTO users (${insertCols.join(', ')}) VALUES (${insertCols.map(() => '?').join(', ')})`,
-      insertCols.map((col) => insertFields[col]),
-    );
+    const insertSql = `INSERT INTO users (${insertCols.join(', ')}) VALUES (${insertCols.map(() => '?').join(', ')})`;
+    try {
+      runSql(insertSql, insertCols.map((col) => insertFields[col]));
+    } catch (insErr) {
+      const msg = String(insErr?.message || insErr || '');
+      if (prodNorm.role !== 'produccion' || !/CHECK constraint/i.test(msg)) throw insErr;
+      insertFields.role = String(prodNorm.production_area_id || '').toLowerCase() === 'bar' ? 'bar' : 'cocina';
+      runSql(insertSql, insertCols.map((col) => insertFields[col]));
+    }
     const permissionsObj =
       isMaster && finalRole === 'admin'
         ? createFullPermissions()
         : createEmptyPermissions();
-    if (finalRole === 'produccion') {
+    if (prodNorm.role === 'produccion' || ['produccion', 'cocina', 'bar'].includes(String(insertFields.role))) {
       permissionsObj.produccion = true;
       permissionsObj.cocina = true;
       permissionsObj.bar = true;
@@ -335,21 +346,30 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     const cajaStationId = cajaNorm.caja_station_id;
 
     const prodNorm = normalizeProductionFields(role, req.body || {});
+    const persistedRole = prodNorm.role === 'produccion'
+      ? persistedProductionRole(prodNorm.production_area_id)
+      : prodNorm.role;
 
     const setCols = {
       username,
       email,
       full_name: fullName,
-      role: prodNorm.role,
+      role: persistedRole,
       phone,
       is_active: isActive,
     };
     if (hasUsersColumn('caja_station_id')) setCols.caja_station_id = cajaStationId;
     const setNames = Object.keys(setCols);
-    runSql(
-      `UPDATE users SET ${setNames.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
-      [...setNames.map((c) => setCols[c]), req.params.id],
-    );
+    const updateSql = `UPDATE users SET ${setNames.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`;
+    const updateParams = [...setNames.map((c) => setCols[c]), req.params.id];
+    try {
+      runSql(updateSql, updateParams);
+    } catch (updErr) {
+      const msg = String(updErr?.message || updErr || '');
+      if (prodNorm.role !== 'produccion' || !/CHECK constraint/i.test(msg)) throw updErr;
+      setCols.role = String(prodNorm.production_area_id || '').toLowerCase() === 'bar' ? 'bar' : 'cocina';
+      runSql(updateSql, [...setNames.map((c) => setCols[c]), req.params.id]);
+    }
 
     const payrollPatch = {};
     if (req.body?.payroll_pay_mode !== undefined) {

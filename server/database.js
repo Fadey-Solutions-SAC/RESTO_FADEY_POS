@@ -1754,7 +1754,7 @@ async function initDatabase() {
           email TEXT UNIQUE NOT NULL,
           password_hash TEXT NOT NULL,
           full_name TEXT NOT NULL,
-          role TEXT NOT NULL CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery')),
+          role TEXT NOT NULL CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion')),
           restaurant_id TEXT,
           is_active INTEGER DEFAULT 1,
           phone TEXT DEFAULT '',
@@ -1820,20 +1820,16 @@ async function initDatabase() {
 
     try {
       ensureUsersRoleAllowsProduccion();
+      if (probeUsersRoleAllowsProduccion()) {
+        db.run(`UPDATE users SET role = 'produccion', production_area_id = 'cocina'
+                WHERE lower(trim(role)) = 'cocina' AND trim(coalesce(production_area_id, '')) = ''`);
+        db.run(`UPDATE users SET role = 'produccion', production_area_id = 'bar'
+                WHERE lower(trim(role)) = 'bar' AND trim(coalesce(production_area_id, '')) = ''`);
+        db.run(`UPDATE users SET role = 'produccion'
+                WHERE lower(trim(role)) IN ('cocina', 'bar')`);
+      }
     } catch (e) {
       console.warn('[migration] users produccion role:', e.message || e);
-    }
-    ensureUsersSchemaColumns();
-
-    try {
-      db.run(`UPDATE users SET role = 'produccion', production_area_id = 'cocina'
-              WHERE lower(trim(role)) = 'cocina' AND trim(coalesce(production_area_id, '')) = ''`);
-      db.run(`UPDATE users SET role = 'produccion', production_area_id = 'bar'
-              WHERE lower(trim(role)) = 'bar' AND trim(coalesce(production_area_id, '')) = ''`);
-      db.run(`UPDATE users SET role = 'produccion'
-              WHERE lower(trim(role)) IN ('cocina', 'bar')`);
-    } catch (e) {
-      console.warn('[migration] cocina/bar → produccion:', e.message || e);
     }
 
     db.run(`
@@ -2760,6 +2756,12 @@ async function initDatabase() {
 
     seedData();
     ensureOperationalUsers();
+    try {
+      const { syncEncargadoUserRoles } = require('./services/productionAreasService');
+      syncEncargadoUserRoles();
+    } catch (e) {
+      console.warn('[migration] roles de encargados de producción:', e.message || e);
+    }
     seedTables();
     seedWarehouses();
     try {
@@ -2829,30 +2831,28 @@ function readUsersTableCreateSql() {
   }
 }
 
+function isUsersRoleCheckError(err) {
+  const msg = String(err?.message || err || '');
+  return /CHECK constraint/i.test(msg) && /role/i.test(msg);
+}
+
+/** El CHECK real está en sqlite_master. Un UPDATE de prueba puede no tocar filas y dar falso positivo. */
+function usersCreateSqlAllowsProduccionRole(sql) {
+  const raw = String(sql || '');
+  if (!raw.trim()) return false;
+  const m = raw.match(/CHECK\s*\(\s*(?:["']?role["']?)\s+IN\s*\(([^)]*)\)/i);
+  if (!m) return true;
+  return /['"]produccion['"]/i.test(m[1]);
+}
+
 function probeUsersRoleAllowsProduccion() {
-  const marker = `__rf_role_probe_${Date.now()}`;
-  try {
-    db.run('SAVEPOINT rf_probe_role');
-    db.run(
-      "INSERT INTO users (id, username, email, password_hash, full_name, role) VALUES (?, ?, ?, 'x', 'x', 'produccion')",
-      [marker, marker, `${marker}@probe.local`],
-    );
-    db.run('ROLLBACK TO SAVEPOINT rf_probe_role');
-    db.run('RELEASE SAVEPOINT rf_probe_role');
-    return true;
-  } catch {
-    try { db.run('ROLLBACK TO SAVEPOINT rf_probe_role'); } catch { /* ignore */ }
-    try { db.run('RELEASE SAVEPOINT rf_probe_role'); } catch { /* ignore */ }
-    return false;
-  }
+  return usersCreateSqlAllowsProduccionRole(readUsersTableCreateSql());
 }
 
 /** El CHECK antiguo no incluye `produccion`; SQLite no deja ALTER CHECK, hay que recrear la tabla. */
 function ensureUsersRoleAllowsProduccion() {
   if (!db) return false;
-  const createSql = readUsersTableCreateSql();
-  if (createSql.includes("'produccion'")) return true;
-  if (!createSql && probeUsersRoleAllowsProduccion()) return true;
+  if (probeUsersRoleAllowsProduccion()) return true;
 
   const cols = queryAll('PRAGMA table_info(users)') || [];
   if (!cols.length) return false;
@@ -2912,6 +2912,88 @@ function ensureUsersRoleAllowsProduccion() {
     try { db.run('PRAGMA foreign_keys = ON'); } catch { /* ignore */ }
     throw err;
   }
+}
+
+function productionRoleFallback(areaId) {
+  return String(areaId || '').trim().toLowerCase() === 'bar' ? 'bar' : 'cocina';
+}
+
+function applyUserProductionArea(uid, aid, nextRole) {
+  const hasArea = hasUsersColumn('production_area_id');
+  const fallback = productionRoleFallback(aid);
+  const rolesToTry = nextRole === fallback ? [nextRole] : [nextRole, fallback];
+  let lastErr = null;
+  for (const role of rolesToTry) {
+    try {
+      if (hasArea) {
+        runSql('UPDATE users SET role = ?, production_area_id = ? WHERE id = ?', [role, aid, uid]);
+      } else {
+        runSql('UPDATE users SET role = ? WHERE id = ?', [role, uid]);
+      }
+      return role;
+    } catch (err) {
+      lastErr = err;
+      if (!isUsersRoleCheckError(err)) throw err;
+    }
+  }
+  if (lastErr) throw lastErr;
+  return nextRole;
+}
+
+function ensureProductionStaffPermissions(userId) {
+  try {
+    const row = queryOne('SELECT permissions FROM user_permissions WHERE user_id = ?', [userId]);
+    if (!row) return;
+    let perms = {};
+    try { perms = JSON.parse(row.permissions || '{}') || {}; } catch { perms = {}; }
+    perms.produccion = true;
+    perms.cocina = true;
+    perms.bar = true;
+    runSql('UPDATE user_permissions SET permissions = ? WHERE user_id = ?', [JSON.stringify(perms), userId]);
+  } catch (err) {
+    console.warn('[users] permisos producción:', err.message || err);
+  }
+}
+
+/** Persiste encargado de producción sin romper CHECK antiguo (cocina/bar). */
+function assignUserProductionRole(userId, areaId) {
+  const uid = String(userId || '').trim();
+  const aid = String(areaId || '').trim();
+  if (!uid) return;
+  try {
+    ensureUsersRoleAllowsProduccion();
+  } catch (err) {
+    console.warn('[users] no se pudo ampliar CHECK de rol:', err.message || err);
+  }
+  const current = queryOne('SELECT role FROM users WHERE id = ?', [uid]);
+  if (!current) return;
+  const roleLc = String(current.role || '').toLowerCase();
+  if (!['produccion', 'cocina', 'bar', 'mozo'].includes(roleLc)) return;
+
+  const allowsProduccion = probeUsersRoleAllowsProduccion();
+  const nextRole = allowsProduccion ? 'produccion' : productionRoleFallback(aid);
+
+  if (['produccion', 'cocina', 'bar'].includes(roleLc) && hasUsersColumn('production_area_id') && !allowsProduccion) {
+    runSql('UPDATE users SET production_area_id = ? WHERE id = ?', [aid, uid]);
+    ensureProductionStaffPermissions(uid);
+    return;
+  }
+
+  applyUserProductionArea(uid, aid, nextRole);
+  if (hasUsersColumn('caja_station_id') && roleLc === 'mozo') {
+    try { runSql("UPDATE users SET caja_station_id = '' WHERE id = ?", [uid]); } catch { /* ignore */ }
+  }
+  ensureProductionStaffPermissions(uid);
+}
+
+function persistedProductionRole(areaId) {
+  try {
+    ensureUsersRoleAllowsProduccion();
+  } catch (err) {
+    console.warn('[users] no se pudo ampliar CHECK de rol:', err.message || err);
+  }
+  if (probeUsersRoleAllowsProduccion()) return 'produccion';
+  return productionRoleFallback(areaId);
 }
 
 /** Añade columnas de users que el código espera (no falla el alta si el .db es antiguo). */
@@ -3176,4 +3258,6 @@ module.exports = {
   hasUsersColumn,
   ensureUsersSchemaColumns,
   ensureUsersRoleAllowsProduccion,
+  assignUserProductionRole,
+  persistedProductionRole,
 };

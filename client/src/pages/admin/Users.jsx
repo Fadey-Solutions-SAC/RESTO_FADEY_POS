@@ -7,13 +7,15 @@ import { MdAdd, MdEdit, MdDelete, MdToggleOn, MdToggleOff } from 'react-icons/md
 
 import { UI_BADGE } from '../../utils/uiBadges';
 
-const ROLES = { admin: 'Administrador', cajero: 'Cajero', mozo: 'Mozo', cocina: 'Cocina', bar: 'Bar', delivery: 'Delivery' };
+const ROLES = { admin: 'Administrador', cajero: 'Cajero', mozo: 'Mozo', produccion: 'Producción', delivery: 'Delivery' };
+const ROLE_LABELS = { ...ROLES, cocina: 'Producción', bar: 'Producción' };
 const ROLE_COLORS = {
   admin: UI_BADGE.purple,
   cajero: UI_BADGE.blue,
   mozo: UI_BADGE.sky,
+  produccion: UI_BADGE.amber,
   cocina: UI_BADGE.amber,
-  bar: UI_BADGE.indigo,
+  bar: UI_BADGE.amber,
   delivery: UI_BADGE.emerald,
 };
 const EMPTY_FORM = { username: '', email: '', password: '', full_name: '', role: 'mozo', phone: '', caja_station_id: '' };
@@ -151,7 +153,7 @@ export default function Users() {
                 </td>
                 <td className="py-3 px-4 text-sm">{u.full_name}</td>
                 <td className="py-3 px-4 text-sm text-gray-500">{u.email}</td>
-                <td className="py-3 px-4"><span className={ROLE_COLORS[u.role] || UI_BADGE.slate}>{ROLES[u.role]}</span></td>
+                <td className="py-3 px-4"><span className={ROLE_COLORS[u.role] || UI_BADGE.slate}>{ROLE_LABELS[u.role] || ROLES.mozo}</span></td>
                 <td className="py-3 px-4">
                   <span className={u.is_active ? UI_BADGE.emerald : UI_BADGE.slate}>
                     {u.is_active ? 'Activo' : 'Inactivo'}
