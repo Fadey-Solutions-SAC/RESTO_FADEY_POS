@@ -142,6 +142,66 @@ function cloneOrderForItemSplitTx(tx, sourceId, newOrderId, newOrderNumber, chil
 }
 
 /**
+ * Si se cobra menos unidades que la línea, deja el remanente en un ítem nuevo (mismo pedido)
+ * y reduce la línea original a la cantidad a cobrar (conserva el id para anclas de descuento).
+ * @returns {string[]} ids de líneas listas para mover/cobrar
+ */
+function materializePartialChargeQuantitiesTx(tx, orderId, itemIds, quantitiesByItemId) {
+  const qtyMap = quantitiesByItemId && typeof quantitiesByItemId === 'object' ? quantitiesByItemId : {};
+  const movingIds = [];
+
+  for (const itemId of itemIds) {
+    const it = tx.queryOne('SELECT * FROM order_items WHERE id = ? AND order_id = ?', [itemId, orderId]);
+    if (!it) throw new Error('Línea de pedido no encontrada al dividir cantidad');
+
+    const maxQ = Math.max(1, Math.floor(Number(it.quantity) || 1));
+    const raw = qtyMap[itemId];
+    let chargeQ = raw == null || raw === '' ? maxQ : Math.floor(Number(raw));
+    if (!Number.isFinite(chargeQ) || chargeQ < 1) {
+      throw new Error(`Cantidad inválida para cobrar en «${it.product_name || 'producto'}»`);
+    }
+    if (chargeQ > maxQ) chargeQ = maxQ;
+
+    if (chargeQ >= maxQ) {
+      movingIds.push(itemId);
+      continue;
+    }
+
+    const unit = Number(it.unit_price || 0);
+    const origSub = lineItemSubtotal(it);
+    const moveSub = round2((origSub * chargeQ) / maxQ);
+    const remainQ = maxQ - chargeQ;
+    const remainSub = round2(origSub - moveSub);
+    const remainId = uuidv4();
+
+    tx.run(
+      `INSERT INTO order_items (
+        id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes,
+        station_cocina_ready_at, station_bar_ready_at, kitchen_highlight_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        remainId,
+        orderId,
+        it.product_id,
+        it.product_name,
+        it.variant_name || '',
+        remainQ,
+        unit,
+        remainSub,
+        it.notes || '',
+        it.station_cocina_ready_at || null,
+        it.station_bar_ready_at || null,
+        it.kitchen_highlight_at || null,
+      ]
+    );
+    tx.run('UPDATE order_items SET quantity = ?, subtotal = ? WHERE id = ?', [chargeQ, moveSub, itemId]);
+    movingIds.push(itemId);
+  }
+
+  return movingIds;
+}
+
+/**
  * Mueve líneas seleccionadas a un pedido nuevo y devuelve el id del pedido a cobrar (el nuevo).
  * Reparte el descuento previo del pedido fuente entre padre e hijo según subtotales de líneas.
  */
@@ -180,15 +240,16 @@ function splitOrderItemsForPartialCheckoutTx(tx, sourceOrderId, selectedItemIds)
 }
 
 /**
- * A partir de order_item_ids, prepara pedidos a cobrar (divide pedidos parciales en uno nuevo).
+ * A partir de order_item_ids (+ cantidades opcionales), prepara pedidos a cobrar
+ * (divide cantidad parcial y/o pedidos parciales en uno nuevo).
  */
-function prepareCheckoutOrderIdsFromItemLinesTx(tx, orderItemIdsRaw) {
+function prepareCheckoutOrderIdsFromItemLinesTx(tx, orderItemIdsRaw, quantitiesByItemId = {}) {
   const uniq = [...new Set((orderItemIdsRaw || []).map((x) => String(x || '').trim()).filter(Boolean))];
   if (!uniq.length) throw new Error('Debes enviar al menos una línea de producto para cobrar');
 
   const ph = uniq.map(() => '?').join(',');
   const rows = tx.queryAll(
-    `SELECT oi.id as item_id, oi.order_id,
+    `SELECT oi.id as item_id, oi.order_id, oi.quantity as item_qty,
             o.status as order_status, o.payment_status, o.order_number
      FROM order_items oi
      JOIN orders o ON o.id = oi.order_id
@@ -211,15 +272,26 @@ function prepareCheckoutOrderIdsFromItemLinesTx(tx, orderItemIdsRaw) {
     byOrder.get(r.order_id).push(r.item_id);
   }
 
+  const qtyMap = quantitiesByItemId && typeof quantitiesByItemId === 'object' ? quantitiesByItemId : {};
+
   const chargeIds = [];
   for (const [orderId, itemIdsForOrder] of byOrder) {
-    const allItems = tx.queryAll('SELECT id FROM order_items WHERE order_id = ?', [orderId]);
-    const allIds = allItems.map((x) => x.id);
-    const allSelected = allIds.length && allIds.every((id) => uniq.includes(id));
-    if (allSelected) {
+    const allItems = tx.queryAll('SELECT id, quantity FROM order_items WHERE order_id = ?', [orderId]);
+    const allFullSelected =
+      allItems.length > 0 &&
+      allItems.every((row) => {
+        if (!uniq.includes(row.id)) return false;
+        const maxQ = Math.max(1, Math.floor(Number(row.quantity) || 1));
+        const raw = qtyMap[row.id];
+        const chargeQ = raw == null || raw === '' ? maxQ : Math.floor(Number(raw));
+        return Number.isFinite(chargeQ) && chargeQ >= maxQ;
+      });
+
+    if (allFullSelected) {
       chargeIds.push(orderId);
     } else {
-      const newId = splitOrderItemsForPartialCheckoutTx(tx, orderId, itemIdsForOrder);
+      const movingIds = materializePartialChargeQuantitiesTx(tx, orderId, itemIdsForOrder, qtyMap);
+      const newId = splitOrderItemsForPartialCheckoutTx(tx, orderId, movingIds);
       chargeIds.push(newId);
     }
   }
@@ -562,6 +634,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     discount_reason: discountReason = '',
     discounts_by_order: discountsByOrderBody = {},
     order_item_ids: orderItemIdsBody,
+    order_item_quantities: orderItemQuantitiesBody,
     checkout_discount_total: checkoutDiscountTotalRaw,
     checkout_discount_anchor_order_item_id: checkoutDiscountAnchorItemRaw,
     tip_amount: tipAmountRaw,
@@ -577,6 +650,14 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         .filter(Boolean)
     ),
   ];
+  const orderItemQuantities = {};
+  if (orderItemQuantitiesBody && typeof orderItemQuantitiesBody === 'object' && !Array.isArray(orderItemQuantitiesBody)) {
+    for (const [k, v] of Object.entries(orderItemQuantitiesBody)) {
+      const id = String(k || '').trim();
+      const q = Math.floor(Number(v));
+      if (id && Number.isFinite(q) && q > 0) orderItemQuantities[id] = q;
+    }
+  }
   const orderIdsFromBody = Array.isArray(orderIdsRaw) ? orderIdsRaw.filter(Boolean) : [];
   const checkoutDiscountTotal = Math.max(0, Number(checkoutDiscountTotalRaw || 0));
   const checkoutDiscountAnchorOrderItemId = String(checkoutDiscountAnchorItemRaw || '').trim();
@@ -639,7 +720,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       let discountsByOrder = { ...discountsByOrderInput };
 
       if (orderItemIds.length) {
-        effectiveOrderIds = prepareCheckoutOrderIdsFromItemLinesTx(tx, orderItemIds);
+        effectiveOrderIds = prepareCheckoutOrderIdsFromItemLinesTx(tx, orderItemIds, orderItemQuantities);
         discountsByOrder = buildExtraDiscountsByOrderTx(
           tx,
           effectiveOrderIds,
@@ -857,19 +938,45 @@ router.get('/payment-methods', authenticateToken, requireRole('admin', 'cajero',
 });
 
 router.get('/register-status', authenticateToken, requireRole('admin', 'cajero', 'mozo'), (req, res) => {
-  const openCount = queryOne('SELECT COUNT(*) as c FROM cash_registers WHERE closed_at IS NULL');
-  const openRegister = queryOne(
-    `SELECT cr.id, cr.user_id, cr.opened_at, u.full_name as cajero_name
-     FROM cash_registers cr
-     JOIN users u ON u.id = cr.user_id
-     WHERE cr.closed_at IS NULL
-     ORDER BY datetime(cr.opened_at) DESC
-     LIMIT 1`
-  );
+  const role = String(req.user?.role || '').toLowerCase();
+  let mozoCajaId = '';
+  if (role === 'mozo') {
+    const u = queryOne('SELECT caja_station_id FROM users WHERE id = ?', [req.user.id]);
+    mozoCajaId = String(u?.caja_station_id || '').trim();
+  }
+  let openCount;
+  let openRegister;
+  if (mozoCajaId) {
+    openCount = queryOne(
+      `SELECT COUNT(*) as c FROM cash_registers
+       WHERE closed_at IS NULL AND trim(coalesce(caja_station_id, '')) = ?`,
+      [mozoCajaId]
+    );
+    openRegister = queryOne(
+      `SELECT cr.id, cr.user_id, cr.opened_at, cr.caja_station_id, u.full_name as cajero_name
+       FROM cash_registers cr
+       JOIN users u ON u.id = cr.user_id
+       WHERE cr.closed_at IS NULL AND trim(coalesce(cr.caja_station_id, '')) = ?
+       ORDER BY datetime(cr.opened_at) DESC
+       LIMIT 1`,
+      [mozoCajaId]
+    );
+  } else {
+    openCount = queryOne('SELECT COUNT(*) as c FROM cash_registers WHERE closed_at IS NULL');
+    openRegister = queryOne(
+      `SELECT cr.id, cr.user_id, cr.opened_at, cr.caja_station_id, u.full_name as cajero_name
+       FROM cash_registers cr
+       JOIN users u ON u.id = cr.user_id
+       WHERE cr.closed_at IS NULL
+       ORDER BY datetime(cr.opened_at) DESC
+       LIMIT 1`
+    );
+  }
   res.json({
     is_open: Number(openCount?.c || 0) > 0,
     register: openRegister || null,
     open_count: Number(openCount?.c || 0),
+    caja_station_id: mozoCajaId || null,
   });
 });
 

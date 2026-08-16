@@ -4,7 +4,7 @@ import {
   buildPedidoMesaTicketPlainText,
   normalizeThermalPaperWidthMm,
 } from './ticketPlainText';
-import { isBarProductionItemForStation, isKitchenProductionItemForStation } from './productionArea';
+import { collectOrderProductionAreaIds, isBarProductionItemForStation } from './productionArea';
 import { isPrintingModuleEnabled } from './printingConfig';
 
 const KITCHEN_PRINT_DEDUPE_KEY = 'resto_kitchen_print_dedupe';
@@ -72,7 +72,7 @@ function toTicketItems(list) {
 }
 
 /**
- * Imprime comanda en cocina/bar según ítems y autoPrint de cada módulo.
+ * Imprime comanda en cocina/bar/áreas según ítems y autoPrint de cada módulo.
  * @param {object|string} orderOrId — pedido con ítems o id
  * @param {{ newItemIds?: string[]|null, fromLinesUpdate?: boolean }} opts
  *   - newItemIds: solo esos ítems (merge / edición mesa)
@@ -111,12 +111,9 @@ export async function printKitchenBarOrder(orderOrId, { newItemIds = null, fromL
         : items;
     if (!scopedItems.length) return false;
 
-    const kitchenItems = scopedItems.filter(isKitchenProductionItemForStation);
-    const barItems = scopedItems.filter(isBarProductionItemForStation);
-    if (!kitchenItems.length && !barItems.length) return false;
+    const areaIds = collectOrderProductionAreaIds(scopedItems);
+    if (!areaIds.length) return false;
 
-    const paperC = normalizePaperWidthMm(cfg?.cocina?.anchoPapel ?? cfg?.cocina?.paperWidth ?? 80);
-    const paperB = normalizePaperWidthMm(cfg?.bar?.anchoPapel ?? cfg?.bar?.paperWidth ?? 80);
     const takeout = orderHasTakeoutNote(fullOrder);
     const waiter = String(fullOrder?.created_by_user_name || '').trim();
     const tableLbl =
@@ -126,42 +123,29 @@ export async function printKitchenBarOrder(orderOrId, { newItemIds = null, fromL
 
     let printed = false;
 
-    if (isPrintingModuleEnabled(cfg, 'cocina') && kitchenItems.length > 0) {
-      const text = buildPedidoMesaTicketPlainText({
-        tableLabel: tableLbl,
-        orderNumber: fullOrder?.order_number,
-        takeout,
-        waiterName: waiter,
-        items: toTicketItems(kitchenItems),
-        widthMm: paperC,
-        printedAt: new Date(),
-        orderType: fullOrder?.type || 'dine_in',
-      });
-      await postKitchenBarPrint('cocina', {
-        text,
-        preformatted: true,
-        paperWidth: paperC,
-        anchoPapel: paperC,
-      });
-      printed = true;
-    }
+    for (const areaId of areaIds) {
+      const areaItems = scopedItems.filter((it) => isBarProductionItemForStation(it, areaId));
+      if (!areaItems.length) continue;
+      if (!isPrintingModuleEnabled(cfg, areaId)) continue;
 
-    if (isPrintingModuleEnabled(cfg, 'bar') && barItems.length > 0) {
+      const paper = normalizePaperWidthMm(
+        cfg?.[areaId]?.anchoPapel ?? cfg?.[areaId]?.paperWidth ?? 80,
+      );
       const text = buildPedidoMesaTicketPlainText({
         tableLabel: tableLbl,
         orderNumber: fullOrder?.order_number,
         takeout,
         waiterName: waiter,
-        items: toTicketItems(barItems),
-        widthMm: paperB,
+        items: toTicketItems(areaItems),
+        widthMm: paper,
         printedAt: new Date(),
         orderType: fullOrder?.type || 'dine_in',
       });
-      await postKitchenBarPrint('bar', {
+      await postKitchenBarPrint(areaId, {
         text,
         preformatted: true,
-        paperWidth: paperB,
-        anchoPapel: paperB,
+        paperWidth: paper,
+        anchoPapel: paper,
       });
       printed = true;
     }

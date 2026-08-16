@@ -23,6 +23,7 @@ const MODULE_LABELS = {
   indicadores: 'Indicadores',
   mi_restaurant: 'Mi Restaurante',
   configuracion: 'Configuración',
+  produccion: 'Producción',
   cocina: 'Cocina',
   bar: 'Bar',
   tiempo_trabajado: 'Tiempo trabajado',
@@ -110,7 +111,7 @@ function getSubmoduleListForPlan(planKey, parentId) {
 function buildPlanModuleTreeForPlan(planKey) {
   const planSet = getModuleSetForPlan(planKey);
   const order = [
-    'escritorio', 'ventas', 'caja', 'mesas', 'cocina', 'bar', 'delivery', 'reservas', 'auto_pedido',
+    'escritorio', 'ventas', 'caja', 'mesas', 'produccion', 'cocina', 'bar', 'delivery', 'reservas', 'auto_pedido',
     'clientes', 'creditos', 'ofertas', 'descuentos', 'almacen', 'productos', 'informes', 'indicadores',
     'mi_restaurant', 'tiempo_trabajado', 'configuracion',
   ];

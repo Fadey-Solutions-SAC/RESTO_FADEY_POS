@@ -20,12 +20,14 @@ function parseSettingsBlob() {
 
 function normalizeSalonesList(list) {
   if (!Array.isArray(list)) return [];
+  const { DEFAULT_PRIMARY_CAJA_ID } = require('../cajaSettings');
   return list
     .map((s, idx) => ({
       id: String(s?.id || '').trim() || `salon_${idx}`,
       name: String(s?.name ?? '').trim() || String(s?.id || 'Salón'),
       description: String(s?.description || '').trim(),
       sort_order: Number.isFinite(Number(s?.sort_order)) ? Number(s.sort_order) : idx,
+      caja_station_id: String(s?.caja_station_id || '').trim() || DEFAULT_PRIMARY_CAJA_ID,
     }))
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((s, idx) => ({ ...s, sort_order: idx }));

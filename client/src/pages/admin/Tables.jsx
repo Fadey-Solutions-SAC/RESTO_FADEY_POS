@@ -77,19 +77,40 @@ export default function Tables() {
   }, [tables, selectedTable?.id, syncLockRenumber]);
 
   const loadTables = useCallback(() => {
+    const role = String(user?.role || '').toLowerCase();
+    const mozoCaja = String(user?.caja_station_id || '').trim();
+    const qs =
+      (role === 'mozo' || role === 'cajero') && mozoCaja
+        ? `?caja_station_id=${encodeURIComponent(mozoCaja)}`
+        : '';
     Promise.all([
-      api.get('/tables'),
-      api.get('/tables/salones').catch(() => ({ salones: [] })),
+      api.get(`/tables${qs}`),
+      api.get(`/tables/salones${qs}`).catch(() => ({ salones: [] })),
     ])
       .then(([data, salonesRes]) => {
-        const list = Array.isArray(data) ? data : [];
+        let list = Array.isArray(data) ? data : [];
+        let salones = Array.isArray(salonesRes?.salones) ? salonesRes.salones : [];
+        if ((role === 'mozo' || role === 'cajero') && mozoCaja) {
+          const PRIMARY = 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001';
+          const salonCaja = (s) => String(s?.caja_station_id || '').trim() || PRIMARY;
+          salones = salones.filter((s) => salonCaja(s) === mozoCaja);
+          const salonByZone = new Map(salones.map((s) => [String(s.id), s]));
+          list = list.filter((t) => {
+            const direct = String(t?.caja_station_id || '').trim();
+            if (direct) return direct === mozoCaja;
+            return salonCaja(salonByZone.get(String(t?.zone || 'principal'))) === mozoCaja;
+          });
+        } else if ((role === 'mozo' || role === 'cajero') && !mozoCaja) {
+          list = [];
+          salones = [];
+        }
         setTables(list);
-        setSalonesConfig(Array.isArray(salonesRes?.salones) ? salonesRes.salones : []);
+        setSalonesConfig(salones);
         setSelectedTable((prev) => (prev ? list.find((t) => t.id === prev.id) || null : null));
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [user?.role, user?.caja_station_id]);
 
   const loadProducts = useCallback(() => {
     Promise.all([
@@ -216,12 +237,25 @@ export default function Tables() {
 
   if (loading) return <div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--ui-accent)] border-t-transparent" /></div>;
 
+  const isMozo = String(user?.role || '').toLowerCase() === 'mozo';
+  const mozoSinCaja = isMozo && !String(user?.caja_station_id || '').trim();
+
   return (
     <div>
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-[var(--ui-body-text)]">Mesas</h1>
-        <p className="mt-1 text-sm text-[var(--ui-muted)]">Gestión de salón y consumo por mesa</p>
+        <p className="mt-1 text-sm text-[var(--ui-muted)]">
+          {isMozo
+            ? 'Salones y mesas de su caja asignada'
+            : 'Gestión de salón y consumo por mesa'}
+        </p>
       </div>
+
+      {mozoSinCaja && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Su usuario mozo no tiene caja asignada. Pida al administrador que lo vincule en Configuración → Usuarios.
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {salonOptions.map(salonId => (

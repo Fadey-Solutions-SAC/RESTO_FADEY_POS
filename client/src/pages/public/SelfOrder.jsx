@@ -177,7 +177,7 @@ export default function SelfOrder() {
     <div className="fixed inset-0 z-0 flex flex-col overflow-hidden bg-[var(--ui-body-bg)] text-[var(--ui-body-text)]">
       <header className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface)]/95 px-4 py-3">
         <div className="min-w-0">
-          <h1 className="text-lg font-bold text-[var(--ui-body-text)] truncate">Auto pedido (QR)</h1>
+          <h1 className="text-lg font-bold text-[var(--ui-body-text)] truncate">Auto pedido</h1>
           <p className="text-xs text-[var(--ui-accent)] truncate">{table?.name || `Mesa ${table?.number}`}</p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">

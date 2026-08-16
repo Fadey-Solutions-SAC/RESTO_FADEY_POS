@@ -514,12 +514,14 @@ async function initDatabase() {
         email TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         full_name TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery')),
+        role TEXT NOT NULL CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion')),
         restaurant_id TEXT,
         is_active INTEGER DEFAULT 1,
         phone TEXT DEFAULT '',
         avatar TEXT DEFAULT '',
         caja_station_id TEXT DEFAULT '',
+        production_area_id TEXT DEFAULT '',
+        production_area_ids TEXT DEFAULT '[]',
         created_at TEXT DEFAULT (datetime('now'))
       )
     `);
@@ -1546,6 +1548,95 @@ async function initDatabase() {
          AND lower(trim(coalesce(role, ''))) = 'cajero'`
     );
 
+    addUserColIfMissing('production_area_id', "ALTER TABLE users ADD COLUMN production_area_id TEXT DEFAULT ''");
+    addUserColIfMissing('production_area_ids', "ALTER TABLE users ADD COLUMN production_area_ids TEXT DEFAULT '[]'");
+
+    /** Ampliar roles con `produccion` (reemplazo de cocina/bar en UI). */
+    try {
+      const usersSql = queryOne("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'");
+      const sqlText = String(usersSql?.sql || '');
+      if (sqlText && !sqlText.includes("'produccion'")) {
+        db.run('PRAGMA foreign_keys = OFF');
+        db.run('ALTER TABLE users RENAME TO users_role_mig');
+        db.run(`
+          CREATE TABLE users (
+            id TEXT PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion')),
+            restaurant_id TEXT,
+            is_active INTEGER DEFAULT 1,
+            phone TEXT DEFAULT '',
+            avatar TEXT DEFAULT '',
+            caja_station_id TEXT DEFAULT '',
+            production_area_id TEXT DEFAULT '',
+            production_area_ids TEXT DEFAULT '[]',
+            payroll_pay_mode TEXT DEFAULT '',
+            payroll_amount REAL DEFAULT 0,
+            payroll_schedule_note TEXT DEFAULT '',
+            payroll_payment_day INTEGER DEFAULT 0,
+            is_buyer_admin INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+          )
+        `);
+        const migCols = queryAll('PRAGMA table_info(users_role_mig)').map((c) => c.name);
+        const want = [
+          'id', 'username', 'email', 'password_hash', 'full_name', 'role', 'restaurant_id',
+          'is_active', 'phone', 'avatar', 'caja_station_id', 'production_area_id', 'production_area_ids',
+          'payroll_pay_mode', 'payroll_amount', 'payroll_schedule_note', 'payroll_payment_day',
+          'is_buyer_admin', 'created_at',
+        ];
+        const selectExpr = want.map((col) => {
+          if (migCols.includes(col)) return col;
+          if (col === 'production_area_ids') return `'[]'`;
+          if (col === 'is_buyer_admin' || col === 'payroll_payment_day') return '0';
+          if (col === 'payroll_amount') return '0';
+          return `''`;
+        }).join(', ');
+        db.run(`INSERT INTO users (${want.join(', ')}) SELECT ${selectExpr} FROM users_role_mig`);
+        db.run('DROP TABLE users_role_mig');
+        db.run('PRAGMA foreign_keys = ON');
+        db.run(
+          `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_caja_station_unique
+           ON users(caja_station_id)
+           WHERE trim(coalesce(caja_station_id, '')) != ''
+             AND lower(trim(coalesce(role, ''))) = 'cajero'`
+        );
+        console.log('[migration] users: rol produccion añadido al CHECK');
+      }
+    } catch (e) {
+      console.warn('[migration] users produccion role:', e.message || e);
+    }
+
+    try {
+      db.run(`UPDATE users SET role = 'produccion', production_area_id = 'cocina'
+              WHERE lower(trim(role)) = 'cocina' AND trim(coalesce(production_area_id, '')) = ''`);
+      db.run(`UPDATE users SET role = 'produccion', production_area_id = 'bar'
+              WHERE lower(trim(role)) = 'bar' AND trim(coalesce(production_area_id, '')) = ''`);
+      db.run(`UPDATE users SET role = 'produccion'
+              WHERE lower(trim(role)) IN ('cocina', 'bar')`);
+    } catch (e) {
+      console.warn('[migration] cocina/bar → produccion:', e.message || e);
+    }
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS order_station_state (
+        order_id TEXT NOT NULL,
+        area_id TEXT NOT NULL,
+        preparing_at TEXT,
+        ready_at TEXT,
+        PRIMARY KEY (order_id, area_id)
+      )
+    `);
+    db.run('CREATE INDEX IF NOT EXISTS idx_order_station_state_area ON order_station_state(area_id)');
+
+    const tableColsCaja = queryAll('PRAGMA table_info(tables)');
+    if (!(tableColsCaja || []).some((c) => c.name === 'caja_station_id')) {
+      db.run("ALTER TABLE tables ADD COLUMN caja_station_id TEXT DEFAULT ''");
+    }
+
     const seqExists = queryOne('SELECT COUNT(*) as c FROM order_sequence');
     if (seqExists.c === 0) {
       db.run('INSERT INTO order_sequence (id, current_number) VALUES (1, 0)');
@@ -2260,7 +2351,12 @@ async function initDatabase() {
         name: 'Salón Principal',
         description: 'Área principal del restaurante',
         sort_order: 0,
+        caja_station_id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
       }],
+      production_areas: [
+        { id: 'cocina', name: 'Cocina', active: 1, encargado_user_ids: [], mozo_user_ids: [] },
+        { id: 'bar', name: 'Bar', active: 1, encargado_user_ids: [], mozo_user_ids: [] },
+      ],
       cajas: [{
         id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
         name: 'Caja Principal',
@@ -2384,8 +2480,48 @@ async function initDatabase() {
           next = { ...next, salones: inferSalonesFromTables(tableZones) };
         }
       }
+      const DEFAULT_PRIMARY_CAJA_ID_MIG = 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001';
+      if (!Array.isArray(next.production_areas) || next.production_areas.length === 0) {
+        next = {
+          ...next,
+          production_areas: [
+            { id: 'cocina', name: 'Cocina', active: 1, encargado_user_ids: [], mozo_user_ids: [] },
+            { id: 'bar', name: 'Bar', active: 1, encargado_user_ids: [], mozo_user_ids: [] },
+          ],
+        };
+      }
+      if (Array.isArray(next.salones)) {
+        const salonesWithCaja = next.salones.map((s) => ({
+          ...s,
+          caja_station_id: String(s?.caja_station_id || '').trim() || DEFAULT_PRIMARY_CAJA_ID_MIG,
+        }));
+        if (JSON.stringify(salonesWithCaja) !== JSON.stringify(next.salones)) {
+          next = { ...next, salones: salonesWithCaja };
+        }
+      }
       if (JSON.stringify(next) !== JSON.stringify(parsed)) {
         db.run("UPDATE app_settings SET value = ?, updated_at = datetime('now') WHERE key = 'settings'", [JSON.stringify(next)]);
+      }
+      try {
+        const primaryCaja = DEFAULT_PRIMARY_CAJA_ID_MIG;
+        db.run(
+          `UPDATE tables SET caja_station_id = ? WHERE trim(coalesce(caja_station_id, '')) = ''`,
+          [primaryCaja]
+        );
+        const mozos = queryAll(`SELECT id FROM users WHERE lower(trim(role)) = 'mozo'`);
+        for (const m of mozos || []) {
+          const u = queryOne('SELECT caja_station_id FROM users WHERE id = ?', [m.id]);
+          const needsCaja = !String(u?.caja_station_id || '').trim();
+          if (needsCaja) {
+            db.run(
+              `UPDATE users SET caja_station_id = ?
+               WHERE id = ? AND trim(coalesce(caja_station_id,'')) = ''`,
+              [primaryCaja, m.id]
+            );
+          }
+        }
+      } catch (e) {
+        console.warn('[migration] mozo/tables caja backfill:', e.message || e);
       }
       const userHasCajaCol = (queryAll('PRAGMA table_info(users)') || []).some((c) => c.name === 'caja_station_id');
       if (userHasCajaCol) {

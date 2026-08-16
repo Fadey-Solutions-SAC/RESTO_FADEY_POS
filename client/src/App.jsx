@@ -59,12 +59,15 @@ function DeliveryModuleGate({ children }) {
   return children;
 }
 
-function ProtectedRoute({ children, roles, moduleId }) {
+function ProtectedRoute({ children, roles, moduleId, moduleIds }) {
   const { user, loading } = useAuth();
   const location = useLocation();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="rf-loader rf-loader--md" /></div>;
   if (!user || user.type === 'customer') return <Navigate to="/" />;
-  const hasPermission = moduleId ? hasModulePermission(user, moduleId) : true;
+  const ids = Array.isArray(moduleIds) && moduleIds.length
+    ? moduleIds
+    : (moduleId ? [moduleId] : []);
+  const hasPermission = ids.length === 0 ? true : ids.some((id) => hasModulePermission(user, id));
   if (roles && !roles.includes(user.role) && !hasPermission) {
     if (user.role === 'delivery') {
       return <Navigate to="/delivery" replace />;
@@ -72,7 +75,7 @@ function ProtectedRoute({ children, roles, moduleId }) {
     return <Navigate to="/admin" replace />;
   }
   if (
-    moduleId === 'delivery' &&
+    ids.includes('delivery') &&
     user.role !== 'delivery' &&
     hasPermission &&
     ['admin', 'cajero', 'mozo'].includes(String(user.role || '')) &&
@@ -81,8 +84,14 @@ function ProtectedRoute({ children, roles, moduleId }) {
   ) {
     return <Navigate to="/admin/delivery" replace />;
   }
-  if (moduleId && !hasPermission) return <Navigate to="/admin" replace />;
+  if (ids.length > 0 && !hasPermission) return <Navigate to="/admin" replace />;
   return children;
+}
+
+function KitchenAreaRoute() {
+  const { areaId } = useParams();
+  const id = String(areaId || '').trim() || 'cocina';
+  return <KitchenPanel areaId={id} />;
 }
 
 function DefaultPage() {
@@ -158,7 +167,7 @@ function AppRoutes({ user }) {
         getDefaultStaffPath(user)
       } /> : <Login />} />
 
-      <Route path="/admin" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo', 'master_admin']}><Layout /></ProtectedRoute>}>
+      <Route path="/admin" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar', 'master_admin']}><Layout /></ProtectedRoute>}>
         <Route index element={<DefaultPage />} />
         <Route path="ventas" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="ventas"><Ventas /></ProtectedRoute>} />
         <Route path="caja" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="caja"><POSPanel /></ProtectedRoute>} />
@@ -173,8 +182,9 @@ function AppRoutes({ user }) {
         <Route path="descuentos" element={<ProtectedRoute roles={['admin']} moduleId="descuentos"><Descuentos /></ProtectedRoute>} />
         <Route path="almacen" element={<ProtectedRoute roles={['admin']} moduleId="almacen"><Almacen /></ProtectedRoute>} />
         <Route path="delivery" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo']} moduleId="delivery"><DeliveryModuleGate><Delivery /></DeliveryModuleGate></ProtectedRoute>} />
-        <Route path="cocina" element={<ProtectedRoute roles={['admin']} moduleId="cocina"><KitchenPanel station="cocina" /></ProtectedRoute>} />
-        <Route path="bar" element={<ProtectedRoute roles={['admin']} moduleId="bar"><KitchenPanel station="bar" /></ProtectedRoute>} />
+        <Route path="produccion/:areaId" element={<ProtectedRoute roles={['admin', 'produccion', 'cocina', 'bar']} moduleIds={['produccion', 'cocina', 'bar']}><KitchenAreaRoute /></ProtectedRoute>} />
+        <Route path="cocina" element={<ProtectedRoute roles={['admin', 'produccion', 'cocina']} moduleIds={['cocina', 'produccion']}><KitchenPanel station="cocina" areaId="cocina" /></ProtectedRoute>} />
+        <Route path="bar" element={<ProtectedRoute roles={['admin', 'produccion', 'bar']} moduleIds={['bar', 'produccion']}><KitchenPanel station="bar" areaId="bar" /></ProtectedRoute>} />
         <Route path="informes" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="informes"><Reports /></ProtectedRoute>} />
         <Route path="indicadores" element={<ProtectedRoute roles={['admin']} moduleId="indicadores"><Indicadores /></ProtectedRoute>} />
         <Route path="comprobantes-emitidos" element={<Navigate to="/admin/informes?seccion=facturacion" replace />} />
@@ -182,8 +192,9 @@ function AppRoutes({ user }) {
         <Route path="configuracion" element={<ProtectedRoute roles={['admin']} moduleId="configuracion"><Settings /></ProtectedRoute>} />
       </Route>
 
-      <Route path="/kitchen" element={<ProtectedRoute roles={['admin', 'cocina']} moduleId="cocina"><KitchenPanel station="cocina" /></ProtectedRoute>} />
-      <Route path="/bar" element={<ProtectedRoute roles={['admin', 'bar']} moduleId="bar"><KitchenPanel station="bar" /></ProtectedRoute>} />
+      <Route path="/produccion/:areaId" element={<ProtectedRoute roles={['admin', 'produccion', 'cocina', 'bar']} moduleIds={['produccion', 'cocina', 'bar']}><KitchenAreaRoute /></ProtectedRoute>} />
+      <Route path="/kitchen" element={<ProtectedRoute roles={['admin', 'cocina', 'produccion']} moduleIds={['cocina', 'produccion']}><KitchenPanel station="cocina" areaId="cocina" /></ProtectedRoute>} />
+      <Route path="/bar" element={<ProtectedRoute roles={['admin', 'bar', 'produccion']} moduleIds={['bar', 'produccion']}><KitchenPanel station="bar" areaId="bar" /></ProtectedRoute>} />
       <Route path="/delivery" element={<ProtectedRoute roles={['delivery']} moduleId="delivery"><DeliveryModuleGate><DeliveryPanel /></DeliveryModuleGate></ProtectedRoute>} />
       <Route path="/master" element={<ProtectedRoute roles={['master_admin']}><MasterAdmin /></ProtectedRoute>} />
       <Route path="/customer" element={<CustomerLayout />}>

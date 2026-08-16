@@ -393,7 +393,7 @@ export default function MiRestaurantEmpresaHub({
           <p className="text-xs text-[var(--ui-muted)]">
             Cartas y mesas QR se gestionan en{' '}
             <Link to="/admin/auto-pedido" className="text-gold-600 hover:underline">
-              Auto pedido QR
+              Auto pedido
             </Link>
             .
           </p>

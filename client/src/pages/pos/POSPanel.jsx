@@ -9,6 +9,15 @@ function emptyMultiPaymentAmounts() {
   return { efectivo: '', yape: '', plin: '', tarjeta: '', online: '' };
 }
 
+/** Verde si cuadra, naranja al activar (suma 0), rojo si hay montos pero no cuadran. */
+function multiPaySumStatusClass(sum, total) {
+  const s = roundMoneySoles(sum);
+  const t = roundMoneySoles(total);
+  if (Math.abs(s - t) <= 0.05) return 'text-[color:var(--ui-success)]';
+  if (s <= 0) return 'text-[color:var(--ui-warning)]';
+  return 'text-[color:var(--ui-danger)]';
+}
+
 function dominantPaymentFromBreakdown(obj) {
   let best = 'efectivo';
   let bestAmt = -1;
@@ -79,43 +88,86 @@ function collectAllOrderItemIds(orders) {
   return ids;
 }
 
+/** Cantidad a cobrar de una línea (por defecto 1 si qty > 1). */
+function resolveSplitChargeQty(it, qtyByItemId) {
+  const maxQ = Math.max(0, Math.floor(Number(it?.quantity || 0)));
+  if (maxQ <= 1) return maxQ || 1;
+  const raw = qtyByItemId?.[it.id];
+  if (raw == null || raw === '') return 1;
+  const q = Math.floor(Number(raw));
+  if (!Number.isFinite(q) || q < 1) return 1;
+  return Math.min(maxQ, q);
+}
+
+/** Subtotal cobrable de una línea según cantidad parcial. */
+function splitLineChargeSubtotal(it, chargeQty) {
+  const maxQ = Math.max(0, Math.floor(Number(it?.quantity || 0)));
+  const unit = Number(it?.unit_price ?? 0);
+  const fullSub = Number(it?.subtotal != null ? it.subtotal : unit * maxQ);
+  if (maxQ <= 0) return 0;
+  const q = Math.min(maxQ, Math.max(1, Math.floor(Number(chargeQty) || 1)));
+  if (q >= maxQ) return fullSub;
+  return roundMoneySoles((fullSub * q) / maxQ);
+}
+
+function itemWithSplitChargeQty(it, chargeQty) {
+  const maxQ = Math.max(1, Math.floor(Number(it?.quantity || 1)));
+  const q = Math.min(maxQ, Math.max(1, Math.floor(Number(chargeQty) || 1)));
+  if (q >= maxQ) return it;
+  return {
+    ...it,
+    quantity: q,
+    subtotal: splitLineChargeSubtotal(it, q),
+  };
+}
+
 /** Base imponible para total / descuento en modo dividir por línea (ítems marcados + delivery si el pedido queda entero). */
-function computeTableSplitSelectionBase(orders, selectedItemIds) {
+function computeTableSplitSelectionBase(orders, selectedItemIds, qtyByItemId = {}) {
   const set = selectedItemIds instanceof Set ? selectedItemIds : new Set(selectedItemIds);
   let lineSum = 0;
   for (const o of orders || []) {
     for (const it of o.items || []) {
-      if (set.has(it.id)) lineSum += sumOrderItemsChargeSubtotal([it]);
+      if (!set.has(it.id)) continue;
+      const chargeQ = resolveSplitChargeQty(it, qtyByItemId);
+      lineSum += splitLineChargeSubtotal(it, chargeQ);
     }
   }
   let deliveryExtra = 0;
   for (const o of orders || []) {
-    const ids = (o.items || []).map((x) => x.id).filter(Boolean);
-    if (ids.length && ids.every((id) => set.has(id))) {
-      deliveryExtra += Number(o.delivery_fee || 0);
-    }
+    const items = o.items || [];
+    if (!items.length) continue;
+    const allFull =
+      items.every((it) => {
+        if (!set.has(it.id)) return false;
+        const maxQ = Math.max(1, Math.floor(Number(it.quantity || 1)));
+        return resolveSplitChargeQty(it, qtyByItemId) >= maxQ;
+      });
+    if (allFull) deliveryExtra += Number(o.delivery_fee || 0);
   }
   return lineSum + deliveryExtra;
 }
 
-function getOrderItemSubtotalFromOrders(orders, itemId) {
+function getOrderItemSubtotalFromOrders(orders, itemId, qtyByItemId = {}) {
   const sid = String(itemId || '').trim();
   if (!sid) return 0;
   for (const o of orders || []) {
     const it = (o.items || []).find((x) => String(x.id) === sid);
-    if (it) return sumOrderItemsChargeSubtotal([it]);
+    if (it) {
+      const chargeQ = resolveSplitChargeQty(it, qtyByItemId);
+      return splitLineChargeSubtotal(it, chargeQ);
+    }
   }
   return 0;
 }
 
-function resolveAppliedDiscountBase(orders, selectedOrderItemIds, splitMode, discountConfig, fallbackTotal) {
+function resolveAppliedDiscountBase(orders, selectedOrderItemIds, splitMode, discountConfig, fallbackTotal, qtyByItemId = {}) {
   if (!discountConfig?.applied) return fallbackTotal;
   if (discountConfig.target !== 'line' || !String(discountConfig.targetOrderItemId || '').trim() || !splitMode) {
     return fallbackTotal;
   }
   const sid = String(discountConfig.targetOrderItemId).trim();
   if (!selectedOrderItemIds.includes(sid)) return fallbackTotal;
-  const lineSub = getOrderItemSubtotalFromOrders(orders, sid);
+  const lineSub = getOrderItemSubtotalFromOrders(orders, sid, qtyByItemId);
   return lineSub > 0 ? lineSub : fallbackTotal;
 }
 
@@ -207,7 +259,6 @@ const CAJA_OPTIONS_CAJERO_IDS = new Set([
   'egresos',
   'notas_credito',
   'notas_debito',
-  'consulta_precios',
   'impresora',
 ]);
 const CAJA_OPTIONS = [
@@ -219,7 +270,6 @@ const CAJA_OPTIONS = [
   { id: 'egresos', label: 'Egresos' },
   { id: 'notas_credito', label: 'Notas de credito' },
   { id: 'notas_debito', label: 'Notas de debito' },
-  { id: 'consulta_precios', label: 'Consulta de precios' },
   { id: 'impresora', label: 'Impresora' },
 ];
 const BAR_AUTO_DISMISS_MINUTE_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
@@ -422,6 +472,8 @@ export default function POSPanel() {
   const [splitMode, setSplitMode] = useState(false);
   /** En dividir cuenta: ids de `order_items` incluidos en este cobro. */
   const [selectedOrderItemIds, setSelectedOrderItemIds] = useState([]);
+  /** En dividir cuenta: cantidad a cobrar por línea cuando qty > 1 (default 1). */
+  const [selectedOrderItemQtys, setSelectedOrderItemQtys] = useState({});
   const [discountConfig, setDiscountConfig] = useState({
     active: false,
     applied: false,
@@ -533,8 +585,6 @@ export default function POSPanel() {
   const [debitNotes, setDebitNotes] = useState([]);
   const [movementForm, setMovementForm] = useState({ amount: '', concept: '' });
   const [noteForm, setNoteForm] = useState({ amount: '', reason: '' });
-  const [priceQuery, setPriceQuery] = useState('');
-  const [priceResults, setPriceResults] = useState([]);
   const printRef = useRef(null);
   const [printRestaurantInfo, setPrintRestaurantInfo] = useState({
     name: '',
@@ -652,10 +702,20 @@ export default function POSPanel() {
             ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`
             : null)
           : '/pos/current-register';
+      const regPreview = currentRegPath ? await api.get(currentRegPath).catch(() => null) : null;
+      let previewCajaId = String(regPreview?.caja_station_id || '').trim();
+      if (!previewCajaId && posRole === 'admin' && adminRid) {
+        const st = stationsList.find((s) => String(s.open_register?.id || '') === adminRid);
+        previewCajaId = String(st?.id || '').trim();
+      }
+      if (!previewCajaId && (posRole === 'cajero' || posRole === 'mozo')) {
+        previewCajaId = String(posUserRef.current?.caja_station_id || '').trim();
+      }
+      const tablesQs = previewCajaId ? `?caja_station_id=${encodeURIComponent(previewCajaId)}` : '';
       const [tablesData, salonesRes, regRaw, status, prods, cats, modifiersData, combosData, cfg, paymentMethodsRes, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
-        api.get('/tables'),
-        api.get('/tables/salones').catch(() => ({ salones: [] })),
-        currentRegPath ? api.get(currentRegPath).catch(() => null) : Promise.resolve(null),
+        api.get(`/tables${tablesQs}`),
+        api.get(`/tables/salones${tablesQs}`).catch(() => ({ salones: [] })),
+        Promise.resolve(regPreview),
         api.get('/pos/register-status'),
         api.get('/products?active_only=true&available_now=true'),
         api.get('/categories/active'),
@@ -713,8 +773,30 @@ export default function POSPanel() {
       const mergedCatalog = mergeOrderingCatalog(prods, visibleCategories, combosData || []);
       const visibleCategoryIds = new Set(mergedCatalog.categories.map(c => c.id));
       const visibleProducts = filterVisibleOrderingProducts(mergedCatalog.products, visibleCategoryIds);
-      setTables(tablesData);
-      setSalonesConfig(Array.isArray(salonesRes?.salones) ? salonesRes.salones : []);
+      const scopedCaja =
+        String(regResolved?.caja_station_id || previewCajaId || '').trim();
+      let scopedTables =
+        posRole === 'admin' && !scopedCaja
+          ? []
+          : (Array.isArray(tablesData) ? tablesData : []);
+      let scopedSalones =
+        posRole === 'admin' && !scopedCaja
+          ? []
+          : (Array.isArray(salonesRes?.salones) ? salonesRes.salones : []);
+      if (scopedCaja) {
+        const PRIMARY_CAJA = 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001';
+        const salonCaja = (s) => String(s?.caja_station_id || '').trim() || PRIMARY_CAJA;
+        scopedSalones = scopedSalones.filter((s) => salonCaja(s) === scopedCaja);
+        const salonByZone = new Map(scopedSalones.map((s) => [String(s.id), s]));
+        scopedTables = scopedTables.filter((t) => {
+          const direct = String(t?.caja_station_id || '').trim();
+          if (direct) return direct === scopedCaja;
+          const salon = salonByZone.get(String(t?.zone || 'principal'));
+          return salonCaja(salon) === scopedCaja;
+        });
+      }
+      setTables(scopedTables);
+      setSalonesConfig(scopedSalones);
       setReservations(reservationsData || []);
       setAllOrders(ordersData || []);
       setRegister((prev) => {
@@ -758,6 +840,7 @@ export default function POSPanel() {
             setShowBill(false);
             setSplitMode(false);
             setSelectedOrderItemIds([]);
+            setSelectedOrderItemQtys({});
             return null;
           });
         } else {
@@ -1460,6 +1543,7 @@ export default function POSPanel() {
     setAmountReceived('');
     setSplitMode(false);
     setSelectedOrderItemIds(collectAllOrderItemIds(orders));
+    setSelectedOrderItemQtys({});
     setDiscountConfig({ ...EMPTY_DISCOUNT_CONFIG });
     resetBillingForm();
     if (payload.customerForBilling) {
@@ -1649,7 +1733,7 @@ export default function POSPanel() {
 
       const discountValue = Math.max(0, parseFloat(discountConfig.value) || 0);
       const wholeBaseForDiscount = useLineSplit
-        ? computeTableSplitSelectionBase(tableOrders, selectedOrderItemIds)
+        ? computeTableSplitSelectionBase(tableOrders, selectedOrderItemIds, selectedOrderItemQtys)
         : tableOrders.reduce((sum, o) => sum + getOrderChargeTotal(o), 0);
 
       const lineBaseForDiscount =
@@ -1658,7 +1742,7 @@ export default function POSPanel() {
         discountConfig.target === 'line' &&
         String(discountConfig.targetOrderItemId || '').trim() &&
         selectedOrderItemIds.includes(String(discountConfig.targetOrderItemId).trim())
-          ? getOrderItemSubtotalFromOrders(tableOrders, discountConfig.targetOrderItemId)
+          ? getOrderItemSubtotalFromOrders(tableOrders, discountConfig.targetOrderItemId, selectedOrderItemQtys)
           : null;
 
       const baseForDiscount =
@@ -1712,6 +1796,14 @@ export default function POSPanel() {
 
       if (useLineSplit) {
         checkoutBody.order_item_ids = selectedOrderItemIds;
+        const qtysPayload = {};
+        for (const id of selectedOrderItemIds) {
+          const q = selectedOrderItemQtys[id];
+          if (q != null && Number(q) > 0) qtysPayload[id] = Math.floor(Number(q));
+        }
+        if (Object.keys(qtysPayload).length) {
+          checkoutBody.order_item_quantities = qtysPayload;
+        }
         checkoutBody.checkout_discount_total = totalDiscountToApply;
         if (
           totalDiscountToApply > 0 &&
@@ -1815,6 +1907,7 @@ export default function POSPanel() {
       setShowBill(false);
       setSplitMode(false);
       setSelectedOrderItemIds([]);
+      setSelectedOrderItemQtys({});
       setDiscountConfig({ ...EMPTY_DISCOUNT_CONFIG });
       clientCheckoutOpenedKeyRef.current = '';
       setSelectedTable(null);
@@ -1832,9 +1925,34 @@ export default function POSPanel() {
   };
 
   const toggleOrderItemSelection = (itemId) => {
-    setSelectedOrderItemIds((prev) =>
-      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
-    );
+    const isSelected = selectedOrderItemIds.includes(itemId);
+    if (isSelected) {
+      setSelectedOrderItemIds((prev) => prev.filter((id) => id !== itemId));
+      setSelectedOrderItemQtys((prev) => {
+        if (prev[itemId] == null) return prev;
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      return;
+    }
+    let maxQ = 1;
+    for (const o of selectedTable?.orders || []) {
+      const it = (o.items || []).find((x) => x.id === itemId);
+      if (it) {
+        maxQ = Math.max(1, Math.floor(Number(it.quantity || 1)));
+        break;
+      }
+    }
+    setSelectedOrderItemIds((prev) => [...prev, itemId]);
+    if (maxQ > 1) {
+      setSelectedOrderItemQtys((prev) => ({ ...prev, [itemId]: 1 }));
+    }
+  };
+
+  const setSplitChargeQty = (itemId, nextQty, maxQ) => {
+    const q = Math.min(maxQ, Math.max(1, Math.floor(Number(nextQty) || 1)));
+    setSelectedOrderItemQtys((prev) => ({ ...prev, [itemId]: q }));
   };
 
   const togglePartialSelection = () => {
@@ -1842,9 +1960,11 @@ export default function POSPanel() {
     if (splitMode) {
       setSplitMode(false);
       setSelectedOrderItemIds(allItemIds);
+      setSelectedOrderItemQtys({});
     } else {
       setSplitMode(true);
       setSelectedOrderItemIds([]);
+      setSelectedOrderItemQtys({});
     }
   };
 
@@ -1901,7 +2021,7 @@ export default function POSPanel() {
         toast.error('Marca la línea en el cobro o elige ese producto para cortesía.');
         return;
       }
-      base = getOrderItemSubtotalFromOrders(orders, sid);
+      base = getOrderItemSubtotalFromOrders(orders, sid, selectedOrderItemQtys);
     }
     if (!(base > 0)) {
       toast.error('Sin monto para cortesía');
@@ -2418,16 +2538,6 @@ export default function POSPanel() {
     }
   };
 
-  const searchPrices = async () => {
-    try {
-      const q = priceQuery.trim();
-      const result = await api.get(`/pos/price-lookup${q ? `?q=${encodeURIComponent(q)}` : ''}`);
-      setPriceResults(result);
-    } catch (err) {
-      toast.error(err.message);
-    }
-  };
-
   const mesaPhysicalTables = useMemo(
     () => (tables || []).filter((t) => !isDeliveryCheckoutTable(t) && !isClientCheckoutTable(t)),
     [tables]
@@ -2630,8 +2740,8 @@ export default function POSPanel() {
     if (!splitMode) {
       return orders.reduce((sum, o) => sum + getOrderChargeTotal(o), 0);
     }
-    return computeTableSplitSelectionBase(orders, selectedOrderItemIds);
-  }, [selectedTable, splitMode, selectedOrderItemIds]);
+    return computeTableSplitSelectionBase(orders, selectedOrderItemIds, selectedOrderItemQtys);
+  }, [selectedTable, splitMode, selectedOrderItemIds, selectedOrderItemQtys]);
 
   const splitBillLines = useMemo(() => {
     if (!selectedTable || !splitMode) return [];
@@ -2681,11 +2791,13 @@ export default function POSPanel() {
         selectedOrderItemIds,
         splitMode,
         discountConfig,
-        selectionBaseTotal
+        selectionBaseTotal,
+        selectedOrderItemQtys
       ),
     [
       selectedTable,
       selectedOrderItemIds,
+      selectedOrderItemQtys,
       splitMode,
       discountConfig.applied,
       discountConfig.target,
@@ -2719,13 +2831,15 @@ export default function POSPanel() {
       const picked = [];
       for (const o of orders) {
         for (const it of o.items || []) {
-          if (set.has(it.id)) picked.push(it);
+          if (!set.has(it.id)) continue;
+          const chargeQ = resolveSplitChargeQty(it, selectedOrderItemQtys);
+          picked.push(itemWithSplitChargeQty(it, chargeQ));
         }
       }
       return groupItemsByProductNameForBill(picked);
     }
     return groupItemsByProductNameForBill(orders.flatMap((o) => o.items || []));
-  }, [selectedTable, splitMode, selectedOrderItemIds]);
+  }, [selectedTable, splitMode, selectedOrderItemIds, selectedOrderItemQtys]);
   const occupiedHours = (() => {
     const timestamps = (selectedTable?.orders || [])
       .map(o => o.created_at)
@@ -2747,7 +2861,9 @@ export default function POSPanel() {
       const itemsFlat = [];
       payableOrders = [];
       for (const o of table.orders || []) {
-        const picks = (o.items || []).filter((it) => set.has(it.id));
+        const picks = (o.items || [])
+          .filter((it) => set.has(it.id))
+          .map((it) => itemWithSplitChargeQty(it, resolveSplitChargeQty(it, selectedOrderItemQtys)));
         if (picks.length) {
           itemsFlat.push(...picks);
           payableOrders.push(o);
@@ -2771,14 +2887,15 @@ export default function POSPanel() {
       billingForm.customer_address && `Dir: ${billingForm.customer_address}`,
     ].filter(Boolean);
     const ordersSubtotal = useSplit
-      ? computeTableSplitSelectionBase(table.orders, selectedOrderItemIds)
+      ? computeTableSplitSelectionBase(table.orders, selectedOrderItemIds, selectedOrderItemQtys)
       : payableOrders.reduce((sum, o) => sum + getOrderChargeTotal(o), 0);
     const discBase = resolveAppliedDiscountBase(
       table.orders || [],
       useSplit ? selectedOrderItemIds : [],
       useSplit,
       discountConfig,
-      ordersSubtotal
+      ordersSubtotal,
+      selectedOrderItemQtys
     );
     const discountForPrecuenta = !discountConfig.applied
       ? 0
@@ -3430,6 +3547,7 @@ export default function POSPanel() {
                     setAmountReceived('');
                     setSplitMode(false);
                     setSelectedOrderItemIds(collectAllOrderItemIds(tableDetail.orders));
+                    setSelectedOrderItemQtys({});
                     setDiscountConfig({ ...EMPTY_DISCOUNT_CONFIG });
                   }}
                   disabled={!tableDetail.orders?.length}
@@ -3658,30 +3776,6 @@ export default function POSPanel() {
         </div>
       )}
 
-      {activeCajaOption === 'consulta_precios' && (
-        <div className="card">
-          <h3 className="font-bold rf-section-title mb-4">Consulta de precios</h3>
-          <div className="flex gap-2 mb-3">
-            <input className="input-field" placeholder="Buscar por producto o categoría..." value={priceQuery} onChange={e => setPriceQuery(e.target.value)} />
-            <button onClick={searchPrices} className="btn-primary">Buscar</button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="border-b"><th className="text-left py-2">Producto</th><th className="text-left py-2">Categoría</th><th className="text-right py-2">Precio</th><th className="text-right py-2">Stock</th></tr></thead>
-              <tbody>
-                {priceResults.map(p => (
-                  <tr key={p.id} className="border-b border-slate-50">
-                    <td className="py-2">{p.name}</td>
-                    <td className="py-2 ui-text-muted">{p.category_name || '-'}</td>
-                    <td className="py-2 text-right font-semibold">{formatCurrency(p.price)}</td>
-                    <td className="py-2 text-right">{showStockInOrderingUI(p) ? p.stock : ''}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
       {activeCajaOption === 'impresora' && (
         <div className="card max-w-3xl">
           <h3 className="font-bold rf-section-title mb-4 flex items-center gap-2"><MdPrint /> Configuración de Impresora (Caja)</h3>
@@ -3829,7 +3923,7 @@ export default function POSPanel() {
                           />
                         </div>
                       ))}
-                      <p className={`text-xs font-semibold ${Math.abs(multiPaySumProof - cartTotal) <= 0.05 ? 'text-emerald-700' : 'text-red-600'}`}>
+                      <p className={`text-xs font-extrabold ${multiPaySumStatusClass(multiPaySumProof, cartTotal)}`}>
                         Suma: {formatCurrency(multiPaySumProof)} · Total {formatCurrency(cartTotal)}
                       </p>
                     </div>
@@ -3881,10 +3975,10 @@ export default function POSPanel() {
                     <div className="text-sm py-0.5">
                       <p className="text-[var(--ui-muted)]">
                         Vuelto:{' '}
-                        <span className="font-bold text-emerald-700 tabular-nums">{formatCurrency(quickSaleChange)}</span>
+                        <span className="font-extrabold text-[color:var(--ui-success)] tabular-nums">{formatCurrency(quickSaleChange)}</span>
                       </p>
                       {quickSaleMissing > 0 && (
-                        <p className="text-xs font-semibold text-red-600 mt-1">Falta: {formatCurrency(quickSaleMissing)}</p>
+                        <p className="text-xs font-extrabold text-[color:var(--ui-danger)] mt-1">Falta: {formatCurrency(quickSaleMissing)}</p>
                       )}
                     </div>
                   </>
@@ -4216,6 +4310,7 @@ export default function POSPanel() {
           setAmountReceived('');
           setSplitMode(false);
           setSelectedOrderItemIds([]);
+          setSelectedOrderItemQtys({});
           setAddToAccountEnabled(false);
           setShowCustomerPickerModal(false);
           resetBillingForm();
@@ -4228,19 +4323,20 @@ export default function POSPanel() {
               : 'COBRAR MESA'
         }
         size="xl"
+        dialogClassName="!max-w-5xl"
+        maxHeightClass="max-h-[min(90vh,860px)]"
+        bodyClassName="!overflow-hidden !flex !flex-col !min-h-0 !pb-4"
         headerClassName="bg-[var(--ui-surface-2)] border-b border-[color:var(--ui-border)]"
         titleClassName="text-[#F9FAFB] font-extrabold tracking-wide uppercase"
         closeButtonClassName="hover:bg-[#1E3A8A]/50"
         closeIconClassName="text-[#BFDBFE]"
       >
         {selectedTable && (
-          <div className="flex flex-col -m-1 min-h-0 max-h-[min(78vh,560px)]">
-            <div className="flex-1 overflow-y-auto min-h-0 pb-2">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4 items-start">
+          <div className="flex flex-col flex-1 min-h-0 h-full overflow-hidden">
+            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4 overflow-hidden">
                 {/* Pedidos o formulario de facturación (reemplazo al activar emitir comprobante) */}
-                <div className="flex flex-col gap-2 min-h-0">
-                  <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/70 backdrop-blur-md shadow-lg shadow-black/20 p-3 sm:p-4 flex flex-col min-h-0 overflow-hidden">
-                    <div className="flex flex-col flex-1 min-h-0 gap-2">
+                <div className="flex flex-col min-h-0 min-w-0 overflow-y-auto overscroll-contain scrollbar-thin pr-1">
+                  <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/70 backdrop-blur-md shadow-lg shadow-black/20 p-3 sm:p-4 flex flex-col gap-2">
                       {!billingForm.enabled ? (
                         <>
                           <h3 className="text-base font-bold text-[#F9FAFB] shrink-0">Productos</h3>
@@ -4251,7 +4347,7 @@ export default function POSPanel() {
                                   Incluir en cobro (cada línea de producto)
                                 </p>
                               </div>
-                              <div className="grid grid-cols-[1.75rem_2rem_minmax(0,1fr)_2.5rem_3.75rem_3.75rem] gap-1.5 text-[10px] sm:text-xs font-semibold text-[#9CA3AF] border-b border-[color:var(--ui-border)] pb-2 shrink-0 items-center">
+                              <div className="grid grid-cols-[1.75rem_2rem_minmax(0,1fr)_5.75rem_3.75rem_3.75rem] gap-1.5 text-[10px] sm:text-xs font-semibold text-[#9CA3AF] border-b border-[color:var(--ui-border)] pb-2 shrink-0 items-center">
                                 <span className="sr-only">Incluir</span>
                                 <span className="text-center">Ped.</span>
                                 <span>Producto</span>
@@ -4259,12 +4355,26 @@ export default function POSPanel() {
                                 <span className="text-right tabular-nums">P. unit.</span>
                                 <span className="text-right tabular-nums">Total</span>
                               </div>
-                              <div className="overflow-y-auto flex-1 space-y-0.5 max-h-[min(28vh,220px)] pr-1">
+                              <div className="space-y-0.5">
                                 {splitBillLines.length === 0 ? (
                                   <p className="text-sm text-[#9CA3AF] text-center py-6">Sin ítems</p>
                                 ) : (
                                   splitBillLines.map((line) => {
                                     const sel = selectedOrderItemIds.includes(line.id);
+                                    const maxQ = Math.max(1, Math.floor(Number(line.qty) || 1));
+                                    const showQtyStepper = sel && maxQ > 1;
+                                    const chargeQty = showQtyStepper
+                                      ? resolveSplitChargeQty(
+                                          { id: line.id, quantity: maxQ },
+                                          selectedOrderItemQtys
+                                        )
+                                      : maxQ;
+                                    const lineTotal = showQtyStepper
+                                      ? splitLineChargeSubtotal(
+                                          { quantity: maxQ, unit_price: line.unit, subtotal: line.sub },
+                                          chargeQty
+                                        )
+                                      : line.sub;
                                     const discountRowFocus =
                                       discountConfig.active &&
                                       !discountConfig.applied &&
@@ -4279,12 +4389,12 @@ export default function POSPanel() {
                                             selectDiscountTargetLine(line.id);
                                           }
                                         }}
-                                        className={`grid grid-cols-[1.75rem_2rem_minmax(0,1fr)_2.5rem_3.75rem_3.75rem] gap-1.5 items-center rounded-md border px-1 py-1.5 text-sm transition-colors ${
+                                        className={`grid grid-cols-[1.75rem_2rem_minmax(0,1fr)_5.75rem_3.75rem_3.75rem] gap-1.5 items-center rounded-md border px-1 py-1.5 text-sm transition-colors ${
                                           discountRowFocus
-                                            ? 'border-amber-400/70 bg-amber-950/35 ring-1 ring-amber-400/50'
+                                            ? 'border-[color:var(--ui-warning)] bg-[color-mix(in_srgb,var(--ui-warning)_18%,var(--ui-surface))] ring-1 ring-[color:var(--ui-warning)]'
                                             : sel
-                                              ? 'border-[color:var(--ui-accent)]/80 bg-[var(--ui-sidebar-active-bg)]/25 text-[#E5E7EB]'
-                                              : 'border-transparent text-[#9CA3AF]'
+                                              ? 'border-[color:var(--ui-accent)]/80 bg-[var(--ui-sidebar-active-bg)]/25 text-[var(--ui-body-text)]'
+                                              : 'border-transparent text-[var(--ui-muted)]'
                                         } ${discountConfig.active && !discountConfig.applied ? 'cursor-pointer' : ''}`}
                                       >
                                         <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
@@ -4299,9 +4409,38 @@ export default function POSPanel() {
                                           #{line.orderNumber}
                                         </span>
                                         <span className="min-w-0 break-words leading-snug">{line.name}</span>
-                                        <span className="text-center tabular-nums text-[#F9FAFB]">{line.qty}</span>
+                                        {showQtyStepper ? (
+                                          <div
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="inline-flex items-center justify-center gap-0.5 h-6 mx-auto"
+                                          >
+                                            <button
+                                              type="button"
+                                              aria-label="Disminuir cantidad"
+                                              disabled={chargeQty <= 1}
+                                              onClick={() => setSplitChargeQty(line.id, chargeQty - 1, maxQ)}
+                                              className="h-5 w-5 shrink-0 rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[11px] leading-none font-bold text-[#F9FAFB] disabled:opacity-40 hover:bg-[var(--ui-sidebar-hover)]"
+                                            >
+                                              −
+                                            </button>
+                                            <span className="min-w-[1.25rem] text-center tabular-nums text-xs font-semibold text-[#F9FAFB]">
+                                              {chargeQty}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              aria-label="Aumentar cantidad"
+                                              disabled={chargeQty >= maxQ}
+                                              onClick={() => setSplitChargeQty(line.id, chargeQty + 1, maxQ)}
+                                              className="h-5 w-5 shrink-0 rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[11px] leading-none font-bold text-[#F9FAFB] disabled:opacity-40 hover:bg-[var(--ui-sidebar-hover)]"
+                                            >
+                                              +
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <span className="text-center tabular-nums text-[#F9FAFB]">{line.qty}</span>
+                                        )}
                                         <span className="text-right tabular-nums text-[#D1D5DB]">{formatCurrency(line.unit)}</span>
-                                        <span className="text-right tabular-nums font-medium text-[#F9FAFB]">{formatCurrency(line.sub)}</span>
+                                        <span className="text-right tabular-nums font-medium text-[#F9FAFB]">{formatCurrency(lineTotal)}</span>
                                       </div>
                                     );
                                   })
@@ -4311,8 +4450,8 @@ export default function POSPanel() {
                                 Desmarca las líneas que no vas a cobrar en esta operación.
                               </p>
                               {discountConfig.applied && (
-                                <p className="text-[11px] text-amber-200/90 shrink-0">
-                                  <span className="font-semibold">Descuento aplicado a:</span> {discountTargetLabel}
+                                <p className="text-[11px] font-semibold text-[var(--ui-body-text)] shrink-0">
+                                  <span className="font-extrabold text-[color:var(--ui-warning-hover)]">Descuento aplicado a:</span> {discountTargetLabel}
                                 </p>
                               )}
                             </>
@@ -4324,7 +4463,7 @@ export default function POSPanel() {
                                 <span className="text-right tabular-nums">P. unit.</span>
                                 <span className="text-right tabular-nums">Total</span>
                               </div>
-                              <div className="overflow-y-auto flex-1 space-y-2 max-h-[min(28vh,220px)] pr-1">
+                              <div className="space-y-2">
                                 {billLineItemsGrouped.length === 0 ? (
                                   <p className="text-sm text-[#9CA3AF] text-center py-6">Sin ítems</p>
                                 ) : (
@@ -4342,15 +4481,15 @@ export default function POSPanel() {
                                 )}
                               </div>
                               {discountConfig.applied && (
-                                <p className="text-[11px] text-amber-200/90 shrink-0 pt-1">
-                                  <span className="font-semibold">Descuento aplicado a:</span> {discountTargetLabel}
+                                <p className="text-[11px] font-semibold text-[var(--ui-body-text)] shrink-0 pt-1">
+                                  <span className="font-extrabold text-[color:var(--ui-warning-hover)]">Descuento aplicado a:</span> {discountTargetLabel}
                                 </p>
                               )}
                             </>
                           )}
                         </>
                       ) : (
-                        <div className="flex flex-col gap-3 overflow-y-auto max-h-[min(50vh,400px)] pr-1">
+                        <div className="flex flex-col gap-3">
                           <h3 className="text-base font-bold text-[#F9FAFB] shrink-0">Datos del comprobante</h3>
                           <div className="flex items-center justify-end gap-2 shrink-0 flex-wrap">
                             <button
@@ -4482,8 +4621,8 @@ export default function POSPanel() {
                         </div>
                       )}
                       {discountConfig.active && !discountConfig.applied && (
-                        <div className="p-2.5 rounded-lg border border-amber-500/35 bg-amber-950/20 space-y-2 shrink-0">
-                          <p className="text-xs font-medium text-amber-200/90">Definir descuento</p>
+                        <div className="p-2.5 rounded-lg border-2 border-[color:var(--ui-warning)] bg-[var(--ui-surface)] space-y-2 shrink-0 shadow-sm">
+                          <p className="text-xs font-extrabold text-[var(--ui-body-text)]">Definir descuento</p>
                           <select
                             className="input-field text-sm"
                             value={discountConfig.type}
@@ -4507,18 +4646,18 @@ export default function POSPanel() {
                             value={discountConfig.reason}
                             onChange={(e) => setDiscountConfig((prev) => ({ ...prev, reason: e.target.value }))}
                           />
-                          <div className="rounded-md border border-amber-500/25 bg-black/20 px-2 py-1.5 space-y-1">
-                            <p className="text-[11px] text-amber-100/90">
-                              <span className="font-semibold text-amber-200">Aplicando a: </span>
+                          <div className="rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5 space-y-1">
+                            <p className="text-[11px] font-medium text-[var(--ui-body-text)]">
+                              <span className="font-extrabold text-[color:var(--ui-warning-hover)]">Aplicando a: </span>
                               {discountTargetLabel}
                             </p>
                             {splitMode ? (
-                              <p className="text-[10px] text-[#9CA3AF] leading-snug">
+                              <p className="text-[10px] font-medium text-[var(--ui-muted)] leading-snug">
                                 Pulsa una línea de la lista de productos para descontar solo ese ítem. Por defecto: cuenta
                                 completa.
                               </p>
                             ) : (
-                              <p className="text-[10px] text-[#9CA3AF] leading-snug">
+                              <p className="text-[10px] font-medium text-[var(--ui-muted)] leading-snug">
                                 El descuento afecta a toda la cuenta. Activa «Dividir cuentas» para elegir un solo
                                 producto.
                               </p>
@@ -4527,7 +4666,7 @@ export default function POSPanel() {
                               <button
                                 type="button"
                                 onClick={selectDiscountTargetWhole}
-                                className="text-[11px] font-medium text-sky-300 hover:text-sky-200 underline-offset-2 hover:underline"
+                                className="text-[11px] font-bold text-[color:var(--ui-accent)] hover:underline underline-offset-2"
                               >
                                 Volver a cuenta completa
                               </button>
@@ -4537,33 +4676,32 @@ export default function POSPanel() {
                             <button
                               type="button"
                               onClick={handleDiscountButton}
-                              className="flex-1 py-2 rounded-lg bg-amber-600/90 text-white text-xs font-semibold hover:bg-amber-600"
+                              className="flex-1 py-2 rounded-lg bg-[color:var(--ui-warning)] text-white text-xs font-extrabold hover:bg-[color:var(--ui-warning-hover)] shadow-sm"
                             >
                               Aplicar descuento
                             </button>
                             <button
                               type="button"
                               onClick={applyCourtesyDiscount}
-                              className="flex-1 py-2 rounded-lg border border-amber-400/60 text-amber-100 text-xs font-semibold hover:bg-amber-500/15"
+                              className="flex-1 py-2 rounded-lg border-2 border-[color:var(--ui-warning-hover)] bg-[var(--ui-surface)] text-[color:var(--ui-warning-hover)] text-xs font-extrabold hover:bg-[color-mix(in_srgb,var(--ui-warning)_14%,var(--ui-surface))]"
                             >
                               Cortesía (requiere motivo)
                             </button>
                             <button
                               type="button"
                               onClick={() => setDiscountConfig({ ...EMPTY_DISCOUNT_CONFIG })}
-                              className="px-3 py-2 rounded-lg border border-[color:var(--ui-border)] text-[#BFDBFE] text-xs shrink-0"
+                              className="px-3 py-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)] text-xs font-bold shrink-0 hover:bg-[var(--ui-surface-2)]"
                             >
                               Cancelar
                             </button>
                           </div>
                         </div>
                       )}
-                    </div>
                   </div>
                 </div>
 
                 {/* Cobro */}
-                <div className="lg:border-l lg:border-[color:var(--ui-border)] lg:pl-4">
+                <div className="flex flex-col min-h-0 min-w-0 overflow-y-auto overscroll-contain scrollbar-thin pr-1 lg:border-l lg:border-[color:var(--ui-border)] lg:pl-4">
                   <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/70 backdrop-blur-md p-3 sm:p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <h3 className="text-base font-bold text-[#F9FAFB] shrink-0">Cobro</h3>
@@ -4619,7 +4757,7 @@ export default function POSPanel() {
                               />
                             </div>
                           ))}
-                          <p className={`text-xs font-semibold ${Math.abs(multiPaySumProof - payableTotal) <= 0.05 ? 'text-emerald-700' : 'text-red-600'}`}>
+                          <p className={`text-xs font-extrabold ${multiPaySumStatusClass(multiPaySumProof, payableTotal)}`}>
                             Suma: {formatCurrency(multiPaySumProof)} · Debe ser {formatCurrency(payableTotal)}
                           </p>
                         </div>
@@ -4727,15 +4865,15 @@ export default function POSPanel() {
                           disabled={multiPayEnabled || paymentMethod !== 'efectivo'}
                         />
                       </div>
-                      <div className="flex flex-col justify-center py-0.5">
+                      <div className="flex flex-col justify-center py-0.5 bg-transparent">
                         <p className="text-xs text-[var(--ui-muted)]">Vuelto</p>
-                        <p className="text-lg font-bold text-emerald-700 tabular-nums">
+                        <p className="text-lg font-extrabold text-[color:var(--ui-success)] tabular-nums">
                           {!multiPayEnabled && paymentMethod === 'efectivo'
                             ? formatCurrency(Math.max(0, receivedAmount - payableTotal))
                             : formatCurrency(0)}
                         </p>
                         {!multiPayEnabled && paymentMethod === 'efectivo' && receivedAmount < payableTotal && (
-                          <p className="text-xs font-semibold text-red-600">Falta: {formatCurrency(payableTotal - receivedAmount)}</p>
+                          <p className="text-xs font-extrabold text-[color:var(--ui-danger)]">Falta: {formatCurrency(payableTotal - receivedAmount)}</p>
                         )}
                       </div>
                     </div>
@@ -4775,26 +4913,13 @@ export default function POSPanel() {
                       />
                       <span>Emitir Comprobante</span>
                     </label>
-
-                    <button
-                      type="button"
-                      onClick={cobrarMesa}
-                      className={`w-full py-3 rounded-xl text-white font-bold text-lg sm:text-xl shadow-lg uppercase tracking-wide ${
-                        addToAccountEnabled
-                          ? 'bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-600 shadow-sky-700/25'
-                          : 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] shadow-[#1D4ED8]/25'
-                      }`}
-                    >
-                      {addToAccountEnabled ? 'AGREGAR A CUENTA' : 'COBRAR MESA'}
-                    </button>
                   </div>
                 </div>
-              </div>
             </div>
 
-            {/* Barra fija inferior: solo dividir / descuento (la mesa va arriba del total a pagar) */}
-            <div className="shrink-0 flex flex-wrap items-center gap-3 py-3 px-1 mt-1 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/95 backdrop-blur-md rounded-b-lg">
-              <div className="flex flex-wrap gap-2">
+            {/* Fijos fuera del scroll: dividir/descuento (izq) + cobrar (der) */}
+            <div className="shrink-0 grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4 pt-2 mt-1 border-t border-[color:var(--ui-border)]">
+              <div className="flex flex-wrap items-center gap-2 px-0.5">
                 <button
                   type="button"
                   onClick={togglePartialSelection}
@@ -4812,6 +4937,19 @@ export default function POSPanel() {
                     : discountConfig.active
                       ? 'Aplicar descuento'
                       : 'Agregar descuento'}
+                </button>
+              </div>
+              <div className="lg:pl-4 px-0.5">
+                <button
+                  type="button"
+                  onClick={cobrarMesa}
+                  className={`w-full py-3 rounded-xl text-white font-bold text-lg sm:text-xl shadow-lg uppercase tracking-wide ${
+                    addToAccountEnabled
+                      ? 'bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-600 shadow-sky-700/25'
+                      : 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] shadow-[#1D4ED8]/25'
+                  }`}
+                >
+                  {addToAccountEnabled ? 'AGREGAR A CUENTA' : 'COBRAR MESA'}
                 </button>
               </div>
             </div>

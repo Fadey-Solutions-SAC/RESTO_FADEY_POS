@@ -3,8 +3,9 @@ export const ADMIN_MODULE_PATHS = [
   { path: '/admin', moduleId: 'escritorio', roles: ['admin', 'cajero'] },
   { path: '/admin/caja', moduleId: 'caja', roles: ['admin', 'cajero'] },
   { path: '/admin/mesas', moduleId: 'mesas', roles: ['admin', 'mozo'] },
-  { path: '/admin/cocina', moduleId: 'cocina', roles: ['admin'] },
-  { path: '/admin/bar', moduleId: 'bar', roles: ['admin'] },
+  { path: '/admin/produccion/cocina', moduleId: 'produccion', roles: ['admin', 'produccion', 'cocina', 'bar'] },
+  { path: '/admin/cocina', moduleId: 'cocina', roles: ['admin', 'produccion', 'cocina'] },
+  { path: '/admin/bar', moduleId: 'bar', roles: ['admin', 'produccion', 'bar'] },
   { path: '/admin/delivery', moduleId: 'delivery', roles: ['admin', 'cajero', 'mozo'] },
   { path: '/admin/reservas', moduleId: 'reservas', roles: ['admin', 'cajero', 'mozo'] },
   { path: '/admin/auto-pedido', moduleId: 'auto_pedido', roles: ['admin'] },
@@ -29,8 +30,22 @@ export function isPermissionEnabled(value) {
 export function hasModulePermission(user, moduleId) {
   if (!moduleId) return true;
   if (user?.role === 'master_admin') return true;
+  const role = String(user?.role || '').toLowerCase();
+  if (role === 'produccion' && (moduleId === 'produccion' || moduleId === 'cocina' || moduleId === 'bar')) {
+    return true;
+  }
+  if (role === 'cocina' && (moduleId === 'cocina' || moduleId === 'produccion')) return true;
+  if (role === 'bar' && (moduleId === 'bar' || moduleId === 'produccion')) return true;
   if (!user || typeof user.permissions !== 'object' || user.permissions === null) return false;
-  return isPermissionEnabled(user.permissions[moduleId]);
+  if (isPermissionEnabled(user.permissions[moduleId])) return true;
+  // produccion cubre cocina/bar legado y viceversa
+  if (moduleId === 'produccion') {
+    return isPermissionEnabled(user.permissions.cocina) || isPermissionEnabled(user.permissions.bar);
+  }
+  if ((moduleId === 'cocina' || moduleId === 'bar') && isPermissionEnabled(user.permissions.produccion)) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -50,6 +65,10 @@ export function canAccessStaffModule(user, { moduleId, roles } = {}) {
 export function getDefaultStaffPath(user) {
   if (!user) return '/';
   if (user.role === 'master_admin') return '/master';
+  if (user.role === 'produccion') {
+    const area = String(user.production_area_id || '').trim() || 'cocina';
+    return hasModulePermission(user, 'produccion') ? `/produccion/${area}` : '/';
+  }
   if (user.role === 'cocina') return hasModulePermission(user, 'cocina') ? '/kitchen' : '/';
   if (user.role === 'bar') return hasModulePermission(user, 'bar') ? '/bar' : '/';
   if (user.role === 'delivery') return hasModulePermission(user, 'delivery') ? '/delivery' : '/';
@@ -68,7 +87,7 @@ const OPERATIONAL_NOTIFICATION_LINK_DEFS = [
   { moduleId: 'delivery', label: 'Delivery', routeRoles: ['admin', 'cajero', 'mozo', 'master_admin'] },
   { moduleId: 'cocina', label: 'Cocina', routeRoles: ['admin', 'master_admin'] },
   { moduleId: 'bar', label: 'Bar', routeRoles: ['admin', 'master_admin'] },
-  { moduleId: 'almacen', label: 'Almacén', routeRoles: ['admin', 'master_admin'] },
+  { moduleId: 'almacen', label: 'Control De Recursos', routeRoles: ['admin', 'master_admin'] },
   { moduleId: 'caja', label: 'Caja', routeRoles: ['admin', 'cajero', 'master_admin'] },
   { moduleId: 'informes', label: 'Facturación', path: '/admin/informes?seccion=facturacion', routeRoles: ['admin', 'cajero', 'master_admin'] },
   { moduleId: 'delivery', label: 'Reparto', path: '/delivery', routeRoles: ['delivery'] },

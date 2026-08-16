@@ -192,6 +192,23 @@ router.post('/login', (req, res) => {
       });
     }
   }
+  if (String(user.role || '').toLowerCase() === 'mozo') {
+    const cid = String(user.caja_station_id || '').trim();
+    if (!cid) {
+      return res.status(403).json({
+        error:
+          'Su usuario mozo no tiene una caja asignada. El administrador debe vincularlo en Configuración → Usuarios.',
+      });
+    }
+  }
+  if (String(user.role || '').toLowerCase() === 'produccion') {
+    if (!String(user.production_area_id || '').trim()) {
+      return res.status(403).json({
+        error:
+          'Su usuario de producción no tiene área asignada. El administrador debe vincularlo en Configuración → Áreas de producción.',
+      });
+    }
+  }
   const photoLogin = normalizeAttendancePhoto(req.body?.photo_login);
   const { loginPhoto, logoutPhoto } = readJornadaLaboralFlags();
   const openBeforeLogin = countOpenSessions(user.id);
@@ -226,13 +243,23 @@ router.post('/login', (req, res) => {
   } catch (_) {
     /* sync opcional */
   }
-  const cajaMeta =
-    String(user.role || '').toLowerCase() === 'cajero'
-      ? (() => {
-          const c = getActiveCajaById(user.caja_station_id);
-          return { caja_station_id: String(user.caja_station_id || '').trim(), caja_name: c?.name || '' };
-        })()
-      : { caja_station_id: '', caja_name: '' };
+  const cajaMeta = (() => {
+    const role = String(user.role || '').toLowerCase();
+    if (role === 'cajero' || role === 'mozo') {
+      const c = getActiveCajaById(user.caja_station_id);
+      return { caja_station_id: String(user.caja_station_id || '').trim(), caja_name: c?.name || '' };
+    }
+    return { caja_station_id: String(user.caja_station_id || '').trim() || '', caja_name: '' };
+  })();
+  let production_area_ids = [];
+  try {
+    production_area_ids = user.production_area_ids
+      ? JSON.parse(user.production_area_ids)
+      : [];
+  } catch {
+    production_area_ids = [];
+  }
+  if (!Array.isArray(production_area_ids)) production_area_ids = [];
   res.json({
     token,
     user: {
@@ -246,6 +273,8 @@ router.post('/login', (req, res) => {
       sub_permissions,
       padron_quota,
       service_plan: plan,
+      production_area_id: String(user.production_area_id || '').trim(),
+      production_area_ids,
       ...readUiAppearanceFromStoredSettings(),
       ...cajaMeta,
     },
@@ -337,7 +366,8 @@ router.get('/me', authenticateToken, (req, res) => {
   }
   ensureOpenWorkSession(req.user);
   const user = queryOne(
-    'SELECT id, username, email, full_name, role, avatar, phone, caja_station_id FROM users WHERE id = ?',
+    `SELECT id, username, email, full_name, role, avatar, phone, caja_station_id,
+            production_area_id, production_area_ids FROM users WHERE id = ?`,
     [req.user.id]
   );
   const control = getControlConfig();
@@ -346,12 +376,21 @@ router.get('/me', authenticateToken, (req, res) => {
   const permissions = getEffectivePermissions(plan, user.role, getUserPermissions(req.user.id), moduleOverrides);
   const sub_permissions = buildSubPermissions(plan, moduleOverrides, permissions, getRawUserPermissionsJson(req.user.id));
   const padron_quota = getPadronQuotaPublic();
+  const roleLc = String(user?.role || '').toLowerCase();
   const caja =
-    String(user?.role || '').toLowerCase() === 'cajero'
+    roleLc === 'cajero' || roleLc === 'mozo'
       ? getActiveCajaById(user?.caja_station_id)
       : null;
+  let production_area_ids = [];
+  try {
+    production_area_ids = user?.production_area_ids ? JSON.parse(user.production_area_ids) : [];
+  } catch {
+    production_area_ids = [];
+  }
+  if (!Array.isArray(production_area_ids)) production_area_ids = [];
   const payload = {
     ...user,
+    production_area_ids,
     permissions,
     sub_permissions,
     padron_quota,

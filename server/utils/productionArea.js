@@ -1,27 +1,34 @@
-/** Área explícita del producto: 'cocina' | 'bar'. Sin selección → cocina (igual que en Productos). */
+/**
+ * Áreas de producción dinámicas. Mantiene compatibilidad cocina/bar.
+ * Sin área válida en producto → cocina.
+ */
+
+function expandItemTargets(item = {}) {
+  const combo = item._comboComponents;
+  if (Array.isArray(combo) && combo.length > 0) return combo;
+  return [item];
+}
+
 function normalizeProductionArea(raw) {
-  const area = String(raw ?? '').trim().toLowerCase();
-  if (area === 'bar' || area === 'cocina') return area;
-  return '';
+  const area = String(raw ?? '').trim();
+  if (!area) return '';
+  return area;
 }
 
 function resolveProductionArea(raw) {
   return normalizeProductionArea(raw) || 'cocina';
 }
 
-/** Destino según la selección del producto en catálogo (Cocina / Bar). */
+function itemProductionAreaId(item = {}) {
+  return resolveProductionArea(item.production_area);
+}
+
 function isBarProductionItem(item = {}) {
-  return resolveProductionArea(item.production_area) === 'bar';
+  return itemProductionAreaId(item) === 'bar';
 }
 
 function isKitchenProductionItem(item = {}) {
-  return resolveProductionArea(item.production_area) === 'cocina';
-}
-
-function expandItemTargets(item = {}) {
-  const combo = item._comboComponents;
-  if (Array.isArray(combo) && combo.length > 0) return combo;
-  return [item];
+  return itemProductionAreaId(item) === 'cocina';
 }
 
 function isBarOnlyOrderItems(items = []) {
@@ -39,15 +46,28 @@ function orderHasKitchenItems(items = []) {
   return items.some((item) => expandItemTargets(item).some(isKitchenProductionItem));
 }
 
-/** Ítems visibles en el panel cocina o bar (respeta combos mixtos). */
+/** Ítems visibles en un panel de área (id = cocina | bar | uuid). */
 function filterItemsForKitchenStation(items, station) {
   if (!Array.isArray(items) || items.length === 0) return [];
-  const st = station === 'bar' ? 'bar' : 'cocina';
+  const st = String(station || 'cocina').trim() || 'cocina';
   return items.filter((item) => {
     const targets = expandItemTargets(item);
-    if (st === 'bar') return targets.some(isBarProductionItem);
-    return targets.some(isKitchenProductionItem);
+    return targets.some((t) => itemProductionAreaId(t) === st);
   });
+}
+
+function orderHasStationWork(items, station) {
+  return filterItemsForKitchenStation(items, station).length > 0;
+}
+
+function collectOrderProductionAreaIds(items = []) {
+  const ids = new Set();
+  for (const item of items || []) {
+    for (const t of expandItemTargets(item)) {
+      ids.add(itemProductionAreaId(t));
+    }
+  }
+  return [...ids];
 }
 
 function stripKitchenItemMeta(item) {
@@ -58,11 +78,15 @@ function stripKitchenItemMeta(item) {
 module.exports = {
   normalizeProductionArea,
   resolveProductionArea,
+  itemProductionAreaId,
   isBarProductionItem,
   isKitchenProductionItem,
   isBarOnlyOrderItems,
   orderHasBarItems,
   orderHasKitchenItems,
   filterItemsForKitchenStation,
+  orderHasStationWork,
+  collectOrderProductionAreaIds,
   stripKitchenItemMeta,
+  expandItemTargets,
 };

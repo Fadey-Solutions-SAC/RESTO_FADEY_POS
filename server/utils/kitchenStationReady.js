@@ -2,12 +2,22 @@ const {
   orderHasBarItems,
   orderHasKitchenItems,
   filterItemsForKitchenStation,
+  collectOrderProductionAreaIds,
+  orderHasStationWork: orderHasStationWorkFromItems,
 } = require('./productionArea');
+const { queryOne } = require('../database');
 
-/** Cocina y bar son independientes: misma comanda, ítems y botones por estación. */
+/** Cocina/bar legacy + áreas dinámicas vía order_station_state. */
 
 function normalizeKitchenStation(station) {
-  return station === 'bar' ? 'bar' : 'cocina';
+  const s = String(station || '').trim();
+  if (!s) return 'cocina';
+  return s;
+}
+
+function isLegacyStation(station) {
+  const st = normalizeKitchenStation(station);
+  return st === 'cocina' || st === 'bar';
 }
 
 function getStationReadyColumn(station) {
@@ -22,14 +32,35 @@ function getStationPreparingColumn(station) {
     : 'station_cocina_preparing_at';
 }
 
+function readStationStateRow(orderId, areaId) {
+  try {
+    return queryOne(
+      'SELECT preparing_at, ready_at FROM order_station_state WHERE order_id = ? AND area_id = ?',
+      [String(orderId || '').trim(), String(areaId || '').trim()]
+    );
+  } catch {
+    return null;
+  }
+}
+
 function isStationMarkedReady(order, station) {
-  const col = getStationReadyColumn(station);
-  return Boolean(String(order?.[col] || '').trim());
+  const st = normalizeKitchenStation(station);
+  if (isLegacyStation(st)) {
+    const col = getStationReadyColumn(st);
+    if (Boolean(String(order?.[col] || '').trim())) return true;
+  }
+  const row = readStationStateRow(order?.id, st);
+  return Boolean(String(row?.ready_at || '').trim());
 }
 
 function isStationMarkedPreparing(order, station) {
-  const col = getStationPreparingColumn(station);
-  return Boolean(String(order?.[col] || '').trim());
+  const st = normalizeKitchenStation(station);
+  if (isLegacyStation(st)) {
+    const col = getStationPreparingColumn(st);
+    if (Boolean(String(order?.[col] || '').trim())) return true;
+  }
+  const row = readStationStateRow(order?.id, st);
+  return Boolean(String(row?.preparing_at || '').trim());
 }
 
 function isKitchenItemMarkedReady(item) {
@@ -42,7 +73,6 @@ function allKitchenStationItemsReady(areaItems) {
   return kitchenItems.every(isKitchenItemMarkedReady);
 }
 
-/** Cocina cerrada en su módulo cuando todos sus ítems están listos (independiente de bar). */
 function isCocinaStationComplete(order, areaItems) {
   if (isStationMarkedReady(order, 'cocina')) return true;
   const kitchenItems = filterItemsForKitchenStation(areaItems, 'cocina');
@@ -50,7 +80,6 @@ function isCocinaStationComplete(order, areaItems) {
   return allKitchenStationItemsReady(areaItems);
 }
 
-/** Bar cerrado en su módulo (comanda completa en bar). */
 function isBarStationComplete(order, areaItems) {
   if (isStationMarkedReady(order, 'bar')) return true;
   if (!orderHasBarItems(areaItems)) return true;
@@ -58,42 +87,37 @@ function isBarStationComplete(order, areaItems) {
 }
 
 function isStationCompleteForStation(order, areaItems, station) {
-  return normalizeKitchenStation(station) === 'bar'
-    ? isBarStationComplete(order, areaItems)
-    : isCocinaStationComplete(order, areaItems);
+  const st = normalizeKitchenStation(station);
+  if (st === 'bar') return isBarStationComplete(order, areaItems);
+  if (st === 'cocina') return isCocinaStationComplete(order, areaItems);
+  if (isStationMarkedReady(order, st)) return true;
+  const stationItems = filterItemsForKitchenStation(areaItems, st);
+  return !stationItems.length;
 }
 
 function orderHasStationWork(areaItems, station) {
-  const st = normalizeKitchenStation(station);
-  if (st === 'bar') return orderHasBarItems(areaItems);
-  return orderHasKitchenItems(areaItems);
+  return orderHasStationWorkFromItems(areaItems, station);
 }
 
-/** Solo para POS/delivery: todas las estaciones con ítems terminaron (no afecta visibilidad por panel). */
 function allRequiredStationsReady(order, areaItems) {
-  const hasKitchen = orderHasKitchenItems(areaItems);
-  const hasBar = orderHasBarItems(areaItems);
-  if (hasKitchen && !isCocinaStationComplete(order, areaItems)) return false;
-  if (hasBar && !isBarStationComplete(order, areaItems)) return false;
-  return hasKitchen || hasBar;
+  const areaIds = collectOrderProductionAreaIds(areaItems);
+  if (!areaIds.length) return false;
+  return areaIds.every((aid) => isStationCompleteForStation(order, areaItems, aid));
 }
 
-/** Estado global «listo» incoherente con alguna estación pendiente → volver a preparación. */
 function kitchenOrderNeedsRepair(order, areaItems) {
   if (!order || order.status !== 'ready') return false;
   if (String(order.payment_status || 'pending') === 'paid') return false;
   return !allRequiredStationsReady(order, areaItems);
 }
 
-/** Comandas visibles: bloque con ítems de esta estación aún no listos. */
 function filterKitchenOrdersForStation(orders, station, getAreaItems) {
   const st = normalizeKitchenStation(station);
   const filtered = [];
   orders.forEach((o) => {
     const areaItems = getAreaItems(o.id);
     if (isStationCompleteForStation(o, areaItems, st)) return;
-    if (st === 'bar' && !orderHasBarItems(areaItems)) return;
-    if (st === 'cocina' && !orderHasKitchenItems(areaItems)) return;
+    if (!orderHasStationWork(areaItems, st)) return;
     const stationItems = filterItemsForKitchenStation(areaItems, st);
     if (!stationItems.length) return;
     filtered.push({ order: o, stationItems });
@@ -103,6 +127,7 @@ function filterKitchenOrdersForStation(orders, station, getAreaItems) {
 
 module.exports = {
   normalizeKitchenStation,
+  isLegacyStation,
   getStationReadyColumn,
   getStationPreparingColumn,
   isStationMarkedReady,

@@ -15,10 +15,91 @@ const {
   isMergeBlockedByDispatchedStation,
   getOrderAreaItemsTx,
 } = require('./services/tableOrderMergeService');
-const { isCocinaStationComplete, isBarStationComplete, allRequiredStationsReady } = require('./utils/kitchenStationReady');
-const { orderHasBarItems, orderHasKitchenItems } = require('./utils/productionArea');
+const { allRequiredStationsReady, isStationCompleteForStation } = require('./utils/kitchenStationReady');
 const { tableNumbersMatch } = require('./utils/tableNumberMatch');
 const { deductNonTransformedStockTx } = require('./warehouseStock');
+const {
+  resolveProductProductionAreaId,
+  upsertOrderStationState,
+} = require('./services/productionAreasService');
+
+const STAFF_IN_HOUSE_ROLES = ['admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion'];
+
+function assertMozoTableCajaTx(tx, actor, tableId) {
+  if (actor?.kind !== 'staff' || !actor.user) return;
+  if (String(actor.user.role || '').toLowerCase() !== 'mozo') return;
+  const tid = String(tableId || '').trim();
+  if (!tid) return;
+  const userRow = tx.queryOne('SELECT caja_station_id FROM users WHERE id = ?', [actor.user.id]);
+  const mozoCaja = String(userRow?.caja_station_id || '').trim();
+  if (!mozoCaja) {
+    throw new Error('El mozo no tiene caja asignada. Configúrela en Usuarios.');
+  }
+  const table = tx.queryOne('SELECT caja_station_id, number FROM tables WHERE id = ?', [tid]);
+  if (!table) return;
+  const tableCaja = String(table.caja_station_id || '').trim();
+  if (tableCaja && tableCaja !== mozoCaja) {
+    throw new Error('Esta mesa pertenece a otra caja. Solo puede operar mesas de su caja asignada.');
+  }
+}
+
+function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
+  if (!lineIds.length) return;
+  const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
+  if (!order) return;
+
+  const ph = lineIds.map(() => '?').join(',');
+  const rows = tx.queryAll(
+    `SELECT oi.id,
+            COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') AS production_area
+     FROM order_items oi
+     LEFT JOIN products p ON p.id = oi.product_id
+     WHERE oi.id IN (${ph})`,
+    lineIds
+  );
+  const areaIds = [...new Set(rows.map((r) => resolveProductProductionAreaId(r.production_area)))];
+
+  const allAreaItems = getOrderAreaItemsTx(tx, orderId);
+  const lineIdSet = new Set(lineIds.map(String));
+  const previousItems = allAreaItems.filter((item) => !lineIdSet.has(String(item.id)));
+
+  for (const areaId of areaIds) {
+    const hadItems = previousItems.some((it) => {
+      const a = resolveProductProductionAreaId(it.production_area);
+      return a === areaId;
+    });
+    const wasComplete = isStationCompleteForStation(order, previousItems, areaId);
+    if (wasComplete && hadItems) continue;
+
+    if (areaId === 'cocina') {
+      tx.run(
+        `UPDATE orders SET station_cocina_ready_at = NULL,
+          station_cocina_preparing_at = CASE
+            WHEN TRIM(COALESCE(station_cocina_preparing_at, '')) != '' THEN station_cocina_preparing_at
+            ELSE datetime('now') END,
+          updated_at = datetime('now')
+         WHERE id = ?`,
+        [orderId]
+      );
+    } else if (areaId === 'bar') {
+      tx.run(
+        `UPDATE orders SET station_bar_ready_at = NULL,
+          station_bar_preparing_at = CASE
+            WHEN TRIM(COALESCE(station_bar_preparing_at, '')) != '' THEN station_bar_preparing_at
+            ELSE datetime('now') END,
+          updated_at = datetime('now')
+         WHERE id = ?`,
+        [orderId]
+      );
+    }
+    upsertOrderStationState(
+      orderId,
+      areaId,
+      { preparing_at: new Date().toISOString().slice(0, 19).replace('T', ' '), ready_at: null },
+      tx
+    );
+  }
+}
 
 function resolveDineInTableContextTx(tx, { tableId: tableIdRaw, tableNumber: tableNumberRaw } = {}) {
   const sentNumber = String(tableNumberRaw ?? '').trim();
@@ -192,59 +273,6 @@ function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew =
   return newIds;
 }
 
-function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
-  if (!lineIds.length) return;
-  const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
-  if (!order) return;
-
-  const ph = lineIds.map(() => '?').join(',');
-  const rows = tx.queryAll(
-    `SELECT oi.id,
-            COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') AS production_area
-     FROM order_items oi
-     LEFT JOIN products p ON p.id = oi.product_id
-     WHERE oi.id IN (${ph})`,
-    lineIds
-  );
-  const hasKitchen = rows.some((r) => String(r.production_area || '').toLowerCase() !== 'bar');
-  const hasBar = rows.some((r) => String(r.production_area || '').toLowerCase() === 'bar');
-
-  const allAreaItems = getOrderAreaItemsTx(tx, orderId);
-  const lineIdSet = new Set(lineIds.map(String));
-  const previousItems = allAreaItems.filter((item) => !lineIdSet.has(String(item.id)));
-  const hadKitchenItems = orderHasKitchenItems(previousItems);
-  const hadBarItems = orderHasBarItems(previousItems);
-
-  if (hasKitchen) {
-    const kitchenWasComplete = isCocinaStationComplete(order, previousItems);
-    if (!kitchenWasComplete || !hadKitchenItems) {
-      tx.run(
-        `UPDATE orders SET station_cocina_ready_at = NULL,
-          station_cocina_preparing_at = CASE
-            WHEN TRIM(COALESCE(station_cocina_preparing_at, '')) != '' THEN station_cocina_preparing_at
-            ELSE datetime('now') END,
-          updated_at = datetime('now')
-         WHERE id = ?`,
-        [orderId]
-      );
-    }
-  }
-  if (hasBar) {
-    const barWasComplete = isBarStationComplete(order, previousItems);
-    if (!barWasComplete || !hadBarItems) {
-      tx.run(
-        `UPDATE orders SET station_bar_ready_at = NULL,
-          station_bar_preparing_at = CASE
-            WHEN TRIM(COALESCE(station_bar_preparing_at, '')) != '' THEN station_bar_preparing_at
-            ELSE datetime('now') END,
-          updated_at = datetime('now')
-         WHERE id = ?`,
-        [orderId]
-      );
-    }
-  }
-}
-
 /**
  * Agrega productos a una comanda existente (misma mesa, ventana 40 min).
  * Si la comanda ya no admite fusión, createOrMergeTableOrderInTransaction crea una nueva.
@@ -260,11 +288,13 @@ function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes } = 
     throw new Error('No se pueden agregar productos a una comanda cobrada');
   }
 
+  assertMozoTableCajaTx(tx, actor, order.table_id);
+
   const staffInHouseOrder =
     actor.kind === 'staff' &&
     actor.user &&
     actor.user.type !== 'customer' &&
-    ['admin', 'cajero', 'mozo', 'cocina', 'bar'].includes(String(actor.user.role || ''));
+    STAFF_IN_HOUSE_ROLES.includes(String(actor.user.role || ''));
 
   const restaurantRow = tx.queryOne('SELECT schedule FROM restaurants LIMIT 1');
   const restaurantSchedule = parseRestaurantSchedule(restaurantRow?.schedule);
@@ -363,6 +393,7 @@ function createOrMergeTableOrderInTransaction(tx, orderId, body, actor) {
     const resolved = resolveDineInTableContextTx(tx, { tableId, tableNumber });
     tableId = resolved.tableId;
     tableNumber = resolved.tableNumber;
+    assertMozoTableCajaTx(tx, actor, tableId);
     body = {
       ...body,
       table_id: tableId,
@@ -420,7 +451,7 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     (orderType === 'dine_in' || orderType === 'pickup') &&
     actor.user &&
     actor.user.type !== 'customer' &&
-    ['admin', 'cajero', 'mozo', 'cocina', 'bar'].includes(String(actor.user.role || ''));
+    STAFF_IN_HOUSE_ROLES.includes(String(actor.user.role || ''));
 
   const restaurantSchedule = parseRestaurantSchedule(restaurant?.schedule);
   const orderNow = new Date();
@@ -431,6 +462,11 @@ function createOrderInTransaction(tx, orderId, body, actor) {
   }
   const orderNumber = Number(seq.current_number || 0) + 1;
   tx.run('UPDATE order_sequence SET current_number = ? WHERE id = 1', [orderNumber]);
+
+  if (orderType === 'dine_in') {
+    const tid = String(tableIdBody || '').trim();
+    if (tid) assertMozoTableCajaTx(tx, actor, tid);
+  }
 
   let subtotal = 0;
   const orderItems = items.map((item) => {
@@ -606,6 +642,9 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     );
   });
 
+  const newLineIds = orderItems.map((i) => i.id);
+  reopenProductionStationsForNewLines(tx, orderId, newLineIds);
+
   return { orderId };
 }
 
@@ -660,11 +699,13 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
     (orderType === 'dine_in' || orderType === 'pickup') &&
     actor.user &&
     actor.user.type !== 'customer' &&
-    ['admin', 'cajero', 'mozo', 'cocina', 'bar'].includes(String(actor.user.role || ''));
+    STAFF_IN_HOUSE_ROLES.includes(String(actor.user.role || ''));
 
   const restaurantRow = tx.queryOne('SELECT schedule FROM restaurants LIMIT 1');
   const restaurantSchedule = parseRestaurantSchedule(restaurantRow?.schedule);
   const orderNow = new Date();
+
+  assertMozoTableCajaTx(tx, actor, order.table_id);
 
   restoreNonTransformedStockForOrderTx(tx, orderId);
   tx.run('DELETE FROM order_items WHERE order_id = ?', [orderId]);

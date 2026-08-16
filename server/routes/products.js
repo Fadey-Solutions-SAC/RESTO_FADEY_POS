@@ -13,6 +13,7 @@ const {
 } = require('../services/productScheduleService');
 const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 const { parseProductMinStock } = require('../utils/productStockThreshold');
+const { resolveProductProductionAreaId } = require('../services/productionAreasService');
 
 const router = express.Router();
 
@@ -238,7 +239,7 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
   const safeStock = safeProcessType === 'transformed' ? 0 : Math.max(0, Number(stock || 0));
   const safeMinStock = safeProcessType === 'non_transformed' ? parseProductMinStock(min_stock) : 0;
   const safeWarehouseId = safeProcessType === 'transformed' ? '' : resolveWarehouseId(stock_warehouse_id);
-  const safeProductionArea = production_area === 'bar' ? 'bar' : 'cocina';
+  const safeProductionArea = resolveProductProductionAreaId(production_area);
   const safeTaxType = ['igv', 'exonerado', 'inafecto'].includes(String(tax_type || '').toLowerCase())
     ? String(tax_type).toLowerCase()
     : 'inafecto';
@@ -392,7 +393,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
   const nextWarehouseId = forceZeroStock ? '' : resolveWarehouseId(stock_warehouse_id || current.stock_warehouse_id || '');
   const safeProductionArea = production_area === undefined
     ? null
-    : (production_area === 'bar' ? 'bar' : 'cocina');
+    : resolveProductProductionAreaId(production_area);
   const safeTaxType = tax_type === undefined
     ? null
     : (['igv', 'exonerado', 'inafecto'].includes(String(tax_type || '').toLowerCase())

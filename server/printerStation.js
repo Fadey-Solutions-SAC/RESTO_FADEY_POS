@@ -1,4 +1,4 @@
-/** Normalización de área de impresión (cocina, bar, caja, delivery, parrilla, …). */
+/** Normalización de área de impresión (cocina, bar, caja, delivery, parrilla, o id de área). */
 
 const KNOWN_PRINT_AREAS = ['cocina', 'bar', 'caja', 'delivery', 'parrilla'];
 
@@ -7,6 +7,7 @@ function normalizePrinterStation(p) {
     .toLowerCase()
     .trim();
   if (KNOWN_PRINT_AREAS.includes(s)) return s;
+  if (s) return s;
   const n = String(p?.name || '').toLowerCase();
   if (n.includes('parrilla')) return 'parrilla';
   if (n.includes('delivery')) return 'delivery';

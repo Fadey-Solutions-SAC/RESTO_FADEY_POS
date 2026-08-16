@@ -25,11 +25,13 @@ const { userCanEliminarLiberarMesa, userCanAjusteBarAutoDismiss } = require('../
 const { orderHasBarItems, orderHasKitchenItems, stripKitchenItemMeta, filterItemsForKitchenStation } = require('../utils/productionArea');
 const { getOrderItemsWithProductionArea, enrichOrderItemsWithComboAreas } = require('../services/orderItemsProductionService');
 const { ensureOrdersSchema } = require('../utils/ensureOrdersSchema');
+const { upsertOrderStationState } = require('../services/productionAreasService');
 const {
   allRequiredStationsReady,
   kitchenOrderNeedsRepair,
   filterKitchenOrdersForStation,
   normalizeKitchenStation,
+  isLegacyStation,
   getStationReadyColumn,
   getStationPreparingColumn,
   isStationMarkedReady,
@@ -148,7 +150,7 @@ router.get('/active', authenticateToken, (req, res) => {
   if (req.user.type === 'customer') {
     return res.status(403).json({ error: 'No tienes permisos para ver pedidos activos globales' });
   }
-  if (!['admin', 'cajero', 'mozo', 'cocina', 'bar'].includes(req.user.role)) {
+  if (!['admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion'].includes(req.user.role)) {
     return res.status(403).json({ error: 'No tienes permisos para esta acción' });
   }
   const orders = queryAll(`SELECT * FROM orders WHERE status IN ('pending', 'preparing', 'ready') ORDER BY CASE status WHEN 'pending' THEN 1 WHEN 'preparing' THEN 2 WHEN 'ready' THEN 3 END, created_at ASC`);
@@ -213,34 +215,49 @@ router.get('/kitchen/dispatched', authenticateToken, (req, res) => {
   if (!userCanAccessKitchenStation(req.user, stationRequested)) {
     return res.status(403).json({ error: 'No tienes permiso para este panel de producción' });
   }
-  const readyCol = getStationReadyColumn(stationRequested);
-  const { type } = req.query;
   const dateKey = parseKitchenHistoryDate(req.query.date) || getBusinessTodayDateKey(queryOne);
   const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
+  const { type } = req.query;
+  const legacy = isLegacyStation(stationRequested);
+  const readyCol = legacy ? getStationReadyColumn(stationRequested) : null;
 
-  // Zona del restaurante (Lima), no localtime del servidor (en Render es UTC y “pierde” el día).
-  const readyAtBusiness = sqlBusinessTimestamp(`o.${readyCol}`, queryOne);
+  let orders = [];
+  if (legacy && readyCol) {
+    const readyAtBusiness = sqlBusinessTimestamp(`o.${readyCol}`, queryOne);
+    let query = `SELECT o.*, o.${readyCol} AS station_dispatched_at
+      FROM orders o
+      WHERE trim(coalesce(o.${readyCol}, '')) != ''
+        AND date(${readyAtBusiness}) = date(?)`;
+    const params = [dateKey];
+    if (type === 'delivery') query += " AND o.type = 'delivery'";
+    else if (type === 'dine_in') query += " AND o.type = 'dine_in'";
+    else if (type === 'salon') query += " AND o.type IN ('dine_in', 'pickup')";
+    query += ` ORDER BY datetime(o.${readyCol}) DESC LIMIT ?`;
+    params.push(limit);
+    orders = queryAll(query, params);
+  } else {
+    const readyAtBusiness = sqlBusinessTimestamp('oss.ready_at', queryOne);
+    let query = `SELECT o.*, oss.ready_at AS station_dispatched_at
+      FROM order_station_state oss
+      JOIN orders o ON o.id = oss.order_id
+      WHERE oss.area_id = ?
+        AND trim(coalesce(oss.ready_at, '')) != ''
+        AND date(${readyAtBusiness}) = date(?)`;
+    const params = [stationRequested, dateKey];
+    if (type === 'delivery') query += " AND o.type = 'delivery'";
+    else if (type === 'dine_in') query += " AND o.type = 'dine_in'";
+    else if (type === 'salon') query += " AND o.type IN ('dine_in', 'pickup')";
+    query += ' ORDER BY datetime(oss.ready_at) DESC LIMIT ?';
+    params.push(limit);
+    orders = queryAll(query, params);
+  }
 
-  let query = `SELECT o.*, o.${readyCol} AS station_dispatched_at
-    FROM orders o
-    WHERE trim(coalesce(o.${readyCol}, '')) != ''
-      AND date(${readyAtBusiness}) = date(?)`;
-  const params = [dateKey];
-  if (type === 'delivery') query += " AND o.type = 'delivery'";
-  else if (type === 'dine_in') query += " AND o.type = 'dine_in'";
-  else if (type === 'salon') query += " AND o.type IN ('dine_in', 'pickup')";
-  query += ` ORDER BY datetime(o.${readyCol}) DESC LIMIT ?`;
-  params.push(limit);
-
-  const orders = queryAll(query, params);
   const result = [];
   for (const o of orders) {
     const areaItems = getOrderItemsWithArea(o.id);
     if (!orderHasStationWork(areaItems, stationRequested)) continue;
-    const stationItems = filterItemsForKitchenStation(areaItems, stationRequested);
-    if (!stationItems.length) continue;
-    o.items = stationItems.map(stripKitchenItemMeta);
-    o.station_dispatched_at = o.station_dispatched_at || o[readyCol];
+    o.station_dispatched_at = o.station_dispatched_at || (readyCol ? o[readyCol] : null);
+    o.items = filterItemsForKitchenStation(areaItems, stationRequested).map(stripKitchenItemMeta);
     result.push(o);
   }
   res.json(result);
@@ -565,18 +582,18 @@ router.post('/', authenticateToken, (req, res) => {
   }
 });
 
-router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'master_admin'), (req, res) => {
+router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion', 'delivery', 'master_admin'), (req, res) => {
   try {
   const { status, cancellation_reason: cancellationReasonRaw, station: stationRaw, order_item_id: orderItemIdRaw } = req.body;
   const orderItemId = String(orderItemIdRaw || '').trim();
   const valid = ['pending', 'preparing', 'ready', 'delivered', 'cancelled'];
   if (!valid.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
   const stationRequested = resolveKitchenStation(req.user, stationRaw || req.query.station);
-  const stationFromClient = String(stationRaw || req.query?.station || '').trim().toLowerCase();
+  const stationFromClient = String(stationRaw || req.query?.station || '').trim();
   const roleLc = String(req.user.role || '').toLowerCase();
-  const isDedicatedStationRole = roleLc === 'cocina' || roleLc === 'bar';
-  const isKitchenStaff = ['admin', 'cajero', 'mozo', 'cocina', 'bar', 'master_admin'].includes(roleLc);
-  const stationExplicit = stationFromClient === 'cocina' || stationFromClient === 'bar';
+  const isDedicatedStationRole = roleLc === 'cocina' || roleLc === 'bar' || roleLc === 'produccion';
+  const isKitchenStaff = ['admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion', 'master_admin'].includes(roleLc);
+  const stationExplicit = Boolean(stationFromClient);
   const isKitchenFlow =
     (status === 'preparing' || status === 'ready')
     && (isKitchenStaff || isDedicatedStationRole || stationExplicit);
@@ -794,19 +811,25 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     emitInventoryUpdate({});
   } else if (status === 'preparing') {
     if (isKitchenFlow) {
-      const prepCol = getStationPreparingColumn(stationSt);
-      const readyCol = getStationReadyColumn(stationSt);
-      runSql(
-        `UPDATE orders SET ${prepCol} = datetime('now'), ${readyCol} = NULL, updated_at = datetime('now') WHERE id = ?`,
-        [req.params.id],
-      );
-      if (stationSt === 'cocina') {
-        const kitchenIds = filterItemsForKitchenStation(getOrderItemsWithArea(order.id), 'cocina').map((i) => i.id);
-        if (kitchenIds.length) {
-          const ph = kitchenIds.map(() => '?').join(',');
-          runSql(`UPDATE order_items SET station_cocina_ready_at = NULL WHERE id IN (${ph})`, kitchenIds);
+      if (isLegacyStation(stationSt)) {
+        const prepCol = getStationPreparingColumn(stationSt);
+        const readyCol = getStationReadyColumn(stationSt);
+        runSql(
+          `UPDATE orders SET ${prepCol} = datetime('now'), ${readyCol} = NULL, updated_at = datetime('now') WHERE id = ?`,
+          [req.params.id],
+        );
+        if (stationSt === 'cocina') {
+          const kitchenIds = filterItemsForKitchenStation(getOrderItemsWithArea(order.id), 'cocina').map((i) => i.id);
+          if (kitchenIds.length) {
+            const ph = kitchenIds.map(() => '?').join(',');
+            runSql(`UPDATE order_items SET station_cocina_ready_at = NULL WHERE id IN (${ph})`, kitchenIds);
+          }
         }
       }
+      upsertOrderStationState(req.params.id, stationSt, {
+        preparing_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        ready_at: null,
+      });
       if (['pending', 'ready'].includes(order.status)) {
         runSql(
           "UPDATE orders SET status = 'preparing', preparing_at = COALESCE(preparing_at, datetime('now')), updated_at = datetime('now') WHERE id = ?",
@@ -825,8 +848,6 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
   } else if (status === 'ready') {
     const st = stationSt;
     const areaItems = getOrderItemsWithArea(order.id);
-    const readyCol = getStationReadyColumn(st);
-    const prepCol = getStationPreparingColumn(st);
 
     if (isKitchenFlow && st === 'cocina' && orderItemId) {
       runSql(
@@ -839,13 +860,25 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
           `UPDATE orders SET station_cocina_ready_at = datetime('now'), station_cocina_preparing_at = NULL, updated_at = datetime('now') WHERE id = ?`,
           [req.params.id],
         );
+        upsertOrderStationState(req.params.id, 'cocina', {
+          ready_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+          preparing_at: null,
+        });
       }
     } else if (isKitchenFlow) {
       if (orderHasStationWork(areaItems, st) && !isStationMarkedReady(order, st)) {
-        runSql(
-          `UPDATE orders SET ${readyCol} = datetime('now'), ${prepCol} = NULL, updated_at = datetime('now') WHERE id = ?`,
-          [req.params.id],
-        );
+        if (isLegacyStation(st)) {
+          const readyCol = getStationReadyColumn(st);
+          const prepCol = getStationPreparingColumn(st);
+          runSql(
+            `UPDATE orders SET ${readyCol} = datetime('now'), ${prepCol} = NULL, updated_at = datetime('now') WHERE id = ?`,
+            [req.params.id],
+          );
+        }
+        upsertOrderStationState(req.params.id, st, {
+          ready_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+          preparing_at: null,
+        });
       }
     } else {
       runSql(

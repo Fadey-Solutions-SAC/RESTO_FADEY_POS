@@ -7,16 +7,7 @@ import toast from 'react-hot-toast';
 import { MdStorefront, MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt } from 'react-icons/md';
 import AttendancePhotoCapture from '../components/AttendancePhotoCapture';
 import { getStoredAppLocale, setAppLocale } from '../i18n';
-
-function getRoleRoute(role) {
-  if (role === 'master_admin') return '/master';
-  if (role === 'cajero') return '/admin/caja';
-  if (role === 'mozo') return '/admin/mesas';
-  if (role === 'cocina') return '/kitchen';
-  if (role === 'bar') return '/bar';
-  if (role === 'delivery') return '/delivery';
-  return '/admin';
-}
+import { getDefaultStaffPath } from '../utils/staffModuleAccess';
 
 /** Si en Mi empresa no hay nombre guardado, se muestra este texto en el login. */
 const FALLBACK_RESTAURANT_NAME = 'Resto Fadey App';
@@ -86,7 +77,7 @@ export default function Login() {
       if (photoLogin) loginOpts.photo_login = photoLogin;
       const user = await login(username, password, loginOpts);
       toast.success(t('login.welcome', { name: user.full_name }));
-      navigate(getRoleRoute(user.role), { replace: true });
+      navigate(getDefaultStaffPath(user), { replace: true });
     } catch (err) {
       const msg = String(err?.message || '');
       if (/foto|inicio de jornada|jornada/i.test(msg)) {

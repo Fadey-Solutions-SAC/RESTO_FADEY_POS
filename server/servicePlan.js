@@ -11,7 +11,7 @@
 const MODULE_IDS = [
   'escritorio', 'ventas', 'caja', 'mesas', 'reservas', 'auto_pedido', 'creditos', 'clientes',
   'productos', 'ofertas', 'descuentos', 'almacen', 'delivery', 'informes',
-  'indicadores', 'mi_restaurant', 'configuracion', 'cocina', 'bar', 'tiempo_trabajado',
+  'indicadores', 'mi_restaurant', 'configuracion', 'produccion', 'cocina', 'bar', 'tiempo_trabajado',
 ];
 
 const BASICO = new Set([
@@ -22,7 +22,7 @@ const BASICO = new Set([
 
 const INTERMEDIO = new Set([
   ...BASICO,
-  'auto_pedido', 'creditos', 'clientes', 'cocina', 'bar',
+  'auto_pedido', 'creditos', 'clientes', 'produccion', 'cocina', 'bar',
   'indicadores', 'tiempo_trabajado',
 ]);
 

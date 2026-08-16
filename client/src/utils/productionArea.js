@@ -1,27 +1,40 @@
-/** Área explícita del producto: 'cocina' | 'bar'. Sin selección → cocina (igual que en Productos). */
+/** Área de producción dinámica (id). Sin selección → cocina. */
+
+function expandItemTargets(item = {}) {
+  const combo = item._comboComponents;
+  if (Array.isArray(combo) && combo.length > 0) return combo;
+  return [item];
+}
+
 export function normalizeProductionArea(raw) {
-  const area = String(raw ?? '').trim().toLowerCase();
-  if (area === 'bar' || area === 'cocina') return area;
-  return '';
+  const area = String(raw ?? '').trim();
+  if (!area) return '';
+  return area;
 }
 
 function resolveProductionArea(raw) {
   return normalizeProductionArea(raw) || 'cocina';
 }
 
-/** Destino según la selección del producto en catálogo (Cocina / Bar). */
+export function itemProductionAreaId(item = {}) {
+  return resolveProductionArea(item.production_area);
+}
+
 export function isBarProductionItem(item = {}) {
-  return resolveProductionArea(item.production_area) === 'bar';
+  return itemProductionAreaId(item) === 'bar';
 }
 
 export function isKitchenProductionItem(item = {}) {
-  return resolveProductionArea(item.production_area) === 'cocina';
+  return itemProductionAreaId(item) === 'cocina';
 }
 
-function expandItemTargets(item = {}) {
-  const combo = item._comboComponents;
-  if (Array.isArray(combo) && combo.length > 0) return combo;
-  return [item];
+export function isBarProductionItemForStation(item, station) {
+  const st = String(station || '').trim() || 'cocina';
+  return itemProductionAreaId(item) === st;
+}
+
+export function isKitchenProductionItemForStation(item, station) {
+  return isBarProductionItemForStation(item, station);
 }
 
 export function isBarOnlyOrderItems(items = []) {
@@ -39,12 +52,23 @@ export function orderHasKitchenItems(items = []) {
   return items.some((item) => expandItemTargets(item).some(isKitchenProductionItem));
 }
 
-export function isBarProductionItemForStation(item = {}) {
-  return expandItemTargets(item).some(isBarProductionItem);
+export function filterItemsForKitchenStation(items, station) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const st = String(station || 'cocina').trim() || 'cocina';
+  return items.filter((item) => {
+    const targets = expandItemTargets(item);
+    return targets.some((t) => itemProductionAreaId(t) === st);
+  });
 }
 
-export function isKitchenProductionItemForStation(item = {}) {
-  return expandItemTargets(item).some(isKitchenProductionItem);
+export function collectOrderProductionAreaIds(items = []) {
+  const ids = new Set();
+  for (const item of items || []) {
+    for (const t of expandItemTargets(item)) {
+      ids.add(itemProductionAreaId(t));
+    }
+  }
+  return [...ids];
 }
 
 export function isKitchenItemMarkedReady(item = {}) {
@@ -52,15 +76,22 @@ export function isKitchenItemMarkedReady(item = {}) {
 }
 
 export function isProductionStationMarkedReady(order = {}, station = 'cocina') {
-  const col = station === 'bar' ? 'station_bar_ready_at' : 'station_cocina_ready_at';
-  return Boolean(String(order?.[col] || '').trim());
+  const st = String(station || '').trim() || 'cocina';
+  if (st === 'bar') return Boolean(String(order?.station_bar_ready_at || '').trim());
+  if (st === 'cocina') return Boolean(String(order?.station_cocina_ready_at || '').trim());
+  const map = order?.order_stations || order?.station_states;
+  if (Array.isArray(map)) {
+    const row = map.find((r) => String(r?.area_id || '') === st);
+    return Boolean(String(row?.ready_at || '').trim());
+  }
+  return Boolean(String(order?.[`station_${st}_ready_at`] || '').trim());
 }
 
 /** Comanda con trabajo pendiente en cocina (misma lógica que panel cocina / Escritorio). */
 export function orderPendingForKitchenStation(order = {}) {
   if (!orderHasKitchenItems(order.items)) return false;
   if (isProductionStationMarkedReady(order, 'cocina')) return false;
-  const kitchenItems = (order.items || []).filter(isKitchenProductionItemForStation);
+  const kitchenItems = filterItemsForKitchenStation(order.items || [], 'cocina');
   if (!kitchenItems.length) return false;
   return kitchenItems.some((item) => !isKitchenItemMarkedReady(item));
 }

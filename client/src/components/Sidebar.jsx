@@ -1,9 +1,9 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
-import { ADMIN_MODULE_PATHS, canAccessStaffModule } from '../utils/staffModuleAccess';
+import { ADMIN_MODULE_PATHS, canAccessStaffModule, hasModulePermission } from '../utils/staffModuleAccess';
 import { useShowDeliveryUi } from '../hooks/useDeliveryEnabled';
 import { usePrintingModule } from '../hooks/usePrintingModule';
 import EndShiftModal from './EndShiftModal';
@@ -12,19 +12,21 @@ import {
   MdDashboard, MdAttachMoney, MdPointOfSale, MdEventSeat,
   MdCreditCard, MdPeopleAlt, MdRestaurantMenu, MdLocalOffer,
   MdDiscount, MdWarehouse, MdDeliveryDining, MdAssessment,
-  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdQrCode2,
+  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdTouchApp,
 } from 'react-icons/md';
+import { getProductionAreaIcon } from '../utils/productionAreaUi';
 
 /** Icono por módulo; etiqueta vía i18n `dashboard:nav.*`. */
 const SIDEBAR_LINK_META = {
   escritorio: { icon: MdDashboard, labelKey: 'nav.escritorio', end: true },
   caja: { icon: MdPointOfSale, labelKey: 'nav.caja' },
   mesas: { icon: MdTableBar, labelKey: 'nav.mesas' },
+  produccion: { icon: MdKitchen, labelKey: 'nav.produccion' },
   cocina: { icon: MdKitchen, labelKey: 'nav.cocina' },
   bar: { icon: MdLocalBar, labelKey: 'nav.bar' },
   delivery: { icon: MdDeliveryDining, labelKey: 'nav.delivery' },
   reservas: { icon: MdEventSeat, labelKey: 'nav.reservas' },
-  auto_pedido: { icon: MdQrCode2, labelKey: 'nav.auto_pedido' },
+  auto_pedido: { icon: MdTouchApp, labelKey: 'nav.auto_pedido' },
   clientes: { icon: MdPeopleAlt, labelKey: 'nav.clientes' },
   creditos: { icon: MdCreditCard, labelKey: 'nav.creditos' },
   ofertas: { icon: MdLocalOffer, labelKey: 'nav.ofertas' },
@@ -50,8 +52,8 @@ if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
 }
 
 const CAJA_SUB_IDS = [
-  'cobrar', 'apertura_cierre', 'cierres_caja', 'ingresos', 'egresos',
-  'notas_credito', 'notas_debito', 'consulta_precios', 'impresora',
+  'apertura_cierre', 'cierres_caja', 'ingresos', 'egresos',
+  'notas_credito', 'notas_debito', 'impresora',
 ];
 const MI_RESTAURANT_SUB_IDS = [
   'mi_empresa', 'facturacion_electronica', 'pagos_sistema', 'contrato', 'pago_uso_sistema', 'informacion',
@@ -64,25 +66,100 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const { t } = useTranslation('dashboard');
   const { t: tc } = useTranslation('common');
   const { user } = useAuth();
+  const location = useLocation();
   const showDeliveryUi = useShowDeliveryUi();
+  const [productionAreas, setProductionAreas] = useState([]);
+
+  const loadProductionAreas = useCallback(() => {
+    api
+      .get('/production-areas/active')
+      .then((list) => {
+        const areas = (Array.isArray(list) ? list : [])
+          .map((a) => ({
+            id: String(a?.id || '').trim(),
+            name: String(a?.name || '').trim() || String(a?.id || ''),
+          }))
+          .filter((a) => a.id);
+        // Siempre reemplazar: si se eliminó Cocina/Bar, deben desaparecer del menú.
+        const rank = (id) => (id === 'cocina' ? 0 : id === 'bar' ? 1 : 2);
+        areas.sort((a, b) => {
+          const ra = rank(a.id);
+          const rb = rank(b.id);
+          if (ra !== rb) return ra - rb;
+          return String(a.name).localeCompare(String(b.name), 'es');
+        });
+        setProductionAreas(areas);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadProductionAreas();
+    const onAreas = () => loadProductionAreas();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadProductionAreas();
+    };
+    window.addEventListener('production-areas-updated', onAreas);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('production-areas-updated', onAreas);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [loadProductionAreas, location.pathname]);
+
+  const canSeeProduction =
+    canAccessStaffModule(user, { moduleId: 'produccion', roles: ['admin', 'produccion', 'cocina', 'bar'] })
+    || hasModulePermission(user, 'cocina')
+    || hasModulePermission(user, 'bar');
 
   const allLinks = useMemo(
-    () =>
-      ADMIN_MODULE_PATHS.map((row) => {
+    () => {
+      const links = [];
+      let productionInserted = false;
+      for (const row of ADMIN_MODULE_PATHS) {
+        if (row.moduleId === 'cocina' || row.moduleId === 'bar' || row.moduleId === 'produccion') {
+          if (productionInserted || !canSeeProduction) continue;
+          productionInserted = true;
+          const role = String(user?.role || '').toLowerCase();
+          const ownArea = String(user?.production_area_id || '').trim();
+          const areasForNav = (role === 'produccion' && ownArea)
+            ? productionAreas.filter((a) => a.id === ownArea)
+            : (role === 'cocina'
+              ? productionAreas.filter((a) => a.id === 'cocina')
+              : (role === 'bar'
+                ? productionAreas.filter((a) => a.id === 'bar')
+                : productionAreas));
+          for (const area of areasForNav) {
+            const idLc = String(area.id || '').toLowerCase();
+            const icon = getProductionAreaIcon(area);
+            links.push({
+              to: `/admin/produccion/${area.id}`,
+              icon,
+              label: area.name || area.id,
+              end: false,
+              roles: ['admin', 'produccion', 'cocina', 'bar'],
+              // Permiso amplio: cualquier módulo de producción del plan
+              moduleId: idLc === 'cocina' ? 'cocina' : idLc === 'bar' ? 'bar' : 'produccion',
+              isProductionArea: true,
+            });
+          }
+          continue;
+        }
         const meta = SIDEBAR_LINK_META[row.moduleId];
-        if (!meta) return null;
-        return {
+        if (!meta) continue;
+        links.push({
           to: row.path,
           icon: meta.icon,
           label: t(meta.labelKey),
           end: Boolean(meta.end),
           roles: row.roles,
           moduleId: row.moduleId,
-        };
-      }).filter(Boolean),
-    [t],
+        });
+      }
+      return links;
+    },
+    [t, productionAreas, canSeeProduction, user?.role, user?.production_area_id],
   );
-  const location = useLocation();
   const [endShiftOpen, setEndShiftOpen] = useState(false);
   const [attendanceReviewOpen, setAttendanceReviewOpen] = useState(false);
   const onAttendanceReviewComplete = useCallback(() => {
@@ -109,7 +186,12 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const [isCajaExpanded, setIsCajaExpanded] = useState(location.pathname.startsWith('/admin/caja'));
   const [isMiRestaurantExpanded, setIsMiRestaurantExpanded] = useState(location.pathname.startsWith('/admin/mi-restaurant'));
   const [isAlmacenExpanded, setIsAlmacenExpanded] = useState(location.pathname.startsWith('/admin/almacen'));
-  const hasLinkPermission = (link) => canAccessStaffModule(user, { moduleId: link.moduleId, roles: link.roles });
+  const hasLinkPermission = (link) => {
+    if (link?.isProductionArea) {
+      return canSeeProduction;
+    }
+    return canAccessStaffModule(user, { moduleId: link.moduleId, roles: link.roles });
+  };
   const filtered = allLinks
     .filter(hasLinkPermission)
     .filter((link) => link.moduleId !== 'delivery' || showDeliveryUi);
@@ -175,20 +257,22 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
         {visibleLinks.map(link => (
           <div key={link.to}>
             <NavLink
-              to={link.to}
+              to={link.moduleId === 'caja' ? '/admin/caja?view=cobrar' : link.to}
               end={link.end}
               className={linkClass}
               title={link.label}
               onClick={(e) => {
                 if (isCollapsed) return;
-                if (link.to === '/admin/caja') {
+                if (link.moduleId === 'caja' || link.to === '/admin/caja') {
                   const isInCaja = location.pathname.startsWith('/admin/caja');
-                  if (isInCaja) {
+                  const cajaView = new URLSearchParams(location.search).get('view') || 'cobrar';
+                  if (isInCaja && cajaView === 'cobrar') {
                     e.preventDefault();
-                    setIsCajaExpanded(prev => !prev);
+                    setIsCajaExpanded((prev) => !prev);
                     return;
                   }
                   setIsCajaExpanded(true);
+                  if (isMobile) onClose();
                   return;
                 }
                 if (link.to === '/admin/mi-restaurant') {

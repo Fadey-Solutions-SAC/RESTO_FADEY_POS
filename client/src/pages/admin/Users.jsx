@@ -88,7 +88,9 @@ export default function Users() {
       const payload = {
         ...form,
         caja_station_id:
-          String(form.role || '').toLowerCase() === 'cajero' ? String(form.caja_station_id || '').trim() : '',
+          ['cajero', 'mozo'].includes(String(form.role || '').toLowerCase())
+            ? String(form.caja_station_id || '').trim()
+            : '',
       };
       if (!payload.password) delete payload.password;
       if (editing) {
@@ -176,7 +178,7 @@ export default function Users() {
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Usuario *</label><input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} className="input-field" required autoComplete="off" name="new-username" /></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo *</label><input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} className="input-field" required autoComplete="off" name="new-full-name" /></div>
           </div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">Email *</label><input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="input-field" required autoComplete="off" name="new-email" /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">Email (opcional)</label><input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="input-field" autoComplete="off" name="new-email" /></div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">{editing ? 'Nueva Contraseña (dejar vacío para no cambiar)' : 'Contraseña *'}</label><input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className="input-field" required={!editing} autoComplete="new-password" name="new-password" /></div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Rol *</label>
@@ -187,7 +189,8 @@ export default function Users() {
                   setForm((f) => ({
                     ...f,
                     role,
-                    caja_station_id: String(role || '').toLowerCase() === 'cajero' ? f.caja_station_id : '',
+                    caja_station_id:
+                      ['cajero', 'mozo'].includes(String(role || '').toLowerCase()) ? f.caja_station_id : '',
                   }));
                 }}
                 className="input-field"
@@ -197,7 +200,7 @@ export default function Users() {
             </div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label><input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="input-field" autoComplete="off" name="new-phone" /></div>
           </div>
-          {String(form.role || '').toLowerCase() === 'cajero' && (
+          {(String(form.role || '').toLowerCase() === 'cajero' || String(form.role || '').toLowerCase() === 'mozo') && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Caja asignada *</label>
               <select
@@ -206,14 +209,22 @@ export default function Users() {
                 className="input-field"
               >
                 <option value="">— Seleccione —</option>
-                {cajaOptionsForForm.map((c) => (
+                {(String(form.role || '').toLowerCase() === 'mozo'
+                  ? (cajas || [])
+                      .filter((c) => Number(c?.active || 0) === 1 && String(c?.id || '').trim())
+                      .map((c) => ({ id: String(c.id).trim(), name: String(c.name || '').trim() || 'Caja' }))
+                  : cajaOptionsForForm
+                ).map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
-              {cajaOptionsForForm.length === 0 && (
+              {String(form.role || '').toLowerCase() === 'mozo' && (
+                <p className="text-xs text-gray-500 mt-1">Sus salones y mesas pertenecen a esta caja.</p>
+              )}
+              {String(form.role || '').toLowerCase() === 'cajero' && cajaOptionsForForm.length === 0 && (
                 <p className="text-xs text-amber-600 mt-1">Cree cajas activas en Configuración → Cajas.</p>
               )}
-              {cajaOptionsForForm.length > 0 && (
+              {String(form.role || '').toLowerCase() === 'cajero' && cajaOptionsForForm.length > 0 && (
                 <p className="text-xs text-gray-500 mt-1">
                   Primer cajero: puede dejar «Seleccione» y se asignará la Caja Principal automáticamente.
                 </p>

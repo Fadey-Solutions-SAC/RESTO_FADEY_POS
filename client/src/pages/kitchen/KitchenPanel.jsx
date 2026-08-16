@@ -8,18 +8,19 @@ import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
 import EndShiftModal from '../../components/EndShiftModal';
-import { MdKitchen, MdLocalBar, MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings, MdHistory } from 'react-icons/md';
+import { MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings, MdHistory } from 'react-icons/md';
+import { getProductionAreaIcon } from '../../utils/productionAreaUi';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import PrinterModuleModal from '../../components/printing/PrinterModuleModal';
 import { usePrintingModule } from '../../hooks/usePrintingModule';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   orderHasTakeoutNote,
   buildPedidoMesaTicketPlainText,
   normalizeThermalPaperWidthMm,
 } from '../../utils/ticketPlainText';
-import { isBarProductionItemForStation, isKitchenProductionItemForStation } from '../../utils/productionArea';
+import { isBarProductionItemForStation } from '../../utils/productionArea';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import { canAjusteBarAutoDismiss } from '../../utils/posPermissions';
 import { playNotificationSound, preloadNotificationSound } from '../../utils/playNotificationSound';
@@ -58,14 +59,59 @@ function localDateInputValue(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
-function formatDispatchedClock(order, isBarStation) {
-  const raw = order?.station_dispatched_at || (isBarStation ? order?.station_bar_ready_at : order?.station_cocina_ready_at);
+function readOrderStationField(order, areaId, field) {
+  const st = String(areaId || '').trim() || 'cocina';
+  const map = order?.order_stations || order?.station_states;
+  if (map && typeof map === 'object') {
+    const row = map[st] || (Array.isArray(map) ? map.find((r) => String(r?.area_id) === st) : null);
+    if (row && String(row[field] || '').trim()) return row[field];
+  }
+  if (order?.order_station && String(order.order_station.area_id || '') === st) {
+    return order.order_station[field];
+  }
+  return null;
+}
+
+function getStationPreparingAt(order, areaId) {
+  const st = String(areaId || '').trim() || 'cocina';
+  if (st === 'bar') return order?.station_bar_preparing_at;
+  if (st === 'cocina') return order?.station_cocina_preparing_at;
+  return (
+    order?.station_preparing_at ||
+    readOrderStationField(order, st, 'preparing_at') ||
+    null
+  );
+}
+
+function getStationReadyAt(order, areaId) {
+  const st = String(areaId || '').trim() || 'cocina';
+  if (st === 'bar') return order?.station_bar_ready_at;
+  if (st === 'cocina') return order?.station_cocina_ready_at;
+  return (
+    order?.station_ready_at ||
+    order?.station_dispatched_at ||
+    readOrderStationField(order, st, 'ready_at') ||
+    null
+  );
+}
+
+function formatDispatchedClock(order, areaId) {
+  const st = String(areaId || '').trim() || 'cocina';
+  const raw =
+    order?.station_dispatched_at ||
+    (st === 'bar'
+      ? order?.station_bar_ready_at
+      : st === 'cocina'
+        ? order?.station_cocina_ready_at
+        : getStationReadyAt(order, st));
   const parsed = parseApiDate(raw);
   return parsed ? formatTime(parsed) : '—';
 }
 
-export default function KitchenPanel({ station = 'cocina' }) {
+export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const { t } = useTranslation('kitchen');
+  const params = useParams();
+  const areaId = String(params?.areaId || areaIdProp || station || 'cocina').trim() || 'cocina';
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('all');
   const showDeliveryUi = useShowDeliveryUi();
@@ -80,8 +126,10 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const navigate = useNavigate();
   const location = useLocation();
   const emit = useSocketEmit();
-  const isBar = station === 'bar';
-  const printerModuleKey = isBar ? 'bar' : 'cocina';
+  const isBar = areaId === 'bar';
+  const isCocina = areaId === 'cocina';
+  const usesItemLevelReady = isCocina;
+  const printerModuleKey = areaId;
   const { moduleEnabled: printerModuleEnabled, loadConfig: reloadPrinterConfig } = usePrintingModule(printerModuleKey);
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [barSettingsOpen, setBarSettingsOpen] = useState(false);
@@ -93,14 +141,44 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const [historyDate, setHistoryDate] = useState(() => localDateInputValue());
   const [historyOrders, setHistoryOrders] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const StationIcon = isBar ? MdLocalBar : MdKitchen;
-  const panelTitle = isBar ? t('panel.barTitle') : t('panel.kitchenTitle');
-  const stationLabel = isBar ? t('panel.stationBar') : t('panel.stationKitchen');
+  const [areaDisplayName, setAreaDisplayName] = useState('');
+  const StationIcon = getProductionAreaIcon({ id: areaId, name: areaDisplayName || areaId });
+  const panelTitle = isBar
+    ? t('panel.barTitle')
+    : isCocina
+      ? t('panel.kitchenTitle')
+      : (areaDisplayName || areaId);
+  const stationLabel = isBar
+    ? t('panel.stationBar')
+    : isCocina
+      ? t('panel.stationKitchen')
+      : (areaDisplayName || areaId);
   const canReturnToAdmin = user?.role === 'admin' && !location.pathname.startsWith('/admin');
   const canEditBarSettings =
     isBar &&
     (['admin', 'bar', 'master_admin'].includes(String(user?.role || '').toLowerCase()) ||
       canAjusteBarAutoDismiss(user));
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isBar || isCocina) {
+      setAreaDisplayName('');
+      return undefined;
+    }
+    api
+      .get('/production-areas')
+      .then((list) => {
+        if (cancelled) return;
+        const match = (Array.isArray(list) ? list : []).find((a) => String(a?.id) === areaId);
+        setAreaDisplayName(String(match?.name || '').trim() || areaId);
+      })
+      .catch(() => {
+        if (!cancelled) setAreaDisplayName(areaId);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [areaId, isBar, isCocina]);
 
   const playStationAlert = () => {
     try {
@@ -136,19 +214,17 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
   const getStationItems = useCallback((items = []) => {
     const list = Array.isArray(items) ? items : [];
-    return isBar
-      ? list.filter(isBarProductionItemForStation)
-      : list.filter(isKitchenProductionItemForStation);
-  }, [isBar]);
+    return list.filter((it) => isBarProductionItemForStation(it, areaId));
+  }, [areaId]);
 
   const loadOrders = async () => {
     try {
       const qs = new URLSearchParams();
       if (filter !== 'all') qs.set('type', filter);
-      qs.set('station', station);
+      qs.set('station', areaId);
       const data = await api.get(`/orders/kitchen?${qs.toString()}`);
       setOrders(data);
-      if (!isBar) {
+      if (usesItemLevelReady) {
         const ids = new Set();
         (data || []).forEach((order) => {
           getStationItems(order?.items).forEach((item) => {
@@ -168,7 +244,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
   useEffect(() => {
     loadOrders();
     emit(isBar ? 'join-bar' : 'join-kitchen');
-  }, [filter, station]);
+  }, [filter, areaId]);
   useActiveInterval(loadOrders, 10000);
   useActiveInterval(() => setClockTick((n) => n + 1), 30000);
 
@@ -176,7 +252,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
     setHistoryLoading(true);
     try {
       const qs = new URLSearchParams();
-      qs.set('station', station);
+      qs.set('station', areaId);
       if (filter !== 'all') qs.set('type', filter);
       if (historyDate) qs.set('date', historyDate);
       const data = await api.get(`/orders/kitchen/dispatched?${qs.toString()}`);
@@ -188,7 +264,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
     } finally {
       setHistoryLoading(false);
     }
-  }, [station, filter, historyDate, t]);
+  }, [areaId, filter, historyDate, t]);
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -196,8 +272,8 @@ export default function KitchenPanel({ station = 'cocina' }) {
   }, [historyOpen, loadDispatchedHistory]);
 
   const isKitchenItemHighlighted = useCallback(
-    (item, orderId) => !isBar && itemHighlightActive(item, highlightItemIds, orderId),
-    [isBar, highlightItemIds],
+    (item, orderId) => usesItemLevelReady && itemHighlightActive(item, highlightItemIds, orderId),
+    [usesItemLevelReady, highlightItemIds],
   );
 
   const isKitchenItemReady = useCallback((item) => {
@@ -206,24 +282,23 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
   const getPendingStationItems = useCallback((items = []) => {
     const stationItems = getStationItems(items);
-    if (isBar) return stationItems;
+    if (!usesItemLevelReady) return stationItems;
     return stationItems.filter((item) => !isKitchenItemReady(item));
-  }, [isBar, getStationItems, isKitchenItemReady]);
+  }, [usesItemLevelReady, getStationItems, isKitchenItemReady]);
 
   const isComandaDoneForStation = useCallback((order) => {
-    if (isBar) {
-      return Boolean(String(order?.station_bar_ready_at || '').trim());
+    if (!usesItemLevelReady) {
+      return Boolean(String(getStationReadyAt(order, areaId) || '').trim());
     }
     if (Boolean(String(order?.station_cocina_ready_at || '').trim())) return true;
     const kitchenItems = getStationItems(order?.items);
     if (!kitchenItems.length) return true;
     return kitchenItems.every(isKitchenItemReady);
-  }, [isBar, getStationItems, isKitchenItemReady]);
+  }, [usesItemLevelReady, areaId, getStationItems, isKitchenItemReady]);
 
   const isComandaPreparingForStation = useCallback((order) => {
-    const at = isBar ? order?.station_bar_preparing_at : order?.station_cocina_preparing_at;
-    return Boolean(String(at || '').trim());
-  }, [isBar]);
+    return Boolean(String(getStationPreparingAt(order, areaId) || '').trim());
+  }, [areaId]);
 
   const visibleOrders = orders.filter((order) => {
     if (isComandaDoneForStation(order)) return false;
@@ -232,7 +307,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
   const printOrderForStation = async (order, { silent = false } = {}) => {
     try {
-      const moduleKey = isBar ? 'bar' : 'cocina';
+      const moduleKey = printerModuleKey;
       let payloadOrder = order || {};
       let items = getPendingStationItems(payloadOrder?.items || []);
       if (!items.length && payloadOrder?.id) {
@@ -246,7 +321,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
       }
       const cfg = await api.printing.get('/printing/config');
       const paper = normalizePaperWidthMm(
-        isBar ? cfg?.bar?.anchoPapel ?? cfg?.bar?.paperWidth : cfg?.cocina?.anchoPapel ?? cfg?.cocina?.paperWidth,
+        cfg?.[moduleKey]?.anchoPapel ?? cfg?.[moduleKey]?.paperWidth ?? 80,
       );
       const takeout = orderHasTakeoutNote(payloadOrder);
       const waiter = String(payloadOrder?.created_by_user_name || '').trim();
@@ -297,10 +372,10 @@ export default function KitchenPanel({ station = 'cocina' }) {
       return ids.filter((id) => {
         const item = items.find((i) => i.id === id);
         if (!item) return false;
-        return isBar ? isBarProductionItemForStation(item) : isKitchenProductionItemForStation(item);
+        return isBarProductionItemForStation(item, areaId);
       });
     },
-    [isBar],
+    [areaId],
   );
 
   const handleKitchenIncomingOrder = (order, toastLabel) => {
@@ -321,7 +396,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
     const orderId = order?.id;
     const allNewIds = Array.isArray(payload?.new_item_ids) ? payload.new_item_ids : [];
     const stationNewIds = filterNewIdsForStation(order, allNewIds);
-    if (!isBar && orderId && stationNewIds.length) {
+    if (usesItemLevelReady && orderId && stationNewIds.length) {
       setHighlightItemIds((prev) => {
         const next = new Set(prev);
         stationNewIds.forEach((itemId) => next.add(kitchenHighlightKey(orderId, itemId)));
@@ -427,8 +502,8 @@ export default function KitchenPanel({ station = 'cocina' }) {
     [isComandaDoneForStation, isComandaPreparingForStation],
   );
   const canShowReadyAction = useCallback(
-    (order) => isBar && !isComandaDoneForStation(order) && isComandaPreparingForStation(order),
-    [isBar, isComandaDoneForStation, isComandaPreparingForStation],
+    (order) => !usesItemLevelReady && !isComandaDoneForStation(order) && isComandaPreparingForStation(order),
+    [usesItemLevelReady, isComandaDoneForStation, isComandaPreparingForStation],
   );
 
   const updateStatus = async (orderId, status, orderItemId = null) => {
@@ -439,11 +514,11 @@ export default function KitchenPanel({ station = 'cocina' }) {
       void loadOrders();
       return;
     }
-    if (status === 'ready' && isBar && !canShowReadyAction(current)) {
+    if (status === 'ready' && !usesItemLevelReady && !canShowReadyAction(current)) {
       void loadOrders();
       return;
     }
-    if (status === 'ready' && !isBar) {
+    if (status === 'ready' && usesItemLevelReady) {
       if (!isComandaPreparingForStation(current)) {
         void loadOrders();
         return;
@@ -456,13 +531,13 @@ export default function KitchenPanel({ station = 'cocina' }) {
     }
     setStatusBusy((prev) => ({ ...prev, [busyKey]: true }));
     try {
-      const qs = new URLSearchParams({ station });
-      const body = { status, station };
-      if (!isBar && orderItemId) body.order_item_id = orderItemId;
+      const qs = new URLSearchParams({ station: areaId });
+      const body = { status, station: areaId };
+      if (usesItemLevelReady && orderItemId) body.order_item_id = orderItemId;
       await api.put(`/orders/${orderId}/status?${qs.toString()}`, body);
-      if (status === 'ready' && isBar) {
+      if (status === 'ready' && !usesItemLevelReady) {
         setOrders((prev) => prev.filter((o) => o.id !== orderId));
-      } else if (status === 'ready' && !isBar && orderItemId) {
+      } else if (status === 'ready' && usesItemLevelReady && orderItemId) {
         const nowIso = new Date().toISOString();
         setOrders((prev) =>
           prev
@@ -482,21 +557,27 @@ export default function KitchenPanel({ station = 'cocina' }) {
             .filter((o) => !isComandaDoneForStation(o)),
         );
       } else {
-        const prepField = isBar ? 'station_bar_preparing_at' : 'station_cocina_preparing_at';
-        const readyField = isBar ? 'station_bar_ready_at' : 'station_cocina_ready_at';
         const nowIso = new Date().toISOString();
         setOrders((prev) =>
-          prev.map((o) =>
-            o.id === orderId
-              ? {
-                  ...o,
-                  status: o.status === 'pending' ? 'preparing' : o.status,
-                  [prepField]: nowIso,
-                  [readyField]: null,
-                  ...(isBar ? {} : { items: (o.items || []).map((it) => ({ ...it, station_cocina_ready_at: null })) }),
-                }
-              : o,
-          ),
+          prev.map((o) => {
+            if (o.id !== orderId) return o;
+            const next = {
+              ...o,
+              status: o.status === 'pending' ? 'preparing' : o.status,
+            };
+            if (areaId === 'bar') {
+              next.station_bar_preparing_at = nowIso;
+              next.station_bar_ready_at = null;
+            } else if (areaId === 'cocina') {
+              next.station_cocina_preparing_at = nowIso;
+              next.station_cocina_ready_at = null;
+              next.items = (o.items || []).map((it) => ({ ...it, station_cocina_ready_at: null }));
+            } else {
+              next.station_preparing_at = nowIso;
+              next.station_ready_at = null;
+            }
+            return next;
+          }),
         );
       }
       toast.success(status === 'preparing' ? t('toast.preparing') : t('toast.markedReady'));
@@ -518,7 +599,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
   const PREP_OVERDUE_MS = KITCHEN_PREP_OVERDUE_MS;
 
   const getOrderTimerAnchor = (order) => {
-    const stationPrep = isBar ? order?.station_bar_preparing_at : order?.station_cocina_preparing_at;
+    const stationPrep = getStationPreparingAt(order, areaId);
     if (String(stationPrep || '').trim()) return stationPrep;
     return order?.created_at;
   };
@@ -728,7 +809,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
                       </div>
                       <div className="flex items-center gap-1 text-sm text-[var(--ui-muted)] shrink-0">
                         <MdAccessTime />
-                        <span>{formatDispatchedClock(order, isBar)}</span>
+                        <span>{formatDispatchedClock(order, areaId)}</span>
                       </div>
                     </div>
                     <ul className="px-4 py-3 space-y-1.5">
@@ -864,7 +945,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
 
               <div className="space-y-2 px-4 py-3">
                 {getPendingStationItems(order.items).map((item) => {
-                  const itemHighlighted = !isBar && isKitchenItemHighlighted(item, order.id);
+                  const itemHighlighted = usesItemLevelReady && isKitchenItemHighlighted(item, order.id);
                   const itemBusyKey = `${order.id}:${item.id}`;
                   return (
                   <div
@@ -881,7 +962,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
                       {item.variant_name && <p className="text-xs text-[var(--ui-muted)]">{item.variant_name}</p>}
                       {item.notes && <p className="text-xs text-[var(--ui-muted)] italic">{item.notes}</p>}
                     </div>
-                    {!isBar && isComandaPreparingForStation(order) ? (
+                    {usesItemLevelReady && isComandaPreparingForStation(order) ? (
                       <button
                         type="button"
                         disabled={Boolean(statusBusy[itemBusyKey])}
@@ -936,7 +1017,7 @@ export default function KitchenPanel({ station = 'cocina' }) {
                     >
                       <MdCheckCircle /> {t('panel.ready')}
                     </button>
-                  ) : !isBar && isComandaPreparingForStation(order) ? (
+                  ) : usesItemLevelReady && isComandaPreparingForStation(order) ? (
                     <div className="flex-1 min-h-[2.5rem] py-2.5 px-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-muted)] text-xs font-medium flex items-center justify-center text-center">
                       {t('panel.readyEachItem')}
                     </div>

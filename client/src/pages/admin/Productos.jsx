@@ -125,6 +125,10 @@ export default function Productos() {
   const [showModModal, setShowModModal] = useState(false);
   const [modForm, setModForm] = useState({ name: '', options: '', required: false });
   const [insumosKardex, setInsumosKardex] = useState([]);
+  const [productionAreas, setProductionAreas] = useState([
+    { id: 'cocina', name: 'Cocina' },
+    { id: 'bar', name: 'Bar' },
+  ]);
   const [restaurantSchedule, setRestaurantSchedule] = useState({});
   const [scheduleWarnings, setScheduleWarnings] = useState([]);
   const [slowMovingProductIds, setSlowMovingProductIds] = useState(new Set());
@@ -145,8 +149,9 @@ export default function Productos() {
       api.get('/kardex-inventory/insumos').catch(() => []),
       api.get('/restaurant').catch(() => ({})),
       api.get('/reports/slow-moving-products').catch(() => ({ product_ids: [], days: 14 })),
+      api.get('/production-areas/active').catch(() => []),
     ])
-      .then(([p, c, w, combosData, modifiersData, ins, restaurant, slowMoving]) => {
+      .then(([p, c, w, combosData, modifiersData, ins, restaurant, slowMoving, areas]) => {
         setProducts(p);
         setRestaurantSchedule(restaurant?.schedule || {});
         setCategories(c);
@@ -156,6 +161,14 @@ export default function Productos() {
         setInsumosKardex(Array.isArray(ins) ? ins : []);
         setSlowMovingProductIds(new Set((slowMoving?.product_ids || []).map(String)));
         setSlowMovingDays(Number(slowMoving?.days || 14));
+        const list = Array.isArray(areas) ? areas : [];
+        if (list.length) {
+          setProductionAreas(
+            list
+              .map((a) => ({ id: String(a.id || '').trim(), name: String(a.name || '').trim() || String(a.id || '') }))
+              .filter((a) => a.id),
+          );
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -519,7 +532,7 @@ export default function Productos() {
       is_active: p.is_active,
       process_type: p.process_type === 'non_transformed' ? 'non_transformed' : 'transformed',
       stock_warehouse_id: p.stock_warehouse_id || defaultWarehouseId,
-      production_area: p.production_area === 'bar' ? 'bar' : 'cocina',
+      production_area: String(p.production_area || '').trim() || 'cocina',
       tax_type: ['igv', 'exonerado', 'inafecto'].includes(String(p.tax_type || '').toLowerCase())
         ? String(p.tax_type).toLowerCase()
         : 'igv',
@@ -1376,8 +1389,16 @@ export default function Productos() {
                 onChange={e => setProductForm({ ...productForm, production_area: e.target.value })}
                 className="input-field"
               >
-                <option value="cocina">Cocina</option>
-                <option value="bar">Bar</option>
+                {(() => {
+                  const current = String(productForm.production_area || '').trim() || 'cocina';
+                  const opts = [...productionAreas];
+                  if (current && !opts.some((a) => a.id === current)) {
+                    opts.push({ id: current, name: current });
+                  }
+                  return opts.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name || a.id}</option>
+                  ));
+                })()}
               </select>
             </div>
             <div>

@@ -299,7 +299,7 @@ export default function AutoPedidoAdmin() {
       <div className="mb-4">
         <h1 className="text-2xl font-bold rf-page-title flex items-center gap-2">
           <MdQrCode2 className="text-[var(--ui-accent)]" />
-          Auto pedido (QR)
+          Auto pedido
         </h1>
       </div>
 

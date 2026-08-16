@@ -235,6 +235,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/restaurant', require('./routes/restaurant'));
 app.use('/api/categories', require('./routes/categories'));
 app.use('/api/products', require('./routes/products'));
+app.use('/api/production-areas', require('./routes/productionAreas'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/users', require('./routes/users'));

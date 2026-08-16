@@ -648,7 +648,21 @@ h1, h2, h3, h4 {
 
 .scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: var(--ui-accent-muted) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ui-muted) 55%, transparent) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ui-muted) 55%, transparent);
+  border-radius: 999px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ui-muted) 75%, transparent);
 }
 
 /* Gráficos Recharts — colores del tema activo */

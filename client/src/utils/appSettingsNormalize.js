@@ -54,6 +54,7 @@ export function mergeSavedAppSettings(normalized, source) {
   const arrayKeys = [
     'locales', 'almacenes', 'salones', 'cajas', 'comprobantes', 'impresoras', 'tarjetas',
     'monedas', 'cuentas_transferencia', 'marcas', 'imagenes_self', 'categoria_anular', 'formas_pago',
+    'production_areas',
   ];
   arrayKeys.forEach((key) => {
     if (Array.isArray(source[key])) next[key] = source[key];

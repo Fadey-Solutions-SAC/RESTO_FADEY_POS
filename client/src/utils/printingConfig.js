@@ -32,11 +32,18 @@ export const PRINTING_MODULE_LABELS = {
 
 export function normalizePrintingConfig(cfg) {
   if (!cfg || typeof cfg !== 'object') return { ...DEFAULT_PRINTING_CONFIG };
-  return {
+  const moduleDefault = DEFAULT_PRINTING_CONFIG.cocina;
+  const out = {
     caja: { ...DEFAULT_PRINTING_CONFIG.caja, ...(cfg.caja || {}) },
     cocina: { ...DEFAULT_PRINTING_CONFIG.cocina, ...(cfg.cocina || {}) },
     bar: { ...DEFAULT_PRINTING_CONFIG.bar, ...(cfg.bar || {}) },
   };
+  for (const [key, val] of Object.entries(cfg)) {
+    if (key === 'caja' || key === 'cocina' || key === 'bar') continue;
+    if (!val || typeof val !== 'object') continue;
+    out[key] = { ...moduleDefault, ...val };
+  }
+  return out;
 }
 
 export function cachePrintingConfig(cfg) {

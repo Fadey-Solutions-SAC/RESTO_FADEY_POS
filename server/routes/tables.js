@@ -6,13 +6,71 @@ const { getOrderWithItems } = require('../orderCreateService');
 const { ensureSalonesConfig, saveSalonesConfig, normalizeSalonesList } = require('../services/salonesConfigService');
 const { loadActiveTableOrders, loadAllActiveTableOrdersWithItems, attachActiveOrdersToTables, deriveTableStatus } = require('../services/tableOrdersQueryService');
 const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
+const { DEFAULT_PRIMARY_CAJA_ID } = require('../cajaSettings');
 
 router.use(authenticateToken);
 
+/** Caja de alcance: query (admin/POS) o caja asignada a cajero/mozo.
+ *  Devuelve `{ cajaId, forceEmpty }`: forceEmpty si mozo/cajero sin caja (no ver todo).
+ */
+function resolveScopedCajaStationId(req) {
+  const q = String(req.query?.caja_station_id || '').trim();
+  const role = String(req.user?.role || '').toLowerCase();
+  const isScopedRole = role === 'mozo' || role === 'cajero';
+
+  if (isScopedRole) {
+    const u = queryOne('SELECT caja_station_id FROM users WHERE id = ?', [req.user.id]);
+    const own = String(u?.caja_station_id || '').trim();
+    if (!own) return { cajaId: null, forceEmpty: true };
+    // Mozo/cajero nunca puede ampliar el alcance a otra caja vía query.
+    return { cajaId: own, forceEmpty: false };
+  }
+
+  if (q && (role === 'admin' || role === 'master_admin')) {
+    return { cajaId: q, forceEmpty: false };
+  }
+  return { cajaId: null, forceEmpty: false };
+}
+
+function salonCajaId(salon) {
+  return String(salon?.caja_station_id || '').trim() || DEFAULT_PRIMARY_CAJA_ID;
+}
+
+function tableCajaId(table, salonByZone) {
+  const direct = String(table?.caja_station_id || '').trim();
+  if (direct) return direct;
+  const zone = String(table?.zone || 'principal').trim() || 'principal';
+  const salon = salonByZone?.get?.(zone);
+  return salonCajaId(salon);
+}
+
+function filterSalonesByCaja(salones, cajaId) {
+  if (!cajaId) return salones;
+  return (salones || []).filter((s) => salonCajaId(s) === cajaId);
+}
+
+function filterTablesByCaja(tables, salones, cajaId) {
+  if (!cajaId) return tables;
+  const salonByZone = new Map((salones || []).map((s) => [String(s.id), s]));
+  return (tables || []).filter((t) => tableCajaId(t, salonByZone) === cajaId);
+}
+
+function assertTableAccessForUser(req, table) {
+  const { cajaId, forceEmpty } = resolveScopedCajaStationId(req);
+  if (forceEmpty) return false;
+  if (!cajaId || !table) return true;
+  const salones = ensureSalonesConfig([]);
+  const salonByZone = new Map(salones.map((s) => [String(s.id), s]));
+  return tableCajaId(table, salonByZone) === cajaId;
+}
+
 router.get('/salones', (req, res) => {
   try {
-    const tables = queryAll('SELECT id, zone, number FROM tables ORDER BY number ASC');
-    const salones = ensureSalonesConfig(tables);
+    const tables = queryAll('SELECT id, zone, number, caja_station_id FROM tables ORDER BY number ASC');
+    let salones = ensureSalonesConfig(tables);
+    const { cajaId, forceEmpty } = resolveScopedCajaStationId(req);
+    if (forceEmpty) return res.json({ salones: [] });
+    salones = filterSalonesByCaja(salones, cajaId);
     res.json({ salones });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -41,7 +99,11 @@ router.put('/salones', requireRole('admin'), (req, res) => {
 
 router.get('/', (req, res) => {
   try {
-    const tables = queryAll('SELECT * FROM tables ORDER BY number ASC');
+    let tables = queryAll('SELECT * FROM tables ORDER BY number ASC');
+    const salones = ensureSalonesConfig(tables);
+    const { cajaId, forceEmpty } = resolveScopedCajaStationId(req);
+    if (forceEmpty) return res.json([]);
+    tables = filterTablesByCaja(tables, salones, cajaId);
     const activeOrders = loadAllActiveTableOrdersWithItems();
     attachActiveOrdersToTables(tables, activeOrders);
     res.json(tables);
@@ -54,6 +116,9 @@ router.get('/:id', (req, res) => {
   try {
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
+    if (!assertTableAccessForUser(req, table)) {
+      return res.status(403).json({ error: 'Esta mesa pertenece a otra caja' });
+    }
     const orders = loadActiveTableOrders(table);
     table.orders = orders;
     table.order_total = orders.reduce((sum, o) => sum + (o.total || 0), 0);
@@ -69,6 +134,9 @@ router.patch('/:id/status', requireRole('admin', 'cajero', 'mozo'), (req, res) =
     const { status } = req.body;
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
+    if (!assertTableAccessForUser(req, table)) {
+      return res.status(403).json({ error: 'Esta mesa pertenece a otra caja' });
+    }
 
     runSql('UPDATE tables SET status = ? WHERE id = ?', [status || table.status, req.params.id]);
 
@@ -83,14 +151,22 @@ router.patch('/:id/status', requireRole('admin', 'cajero', 'mozo'), (req, res) =
 
 router.post('/', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
   try {
-    const { number, name, capacity, zone } = req.body;
+    const { number, name, capacity, zone, caja_station_id: cajaBody } = req.body;
     if (!number) return res.status(400).json({ error: 'Número de mesa es requerido' });
     const existing = queryOne('SELECT id FROM tables WHERE number = ?', [number]);
     if (existing) return res.status(400).json({ error: `La mesa #${number} ya existe` });
     const restaurant = queryOne('SELECT id FROM restaurants LIMIT 1');
     const id = uuidv4();
-    runSql('INSERT INTO tables (id, number, name, capacity, zone, restaurant_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, number, name || `Mesa ${number}`, capacity || 4, zone || 'principal', restaurant?.id]);
+    let cajaStationId = String(cajaBody || '').trim();
+    if (!cajaStationId) {
+      const salones = ensureSalonesConfig([]);
+      const salon = salones.find((s) => s.id === String(zone || 'principal').trim());
+      cajaStationId = String(salon?.caja_station_id || '').trim();
+    }
+    runSql(
+      'INSERT INTO tables (id, number, name, capacity, zone, restaurant_id, caja_station_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, number, name || `Mesa ${number}`, capacity || 4, zone || 'principal', restaurant?.id, cajaStationId]
+    );
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [id]);
     const io = req.app.get('io');
     if (io) io.emit('table-update', table);
@@ -100,15 +176,24 @@ router.post('/', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
 
 router.put('/:id', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
   try {
-    const { number, name, capacity, zone } = req.body;
+    const { number, name, capacity, zone, caja_station_id: cajaBody } = req.body;
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
     if (number && number !== table.number) {
       const dup = queryOne('SELECT id FROM tables WHERE number = ? AND id != ?', [number, req.params.id]);
       if (dup) return res.status(400).json({ error: `La mesa #${number} ya existe` });
     }
-    runSql('UPDATE tables SET number = COALESCE(?, number), name = COALESCE(?, name), capacity = COALESCE(?, capacity), zone = COALESCE(?, zone) WHERE id = ?',
-      [number, name, capacity, zone, req.params.id]);
+    const nextZone = zone != null ? zone : table.zone;
+    let cajaStationId = cajaBody !== undefined ? String(cajaBody || '').trim() : String(table.caja_station_id || '').trim();
+    if (cajaBody === undefined && zone != null) {
+      const salones = ensureSalonesConfig([]);
+      const salon = salones.find((s) => s.id === String(nextZone || '').trim());
+      if (salon?.caja_station_id) cajaStationId = String(salon.caja_station_id).trim();
+    }
+    runSql(
+      'UPDATE tables SET number = COALESCE(?, number), name = COALESCE(?, name), capacity = COALESCE(?, capacity), zone = COALESCE(?, zone), caja_station_id = ? WHERE id = ?',
+      [number, name, capacity, zone, cajaStationId, req.params.id]
+    );
     if (number && String(number) !== String(table.number)) {
       const nextNumber = String(number).trim();
       runSql(
@@ -148,6 +233,9 @@ router.patch('/:id/free', requireRole('admin', 'cajero'), (req, res) => {
   try {
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
+    if (!assertTableAccessForUser(req, table)) {
+      return res.status(403).json({ error: 'Esta mesa pertenece a otra caja' });
+    }
 
     const activeOrders = loadActiveTableOrders(table);
     activeOrders.forEach((o) => {
@@ -195,6 +283,16 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
     const source = queryOne('SELECT * FROM tables WHERE id = ?', [sourceTableId]);
     const target = queryOne('SELECT * FROM tables WHERE id = ?', [targetTableId]);
     if (!source || !target) return res.status(404).json({ error: 'Mesa origen o destino no encontrada' });
+    if (!assertTableAccessForUser(req, source) || !assertTableAccessForUser(req, target)) {
+      return res.status(403).json({ error: 'Solo puede mover mesas de su caja asignada' });
+    }
+    {
+      const salones = ensureSalonesConfig([]);
+      const salonByZone = new Map(salones.map((s) => [String(s.id), s]));
+      if (tableCajaId(source, salonByZone) !== tableCajaId(target, salonByZone)) {
+        return res.status(400).json({ error: 'No se pueden mover pedidos entre mesas de cajas distintas' });
+      }
+    }
 
     const activeOrders = loadActiveTableOrders(source);
     const requestedIds = Array.isArray(orderIdsRaw) ? orderIdsRaw.filter(Boolean) : [];
@@ -265,12 +363,20 @@ router.post('/merge', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
 
     const target = queryOne('SELECT * FROM tables WHERE id = ?', [targetTableId]);
     if (!target) return res.status(404).json({ error: 'Mesa destino no encontrada' });
+    if (!assertTableAccessForUser(req, target)) {
+      return res.status(403).json({ error: 'Esta mesa pertenece a otra caja' });
+    }
+    const salonesAll = ensureSalonesConfig([]);
+    const salonByZone = new Map(salonesAll.map((s) => [String(s.id), s]));
+    const targetCaja = tableCajaId(target, salonByZone);
 
     let moved = 0;
     const mergedOrderIds = [];
     sourceTableIds.forEach((sourceId) => {
       const source = queryOne('SELECT * FROM tables WHERE id = ?', [sourceId]);
       if (!source) return;
+      if (!assertTableAccessForUser(req, source)) return;
+      if (tableCajaId(source, salonByZone) !== targetCaja) return;
       const activeOrders = loadActiveTableOrders(source);
       const targetTableNumber = String(target.number ?? '').trim();
       activeOrders.forEach((order) => {

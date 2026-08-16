@@ -5,6 +5,10 @@ const { queryAll, queryOne, runSql } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { getActiveCajaById, getFirstAutoAssignCajaId } = require('../cajaSettings');
 const {
+  isKnownProductionAreaId,
+  syncAreaUserLinksFromUsers,
+} = require('../services/productionAreasService');
+const {
   rawWorkedMinutesExpr,
   effectiveWorkedMinutesExpr,
 } = require('../lib/workSessionSql');
@@ -20,11 +24,34 @@ const { cajaSubPermissionKey, CAJA_USER_OPT_IN_SUBS } = require('../planModuleCa
 const { getRawUserPermissionsJson } = require('../lib/cajaPermissions');
 
 const router = express.Router();
-const VALID_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery']);
+const VALID_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
+/** Placeholder único cuando el correo es opcional (columna UNIQUE NOT NULL). */
+const NO_EMAIL_SUFFIX = '@no-email.local';
+
+function isNoEmailPlaceholder(email) {
+  return String(email || '').toLowerCase().endsWith(NO_EMAIL_SUFFIX);
+}
+
+/** Correo opcional: vacío → placeholder por userId; no choca con UNIQUE. */
+function resolveStoredEmail(raw, userId) {
+  const e = String(raw || '').trim();
+  if (!e || isNoEmailPlaceholder(e)) return `${userId}${NO_EMAIL_SUFFIX}`;
+  return e;
+}
+
+function publicEmail(email) {
+  if (!email || isNoEmailPlaceholder(email)) return '';
+  return String(email);
+}
+
+function withPublicEmail(user) {
+  if (!user || typeof user !== 'object') return user;
+  return { ...user, email: publicEmail(user.email) };
+}
 const MODULE_IDS = [
   'escritorio', 'ventas', 'caja', 'mesas', 'reservas', 'auto_pedido', 'creditos', 'clientes',
   'productos', 'ofertas', 'descuentos', 'almacen', 'delivery', 'informes',
-  'indicadores', 'mi_restaurant', 'configuracion', 'cocina', 'bar', 'tiempo_trabajado',
+  'indicadores', 'mi_restaurant', 'configuracion', 'cocina', 'bar', 'produccion', 'tiempo_trabajado',
 ];
 function isPermissionEnabled(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
@@ -59,11 +86,22 @@ function countCajerosExcluding(excludeUserId) {
 
 function normalizeCajaStationId(role, rawCajaId, { excludeUserId = '' } = {}) {
   const roleLc = String(role || '').trim().toLowerCase();
-  if (roleLc !== 'cajero') return { caja_station_id: '' };
+  if (roleLc !== 'cajero' && roleLc !== 'mozo') return { caja_station_id: '' };
   let id = String(rawCajaId ?? '').trim();
   const exclude = String(excludeUserId || '').trim();
-  const otherCajeros = Number(countCajerosExcluding(exclude)?.c || 0);
 
+  if (roleLc === 'mozo') {
+    if (!id) {
+      id = getFirstAutoAssignCajaId() || '';
+      if (!id) return { error: 'Seleccione la caja para este mozo (Configuración → Cajas).' };
+    }
+    if (!getActiveCajaById(id)) {
+      return { error: 'La caja no existe o está inactiva.' };
+    }
+    return { caja_station_id: id };
+  }
+
+  const otherCajeros = Number(countCajerosExcluding(exclude)?.c || 0);
   if (!id) {
     if (otherCajeros === 0) {
       id = getFirstAutoAssignCajaId() || '';
@@ -91,64 +129,117 @@ function normalizeCajaStationId(role, rawCajaId, { excludeUserId = '' } = {}) {
   return { caja_station_id: id };
 }
 
+function normalizeProductionFields(role, body = {}) {
+  const roleLc = String(role || '').trim().toLowerCase();
+  if (roleLc === 'produccion' || roleLc === 'cocina' || roleLc === 'bar') {
+    // El área se asigna desde Configuración → Áreas de producción (encargados), no al crear el usuario.
+    let areaId = String(body.production_area_id || '').trim();
+    if (areaId && !isKnownProductionAreaId(areaId)) {
+      return { error: `Área de producción inválida: ${areaId}` };
+    }
+    return {
+      role: 'produccion',
+      production_area_id: areaId,
+      production_area_ids: '[]',
+    };
+  }
+  if (roleLc === 'mozo') {
+    return {
+      role: 'mozo',
+      production_area_id: '',
+      production_area_ids: '[]',
+    };
+  }
+  return {
+    role: roleLc,
+    production_area_id: '',
+    production_area_ids: '[]',
+  };
+}
+
 router.get('/', authenticateToken, requireRole('admin'), (req, res) => {
   res.json(
     queryAll(
       `SELECT id, username, email, full_name, role, is_active, phone, avatar, caja_station_id,
+        production_area_id, production_area_ids,
         payroll_pay_mode, payroll_amount, payroll_schedule_note, payroll_payment_day,
         COALESCE(is_buyer_admin, 0) AS is_buyer_admin, created_at
        FROM users ORDER BY created_at DESC`
-    )
+    ).map(withPublicEmail)
   );
 });
 
 router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     const username = String(req.body?.username || '').trim();
-    const email = String(req.body?.email || '').trim();
+    const emailRaw = String(req.body?.email || '').trim();
     const password = String(req.body?.password || '');
     const fullName = String(req.body?.full_name || '').trim();
     const role = String(req.body?.role || '').trim().toLowerCase();
     const phone = String(req.body?.phone || '').trim();
     const isActive = req.body?.is_active === undefined ? 1 : (Number(req.body.is_active || 0) === 1 ? 1 : 0);
-    if (!username || !email || !password || !fullName || !role) {
-      return res.status(400).json({ error: 'Todos los campos son requeridos' });
+    if (!username || !password || !fullName || !role) {
+      return res.status(400).json({ error: 'Usuario, contraseña, nombre y rol son obligatorios' });
     }
     if (!VALID_ROLES.has(role)) {
       return res.status(400).json({ error: 'Rol inválido' });
     }
-    const existing = queryOne('SELECT id FROM users WHERE username = ? OR email = ?', [username, email]);
-    if (existing) return res.status(400).json({ error: 'El usuario o email ya existe' });
+    const id = uuidv4();
+    const email = resolveStoredEmail(emailRaw, id);
+    const existingUser = queryOne('SELECT id FROM users WHERE username = ?', [username]);
+    if (existingUser) return res.status(400).json({ error: 'El usuario ya existe' });
+    if (emailRaw && !isNoEmailPlaceholder(emailRaw)) {
+      const existingEmail = queryOne('SELECT id FROM users WHERE email = ?', [email]);
+      if (existingEmail) return res.status(400).json({ error: 'El email ya está en uso' });
+    }
 
     const cajaNorm = normalizeCajaStationId(role, req.body?.caja_station_id, { excludeUserId: '' });
     if (cajaNorm.error) return res.status(400).json({ error: cajaNorm.error });
     const cajaStationId = cajaNorm.caja_station_id;
 
+    const prodNorm = normalizeProductionFields(role, req.body || {});
+    if (prodNorm.error) return res.status(400).json({ error: prodNorm.error });
+    const finalRole = prodNorm.role;
+
     const restaurant = queryOne('SELECT id FROM restaurants LIMIT 1');
-    const id = uuidv4();
     const hash = bcrypt.hashSync(password, 10);
     const isMaster = req.user?.role === 'master_admin';
     /** Solo el maestro crea al dueño del negocio; admins del personal no llevan esta marca. */
-    const isBuyerAdmin = isMaster && role === 'admin' ? 1 : 0;
+    const isBuyerAdmin = isMaster && finalRole === 'admin' ? 1 : 0;
     runSql(
       `INSERT INTO users
-        (id, username, email, password_hash, full_name, role, restaurant_id, phone, is_active, caja_station_id, is_buyer_admin)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, username, email, hash, fullName, role, restaurant?.id, phone, isActive, cajaStationId, isBuyerAdmin]
+        (id, username, email, password_hash, full_name, role, restaurant_id, phone, is_active, caja_station_id, production_area_id, production_area_ids, is_buyer_admin)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id, username, email, hash, fullName, finalRole, restaurant?.id, phone, isActive,
+        cajaStationId, prodNorm.production_area_id, prodNorm.production_area_ids, isBuyerAdmin,
+      ]
     );
     const permissionsObj =
-      isMaster && role === 'admin'
+      isMaster && finalRole === 'admin'
         ? createFullPermissions()
         : createEmptyPermissions();
+    if (finalRole === 'produccion') {
+      permissionsObj.produccion = true;
+      permissionsObj.cocina = true;
+      permissionsObj.bar = true;
+    }
+    if (finalRole === 'mozo') {
+      permissionsObj.mesas = true;
+    }
     runSql(
       'INSERT INTO user_permissions (id, user_id, permissions) VALUES (?, ?, ?)',
       [uuidv4(), id, JSON.stringify(permissionsObj)]
     );
+    try { syncAreaUserLinksFromUsers(); } catch (_) { /* ignore */ }
     return res.status(201).json(
-      queryOne(
-        `SELECT id, username, email, full_name, role, is_active, phone, caja_station_id, is_buyer_admin, created_at
-         FROM users WHERE id = ?`,
-        [id]
+      withPublicEmail(
+        queryOne(
+          `SELECT id, username, email, full_name, role, is_active, phone, caja_station_id,
+            production_area_id, production_area_ids, is_buyer_admin, created_at
+           FROM users WHERE id = ?`,
+          [id]
+        )
       )
     );
   } catch (err) {
@@ -159,13 +250,15 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
 router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     const current = queryOne(
-      'SELECT id, username, email, full_name, role, phone, is_active, caja_station_id FROM users WHERE id = ?',
+      `SELECT id, username, email, full_name, role, phone, is_active, caja_station_id,
+        production_area_id, production_area_ids FROM users WHERE id = ?`,
       [req.params.id]
     );
     if (!current?.id) return res.status(404).json({ error: 'Usuario no encontrado' });
 
     const username = req.body?.username === undefined ? current.username : String(req.body.username || '').trim();
-    const email = req.body?.email === undefined ? current.email : String(req.body.email || '').trim();
+    const emailRaw =
+      req.body?.email === undefined ? publicEmail(current.email) : String(req.body.email || '').trim();
     const fullName = req.body?.full_name === undefined ? current.full_name : String(req.body.full_name || '').trim();
     const role = req.body?.role === undefined ? current.role : String(req.body.role || '').trim().toLowerCase();
     const phone = req.body?.phone === undefined ? current.phone : String(req.body.phone || '').trim();
@@ -174,19 +267,29 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     const rawCaja =
       req.body?.caja_station_id === undefined ? current.caja_station_id : req.body.caja_station_id;
 
-    if (!username || !email || !fullName || !role) {
-      return res.status(400).json({ error: 'Usuario, email, nombre y rol son obligatorios' });
+    if (!username || !fullName || !role) {
+      return res.status(400).json({ error: 'Usuario, nombre y rol son obligatorios' });
     }
     if (!VALID_ROLES.has(role)) {
       return res.status(400).json({ error: 'Rol inválido' });
     }
 
-    const duplicated = queryOne(
-      'SELECT id FROM users WHERE (username = ? OR email = ?) AND id != ? LIMIT 1',
-      [username, email, req.params.id]
+    const email = resolveStoredEmail(emailRaw, req.params.id);
+    const duplicatedUser = queryOne(
+      'SELECT id FROM users WHERE username = ? AND id != ? LIMIT 1',
+      [username, req.params.id]
     );
-    if (duplicated?.id) {
-      return res.status(400).json({ error: 'El usuario o email ya está en uso por otro registro' });
+    if (duplicatedUser?.id) {
+      return res.status(400).json({ error: 'El usuario ya está en uso por otro registro' });
+    }
+    if (emailRaw && !isNoEmailPlaceholder(emailRaw)) {
+      const duplicatedEmail = queryOne(
+        'SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1',
+        [email, req.params.id]
+      );
+      if (duplicatedEmail?.id) {
+        return res.status(400).json({ error: 'El email ya está en uso por otro registro' });
+      }
     }
 
     if (password) {
@@ -198,9 +301,22 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     if (cajaNorm.error) return res.status(400).json({ error: cajaNorm.error });
     const cajaStationId = cajaNorm.caja_station_id;
 
+    const prodBody = {
+      production_area_id:
+        req.body?.production_area_id === undefined ? current.production_area_id : req.body.production_area_id,
+      production_area_ids:
+        req.body?.production_area_ids === undefined ? current.production_area_ids : req.body.production_area_ids,
+    };
+    const prodNorm = normalizeProductionFields(role, prodBody);
+    if (prodNorm.error) return res.status(400).json({ error: prodNorm.error });
+
     runSql(
-      'UPDATE users SET username = ?, email = ?, full_name = ?, role = ?, phone = ?, is_active = ?, caja_station_id = ? WHERE id = ?',
-      [username, email, fullName, role, phone, isActive, cajaStationId, req.params.id]
+      `UPDATE users SET username = ?, email = ?, full_name = ?, role = ?, phone = ?, is_active = ?,
+        caja_station_id = ?, production_area_id = ?, production_area_ids = ? WHERE id = ?`,
+      [
+        username, email, fullName, prodNorm.role, phone, isActive, cajaStationId,
+        prodNorm.production_area_id, prodNorm.production_area_ids, req.params.id,
+      ]
     );
 
     const payrollPatch = {};
@@ -236,12 +352,16 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       );
     }
 
+    try { syncAreaUserLinksFromUsers(); } catch (_) { /* ignore */ }
     return res.json(
-      queryOne(
-        `SELECT id, username, email, full_name, role, is_active, phone, caja_station_id,
-          payroll_pay_mode, payroll_amount, payroll_schedule_note, payroll_payment_day, created_at
-         FROM users WHERE id = ?`,
-        [req.params.id]
+      withPublicEmail(
+        queryOne(
+          `SELECT id, username, email, full_name, role, is_active, phone, caja_station_id,
+            production_area_id, production_area_ids,
+            payroll_pay_mode, payroll_amount, payroll_schedule_note, payroll_payment_day, created_at
+           FROM users WHERE id = ?`,
+          [req.params.id]
+        )
       )
     );
   } catch (err) {

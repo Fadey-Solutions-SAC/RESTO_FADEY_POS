@@ -28,7 +28,7 @@ import {
   MdLabel, MdDoNotDisturb, MdCategory, MdHistory,
   MdSecurity, MdDashboard, MdEventSeat, MdDeliveryDining, MdPhotoCamera,
   MdAssessment, MdInsights, MdLocalOffer, MdDiscount,
-  MdTableBar, MdPeopleAlt, MdRestaurantMenu, MdQrCode2, MdPalette,
+  MdTableBar, MdPeopleAlt, MdRestaurantMenu, MdTouchApp, MdPalette,
   MdAutoGraph,
 } from 'react-icons/md';
 import { applyUiThemeFromAppSettings } from '../../theme/uiTheme';
@@ -42,6 +42,7 @@ import { syncLocaleFromRegional, setAppLocale } from '../../i18n';
 import { normalizeConfigFromApi, mergeSavedAppSettings } from '../../utils/appSettingsNormalize';
 import { salonSlugFromName, reorderSalonList } from '../../utils/salonesUtils';
 import SettingsAppearancePanel from '../../components/settings/SettingsAppearancePanel';
+import ProductionAreasSection from '../../components/settings/ProductionAreasSection';
 import { useSocket } from '../../hooks/useSocket';
 import { useConfigHub } from '../../hooks/useConfigHub';
 import SettingsConfigHubBanner from '../../components/settings/SettingsConfigHubBanner';
@@ -53,16 +54,17 @@ const ALL_MODULES = [
   { id: 'ventas', label: 'Ventas', icon: MdAttachMoney, defaultRoles: ['admin', 'cajero'] },
   { id: 'caja', label: 'Caja', icon: MdPointOfSale, defaultRoles: ['admin', 'cajero'] },
   { id: 'mesas', label: 'Mesas', icon: MdTableBar, defaultRoles: ['admin', 'mozo'] },
-  { id: 'cocina', label: 'Cocina', icon: MdKitchen, defaultRoles: ['admin', 'cocina'] },
-  { id: 'bar', label: 'Bar', icon: MdLocalBar, defaultRoles: ['admin', 'bar'] },
+  { id: 'produccion', label: 'Producción', icon: MdKitchen, defaultRoles: ['admin', 'produccion'] },
+  { id: 'cocina', label: 'Cocina (legado)', icon: MdKitchen, defaultRoles: ['admin', 'produccion'] },
+  { id: 'bar', label: 'Bar (legado)', icon: MdLocalBar, defaultRoles: ['admin', 'produccion'] },
   { id: 'reservas', label: 'Reservas', icon: MdEventSeat, defaultRoles: ['admin', 'cajero', 'mozo'] },
-  { id: 'auto_pedido', label: 'Auto pedido QR', icon: MdQrCode2, defaultRoles: ['admin', 'mozo'] },
+  { id: 'auto_pedido', label: 'Auto pedido', icon: MdTouchApp, defaultRoles: ['admin', 'mozo'] },
   { id: 'creditos', label: 'Créditos', icon: MdCreditCard, defaultRoles: ['admin', 'cajero'] },
   { id: 'clientes', label: 'Clientes', icon: MdPeopleAlt, defaultRoles: ['admin', 'cajero'] },
   { id: 'productos', label: 'Productos', icon: MdRestaurantMenu, defaultRoles: ['admin'] },
   { id: 'ofertas', label: 'Ofertas', icon: MdLocalOffer, defaultRoles: ['admin'] },
   { id: 'descuentos', label: 'Descuentos', icon: MdDiscount, defaultRoles: ['admin'] },
-  { id: 'almacen', label: 'Almacén', icon: MdWarehouse, defaultRoles: ['admin'] },
+  { id: 'almacen', label: 'Control De Recursos', icon: MdWarehouse, defaultRoles: ['admin'] },
   { id: 'delivery', label: 'Delivery', icon: MdDeliveryDining, defaultRoles: ['admin', 'cajero', 'mozo'] },
   { id: 'informes', label: 'Informes', icon: MdAssessment, defaultRoles: ['admin', 'cajero'] },
   { id: 'indicadores', label: 'Indicadores', icon: MdInsights, defaultRoles: ['admin'] },
@@ -78,9 +80,8 @@ const CAJA_EXTRA_PERMISSIONS = [
 const ROLES = {
   admin: { label: 'Administrador', icon: MdAdminPanelSettings, color: UI_BADGE.purple, desc: 'Acceso completo al sistema' },
   cajero: { label: 'Cajero', icon: MdPointOfSale, color: UI_BADGE.blue, desc: 'Caja, cobros e informes' },
-  mozo: { label: 'Mozo', icon: MdRoomService, color: UI_BADGE.emerald, desc: 'Mesas y pedidos' },
-  cocina: { label: 'Cocina', icon: MdKitchen, color: UI_BADGE.amber, desc: 'Preparación de cocina' },
-  bar: { label: 'Bar', icon: MdLocalBar, color: UI_BADGE.indigo, desc: 'Preparación de bebidas y barra' },
+  mozo: { label: 'Mozo', icon: MdRoomService, color: UI_BADGE.emerald, desc: 'Mesas y pedidos de su caja' },
+  produccion: { label: 'Producción', icon: MdKitchen, color: UI_BADGE.amber, desc: 'Se vincula al área desde Áreas de producción' },
   delivery: { label: 'Delivery', icon: MdDeliveryDining, color: UI_BADGE.sky, desc: 'Reparto y entregas' },
 };
 
@@ -99,6 +100,7 @@ const MENU_ITEMS = [
   { id: 'users', label: 'Usuarios', icon: MdPeople },
   { id: 'almacenes', label: 'Almacenes y Producción', icon: MdWarehouse },
   { id: 'salones', label: 'Salones y Mesas', icon: MdTableRestaurant },
+  { id: 'production_areas', label: 'Áreas de producción', icon: MdKitchen },
   { id: 'cajas', label: 'Cajas', icon: MdPointOfSale },
   { id: 'comprobantes', label: 'Comprobantes', icon: MdReceipt },
   { id: 'impresoras', label: 'Configuración de Impresoras', icon: MdReceipt },
@@ -143,11 +145,22 @@ const DEFAULT_APP_SETTINGS = {
   },
   locales: [{ name: 'Principal', address: '', phone: '', active: 1 }],
   almacenes: [{ name: 'Almacén Principal', description: 'Almacén general de insumos', active: 1 }],
+  production_areas: [
+    { id: 'cocina', name: 'Cocina', active: 1, encargado_user_ids: [], mozo_user_ids: [] },
+    { id: 'bar', name: 'Bar', active: 1, encargado_user_ids: [], mozo_user_ids: [] },
+  ],
   cajas: [{
     id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
     name: 'Caja Principal',
     description: 'Caja #1 - Recepción',
     active: 1,
+  }],
+  salones: [{
+    id: 'principal',
+    name: 'Salón Principal',
+    description: 'Área principal del restaurante',
+    sort_order: 0,
+    caja_station_id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
   }],
   comprobantes: [
     { name: 'Boleta de Venta', series: 'B001', active: 1 },
@@ -301,7 +314,8 @@ function ensureCajaIdsDeep(cajas) {
 }
 
 const EMPTY_USER_FORM = {
-  username: '', email: '', password: '', full_name: '', role: 'mozo', phone: '', is_active: 1, caja_station_id: '',
+  username: '', email: '', password: '', full_name: '', role: 'mozo', phone: '', is_active: 1,
+  caja_station_id: '', production_area_id: '', production_area_ids: [],
 };
 
 /** WhatsApp proveedor: nuevas sucursales/locales son contratación aparte. */
@@ -414,7 +428,7 @@ export default function Settings() {
 
   const loadUsers = () => {
     api.get('/users').then(data => {
-      setUsers(data.filter(u => ['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery'].includes(u.role)));
+      setUsers(data.filter(u => ['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar', 'delivery'].includes(u.role)));
     }).catch(console.error).finally(() => setLoading(false));
   };
 
@@ -906,15 +920,20 @@ export default function Settings() {
 
   const openEditUser = (u) => {
     setEditUser(u);
+    const role = String(u.role || 'mozo').toLowerCase() === 'cocina' || String(u.role || '').toLowerCase() === 'bar'
+      ? 'produccion'
+      : (u.role || 'mozo');
     setForm({
       username: u.username || '',
       email: u.email || '',
       password: '',
       full_name: u.full_name || '',
-      role: u.role || 'mozo',
+      role,
       phone: u.phone || '',
       is_active: Number(u.is_active || 0) === 1 ? 1 : 0,
       caja_station_id: String(u.caja_station_id || '').trim(),
+      production_area_id: String(u.production_area_id || '').trim(),
+      production_area_ids: [],
     });
     setShowPw(false);
     setShowModal(true);
@@ -930,17 +949,25 @@ export default function Settings() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const roleLc = String(form.role || '').trim().toLowerCase();
       const payload = {
         ...form,
         username: String(form.username || '').trim(),
         email: String(form.email || '').trim(),
         full_name: String(form.full_name || '').trim(),
-        role: String(form.role || '').trim(),
+        role: roleLc,
         phone: String(form.phone || '').trim(),
         is_active: Number(form.is_active || 0) === 1 ? 1 : 0,
         caja_station_id:
-          String(form.role || '').toLowerCase() === 'cajero' ? String(form.caja_station_id || '').trim() : '',
+          roleLc === 'cajero' || roleLc === 'mozo' ? String(form.caja_station_id || '').trim() : '',
+        production_area_ids: [],
       };
+      // El área del encargado se gestiona en Áreas de producción; no sobrescribir al editar usuario.
+      if (roleLc === 'produccion') {
+        delete payload.production_area_id;
+      } else {
+        payload.production_area_id = '';
+      }
       if (!payload.password) delete payload.password;
       if (editUser) {
         await api.put(`/users/${editUser.id}`, payload);
@@ -1677,7 +1704,11 @@ export default function Settings() {
 
         {/* SALONES Y MESAS */}
         {activeSection === 'salones' && (
-          <SalonMesasSection />
+          <SalonMesasSection appSettings={appSettings} />
+        )}
+
+        {activeSection === 'production_areas' && (
+          <ProductionAreasSection />
         )}
 
         {/* CAJAS */}
@@ -2719,6 +2750,15 @@ function UsersSection({
     return m;
   }, [appSettings?.cajas]);
 
+  const areaNameById = useMemo(() => {
+    const m = new Map();
+    (appSettings?.production_areas || []).forEach((a) => {
+      const id = String(a?.id || '').trim();
+      if (id) m.set(id, String(a?.name || '').trim() || id);
+    });
+    return m;
+  }, [appSettings?.production_areas]);
+
   const cajaOptionsForForm = (() => {
     const assigned = new Map();
     (users || []).forEach((u) => {
@@ -2791,9 +2831,15 @@ function UsersSection({
                     {Number(u.is_buyer_admin || 0) === 1 ? (
                       <p className="text-[10px] text-amber-700 mt-1 font-medium">Dueño del negocio</p>
                     ) : null}
-                    {String(u.role || '').toLowerCase() === 'cajero' && String(u.caja_station_id || '').trim() && (
+                    {(String(u.role || '').toLowerCase() === 'cajero' || String(u.role || '').toLowerCase() === 'mozo')
+                      && String(u.caja_station_id || '').trim() && (
                       <p className="text-[10px] text-[var(--ui-muted)] mt-1">
                         Caja: {cajaNameById.get(String(u.caja_station_id).trim()) || '—'}
+                      </p>
+                    )}
+                    {String(u.role || '').toLowerCase() === 'produccion' && String(u.production_area_id || '').trim() && (
+                      <p className="text-[10px] text-[var(--ui-muted)] mt-1">
+                        Área: {areaNameById.get(String(u.production_area_id).trim()) || u.production_area_id}
                       </p>
                     )}
                   </td>
@@ -2833,7 +2879,7 @@ function UsersSection({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Usuario</label><input type="text" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} className="input-field" required placeholder="usuario" autoComplete="off" name="user-create-username" /></div>
-            <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Email</label><input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="input-field" required placeholder="email@ejemplo.com" autoComplete="off" name="user-create-email" /></div>
+            <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Email <span className="text-[var(--ui-muted)] font-normal">(opcional)</span></label><input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="input-field" placeholder="email@ejemplo.com" autoComplete="off" name="user-create-email" /></div>
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Contraseña {editUser && <span className="text-[var(--ui-muted)] font-normal">(dejar vacío para no cambiar)</span>}</label>
@@ -2860,7 +2906,8 @@ function UsersSection({
                       setForm({
                         ...form,
                         role: key,
-                        caja_station_id: key === 'cajero' ? form.caja_station_id : '',
+                        caja_station_id:
+                          key === 'cajero' || key === 'mozo' ? form.caja_station_id : '',
                       })
                     }
                     className={`p-3 rounded-xl border-2 text-center transition-all ${form.role === key ? 'border-gold-500 bg-gold-50' : 'border-slate-200 hover:border-slate-300'}`}
@@ -2897,6 +2944,32 @@ function UsersSection({
                 </p>
               )}
             </div>
+          )}
+          {(String(form.role || '').toLowerCase() === 'mozo') && (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Caja asignada (obligatorio)</label>
+                <select
+                  value={String(form.caja_station_id || '')}
+                  onChange={(e) => setForm({ ...form, caja_station_id: e.target.value })}
+                  className="input-field"
+                  required
+                >
+                  <option value="">— Seleccione una caja —</option>
+                  {(appSettings?.cajas || [])
+                    .filter((c) => Number(c?.active || 0) === 1 && String(c?.id || '').trim())
+                    .map((c) => (
+                      <option key={c.id} value={String(c.id).trim()}>{c.name || 'Caja'}</option>
+                    ))}
+                </select>
+                <p className="text-xs text-[var(--ui-muted)] mt-1">Sus comandas y mesas pertenecen a esta caja.</p>
+              </div>
+            </div>
+          )}
+          {String(form.role || '').toLowerCase() === 'produccion' && (
+            <p className="text-xs ui-text-muted rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2">
+              No se elige área aquí. Vincula este usuario como encargado en Configuración → Áreas de producción.
+            </p>
           )}
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Teléfono</label><input type="text" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="input-field" placeholder="999 999 999" autoComplete="off" name="user-create-phone" /></div>
@@ -3011,20 +3084,36 @@ function UsersSection({
   );
 }
 
-function SalonMesasSection() {
+function SalonMesasSection({ appSettings }) {
+  const PRIMARY_CAJA_ID = 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001';
+  const activeCajas = useMemo(
+    () =>
+      (Array.isArray(appSettings?.cajas) ? appSettings.cajas : [])
+        .filter((c) => Number(c?.active || 0) === 1 && String(c?.id || '').trim())
+        .map((c) => ({ id: String(c.id).trim(), name: String(c.name || '').trim() || 'Caja' })),
+    [appSettings?.cajas],
+  );
+  const defaultCajaId = activeCajas[0]?.id || PRIMARY_CAJA_ID;
+  const [selectedCajaId, setSelectedCajaId] = useState(defaultCajaId);
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [salones, setSalones] = useState([]);
   const [showSalonModal, setShowSalonModal] = useState(false);
   const [editSalon, setEditSalon] = useState(null);
-  const [salonForm, setSalonForm] = useState({ name: '', description: '' });
+  const [salonForm, setSalonForm] = useState({ name: '', description: '', caja_station_id: defaultCajaId });
   const [savingSalones, setSavingSalones] = useState(false);
   const [salonOrderEditing, setSalonOrderEditing] = useState(false);
   const [salonOrderPosition, setSalonOrderPosition] = useState(1);
 
   const [showMesaModal, setShowMesaModal] = useState(false);
   const [editMesa, setEditMesa] = useState(null);
-  const [mesaForm, setMesaForm] = useState({ number: '', name: '', capacity: 4, zone: 'principal' });
+  const [mesaForm, setMesaForm] = useState({ number: '', name: '', capacity: 4, zone: 'principal', caja_station_id: defaultCajaId });
+
+  useEffect(() => {
+    if (!activeCajas.some((c) => c.id === selectedCajaId)) {
+      setSelectedCajaId(defaultCajaId);
+    }
+  }, [activeCajas, defaultCajaId, selectedCajaId]);
 
   const loadTables = () => {
     Promise.all([
@@ -3042,6 +3131,18 @@ function SalonMesasSection() {
 
   useEffect(() => { loadTables(); }, []);
 
+  const salonCajaId = (s) => String(s?.caja_station_id || '').trim() || PRIMARY_CAJA_ID;
+  const mesaCajaId = (t) => String(t?.caja_station_id || '').trim() || PRIMARY_CAJA_ID;
+
+  const filteredSalones = useMemo(
+    () => salones.filter((s) => salonCajaId(s) === selectedCajaId),
+    [salones, selectedCajaId],
+  );
+  const filteredTables = useMemo(
+    () => tables.filter((t) => mesaCajaId(t) === selectedCajaId),
+    [tables, selectedCajaId],
+  );
+
   const persistSalones = async (nextSalones) => {
     setSavingSalones(true);
     try {
@@ -3051,6 +3152,7 @@ function SalonMesasSection() {
           name: s.name,
           description: s.description || '',
           sort_order: idx,
+          caja_station_id: String(s.caja_station_id || '').trim() || PRIMARY_CAJA_ID,
         })),
       });
       const saved = Array.isArray(res?.salones) ? res.salones : nextSalones;
@@ -3066,14 +3168,18 @@ function SalonMesasSection() {
 
   const openNewSalon = () => {
     setEditSalon(null);
-    setSalonForm({ name: '', description: '' });
+    setSalonForm({ name: '', description: '', caja_station_id: selectedCajaId });
     setSalonOrderEditing(false);
     setShowSalonModal(true);
   };
   const openEditSalon = (s) => {
-    const currentIdx = salones.findIndex((sal) => sal.id === s.id);
+    const currentIdx = filteredSalones.findIndex((sal) => sal.id === s.id);
     setEditSalon(s);
-    setSalonForm({ name: s.name, description: s.description || '' });
+    setSalonForm({
+      name: s.name,
+      description: s.description || '',
+      caja_station_id: salonCajaId(s),
+    });
     setSalonOrderPosition(currentIdx >= 0 ? currentIdx + 1 : 1);
     setSalonOrderEditing(false);
     setShowSalonModal(true);
@@ -3083,12 +3189,13 @@ function SalonMesasSection() {
     e.preventDefault();
     const name = String(salonForm.name || '').trim();
     if (!name) return toast.error('Ingresa el nombre del salón');
+    const cajaId = String(salonForm.caja_station_id || selectedCajaId || PRIMARY_CAJA_ID).trim() || PRIMARY_CAJA_ID;
     try {
       let next;
       if (editSalon) {
         next = salones.map((s) =>
           s.id === editSalon.id
-            ? { ...s, name, description: String(salonForm.description || '').trim() }
+            ? { ...s, name, description: String(salonForm.description || '').trim(), caja_station_id: cajaId }
             : s
         );
       } else {
@@ -3106,6 +3213,7 @@ function SalonMesasSection() {
             name,
             description: String(salonForm.description || '').trim(),
             sort_order: salones.length,
+            caja_station_id: cajaId,
           },
         ];
       }
@@ -3118,7 +3226,7 @@ function SalonMesasSection() {
   };
 
   const deleteSalon = async (s) => {
-    const mesasEnSalon = tables.filter(t => (t.zone || 'principal') === s.id);
+    const mesasEnSalon = filteredTables.filter(t => (t.zone || 'principal') === s.id);
     if (mesasEnSalon.length > 0) return toast.error('Elimina primero las mesas de este salón');
     if (!confirm(`¿Eliminar salón "${s.name}"?`)) return;
     try {
@@ -3132,13 +3240,15 @@ function SalonMesasSection() {
 
   const applySalonOrderFromEdit = async () => {
     if (!editSalon) return;
-    const currentIdx = salones.findIndex((s) => s.id === editSalon.id);
+    const currentIdx = filteredSalones.findIndex((s) => s.id === editSalon.id);
     if (currentIdx + 1 === salonOrderPosition) {
       toast.error('El salón ya está en esa posición');
       return;
     }
     try {
-      const next = reorderSalonList(salones, editSalon.id, salonOrderPosition);
+      const others = salones.filter((s) => salonCajaId(s) !== selectedCajaId);
+      const reordered = reorderSalonList(filteredSalones, editSalon.id, salonOrderPosition);
+      const next = [...others, ...reordered].map((s, idx) => ({ ...s, sort_order: idx }));
       await persistSalones(next);
       toast.success(`"${editSalon.name}" movido a la posición ${salonOrderPosition}`);
       setSalonOrderEditing(false);
@@ -3149,27 +3259,36 @@ function SalonMesasSection() {
   };
 
   const openNewMesa = (salonId) => {
-    const mesasSalon = tables.filter(t => (t.zone || 'principal') === salonId);
     const nextNum = tables.length > 0 ? Math.max(...tables.map(t => t.number)) + 1 : 1;
     setEditMesa(null);
-    setMesaForm({ number: nextNum, name: '', capacity: 4, zone: salonId });
+    setMesaForm({ number: nextNum, name: '', capacity: 4, zone: salonId, caja_station_id: selectedCajaId });
     setShowMesaModal(true);
   };
 
   const openEditMesa = (t) => {
     setEditMesa(t);
-    setMesaForm({ number: t.number, name: t.name || '', capacity: t.capacity || 4, zone: t.zone || 'principal' });
+    setMesaForm({
+      number: t.number,
+      name: t.name || '',
+      capacity: t.capacity || 4,
+      zone: t.zone || 'principal',
+      caja_station_id: mesaCajaId(t) || selectedCajaId,
+    });
     setShowMesaModal(true);
   };
 
   const handleMesaSubmit = async (e) => {
     e.preventDefault();
+    const payload = {
+      ...mesaForm,
+      caja_station_id: String(mesaForm.caja_station_id || selectedCajaId || PRIMARY_CAJA_ID).trim() || PRIMARY_CAJA_ID,
+    };
     try {
       if (editMesa) {
-        await api.put(`/tables/${editMesa.id}`, mesaForm);
+        await api.put(`/tables/${editMesa.id}`, payload);
         toast.success('Mesa actualizada');
       } else {
-        await api.post('/tables', { ...mesaForm, name: mesaForm.name || `Mesa ${mesaForm.number}` });
+        await api.post('/tables', { ...payload, name: payload.name || `Mesa ${payload.number}` });
         toast.success('Mesa creada');
       }
       setShowMesaModal(false);
@@ -3190,16 +3309,34 @@ function SalonMesasSection() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <p className="text-sm ui-text-muted">
-          {salones.length} salón(es) · {tables.length} mesa(s) en total
-          {savingSalones ? ' · Guardando…' : ''}
-        </p>
-        <button onClick={openNewSalon} className="btn-primary flex items-center gap-2 text-sm"><MdAdd /> Nuevo Salón</button>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-[200px]">
+          <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Caja</label>
+          <select
+            value={selectedCajaId}
+            onChange={(e) => setSelectedCajaId(e.target.value)}
+            className="input-field"
+          >
+            {activeCajas.length === 0 ? (
+              <option value={PRIMARY_CAJA_ID}>Caja Principal</option>
+            ) : (
+              activeCajas.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))
+            )}
+          </select>
+        </div>
+        <div className="flex items-center gap-3 ml-auto">
+          <p className="text-sm ui-text-muted">
+            {filteredSalones.length} salón(es) · {filteredTables.length} mesa(s)
+            {savingSalones ? ' · Guardando…' : ''}
+          </p>
+          <button onClick={openNewSalon} className="btn-primary flex items-center gap-2 text-sm"><MdAdd /> Nuevo Salón</button>
+        </div>
       </div>
 
-      {salones.map(salon => {
-        const mesasSalon = tables.filter(t => (t.zone || 'principal') === salon.id);
+      {filteredSalones.map(salon => {
+        const mesasSalon = filteredTables.filter(t => (t.zone || 'principal') === salon.id);
         return (
           <div key={salon.id} className="card">
             <div className="flex items-center justify-between mb-4">
@@ -3293,6 +3430,18 @@ function SalonMesasSection() {
         <form onSubmit={handleSalonSubmit} className="space-y-4">
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre del Salón</label><input value={salonForm.name} onChange={e => setSalonForm({ ...salonForm, name: e.target.value })} className="input-field" required placeholder="Ej: Terraza, Segundo Piso" /></div>
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Descripción</label><textarea value={salonForm.description} onChange={e => setSalonForm({ ...salonForm, description: e.target.value })} className="input-field" rows="2" placeholder="Descripción del salón..." /></div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Caja</label>
+            <select
+              value={String(salonForm.caja_station_id || selectedCajaId)}
+              onChange={(e) => setSalonForm({ ...salonForm, caja_station_id: e.target.value })}
+              className="input-field"
+            >
+              {(activeCajas.length ? activeCajas : [{ id: PRIMARY_CAJA_ID, name: 'Caja Principal' }]).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
           {editSalon ? (
             <div className="rounded-xl border border-[color:var(--ui-border)] p-3 space-y-3">
               <p className="text-sm font-medium text-[var(--ui-body-text)]">Orden en listado</p>
@@ -3307,13 +3456,13 @@ function SalonMesasSection() {
               ) : (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs text-[var(--ui-muted)] mb-1">Nueva posición (1–{salones.length})</label>
+                    <label className="block text-xs text-[var(--ui-muted)] mb-1">Nueva posición (1–{filteredSalones.length})</label>
                     <select
                       value={salonOrderPosition}
                       onChange={(e) => setSalonOrderPosition(Number(e.target.value))}
                       className="input-field"
                     >
-                      {salones.map((s, idx) => (
+                      {filteredSalones.map((s, idx) => (
                         <option key={s.id} value={idx + 1}>
                           {idx + 1} — {s.id === editSalon.id ? `${s.name} (actual)` : s.name}
                         </option>
@@ -3356,7 +3505,7 @@ function SalonMesasSection() {
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Salón</label>
             <select value={mesaForm.zone} onChange={e => setMesaForm({ ...mesaForm, zone: e.target.value })} className="input-field">
-              {salones.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {filteredSalones.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div className="flex gap-3"><button type="button" onClick={() => setShowMesaModal(false)} className="btn-secondary flex-1">Cancelar</button><button type="submit" className="btn-primary flex-1">{editMesa ? 'Guardar' : 'Crear Mesa'}</button></div>

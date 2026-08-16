@@ -197,6 +197,7 @@ export default function Escritorio() {
   const [rankingMode, setRankingMode] = useState('dias');
   const [cajaStations, setCajaStations] = useState([]);
   const [selectedCajaStationId, setSelectedCajaStationId] = useState('');
+  const [activeProductionAreaIds, setActiveProductionAreaIds] = useState(() => new Set(['cocina', 'bar']));
   const [registerPeriodReport, setRegisterPeriodReport] = useState(null);
   const [registerReportLoading, setRegisterReportLoading] = useState(true);
   const [hourlyHistoryIndex, setHourlyHistoryIndex] = useState(0);
@@ -212,11 +213,34 @@ export default function Escritorio() {
   }, [deliverySettingsLoaded, deliveryEnabled, liveDash?.deliveryEnabled]);
 
   const monitoreoSyncLabel = useMemo(() => {
-    const parts = ['Caja', 'Cocina', 'Bar', 'Mesas'];
+    const parts = ['Caja'];
+    if (activeProductionAreaIds.has('cocina')) parts.push('Cocina');
+    if (activeProductionAreaIds.has('bar')) parts.push('Bar');
+    parts.push('Mesas');
     if (deliveryModuleActive) parts.push('Delivery');
     parts.push('inventario');
     return parts.join(', ');
-  }, [deliveryModuleActive]);
+  }, [deliveryModuleActive, activeProductionAreaIds]);
+
+  useEffect(() => {
+    const loadAreas = () => {
+      api
+        .get('/production-areas/active')
+        .then((list) => {
+          const ids = new Set(
+            (Array.isArray(list) ? list : [])
+              .map((a) => String(a?.id || '').trim())
+              .filter(Boolean)
+          );
+          setActiveProductionAreaIds(ids);
+        })
+        .catch(() => {});
+    };
+    loadAreas();
+    const onAreas = () => loadAreas();
+    window.addEventListener('production-areas-updated', onAreas);
+    return () => window.removeEventListener('production-areas-updated', onAreas);
+  }, []);
 
   const loadLiveDash = useCallback(async () => {
     setLiveDashLoading(true);
@@ -637,12 +661,18 @@ export default function Escritorio() {
   const topMesasYTicks = useMemo(() => getChartYAxisTicks(topMesasYMax), [topMesasYMax]);
 
   const kitchenQueue = useMemo(
-    () => orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForKitchenStation(o)).length,
-    [orders]
+    () =>
+      activeProductionAreaIds.has('cocina')
+        ? orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForKitchenStation(o)).length
+        : 0,
+    [orders, activeProductionAreaIds]
   );
   const barQueue = useMemo(
-    () => orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForBarStation(o)).length,
-    [orders]
+    () =>
+      activeProductionAreaIds.has('bar')
+        ? orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForBarStation(o)).length
+        : 0,
+    [orders, activeProductionAreaIds]
   );
   const productionQueueTotal = kitchenQueue + barQueue;
   const visibleOperationalAlerts = useMemo(() => {
@@ -799,6 +829,7 @@ export default function Escritorio() {
               ) : null}
               <p className="text-[11px] font-medium text-sky-700 mt-0.5">Ir a Caja</p>
             </button>
+            {activeProductionAreaIds.has('cocina') ? (
             <button
               type="button"
               onClick={() => navigate('/admin/cocina')}
@@ -817,6 +848,8 @@ export default function Escritorio() {
               <p className="text-[11px] text-amber-700">Pedidos en cola</p>
               <p className="text-[11px] font-medium ui-live-link-amber mt-0.5">Ir a Cocina</p>
             </button>
+            ) : null}
+            {activeProductionAreaIds.has('bar') ? (
             <button
               type="button"
               onClick={() => navigate('/admin/bar')}
@@ -835,6 +868,7 @@ export default function Escritorio() {
               <p className="text-[11px] text-indigo-700">Pedidos en cola</p>
               <p className="text-[11px] font-medium text-indigo-700 mt-0.5">Ir a Bar</p>
             </button>
+            ) : null}
             {deliveryModuleActive ? (
             <button
               type="button"
@@ -879,7 +913,7 @@ export default function Escritorio() {
               <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">Stock ≤ 10</p>
               <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums mt-1">{liveDash.lowStock?.length ?? 0}</p>
               <p className="text-[11px] text-[var(--ui-muted)]">Inventario</p>
-              <p className="text-[11px] font-medium text-[var(--ui-accent-muted)] mt-0.5">Ir a Almacén</p>
+              <p className="text-[11px] font-medium text-[var(--ui-accent-muted)] mt-0.5">Ir a Control De Recursos</p>
             </button>
           </div>
           {liveDash.operationalSummary &&
