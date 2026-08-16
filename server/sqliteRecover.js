@@ -175,6 +175,35 @@ function listBackupCandidates(dbPath) {
   return out;
 }
 
+function listLastResortCandidates(dbPath) {
+  const dir = path.dirname(dbPath);
+  const out = [];
+  let names = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const name of names) {
+    const lower = name.toLowerCase();
+    const isLastResort = lower.includes('malformed')
+      || lower.includes('before-sqljs-clean')
+      || lower.endsWith('.prev')
+      || lower.includes('.db.sqljs-clean');
+    if (!isLastResort) continue;
+    const p = path.resolve(path.join(dir, name));
+    if (p === path.resolve(dbPath)) continue;
+    try {
+      const st = fs.statSync(p);
+      if (st.isFile() && st.size > 512) out.push({ path: p, mtime: st.mtimeMs, size: st.size });
+    } catch {
+      /* ignore */
+    }
+  }
+  out.sort((a, b) => b.size - a.size);
+  return out;
+}
+
 /**
  * @returns {{ db: object, recovered: boolean } | { error: Error }}
  */
@@ -211,10 +240,16 @@ function openOrRecoverSqliteFile(SQL, dbPath, fileBuffer, { minUsers = 0 } = {})
     try {
       const buf = fs.readFileSync(sqljsClean);
       const database = openSqlJsBuffer(SQL, buf);
-      writeFileAtomic(dbPath, buf);
-      console.warn(`[sqlite-recover] Reescrito con sqlite3 .backup (${countUsersSqlJs(database)} usuario(s)).`);
-      try { fs.unlinkSync(sqljsClean); } catch { /* ignore */ }
-      return { db: database, recovered: true };
+      const users = countUsersSqlJs(database);
+      if (minUsers > 0 && users === 0 && !hasBusinessData(database)) {
+        database.close();
+        console.warn('[sqlite-recover] sqlite3 .backup quedó sin datos de negocio; se ignora.');
+      } else {
+        writeFileAtomic(dbPath, buf);
+        console.warn(`[sqlite-recover] Reescrito con sqlite3 .backup (${users} usuario(s)).`);
+        try { fs.unlinkSync(sqljsClean); } catch { /* ignore */ }
+        return { db: database, recovered: true };
+      }
     } catch (backupErr) {
       console.warn('[sqlite-recover] sqlite3 .backup no lo abre sql.js:', backupErr.message || backupErr);
     }
@@ -286,6 +321,27 @@ function openOrRecoverSqliteFile(SQL, dbPath, fileBuffer, { minUsers = 0 } = {})
       return { db: database, recovered: true };
     } catch {
       /* siguiente candidato */
+    }
+  }
+
+  for (const cand of listLastResortCandidates(dbPath)) {
+    try {
+      const buf = fs.readFileSync(cand.path);
+      const database = openSqlJsBuffer(SQL, buf);
+      const users = countUsersSqlJs(database);
+      if (users === 0 && !hasBusinessData(database)) {
+        database.close();
+        continue;
+      }
+      if (minUsers > 0 && users === 0) {
+        database.close();
+        continue;
+      }
+      writeFileAtomic(dbPath, buf);
+      console.warn(`[sqlite-recover] Restaurado desde copia de último recurso ${cand.path} (${users} usuario(s), ${cand.size} bytes).`);
+      return { db: database, recovered: true };
+    } catch {
+      /* siguiente */
     }
   }
 

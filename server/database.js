@@ -61,6 +61,10 @@ function saveDb() {
       path: DB_PATH,
       error: err?.message || String(err),
     }));
+    if (allowEmptyPersist) {
+      console.warn('[sqlite] persistencia omitida en arranque de cero:', err?.message || err);
+      return;
+    }
     throw new Error(
       'No se pudo guardar la base de datos. Cierre otras instancias del programa o verifique permisos del disco.',
     );
@@ -162,27 +166,37 @@ function countTableRows(tableName) {
   }
 }
 
+function markEmptyBootGuard() {
+  writeDbGuard({ users: 0, products: 0, empty_boot: true });
+}
+
+function enableEmptyBoot(reason) {
+  allowEmptyPersist = true;
+  markEmptyBootGuard();
+  console.warn(`[db-guard] Arranque de cero: ${reason} Entre como maestro y restaure el backup .db.`);
+}
+
 function assertSafeDbBeforePersist({ usersCount, productsCount, previousBytes }) {
   if (allowEmptyPersist) {
-    console.warn('[db-guard] Arranque vacío tras base ilegible. Entre como maestro y restaure el .db.');
+    markEmptyBootGuard();
+    console.warn('[db-guard] Arranque de cero. Entre como maestro y restaure el backup .db.');
     return;
   }
   const allowReset = String(process.env.ALLOW_EMPTY_DB_BOOT || '').trim() === '1';
   if (allowReset) {
-    console.warn('[db-guard] ALLOW_EMPTY_DB_BOOT=1 — protección anti-borrado desactivada.');
+    enableEmptyBoot('ALLOW_EMPTY_DB_BOOT=1.');
     return;
   }
   const guard = readDbGuard();
   const emptyNow = usersCount === 0 && productsCount === 0;
   if (guard && Number(guard.users || 0) > 0 && emptyNow) {
-    throw new Error(
-      `[SQLite CRÍTICO] ${DB_PATH} quedó vacía pero el marcador en disco registra ${guard.users} usuario(s) y ${guard.products} producto(s). NO se sobrescribirá. Restaure un backup .db o pida snapshot del disco a Render.`,
+    enableEmptyBoot(
+      `base vacía (marcador: ${guard.users} usuario(s), ${guard.products} producto(s)).`,
     );
+    return;
   }
   if (dbFileExistedBeforeInit && previousBytes > 800000 && emptyNow && guard && Number(guard.users || 0) > 0) {
-    throw new Error(
-      `[SQLite CRÍTICO] ${DB_PATH} (${previousBytes} bytes) no tiene usuarios/productos. Posible pérdida tras deploy. NO se guardará. Restaure backup.`,
-    );
+    enableEmptyBoot(`${DB_PATH} (${previousBytes} bytes) sin usuarios/productos.`);
   }
 }
 
@@ -504,52 +518,87 @@ async function initDatabase() {
     let previousBytes = 0;
     dbFileExistedBeforeInit = fs.existsSync(DB_PATH);
     if (dbFileExistedBeforeInit) {
-      previousBytes = fs.statSync(DB_PATH).size;
-      const fileBuffer = fs.readFileSync(DB_PATH);
-      if (fileBuffer.length < 512) {
-        console.warn(
-          `[sqlite] ${DB_PATH} está vacío o truncado (${fileBuffer.length} bytes); se buscará copia en el disco.`,
-        );
-      }
       try {
+        previousBytes = fs.statSync(DB_PATH).size;
+      } catch {
+        previousBytes = 0;
+      }
+      let fileBuffer = Buffer.alloc(0);
+      try {
+        fileBuffer = fs.readFileSync(DB_PATH);
+      } catch (readErr) {
+        console.error('[sqlite] no se pudo leer el archivo; arranque vacío:', readErr?.message || readErr);
+        db = new SQL.Database();
+        enableEmptyBoot('no se pudo leer el archivo.');
+      }
+      if (!db) {
+        if (fileBuffer.length < 512) {
+          console.warn(
+            `[sqlite] ${DB_PATH} está vacío o truncado (${fileBuffer.length} bytes); se buscará copia en el disco.`,
+          );
+        }
+        try {
         const opened = openOrRecoverSqliteFile(SQL, DB_PATH, fileBuffer, {
           minUsers: Number(readDbGuard()?.users || 0),
         });
         if (opened.error) {
           console.error('[sqlite] no se pudo recuperar la base:', opened.error.message || opened.error);
-          console.error('[sqlite] Se arranca vacía para que el administrador maestro restaure un backup .db.');
           db = new SQL.Database();
-          allowEmptyPersist = true;
+          enableEmptyBoot('no hay copia usable.');
         } else {
           db = opened.db;
           if (opened.recovered) {
             previousBytes = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : previousBytes;
           }
+          try {
+            const u = Number(queryOne('SELECT COUNT(*) as c FROM users')?.c) || 0;
+            const p = Number(queryOne('SELECT COUNT(*) as c FROM products')?.c) || 0;
+            if (u === 0 && p === 0) {
+              try { db.close(); } catch { /* ignore */ }
+              db = new SQL.Database();
+              enableEmptyBoot('copia sin usuarios/productos.');
+            }
+          } catch {
+            try { db.close(); } catch { /* ignore */ }
+            db = new SQL.Database();
+            enableEmptyBoot('esquema ilegible.');
+          }
         }
       } catch (err) {
         console.error('[sqlite] error abriendo la base; arranque vacío:', err?.message || err);
         db = new SQL.Database();
-        allowEmptyPersist = true;
+        enableEmptyBoot('error al abrir el archivo.');
+      }
       }
     } else {
-      const guard = readDbGuard();
-      if (guard && Number(guard.users || 0) > 0) {
-        console.warn(`[sqlite] Falta ${DB_PATH}; se buscará copia (marcador: ${guard.users} usuario(s)).`);
-        const opened = openOrRecoverSqliteFile(SQL, DB_PATH, Buffer.alloc(0), {
-          minUsers: Number(guard.users || 0),
-        });
-        if (opened.error) {
-          console.error('[sqlite] no hay copia usable; arranque vacío para restaurar desde maestro.');
-          db = new SQL.Database();
-          allowEmptyPersist = true;
+      try {
+        const guard = readDbGuard();
+        if (guard && Number(guard.users || 0) > 0) {
+          console.warn(`[sqlite] Falta ${DB_PATH}; se buscará copia (marcador: ${guard.users} usuario(s)).`);
+          const opened = openOrRecoverSqliteFile(SQL, DB_PATH, Buffer.alloc(0), {
+            minUsers: Number(guard.users || 0),
+          });
+          if (opened.error) {
+            db = new SQL.Database();
+            enableEmptyBoot('no hay copia usable.');
+          } else {
+            db = opened.db;
+            previousBytes = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0;
+            dbFileExistedBeforeInit = true;
+          }
         } else {
-          db = opened.db;
-          previousBytes = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0;
-          dbFileExistedBeforeInit = true;
+          db = new SQL.Database();
         }
-      } else {
+      } catch (missingErr) {
+        console.error('[sqlite] error buscando copia; arranque vacío:', missingErr?.message || missingErr);
         db = new SQL.Database();
+        enableEmptyBoot('error buscando copia.');
       }
+    }
+
+    if (!db) {
+      db = new SQL.Database();
+      enableEmptyBoot('sin instancia sql.js.');
     }
 
     db.run('PRAGMA foreign_keys = ON');
@@ -2644,7 +2693,11 @@ async function initDatabase() {
     const usersCount = countTableRows('users');
     const productsCount = countTableRows('products');
     assertSafeDbBeforePersist({ usersCount, productsCount, previousBytes });
-    flushSaveDb();
+    try {
+      flushSaveDb();
+    } catch (persistErr) {
+      console.error('[sqlite] no se pudo persistir al arrancar (el API sigue):', persistErr?.message || persistErr);
+    }
     if (usersCount > 0 || productsCount > 0) {
       writeDbGuard({
         users: usersCount,
@@ -2659,7 +2712,11 @@ async function initDatabase() {
       }
     }
     return db;
-  })();
+  })().catch((err) => {
+    console.error('[sqlite] initDatabase falló; arranque de cero:', err?.message || err);
+    allowEmptyPersist = true;
+    return db;
+  });
 
   return dbReady;
 }

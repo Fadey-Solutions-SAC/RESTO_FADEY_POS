@@ -129,10 +129,16 @@ try_sqlite_recover() {
     clean_bytes="$(wc -c < "$clean" 2>/dev/null | tr -d ' ' || echo 0)"
     echo "[render-start] .backup bytes=${clean_bytes}"
     if [[ "${clean_bytes:-0}" -gt 512 ]]; then
-      cp -f "$src" "/data/restaurant.db.before-sqljs-clean" || true
-      cp -f "$clean" "$src"
-      echo "[render-start] restaurant.db reemplazado con copia limpia .backup"
-      return 0
+      local users
+      users="$(sqlite3 "$clean" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo 0)"
+      echo "[render-start] .backup users=${users}"
+      if [[ "${users:-0}" -gt 0 ]]; then
+        cp -f "$src" "/data/restaurant.db.before-sqljs-clean" || true
+        cp -f "$clean" "$src"
+        echo "[render-start] restaurant.db reemplazado con copia limpia .backup"
+        return 0
+      fi
+      echo "[render-start] .backup sin usuarios; no se reemplaza. Node arrancará de cero."
     fi
   fi
   echo "[render-start] SQLite no abre o .backup vacío; intentando .recover…"
@@ -163,10 +169,13 @@ try_sqlite_recover() {
   if [[ -f "$rec" ]] && sqlite3 "$rec" "SELECT 1;" >/dev/null 2>&1; then
     local users
     users="$(sqlite3 "$rec" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo 0)"
-    echo "[render-start] recover OK, users=${users}. Reemplazando $src"
-    cp -f "$src" "/data/restaurant.db.malformed-pre-recover" || true
-    cp -f "$rec" "$src"
-    return 0
+    if [[ "${users:-0}" -gt 0 ]]; then
+      echo "[render-start] recover OK, users=${users}. Reemplazando $src"
+      cp -f "$src" "/data/restaurant.db.malformed-pre-recover" || true
+      cp -f "$rec" "$src"
+      return 0
+    fi
+    echo "[render-start] recover sin usuarios; no se reemplaza. Node arrancará de cero."
   fi
   echo "[render-start] recover no produjo una base que se pueda abrir"
   return 1

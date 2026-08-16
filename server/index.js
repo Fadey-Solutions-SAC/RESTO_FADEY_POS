@@ -379,7 +379,11 @@ function logSqlitePersistenceWarnings() {
 }
 
 async function start() {
-  await initDatabase();
+  try {
+    await initDatabase();
+  } catch (err) {
+    console.error('[server] initDatabase no bloquea el arranque (maestro puede restaurar .db):', err.message || err);
+  }
   try {
     const { ensureUserWorkSessionSchema } = require('./utils/ensureUserWorkSessionSchema');
     ensureUserWorkSessionSchema();
