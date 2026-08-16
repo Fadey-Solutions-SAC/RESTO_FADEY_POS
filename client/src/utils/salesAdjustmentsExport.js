@@ -19,7 +19,7 @@ export function buildSalesAdjustmentsCsv({ fromDate, toDate, kindFilter, grouped
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const withType = kindFilter === 'all';
   const header = withType
-    ? ['Producto', 'Cantidad', 'Tipo', 'Motivos']
+    ? ['Fecha', 'Tipo', 'Producto', 'Cantidad', 'Motivo']
     : ['Producto', 'Cantidad', 'Motivos'];
   const lines = [
     ['Informe descuentos y cortesias'],
@@ -30,13 +30,22 @@ export function buildSalesAdjustmentsCsv({ fromDate, toDate, kindFilter, grouped
     header,
   ];
   for (const group of groupedProducts || []) {
-    const row = [
-      group.product_name,
-      Number(group.totalQuantity || 0),
-    ];
-    if (withType) row.push(kindLabel(group.kind));
-    row.push(motivesSummary(group));
-    lines.push(row);
+    if (withType) {
+      const occ = (group.occurrences || [])[0] || {};
+      lines.push([
+        occ.fecha || group.fecha || '',
+        kindLabel(group.kind),
+        group.product_name,
+        Number(group.totalQuantity || 0),
+        occ.reason || 'Sin motivo',
+      ]);
+    } else {
+      lines.push([
+        group.product_name,
+        Number(group.totalQuantity || 0),
+        motivesSummary(group),
+      ]);
+    }
   }
   lines.push([]);
   if (showReferenceTotal && kindFilter !== 'eliminado') {
@@ -56,14 +65,27 @@ export function buildSalesAdjustmentsTxt({ fromDate, toDate, kindFilter, grouped
   ];
   if ((groupedProducts || []).length) {
     lines.push(...buildFixedWidthTable({
-      headers: withType ? ['Producto', 'Cant.', 'Tipo', 'Motivos'] : ['Producto', 'Cant.', 'Motivos'],
-      widths: withType ? [28, 6, 10, 34] : [32, 8, 38],
-      aligns: withType ? ['left', 'right', 'left', 'left'] : ['left', 'right', 'left'],
+      headers: withType
+        ? ['Fecha', 'Tipo', 'Producto', 'Cant.', 'Motivo']
+        : ['Producto', 'Cant.', 'Motivos'],
+      widths: withType ? [20, 10, 24, 6, 28] : [32, 8, 38],
+      aligns: withType ? ['left', 'left', 'left', 'right', 'left'] : ['left', 'right', 'left'],
       rows: groupedProducts.map((group) => {
-        const base = [group.product_name, Number(group.totalQuantity || 0)];
-        if (withType) base.push(kindLabel(group.kind));
-        base.push(motivesSummary(group));
-        return base;
+        if (withType) {
+          const occ = (group.occurrences || [])[0] || {};
+          return [
+            occ.fecha || group.fecha || '',
+            kindLabel(group.kind),
+            group.product_name,
+            Number(group.totalQuantity || 0),
+            occ.reason || 'Sin motivo',
+          ];
+        }
+        return [
+          group.product_name,
+          Number(group.totalQuantity || 0),
+          motivesSummary(group),
+        ];
       }),
     }));
   } else {

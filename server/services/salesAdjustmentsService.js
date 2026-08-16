@@ -64,9 +64,18 @@ function listSalesAdjustments({ from, to, limit = 500 } = {}) {
   const removalRows = listProductRemovals({ from, to, limit: cap }).map(enrichRemovalForReport);
   return [...orderRows, ...removalRows]
     .sort((a, b) => {
-      const ta = new Date(a.updated_at || a.created_at || 0).getTime();
-      const tb = new Date(b.updated_at || b.created_at || 0).getTime();
-      return tb - ta;
+      const ta = new Date(
+        a.row_source === 'product_removal'
+          ? (a.created_at || a.updated_at || 0)
+          : (a.paid_at || a.created_at || a.updated_at || 0),
+      ).getTime();
+      const tb = new Date(
+        b.row_source === 'product_removal'
+          ? (b.created_at || b.updated_at || 0)
+          : (b.paid_at || b.created_at || b.updated_at || 0),
+      ).getTime();
+      if (ta !== tb) return ta - tb;
+      return String(a.id || '').localeCompare(String(b.id || ''));
     })
     .slice(0, cap);
 }

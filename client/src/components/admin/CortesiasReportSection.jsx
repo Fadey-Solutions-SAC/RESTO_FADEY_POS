@@ -54,8 +54,12 @@ function recordReferenceAmount(o) {
   return adjustmentReferenceAmount(o);
 }
 
-function orderEventTime(o) {
-  return new Date(o?.updated_at || o?.created_at || 0).getTime();
+function adjustmentAddedAt(o) {
+  const raw = o?.row_source === 'product_removal'
+    ? (o.created_at || o.updated_at)
+    : (o.paid_at || o.created_at || o.updated_at);
+  const t = new Date(raw || 0).getTime();
+  return Number.isFinite(t) ? t : 0;
 }
 
 function orderItems(o) {
@@ -73,7 +77,9 @@ function occurrenceFromOrder(o, qty) {
     recordId: o.id,
     quantity: qty,
     reason: rowReason(o),
-    fecha: o.updated_at || o.created_at,
+    fecha: o.row_source === 'product_removal'
+      ? (o.created_at || o.updated_at)
+      : (o.paid_at || o.created_at || o.updated_at),
     order_number: o.order_number,
     table_number: o.table_number,
     type: o.type,
@@ -81,25 +87,32 @@ function occurrenceFromOrder(o, qty) {
   };
 }
 
-/** Una fila por ítem, en el orden en que se agregaron (más antiguo primero). */
+/** Una fila por cada registro, en el orden en que se agregó (más antiguo arriba). */
 function flattenAdjustmentRows(orders) {
   const rows = [];
   (orders || []).forEach((o, orderIdx) => {
     const kind = o.adjustment_kind;
+    const sortTime = adjustmentAddedAt(o);
     orderItems(o).forEach((it, itemIdx) => {
       const qty = Number(it.quantity ?? it.quantity_removed ?? 0);
+      const occ = occurrenceFromOrder(o, qty);
       rows.push({
-        key: `${o.id}::${it.product_id || it.product_name || itemIdx}::${orderIdx}::${itemIdx}`,
+        key: `${o.id}::${itemIdx}::${orderIdx}`,
         product_id: it.product_id,
         product_name: it.product_name || '—',
         kind,
         totalQuantity: qty,
-        sortTime: orderEventTime(o),
-        occurrences: [occurrenceFromOrder(o, qty)],
+        sortTime,
+        sortIndex: orderIdx * 1000 + itemIdx,
+        fecha: occ.fecha,
+        occurrences: [occ],
       });
     });
   });
-  return rows.sort((a, b) => a.sortTime - b.sortTime || String(a.key).localeCompare(String(b.key)));
+  return rows.sort((a, b) => {
+    if (a.sortTime !== b.sortTime) return a.sortTime - b.sortTime;
+    return a.sortIndex - b.sortIndex;
+  });
 }
 
 /** Agrupa por producto (Cortesías, Descuentos o Eliminados). */
@@ -403,7 +416,7 @@ export default function CortesiasReportSection({
         </div>
         <p className="text-xs text-[var(--ui-muted)] mt-3">
           Cortesías y descuentos descuentan inventario al cobrar. Los eliminados de mesa no afectan inventario.
-          En Todos se listan los registros en el orden en que se agregaron. En Cortesías, Descuentos o Eliminados
+          En Todos cada movimiento aparece aparte, del más antiguo al más reciente. En Cortesías, Descuentos o Eliminados
           se agrupan por producto; use «Ver motivo» para el detalle de cada registro.
         </p>
       </div>
@@ -413,7 +426,10 @@ export default function CortesiasReportSection({
           <thead>
             <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
               {kindFilter === 'all' ? (
-                <th className="py-2 pr-3 font-medium">Tipo</th>
+                <>
+                  <th className="py-2 pr-3 font-medium">Fecha</th>
+                  <th className="py-2 pr-3 font-medium">Tipo</th>
+                </>
               ) : null}
               <th className="py-2 pr-3 font-medium">Producto</th>
               <th className="py-2 pr-3 font-medium text-right">Cantidad</th>
@@ -425,6 +441,7 @@ export default function CortesiasReportSection({
               const isCourtesy = group.kind === 'cortesia';
               const isEliminado = group.kind === 'eliminado';
               const highlightId = group.occurrences.find((o) => activeHighlightIds.has(String(o.recordId)))?.recordId;
+              const occ = group.occurrences[0];
               return (
                 <tr
                   key={group.key}
@@ -434,44 +451,66 @@ export default function CortesiasReportSection({
                   }`}
                 >
                   {kindFilter === 'all' ? (
-                    <td className="py-2.5 pr-3">
-                      <span className={kindBadgeClass(group.kind)}>
-                        {isEliminado ? (
-                          <MdRemoveCircleOutline className="shrink-0" />
-                        ) : isCourtesy ? (
-                          <MdVolunteerActivism className="shrink-0" />
-                        ) : (
-                          <MdLocalOffer className="shrink-0" />
-                        )}
-                        {kindLabel(group.kind)}
-                      </span>
-                    </td>
+                    <>
+                      <td className="py-2.5 pr-3 whitespace-nowrap text-xs text-[var(--ui-muted)] tabular-nums">
+                        {formatDateTime(group.fecha || occ?.fecha)}
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <span className={kindBadgeClass(group.kind)}>
+                          {isEliminado ? (
+                            <MdRemoveCircleOutline className="shrink-0" />
+                          ) : isCourtesy ? (
+                            <MdVolunteerActivism className="shrink-0" />
+                          ) : (
+                            <MdLocalOffer className="shrink-0" />
+                          )}
+                          {kindLabel(group.kind)}
+                        </span>
+                      </td>
+                    </>
                   ) : null}
                   <td className="py-2.5 pr-3 font-medium">{group.product_name}</td>
                   <td className="py-2.5 pr-3 text-right tabular-nums font-semibold text-[#3B82F6]">
                     {group.totalQuantity}
                   </td>
                   <td className="py-2.5 pr-3">
-                    <button
-                      type="button"
-                      onClick={() => setDetailTarget(group)}
-                      className="text-xs text-[#3B82F6] hover:underline inline-flex items-center gap-1"
-                    >
-                      <MdVisibility className="text-sm" />
-                      Ver motivo
-                      {kindFilter !== 'all' && group.occurrences.length > 1 ? (
-                        <span className="text-[var(--ui-muted)]">({group.occurrences.length})</span>
-                      ) : null}
-                    </button>
+                    {kindFilter === 'all' ? (
+                      <div className="flex items-start gap-2 min-w-[12rem]">
+                        <p className="text-xs text-[var(--ui-body-text)] leading-snug line-clamp-2">
+                          {occ?.reason || 'Sin motivo registrado'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setDetailTarget(group)}
+                          className="text-xs text-[#3B82F6] hover:underline inline-flex items-center gap-1 shrink-0"
+                        >
+                          <MdVisibility className="text-sm" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDetailTarget(group)}
+                        className="text-xs text-[#3B82F6] hover:underline inline-flex items-center gap-1"
+                      >
+                        <MdVisibility className="text-sm" />
+                        Ver motivo
+                        {group.occurrences.length > 1 ? (
+                          <span className="text-[var(--ui-muted)]">({group.occurrences.length})</span>
+                        ) : null}
+                      </button>
+                    )}
                   </td>
                 </tr>
               );
             })}
             {groupedProducts.length === 0 && (
               <tr>
-                <td colSpan={kindFilter === 'all' ? 4 : 3} className="py-10 text-center text-[var(--ui-muted)]">
+                <td colSpan={kindFilter === 'all' ? 5 : 3} className="py-10 text-center text-[var(--ui-muted)]">
                   {datesValid
-                    ? 'No hay productos en el periodo y filtro seleccionados'
+                    ? (kindFilter === 'all'
+                      ? 'No hay registros en el periodo seleccionado'
+                      : 'No hay productos en el periodo y filtro seleccionados')
                     : 'Seleccione un rango de fechas válido'}
                 </td>
               </tr>
@@ -480,9 +519,9 @@ export default function CortesiasReportSection({
           {groupedProducts.length > 0 && showReferenceTotal && (
             <tfoot>
               <tr className="bg-[var(--ui-surface-2)] font-bold border-t border-[color:var(--ui-border)]">
-                <td colSpan={kindFilter === 'all' ? 4 : 3} className="py-3 px-3 text-right">
+                <td colSpan={kindFilter === 'all' ? 5 : 3} className="py-3 px-3 text-right">
                   <span className="text-[var(--ui-body-text)]">
-                    Total valor referencia ({referenceProductCount} producto{referenceProductCount === 1 ? '' : 's'}):{' '}
+                    Total valor referencia ({kindFilter === 'all' ? `${groupedProducts.filter((g) => g.kind !== 'eliminado').length} registro${groupedProducts.filter((g) => g.kind !== 'eliminado').length === 1 ? '' : 's'}` : `${referenceProductCount} producto${referenceProductCount === 1 ? '' : 's'}`}):{' '}
                   </span>
                   <span className="tabular-nums text-emerald-600">{formatCurrency(referenceTotal)}</span>
                 </td>
