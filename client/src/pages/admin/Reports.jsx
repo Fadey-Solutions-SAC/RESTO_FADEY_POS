@@ -25,6 +25,7 @@ import {
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
 import toast from 'react-hot-toast';
+import { resolveInformesSection } from '../../utils/shellModuleTitle';
 import { formatMesaLabel, buildPaidSalesAccountDisplayGroups, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
 import {
   downloadBlobFile,
@@ -571,15 +572,6 @@ function openNativeDatePicker(inputEl) {
     }
   }
   inputEl.click();
-}
-
-const INFORMES_SECTION_IDS = ['ventas', 'descuentos', 'productos', 'caja', 'compras', 'finanzas', 'facturacion', 'inventario'];
-
-function resolveInformesSection(searchParams) {
-  const raw = String(searchParams.get('view') || searchParams.get('seccion') || '').trim();
-  if (raw === 'cortesias') return 'descuentos';
-  if (INFORMES_SECTION_IDS.includes(raw)) return raw;
-  return 'ventas';
 }
 
 export default function Reports() {
@@ -1314,30 +1306,8 @@ export default function Reports() {
     }, {})
   ).sort((a, b) => new Date(b.purchase_date || b.created_at || 0) - new Date(a.purchase_date || a.created_at || 0));
 
-  const tabs = [
-    { id: 'daily', label: 'Informe del Día', icon: MdCalendarToday },
-    { id: 'monthly', label: 'Informe del Mes', icon: MdCalendarMonth },
-    { id: 'ranking', label: 'Ranking Productos', icon: MdEmojiEvents },
-  ];
-  const sectionCards = [
-    { id: 'ventas', title: 'Informe de Ventas', desc: 'Diversos informes de las ventas realizadas en la empresa.' },
-    { id: 'descuentos', title: 'Descuentos y Cortesías', desc: 'Descuentos, cortesías y productos eliminados de mesa. Descuentan inventario al cobrar; los eliminados quedan registrados con motivo (no afectan caja).' },
-    { id: 'productos', title: 'Informe de productos', desc: 'Cantidades vendidas por cierre, informe total por fechas o cierres, y descarga CSV/TXT (incluye caja actual).' },
-    { id: 'caja', title: 'Informe de Caja', desc: 'Historial de cajas cerradas, detalle del cierre y descarga del reporte.' },
-    { id: 'compras', title: 'Informe de Compras', desc: 'Las compras que has realizado.' },
-    { id: 'finanzas', title: 'Informe de Finanzas', desc: 'Todo lo concerniente al flujo de dinero en las cajas.' },
-    { id: 'facturacion', title: 'Informe de Facturación Electrónica', desc: 'Todo lo concerniente a documentos de facturación electrónica.' },
-    { id: 'inventario', title: 'Informe de Inventario', desc: 'Movimientos de stock generados por ventas, compras, merma, etc.' },
-  ];
-  const activeSectionMeta = sectionCards.find(section => section.id === reportSection);
-
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] mb-6 rf-page-title rf-module-page-title">Informes</h1>
-      {activeSectionMeta?.desc && (
-        <p className="text-sm text-[var(--ui-muted)] mb-6">{activeSectionMeta.desc}</p>
-      )}
-
       {reportSection === 'descuentos' && (
         <div id="informes-descuentos-panel">
           <CortesiasReportSection
@@ -1351,7 +1321,7 @@ export default function Reports() {
 
       {reportSection === 'ventas' && (
         <>
-      <div className="flex gap-2 mb-6 flex-wrap items-center">
+      <div className="flex gap-2 mb-6 items-stretch">
         <input
           ref={dailyDateInputRef}
           type="date"
@@ -1380,21 +1350,17 @@ export default function Reports() {
           tabIndex={-1}
           aria-hidden
         />
+        <div className="grid grid-cols-3 gap-2 w-1/2 min-w-0">
         <button
           type="button"
           onClick={() => {
             setTab('daily');
             openNativeDatePicker(dailyDateInputRef.current);
           }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${tab === 'daily' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
+          className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${tab === 'daily' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
         >
-          <MdCalendarToday />
-          <span>
-            Informe del Día
-            <span className={`block text-[10px] font-normal ${tab === 'daily' ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
-              {formatDate(salesDailyDate)}
-            </span>
-          </span>
+          <MdCalendarToday className="shrink-0" />
+          <span className="truncate">Informe del Día</span>
         </button>
         <button
           type="button"
@@ -1402,44 +1368,67 @@ export default function Reports() {
             setTab('monthly');
             openNativeDatePicker(monthInputRef.current);
           }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${tab === 'monthly' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
+          className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${tab === 'monthly' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
         >
-          <MdCalendarMonth />
-          <span>
-            Informe del Mes
-            <span className={`block text-[10px] font-normal capitalize ${tab === 'monthly' ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
-              {formatMonthLabel(salesMonth)}
-            </span>
-          </span>
+          <MdCalendarMonth className="shrink-0" />
+          <span className="truncate">Informe del Mes</span>
         </button>
-        {tabs.filter((t) => t.id === 'ranking').map(t => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${tab === t.id ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}>
-            <t.icon /> {t.label}
-          </button>
-        ))}
-        {(tab === 'daily' || tab === 'monthly') && (
-          <div className="flex gap-2 ml-auto">
+        <button
+          type="button"
+          onClick={() => setTab('ranking')}
+          className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${tab === 'ranking' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
+        >
+          <MdEmojiEvents className="shrink-0" />
+          <span className="truncate">Ranking Productos</span>
+        </button>
+        </div>
+        <div className="grid grid-cols-4 gap-2 w-1/2 min-w-0">
+          {[
+            { id: 'today', label: 'Hoy' },
+            { id: 'week', label: 'Semana' },
+            { id: 'month', label: 'Mes' },
+            { id: 'all', label: 'Todo' },
+          ].map((p) => (
             <button
+              key={p.id}
               type="button"
-              onClick={() => downloadSalesPeriodReport('csv')}
-              disabled={tab === 'daily' ? !dailyData : !monthlyData}
-              className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 disabled:opacity-50 bg-[var(--ui-surface)]"
-              title={tab === 'daily' ? `Descargar ventas del ${formatDate(salesDailyDate)}` : `Descargar ventas de ${formatMonthLabel(salesMonth)}`}
+              onClick={() => {
+                setTab('ranking');
+                setRankingPeriod(p.id);
+              }}
+              className={`flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${
+                tab === 'ranking' && rankingPeriod === p.id
+                  ? 'bg-gold-600 text-white border-gold-600'
+                  : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'
+              }`}
             >
-              <MdDownload /> CSV
+              {p.label}
             </button>
-            <button
-              type="button"
-              onClick={() => downloadSalesPeriodReport('txt')}
-              disabled={tab === 'daily' ? !dailyData : !monthlyData}
-              className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 disabled:opacity-50 bg-[var(--ui-surface)]"
-              title={tab === 'daily' ? `Descargar ventas del ${formatDate(salesDailyDate)}` : `Descargar ventas de ${formatMonthLabel(salesMonth)}`}
-            >
-              <MdDownload /> TXT
-            </button>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
+      {(tab === 'daily' || tab === 'monthly') && (
+        <div className="flex gap-2 justify-end -mt-4 mb-6">
+          <button
+            type="button"
+            onClick={() => downloadSalesPeriodReport('csv')}
+            disabled={tab === 'daily' ? !dailyData : !monthlyData}
+            className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 disabled:opacity-50 bg-[var(--ui-surface)]"
+            title={tab === 'daily' ? `Descargar ventas del ${formatDate(salesDailyDate)}` : `Descargar ventas de ${formatMonthLabel(salesMonth)}`}
+          >
+            <MdDownload /> CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadSalesPeriodReport('txt')}
+            disabled={tab === 'daily' ? !dailyData : !monthlyData}
+            className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 disabled:opacity-50 bg-[var(--ui-surface)]"
+            title={tab === 'daily' ? `Descargar ventas del ${formatDate(salesDailyDate)}` : `Descargar ventas de ${formatMonthLabel(salesMonth)}`}
+          >
+            <MdDownload /> TXT
+          </button>
+        </div>
+      )}
 
       {tab === 'daily' && dailyLoading && !dailyData && (
         <p className="text-sm text-[var(--ui-muted)] mb-4">Cargando informe del día…</p>
@@ -1655,19 +1644,6 @@ export default function Reports() {
 
       {tab === 'ranking' && (
         <div>
-          <div className="flex gap-2 mb-4">
-            {[
-              { id: 'today', label: 'Hoy' },
-              { id: 'week', label: 'Semana' },
-              { id: 'month', label: 'Mes' },
-              { id: 'all', label: 'Todo' },
-            ].map(p => (
-              <button key={p.id} onClick={() => setRankingPeriod(p.id)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${rankingPeriod === p.id ? 'bg-gold-600 text-white' : 'bg-white text-[var(--ui-muted)] hover:bg-slate-100 border'}`}>
-                {p.label}
-              </button>
-            ))}
-          </div>
-
           {ranking.length > 0 ? (
             <div>
               <div className="card mb-6">

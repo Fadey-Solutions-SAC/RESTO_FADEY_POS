@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppLocaleBootstrap } from '../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../hooks/useStaffSessionHeartbeat';
-import { getShellModuleTitleKey } from '../utils/shellModuleTitle';
+import { getShellModuleTitle } from '../utils/shellModuleTitle';
 import OfflineCajaBanner from './OfflineCajaBanner';
 
 export default function Layout() {
@@ -86,8 +86,7 @@ export default function Layout() {
   }, [isMobile]);
 
   const isMozoBlocked = user?.role === 'mozo' && cajaOpen === false && !checkingCaja;
-  const shellTitleKey = getShellModuleTitleKey(location.pathname);
-  const shellTitle = shellTitleKey ? td(shellTitleKey) : '';
+  const shellTitle = getShellModuleTitle(location.pathname, location.search, td);
   const isCajaPage = location.pathname === '/admin/caja' || location.pathname.startsWith('/admin/caja/');
 
   return (
