@@ -427,9 +427,19 @@ export default function Settings() {
   const hasUnsavedRegional = JSON.stringify(regionalDraft || {}) !== regionalSavedJson;
 
   const loadUsers = () => {
-    api.get('/users').then(data => {
-      setUsers(data.filter(u => ['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar', 'delivery'].includes(u.role)));
-    }).catch(console.error).finally(() => setLoading(false));
+    api.get('/users')
+      .then((data) => {
+        const list = Array.isArray(data)
+          ? data
+          : (Array.isArray(data?.users) ? data.users : []);
+        setUsers(list);
+      })
+      .catch((err) => {
+        console.error(err);
+        toast.error(err?.message || 'No se pudieron cargar los usuarios');
+        setUsers([]);
+      })
+      .finally(() => setLoading(false));
   };
 
   const loadRestaurant = () => {
@@ -721,6 +731,10 @@ export default function Settings() {
   };
 
   useEffect(() => { loadUsers(); loadRestaurant(); loadAppSettings(); loadPrintingConfig(); refreshPrinterStatus(); }, []);
+
+  useEffect(() => {
+    if (activeSection === 'users') loadUsers();
+  }, [activeSection]);
 
   useSocket('staff-data-update', (p) => {
     if (p?.domain !== 'app_config') return;
@@ -2816,7 +2830,7 @@ function UsersSection({
                   <td className="p-3">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-sm font-bold text-[var(--ui-muted)]">{u.full_name[0]}</span>
+                        <span className="text-sm font-bold text-[var(--ui-muted)]">{(u.full_name || u.username || '?').charAt(0)}</span>
                       </div>
                       <div>
                         <p className="font-bold rf-section-title">{u.full_name}</p>

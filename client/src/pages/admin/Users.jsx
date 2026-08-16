@@ -32,7 +32,7 @@ export default function Users() {
         api.get('/users'),
         api.get('/admin-modules/config/app').catch(() => ({})),
       ]);
-      setUsers(usersData || []);
+      setUsers(Array.isArray(usersData) ? usersData : []);
       const s = cfg?.settings || cfg || {};
       setCajas(Array.isArray(s.cajas) ? s.cajas : []);
     }
@@ -144,7 +144,7 @@ export default function Users() {
                 <td className="py-3 px-4">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                      <span className="text-primary-700 font-bold text-sm">{u.full_name[0]}</span>
+                      <span className="text-primary-700 font-bold text-sm">{(u.full_name || u.username || '?').charAt(0)}</span>
                     </div>
                     <span className="font-medium text-sm">{u.username}</span>
                   </div>

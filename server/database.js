@@ -1550,6 +1550,7 @@ async function initDatabase() {
 
     addUserColIfMissing('production_area_id', "ALTER TABLE users ADD COLUMN production_area_id TEXT DEFAULT ''");
     addUserColIfMissing('production_area_ids', "ALTER TABLE users ADD COLUMN production_area_ids TEXT DEFAULT '[]'");
+    ensureUsersSchemaColumns();
 
     /** Ampliar roles con `produccion` (reemplazo de cocina/bar en UI). */
     try {
@@ -1609,6 +1610,7 @@ async function initDatabase() {
     } catch (e) {
       console.warn('[migration] users produccion role:', e.message || e);
     }
+    ensureUsersSchemaColumns();
 
     try {
       db.run(`UPDATE users SET role = 'produccion', production_area_id = 'cocina'
@@ -2572,7 +2574,51 @@ async function initDatabase() {
   return dbReady;
 }
 
-function queryAll(sql, params = []) {
+function pragmaTableColumnNames(table) {
+  const rows = queryAll(`PRAGMA table_info(${table})`) || [];
+  return rows
+    .map((c) => {
+      if (c && c.name != null && String(c.name).trim()) return String(c.name);
+      if (c && c.NAME != null && String(c.NAME).trim()) return String(c.NAME);
+      const vals = Object.values(c || {});
+      return vals.length > 1 ? String(vals[1] || '') : '';
+    })
+    .filter(Boolean);
+}
+
+function hasUsersColumn(colName) {
+  return pragmaTableColumnNames('users').includes(String(colName || '').trim());
+}
+
+/** Añade columnas de users que el código espera (no falla el alta si el .db es antiguo). */
+function ensureUsersSchemaColumns() {
+  const needed = [
+    ['caja_station_id', "ALTER TABLE users ADD COLUMN caja_station_id TEXT DEFAULT ''"],
+    ['production_area_id', "ALTER TABLE users ADD COLUMN production_area_id TEXT DEFAULT ''"],
+    ['production_area_ids', "ALTER TABLE users ADD COLUMN production_area_ids TEXT DEFAULT '[]'"],
+    ['payroll_pay_mode', "ALTER TABLE users ADD COLUMN payroll_pay_mode TEXT DEFAULT ''"],
+    ['payroll_amount', 'ALTER TABLE users ADD COLUMN payroll_amount REAL DEFAULT 0'],
+    ['payroll_schedule_note', "ALTER TABLE users ADD COLUMN payroll_schedule_note TEXT DEFAULT ''"],
+    ['payroll_payment_day', 'ALTER TABLE users ADD COLUMN payroll_payment_day INTEGER DEFAULT 0'],
+    ['is_buyer_admin', 'ALTER TABLE users ADD COLUMN is_buyer_admin INTEGER DEFAULT 0'],
+  ];
+  let changed = false;
+  const have = new Set(pragmaTableColumnNames('users'));
+  for (const [col, ddl] of needed) {
+    if (have.has(col)) continue;
+    try {
+      db.run(ddl);
+      have.add(col);
+      changed = true;
+    } catch (err) {
+      console.warn(`[migration] users ADD COLUMN ${col}:`, err?.message || err);
+    }
+  }
+  if (changed) {
+    try { saveDb(); } catch (_) { /* persist on next write */ }
+  }
+  return have;
+}
   const stmt = db.prepare(sql);
   const safeParams = normalizeSqlParams(params);
   if (safeParams.length) stmt.bind(safeParams);
@@ -2795,4 +2841,6 @@ module.exports = {
   withTransaction,
   logAudit,
   ensureOrdersPaidAtColumns,
+  hasUsersColumn,
+  ensureUsersSchemaColumns,
 };

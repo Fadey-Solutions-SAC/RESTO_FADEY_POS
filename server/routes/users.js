@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, queryOne, runSql } = require('../database');
+const { queryAll, queryOne, runSql, hasUsersColumn, ensureUsersSchemaColumns } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { getActiveCajaById, getFirstAutoAssignCajaId } = require('../cajaSettings');
 const {
@@ -132,14 +132,10 @@ function normalizeCajaStationId(role, rawCajaId, { excludeUserId = '' } = {}) {
 function normalizeProductionFields(role, body = {}) {
   const roleLc = String(role || '').trim().toLowerCase();
   if (roleLc === 'produccion' || roleLc === 'cocina' || roleLc === 'bar') {
-    // El área se asigna desde Configuración → Áreas de producción (encargados), no al crear el usuario.
-    let areaId = String(body.production_area_id || '').trim();
-    if (areaId && !isKnownProductionAreaId(areaId)) {
-      return { error: `Área de producción inválida: ${areaId}` };
-    }
+    // El área se asigna solo en Configuración → Áreas de producción. Aquí no se exige ni se escribe.
     return {
       role: 'produccion',
-      production_area_id: areaId,
+      production_area_id: '',
       production_area_ids: '[]',
     };
   }
@@ -157,16 +153,37 @@ function normalizeProductionFields(role, body = {}) {
   };
 }
 
-router.get('/', authenticateToken, requireRole('admin'), (req, res) => {
-  res.json(
-    queryAll(
-      `SELECT id, username, email, full_name, role, is_active, phone, avatar, caja_station_id,
+function listUsersRows() {
+  const queries = [
+    `SELECT id, username, email, full_name, role, is_active, phone, avatar, caja_station_id,
         production_area_id, production_area_ids,
         payroll_pay_mode, payroll_amount, payroll_schedule_note, payroll_payment_day,
         COALESCE(is_buyer_admin, 0) AS is_buyer_admin, created_at
-       FROM users ORDER BY created_at DESC`
-    ).map(withPublicEmail)
-  );
+       FROM users ORDER BY datetime(created_at) DESC`,
+    `SELECT id, username, email, full_name, role, is_active, phone, avatar, caja_station_id,
+        production_area_id, production_area_ids,
+        COALESCE(is_buyer_admin, 0) AS is_buyer_admin, created_at
+       FROM users ORDER BY datetime(created_at) DESC`,
+    `SELECT id, username, email, full_name, role, is_active, phone, avatar, created_at
+       FROM users ORDER BY datetime(created_at) DESC`,
+  ];
+  let lastErr;
+  for (const sql of queries) {
+    try {
+      return queryAll(sql);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('No se pudieron listar usuarios');
+}
+
+router.get('/', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    res.json(listUsersRows().map(withPublicEmail));
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudieron listar usuarios' });
+  }
 });
 
 router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
