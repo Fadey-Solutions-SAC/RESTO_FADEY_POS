@@ -57,31 +57,43 @@ ensure_data_volume() {
 
 if [[ -n "${DB_PATH:-}" ]] && [[ "$DB_PATH" == /data/* ]]; then
   ensure_data_volume "$DB_PATH" || exit 1
-  mkdir -p "$(dirname "$DB_PATH")" /data/uploads 2>/dev/null || true
+  mkdir -p "$(dirname "$DB_PATH")" /data/uploads /data/backups 2>/dev/null || true
 
   local_guard="/data/.restaurant_db_guard.json"
   if [[ -f "$local_guard" ]] && [[ ! -f "$DB_PATH" ]]; then
-    echo "[render-start] ERROR: Hay marcador de base con datos pero falta $DB_PATH."
-    echo "[render-start] NO se iniciará con una base vacía. Restaure backup o snapshot de Render."
-    exit 1
+    if ls /data/backups/*.db >/dev/null 2>&1; then
+      echo "[render-start] Falta $DB_PATH; Node restaurará desde /data/backups."
+    else
+      echo "[render-start] ERROR: Hay marcador de base con datos pero falta $DB_PATH."
+      echo "[render-start] NO se iniciará con una base vacía. Restaure backup o snapshot de Render."
+      exit 1
+    fi
   fi
 
   if [[ -f "$DB_PATH" ]]; then
     db_bytes="$(wc -c < "$DB_PATH" 2>/dev/null | tr -d ' ' || echo 0)"
     if [[ "${db_bytes:-0}" -lt 512 ]] && [[ -f "$local_guard" ]]; then
-      echo "[render-start] ERROR: $DB_PATH existe pero está vacío/corrupto (${db_bytes} bytes) con marcador de datos."
-      echo "[render-start] NO se arranca para evitar sobrescribir clientes reales. Restaure backup .db."
-      exit 1
+      if ls /data/backups/*.db >/dev/null 2>&1; then
+        echo "[render-start] $DB_PATH está vacío/truncado (${db_bytes} bytes). Node restaurará desde /data/backups."
+      else
+        echo "[render-start] ERROR: $DB_PATH existe pero está vacío/corrupto (${db_bytes} bytes) con marcador de datos."
+        echo "[render-start] NO se arranca para evitar sobrescribir clientes reales. Restaure backup .db."
+        exit 1
+      fi
     fi
   fi
 fi
 
 cd "$ROOT/server/efact"
-if command -v python3 >/dev/null 2>&1; then
-  python3 api_server.py &
+EFACT_PY="python3"
+if [[ -x "$ROOT/.venv-efact/bin/python" ]]; then
+  EFACT_PY="$ROOT/.venv-efact/bin/python"
+fi
+if "$EFACT_PY" -c "import reportlab" >/dev/null 2>&1; then
+  "$EFACT_PY" api_server.py &
   EFACT_PID=$!
 else
-  echo "[render-start] WARN: python3 no disponible; e-fact no iniciará (Node sigue)."
+  echo "[render-start] WARN: e-fact sin reportlab (PDF). Node arranca igual. Rehaga el build si necesita facturación."
   EFACT_PID=""
 fi
 
@@ -93,6 +105,11 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 sleep 1
+
+if ! command -v sqlite3 >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+  echo "[render-start] Instalando sqlite3 CLI (reparación de .db)…"
+  (apt-get update -qq && apt-get install -y -qq sqlite3) || echo "[render-start] WARN: no se pudo instalar sqlite3."
+fi
 
 cd "$ROOT"
 echo "[render-start] Iniciando Node (PORT=${PORT:-3001})…"

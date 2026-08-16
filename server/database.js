@@ -4,6 +4,13 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { normalizeSqlParams } = require('./utils/sqlBind');
+const { openOrRecoverSqliteFile } = require('./sqliteRecover');
+const {
+  writeFileAtomic,
+  writeSnapshotBackup,
+  ensureDailyBackup,
+  getPersistentBackupsDir,
+} = require('./sqlitePersist');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'restaurant.db');
 const DB_PATH = path.resolve(process.env.DB_PATH || DEFAULT_DB_PATH);
@@ -12,6 +19,10 @@ let db = null;
 let dbReady = null;
 /** Si false, en este arranque se creó un archivo .db nuevo (vacío). */
 let dbFileExistedBeforeInit = false;
+let persistTimer = null;
+let persistBusy = false;
+let persistQueued = false;
+let lastAutoBackupAt = 0;
 
 function getDatabasePersistenceInfo() {
   return {
@@ -28,6 +39,11 @@ function getDb() {
 
 function saveDb() {
   if (!db) return;
+  if (persistBusy) {
+    persistQueued = true;
+    return;
+  }
+  persistBusy = true;
   try {
     const parentDir = path.dirname(DB_PATH);
     if (!fs.existsSync(parentDir)) {
@@ -35,7 +51,7 @@ function saveDb() {
     }
     const data = db.export();
     const buffer = Buffer.from(data);
-    fs.writeFileSync(DB_PATH, buffer);
+    writeFileAtomic(DB_PATH, buffer);
   } catch (err) {
     console.error(JSON.stringify({
       level: 'error',
@@ -46,7 +62,53 @@ function saveDb() {
     throw new Error(
       'No se pudo guardar la base de datos. Cierre otras instancias del programa o verifique permisos del disco.',
     );
+  } finally {
+    persistBusy = false;
+    if (persistQueued) {
+      persistQueued = false;
+      saveDb();
+    }
   }
+}
+
+function scheduleSaveDb() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      saveDb();
+    } catch (err) {
+      console.error('[sqlite] persistencia diferida:', err?.message || err);
+    }
+  }, 250);
+}
+
+function flushSaveDb() {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  saveDb();
+}
+
+function createSafetyBackup({ force = false } = {}) {
+  if (!db) return null;
+  const now = Date.now();
+  if (!force && lastAutoBackupAt && now - lastAutoBackupAt < 8 * 60 * 1000) {
+    return null;
+  }
+  flushSaveDb();
+  if (!fs.existsSync(DB_PATH)) return null;
+  const buffer = fs.readFileSync(DB_PATH);
+  if (buffer.length < 512) return null;
+  const usersCount = countTableRows('users');
+  const productsCount = countTableRows('products');
+  if (usersCount === 0 && productsCount === 0) return null;
+  const autoPath = writeSnapshotBackup(DB_PATH, buffer, 'restaurant_auto');
+  ensureDailyBackup(DB_PATH, buffer);
+  lastAutoBackupAt = now;
+  console.info(`[sqlite-backup] Copia en ${getPersistentBackupsDir(DB_PATH)} (${usersCount} usuario(s))`);
+  return autoPath;
 }
 
 function getDefaultSchedule() {
@@ -119,13 +181,12 @@ function assertSafeDbBeforePersist({ usersCount, productsCount, previousBytes })
 }
 
 function createBackupFile() {
-  saveDb();
-  const backupsDir = path.join(__dirname, '..', 'backups');
-  if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
-  const ts = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '_');
-  const backupPath = path.join(backupsDir, `restaurant_${ts}.db`);
-  fs.copyFileSync(DB_PATH, backupPath);
-  return backupPath;
+  flushSaveDb();
+  const buffer = fs.readFileSync(DB_PATH);
+  if (!buffer || buffer.length < 512) {
+    throw new Error('No hay una base de datos válida para respaldar');
+  }
+  return writeSnapshotBackup(DB_PATH, buffer, 'restaurant_manual');
 }
 
 async function restoreDbFromBuffer(fileBuffer) {
@@ -151,9 +212,7 @@ async function restoreDbFromBuffer(fileBuffer) {
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
     }
-    const tmpPath = `${DB_PATH}.restore.tmp`;
-    fs.writeFileSync(tmpPath, Buffer.from(fileBuffer));
-    fs.renameSync(tmpPath, DB_PATH);
+    writeFileAtomic(DB_PATH, Buffer.from(fileBuffer));
   } catch (err) {
     throw new Error(
       `No se pudo guardar en ${DB_PATH}: ${err?.message || err}. En Render monte un disco en /data y use DB_PATH=/data/restaurant.db`,
@@ -442,29 +501,40 @@ async function initDatabase() {
       previousBytes = fs.statSync(DB_PATH).size;
       const fileBuffer = fs.readFileSync(DB_PATH);
       if (fileBuffer.length < 512) {
-        const guard = readDbGuard();
-        if (guard && Number(guard.users || 0) > 0) {
-          throw new Error(
-            `[SQLite CRÍTICO] ${DB_PATH} existe pero está vacío (${fileBuffer.length} bytes). Restaure backup antes de arrancar.`,
-          );
-        }
+        console.warn(
+          `[sqlite] ${DB_PATH} está vacío o truncado (${fileBuffer.length} bytes); se buscará copia en el disco.`,
+        );
       }
       try {
-        db = new SQL.Database(fileBuffer);
-        db.run('SELECT 1');
+        const opened = openOrRecoverSqliteFile(SQL, DB_PATH, fileBuffer, {
+          minUsers: Number(readDbGuard()?.users || 0),
+        });
+        if (opened.error) throw opened.error;
+        db = opened.db;
+        if (opened.recovered) {
+          previousBytes = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : previousBytes;
+        }
       } catch (err) {
+        const msg = String(err?.message || err);
+        if (msg.includes('[SQLite CRÍTICO]')) throw err;
         throw new Error(
-          `[SQLite CRÍTICO] No se pudo abrir ${DB_PATH}. Restaure backup. ${err?.message || err}`,
+          `[SQLite CRÍTICO] No se pudo abrir ${DB_PATH}. Restaure backup. ${msg}`,
         );
       }
     } else {
       const guard = readDbGuard();
       if (guard && Number(guard.users || 0) > 0) {
-        throw new Error(
-          `[SQLite CRÍTICO] Falta ${DB_PATH} pero el marcador indica ${guard.users} usuario(s). NO se creará una base nueva. Restaure backup o snapshot de Render.`,
-        );
+        console.warn(`[sqlite] Falta ${DB_PATH}; se buscará copia (marcador: ${guard.users} usuario(s)).`);
+        const opened = openOrRecoverSqliteFile(SQL, DB_PATH, Buffer.alloc(0), {
+          minUsers: Number(guard.users || 0),
+        });
+        if (opened.error) throw opened.error;
+        db = opened.db;
+        previousBytes = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0;
+        dbFileExistedBeforeInit = true;
+      } else {
+        db = new SQL.Database();
       }
-      db = new SQL.Database();
     }
 
     db.run('PRAGMA foreign_keys = ON');
@@ -2559,7 +2629,7 @@ async function initDatabase() {
     const usersCount = countTableRows('users');
     const productsCount = countTableRows('products');
     assertSafeDbBeforePersist({ usersCount, productsCount, previousBytes });
-    saveDb();
+    flushSaveDb();
     if (usersCount > 0 || productsCount > 0) {
       writeDbGuard({
         users: usersCount,
@@ -2567,6 +2637,11 @@ async function initDatabase() {
         bytes: fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0,
       });
       console.info(`[db-guard] Marcador actualizado: ${usersCount} usuario(s), ${productsCount} producto(s)`);
+      try {
+        createSafetyBackup({ force: true });
+      } catch (backupErr) {
+        console.warn('[sqlite-backup] no se pudo crear copia al arrancar:', backupErr.message || backupErr);
+      }
     }
     return db;
   })();
@@ -2621,6 +2696,7 @@ function ensureUsersSchemaColumns() {
 }
 
 function queryAll(sql, params = []) {
+  if (!db) throw new Error('Database not initialized');
   const stmt = db.prepare(sql);
   const safeParams = normalizeSqlParams(params);
   if (safeParams.length) stmt.bind(safeParams);
@@ -2633,6 +2709,7 @@ function queryAll(sql, params = []) {
 }
 
 function queryOne(sql, params = []) {
+  if (!db) throw new Error('Database not initialized');
   const stmt = db.prepare(sql);
   const safeParams = normalizeSqlParams(params);
   if (safeParams.length) stmt.bind(safeParams);
@@ -2645,13 +2722,14 @@ function queryOne(sql, params = []) {
 }
 
 function runSql(sql, params = []) {
+  if (!db) throw new Error('Database not initialized');
   const safeParams = normalizeSqlParams(params);
   if (safeParams.length) {
     db.run(sql, safeParams);
   } else {
     db.run(sql);
   }
-  saveDb();
+  scheduleSaveDb();
 }
 
 function withTransaction(work) {
@@ -2668,7 +2746,7 @@ function withTransaction(work) {
     };
     const result = work(tx);
     db.run('COMMIT');
-    saveDb();
+    flushSaveDb();
     return result;
   } catch (err) {
     try {
@@ -2683,7 +2761,7 @@ function withTransaction(work) {
 function getNextOrderNumber() {
   db.run('UPDATE order_sequence SET current_number = current_number + 1 WHERE id = 1');
   const result = queryOne('SELECT current_number FROM order_sequence WHERE id = 1');
-  saveDb();
+  flushSaveDb();
   return result.current_number;
 }
 
@@ -2800,6 +2878,7 @@ function seedWarehouses() {
  */
 function ensureOrdersPaidAtColumns() {
   try {
+    if (!db) return false;
     const cols = queryAll('PRAGMA table_info(orders)') || [];
     const names = new Set(cols.map((c) => c.name));
     let repaired = false;
@@ -2836,6 +2915,8 @@ module.exports = {
   queryOne,
   runSql,
   saveDb,
+  flushSaveDb,
+  createSafetyBackup,
   getDbPath,
   createBackupFile,
   restoreDbFromBuffer,

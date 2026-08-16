@@ -67,3 +67,6 @@ whatsapp-bridge/.env
 *.7z
 *.tar
 *.tar.gz
+
+# Python e-fact venv (Render build)
+.venv-efact/

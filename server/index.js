@@ -27,7 +27,7 @@ const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
 const crypto = require('crypto');
-const { initDatabase, getDbPath, getDatabasePersistenceInfo } = require('./database');
+const { initDatabase, getDbPath, getDatabasePersistenceInfo, flushSaveDb, createSafetyBackup } = require('./database');
 const { ensureUploadsRoot } = require('./uploadsPath');
 const jwt = require('jsonwebtoken');
 const { authenticateToken, requireRole, JWT_SECRET } = require('./middleware/auth');
@@ -461,6 +461,24 @@ async function start() {
   } catch (err) {
     console.warn('[bar-auto-dismiss] no iniciado:', err.message || err);
   }
+  setInterval(() => {
+    try {
+      createSafetyBackup();
+    } catch (err) {
+      console.warn('[sqlite-backup] copia periódica:', err.message || err);
+    }
+  }, 10 * 60 * 1000);
+  const flushSqliteOnExit = (signal) => {
+    try {
+      flushSaveDb();
+      createSafetyBackup({ force: true });
+    } catch (err) {
+      console.warn('[sqlite] flush al salir:', err.message || err);
+    }
+    if (signal) process.exit(0);
+  };
+  process.on('SIGTERM', () => flushSqliteOnExit('SIGTERM'));
+  process.on('SIGINT', () => flushSqliteOnExit('SIGINT'));
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {
       console.error(`[server] puerto ocupado: ${LISTEN_HOST}:${PORT}. Cierre la instancia previa o cambie PORT.`);
