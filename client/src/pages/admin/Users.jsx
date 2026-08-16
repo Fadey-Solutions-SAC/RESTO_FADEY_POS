@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { MdAdd, MdEdit, MdDelete, MdToggleOn, MdToggleOff } from 'react-icons/md';
 
 import { UI_BADGE } from '../../utils/uiBadges';
+import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 
 const ROLES = { admin: 'Administrador', cajero: 'Cajero', mozo: 'Mozo', produccion: 'Producción', delivery: 'Delivery' };
 const ROLE_LABELS = { ...ROLES, cocina: 'Producción', bar: 'Producción' };
@@ -56,10 +57,10 @@ export default function Users() {
   const openEdit = (u) => {
     setEditing(u);
     setForm({
-      username: u.username,
+      username: formatCatalogNameInput(u.username || ''),
       email: u.email,
       password: '',
-      full_name: u.full_name,
+      full_name: formatCatalogNameInput(u.full_name || ''),
       role: u.role,
       phone: u.phone || '',
       caja_station_id: String(u.caja_station_id || '').trim(),
@@ -177,8 +178,8 @@ export default function Users() {
       <Modal isOpen={showModal} onClose={closeModal} title={editing ? 'Editar Usuario' : 'Nuevo Usuario'}>
         <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium text-gray-700 mb-1">Usuario *</label><input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} className="input-field" required autoComplete="off" name="new-username" /></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo *</label><input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} className="input-field" required autoComplete="off" name="new-full-name" /></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Usuario *</label><input value={form.username} onChange={e => setForm(f => ({ ...f, username: formatCatalogNameInput(e.target.value) }))} className="input-field" required autoComplete="off" name="new-username" /></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo *</label><input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: formatCatalogNameInput(e.target.value) }))} className="input-field" required autoComplete="off" name="new-full-name" /></div>
           </div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">Email (opcional)</label><input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="input-field" autoComplete="off" name="new-email" /></div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">{editing ? 'Nueva Contraseña (dejar vacío para no cambiar)' : 'Contraseña *'}</label><input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className="input-field" required={!editing} autoComplete="new-password" name="new-password" /></div>

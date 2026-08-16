@@ -49,17 +49,26 @@ export default function ProductionAreasSection() {
     setForm({
       name: area.name || '',
       active: Number(area.active) === 0 ? 0 : 1,
-      encargado_user_ids: Array.isArray(area.encargado_user_ids) ? [...area.encargado_user_ids] : [],
+      encargado_user_ids: Array.isArray(area.encargado_user_ids)
+        ? area.encargado_user_ids.slice(0, 1)
+        : [],
     });
     setShowModal(true);
   };
 
   const toggleId = (key, id) => {
     setForm((prev) => {
-      const set = new Set(prev[key] || []);
-      if (set.has(id)) set.delete(id);
-      else set.add(id);
-      return { ...prev, [key]: [...set] };
+      if (key !== 'encargado_user_ids') {
+        const set = new Set(prev[key] || []);
+        if (set.has(id)) set.delete(id);
+        else set.add(id);
+        return { ...prev, [key]: [...set] };
+      }
+      const cur = (prev.encargado_user_ids || []).map(String);
+      if (cur.length === 1 && cur[0] === String(id)) {
+        return { ...prev, encargado_user_ids: [] };
+      }
+      return { ...prev, encargado_user_ids: [id] };
     });
   };
 
@@ -67,22 +76,20 @@ export default function ProductionAreasSection() {
     e.preventDefault();
     const name = toProductionAreaTitleCase(String(form.name || '').trim());
     if (!name) return toast.error('Ingresa el nombre del área');
-    if (!form.encargado_user_ids.length) {
-      return toast.error('Debe vincular al menos un encargado de producción');
-    }
+    const encargadoIds = (form.encargado_user_ids || []).map(String).filter(Boolean).slice(0, 1);
     setSaving(true);
     try {
       if (editArea) {
         await api.put(`/production-areas/${editArea.id}`, {
           name,
           active: form.active,
-          encargado_user_ids: form.encargado_user_ids,
+          encargado_user_ids: encargadoIds,
         });
         toast.success('Área actualizada');
       } else {
         await api.post('/production-areas', {
           name,
-          encargado_user_ids: form.encargado_user_ids,
+          encargado_user_ids: encargadoIds,
         });
         toast.success('Área creada');
       }
@@ -147,8 +154,7 @@ export default function ProductionAreasSection() {
       const role = String(u.role || '').toLowerCase();
       if (!['produccion', 'cocina', 'bar'].includes(role)) continue;
       const uid = String(u.id || '').trim();
-      const aid = String(u.production_area_id || '').trim()
-        || (role === 'bar' ? 'bar' : role === 'cocina' ? 'cocina' : '');
+      const aid = String(u.production_area_id || '').trim();
       if (uid && aid && !map.has(uid)) map.set(uid, aid);
     }
     return map;
@@ -204,7 +210,7 @@ export default function ProductionAreasSection() {
                 <p className="font-semibold text-[var(--ui-body-text)] truncate">{area.name}</p>
                 <p className="text-xs ui-text-muted">
                   id: {area.id} · {Number(area.active) === 1 ? 'Activa' : 'Inactiva'} ·{' '}
-                  {(area.encargado_user_ids || []).length} encargado(s)
+                  {(area.encargado_user_ids || []).length ? '1 encargado' : 'sin encargado'}
                 </p>
               </div>
             </div>
@@ -280,9 +286,9 @@ export default function ProductionAreasSection() {
               </label>
             )}
             <div>
-              <p className="text-sm font-semibold mb-1">Encargados (obligatorio)</p>
+              <p className="text-sm font-semibold mb-1">Encargado</p>
               <p className="text-[11px] ui-text-muted mb-2">
-                Un usuario de producción solo puede estar en un área. Los ya vinculados a otra no aparecen aquí.
+                Máximo un usuario por área. No se vincula al crear el usuario; elígelo aquí. Vuelve a pulsar para desvincular.
               </p>
               <div className="max-h-36 overflow-y-auto border border-[color:var(--ui-border)] rounded-lg p-2 space-y-1">
                 {encargados.length === 0 && (
@@ -294,7 +300,7 @@ export default function ProductionAreasSection() {
                   <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={form.encargado_user_ids.includes(u.id)}
+                      checked={form.encargado_user_ids.map(String).includes(String(u.id))}
                       onChange={() => toggleId('encargado_user_ids', u.id)}
                     />
                     <span>{u.full_name} <span className="ui-text-muted">(@{u.username})</span></span>

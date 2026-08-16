@@ -154,6 +154,9 @@ function stringifyProductionAreaIds(ids) {
 function assertEncargadosAvailable(areaId, encargadoIds) {
   const aid = String(areaId || '').trim();
   const ids = normalizeUserIdList(encargadoIds);
+  if (ids.length > 1) {
+    throw new Error('Un área solo puede tener un encargado de producción');
+  }
   for (const uid of ids) {
     const u = queryOne(
       `SELECT id, full_name, role, production_area_id FROM users WHERE id = ?`,
@@ -201,16 +204,17 @@ function stripEncargadosFromOtherAreas(areaId, encargadoIds) {
 function createProductionArea({ name, encargado_user_ids } = {}) {
   const areas = readProductionAreas();
   const id = uuidv4();
-  assertEncargadosAvailable(id, encargado_user_ids);
+  const ids = normalizeUserIdList(encargado_user_ids).slice(0, 1);
+  assertEncargadosAvailable(id, ids);
   const row = normalizeProductionAreaRow({
     id,
     name: name || 'Nueva área',
     active: 1,
-    encargado_user_ids,
+    encargado_user_ids: ids,
   });
   areas.push(row);
   saveProductionAreas(areas);
-  stripEncargadosFromOtherAreas(id, encargado_user_ids);
+  stripEncargadosFromOtherAreas(id, ids);
   return row;
 }
 
@@ -220,17 +224,19 @@ function updateProductionArea(areaId, patch = {}) {
   const idx = areas.findIndex((a) => a.id === id);
   if (idx < 0) throw new Error('Área de producción no encontrada');
   const prev = areas[idx];
-  if (Object.prototype.hasOwnProperty.call(patch, 'encargado_user_ids')) {
-    assertEncargadosAvailable(id, patch.encargado_user_ids);
+  let nextPatch = { ...patch };
+  if (Object.prototype.hasOwnProperty.call(nextPatch, 'encargado_user_ids')) {
+    nextPatch.encargado_user_ids = normalizeUserIdList(nextPatch.encargado_user_ids).slice(0, 1);
+    assertEncargadosAvailable(id, nextPatch.encargado_user_ids);
   }
   areas[idx] = normalizeProductionAreaRow({
     ...prev,
-    ...patch,
+    ...nextPatch,
     id: prev.id,
   }, idx);
   saveProductionAreas(areas);
-  if (Object.prototype.hasOwnProperty.call(patch, 'encargado_user_ids')) {
-    stripEncargadosFromOtherAreas(id, patch.encargado_user_ids);
+  if (Object.prototype.hasOwnProperty.call(nextPatch, 'encargado_user_ids')) {
+    stripEncargadosFromOtherAreas(id, nextPatch.encargado_user_ids);
   }
   return areas[idx];
 }
@@ -298,19 +304,40 @@ function syncAreaUserLinksFromUsers() {
   );
   for (const u of users || []) {
     const role = String(u.role || '').toLowerCase();
-    if (role === 'produccion' || role === 'cocina' || role === 'bar') {
-      let aid = String(u.production_area_id || '').trim();
-      if (!aid && role === 'bar' && byArea.bar) aid = 'bar';
-      if (!aid && role === 'cocina' && byArea.cocina) aid = 'cocina';
-      if (aid && byArea[aid]) byArea[aid].encargado.add(u.id);
-    }
+    if (role !== 'produccion' && role !== 'cocina' && role !== 'bar') continue;
+    const aid = String(u.production_area_id || '').trim();
+    if (aid && byArea[aid]) byArea[aid].encargado.add(u.id);
   }
-  const next = areas.map((a) => ({
-    ...a,
-    encargado_user_ids: [...(byArea[a.id]?.encargado || [])],
-    mozo_user_ids: [],
-  }));
+  const next = areas.map((a) => {
+    const ids = [...(byArea[a.id]?.encargado || [])];
+    return {
+      ...a,
+      encargado_user_ids: ids.slice(0, 1),
+      mozo_user_ids: [],
+    };
+  });
   return saveProductionAreas(next);
+}
+
+/** Si un área quedó con varios encargados, deja uno y libera al resto. */
+function enforceSingleEncargadoPerArea() {
+  const { runSql } = require('../database');
+  const areas = readProductionAreas();
+  let changed = false;
+  const next = areas.map((a) => {
+    const ids = normalizeUserIdList(a.encargado_user_ids);
+    if (ids.length <= 1) return a;
+    changed = true;
+    const keep = ids[0];
+    for (const uid of ids.slice(1)) {
+      try {
+        runSql(`UPDATE users SET production_area_id = '' WHERE id = ?`, [uid]);
+      } catch { /* ignore */ }
+    }
+    return { ...a, encargado_user_ids: [keep], mozo_user_ids: [] };
+  });
+  if (changed) saveProductionAreas(next);
+  return changed;
 }
 
 /** Convierte encargados ya vinculados (incl. mozos) al rol de producción o bar/cocina. */
@@ -416,4 +443,5 @@ module.exports = {
   ensureSalonesHaveCajaId,
   normalizeProductionAreasList,
   syncEncargadoUserRoles,
+  enforceSingleEncargadoPerArea,
 };

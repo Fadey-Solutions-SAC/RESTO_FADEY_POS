@@ -176,7 +176,10 @@ router.post('/login', (req, res) => {
     return res.status(423).json({ error: lock.reason || 'Sistema bloqueado por falta de pago' });
   }
 
-  const user = queryOne('SELECT * FROM users WHERE username = ? AND is_active = 1', [username]);
+  const user = queryOne(
+    `SELECT * FROM users WHERE is_active = 1 AND lower(trim(username)) = lower(trim(?)) LIMIT 1`,
+    [username],
+  );
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Credenciales inválidas' });
   }

@@ -2,9 +2,9 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql, hasUsersColumn, ensureUsersSchemaColumns, ensureUsersRoleAllowsProduccion, persistedProductionRole } = require('../database');
+const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { getActiveCajaById, getFirstAutoAssignCajaId } = require('../cajaSettings');
-const { syncAreaUserLinksFromUsers } = require('../services/productionAreasService');
 const {
   rawWorkedMinutesExpr,
   effectiveWorkedMinutesExpr,
@@ -177,10 +177,6 @@ function listUsersRows() {
 
 router.get('/', authenticateToken, requireRole('admin'), (req, res) => {
   try {
-    try {
-      const { syncEncargadoUserRoles } = require('../services/productionAreasService');
-      syncEncargadoUserRoles();
-    } catch (_) { /* ignore */ }
     res.json(listUsersRows().map(withPublicEmail));
   } catch (err) {
     res.status(500).json({ error: err.message || 'No se pudieron listar usuarios' });
@@ -189,10 +185,10 @@ router.get('/', authenticateToken, requireRole('admin'), (req, res) => {
 
 router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
   try {
-    const username = String(req.body?.username || '').trim();
+    const username = normalizeCatalogDisplayName(req.body?.username || '');
     const emailRaw = String(req.body?.email || '').trim();
     const password = String(req.body?.password || '');
-    const fullName = String(req.body?.full_name || '').trim();
+    const fullName = normalizeCatalogDisplayName(req.body?.full_name || '');
     const role = String(req.body?.role || '').trim().toLowerCase();
     const phone = String(req.body?.phone || '').trim();
     const isActive = req.body?.is_active === undefined ? 1 : (Number(req.body.is_active || 0) === 1 ? 1 : 0);
@@ -204,7 +200,10 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     }
     const id = uuidv4();
     const email = resolveStoredEmail(emailRaw, id);
-    const existingUser = queryOne('SELECT id FROM users WHERE username = ?', [username]);
+    const existingUser = queryOne(
+      'SELECT id FROM users WHERE lower(trim(username)) = lower(?)',
+      [username],
+    );
     if (existingUser) return res.status(400).json({ error: 'El usuario ya existe' });
     if (emailRaw && !isNoEmailPlaceholder(emailRaw)) {
       const existingEmail = queryOne('SELECT id FROM users WHERE email = ?', [email]);
@@ -242,6 +241,7 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
       is_active: isActive,
       caja_station_id: cajaStationId,
       is_buyer_admin: isBuyerAdmin,
+      production_area_id: prodNorm.production_area_id || '',
     };
     const insertCols = Object.keys(insertFields).filter((col) => {
       if (['id', 'username', 'email', 'password_hash', 'full_name', 'role'].includes(col)) return true;
@@ -272,7 +272,6 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
       'INSERT INTO user_permissions (id, user_id, permissions) VALUES (?, ?, ?)',
       [uuidv4(), id, JSON.stringify(permissionsObj)]
     );
-    try { syncAreaUserLinksFromUsers(); } catch (_) { /* ignore */ }
     const created = listUsersRows().find((u) => u.id === id) || queryOne(
       'SELECT id, username, email, full_name, role, is_active, phone, created_at FROM users WHERE id = ?',
       [id],
@@ -300,10 +299,14 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     }
     if (!current?.id) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    const username = req.body?.username === undefined ? current.username : String(req.body.username || '').trim();
+    const username = req.body?.username === undefined
+      ? current.username
+      : normalizeCatalogDisplayName(req.body.username || '');
     const emailRaw =
       req.body?.email === undefined ? publicEmail(current.email) : String(req.body.email || '').trim();
-    const fullName = req.body?.full_name === undefined ? current.full_name : String(req.body.full_name || '').trim();
+    const fullName = req.body?.full_name === undefined
+      ? current.full_name
+      : normalizeCatalogDisplayName(req.body.full_name || '');
     const role = req.body?.role === undefined ? current.role : String(req.body.role || '').trim().toLowerCase();
     const phone = req.body?.phone === undefined ? current.phone : String(req.body.phone || '').trim();
     const isActive = req.body?.is_active === undefined ? current.is_active : (Number(req.body.is_active || 0) === 1 ? 1 : 0);
@@ -320,7 +323,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
 
     const email = resolveStoredEmail(emailRaw, req.params.id);
     const duplicatedUser = queryOne(
-      'SELECT id FROM users WHERE username = ? AND id != ? LIMIT 1',
+      'SELECT id FROM users WHERE lower(trim(username)) = lower(?) AND id != ? LIMIT 1',
       [username, req.params.id]
     );
     if (duplicatedUser?.id) {
@@ -404,7 +407,6 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       );
     }
 
-    try { syncAreaUserLinksFromUsers(); } catch (_) { /* ignore */ }
     const updated = listUsersRows().find((u) => u.id === req.params.id) || queryOne(
       'SELECT id, username, email, full_name, role, is_active, phone, created_at FROM users WHERE id = ?',
       [req.params.id],

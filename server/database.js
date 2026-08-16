@@ -2757,7 +2757,8 @@ async function initDatabase() {
     seedData();
     ensureOperationalUsers();
     try {
-      const { syncEncargadoUserRoles } = require('./services/productionAreasService');
+      const { syncEncargadoUserRoles, enforceSingleEncargadoPerArea } = require('./services/productionAreasService');
+      enforceSingleEncargadoPerArea();
       syncEncargadoUserRoles();
     } catch (e) {
       console.warn('[migration] roles de encargados de producción:', e.message || e);
