@@ -1,11 +1,10 @@
 import { MdPrint, MdSave } from 'react-icons/md';
 import { hasElectronPrinting } from '../../utils/api';
-import { PRINTING_MODULE_LABELS } from '../../utils/printingConfig';
 import { usePrintingModule } from '../../hooks/usePrintingModule';
 import PrintingAssistantDownloadButton from './PrintingAssistantDownloadButton';
 
 /**
- * Panel unificado de configuración de impresora para caja, cocina o bar.
+ * Panel unificado de configuración de impresora (caja y áreas de producción).
  * Guarda solo el módulo indicado (merge en servidor) para no desvincular los demás.
  */
 export default function PrinterModulePanel({
@@ -16,7 +15,6 @@ export default function PrinterModulePanel({
 }) {
   const {
     moduleConfig,
-    moduleEnabled,
     paperWidth,
     detectedPrinters,
     busy,
@@ -30,8 +28,6 @@ export default function PrinterModulePanel({
     loadConfig,
   } = usePrintingModule(moduleKey);
 
-  const moduleLabel = PRINTING_MODULE_LABELS[moduleKey] || moduleKey;
-
   const handleSave = async () => {
     const saved = await saveModule();
     if (saved && onConfigLoaded) onConfigLoaded(saved);
@@ -42,15 +38,6 @@ export default function PrinterModulePanel({
     if (onConfigLoaded) onConfigLoaded(cfg);
     await refreshLink();
   };
-
-  if (moduleKey !== 'caja' && !moduleEnabled) {
-    return (
-      <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 text-sm text-[var(--ui-muted)]">
-        La impresora de {moduleLabel.toLowerCase()} está desactivada en Configuración → Impresoras.
-        Actívela allí para usar impresión en este panel.
-      </div>
-    );
-  }
 
   const cfg = moduleConfig;
 

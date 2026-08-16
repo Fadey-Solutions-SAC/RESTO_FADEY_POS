@@ -18,10 +18,14 @@ export const PRINTING_CONFIG_CACHE_KEY = 'resto_printing_config_cache_v1';
 export const PRINTING_CONFIG_UPDATED_EVENT = 'resto-printing-config-updated';
 export const PRINTING_LINK_STATUS_EVENT = 'resto-printing-link-status';
 
+export const DEFAULT_STATION_PRINTING = {
+  tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80,
+};
+
 export const DEFAULT_PRINTING_CONFIG = {
-  caja: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
-  cocina: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
-  bar: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
+  caja: { ...DEFAULT_STATION_PRINTING, autoPrint: true },
+  cocina: { ...DEFAULT_STATION_PRINTING },
+  bar: { ...DEFAULT_STATION_PRINTING },
 };
 
 export const PRINTING_MODULE_LABELS = {
@@ -30,9 +34,49 @@ export const PRINTING_MODULE_LABELS = {
   bar: 'Bar',
 };
 
+export function isPrintingModuleKey(key) {
+  const k = String(key || '').trim();
+  if (!k || k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
+  return /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(k);
+}
+
+export function listPrintingUiModules(productionAreas = []) {
+  const entries = [{ key: 'caja', label: 'Caja' }];
+  const seen = new Set(['caja']);
+  const areas = Array.isArray(productionAreas) ? productionAreas : [];
+  if (areas.length) {
+    for (const a of areas) {
+      const id = String(a?.id || '').trim();
+      if (!id || seen.has(id) || !isPrintingModuleKey(id)) continue;
+      seen.add(id);
+      entries.push({ key: id, label: String(a.name || id).trim() || id });
+    }
+  } else {
+    entries.push({ key: 'cocina', label: 'Cocina' }, { key: 'bar', label: 'Bar' });
+  }
+  return entries;
+}
+
+export function ensurePrintingConfigForAreas(cfg, productionAreas = []) {
+  const out = normalizePrintingConfig(cfg);
+  for (const a of productionAreas || []) {
+    const id = String(a?.id || '').trim();
+    if (!id || id === 'caja' || !isPrintingModuleKey(id)) continue;
+    if (!out[id]) out[id] = { ...DEFAULT_STATION_PRINTING };
+  }
+  return out;
+}
+
+export function printingModuleLabel(moduleKey, productionAreas = []) {
+  const k = String(moduleKey || '').trim();
+  if (PRINTING_MODULE_LABELS[k]) return PRINTING_MODULE_LABELS[k];
+  const hit = (productionAreas || []).find((a) => String(a?.id || '').trim() === k);
+  return (hit && String(hit.name || '').trim()) || k;
+}
+
 export function normalizePrintingConfig(cfg) {
   if (!cfg || typeof cfg !== 'object') return { ...DEFAULT_PRINTING_CONFIG };
-  const moduleDefault = DEFAULT_PRINTING_CONFIG.cocina;
+  const moduleDefault = DEFAULT_STATION_PRINTING;
   const out = {
     caja: { ...DEFAULT_PRINTING_CONFIG.caja, ...(cfg.caja || {}) },
     cocina: { ...DEFAULT_PRINTING_CONFIG.cocina, ...(cfg.cocina || {}) },
@@ -40,6 +84,7 @@ export function normalizePrintingConfig(cfg) {
   };
   for (const [key, val] of Object.entries(cfg)) {
     if (key === 'caja' || key === 'cocina' || key === 'bar') continue;
+    if (!isPrintingModuleKey(key)) continue;
     if (!val || typeof val !== 'object') continue;
     out[key] = { ...moduleDefault, ...val };
   }

@@ -23,7 +23,24 @@ try {
   console.warn('[electron] thermalPrintLayout:', e.message);
 }
 
-const MODULE_KEYS = ['caja', 'cocina', 'bar'];
+const CORE_MODULE_KEYS = ['caja', 'cocina', 'bar'];
+
+function isPrintingModuleKey(key) {
+  const k = String(key || '').trim();
+  if (!k || k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
+  return /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(k);
+}
+
+function collectPrintingModuleKeys(...objs) {
+  const keys = new Set(CORE_MODULE_KEYS);
+  for (const o of objs) {
+    if (!o || typeof o !== 'object') continue;
+    for (const k of Object.keys(o)) {
+      if (isPrintingModuleKey(k)) keys.add(k);
+    }
+  }
+  return [...keys];
+}
 /** API principal embebida (instalación NSIS); debe coincidir con VITE_API_URL en build de escritorio. */
 const EMBEDDED_API_DEFAULT_PORT = 3001;
 /**
@@ -123,11 +140,11 @@ function normalizeModule(raw = {}, moduleKey) {
 
 function normalizeConfig(input) {
   const src = input && typeof input === 'object' ? input : {};
-  return {
-    caja: normalizeModule(src.caja, 'caja'),
-    cocina: normalizeModule(src.cocina, 'cocina'),
-    bar: normalizeModule(src.bar, 'bar'),
-  };
+  const out = {};
+  for (const k of collectPrintingModuleKeys(src, defaultConfig())) {
+    out[k] = normalizeModule(src[k], k);
+  }
+  return out;
 }
 
 function ensureConfigFile() {
@@ -162,13 +179,13 @@ function loadConfig() {
 function saveConfig(input) {
   const current = loadConfig();
   const incoming = input && typeof input === 'object' ? input : {};
-  const merged = {
-    caja: { ...current.caja, ...(incoming.caja || {}) },
-    cocina: { ...current.cocina, ...(incoming.cocina || {}) },
-    bar: { ...current.bar, ...(incoming.bar || {}) },
-  };
+  const keys = collectPrintingModuleKeys(current, incoming, defaultConfig());
+  const merged = {};
+  for (const k of keys) {
+    merged[k] = { ...(current[k] || {}), ...(incoming[k] || {}) };
+  }
   const normalized = normalizeConfig(merged);
-  MODULE_KEYS
+  keys
     .filter((k) => Object.prototype.hasOwnProperty.call(incoming, k))
     .forEach((k) => {
       const cfg = normalized[k];
@@ -497,9 +514,11 @@ function printNetwork(ip, port, buffer) {
 }
 
 async function printByModule(moduleKey, payload = {}) {
-  const key = String(moduleKey || '').toLowerCase();
-  if (!MODULE_KEYS.includes(key)) throw new Error('módulo inválido');
-  const cfg = loadConfig()[key];
+  const key = String(moduleKey || '').trim();
+  if (!isPrintingModuleKey(key)) throw new Error('módulo inválido');
+  const cfgAll = loadConfig();
+  const cfg = cfgAll[key] || cfgAll[key.toLowerCase()];
+  if (!cfg) throw new Error(`módulo no configurado: ${key}`);
   const pw =
     Number(payload.paperWidth) ||
     Number(payload.anchoPapel) ||
@@ -528,9 +547,11 @@ async function printByModule(moduleKey, payload = {}) {
 }
 
 async function printerStatus(moduleKey) {
-  const key = String(moduleKey || '').toLowerCase();
-  if (!MODULE_KEYS.includes(key)) throw new Error('módulo inválido');
-  const cfg = loadConfig()[key];
+  const key = String(moduleKey || '').trim();
+  if (!isPrintingModuleKey(key)) throw new Error('módulo inválido');
+  const cfgAll = loadConfig();
+  const cfg = cfgAll[key] || cfgAll[key.toLowerCase()];
+  if (!cfg) throw new Error(`módulo no configurado: ${key}`);
   if (cfg.tipo === 'usb') {
     const connected = (await getPrinters()).some((p) => p.name === cfg.nombre);
     return { status: connected ? 'Conectada' : 'No disponible', connected, tipo: 'usb', module: key };
@@ -657,9 +678,11 @@ function buildAssistantExpressApp() {
   });
   assistant.post('/api/printing/test/:module', async (req, res) => {
     try {
-      const mod = String(req.params.module || '').toLowerCase();
-      if (!MODULE_KEYS.includes(mod)) throw new Error('módulo inválido');
-      const cfg = loadConfig()[mod];
+      const mod = String(req.params.module || '').trim();
+      if (!isPrintingModuleKey(mod)) throw new Error('módulo inválido');
+      const cfgAll = loadConfig();
+      const cfg = cfgAll[mod] || cfgAll[mod.toLowerCase()];
+      if (!cfg) throw new Error(`módulo no configurado: ${mod}`);
       const pw = cfg.paperWidth || cfg.anchoPapel || 80;
       await printByModule(mod, {
         title: 'PRUEBA DE IMPRESIÓN',

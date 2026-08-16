@@ -1437,7 +1437,7 @@ export default function Reports() {
           tabIndex={-1}
           aria-hidden
         />
-        <div className="grid grid-cols-3 gap-2 w-1/2 min-w-0">
+        <div className={`grid grid-cols-3 gap-2 min-w-0 ${tab === 'ranking' ? 'w-1/2' : 'flex-1'}`}>
         <button
           type="button"
           onClick={() => {
@@ -1469,6 +1469,7 @@ export default function Reports() {
           <span className="truncate">Ranking Productos</span>
         </button>
         </div>
+        {tab === 'ranking' && (
         <div className="grid grid-cols-4 gap-2 w-1/2 min-w-0">
           {[
             { id: 'today', label: 'Hoy' },
@@ -1479,12 +1480,9 @@ export default function Reports() {
             <button
               key={p.id}
               type="button"
-              onClick={() => {
-                setTab('ranking');
-                setRankingPeriod(p.id);
-              }}
+              onClick={() => setRankingPeriod(p.id)}
               className={`flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${
-                tab === 'ranking' && rankingPeriod === p.id
+                rankingPeriod === p.id
                   ? 'bg-gold-600 text-white border-gold-600'
                   : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'
               }`}
@@ -1493,6 +1491,7 @@ export default function Reports() {
             </button>
           ))}
         </div>
+        )}
       </div>
       {tab === 'daily' && dailyLoading && !dailyData && (
         <p className="text-sm text-[var(--ui-muted)] mb-4">Cargando informe del día…</p>

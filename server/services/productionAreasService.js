@@ -215,6 +215,12 @@ function createProductionArea({ name, encargado_user_ids } = {}) {
   areas.push(row);
   saveProductionAreas(areas);
   stripEncargadosFromOtherAreas(id, ids);
+  try {
+    const { ensurePrintingModules } = require('../printing/printerConfig');
+    ensurePrintingModules([id]);
+  } catch (err) {
+    console.warn('[production-areas] no se pudo crear impresora del área:', err?.message || err);
+  }
   return row;
 }
 

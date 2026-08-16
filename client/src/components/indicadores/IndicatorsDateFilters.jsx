@@ -6,13 +6,13 @@ export const INDICADORES_CTRL =
 
 export default function IndicatorsDateFilters({ preset, onPresetChange, filters, onFiltersChange }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex items-center gap-1 flex-nowrap">
       {DATE_PRESETS.map((p) => (
         <button
           key={p.id}
           type="button"
           onClick={() => onPresetChange(p.id)}
-          className={`${INDICADORES_CTRL} w-[7.5rem] justify-center ${
+          className={`${INDICADORES_CTRL} px-2.5 justify-center ${
             preset === p.id
               ? 'bg-gold-600 text-white border-gold-600'
               : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
@@ -21,7 +21,7 @@ export default function IndicatorsDateFilters({ preset, onPresetChange, filters,
           {p.label}
         </button>
       ))}
-      <label className={`${INDICADORES_CTRL} w-[11.5rem] justify-start bg-[var(--ui-surface)] text-[var(--ui-body-text)] overflow-hidden`}>
+      <label className={`${INDICADORES_CTRL} w-[9.75rem] justify-start bg-[var(--ui-surface)] text-[var(--ui-body-text)] overflow-hidden`}>
         <span className="text-[var(--ui-muted)] shrink-0">Desde</span>
         <input
           type="date"
@@ -34,7 +34,7 @@ export default function IndicatorsDateFilters({ preset, onPresetChange, filters,
           }}
         />
       </label>
-      <label className={`${INDICADORES_CTRL} w-[11.5rem] justify-start bg-[var(--ui-surface)] text-[var(--ui-body-text)] overflow-hidden`}>
+      <label className={`${INDICADORES_CTRL} w-[9.75rem] justify-start bg-[var(--ui-surface)] text-[var(--ui-body-text)] overflow-hidden`}>
         <span className="text-[var(--ui-muted)] shrink-0">Hasta</span>
         <input
           type="date"

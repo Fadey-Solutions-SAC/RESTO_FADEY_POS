@@ -194,31 +194,29 @@ export default function Indicadores() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-1.5">
+      <div className="flex items-center gap-1 flex-nowrap overflow-x-auto">
         <IndicatorsDateFilters
           preset={preset}
           onPresetChange={handlePresetChange}
           filters={filters}
           onFiltersChange={setFilters}
         />
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            className={`${INDICADORES_CTRL} w-[7.5rem] justify-center bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:opacity-60`}
-            disabled={refreshing}
-            onClick={() => void loadHub(true)}
-          >
-            <MdSync className={refreshing ? 'animate-spin' : ''} />
-            {refreshing ? 'Actualizando…' : 'Actualizar'}
-          </button>
-          <button
-            type="button"
-            className={`${INDICADORES_CTRL} w-[7.5rem] justify-center bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]`}
-            onClick={() => setExportOpen(true)}
-          >
-            <MdDownload /> Exportar
-          </button>
-        </div>
+        <button
+          type="button"
+          className={`${INDICADORES_CTRL} px-2.5 justify-center bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:opacity-60`}
+          disabled={refreshing}
+          onClick={() => void loadHub(true)}
+        >
+          <MdSync className={refreshing ? 'animate-spin' : ''} />
+          Actualizar
+        </button>
+        <button
+          type="button"
+          className={`${INDICADORES_CTRL} px-2.5 justify-center bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]`}
+          onClick={() => setExportOpen(true)}
+        >
+          <MdDownload /> Exportar
+        </button>
       </div>
 
       <div className="relative min-w-[7.5rem] w-[11.5rem]" ref={moduleRef}>

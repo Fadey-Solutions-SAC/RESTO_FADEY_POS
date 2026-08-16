@@ -130,7 +130,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const isCocina = areaId === 'cocina';
   const usesItemLevelReady = isCocina;
   const printerModuleKey = areaId;
-  const { moduleEnabled: printerModuleEnabled, loadConfig: reloadPrinterConfig } = usePrintingModule(printerModuleKey);
+  const { loadConfig: reloadPrinterConfig } = usePrintingModule(printerModuleKey);
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [barSettingsOpen, setBarSettingsOpen] = useState(false);
   const [barAutoDismiss, setBarAutoDismiss] = useState(false);
@@ -710,18 +710,16 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
               </button>
             ))}
           </div>
-          {printerModuleEnabled && (
-            <button
-              type="button"
-              onClick={() => setPrinterModalOpen(true)}
-              className="px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
-              title={t('panel.printerSettings')}
-              aria-label={t('panel.printerSettings')}
-            >
-              <MdSettings className="text-lg" />
-              {t('panel.printer')}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setPrinterModalOpen(true)}
+            className="px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
+            title={t('panel.printerSettings')}
+            aria-label={t('panel.printerSettings')}
+          >
+            <MdSettings className="text-lg" />
+            {t('panel.printer')}
+          </button>
           {canReturnToAdmin && (
             <button onClick={() => navigate('/admin')} className="px-3 py-2 bg-[var(--ui-accent)] hover:bg-[var(--ui-accent-hover)] rounded-lg text-white border border-[color:var(--ui-border)] text-sm font-medium">
               {t('panel.backToOps')}
@@ -740,6 +738,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           void reloadPrinterConfig();
         }}
         moduleKey={printerModuleKey}
+        moduleLabel={stationLabel}
       />
       <Modal
         isOpen={historyOpen}
@@ -986,8 +985,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
 
               <div className="px-4 py-3 border-t border-[color:var(--ui-border)]">
                 <div className="flex gap-2 items-stretch">
-                  {printerModuleEnabled ? (
-                    <button
+                  <button
                       type="button"
                       title={t('panel.printTicket')}
                       aria-label={t('panel.printTicket')}
@@ -996,7 +994,6 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
                     >
                       <MdPrint className="text-xl" />
                     </button>
-                  ) : null}
                   {canShowPrepareAction(order) ? (
                     <button
                       type="button"

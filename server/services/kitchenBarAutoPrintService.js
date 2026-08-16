@@ -4,7 +4,7 @@
 const { loadConfig } = require('../printing/printerConfig');
 const { print } = require('../printing/printerService');
 const { buildPedidoMesaTicketPlainTextServer } = require('../printing/kitchenTicketPlain');
-const { filterItemsForKitchenStation } = require('../utils/productionArea');
+const { filterItemsForKitchenStation, collectOrderProductionAreaIds } = require('../utils/productionArea');
 const { getOrderItemsWithProductionArea } = require('./orderItemsProductionService');
 
 function isModuleAutoPrintEnabled(cfg, moduleKey) {
@@ -45,36 +45,23 @@ async function autoPrintKitchenBarOrder(order, { newItemIds = null, fromLinesUpd
       : allItems;
   if (!scopedItems.length) return { printed: false, modules: [] };
 
-  const kitchenItems = filterItemsForKitchenStation(scopedItems, 'cocina');
-  const barItems = filterItemsForKitchenStation(scopedItems, 'bar');
+  const areaIds = collectOrderProductionAreaIds(scopedItems);
   const modules = [];
-
   const jobs = [];
 
-  if (isModuleAutoPrintEnabled(cfg, 'cocina') && kitchenItems.length > 0) {
-    const paperC = normalizePaperWidthMm(cfg?.cocina?.anchoPapel ?? cfg?.cocina?.paperWidth);
-    const text = buildPedidoMesaTicketPlainTextServer(order, kitchenItems, paperC);
+  for (const areaId of areaIds) {
+    const areaItems = filterItemsForKitchenStation(scopedItems, areaId);
+    if (!areaItems.length) continue;
+    if (!isModuleAutoPrintEnabled(cfg, areaId)) continue;
+    const paper = normalizePaperWidthMm(cfg?.[areaId]?.anchoPapel ?? cfg?.[areaId]?.paperWidth);
+    const text = buildPedidoMesaTicketPlainTextServer(order, areaItems, paper);
     jobs.push(
-      print('cocina', { text, preformatted: true, paperWidth: paperC, anchoPapel: paperC })
+      print(areaId, { text, preformatted: true, paperWidth: paper, anchoPapel: paper })
         .then(() => {
-          modules.push('cocina');
+          modules.push(areaId);
         })
         .catch((err) => {
-          console.warn('[printing] auto cocina:', err?.message || err);
-        }),
-    );
-  }
-
-  if (isModuleAutoPrintEnabled(cfg, 'bar') && barItems.length > 0) {
-    const paperB = normalizePaperWidthMm(cfg?.bar?.anchoPapel ?? cfg?.bar?.paperWidth);
-    const text = buildPedidoMesaTicketPlainTextServer(order, barItems, paperB);
-    jobs.push(
-      print('bar', { text, preformatted: true, paperWidth: paperB, anchoPapel: paperB })
-        .then(() => {
-          modules.push('bar');
-        })
-        .catch((err) => {
-          console.warn('[printing] auto bar:', err?.message || err);
+          console.warn(`[printing] auto ${areaId}:`, err?.message || err);
         }),
     );
   }

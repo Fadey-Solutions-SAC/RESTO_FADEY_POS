@@ -1,5 +1,5 @@
 const net = require('net');
-const { loadConfig } = require('./printerConfig');
+const { loadConfig, isPrintingModuleKey } = require('./printerConfig');
 const { buildTicket } = require('./escposBuilder');
 const { getPrinters } = require('./printerDetector');
 
@@ -81,12 +81,15 @@ function checkRed(ip, port) {
 }
 
 async function getPrinterStatus(moduleName) {
-  const moduleKey = String(moduleName || '').toLowerCase();
-  if (!['caja', 'cocina', 'bar'].includes(moduleKey)) {
-    throw new Error('m?dulo inv?lido para estado de impresora');
+  const moduleKey = String(moduleName || '').trim();
+  if (!isPrintingModuleKey(moduleKey)) {
+    throw new Error('módulo inválido para estado de impresora');
   }
   const cfg = loadConfig();
   const moduleCfg = cfg[moduleKey];
+  if (!moduleCfg) {
+    throw new Error(`módulo no configurado: ${moduleKey}`);
+  }
   if (moduleCfg.tipo === 'usb') {
     const printers = getPrinters();
     const connected = printers.some((p) => String(p.name || '').trim() === String(moduleCfg.nombre || '').trim());
@@ -107,21 +110,24 @@ async function getPrinterStatus(moduleName) {
 }
 
 async function printTest(moduleName) {
-  const moduleKey = String(moduleName || '').toLowerCase();
-  const moduleLabel = moduleKey === 'caja' ? 'Caja' : moduleKey === 'cocina' ? 'Cocina' : 'Bar';
+  const moduleKey = String(moduleName || '').trim();
+  const moduleLabel = moduleKey === 'caja' ? 'Caja' : moduleKey === 'cocina' ? 'Cocina' : moduleKey === 'bar' ? 'Bar' : moduleKey;
   return print(moduleKey, {
-    title: 'PRUEBA DE IMPRESI?N',
+    title: 'PRUEBA DE IMPRESIÓN',
     text: `${moduleLabel}\n${new Date().toLocaleString('es-PE')}`,
   });
 }
 
 async function print(moduleName, data = {}) {
-  const moduleKey = String(moduleName || '').toLowerCase();
-  if (!['caja', 'cocina', 'bar'].includes(moduleKey)) {
-    throw new Error('m?dulo inv?lido para impresi?n');
+  const moduleKey = String(moduleName || '').trim();
+  if (!isPrintingModuleKey(moduleKey)) {
+    throw new Error('módulo inválido para impresión');
   }
   const cfg = loadConfig();
   const moduleCfg = cfg[moduleKey];
+  if (!moduleCfg) {
+    throw new Error(`módulo no configurado: ${moduleKey}`);
+  }
   const pw =
     Number(data.paperWidth) ||
     Number(data.anchoPapel) ||

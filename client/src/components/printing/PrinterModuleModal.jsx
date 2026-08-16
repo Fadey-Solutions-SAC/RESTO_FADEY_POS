@@ -2,8 +2,8 @@ import Modal from '../Modal';
 import PrinterModulePanel from './PrinterModulePanel';
 import { PRINTING_MODULE_LABELS } from '../../utils/printingConfig';
 
-export default function PrinterModuleModal({ isOpen, onClose, moduleKey }) {
-  const moduleLabel = PRINTING_MODULE_LABELS[moduleKey] || moduleKey;
+export default function PrinterModuleModal({ isOpen, onClose, moduleKey, moduleLabel: moduleLabelProp }) {
+  const moduleLabel = moduleLabelProp || PRINTING_MODULE_LABELS[moduleKey] || moduleKey;
 
   return (
     <Modal

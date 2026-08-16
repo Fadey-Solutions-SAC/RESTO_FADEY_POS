@@ -12,7 +12,7 @@ export default function BackgroundKitchenAutoPrinter() {
   const autoPrintOrder = async (incomingOrder) => {
     if (!user || user.type !== 'staff') return;
     const role = String(user.role || '').toLowerCase();
-    if (!['admin', 'cajero', 'mozo', 'cocina', 'bar', 'master_admin'].includes(role)) return;
+    if (!['admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion', 'master_admin'].includes(role)) return;
 
     const orderId = incomingOrder?.id;
     if (!orderId) return;

@@ -38,6 +38,9 @@ import {
   cachePrintingConfig,
   normalizePrintingConfig,
   savePrintingModuleAutoPrint,
+  listPrintingUiModules,
+  ensurePrintingConfigForAreas,
+  printingModuleLabel,
 } from '../../utils/printingConfig';
 import { syncLocaleFromRegional, setAppLocale } from '../../i18n';
 import { normalizeConfigFromApi, mergeSavedAppSettings } from '../../utils/appSettingsNormalize';
@@ -371,6 +374,14 @@ export default function Settings() {
   const [attendanceGalleryDraft, setAttendanceGalleryDraft] = useState({});
   const [attendanceGallerySaving, setAttendanceGallerySaving] = useState(false);
   const [printingConfig, setPrintingConfig] = useState(DEFAULT_PRINTING_CONFIG);
+  const printingModuleEntries = useMemo(
+    () => listPrintingUiModules(appSettings?.production_areas),
+    [appSettings?.production_areas],
+  );
+  const printingModuleKeys = useMemo(
+    () => printingModuleEntries.map((m) => m.key),
+    [printingModuleEntries],
+  );
   const [detectedPrintersByModule, setDetectedPrintersByModule] = useState({
     caja: [],
     cocina: [],
@@ -487,20 +498,12 @@ export default function Settings() {
     loader
       .then((cfg) => {
         if (cfg && typeof cfg === 'object') {
-          const normalized = {
-            caja: { ...DEFAULT_PRINTING_CONFIG.caja, ...(cfg.caja || {}) },
-            cocina: { ...DEFAULT_PRINTING_CONFIG.cocina, ...(cfg.cocina || {}) },
-            bar: { ...DEFAULT_PRINTING_CONFIG.bar, ...(cfg.bar || {}) },
-          };
+          const normalized = ensurePrintingConfigForAreas(cfg, appSettings?.production_areas);
           setPrintingConfig(normalized);
-          try {
-            window.localStorage?.setItem(PRINTING_CONFIG_CACHE_KEY, JSON.stringify(normalized));
-          } catch (_) {
-            // noop
-          }
+          cachePrintingConfig(normalized);
           return;
         }
-        setPrintingConfig(DEFAULT_PRINTING_CONFIG);
+        setPrintingConfig(ensurePrintingConfigForAreas(DEFAULT_PRINTING_CONFIG, appSettings?.production_areas));
       })
       .catch((err) => {
         console.warn('[printing] fallback frontend config por error de carga:', err?.message || err);
@@ -508,22 +511,18 @@ export default function Settings() {
           const raw = window.localStorage?.getItem(PRINTING_CONFIG_CACHE_KEY);
           if (raw) {
             const cached = JSON.parse(raw);
-            setPrintingConfig({
-              caja: { ...DEFAULT_PRINTING_CONFIG.caja, ...(cached?.caja || {}) },
-              cocina: { ...DEFAULT_PRINTING_CONFIG.cocina, ...(cached?.cocina || {}) },
-              bar: { ...DEFAULT_PRINTING_CONFIG.bar, ...(cached?.bar || {}) },
-            });
+            setPrintingConfig(ensurePrintingConfigForAreas(cached, appSettings?.production_areas));
             return;
           }
         } catch (_) {
           // noop
         }
-        setPrintingConfig(DEFAULT_PRINTING_CONFIG);
+        setPrintingConfig(ensurePrintingConfigForAreas(DEFAULT_PRINTING_CONFIG, appSettings?.production_areas));
       });
   };
   const isValidIp = (value) => /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(String(value || '').trim());
   const refreshPrinterStatus = () => {
-    ['caja', 'cocina', 'bar'].forEach((moduleKey) => {
+    printingModuleKeys.forEach((moduleKey) => {
       const req = hasElectronPrinting()
         ? electronPrinting.getStatus(moduleKey)
         : api.printing.get(`/printing/status/${moduleKey}`);
@@ -583,7 +582,7 @@ export default function Settings() {
   };
   const detectUsbPrintersElectronAuto = () => {
     if (!hasElectronPrinting()) return;
-    ['caja', 'cocina', 'bar'].forEach((moduleKey) => {
+    printingModuleKeys.forEach((moduleKey) => {
       electronPrinting.getPrinters(moduleKey)
         .then((data) => {
           const list = normalizeUsbPrinterList(data);
@@ -611,7 +610,7 @@ export default function Settings() {
   const toggleModuleAutoPrint = (moduleKey) => {
     const cfg = printingConfig?.[moduleKey] || {};
     const nextAuto = !Boolean(cfg.autoPrint);
-    const moduleLabel = moduleKey === 'caja' ? 'Caja' : moduleKey === 'cocina' ? 'Cocina' : 'Bar';
+    const moduleLabel = printingModuleLabel(moduleKey, appSettings?.production_areas);
     setPrintingBusy(true);
     savePrintingModuleAutoPrint(printingConfig, moduleKey, nextAuto)
       .then((saved) => {
@@ -623,7 +622,7 @@ export default function Settings() {
       .finally(() => setPrintingBusy(false));
   };
   const savePrintingConfig = () => {
-    const invalidRed = ['caja', 'cocina', 'bar'].find((moduleKey) => {
+    const invalidRed = printingModuleKeys.find((moduleKey) => {
       const cfg = printingConfig?.[moduleKey] || {};
       if (String(cfg.tipo || 'usb').toLowerCase() !== 'red') return false;
       if (!isValidIp(cfg.ip)) return true;
@@ -634,7 +633,7 @@ export default function Settings() {
       toast.error(`Revise IP y puerto en ${invalidRed} (modo Red). No se guardó.`);
       return;
     }
-    const invalidUsb = ['caja', 'cocina', 'bar'].find((moduleKey) => {
+    const invalidUsb = printingModuleKeys.find((moduleKey) => {
       const cfg = printingConfig?.[moduleKey] || {};
       if (String(cfg.tipo || 'usb').toLowerCase() === 'red') return false;
       /** Solo exigir USB en módulos con autoimpresión activa; permite guardar ancho/config general. */
@@ -773,6 +772,20 @@ export default function Settings() {
     if (persisted) setManualPrintingApi(persisted);
     verifyPrintingLink();
   }, [activeSection]);
+
+  useEffect(() => {
+    const onAreas = () => {
+      api.get('/production-areas')
+        .then((areas) => {
+          if (!Array.isArray(areas)) return;
+          setAppSettings((prev) => ({ ...prev, production_areas: areas }));
+          setPrintingConfig((prev) => ensurePrintingConfigForAreas(prev, areas));
+        })
+        .catch(() => {});
+    };
+    window.addEventListener('production-areas-updated', onAreas);
+    return () => window.removeEventListener('production-areas-updated', onAreas);
+  }, []);
 
   useEffect(() => {
     if (!attendanceGalleryUserId) {
@@ -1838,14 +1851,13 @@ export default function Settings() {
               </div>
             </div>
 
-            {['caja', 'cocina', 'bar'].map((moduleKey) => {
+            {printingModuleEntries.map(({ key: moduleKey, label: moduleLabel }) => {
               const cfg = printingConfig?.[moduleKey] || {};
               const modulePrinters = detectedPrintersByModule[moduleKey] || [];
               const selectedName = String(cfg.nombre || '').trim();
               const visiblePrinters = selectedName && !modulePrinters.some((p) => p.name === selectedName)
                 ? [{ name: selectedName }, ...modulePrinters]
                 : modulePrinters;
-              const moduleLabel = moduleKey === 'caja' ? 'Caja' : moduleKey === 'cocina' ? 'Cocina' : 'Bar';
               const moduleNetworkPrinters = detectedNetworkPrintersByModule[moduleKey] || [];
               return (
                 <div key={moduleKey} className="card space-y-3">

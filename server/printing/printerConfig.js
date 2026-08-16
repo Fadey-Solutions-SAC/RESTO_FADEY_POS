@@ -75,15 +75,39 @@ function normalizeModuleStrict(moduleConfig, moduleName) {
   };
 }
 
+function isPrintingModuleKey(key) {
+  const k = String(key || '').trim();
+  if (!k || k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
+  return /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(k);
+}
+
+function collectPrintingModuleKeys(...objs) {
+  const keys = new Set(['caja', 'cocina', 'bar']);
+  for (const o of objs) {
+    if (!o || typeof o !== 'object') continue;
+    for (const k of Object.keys(o)) {
+      if (isPrintingModuleKey(k)) keys.add(k);
+    }
+  }
+  return [...keys];
+}
+
+function syncPaperFields(mod) {
+  const next = mod && typeof mod === 'object' ? { ...mod } : {};
+  if (next.paperWidth != null && next.anchoPapel == null) next.anchoPapel = next.paperWidth;
+  if (next.anchoPapel != null && next.paperWidth == null) next.paperWidth = next.anchoPapel;
+  return next;
+}
+
 function normalizeConfig(input, options = {}) {
   const strict = Boolean(options.strict);
   const fn = strict ? normalizeModuleStrict : normalizeModuleLenient;
   const src = input && typeof input === 'object' ? input : {};
-  return {
-    caja: fn(src.caja, 'caja'),
-    cocina: fn(src.cocina, 'cocina'),
-    bar: fn(src.bar, 'bar'),
-  };
+  const out = {};
+  for (const k of collectPrintingModuleKeys(src, DEFAULT_CONFIG)) {
+    out[k] = fn(src[k], k);
+  }
+  return out;
 }
 
 function mergeModulePayload(current, incoming) {
@@ -147,20 +171,12 @@ function saveConfig(nextConfig) {
     currentRaw = {};
   }
   const incoming = nextConfig && typeof nextConfig === 'object' ? nextConfig : {};
-  const merged = {
-    caja: mergeModulePayload(currentRaw.caja, incoming.caja),
-    cocina: mergeModulePayload(currentRaw.cocina, incoming.cocina),
-    bar: mergeModulePayload(currentRaw.bar, incoming.bar),
-  };
-  ['caja', 'cocina', 'bar'].forEach((k) => {
-    if (merged[k].paperWidth != null && merged[k].anchoPapel == null) {
-      merged[k].anchoPapel = merged[k].paperWidth;
-    }
-    if (merged[k].anchoPapel != null && merged[k].paperWidth == null) {
-      merged[k].paperWidth = merged[k].anchoPapel;
-    }
-  });
-  const keysExplicit = ['caja', 'cocina', 'bar'].filter((k) => Object.prototype.hasOwnProperty.call(incoming, k));
+  const keys = collectPrintingModuleKeys(currentRaw, incoming, DEFAULT_CONFIG);
+  const merged = {};
+  for (const k of keys) {
+    merged[k] = syncPaperFields(mergeModulePayload(currentRaw[k], incoming[k]));
+  }
+  const keysExplicit = keys.filter((k) => Object.prototype.hasOwnProperty.call(incoming, k));
   let finalized = normalizeConfig(merged, { strict: false });
   keysExplicit.forEach((k) => {
     finalized[k] = normalizeModuleStrict(merged[k], k);
@@ -175,10 +191,31 @@ function saveConfig(nextConfig) {
   return finalized;
 }
 
+/** Crea config de impresora (mismo default que cocina/bar) para áreas nuevas. */
+function ensurePrintingModules(moduleKeys = []) {
+  const ids = (Array.isArray(moduleKeys) ? moduleKeys : [moduleKeys])
+    .map((k) => String(k || '').trim())
+    .filter((k) => isPrintingModuleKey(k) && k !== 'caja');
+  if (!ids.length) return loadConfig();
+  const current = loadConfig();
+  const incoming = {};
+  let need = false;
+  for (const id of ids) {
+    if (!current[id]) {
+      incoming[id] = DEFAULT_CONFIG.cocina;
+      need = true;
+    }
+  }
+  if (!need) return current;
+  return saveConfig(incoming);
+}
+
 module.exports = {
   loadConfig,
   saveConfig,
   normalizeConfig,
   DEFAULT_CONFIG,
   isValidIp,
+  isPrintingModuleKey,
+  ensurePrintingModules,
 };

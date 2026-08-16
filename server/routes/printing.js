@@ -1,16 +1,20 @@
 const router = require('express').Router();
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { loadConfig, saveConfig, normalizeConfig } = require('../printing/printerConfig');
+const { loadConfig, saveConfig, normalizeConfig, ensurePrintingModules } = require('../printing/printerConfig');
 const { getPrinters } = require('../printing/printerDetector');
 const { print, printTest, getPrinterStatus } = require('../printing/printerService');
 
-router.use(authenticateToken, requireRole('admin', 'master_admin', 'cajero', 'mozo', 'cocina', 'bar'));
+router.use(authenticateToken, requireRole('admin', 'master_admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion'));
 
-router.get('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar'), (req, res) => {
+router.get('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar', 'produccion'), (req, res) => {
+  try {
+    const { listKnownProductionAreaIds } = require('../services/productionAreasService');
+    ensurePrintingModules(listKnownProductionAreaIds());
+  } catch (_) { /* noop */ }
   res.json(loadConfig());
 });
 
-router.put('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar'), (req, res) => {
+router.put('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar', 'produccion'), (req, res) => {
   try {
     const next = saveConfig(req.body || {});
     const io = req.app.get('io');
@@ -21,7 +25,7 @@ router.put('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', '
   }
 });
 
-router.get('/printers', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar'), (req, res) => {
+router.get('/printers', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar', 'produccion'), (req, res) => {
   const mod = String(req.query.module || '').trim().toLowerCase();
   const list = getPrinters();
   const items = list.map((p) => ({ name: p.name }));
@@ -32,7 +36,7 @@ router.get('/printers', requireRole('admin', 'master_admin', 'cajero', 'cocina',
 });
 
 router.post('/print/:module', (req, res) => {
-  const moduleName = String(req.params.module || '').toLowerCase();
+  const moduleName = String(req.params.module || '').trim();
   print(moduleName, req.body || {})
     .then((out) => res.json(out))
     .catch((err) => {
@@ -41,8 +45,8 @@ router.post('/print/:module', (req, res) => {
     });
 });
 
-router.post('/test/:module', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar'), (req, res) => {
-  const moduleName = String(req.params.module || '').toLowerCase();
+router.post('/test/:module', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar', 'produccion'), (req, res) => {
+  const moduleName = String(req.params.module || '').trim();
   printTest(moduleName)
     .then((out) => res.json(out))
     .catch((err) => {
@@ -51,8 +55,8 @@ router.post('/test/:module', requireRole('admin', 'master_admin', 'cajero', 'coc
     });
 });
 
-router.get('/status/:module', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar'), (req, res) => {
-  const moduleName = String(req.params.module || '').toLowerCase();
+router.get('/status/:module', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar', 'produccion'), (req, res) => {
+  const moduleName = String(req.params.module || '').trim();
   getPrinterStatus(moduleName)
     .then((status) => res.json(status))
     .catch((err) => {
