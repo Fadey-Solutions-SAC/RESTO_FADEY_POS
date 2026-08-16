@@ -76,7 +76,7 @@ function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
         `UPDATE orders SET station_cocina_ready_at = NULL,
           station_cocina_preparing_at = CASE
             WHEN TRIM(COALESCE(station_cocina_preparing_at, '')) != '' THEN station_cocina_preparing_at
-            ELSE datetime('now') END,
+            ELSE COALESCE(NULLIF(TRIM(preparing_at), ''), created_at, datetime('now')) END,
           updated_at = datetime('now')
          WHERE id = ?`,
         [orderId]
@@ -86,7 +86,7 @@ function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
         `UPDATE orders SET station_bar_ready_at = NULL,
           station_bar_preparing_at = CASE
             WHEN TRIM(COALESCE(station_bar_preparing_at, '')) != '' THEN station_bar_preparing_at
-            ELSE datetime('now') END,
+            ELSE COALESCE(NULLIF(TRIM(preparing_at), ''), created_at, datetime('now')) END,
           updated_at = datetime('now')
          WHERE id = ?`,
         [orderId]
@@ -256,18 +256,24 @@ function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew =
     }
     const shouldHighlight =
       highlightNew || (highlightIdSet instanceof Set && highlightIdSet.has(String(item.id)));
-    if (shouldHighlight) {
-      tx.run(
-        `INSERT INTO order_items (id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes, kitchen_highlight_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        [item.id, item.order_id, item.product_id, item.product_name, item.variant_name, item.quantity, item.unit_price, item.subtotal, item.notes]
-      );
-    } else {
-      tx.run(
-        'INSERT INTO order_items (id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [item.id, item.order_id, item.product_id, item.product_name, item.variant_name, item.quantity, item.unit_price, item.subtotal, item.notes]
-      );
-    }
+    const highlightAt = shouldHighlight ? null : (item.kitchen_highlight_at || null);
+    tx.run(
+      `INSERT INTO order_items (
+        id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes,
+        station_cocina_ready_at, station_bar_ready_at, kitchen_highlight_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${shouldHighlight ? "datetime('now')" : '?'})`,
+      shouldHighlight
+        ? [
+          item.id, item.order_id, item.product_id, item.product_name, item.variant_name,
+          item.quantity, item.unit_price, item.subtotal, item.notes,
+          item.station_cocina_ready_at || null, item.station_bar_ready_at || null,
+        ]
+        : [
+          item.id, item.order_id, item.product_id, item.product_name, item.variant_name,
+          item.quantity, item.unit_price, item.subtotal, item.notes,
+          item.station_cocina_ready_at || null, item.station_bar_ready_at || null, highlightAt,
+        ],
+    );
     newIds.push(item.id);
   });
   return newIds;
@@ -690,11 +696,8 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
     throw new Error('No se puede modificar un pedido ya cobrado');
   }
 
-  const { computeAddedLineIds } = require('./utils/orderLineRemoval');
-  const existingItems = tx.queryAll(
-    'SELECT product_id, product_name, variant_name, quantity, unit_price, notes FROM order_items WHERE order_id = ?',
-    [orderId],
-  );
+  const { computeAddedLineIds, attachExistingLineIdentity } = require('./utils/orderLineRemoval');
+  const existingItems = tx.queryAll('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
 
   const orderType = order.type;
   const staffInHouseOrder =
@@ -709,9 +712,6 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
   const orderNow = new Date();
 
   assertMozoTableCajaTx(tx, actor, order.table_id);
-
-  restoreNonTransformedStockForOrderTx(tx, orderId);
-  tx.run('DELETE FROM order_items WHERE order_id = ?', [orderId]);
 
   let subtotal = 0;
   const orderItems = items.map((item) => {
@@ -776,6 +776,47 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
       process_type: product.process_type,
     };
   });
+
+  const { addedLines } = attachExistingLineIdentity(existingItems, orderItems);
+  if (
+    addedLines.length
+    && isMergeBlockedByDispatchedStation(
+      tx,
+      order,
+      addedLines.map((line) => ({ product_id: line.product_id, quantity: line.quantity })),
+    )
+  ) {
+    const newOrderId = uuidv4();
+    const created = createOrderInTransaction(tx, newOrderId, {
+      type: order.type,
+      table_id: order.table_id,
+      table_number: order.table_number,
+      customer_name: order.customer_name,
+      customer_id: order.customer_id,
+      notes: order.notes,
+      items: addedLines.map((line) => ({
+        product_id: line.product_id,
+        quantity: line.quantity,
+        variant_name: line.variant_name,
+        notes: line.notes,
+      })),
+    }, actor);
+    tx.run(
+      "UPDATE orders SET kitchen_last_send_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+      [created.orderId],
+    );
+    const createdIds = tx.queryAll('SELECT id FROM order_items WHERE order_id = ?', [created.orderId])
+      .map((row) => String(row.id));
+    return {
+      orderId: created.orderId,
+      newItemIds: createdIds,
+      splitFrom: orderId,
+      merged: false,
+    };
+  }
+
+  restoreNonTransformedStockForOrderTx(tx, orderId);
+  tx.run('DELETE FROM order_items WHERE order_id = ?', [orderId]);
 
   const discountAmount = Math.max(0, Number(order.discount || 0));
   const deliveryFee = Number(order.delivery_fee || 0);

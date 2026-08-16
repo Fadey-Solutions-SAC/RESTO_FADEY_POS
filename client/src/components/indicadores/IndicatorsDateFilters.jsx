@@ -2,8 +2,8 @@ import { DATE_PRESETS } from '../../utils/indicatorsDatePresets';
 
 export default function IndicatorsDateFilters({ preset, onPresetChange, filters, onFiltersChange }) {
   return (
-    <div className="card grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3 py-3">
-      <div className="flex flex-wrap gap-2 items-center">
+    <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap gap-1.5 items-center">
         {DATE_PRESETS.map((p) => (
           <button
             key={p.id}
@@ -19,12 +19,12 @@ export default function IndicatorsDateFilters({ preset, onPresetChange, filters,
           </button>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-3 min-w-[240px]">
+      <div className="flex flex-wrap gap-2 items-end">
         <div>
           <label className="block text-xs text-[var(--ui-muted)] mb-1">Desde</label>
           <input
             type="date"
-            className="input-field"
+            className="input-field py-1.5 min-w-[9.5rem]"
             value={filters.from}
             onChange={(e) => {
               onPresetChange('custom');
@@ -36,7 +36,7 @@ export default function IndicatorsDateFilters({ preset, onPresetChange, filters,
           <label className="block text-xs text-[var(--ui-muted)] mb-1">Hasta</label>
           <input
             type="date"
-            className="input-field"
+            className="input-field py-1.5 min-w-[9.5rem]"
             value={filters.to}
             onChange={(e) => {
               onPresetChange('custom');

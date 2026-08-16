@@ -599,9 +599,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const PREP_OVERDUE_MS = KITCHEN_PREP_OVERDUE_MS;
 
   const getOrderTimerAnchor = (order) => {
-    const stationPrep = getStationPreparingAt(order, areaId);
-    if (String(stationPrep || '').trim()) return stationPrep;
-    return order?.created_at;
+    return order?.created_at || getStationPreparingAt(order, areaId);
   };
 
   const getTimeDiff = (order) => {

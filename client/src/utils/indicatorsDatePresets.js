@@ -1,4 +1,4 @@
-/** Fecha local YYYY-MM-DD (evita desfase UTC en «Hoy»). */
+/** Fecha local YYYY-MM-DD (evita desfase UTC en «Día»). */
 function toKey(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -7,9 +7,7 @@ function toKey(d) {
 }
 
 export const DATE_PRESETS = [
-  { id: 'today', label: 'Hoy' },
-  { id: 'yesterday', label: 'Ayer' },
-  { id: 'week', label: 'Semana' },
+  { id: 'today', label: 'Día' },
   { id: 'month', label: 'Mes' },
   { id: 'year', label: 'Año' },
   { id: 'custom', label: 'Personalizado' },

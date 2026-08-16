@@ -145,6 +145,34 @@ function orderLineStaffKeyFromBuiltRow(row) {
   });
 }
 
+/** Reusa id y marcas LISTO de líneas que siguen en el pedido. */
+function attachExistingLineIdentity(existingRows, builtLines) {
+  const pool = (existingRows || []).map((row) => ({ row, taken: false }));
+  const addedLines = [];
+  for (const line of builtLines || []) {
+    const k = orderLineStaffKeyFromBuiltRow(line);
+    const hit = pool.find((p) => !p.taken && orderLineStaffKeyFromDbRow(p.row) === k);
+    if (!hit) {
+      addedLines.push(line);
+      continue;
+    }
+    hit.taken = true;
+    const oldQty = Math.max(0, Number(hit.row.quantity || 0));
+    const newQty = Math.max(0, Number(line.quantity || 0));
+    line.id = hit.row.id;
+    if (newQty <= oldQty) {
+      line.station_cocina_ready_at = hit.row.station_cocina_ready_at || null;
+      line.station_bar_ready_at = hit.row.station_bar_ready_at || null;
+      line.kitchen_highlight_at = hit.row.kitchen_highlight_at || null;
+    } else {
+      line.station_cocina_ready_at = null;
+      line.station_bar_ready_at = null;
+      line.kitchen_highlight_at = null;
+    }
+  }
+  return { addedLines };
+}
+
 /** Tras reemplazar líneas: ids de filas nuevas o con cantidad mayor (para highlight / impresión). */
 function computeAddedLineIds(existingItems, builtOrderItems) {
   const remaining = new Map();
@@ -177,4 +205,7 @@ module.exports = {
   computeAddedLineIds,
   computeQuantityRemovals,
   removalsFromOrderItemRows,
+  orderLineStaffKeyFromDbRow,
+  orderLineStaffKeyFromBuiltRow,
+  attachExistingLineIdentity,
 };

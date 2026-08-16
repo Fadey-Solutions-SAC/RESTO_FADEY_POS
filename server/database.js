@@ -1554,11 +1554,6 @@ async function initDatabase() {
     addOrderItemColIfMissing('station_cocina_ready_at', 'ALTER TABLE order_items ADD COLUMN station_cocina_ready_at TEXT');
     addOrderItemColIfMissing('station_bar_ready_at', 'ALTER TABLE order_items ADD COLUMN station_bar_ready_at TEXT');
     addOrderItemColIfMissing('kitchen_highlight_at', 'ALTER TABLE order_items ADD COLUMN kitchen_highlight_at TEXT');
-    try {
-      db.run('UPDATE order_items SET station_cocina_ready_at = NULL, station_bar_ready_at = NULL');
-    } catch (_) {
-      /* columnas opcionales; el control listo es por comanda (orders), no por ítem */
-    }
 
     const reservationColumns = queryAll('PRAGMA table_info(reservations)');
     const addReservationColIfMissing = (colName, ddl) => {

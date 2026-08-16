@@ -199,6 +199,7 @@ import StaffModifierPromptModal from '../../components/StaffModifierPromptModal'
 import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
 import { canPosDeleteOrReleaseTable, canAjusteBarAutoDismiss } from '../../utils/posPermissions';
 import { buildTablesBySalon } from '../../utils/salonesUtils';
+import { getOfflinePosStatus, subscribeOfflinePos } from '../../utils/offlinePos';
 import {
   MdPointOfSale, MdTableRestaurant, MdReceipt,
   MdCheckCircle, MdAttachMoney, MdPeople, MdClose,
@@ -602,6 +603,7 @@ export default function POSPanel() {
     pending_documents: 0,
     checked_at: '',
   });
+  const [internetOnline, setInternetOnline] = useState(() => getOfflinePosStatus().online);
   const [incomes, setIncomes] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [creditNotes, setCreditNotes] = useState([]);
@@ -1154,6 +1156,8 @@ export default function POSPanel() {
   };
 
   useSocket('billing-document-update', loadBillingStatus);
+
+  useEffect(() => subscribeOfflinePos((st) => setInternetOnline(Boolean(st?.online))), []);
 
   useEffect(() => {
     loadBillingStatus();
@@ -3259,22 +3263,14 @@ export default function POSPanel() {
         <h2 className="font-semibold text-slate-700 flex items-center gap-2 text-base sm:text-lg min-w-0">
           <span
             className={`inline-flex items-center justify-center w-7 h-7 rounded-full border shrink-0 ${
-              billingStatus.provider_reachable
+              internetOnline
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                 : 'bg-red-50 border-red-200 text-red-600'
             }`}
-            title={
-              billingStatus.provider_reachable
-                ? 'Facturación en línea'
-                : 'Sin conexión a facturación'
-            }
-            aria-label={
-              billingStatus.provider_reachable
-                ? 'Facturación en línea'
-                : 'Sin conexión a facturación'
-            }
+            title={internetOnline ? 'Con internet' : 'Sin internet'}
+            aria-label={internetOnline ? 'Con internet' : 'Sin internet'}
           >
-            {billingStatus.provider_reachable
+            {internetOnline
               ? <MdCheckCircle className="text-lg" />
               : <MdClose className="text-lg" />}
           </span>

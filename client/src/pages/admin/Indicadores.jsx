@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, formatInstantTime } from '../../utils/api';
+import { api } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { getPresetRange } from '../../utils/indicatorsDatePresets';
 import {
@@ -17,7 +17,7 @@ import {
   MdPsychology,
   MdDownload,
   MdSync,
-  MdCircle,
+  MdKeyboardArrowDown,
 } from 'react-icons/md';
 import {
   IndicatorsGeneralPanel,
@@ -59,9 +59,10 @@ export default function Indicadores() {
   const [preset, setPreset] = useState('month');
   const [filters, setFilters] = useState(() => getPresetRange('month'));
   const [exportOpen, setExportOpen] = useState(false);
-  const [livePulse, setLivePulse] = useState(false);
+  const [moduleOpen, setModuleOpen] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const debounceRef = useRef(null);
+  const moduleRef = useRef(null);
 
   useEffect(() => {
     const next = String(searchParams.get('tab') || '').trim();
@@ -86,8 +87,6 @@ export default function Indicadores() {
       if (filters.to) qs.set('to', filters.to);
       const hub = await api.get(`/reports/indicators-hub${qs.toString() ? `?${qs}` : ''}`);
       setData(hub);
-      setLivePulse(true);
-      setTimeout(() => setLivePulse(false), 800);
     } catch (err) {
       console.error(err);
       setLoadError(err?.message || 'No se pudieron cargar los indicadores');
@@ -117,12 +116,23 @@ export default function Indicadores() {
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
+  useEffect(() => {
+    if (!moduleOpen) return undefined;
+    const onDoc = (e) => {
+      if (moduleRef.current && !moduleRef.current.contains(e.target)) setModuleOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [moduleOpen]);
+
   const handlePresetChange = (id) => {
     setPreset(id);
     if (id !== 'custom') setFilters(getPresetRange(id));
   };
 
   const alertCount = data?.alerts?.length ?? 0;
+  const activeModule = TABS.find((t) => t.id === tab) || TABS[0];
+  const ActiveModuleIcon = activeModule.icon;
 
   const renderPanel = () => {
     if (loadError && !data) {
@@ -185,19 +195,17 @@ export default function Indicadores() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ui-body-text)] flex items-center gap-2 rf-module-page-title">
-            <MdInsights className="text-gold-600" /> Indicadores
-          </h1>
-          <p className="text-sm text-[var(--ui-muted)] mt-1 max-w-2xl">
-            Centro de análisis conectado con caja, mesas, cocina, delivery, inventario, clientes y tiempo trabajado.
-          </p>
-          <div className={`flex items-center gap-1.5 text-xs mt-2 ${livePulse ? 'text-emerald-600' : 'text-[var(--ui-muted)]'}`}>
-            <MdCircle className="text-[6px]" />
-            {livePulse ? 'Actualizado en vivo' : 'Sincronización en tiempo real activa'}
-          </div>
-        </div>
+      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] flex items-center gap-2 rf-module-page-title">
+        <MdInsights className="text-gold-600" /> Indicadores
+      </h1>
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <IndicatorsDateFilters
+          preset={preset}
+          onPresetChange={handlePresetChange}
+          filters={filters}
+          onFiltersChange={setFilters}
+        />
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -214,39 +222,58 @@ export default function Indicadores() {
         </div>
       </div>
 
-      <IndicatorsDateFilters
-        preset={preset}
-        onPresetChange={handlePresetChange}
-        filters={filters}
-        onFiltersChange={setFilters}
-      />
-
-      <div className="flex flex-wrap gap-2">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => selectTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition ${
-              tab === t.id
-                ? 'bg-gold-600 text-white border-gold-600'
-                : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-            }`}
+      <div className="relative w-full max-w-xs" ref={moduleRef}>
+        <button
+          type="button"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+          onClick={() => setModuleOpen((open) => !open)}
+          aria-haspopup="listbox"
+          aria-expanded={moduleOpen}
+        >
+          <ActiveModuleIcon className="text-gold-600 shrink-0" />
+          <span className="flex-1 text-left">{activeModule.label}</span>
+          {activeModule.id === 'alertas' && alertCount > 0 ? (
+            <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px]">{alertCount}</span>
+          ) : null}
+          <MdKeyboardArrowDown className={`shrink-0 text-[var(--ui-muted)] transition ${moduleOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {moduleOpen ? (
+          <div
+            className="absolute z-20 mt-1 w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg py-1 max-h-80 overflow-auto"
+            role="listbox"
           >
-            <t.icon />
-            {t.label}
-            {t.id === 'alertas' && alertCount > 0 ? (
-              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px]">{alertCount}</span>
-            ) : null}
-          </button>
-        ))}
+            {TABS.map((t) => {
+              const Icon = t.icon;
+              const selected = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    selectTab(t.id);
+                    setModuleOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left ${
+                    selected
+                      ? 'bg-gold-600 text-white'
+                      : 'text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                  }`}
+                >
+                  <Icon />
+                  <span className="flex-1">{t.label}</span>
+                  {t.id === 'alertas' && alertCount > 0 ? (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${selected ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>
+                      {alertCount}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
-
-      {data?.generated_at ? (
-        <p className="text-[10px] text-[var(--ui-muted)]">
-          Período {data.filters?.from} — {data.filters?.to} · Actualizado {formatInstantTime(data.generated_at)}
-        </p>
-      ) : null}
 
       <div className={refreshing ? 'opacity-90 transition-opacity' : ''}>{renderPanel()}</div>
 

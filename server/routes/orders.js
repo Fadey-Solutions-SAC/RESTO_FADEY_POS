@@ -428,19 +428,25 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo
         logRouteError(req, auditErr, { order_id: req.params.id, phase: 'audit_removal' });
       }
     }
-    const order = getOrderWithItems(req.params.id);
+    const resultOrderId = lineResult?.orderId || req.params.id;
+    const order = getOrderWithItems(resultOrderId);
     if (!order) {
       return res.status(404).json({ error: 'Pedido no encontrado tras actualizar líneas' });
     }
     const io = req.app.get('io');
     if (io) {
-      io.emit('order-update', order);
-      /** Cocina/bar: ítems añadidos a mesa existente (solo resalta líneas nuevas cuando hay diff). */
-      io.emit('order-lines-updated', {
-        order,
-        new_item_ids: lineResult?.newItemIds || [],
-        merged: true,
-      });
+      if (lineResult?.splitFrom) {
+        io.emit('new-order', order);
+        const previous = getOrderWithItems(lineResult.splitFrom);
+        if (previous) io.emit('order-update', previous);
+      } else {
+        io.emit('order-update', order);
+        io.emit('order-lines-updated', {
+          order,
+          new_item_ids: lineResult?.newItemIds || [],
+          merged: true,
+        });
+      }
     }
     emitInventoryUpdate({});
     logOrderDebug(req, 'put_lines_ok', { order_id: order.id, order_number: order.order_number });
