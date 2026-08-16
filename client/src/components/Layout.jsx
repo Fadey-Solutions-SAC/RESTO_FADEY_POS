@@ -5,7 +5,7 @@ import NotificationCenter from './NotificationCenter';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { useSocket } from '../hooks/useSocket';
-import { MdMenu, MdPointOfSale, MdLock, MdAdminPanelSettings } from 'react-icons/md';
+import { MdPointOfSale, MdLock, MdAdminPanelSettings, MdStorefront } from 'react-icons/md';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppLocaleBootstrap } from '../hooks/useAppLocaleBootstrap';
@@ -97,14 +97,26 @@ export default function Layout() {
         <header className="rf-shell-header h-[var(--ui-shell-header-h)] shrink-0 flex items-center justify-between px-3 sm:px-6 sticky top-0 z-30 border-b border-[color:var(--ui-sidebar-border)]">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             {isMobile ? (
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen((prev) => !prev)}
-                className="p-2 hover:bg-[var(--ui-sidebar-hover)] rounded-lg transition-colors shrink-0"
-                aria-label={t('layout.menu', { defaultValue: 'Menú' })}
-              >
-                <MdMenu className="text-xl text-[var(--ui-body-text)]" />
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen((prev) => !prev)}
+                  className="rf-sidebar-menu-btn hover:bg-[var(--ui-sidebar-hover)] rounded-lg transition-colors shrink-0 text-[var(--ui-body-text)]"
+                  aria-label={t('layout.menu', { defaultValue: 'Menú' })}
+                >
+                  <span className="rf-sidebar-burger" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </button>
+                <div className="rf-sidebar-brand w-8 h-8 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+                  <MdStorefront className="text-white text-base" />
+                </div>
+                <span className="rf-sidebar-logo-name rf-font-display text-[var(--ui-body-text)]">
+                  {t('layout.brandName')}
+                </span>
+              </>
             ) : null}
             {shellTitle ? (
               <h1 className="text-2xl font-bold text-[var(--ui-body-text)] truncate leading-tight rf-page-title">

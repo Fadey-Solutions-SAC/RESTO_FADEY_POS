@@ -162,21 +162,21 @@ h1, h2, h3, h4 {
   }
 
   .rf-sidebar-logo-name {
-    font-size: 0.8125rem;
-    font-weight: 700;
-    letter-spacing: -0.03em;
+    font-size: 1.22rem;
+    font-weight: 800;
+    letter-spacing: -0.035em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: clip;
     min-width: 0;
     flex: 1 1 auto;
-    line-height: 1.15;
+    line-height: 1;
   }
 
   .rf-sidebar-menu-btn {
     flex-shrink: 0;
-    width: 1.65rem;
-    height: 1.65rem;
+    width: 1.85rem;
+    height: 1.85rem;
     padding: 0;
     display: inline-flex;
     align-items: center;
@@ -185,8 +185,8 @@ h1, h2, h3, h4 {
   }
 
   .rf-sidebar-burger {
-    width: 0.78rem;
-    height: 0.62rem;
+    width: 1.12rem;
+    height: 1.18rem;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -194,7 +194,7 @@ h1, h2, h3, h4 {
 
   .rf-sidebar-burger span {
     display: block;
-    height: 1.5px;
+    height: 2px;
     width: 100%;
     border-radius: 1px;
     background: currentColor;
