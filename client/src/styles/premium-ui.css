@@ -856,6 +856,16 @@ h1, h2, h3, h4 {
   background: color-mix(in srgb, var(--ui-muted) 75%, transparent);
 }
 
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* Gráficos Recharts — colores del tema activo */
 .recharts-cartesian-grid line {
   stroke: color-mix(in srgb, var(--ui-border) 80%, transparent);

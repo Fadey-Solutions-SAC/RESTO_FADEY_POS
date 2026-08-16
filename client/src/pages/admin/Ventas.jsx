@@ -1,39 +1,26 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, formatCurrency, formatDateTime, formatDate, formatTime, parseApiDate, isDateKeyInInclusiveRange, toLocalDateKey } from '../../utils/api';
+import { api, formatCurrency, formatDateTime, formatDate, parseApiDate, isDateKeyInInclusiveRange, toLocalDateKey } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
-import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel, MdDownload } from 'react-icons/md';
+import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
 import { buildVentasDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch, parseProductRemovalNotesFromOrder, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
 import { useNavigate } from 'react-router-dom';
-
+import { useAuth } from '../../context/AuthContext';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
+import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
+import VentasCuentasTable, { getOrderDocument, docLabel, getAccountAuditStatusBadge } from '../../components/admin/VentasCuentasTable';
+import {
+  mapAccountToDetalleVentaRow,
+  buildDetalleVentasExcelHtml,
+  buildDetalleVentasTxt,
+  formatSaleNumero,
+} from '../../utils/salesReportExport';
+import { downloadBlobFile, downloadExcelFile } from '../../utils/inventoryCuadreExport';
 
 import { UI_BADGE, saleStatusBadge } from '../../utils/uiBadges';
-
-function getAccountAuditStatusBadge(group) {
-  const orders = group?.orders || [];
-  if (orders.length > 0 && orders.every((o) => o.status === 'cancelled')) {
-    return { label: 'Anulada', className: `${UI_BADGE.red} uppercase tracking-wide`, clickable: false };
-  }
-  if (orders.some((o) => o.status !== 'cancelled' && String(o.payment_status || 'pending') === 'pending')) {
-    return { label: 'Pendiente', className: `${UI_BADGE.amber} uppercase tracking-wide`, clickable: false };
-  }
-  if (group?.isSalesAccount && group.salesOrderCount === 0 && group.courtesyCount > 0) {
-    return { label: 'Cortesía', className: `${UI_BADGE.violet} uppercase tracking-wide`, clickable: false };
-  }
-  const observations = group?.observations;
-  if (observations?.observed) {
-    return {
-      label: 'Observado',
-      className: `${UI_BADGE.amber} uppercase tracking-wide cursor-pointer hover:opacity-90 underline-offset-2 hover:underline`,
-      clickable: true,
-    };
-  }
-  return { label: 'Correcto', className: `${UI_BADGE.emerald} uppercase tracking-wide`, clickable: false };
-}
 
 function getSaleStatusBadge(order, t) {
   const base = saleStatusBadge(order);
@@ -58,20 +45,6 @@ function payLabel(method) {
   const key = `paymentMethods.${method}`;
   const tr = i18n.t(key, { ns: 'sales', defaultValue: '' });
   return tr || method;
-}
-
-function docLabel(docType) {
-  if (!docType) return '';
-  const key = `docTypes.${docType}`;
-  const tr = i18n.t(key, { ns: 'sales', defaultValue: '' });
-  return tr || docType;
-}
-
-function getOrderDocument(order) {
-  const docType = order.sale_document_type || order.document?.doc_type || 'nota_venta';
-  const noteNumber = `001-${String(order.order_number || 0).padStart(8, '0')}`;
-  const fullNumber = order.sale_document_number || order.document?.full_number || noteNumber;
-  return { doc_type: docType, full_number: fullNumber };
 }
 
 function orderReceiptHtml(order, groupedProducts = null) {
@@ -255,27 +228,6 @@ function downloadExcel(order) {
   URL.revokeObjectURL(url);
 }
 
-function downloadAllSalesExcel(orders) {
-  const header = [
-    'Fecha', 'Hora', 'Mesa', 'Mesero', 'Local', 'Caja', 'Turno', 'Cliente', 'DNI/RUC', 'Tipo Doc.',
-    'Serie Doc.', 'Num Doc.', 'Forma de pago', 'Monto pagado', 'Retencion', 'Propina', 'Subtotal',
-    'IGV 18%', 'ICBPER', 'Impuestos', 'Total', 'Descuento', 'Tipo', 'Estado', 'Anulado por',
-    'Aprobado por', 'Motivo', 'Canal de venta', 'Canal de delivery', 'Usuario solicitante',
-    'Descuento redondeo', 'Tipo de descuento', 'Motivo descuento', 'Porcentaje de descuento',
-    'Codigo integracion delivery', 'Observacion', 'Codigo vendedor',
-  ];
-  const rows = [header, ...orders.map((o) => toTemplateRow(o, o.local_name || '-'))];
-  const html = toExcelHtmlTable(rows);
-  const bom = '\uFEFF';
-  const blob = new Blob([bom + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.href = url;
-  link.download = `ventas-${new Date().toISOString().slice(0, 10)}.xls`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 const PAYMENT_METHOD_KEYS = ['efectivo', 'yape', 'plin', 'tarjeta', 'online'];
 const DOC_TYPE_KEYS = ['nota_venta', 'boleta', 'factura'];
 
@@ -304,22 +256,10 @@ function sortVentasGroups(groups, sortKey, sortDir) {
   });
 }
 
-function SortableTh({ label, colKey, sortKey, sortDir, onSort }) {
-  const active = sortKey === colKey;
-  return (
-    <th
-      className="pb-2 font-medium cursor-pointer select-none hover:text-[var(--ui-body-text)]"
-      onClick={() => onSort(colKey)}
-      title={active ? (sortDir === 'asc' ? 'Orden ascendente' : 'Orden descendente') : `Ordenar por ${label}`}
-    >
-      {label}
-      {active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-    </th>
-  );
-}
-
 export default function Ventas() {
   const { t } = useTranslation('sales');
+  const { user } = useAuth();
+  const reportUsuario = user?.full_name || user?.username || 'Administrador';
   const showDeliveryUi = useShowDeliveryUi();
   const [orders, setOrders] = useState([]);
   const [filtered, setFiltered] = useState([]);
@@ -449,6 +389,37 @@ export default function Ventas() {
     paid: filtered.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o)).reduce((s, o) => s + (o.total || 0), 0),
     pending: filtered.filter((o) => o.payment_status === 'pending').reduce((s, o) => s + (o.total || 0), 0),
     count: paidSalesAccounts.length,
+  };
+
+  const lifetimeSales = useMemo(() => {
+    const nums = orders
+      .filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o))
+      .map((o) => Number(o.sale_number || 0))
+      .filter((n) => n > 0);
+    return nums.length ? Math.max(...nums) : 0;
+  }, [orders]);
+
+  const downloadDetalleVentas = (format = 'excel') => {
+    const groups = displayGroups.filter((g) => g.isSalesAccount || (g.primary && g.primary.payment_status === 'paid'));
+    const source = groups.length ? groups : paidSalesAccounts;
+    const rows = source.map((account) => mapAccountToDetalleVentaRow(account, { formatDate }));
+    if (!rows.length) {
+      toast.error('No hay ventas para descargar en el filtro actual');
+      return;
+    }
+    const periodLabel = fromDate || toDate
+      ? `${fromDate ? formatDate(fromDate) : '…'} - ${toDate ? formatDate(toDate) : '…'}`
+      : 'Todo';
+    const fromKey = fromDate || 'todo';
+    const toKey = toDate || fromDate || 'todo';
+    const baseName = `detalle-ventas-${fromKey}_${toKey}`;
+    if (format === 'txt') {
+      downloadBlobFile(`${baseName}.txt`, buildDetalleVentasTxt({ periodLabel, usuario: reportUsuario, rows }));
+      toast.success('Detalle de ventas descargado (TXT)');
+      return;
+    }
+    downloadExcelFile(baseName, buildDetalleVentasExcelHtml({ periodLabel, usuario: reportUsuario, rows }));
+    toast.success('Detalle de ventas descargado (Excel)');
   };
 
   const handleSaleTabChange = (tabId) => {
@@ -672,9 +643,26 @@ export default function Ventas() {
         <div className="card border-l-4 border-l-slate-400"><p className="text-xs ui-text-muted">Total Ventas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{formatCurrency(totals.total)}</p></div>
         <div className="card border-l-4 border-l-emerald-500"><p className="text-xs text-emerald-600">Cobrado</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totals.paid)}</p></div>
         <div className="card border-l-4 border-l-amber-500"><p className="text-xs text-amber-600">Pendiente</p><p className="text-xl font-bold text-amber-300">{formatCurrency(totals.pending)}</p></div>
-        <div className="card border-l-4 border-l-sky-500"><p className="text-xs text-sky-600">Cuentas cobradas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p></div>
+        <div className="card border-l-4 border-l-sky-500">
+          <p className="text-xs text-sky-600">Cuentas cobradas</p>
+          <p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p>
+          {lifetimeSales > 0 ? (
+            <p className="text-[10px] text-[var(--ui-muted)] mt-1">Interno {formatSaleNumero(lifetimeSales)}</p>
+          ) : null}
+        </div>
       </div>
       )}
+      {!isVoidedTab ? (
+        <div className="flex justify-end mb-5">
+          <DownloadExcelTxtButtons
+            onExcel={() => downloadDetalleVentas('excel')}
+            onTxt={() => downloadDetalleVentas('txt')}
+            excelTitle="Descargar detalle de ventas (Excel)"
+            txtTitle="Descargar detalle de ventas (TXT)"
+            disabled={!filtered.length}
+          />
+        </div>
+      ) : null}
 
       <div className="rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-5">
         <div className="flex flex-wrap gap-3 mb-4">
@@ -682,13 +670,6 @@ export default function Ventas() {
             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)]" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por #, mesa (ej. 20 o M20) o cliente..." className="input-field pl-9" />
           </div>
-          <button
-            onClick={() => downloadAllSalesExcel(filtered.map(o => ({ ...o, local_name: restaurantName })))}
-            className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 flex items-center gap-2"
-            title="Descargar todas las ventas en Excel"
-          >
-            <MdDownload /> Descargar todas
-          </button>
           {!isVoidedTab ? (
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-field w-auto min-w-[160px] cursor-pointer">
             <option value="all">Todos los pagos</option><option value="paid">Pagado</option><option value="pending">Pendiente</option><option value="refunded">Reembolsado</option>
@@ -726,141 +707,60 @@ export default function Ventas() {
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
-              <SortableTh label="Fecha" colKey="fecha" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortableTh label="Mesa" colKey="mesa" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <th className="pb-2 font-medium">Caja</th><th className="pb-2 font-medium">Mesero</th><th className="pb-2 font-medium">Cliente</th><th className="pb-2 font-medium">Documento</th>{!isVoidedTab ? <th className="pb-2 font-medium">Pagos</th> : null}<SortableTh label={isVoidedTab ? 'Monto ref.' : 'Venta'} colKey="venta" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} /><th className="pb-2 font-medium">Estado</th><th className="pb-2 font-medium">Opciones</th>
-            </tr></thead>
-            <tbody>
-              {displayGroups.map((group) => {
-                const o = group.primary;
-                const doc = getOrderDocument(o);
-                const mesero = o.created_by_user_name || o.customer_name || '-';
-                const auditBadge = getAccountAuditStatusBadge(group);
-                const isPendingMesa = Boolean(group.isPendingAccount && group.isMesa);
-                const isCuentaMesa = Boolean(group.isMesa && (group.isSalesAccount || group.isPendingAccount));
-                const latest = parseApiDate(group.latestAt);
-                const earliest = parseApiDate(group.earliestAt);
-                const sameDay = group.comprobanteCount === 1
-                  || (latest && earliest && formatDate(group.latestAt) === formatDate(group.earliestAt));
-                return (
-                  <tr key={group.key} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
-                    <td className="py-2.5">
-                      {isPendingMesa ? (
-                        <p className="font-medium text-[var(--ui-muted)]">—</p>
-                      ) : (
-                        <>
-                          <p className="font-medium text-[var(--ui-body-text)]">{formatDate(group.latestAt)}</p>
-                          <p className="text-xs text-[var(--ui-muted)]">
-                            {group.comprobanteCount > 1 && !sameDay
-                              ? `${formatTime(group.earliestAt)} – ${formatTime(group.latestAt)}`
-                              : formatTime(group.latestAt)}
-                          </p>
-                        </>
-                      )}
-                    </td>
-                    <td className="py-2.5 text-[var(--ui-body-text)] font-semibold">{group.mesaLabel}</td>
-                    <td className="py-2.5 text-[var(--ui-muted)]">Caja 01</td>
-                    <td className="py-2.5 text-[var(--ui-body-text)]">{mesero}</td>
-                    <td className="py-2.5 text-[var(--ui-body-text)]">
-                      {isPendingMesa
-                        ? '—'
-                        : (group.isMesa ? `Mesa ${o.table_number}` : (o.customer_name || 'PUBLICO GENERAL'))}
-                    </td>
-                    <td className="py-2.5">
-                      {isCuentaMesa ? (
-                        <>
-                          <p className="font-medium text-[var(--ui-body-text)]">Cuenta mesa</p>
-                          {!isPendingMesa && group.comprobanteCount > 1 ? (
-                            <p className="text-xs text-[var(--ui-muted)]">{group.comprobanteCount} comandas cobradas</p>
-                          ) : isPendingMesa ? (
-                            <p className="text-xs text-[var(--ui-muted)]">Sin cobrar</p>
-                          ) : (
-                            <p className="text-xs text-[var(--ui-muted)]">{docLabel(doc.doc_type)} · {doc.full_number}</p>
-                          )}
-                        </>
-                      ) : group.comprobanteCount > 1 ? (
-                        <>
-                          <p className="font-medium text-[var(--ui-body-text)]">{group.comprobanteCount} documentos</p>
-                          <p className="text-xs text-[var(--ui-muted)]">{docLabel(doc.doc_type)} · {doc.full_number}…</p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="font-medium text-[var(--ui-body-text)]">{docLabel(doc.doc_type)}</p>
-                          <p className="text-xs text-[var(--ui-muted)]">{doc.full_number}</p>
-                        </>
-                      )}
-                    </td>
-                    {!isVoidedTab ? (
-                    <td className="py-2.5 font-medium text-[var(--ui-body-text)] text-xs leading-relaxed">
-                      {group.paymentSummary || '-'}
-                    </td>
-                    ) : null}
-                    <td className="py-2.5 font-bold text-[var(--ui-body-text)]">{formatCurrency(group.total)}</td>
-                    <td className="py-2.5">
-                      {auditBadge.clickable ? (
-                        <button
-                          type="button"
-                          onClick={() => goToDescuentosHighlight(group)}
-                          className={auditBadge.className}
-                          title="Ver en Descuentos y Cortesías"
-                        >
-                          {auditBadge.label}
-                        </button>
-                      ) : (
-                        <span className={auditBadge.className}>{auditBadge.label}</span>
-                      )}
-                    </td>
-                    <td className="py-2.5">
-                      <div className="flex items-center gap-1 relative">
-                        <button onClick={() => handleViewGroupClick(group)} className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700" title="Ver"><MdVisibility /></button>
-                        <button onClick={() => openReceipt(o, group)} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
-                        <button
-                          onClick={() => {
-                            if (group.comprobanteCount === 1) downloadExcel({ ...o, local_name: restaurantName });
-                            else group.orders.forEach((ord) => downloadExcel({ ...ord, local_name: restaurantName }));
-                          }}
-                          className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700"
-                          title="Excel"
-                        >
-                          <MdTableChart />
-                        </button>
-                        {!isVoidedTab ? (
-                        <>
-                        <button
-                          onClick={() => {
-                            if (group.comprobanteCount === 1) startEdit(o);
-                            else openGroupDetail(group);
-                          }}
-                          className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600"
-                          title="Editar"
-                        >
-                          <MdEdit />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (group.comprobanteCount === 1) openVoidModal(o);
-                            else openGroupDetail(group);
-                          }}
-                          disabled={group.orders.every((ord) => ord.status === 'cancelled')}
-                          className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700 disabled:opacity-50"
-                          title="Anular venta"
-                        >
-                          <MdCancel />
-                        </button>
-                        </>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {displayGroups.length === 0 && <tr><td colSpan={isVoidedTab ? 9 : 10} className="py-8 text-center text-[var(--ui-muted)]">{isVoidedTab ? 'Sin ventas anuladas' : 'Sin ventas encontradas'}</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <VentasCuentasTable
+          groups={displayGroups}
+          isVoidedTab={isVoidedTab}
+          emptyMessage={isVoidedTab ? 'Sin ventas anuladas' : 'Sin ventas encontradas'}
+          onStatusClick={goToDescuentosHighlight}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={toggleSort}
+          showActions
+          renderActions={(group, o) => (
+            <div className="flex items-center gap-1 relative">
+              <button type="button" onClick={() => handleViewGroupClick(group)} className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700" title="Ver"><MdVisibility /></button>
+              <button type="button" onClick={() => openReceipt(o, group)} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (group.comprobanteCount === 1) downloadExcel({ ...o, local_name: restaurantName });
+                  else group.orders.forEach((ord) => downloadExcel({ ...ord, local_name: restaurantName }));
+                }}
+                className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700"
+                title="Excel"
+              >
+                <MdTableChart />
+              </button>
+              {!isVoidedTab ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (group.comprobanteCount === 1) startEdit(o);
+                      else openGroupDetail(group);
+                    }}
+                    className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600"
+                    title="Editar"
+                  >
+                    <MdEdit />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (group.comprobanteCount === 1) openVoidModal(o);
+                      else openGroupDetail(group);
+                    }}
+                    disabled={group.orders.every((ord) => ord.status === 'cancelled')}
+                    className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700 disabled:opacity-50"
+                    title="Anular venta"
+                  >
+                    <MdCancel />
+                  </button>
+                </>
+              ) : null}
+            </div>
+          )}
+        />
       </div>
 
       <Modal

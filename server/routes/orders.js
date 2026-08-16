@@ -1117,6 +1117,10 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
           );
         }
         kardexInventory.aplicarSalidasVentaPedido(tx, req.params.id, req.user.id);
+        if (nextPayEffective === 'paid' && !wasPaid && String(docPm || '') !== 'cuenta_cliente') {
+          const { assignSaleNumberToOrderIdsTx } = require('../services/saleNumberService');
+          assignSaleNumberToOrderIdsTx(tx, [req.params.id]);
+        }
       });
     } catch (err) {
       return res.status(400).json({ error: err.message || 'No se pudo aplicar salidas de kardex' });
@@ -1128,6 +1132,12 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
         "UPDATE electronic_documents SET payment_method = ?, updated_at = datetime('now') WHERE order_id = ?",
         [docPm, req.params.id]
       );
+    }
+    if (nextPayEffective === 'paid' && !wasPaid && String(docPm || '') !== 'cuenta_cliente') {
+      withTransaction((tx) => {
+        const { assignSaleNumberToOrderIdsTx } = require('../services/saleNumberService');
+        assignSaleNumberToOrderIdsTx(tx, [req.params.id]);
+      });
     }
   }
   if (nextPaymentMethod !== null || nextBreakdown !== undefined) {

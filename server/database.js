@@ -1507,6 +1507,7 @@ async function initDatabase() {
     addOrderColIfMissing('station_bar_preparing_at', 'ALTER TABLE orders ADD COLUMN station_bar_preparing_at TEXT');
     addOrderColIfMissing('kitchen_last_send_at', 'ALTER TABLE orders ADD COLUMN kitchen_last_send_at TEXT');
     addOrderColIfMissing('table_id', "ALTER TABLE orders ADD COLUMN table_id TEXT DEFAULT ''");
+    addOrderColIfMissing('sale_number', 'ALTER TABLE orders ADD COLUMN sale_number INTEGER');
     try {
       db.run(`
         UPDATE orders
@@ -2438,6 +2439,12 @@ async function initDatabase() {
 
     /** Backups restaurados pueden tener migration_key sin columnas nuevas en orders. */
     ensureOrdersPaidAtColumns();
+    try {
+      const { backfillSaleNumbers } = require('./services/saleNumberService');
+      backfillSaleNumbers();
+    } catch (e) {
+      console.warn('[migration] sale_number:', e.message || e);
+    }
 
     db.run('CREATE INDEX IF NOT EXISTS idx_customers_doc_number ON customers(doc_number)');
     db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_doc_number_unique ON customers(doc_number) WHERE COALESCE(doc_number, '') != ''");

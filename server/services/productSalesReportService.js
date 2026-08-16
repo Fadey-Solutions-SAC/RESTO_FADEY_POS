@@ -20,8 +20,10 @@ function mapSoldRows(rows) {
     return {
       product_id: row.product_id,
       product_name: row.product_name,
+      category_name: String(row.category_name || '').trim(),
       total_qty: qty,
       total_amount: amt,
+      discount_amount: Number(row.discount_amount) || 0,
       order_count: Number(row.order_count) || 0,
       unit_price: qty > 0 ? amt / qty : 0,
     };
@@ -59,10 +61,20 @@ function querySoldProductsBetween(openedAt, closedAt, registerId = null) {
     `SELECT
       oi.product_id,
       oi.product_name,
+      COALESCE(MAX(c.name), '') as category_name,
       COALESCE(SUM(oi.quantity), 0) as total_qty,
-      COALESCE(SUM(oi.subtotal), 0) as total_amount
+      COALESCE(SUM(oi.subtotal), 0) as total_amount,
+      COALESCE(SUM(
+        CASE
+          WHEN IFNULL(o.subtotal, 0) > 0
+          THEN (IFNULL(o.discount, 0) * 1.0 * IFNULL(oi.subtotal, 0)) / o.subtotal
+          ELSE 0
+        END
+      ), 0) as discount_amount
      FROM order_items oi
      JOIN orders o ON o.id = oi.order_id
+     LEFT JOIN products p ON p.id = oi.product_id
+     LEFT JOIN categories c ON c.id = p.category_id
      WHERE ${PAID_SALES_WHERE}
        AND ${window.clause}
      GROUP BY oi.product_id, oi.product_name
@@ -187,12 +199,16 @@ function mergeSoldProducts(rows) {
     const prev = m.get(key) || {
       product_id: row.product_id,
       product_name: row.product_name,
+      category_name: row.category_name || '',
       total_qty: 0,
       total_amount: 0,
+      discount_amount: 0,
       order_count: 0,
     };
+    if (!prev.category_name && row.category_name) prev.category_name = row.category_name;
     prev.total_qty += Number(row.total_qty) || 0;
     prev.total_amount += Number(row.total_amount) || 0;
+    prev.discount_amount += Number(row.discount_amount) || 0;
     prev.order_count += Number(row.order_count) || 0;
     m.set(key, prev);
   }
@@ -248,6 +264,7 @@ function mergeSoldWithInventoryCatalog(soldRows) {
       product_name: p.product_name,
       total_qty: 0,
       total_amount: 0,
+      discount_amount: 0,
       order_count: 0,
       unit_price: 0,
       current_stock: Number(p.current_stock || 0),

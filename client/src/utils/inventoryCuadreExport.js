@@ -12,6 +12,14 @@ export function downloadBlobFile(filename, content, mime = 'text/plain;charset=u
   URL.revokeObjectURL(url);
 }
 
+/** CSV o HTML con BOM para que Excel abra acentos, columnas y formato. */
+export function downloadExcelFile(filename, csvContent) {
+  const body = String(csvContent ?? '');
+  const withBom = body.charCodeAt(0) === 0xfeff ? body : `\uFEFF${body}`;
+  const base = String(filename || 'informe').replace(/\.(csv|xls|xlsx|html)$/i, '');
+  downloadBlobFile(`${base}.xls`, withBom, 'application/vnd.ms-excel;charset=utf-8');
+}
+
 function csvCell(value) {
   const text = String(value ?? '');
   if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
@@ -179,7 +187,7 @@ export function buildPurchaseTxt(group = {}, { formatCurrency, formatDate } = {}
   return `${lines.join('\n')}\n`;
 }
 
-export function downloadInventoryCuadreSession(session, group, { format = 'csv', formatDateTime, toastFn } = {}) {
+export function downloadInventoryCuadreSession(session, group, { format = 'excel', formatDateTime, toastFn } = {}) {
   if (!session?.lines?.length) {
     toastFn?.error?.('Este cuadre no tiene productos para descargar');
     return;
@@ -192,11 +200,11 @@ export function downloadInventoryCuadreSession(session, group, { format = 'csv',
     toastFn?.success?.('Cuadre descargado (TXT)');
     return;
   }
-  downloadBlobFile(`${baseName}.csv`, buildInventoryCuadreCsv(session, group, { formatDateTime }), 'text/csv;charset=utf-8');
-  toastFn?.success?.('Cuadre descargado (CSV)');
+  downloadExcelFile(baseName, buildInventoryCuadreCsv(session, group, { formatDateTime }));
+  toastFn?.success?.('Cuadre descargado (Excel)');
 }
 
-export function downloadReconciliationRecord(rec, { format = 'csv', formatDate, formatDateTime, toastFn } = {}) {
+export function downloadReconciliationRecord(rec, { format = 'excel', formatDate, formatDateTime, toastFn } = {}) {
   const session = reconciliationToExportSession(rec);
   const dateKey = String(rec.created_at || '').slice(0, 10);
   downloadInventoryCuadreSession(

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { api, formatCurrency, formatDate, formatDateTime, formatTime, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
+import { api, formatCurrency, formatDate, formatDateTime, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import {
@@ -13,7 +13,6 @@ import {
   MdVisibility,
   MdRefresh,
   MdPointOfSale,
-  MdDownload,
   MdPrint,
   MdVolunteerActivism,
   MdAutoGraph,
@@ -24,11 +23,15 @@ import {
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
+import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
+import VentasCuentasTable from '../../components/admin/VentasCuentasTable';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 import { resolveInformesSection } from '../../utils/shellModuleTitle';
-import { formatMesaLabel, buildPaidSalesAccountDisplayGroups, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
+import { buildPaidSalesAccountDisplayGroups, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
 import {
   downloadBlobFile,
+  downloadExcelFile,
   buildInventoryCuadresCsv,
   buildInventoryCuadreCsv,
   buildInventoryCuadreTxt,
@@ -38,26 +41,19 @@ import {
 } from '../../utils/inventoryCuadreExport';
 import {
   buildProductSalesTxt,
-  buildProductSalesCsv,
+  buildProductSalesExcelHtml,
   buildClosedRegisterProductsTxt,
+  productSalesPeriodLabel,
 } from '../../utils/productSalesExport';
 import {
-  mapSalesAccountExportRow,
+  mapAccountToDetalleVentaRow,
   buildDailySalesDownloadBaseName,
   buildMonthlySalesDownloadBaseName,
-  buildDailySalesCsv,
-  buildDailySalesTxt,
-  buildMonthlySalesCsv,
-  buildMonthlySalesTxt,
+  buildDetalleVentasExcelHtml,
+  buildDetalleVentasTxt,
+  monthDateRangeLabel,
+  formatSaleNumero,
 } from '../../utils/salesReportExport';
-
-const PAYMENT_METHOD_LABELS = {
-  efectivo: 'Efectivo',
-  yape: 'Yape',
-  plin: 'Plin',
-  tarjeta: 'Tarjeta',
-  online: 'Online',
-};
 
 const FINANCE_LOSS_LABELS = {
   salida_efectivo: 'Salida de efectivo',
@@ -81,7 +77,7 @@ const DENOMINATION_LABELS = {
   c10: 'Moneda S/0.10',
 };
 
-function downloadInventoryCuadreSession(session, group, format = 'csv') {
+function downloadInventoryCuadreSession(session, group, format = 'excel') {
   if (!session?.lines?.length) {
     toast.error('Este cuadre no tiene ajustes para descargar');
     return;
@@ -94,11 +90,11 @@ function downloadInventoryCuadreSession(session, group, format = 'csv') {
     toast.success('Cuadre descargado (TXT)');
     return;
   }
-  downloadBlobFile(`${baseName}.csv`, buildInventoryCuadreCsv(session, group, { formatDateTime }), 'text/csv;charset=utf-8');
-  toast.success('Cuadre descargado (CSV)');
+  downloadExcelFile(baseName, buildInventoryCuadreCsv(session, group, { formatDateTime }));
+  toast.success('Cuadre descargado (Excel)');
 }
 
-function downloadInventoryCuadresByDate(group, format = 'csv') {
+function downloadInventoryCuadresByDate(group, format = 'excel') {
   if (!group?.sessions?.length) {
     toast.error('No hay cuadres en esta fecha');
     return;
@@ -109,11 +105,11 @@ function downloadInventoryCuadresByDate(group, format = 'csv') {
     toast.success(`Cuadres del ${group.dateLabel} descargados (TXT)`);
     return;
   }
-  downloadBlobFile(`${baseName}.csv`, buildInventoryCuadresCsv([group], { formatDateTime }), 'text/csv;charset=utf-8');
-  toast.success(`Cuadres del ${group.dateLabel} descargados (CSV)`);
+  downloadExcelFile(baseName, buildInventoryCuadresCsv([group], { formatDateTime }));
+  toast.success(`Cuadres del ${group.dateLabel} descargados (Excel)`);
 }
 
-function downloadPurchaseGroup(group, format = 'csv') {
+function downloadPurchaseGroup(group, format = 'excel') {
   if (!group?.items?.length) {
     toast.error('No hay líneas para descargar');
     return;
@@ -126,8 +122,8 @@ function downloadPurchaseGroup(group, format = 'csv') {
     toast.success('Compra descargada (TXT)');
     return;
   }
-  downloadBlobFile(`${baseName}.csv`, buildPurchaseCsv({ ...group, formatDate }), 'text/csv;charset=utf-8');
-  toast.success('Compra descargada (CSV)');
+  downloadExcelFile(baseName, buildPurchaseCsv({ ...group, formatDate }));
+  toast.success('Compra descargada (Excel)');
 }
 
 function sumProductSalesQty(products) {
@@ -138,13 +134,23 @@ function sumProductSalesAmount(products) {
   return (products || []).reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
 }
 
+function productsSoldWithQty(products) {
+  return (products || []).filter((row) => Number(row.total_qty || 0) > 0);
+}
+
 function productSalesQueryParams(extra = {}, includeInventory = false) {
   const params = new URLSearchParams(extra);
   params.set('include_inventory', includeInventory ? '1' : '0');
   return params;
 }
 
-function ProductSalesTable({ products, showOrders = false, showInventory = false, emptyMessage = 'No hay productos vendidos en el periodo.' }) {
+function ProductSalesTable({
+  products,
+  showOrders = false,
+  showInventory = false,
+  emptyMessage = 'No hay productos vendidos en el periodo.',
+  actions = null,
+}) {
   const rows = products || [];
   if (!rows.length) {
     return <p className="text-sm text-[var(--ui-muted)]">{emptyMessage}</p>;
@@ -152,6 +158,7 @@ function ProductSalesTable({ products, showOrders = false, showInventory = false
   const withStock = showInventory || rows.some((r) => r.current_stock !== undefined && r.current_stock !== null);
   const totalQty = sumProductSalesQty(rows);
   const totalAmount = sumProductSalesAmount(rows);
+  const colCount = 4 + (withStock ? 1 : 0) + (showOrders ? 1 : 0);
   return (
     <div className="overflow-x-auto rounded-xl border border-[color:var(--ui-border)]">
       <div className="flex flex-wrap gap-x-4 gap-y-1 px-3 py-2 bg-[var(--ui-surface-2)] border-b border-[color:var(--ui-border)] text-xs text-[var(--ui-muted)]">
@@ -192,6 +199,13 @@ function ProductSalesTable({ products, showOrders = false, showInventory = false
               ) : null}
             </tr>
           ))}
+          {actions ? (
+            <tr>
+              <td colSpan={colCount} className="py-2 px-3 border-t border-[color:var(--ui-border)]">
+                <div className="flex justify-end">{actions}</div>
+              </td>
+            </tr>
+          ) : null}
         </tbody>
         <tfoot>
           <tr className="bg-[var(--ui-surface-2)] font-bold border-t border-[color:var(--ui-border)]">
@@ -575,6 +589,8 @@ function openNativeDatePicker(inputEl) {
 }
 
 export default function Reports() {
+  const { user } = useAuth();
+  const reportUsuario = user?.full_name || user?.username || 'Administrador';
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [reportSection, setReportSection] = useState(() => resolveInformesSection(new URLSearchParams(window.location.search)));
@@ -584,6 +600,7 @@ export default function Reports() {
   const [dailyLoading, setDailyLoading] = useState(false);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
   const [dailyAdjustments, setDailyAdjustments] = useState([]);
+  const [monthlyAdjustments, setMonthlyAdjustments] = useState([]);
   const [descuentosHighlightIds, setDescuentosHighlightIds] = useState([]);
   const [descuentosHighlightRange, setDescuentosHighlightRange] = useState({ from: '', to: '' });
   const dailyDateInputRef = useRef(null);
@@ -705,6 +722,17 @@ export default function Reports() {
   }, [salesDailyDate, tab, reportSection]);
 
   useEffect(() => {
+    if (reportSection !== 'ventas' || tab !== 'monthly' || !salesMonth) return;
+    const [y, m] = String(salesMonth).split('-').map(Number);
+    const last = new Date(y, m, 0).getDate();
+    const from = `${salesMonth}-01`;
+    const to = `${salesMonth}-${String(last).padStart(2, '0')}`;
+    api.get(`/reports/sales-adjustments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=2000`)
+      .then((res) => setMonthlyAdjustments(Array.isArray(res?.orders) ? res.orders : []))
+      .catch(() => setMonthlyAdjustments([]));
+  }, [salesMonth, tab, reportSection]);
+
+  useEffect(() => {
     if (reportSection !== 'ventas' || tab !== 'daily') return;
     loadDaily(salesDailyDate);
   }, [salesDailyDate, tab, reportSection, loadDaily]);
@@ -817,7 +845,7 @@ export default function Reports() {
     (async () => {
       setProductoCurrentLoading(true);
       try {
-        const params = productSalesQueryParams({ current: '1' }, productoIncludeInventory);
+        const params = productSalesQueryParams({ current: '1' }, false);
         const current = await api.get(`/reports/product-sales?${params.toString()}`);
         if (!cancelled) setProductoCurrentReport(current);
       } catch (err) {
@@ -827,7 +855,7 @@ export default function Reports() {
       }
     })();
     return () => { cancelled = true; };
-  }, [reportSection, productoIncludeInventory]);
+  }, [reportSection]);
 
   const loadClosedRegisters = useCallback(async () => {
     setClosedRegistersLoading(true);
@@ -947,28 +975,24 @@ export default function Reports() {
     }
   };
 
-  const downloadSalesPeriodReport = (format = 'csv') => {
+  const downloadSalesPeriodReport = (format = 'excel') => {
     if (tab === 'daily') {
       if (!dailyData) {
         toast.error('Cargue el informe del día para descargar');
         return;
       }
       const periodLabel = formatDate(dailyData.date || salesDailyDate);
-      const accounts = dailySalesAccounts.map((account) =>
-        mapSalesAccountExportRow(account, { formatDate, formatTime }),
+      const rows = dailySalesAccounts.map((account) =>
+        mapAccountToDetalleVentaRow(account, { formatDate }),
       );
       const baseName = buildDailySalesDownloadBaseName(dailyData.date || salesDailyDate);
       if (format === 'txt') {
-        downloadBlobFile(`${baseName}.txt`, buildDailySalesTxt(dailyData, accounts, { periodLabel, formatCurrency }));
+        downloadBlobFile(`${baseName}.txt`, buildDetalleVentasTxt({ periodLabel, usuario: reportUsuario, rows }));
         toast.success(`Informe del ${periodLabel} descargado (TXT)`);
         return;
       }
-      downloadBlobFile(
-        `${baseName}.csv`,
-        buildDailySalesCsv(dailyData, accounts, { periodLabel }),
-        'text/csv;charset=utf-8',
-      );
-      toast.success(`Informe del ${periodLabel} descargado (CSV)`);
+      downloadExcelFile(baseName, buildDetalleVentasExcelHtml({ periodLabel, usuario: reportUsuario, rows }));
+      toast.success(`Informe del ${periodLabel} descargado (Excel)`);
       return;
     }
     if (tab === 'monthly') {
@@ -976,28 +1000,25 @@ export default function Reports() {
         toast.error('Cargue el informe del mes para descargar');
         return;
       }
-      const periodLabel = formatMonthLabel(monthlyData.month || salesMonth);
-      const baseName = buildMonthlySalesDownloadBaseName(monthlyData.month || salesMonth);
+      const monthKey = monthlyData.month || salesMonth;
+      const periodLabel = monthDateRangeLabel(monthKey, formatDate);
+      const rows = monthlySalesAccounts.map((account) =>
+        mapAccountToDetalleVentaRow(account, { formatDate }),
+      );
+      const baseName = buildMonthlySalesDownloadBaseName(monthKey);
       if (format === 'txt') {
-        downloadBlobFile(
-          `${baseName}.txt`,
-          buildMonthlySalesTxt(monthlyData, { periodLabel, formatCurrency, formatDate }),
-        );
-        toast.success(`Informe de ${periodLabel} descargado (TXT)`);
+        downloadBlobFile(`${baseName}.txt`, buildDetalleVentasTxt({ periodLabel, usuario: reportUsuario, rows }));
+        toast.success(`Informe de ${formatMonthLabel(monthKey)} descargado (TXT)`);
         return;
       }
-      downloadBlobFile(
-        `${baseName}.csv`,
-        buildMonthlySalesCsv(monthlyData, { periodLabel, formatDate }),
-        'text/csv;charset=utf-8',
-      );
-      toast.success(`Informe de ${periodLabel} descargado (CSV)`);
+      downloadExcelFile(baseName, buildDetalleVentasExcelHtml({ periodLabel, usuario: reportUsuario, rows }));
+      toast.success(`Informe de ${formatMonthLabel(monthKey)} descargado (Excel)`);
       return;
     }
     toast.error('Seleccione Informe del Día o Informe del Mes');
   };
 
-  const downloadProductSalesReport = (report, format = 'csv') => {
+  const downloadProductSalesReport = (report, format = 'excel') => {
     const hasProducts = (report?.sold_products || []).length > 0
       || (report?.by_register || []).some((b) => (b.sold_products || []).length > 0);
     if (!hasProducts) {
@@ -1006,12 +1027,18 @@ export default function Reports() {
     }
     const baseName = buildProductSalesDownloadBaseName(report);
     if (format === 'txt') {
-      downloadBlobFile(`${baseName}.txt`, buildProductSalesTxt(report, { formatCurrency, formatDateTime }));
+      downloadBlobFile(`${baseName}.txt`, buildProductSalesTxt(report, {
+        formatDate,
+        usuario: reportUsuario,
+      }));
       toast.success('Informe descargado (TXT)');
       return;
     }
-    downloadBlobFile(`${baseName}.csv`, buildProductSalesCsv(report), 'text/csv;charset=utf-8');
-    toast.success('Informe descargado (CSV)');
+    downloadExcelFile(baseName, buildProductSalesExcelHtml(report, {
+      periodLabel: productSalesPeriodLabel(report, formatDate),
+      usuario: reportUsuario,
+    }));
+    toast.success('Informe descargado (Excel)');
   };
 
   const productoSelectedKey = useMemo(
@@ -1075,6 +1102,19 @@ export default function Reports() {
     return productoTotalReport.sold_products || [];
   }, [productoTotalReport]);
 
+  const productoCurrentSoldReport = useMemo(() => {
+    if (!productoCurrentReport) return null;
+    return {
+      ...productoCurrentReport,
+      include_inventory: false,
+      sold_products: productsSoldWithQty(productoCurrentReport.sold_products),
+      by_register: (productoCurrentReport.by_register || []).map((block) => ({
+        ...block,
+        sold_products: productsSoldWithQty(block.sold_products),
+      })),
+    };
+  }, [productoCurrentReport]);
+
   const productoCierresSummary = useMemo(() => {
     if (productoTotalMode !== 'cierres') return '';
     const count = productoSelectedIds.size;
@@ -1103,11 +1143,26 @@ export default function Reports() {
       }));
   }, [dailyData?.orders, dailyAdjustments]);
 
+  const monthlySalesAccounts = useMemo(() => {
+    const paid = (monthlyData?.orders || []).filter(
+      (o) => o.payment_status === 'paid' && o.status !== 'cancelled',
+    );
+    return buildPaidSalesAccountDisplayGroups(paid, monthlyAdjustments)
+      .filter((group) => group.salesOrderCount > 0)
+      .map((group) => ({
+        ...group,
+        paidAt: group.latestAt,
+        total: group.total,
+        primary: group.primary,
+        orders: group.orders,
+      }));
+  }, [monthlyData?.orders, monthlyAdjustments]);
+
   const loadProductoCurrentReport = async ({ silent = false } = {}) => {
     setProductoCurrentLoading(true);
     if (!silent) setProductoCurrentReport(null);
     try {
-      const params = productSalesQueryParams({ current: '1' }, productoIncludeInventory);
+      const params = productSalesQueryParams({ current: '1' }, false);
       const report = await api.get(`/reports/product-sales?${params.toString()}`);
       setProductoCurrentReport(report);
       if (!report?.register_open && !silent) {
@@ -1254,19 +1309,51 @@ export default function Reports() {
     }
     return `${lines.join('\n')}\n`;
   };
-  const downloadClosedRegisterReport = (register) => {
+  const buildClosedRegisterReportCsv = (register) => {
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [
+      ['Campo', 'Valor'],
+      ['Caja cerrada', register.id],
+      ['Cajero', register.user_name || '-'],
+      ['Apertura', formatDateTime(register.opened_at)],
+      ['Cierre', formatDateTime(register.closed_at)],
+      ['Venta total', Number(register.total_sales || 0).toFixed(2)],
+      ['Propinas', Number(register.arqueo?.total_tips || 0).toFixed(2)],
+      ['Efectivo', Number(register.total_cash || 0).toFixed(2)],
+      ['Yape', Number(register.total_yape || 0).toFixed(2)],
+      ['Plin', Number(register.total_plin || 0).toFixed(2)],
+      ['Tarjeta', Number(register.total_card || 0).toFixed(2)],
+      ['Efectivo esperado', Number(register.arqueo?.expected_cash || 0).toFixed(2)],
+      ['Efectivo contado', Number(register.arqueo?.counted_cash ?? register.closing_amount ?? 0).toFixed(2)],
+      ['Diferencia', Number(register.arqueo?.difference ?? 0).toFixed(2)],
+      ['Observaciones', register.arqueo?.observations || register.notes || 'Sin observaciones'],
+    ];
+    const products = Array.isArray(register.sold_products) ? register.sold_products : [];
+    if (products.length) {
+      rows.push([]);
+      rows.push(['Producto', 'Cantidad', 'Precio unit.', 'Total']);
+      products.forEach((row) => {
+        rows.push([
+          row.product_name,
+          Number(row.total_qty || 0),
+          Number(row.unit_price || 0).toFixed(2),
+          Number(row.total_amount || 0).toFixed(2),
+        ]);
+      });
+    }
+    return rows.map((r) => r.map(esc).join(',')).join('\n');
+  };
+  const downloadClosedRegisterReport = (register, format = 'excel') => {
     if (!register) return;
-    const content = buildClosedRegisterReportText(register);
     const dateStamp = String(register.closed_at || new Date().toISOString()).replace(/[:T]/g, '-').slice(0, 16);
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `cierre-caja-${dateStamp}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const baseName = `cierre-caja-${dateStamp}`;
+    if (format === 'txt') {
+      downloadBlobFile(`${baseName}.txt`, buildClosedRegisterReportText(register));
+      toast.success('Cierre descargado (TXT)');
+      return;
+    }
+    downloadExcelFile(baseName, buildClosedRegisterReportCsv(register));
+    toast.success('Cierre descargado (Excel)');
   };
 
   /** Impresión clásica (diálogo del navegador), no tiketera térmica. */
@@ -1407,29 +1494,6 @@ export default function Reports() {
           ))}
         </div>
       </div>
-      {(tab === 'daily' || tab === 'monthly') && (
-        <div className="flex gap-2 justify-end -mt-4 mb-6">
-          <button
-            type="button"
-            onClick={() => downloadSalesPeriodReport('csv')}
-            disabled={tab === 'daily' ? !dailyData : !monthlyData}
-            className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 disabled:opacity-50 bg-[var(--ui-surface)]"
-            title={tab === 'daily' ? `Descargar ventas del ${formatDate(salesDailyDate)}` : `Descargar ventas de ${formatMonthLabel(salesMonth)}`}
-          >
-            <MdDownload /> CSV
-          </button>
-          <button
-            type="button"
-            onClick={() => downloadSalesPeriodReport('txt')}
-            disabled={tab === 'daily' ? !dailyData : !monthlyData}
-            className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 disabled:opacity-50 bg-[var(--ui-surface)]"
-            title={tab === 'daily' ? `Descargar ventas del ${formatDate(salesDailyDate)}` : `Descargar ventas de ${formatMonthLabel(salesMonth)}`}
-          >
-            <MdDownload /> TXT
-          </button>
-        </div>
-      )}
-
       {tab === 'daily' && dailyLoading && !dailyData && (
         <p className="text-sm text-[var(--ui-muted)] mb-4">Cargando informe del día…</p>
       )}
@@ -1462,6 +1526,9 @@ export default function Reports() {
                 <div>
                   <p className="text-xs text-[var(--ui-muted)]">Cuentas cobradas</p>
                   <p className="text-xl font-bold text-sky-600">{dailyData.sales?.order_count || 0}</p>
+                  {Number(dailyData.lifetime_sales) > 0 ? (
+                    <p className="text-[10px] text-[var(--ui-muted)]">Interno {formatSaleNumero(dailyData.lifetime_sales)}</p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1505,79 +1572,27 @@ export default function Reports() {
             </div>
           </div>
 
-          {dailySalesAccounts.length > 0 && (
-            <div className="card">
-              <h3 className="font-bold rf-section-title mb-4">
-                Cuentas del día ({dailySalesAccounts.length})
-              </h3>
-              <p className="text-xs text-[var(--ui-muted)] mb-4 uppercase tracking-wide font-medium">
-                DETALLES
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100">
-                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Mesa / Destino</th>
-                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Estado</th>
-                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Cobro</th>
-                      <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Pago</th>
-                      <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Total cuenta</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dailySalesAccounts.map((account) => {
-                      const o = account.primary;
-                      const table = String(o?.table_number || '').trim();
-                      const isMesa = o?.type === 'dine_in' && table;
-                      const destino = isMesa
-                        ? `Mesa ${table}`
-                        : o?.type === 'delivery'
-                          ? 'Delivery'
-                          : o?.type === 'pickup'
-                            ? 'Para llevar'
-                            : (o?.customer_name || 'Mostrador');
-                      const payment = PAYMENT_METHOD_LABELS[String(o?.payment_method || 'efectivo')] || o?.payment_method || '—';
-                      const observed = account.observations?.observed;
-                      return (
-                        <tr key={account.key || `${account.paidAt}-${o?.id}`} className="border-b border-slate-50">
-                          <td className="py-2 px-3">
-                            <p className="font-medium">{destino}</p>
-                            {isMesa ? (
-                              <p className="text-xs text-[var(--ui-muted)]">{formatMesaLabel(table)}</p>
-                            ) : null}
-                          </td>
-                          <td className="py-2 px-3">
-                            {observed ? (
-                              <button
-                                type="button"
-                                onClick={() => goToDescuentosHighlight(account)}
-                                className="text-xs font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full hover:bg-amber-200"
-                                title="Ver detalle en Descuentos y Cortesías"
-                              >
-                                Observado
-                              </button>
-                            ) : (
-                              <span className="text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                                Correcto
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3">
-                            <p>{formatTime(account.paidAt)}</p>
-                            <p className="text-xs text-[var(--ui-muted)]">{formatDate(account.paidAt)}</p>
-                          </td>
-                          <td className="py-2 px-3">
-                            <span className="text-xs text-emerald-600 font-medium">{payment}</span>
-                          </td>
-                          <td className="py-2 px-3 text-right font-bold">{formatCurrency(account.total)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+          <div className="card">
+            <h3 className="font-bold rf-section-title mb-4">
+              Cuentas del día ({dailySalesAccounts.length})
+            </h3>
+            <p className="text-xs text-[var(--ui-muted)] mb-3 uppercase tracking-wide font-medium">
+              DETALLES
+            </p>
+            <div className="flex justify-end mb-3">
+              <DownloadExcelTxtButtons
+                onExcel={() => downloadSalesPeriodReport('excel')}
+                onTxt={() => downloadSalesPeriodReport('txt')}
+                excelTitle={`Descargar ventas del ${formatDate(dailyData.date || salesDailyDate)}`}
+                txtTitle={`Descargar ventas del ${formatDate(dailyData.date || salesDailyDate)}`}
+              />
             </div>
-          )}
+            <VentasCuentasTable
+              groups={dailySalesAccounts}
+              emptyMessage="No hay cuentas cobradas en este día"
+              onStatusClick={goToDescuentosHighlight}
+            />
+          </div>
         </div>
       )}
 
@@ -1596,6 +1611,9 @@ export default function Reports() {
               <p className="text-sm text-[var(--ui-muted)]">Ventas del Mes</p>
               <p className="text-2xl font-bold text-emerald-600">{formatCurrency(monthlyData.totalMonth?.total)}</p>
               <p className="text-xs text-[var(--ui-muted)]">{monthlyData.totalMonth?.orders || 0} cuentas</p>
+              {Number(monthlyData.lifetime_sales) > 0 ? (
+                <p className="text-[10px] text-[var(--ui-muted)]">Contador interno {formatSaleNumero(monthlyData.lifetime_sales)}</p>
+              ) : null}
             </div>
             <div className="card">
               <p className="text-sm text-[var(--ui-muted)]">IGV del Mes</p>
@@ -1605,6 +1623,23 @@ export default function Reports() {
               <p className="text-sm text-[var(--ui-muted)]">Cajas Cerradas</p>
               <p className="text-2xl font-bold text-sky-600">{monthlyData.closedRegistersMonth || 0}</p>
             </div>
+          </div>
+
+          <div className="card mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 className="font-bold rf-section-title">Cuentas del mes ({monthlySalesAccounts.length})</h3>
+              <DownloadExcelTxtButtons
+                onExcel={() => downloadSalesPeriodReport('excel')}
+                onTxt={() => downloadSalesPeriodReport('txt')}
+                excelTitle={`Descargar ventas de ${formatMonthLabel(monthlyData.month || salesMonth)}`}
+                txtTitle={`Descargar ventas de ${formatMonthLabel(monthlyData.month || salesMonth)}`}
+              />
+            </div>
+            <VentasCuentasTable
+              groups={monthlySalesAccounts}
+              emptyMessage="No hay cuentas cobradas en este mes"
+              onStatusClick={goToDescuentosHighlight}
+            />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -1705,20 +1740,6 @@ export default function Reports() {
 
       {reportSection === 'productos' && (
         <div className="space-y-6">
-          <label className="flex items-start gap-2 text-sm cursor-pointer max-w-xl">
-            <input
-              type="checkbox"
-              checked={productoIncludeInventory}
-              onChange={(e) => setProductoIncludeInventory(e.target.checked)}
-              className="mt-0.5 rounded border-[color:var(--ui-border)]"
-            />
-            <span>
-              <span className="font-medium text-[var(--ui-body-text)]">Incluir inventario completo de almacén</span>
-              <span className="block text-xs text-[var(--ui-muted)] mt-0.5">
-                Lista todos los productos no transformables con stock actual, aunque no tengan ventas en el periodo.
-              </span>
-            </span>
-          </label>
           {/* Caja actual */}
           <div className="card border-l-4 border-l-emerald-500">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -1740,47 +1761,32 @@ export default function Reports() {
                   <MdRefresh className={productoCurrentLoading ? 'animate-spin' : ''} />
                   {productoCurrentLoading ? 'Cargando…' : 'Ver turno actual'}
                 </button>
-                {productoCurrentReport?.register_open && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => downloadProductSalesReport(productoCurrentReport, 'csv')}
-                      className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-                    >
-                      <MdDownload /> CSV
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => downloadProductSalesReport(productoCurrentReport, 'txt')}
-                      className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-                    >
-                      <MdDownload /> TXT
-                    </button>
-                  </>
-                )}
               </div>
             </div>
             {productoCurrentReport?.register_open ? (
               <div className="space-y-3">
-                {(productoCurrentReport.by_register || []).map((block) => (
+                {(productoCurrentSoldReport?.by_register || []).map((block) => (
                   <p key={block.register_id} className="text-sm text-[var(--ui-muted)]">
                     {block.user_name || 'Cajero'} · abierta {formatDateTime(block.opened_at)} ·{' '}
                     <span className="font-semibold text-[var(--ui-body-text)]">
-                      {block.sold_products?.length || 0} productos · {block.sold_products?.reduce((s, r) => s + Number(r.total_qty || 0), 0) || 0} unidades
+                      {block.sold_products?.length || 0} productos · {sumProductSalesQty(block.sold_products)} unidades
                     </span>
                   </p>
                 ))}
-                {(productoCurrentReport.sold_products || []).length > 0 ? (
+                {(productoCurrentSoldReport?.sold_products || []).length > 0 ? (
                   <ProductSalesTable
-                    products={productoCurrentReport.sold_products}
-                    showInventory={productoIncludeInventory}
+                    products={productoCurrentSoldReport.sold_products}
                     emptyMessage="Aún no hay ventas de productos en este turno."
+                    actions={(
+                      <DownloadExcelTxtButtons
+                        onExcel={() => downloadProductSalesReport(productoCurrentSoldReport, 'excel')}
+                        onTxt={() => downloadProductSalesReport(productoCurrentSoldReport, 'txt')}
+                      />
+                    )}
                   />
                 ) : (
                   <p className="text-sm text-[var(--ui-muted)]">
-                    {productoIncludeInventory
-                      ? 'No hay productos de almacén registrados.'
-                      : 'Aún no hay ventas de productos en este turno.'}
+                    Aún no hay ventas de productos en este turno.
                   </p>
                 )}
               </div>
@@ -1803,20 +1809,32 @@ export default function Reports() {
             <p className="text-xs text-[var(--ui-muted)] mb-4">
               Consolida cantidades vendidas por producto en un rango de fechas o en los cierres que elija.
             </p>
-            <div className="flex flex-wrap gap-2 mb-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4 items-stretch">
               <button
                 type="button"
                 onClick={() => setProductoTotalMode('fechas')}
-                className={`text-xs px-3 py-1.5 rounded-lg border ${productoTotalMode === 'fechas' ? 'bg-[#3B82F6] text-white border-transparent' : 'border-[color:var(--ui-border)]'}`}
+                className={`text-xs px-3 py-2 rounded-lg border font-medium ${productoTotalMode === 'fechas' ? 'bg-[#3B82F6] text-white border-transparent' : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)]'}`}
               >
                 Por fechas
               </button>
               <button
                 type="button"
                 onClick={() => setProductoTotalMode('cierres')}
-                className={`text-xs px-3 py-1.5 rounded-lg border ${productoTotalMode === 'cierres' ? 'bg-[#3B82F6] text-white border-transparent' : 'border-[color:var(--ui-border)]'}`}
+                className={`text-xs px-3 py-2 rounded-lg border font-medium ${productoTotalMode === 'cierres' ? 'bg-[#3B82F6] text-white border-transparent' : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)]'}`}
               >
                 Por cierres seleccionados
+              </button>
+              <button
+                type="button"
+                onClick={() => setProductoIncludeInventory((v) => !v)}
+                className={`col-span-2 text-xs px-3 py-2 rounded-lg border font-medium ${
+                  productoIncludeInventory
+                    ? 'bg-[#3B82F6] text-white border-transparent'
+                    : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)]'
+                }`}
+                title={productoIncludeInventory ? 'Mostrando todos los productos' : 'Mostrando solo transformables'}
+              >
+                Todos Los Productos / Solo Transformables
               </button>
             </div>
             {productoTotalMode === 'fechas' ? (
@@ -1830,24 +1848,6 @@ export default function Reports() {
                     <label className="text-xs text-[var(--ui-muted)] block mb-1">Hasta</label>
                     <input type="date" value={productoTo} onChange={(e) => setProductoTo(e.target.value)} className="input-field" />
                   </div>
-                  {productoTotalReport && (
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => downloadProductSalesReport(productoTotalReport, 'csv')}
-                        className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-                      >
-                        <MdDownload /> Descargar CSV
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => downloadProductSalesReport(productoTotalReport, 'txt')}
-                        className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-                      >
-                        <MdDownload /> Descargar TXT
-                      </button>
-                    </div>
-                  )}
                 </div>
                 {productoTotalLoading && (
                   <p className="text-sm text-[var(--ui-muted)] mb-3 inline-flex items-center gap-2">
@@ -1866,6 +1866,12 @@ export default function Reports() {
                       emptyMessage={productoIncludeInventory
                         ? 'No hay productos de almacén registrados.'
                         : 'No hay ventas de productos en el periodo indicado.'}
+                      actions={(
+                        <DownloadExcelTxtButtons
+                          onExcel={() => downloadProductSalesReport(productoTotalReport, 'excel')}
+                          onTxt={() => downloadProductSalesReport(productoTotalReport, 'txt')}
+                        />
+                      )}
                     />
                   </div>
                 )}
@@ -1962,24 +1968,6 @@ export default function Reports() {
                             </span>
                           ) : null}
                         </p>
-                        {productoTotalReport && productoSelectedIds.size > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => downloadProductSalesReport(productoTotalReport, 'csv')}
-                              className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-                            >
-                              <MdDownload /> CSV
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => downloadProductSalesReport(productoTotalReport, 'txt')}
-                              className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-                            >
-                              <MdDownload /> TXT
-                            </button>
-                          </div>
-                        )}
                       </div>
                       {productoTotalLoading && !productoTotalReport && productoSelectedIds.size > 0 && (
                         <p className="text-sm text-[var(--ui-muted)]">Cargando productos del cierre…</p>
@@ -1995,6 +1983,12 @@ export default function Reports() {
                           emptyMessage={productoIncludeInventory
                             ? 'No hay productos de almacén registrados.'
                             : 'No hay ventas de productos en los cierres seleccionados.'}
+                          actions={(
+                            <DownloadExcelTxtButtons
+                              onExcel={() => downloadProductSalesReport(productoTotalReport, 'excel')}
+                              onTxt={() => downloadProductSalesReport(productoTotalReport, 'txt')}
+                            />
+                          )}
                         />
                       )}
                     </div>
@@ -2022,67 +2016,57 @@ export default function Reports() {
             )}
             {!productoInformeLoading && productoInformeDetail && (
               <div className="space-y-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="text-sm text-[color:var(--ui-muted)]">
-                    Cierre: {formatDateTime(productoInformeDetail.closed_at)} · {productoInformeDetail.user_name || '—'}
-                  </p>
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        downloadProductSalesReport(
-                          {
-                            mode: 'registers',
-                            filters: { register_ids: [productoInformeDetail.id].filter(Boolean) },
-                            sold_products: productoInformeDetail.sold_products || [],
-                            product_sales_total: productoInformeDetail.product_sales_total,
-                            by_register: [
-                              {
-                                user_name: productoInformeDetail.user_name,
-                                opened_at: productoInformeDetail.opened_at,
-                                closed_at: productoInformeDetail.closed_at,
-                                sold_products: productoInformeDetail.sold_products || [],
-                              },
-                            ],
-                          },
-                          'csv',
-                        )
-                      }
-                      className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg text-[color:var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1"
-                    >
-                      <MdDownload /> CSV
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        downloadProductSalesReport(
-                          {
-                            mode: 'registers',
-                            filters: { register_ids: [productoInformeDetail.id].filter(Boolean) },
-                            sold_products: productoInformeDetail.sold_products || [],
-                            product_sales_total: productoInformeDetail.product_sales_total,
-                            by_register: [
-                              {
-                                user_name: productoInformeDetail.user_name,
-                                opened_at: productoInformeDetail.opened_at,
-                                closed_at: productoInformeDetail.closed_at,
-                                sold_products: productoInformeDetail.sold_products || [],
-                              },
-                            ],
-                          },
-                          'txt',
-                        )
-                      }
-                      className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg text-[color:var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1"
-                    >
-                      <MdDownload /> TXT
-                    </button>
-                  </div>
-                </div>
+                <p className="text-sm text-[color:var(--ui-muted)]">
+                  Cierre: {formatDateTime(productoInformeDetail.closed_at)} · {productoInformeDetail.user_name || '—'}
+                </p>
                 {!(productoInformeDetail.sold_products || []).length ? (
                   <p className="text-[color:var(--ui-muted)] py-4">No hay líneas de producto en el periodo de este cierre.</p>
                 ) : (
-                  <ProductSalesTable products={productoInformeDetail.sold_products} />
+                  <ProductSalesTable
+                    products={productoInformeDetail.sold_products}
+                    actions={(
+                      <DownloadExcelTxtButtons
+                        onExcel={() =>
+                          downloadProductSalesReport(
+                            {
+                              mode: 'registers',
+                              filters: { register_ids: [productoInformeDetail.id].filter(Boolean) },
+                              sold_products: productoInformeDetail.sold_products || [],
+                              product_sales_total: productoInformeDetail.product_sales_total,
+                              by_register: [
+                                {
+                                  user_name: productoInformeDetail.user_name,
+                                  opened_at: productoInformeDetail.opened_at,
+                                  closed_at: productoInformeDetail.closed_at,
+                                  sold_products: productoInformeDetail.sold_products || [],
+                                },
+                              ],
+                            },
+                            'excel',
+                          )
+                        }
+                        onTxt={() =>
+                          downloadProductSalesReport(
+                            {
+                              mode: 'registers',
+                              filters: { register_ids: [productoInformeDetail.id].filter(Boolean) },
+                              sold_products: productoInformeDetail.sold_products || [],
+                              product_sales_total: productoInformeDetail.product_sales_total,
+                              by_register: [
+                                {
+                                  user_name: productoInformeDetail.user_name,
+                                  opened_at: productoInformeDetail.opened_at,
+                                  closed_at: productoInformeDetail.closed_at,
+                                  sold_products: productoInformeDetail.sold_products || [],
+                                },
+                              ],
+                            },
+                            'txt',
+                          )
+                        }
+                      />
+                    )}
+                  />
                 )}
               </div>
             )}
@@ -2152,12 +2136,10 @@ export default function Reports() {
                           >
                             <MdPrint /> {printingClosedRegisterId === r.id ? 'Preparando…' : 'Imprimir'}
                           </button>
-                          <button
-                            onClick={() => downloadClosedRegisterReport(r)}
-                            className="text-xs px-3 py-1.5 bg-[#3B82F6] text-white rounded-lg hover:bg-[#2563EB] inline-flex items-center gap-1"
-                          >
-                            <MdDownload /> Descargar
-                          </button>
+                          <DownloadExcelTxtButtons
+                            onExcel={() => downloadClosedRegisterReport(r, 'excel')}
+                            onTxt={() => downloadClosedRegisterReport(r, 'txt')}
+                          />
                         </div>
                       </td>
                     </tr>
@@ -2186,22 +2168,12 @@ export default function Reports() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => downloadPurchaseGroup(group, 'csv')}
-                        className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 hover:bg-[var(--ui-sidebar-hover)]"
-                        title="Descargar compra en CSV"
-                      >
-                        <MdDownload /> CSV
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => downloadPurchaseGroup(group, 'txt')}
-                        className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 hover:bg-[var(--ui-sidebar-hover)]"
-                        title="Descargar compra en TXT"
-                      >
-                        <MdDownload /> TXT
-                      </button>
+                      <DownloadExcelTxtButtons
+                        onExcel={() => downloadPurchaseGroup(group, 'excel')}
+                        onTxt={() => downloadPurchaseGroup(group, 'txt')}
+                        excelTitle="Descargar compra en Excel"
+                        txtTitle="Descargar compra en TXT"
+                      />
                       <p className="font-bold text-red-700">{formatCurrency(group.total)}</p>
                     </div>
                   </div>
@@ -2648,22 +2620,14 @@ export default function Reports() {
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => downloadInventoryCuadresByDate(group, 'csv')}
-                        className="text-xs px-3 py-1.5 border border-sky-300 rounded-lg inline-flex items-center gap-1 text-sky-700 bg-sky-50 hover:bg-sky-100"
-                        title={`Descargar todos los cuadres del ${group.dateLabel}`}
-                      >
-                        <MdDownload /> Fecha CSV
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => downloadInventoryCuadresByDate(group, 'txt')}
-                        className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 hover:bg-[var(--ui-sidebar-hover)]"
-                        title={`Descargar todos los cuadres del ${group.dateLabel}`}
-                      >
-                        <MdDownload /> Fecha TXT
-                      </button>
+                      <DownloadExcelTxtButtons
+                        onExcel={() => downloadInventoryCuadresByDate(group, 'excel')}
+                        onTxt={() => downloadInventoryCuadresByDate(group, 'txt')}
+                        excelTitle={`Descargar todos los cuadres del ${group.dateLabel}`}
+                        txtTitle={`Descargar todos los cuadres del ${group.dateLabel}`}
+                        excelLabel="Fecha Excel"
+                        txtLabel="Fecha TXT"
+                      />
                     </div>
                   </div>
 
@@ -2685,22 +2649,12 @@ export default function Reports() {
                             </p>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => downloadInventoryCuadreSession(session, group, 'csv')}
-                              className="text-xs px-3 py-1.5 border border-sky-300 rounded-lg inline-flex items-center gap-1 text-sky-700 bg-sky-50 hover:bg-sky-100"
-                              title="Descargar este cuadre en CSV"
-                            >
-                              <MdDownload /> CSV
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => downloadInventoryCuadreSession(session, group, 'txt')}
-                              className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 hover:bg-[var(--ui-sidebar-hover)]"
-                              title="Descargar este cuadre en TXT"
-                            >
-                              <MdDownload /> TXT
-                            </button>
+                            <DownloadExcelTxtButtons
+                              onExcel={() => downloadInventoryCuadreSession(session, group, 'excel')}
+                              onTxt={() => downloadInventoryCuadreSession(session, group, 'txt')}
+                              excelTitle="Descargar este cuadre en Excel"
+                              txtTitle="Descargar este cuadre en TXT"
+                            />
                           </div>
                         </div>
                         <div className="space-y-1">
@@ -2785,13 +2739,10 @@ export default function Reports() {
               >
                 <MdPrint /> {printingClosedRegisterId === selectedClosedRegister.id ? 'Preparando…' : 'Imprimir cierre de caja'}
               </button>
-              <button
-                type="button"
-                onClick={() => downloadClosedRegisterReport(selectedClosedRegister)}
-                className="text-xs px-3 py-1.5 bg-[#3B82F6] text-white rounded-lg hover:bg-[#2563EB] inline-flex items-center gap-1"
-              >
-                <MdDownload /> Descargar reporte
-              </button>
+              <DownloadExcelTxtButtons
+                onExcel={() => downloadClosedRegisterReport(selectedClosedRegister, 'excel')}
+                onTxt={() => downloadClosedRegisterReport(selectedClosedRegister, 'txt')}
+              />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="bg-slate-50 rounded-lg p-3">

@@ -3,7 +3,8 @@ import { MdDownload, MdClose } from 'react-icons/md';
 import { downloadIndicatorsExport, exportHubJsonClient } from '../../utils/indicatorsExport';
 
 const FORMATS = [
-  { id: 'csv', label: 'CSV / Excel' },
+  { id: 'csv', label: 'Excel' },
+  { id: 'txt', label: 'TXT' },
   { id: 'pdf', label: 'PDF' },
   { id: 'json', label: 'JSON' },
 ];

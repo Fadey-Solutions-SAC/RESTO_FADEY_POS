@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { api, formatCurrency, formatDateTime } from '../../utils/api';
-import { downloadBlobFile } from '../../utils/inventoryCuadreExport';
+import { downloadBlobFile, downloadExcelFile } from '../../utils/inventoryCuadreExport';
+import DownloadExcelTxtButtons from './DownloadExcelTxtButtons';
 import {
   formatMesaLabel,
   parseAdjustmentReason,
@@ -11,7 +12,7 @@ import {
   buildSalesAdjustmentsTxt,
   buildSalesAdjustmentsDownloadBaseName,
 } from '../../utils/salesAdjustmentsExport';
-import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdDelete, MdRemoveCircleOutline, MdVisibility, MdDownload } from 'react-icons/md';
+import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdDelete, MdRemoveCircleOutline, MdVisibility } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import { adjustmentKindBadge } from '../../utils/uiBadges';
 import toast from 'react-hot-toast';
@@ -53,22 +54,64 @@ function recordReferenceAmount(o) {
   return adjustmentReferenceAmount(o);
 }
 
-function groupProductsFromOrders(orders, kindFilter = 'all') {
+function orderEventTime(o) {
+  return new Date(o?.updated_at || o?.created_at || 0).getTime();
+}
+
+function orderItems(o) {
+  if ((o.items || []).length) return o.items;
+  return [{
+    product_id: o.product_id,
+    product_name: o.product_name || '—',
+    quantity: o.quantity_removed || 0,
+  }];
+}
+
+function occurrenceFromOrder(o, qty) {
+  return {
+    record: o,
+    recordId: o.id,
+    quantity: qty,
+    reason: rowReason(o),
+    fecha: o.updated_at || o.created_at,
+    order_number: o.order_number,
+    table_number: o.table_number,
+    type: o.type,
+    created_by: o.created_by_user_name || o.customer_name || '',
+  };
+}
+
+/** Una fila por ítem, en el orden en que se agregaron (más antiguo primero). */
+function flattenAdjustmentRows(orders) {
+  const rows = [];
+  (orders || []).forEach((o, orderIdx) => {
+    const kind = o.adjustment_kind;
+    orderItems(o).forEach((it, itemIdx) => {
+      const qty = Number(it.quantity ?? it.quantity_removed ?? 0);
+      rows.push({
+        key: `${o.id}::${it.product_id || it.product_name || itemIdx}::${orderIdx}::${itemIdx}`,
+        product_id: it.product_id,
+        product_name: it.product_name || '—',
+        kind,
+        totalQuantity: qty,
+        sortTime: orderEventTime(o),
+        occurrences: [occurrenceFromOrder(o, qty)],
+      });
+    });
+  });
+  return rows.sort((a, b) => a.sortTime - b.sortTime || String(a.key).localeCompare(String(b.key)));
+}
+
+/** Agrupa por producto (Cortesías, Descuentos o Eliminados). */
+function groupProductsFromOrders(orders) {
   const map = new Map();
   for (const o of orders || []) {
     const kind = o.adjustment_kind;
-    const reason = rowReason(o);
-    const items = (o.items || []).length ? o.items : [{
-      product_id: o.product_id,
-      product_name: o.product_name || '—',
-      quantity: o.quantity_removed || 0,
-    }];
-    for (const it of items) {
+    for (const it of orderItems(o)) {
       const productKey = String(it.product_id || it.product_name || '').trim() || String(it.product_name || '—');
-      const groupKey = kindFilter === 'all' ? `${kind}::${productKey}` : productKey;
       const qty = Number(it.quantity ?? it.quantity_removed ?? 0);
-      const prev = map.get(groupKey) || {
-        key: groupKey,
+      const prev = map.get(productKey) || {
+        key: productKey,
         product_id: it.product_id,
         product_name: it.product_name || '—',
         kind,
@@ -76,18 +119,8 @@ function groupProductsFromOrders(orders, kindFilter = 'all') {
         occurrences: [],
       };
       prev.totalQuantity += qty;
-      prev.occurrences.push({
-        record: o,
-        recordId: o.id,
-        quantity: qty,
-        reason,
-        fecha: o.updated_at || o.created_at,
-        order_number: o.order_number,
-        table_number: o.table_number,
-        type: o.type,
-        created_by: o.created_by_user_name || o.customer_name || '',
-      });
-      map.set(groupKey, prev);
+      prev.occurrences.push(occurrenceFromOrder(o, qty));
+      map.set(productKey, prev);
     }
   }
   return [...map.values()].sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), 'es'));
@@ -221,7 +254,9 @@ export default function CortesiasReportSection({
   }, [data.orders, search, kindFilter]);
 
   const groupedProducts = useMemo(
-    () => groupProductsFromOrders(filteredOrders, kindFilter),
+    () => (kindFilter === 'all'
+      ? flattenAdjustmentRows(filteredOrders)
+      : groupProductsFromOrders(filteredOrders)),
     [filteredOrders, kindFilter],
   );
 
@@ -264,7 +299,7 @@ export default function CortesiasReportSection({
     };
   }, [filteredOrders, groupedProducts.length]);
 
-  const downloadReport = (format = 'csv') => {
+  const downloadReport = (format = 'excel') => {
     if (!groupedProducts.length) {
       toast.error('No hay productos para descargar en el periodo seleccionado');
       return;
@@ -283,8 +318,8 @@ export default function CortesiasReportSection({
       toast.success('Informe descargado (TXT)');
       return;
     }
-    downloadBlobFile(`${baseName}.csv`, buildSalesAdjustmentsCsv(payload), 'text/csv;charset=utf-8');
-    toast.success('Informe descargado (CSV)');
+    downloadExcelFile(baseName, buildSalesAdjustmentsCsv(payload));
+    toast.success('Informe descargado (Excel)');
   };
 
   if (loading && !data.orders.length) {
@@ -341,22 +376,11 @@ export default function CortesiasReportSection({
           <button type="button" onClick={load} className="btn-secondary flex items-center gap-2" disabled={!datesValid}>
             <MdRefresh /> Actualizar
           </button>
-          <button
-            type="button"
-            onClick={() => downloadReport('csv')}
-            className="text-xs px-3 py-2 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
+          <DownloadExcelTxtButtons
+            onExcel={() => downloadReport('excel')}
+            onTxt={() => downloadReport('txt')}
             disabled={!groupedProducts.length}
-          >
-            <MdDownload /> CSV
-          </button>
-          <button
-            type="button"
-            onClick={() => downloadReport('txt')}
-            className="text-xs px-3 py-2 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1"
-            disabled={!groupedProducts.length}
-          >
-            <MdDownload /> TXT
-          </button>
+          />
         </div>
         {!datesValid && (
           <p className="text-xs text-red-600 mt-2">La fecha «Desde» no puede ser posterior a «Hasta».</p>
@@ -379,7 +403,8 @@ export default function CortesiasReportSection({
         </div>
         <p className="text-xs text-[var(--ui-muted)] mt-3">
           Cortesías y descuentos descuentan inventario al cobrar. Los eliminados de mesa no afectan inventario.
-          La lista agrupa productos del periodo y filtro seleccionados; use «Ver motivo» para el detalle de cada registro.
+          En Todos se listan los registros en el orden en que se agregaron. En Cortesías, Descuentos o Eliminados
+          se agrupan por producto; use «Ver motivo» para el detalle de cada registro.
         </p>
       </div>
 
@@ -434,7 +459,7 @@ export default function CortesiasReportSection({
                     >
                       <MdVisibility className="text-sm" />
                       Ver motivo
-                      {group.occurrences.length > 1 ? (
+                      {kindFilter !== 'all' && group.occurrences.length > 1 ? (
                         <span className="text-[var(--ui-muted)]">({group.occurrences.length})</span>
                       ) : null}
                     </button>

@@ -10,7 +10,8 @@ import {
   formatInsumoWithUnit,
 } from '../utils/api';
 import { formatCatalogNameInput } from '../utils/catalogNameFormat';
-import { downloadReconciliationRecord } from '../utils/inventoryCuadreExport';
+import { downloadReconciliationRecord, downloadBlobFile, downloadExcelFile } from '../utils/inventoryCuadreExport';
+import DownloadExcelTxtButtons from './admin/DownloadExcelTxtButtons';
 import {
   INSUMO_UM_OPTIONS,
   isMasaOrLitrajeUm,
@@ -18,7 +19,7 @@ import {
   normalizeInsumoUm,
 } from '../utils/insumoUnidadMedida';
 import toast from 'react-hot-toast';
-import { MdDownload, MdWarning, MdInventory2, MdAdd, MdList, MdExpandMore, MdExpandLess } from 'react-icons/md';
+import { MdWarning, MdInventory2, MdAdd, MdList, MdExpandMore, MdExpandLess } from 'react-icons/md';
 import Modal from './Modal';
 
 const TABS = [
@@ -495,7 +496,7 @@ export default function LogisticaKardexModule() {
     }
   };
 
-  const descargarKardexCsv = async () => {
+  const descargarKardex = async (format = 'excel') => {
     if (!kardexInsumo) return;
     const token = localStorage.getItem('token');
     const res = await fetch(`${API_BASE}${BASE}/export/kardex/${kardexInsumo}`, {
@@ -503,20 +504,25 @@ export default function LogisticaKardexModule() {
     });
     if (!res.ok) {
       const t = await res.text();
+      let message = 'No se pudo exportar';
       try {
         const j = JSON.parse(t);
-        throw new Error(j.error || t);
+        if (j?.error) message = j.error;
+        else if (t) message = t;
       } catch (_) {
-        throw new Error('No se pudo exportar');
+        if (t) message = t;
       }
+      throw new Error(message);
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `kardex-${kardexInsumo}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const text = await res.text();
+    const baseName = `kardex-${kardexInsumo}`;
+    if (format === 'txt') {
+      downloadBlobFile(`${baseName}.txt`, text);
+      toast.success('Kardex descargado (TXT)');
+      return;
+    }
+    downloadExcelFile(baseName, text);
+    toast.success('Kardex descargado (Excel)');
   };
 
   const logisticsProductsFiltered = whProducts
@@ -1286,13 +1292,10 @@ export default function LogisticaKardexModule() {
               />
             </div>
             {kardexInsumo && (
-              <button
-                type="button"
-                onClick={() => descargarKardexCsv().catch((e) => toast.error(e.message))}
-                className="flex items-center gap-1 text-sm bg-[var(--ui-surface)] hover:bg-[var(--ui-sidebar-hover)] border border-[color:var(--ui-border)] rounded-lg px-2 py-1.5 text-[var(--ui-body-text)]"
-              >
-                <MdDownload /> Excel (CSV)
-              </button>
+              <DownloadExcelTxtButtons
+                onExcel={() => descargarKardex('excel').catch((e) => toast.error(e.message))}
+                onTxt={() => descargarKardex('txt').catch((e) => toast.error(e.message))}
+              />
             )}
           </div>
           {kardexData && (
@@ -1757,20 +1760,10 @@ export default function LogisticaKardexModule() {
                   <p className="text-xs text-[var(--ui-muted)]">{formatDateTime(rec.created_at)}</p>
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => downloadReconciliationRecord(rec, { format: 'csv', formatDate, formatDateTime, toastFn: toast })}
-                    className="btn-secondary text-xs inline-flex items-center gap-1"
-                  >
-                    <MdDownload /> CSV
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => downloadReconciliationRecord(rec, { format: 'txt', formatDate, formatDateTime, toastFn: toast })}
-                    className="btn-secondary text-xs inline-flex items-center gap-1"
-                  >
-                    <MdDownload /> TXT
-                  </button>
+                  <DownloadExcelTxtButtons
+                    onExcel={() => downloadReconciliationRecord(rec, { format: 'excel', formatDate, formatDateTime, toastFn: toast })}
+                    onTxt={() => downloadReconciliationRecord(rec, { format: 'txt', formatDate, formatDateTime, toastFn: toast })}
+                  />
                 </div>
               </div>
               <p className="text-xs text-[var(--ui-muted)] mb-2">

@@ -207,21 +207,56 @@ function findTablesInCache() {
   return Array.isArray(best) ? clone(best) : [];
 }
 
+function findCatalogMap() {
+  const cache = getCache();
+  const map = new Map();
+  for (const [key, row] of Object.entries(cache)) {
+    const p = pathOf(key);
+    const raw = row?.data;
+    let list = [];
+    if (p === '/products' || p.startsWith('/products/')) {
+      list = Array.isArray(raw) ? raw : [];
+    } else if (p === '/admin-modules/combos' || p.startsWith('/admin-modules/combos')) {
+      list = Array.isArray(raw) ? raw : [];
+    } else {
+      continue;
+    }
+    for (const prod of list) {
+      if (!prod || typeof prod !== 'object') continue;
+      if (prod.id) map.set(String(prod.id), prod);
+      if (prod.combo_id) map.set(`combo:${prod.combo_id}`, prod);
+      if (p.includes('combos') && prod.id) map.set(`combo:${prod.id}`, prod);
+    }
+  }
+  return map;
+}
+
+function hydrateOrderItem(it, catalog) {
+  const qty = Number(it?.quantity || 1);
+  const comboId = String(it?.combo_id || '').trim();
+  const pid = String(it?.product_id || '').trim();
+  const src = (comboId && (catalog.get(`combo:${comboId}`) || catalog.get(comboId)))
+    || (pid && catalog.get(pid))
+    || null;
+  const name = String(it?.product_name || it?.name || src?.name || src?.product_name || '').trim();
+  const unit = Number(it?.unit_price ?? it?.price ?? src?.price ?? src?.unit_price ?? 0);
+  const sub = it?.subtotal != null ? Number(it.subtotal) : qty * unit;
+  return {
+    ...it,
+    id: it?.id || uuid(),
+    product_id: pid || it?.product_id,
+    product_name: name || 'Producto',
+    quantity: qty,
+    unit_price: unit,
+    subtotal: sub,
+    notes: it?.notes || '',
+    variant_name: it?.variant_name || it?.modifier_option || '',
+  };
+}
+
 function buildOptimisticOrder(body) {
-  const items = (Array.isArray(body.items) ? body.items : []).map((it) => {
-    const qty = Number(it.quantity || 1);
-    const unit = Number(it.unit_price ?? it.price ?? 0);
-    return {
-      id: it.id || uuid(),
-      product_id: it.product_id,
-      product_name: it.product_name || it.name || 'Producto',
-      quantity: qty,
-      unit_price: unit,
-      subtotal: it.subtotal != null ? Number(it.subtotal) : qty * unit,
-      notes: it.notes || '',
-      variant_name: it.variant_name || '',
-    };
-  });
+  const catalog = findCatalogMap();
+  const items = (Array.isArray(body.items) ? body.items : []).map((it) => hydrateOrderItem(it, catalog));
   const subtotal = items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
   const discount = Number(body.discount || 0);
   const delivery = Number(body.delivery_fee || 0);
@@ -379,20 +414,52 @@ function applyQueueToOrders(orders, queue) {
 
 export function overlayCachedGet(endpoint, data) {
   const queue = getMutationQueue();
-  if (!queue.length || data == null) return data;
+  const catalog = findCatalogMap();
+  const hydrateList = (list) => {
+    if (!Array.isArray(list) || !catalog.size) return list;
+    return list.map((o) => {
+      const items = (o.items || []).map((it) => hydrateOrderItem(it, catalog));
+      const subtotal = items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
+      const discount = Number(o.discount || 0);
+      const delivery = Number(o.delivery_fee || 0);
+      const looksEmpty = Number(o.total || o.subtotal || 0) <= 0 && subtotal > 0;
+      return {
+        ...o,
+        items,
+        ...(looksEmpty
+          ? { subtotal, total: Math.max(0, subtotal + delivery - discount) }
+          : {}),
+      };
+    });
+  };
+  const hydrateTables = (tables) => {
+    if (!Array.isArray(tables) || !catalog.size) return tables;
+    return tables.map((t) => recomputeTable({
+      ...t,
+      orders: hydrateList(t.orders || []),
+    }));
+  };
+  let next = data;
+  if (queue.length && data != null) {
+    const p = pathOf(endpoint);
+    if (p === '/tables') {
+      const list = Array.isArray(data) ? data : [];
+      next = applyQueueToTables(list, queue);
+    } else if (/^\/tables\/[^/]+$/.test(p) && data && typeof data === 'object' && !Array.isArray(data)) {
+      const tables = applyQueueToTables([data], queue);
+      next = tables[0] || data;
+    } else if (p === '/orders') {
+      next = applyQueueToOrders(data, queue);
+    }
+  }
+  if (next == null) return next;
   const p = pathOf(endpoint);
-  if (p === '/tables') {
-    const list = Array.isArray(data) ? data : [];
-    return applyQueueToTables(list, queue);
+  if (p === '/tables' && Array.isArray(next)) return hydrateTables(next);
+  if (/^\/tables\/[^/]+$/.test(p) && next && typeof next === 'object' && !Array.isArray(next)) {
+    return hydrateTables([next])[0] || next;
   }
-  if (/^\/tables\/[^/]+$/.test(p) && data && typeof data === 'object' && !Array.isArray(data)) {
-    const tables = applyQueueToTables([data], queue);
-    return tables[0] || data;
-  }
-  if (p === '/orders') {
-    return applyQueueToOrders(data, queue);
-  }
-  return data;
+  if (p === '/orders') return hydrateList(next);
+  return next;
 }
 
 export function prepareMutation(method, endpoint, bodyText) {

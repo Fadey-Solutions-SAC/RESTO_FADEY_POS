@@ -71,12 +71,23 @@ export function filterOrderingProducts(products = [], { search = '', selectedCat
 }
 
 export function buildOrderItemsPayload(cart = []) {
-  return cart.map((i) => ({
-    product_id: i.product_id,
-    combo_id: i.combo_id || undefined,
-    quantity: i.quantity,
-    modifier_id: i.modifier_id || '',
-    modifier_option: i.modifier_option || '',
-    notes: String(i.notes || '').trim(),
-  }));
+  return cart.map((i) => {
+    const qty = Number(i.quantity || 1);
+    const unit = Number(i.price ?? i.unit_price ?? 0);
+    const name = String(i.name || i.product_name || '').trim();
+    return {
+      product_id: i.product_id,
+      combo_id: i.combo_id || undefined,
+      quantity: qty,
+      modifier_id: i.modifier_id || '',
+      modifier_option: i.modifier_option || '',
+      notes: String(i.notes || '').trim(),
+      product_name: name,
+      name,
+      unit_price: unit,
+      price: unit,
+      subtotal: qty * unit,
+      variant_name: i.variant_name || i.modifier_option || '',
+    };
+  });
 }

@@ -829,6 +829,13 @@ router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, re
     adjustments,
     date: dateKey,
     is_today: isToday,
+    lifetime_sales: (() => {
+      try {
+        return require('../services/saleNumberService').currentSaleCount();
+      } catch {
+        return 0;
+      }
+    })(),
   });
 });
 
@@ -876,6 +883,15 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
   const monthOrders = queryPaidSalesOrders(`strftime('%Y-%m', ${ps.EVENT_LOCAL}) = ?`, [monthKey]);
   const dailySales = summarizeSalesAccountsByDay(monthOrders);
 
+  const monthDetalleOrders = queryAll(
+    `SELECT * FROM orders
+     WHERE strftime('%Y-%m', ${ps.EVENT_LOCAL}) = ?
+       AND payment_status = 'paid'
+       AND status != 'cancelled'
+     ORDER BY ${ps.EVENT_AT} ASC`,
+    [monthKey],
+  );
+
   const trendOrders = queryPaidSalesOrders(
     `strftime('%Y-%m', ${ps.EVENT_LOCAL}) >= ? AND strftime('%Y-%m', ${ps.EVENT_LOCAL}) <= ?`,
     [startKey, endKey],
@@ -903,6 +919,14 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
     dailySales,
     monthlySales,
     totalMonth,
+    orders: monthDetalleOrders,
+    lifetime_sales: (() => {
+      try {
+        return require('../services/saleNumberService').currentSaleCount();
+      } catch {
+        return 0;
+      }
+    })(),
   });
 });
 

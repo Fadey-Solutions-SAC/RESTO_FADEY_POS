@@ -380,9 +380,31 @@ function formatMesaRemovalReason(prefix, reason) {
   return prefixRe.test(text) ? text : `${prefix}: ${text}`;
 }
 
+/** Completa nombre/precio desde el catálogo local (caja sin conexión). */
+function hydratePosOrderItem(it, productsById) {
+  if (!it) return it;
+  const named = String(it.product_name || it.name || '').trim();
+  const hasName = named && named !== 'Producto' && named !== '—';
+  const hasPrice = Number(it.unit_price ?? it.price ?? 0) > 0;
+  if (hasName && hasPrice) return it;
+  const comboId = String(it.combo_id || '').trim();
+  const p = (comboId && productsById.get(`combo:${comboId}`)) || productsById.get(it.product_id);
+  if (!p) return it;
+  const qty = Number(it.quantity || 1);
+  const unit = hasPrice ? Number(it.unit_price ?? it.price) : Number(p.price || 0);
+  return {
+    ...it,
+    product_name: hasName ? named : (p.name || named || 'Producto'),
+    unit_price: unit,
+    subtotal: it.subtotal != null && hasPrice ? Number(it.subtotal) : unit * qty,
+  };
+}
+
 /** Todos los productos de la mesa agrupados por línea de producto (misma lógica que precuenta/cobro). */
-function mergedProductsOnTable(table) {
-  const allItems = (table?.orders || []).flatMap((o) => o.items || []);
+function mergedProductsOnTable(table, productsById) {
+  const allItems = (table?.orders || []).flatMap((o) =>
+    (o.items || []).map((it) => (productsById ? hydratePosOrderItem(it, productsById) : it))
+  );
   return groupItemsByProductNameForBill(allItems);
 }
 
@@ -2412,13 +2434,23 @@ export default function POSPanel() {
           }
         }
         const linesPayload = (lines) =>
-          lines.map((x) => ({
-            product_id: x.product_id,
-            quantity: x.quantity,
-            modifier_id: x.modifier_id || '',
-            modifier_option: x.modifier_option || '',
-            notes: String(x.notes || '').trim(),
-          }));
+          lines.map((x) => {
+            const qty = Number(x.quantity || 1);
+            const unit = Number(x.price ?? x.unit_price ?? 0);
+            const name = String(x.name || x.product_name || '').trim();
+            return {
+              product_id: x.product_id,
+              quantity: qty,
+              modifier_id: x.modifier_id || '',
+              modifier_option: x.modifier_option || '',
+              notes: String(x.notes || '').trim(),
+              product_name: name,
+              name,
+              unit_price: unit,
+              price: unit,
+              subtotal: qty * unit,
+            };
+          });
         const cancelReason = formatMesaRemovalReason(
           willCancelOrders ? 'Liberar mesa' : 'Productos retirados',
           removalReason
@@ -2746,19 +2778,26 @@ export default function POSPanel() {
       .sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), 'es'));
   }, [allOrders, closingData?.opened_at, register?.opened_at, closingAtPreview]);
 
+  const hydratedSelectedOrders = useMemo(
+    () => (selectedTable?.orders || []).map((o) => ({
+      ...o,
+      items: (o.items || []).map((it) => hydratePosOrderItem(it, productsById)),
+    })),
+    [selectedTable, productsById]
+  );
+
   const selectionBaseTotal = useMemo(() => {
     if (!selectedTable) return 0;
-    const orders = selectedTable.orders || [];
     if (!splitMode) {
-      return orders.reduce((sum, o) => sum + getOrderChargeTotal(o), 0);
+      return hydratedSelectedOrders.reduce((sum, o) => sum + getOrderChargeTotal(o), 0);
     }
-    return computeTableSplitSelectionBase(orders, selectedOrderItemIds, selectedOrderItemQtys);
-  }, [selectedTable, splitMode, selectedOrderItemIds, selectedOrderItemQtys]);
+    return computeTableSplitSelectionBase(hydratedSelectedOrders, selectedOrderItemIds, selectedOrderItemQtys);
+  }, [selectedTable, splitMode, selectedOrderItemIds, selectedOrderItemQtys, hydratedSelectedOrders]);
 
   const splitBillLines = useMemo(() => {
     if (!selectedTable || !splitMode) return [];
     const rows = [];
-    for (const o of selectedTable.orders || []) {
+    for (const o of hydratedSelectedOrders) {
       for (const it of o.items || []) {
         const qty = Number(it.quantity || 0);
         const unit = Number(it.unit_price ?? 0);
@@ -2774,7 +2813,7 @@ export default function POSPanel() {
       }
     }
     return rows;
-  }, [selectedTable, splitMode]);
+  }, [selectedTable, splitMode, hydratedSelectedOrders]);
 
   const discountTargetLabel = useMemo(() => {
     if (!discountConfig.active && !discountConfig.applied) return '';
@@ -2837,7 +2876,7 @@ export default function POSPanel() {
   );
   const billLineItemsGrouped = useMemo(() => {
     if (!selectedTable) return [];
-    const orders = selectedTable.orders || [];
+    const orders = hydratedSelectedOrders;
     if (splitMode) {
       const set = new Set(selectedOrderItemIds);
       const picked = [];
@@ -2851,7 +2890,7 @@ export default function POSPanel() {
       return groupItemsByProductNameForBill(picked);
     }
     return groupItemsByProductNameForBill(orders.flatMap((o) => o.items || []));
-  }, [selectedTable, splitMode, selectedOrderItemIds, selectedOrderItemQtys]);
+  }, [selectedTable, splitMode, selectedOrderItemIds, selectedOrderItemQtys, hydratedSelectedOrders]);
   const occupiedHours = (() => {
     const timestamps = (selectedTable?.orders || [])
       .map(o => o.created_at)
@@ -2992,7 +3031,7 @@ export default function POSPanel() {
 
   const printTableOrder = async (table) => {
     if (!table) return;
-    const groupedTable = mergedProductsOnTable(table);
+    const groupedTable = mergedProductsOnTable(table, productsById);
     if (!groupedTable.length) return toast.error('La mesa no tiene pedidos para precuenta');
     const tableTotal = (table.orders || []).reduce((sum, o) => sum + getOrderChargeTotal(o), 0);
     const mozoNameTbl =
@@ -3304,7 +3343,7 @@ export default function POSPanel() {
         </div>
       )}
 
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain space-y-6 pb-2">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain scrollbar-hide space-y-6 pb-2">
         {selectedSalonTables.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
             {selectedSalonTables.map((table) => {
@@ -3456,7 +3495,7 @@ export default function POSPanel() {
               <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 text-[var(--ui-body-text)]">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)] mb-2">Productos en la mesa</p>
                 {(() => {
-                  const lines = mergedProductsOnTable(tableDetail);
+                  const lines = mergedProductsOnTable(tableDetail, productsById);
                   const totalMesa = (tableDetail.orders || []).reduce((s, o) => s + getOrderChargeTotal(o), 0);
                   if (!lines.length) {
                     return <p className="text-center text-[var(--ui-muted)] py-6 text-sm">No hay productos para mostrar.</p>;
@@ -4274,7 +4313,7 @@ export default function POSPanel() {
       >
         {viewOrdersModal?.table ? (() => {
           const tbl = viewOrdersModal.table;
-          const lines = mergedProductsOnTable(tbl);
+          const lines = mergedProductsOnTable(tbl, productsById);
           const totalMesa = (tbl.orders || []).reduce((s, o) => s + getOrderChargeTotal(o), 0);
           return (
             <div className="max-h-[min(70vh,480px)] overflow-y-auto space-y-3 pr-1 text-[#E5E7EB]">

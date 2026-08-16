@@ -30,9 +30,9 @@ function salesAccountOrderSelectSql() {
   } catch {
     /* ignore */
   }
-  return `id, type, table_number, ${registerCol}, customer_id,
+  return `id, type, table_number, ${registerCol}, customer_id, customer_name, order_number, sale_number,
   ${paidCol}, updated_at, created_at, total, subtotal, tax, discount, tip_amount,
-  payment_method, payment_breakdown, payment_status, status, created_by_user_id`;
+  payment_method, payment_breakdown, payment_status, status, created_by_user_id, created_by_user_name`;
 }
 
 function partsFromDate(date, timeZone) {

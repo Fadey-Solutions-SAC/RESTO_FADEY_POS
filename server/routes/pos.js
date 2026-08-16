@@ -774,6 +774,8 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
           return String(o?.payment_status || '').toLowerCase() === 'paid';
         });
         if (replayIds.length === [...new Set(effectiveOrderIds)].length) {
+          const { assignSaleNumberToOrderIdsTx } = require('../services/saleNumberService');
+          assignSaleNumberToOrderIdsTx(tx, replayIds);
           return { chargedOrderIds: replayIds, discountsAppliedByOrder, replayed: true };
         }
       }
@@ -844,6 +846,11 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         );
         chargedOrderIds.push(row.id);
       });
+
+      if (!chargeToCustomerAccount && chargedOrderIds.length) {
+        const { assignSaleNumberToOrderIdsTx } = require('../services/saleNumberService');
+        assignSaleNumberToOrderIdsTx(tx, chargedOrderIds);
+      }
 
       return { chargedOrderIds, discountsAppliedByOrder };
     });
