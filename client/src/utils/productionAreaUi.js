@@ -40,7 +40,7 @@ export function toProductionAreaTitleCase(raw) {
 
 /**
  * Icono según id/nombre del área (palabras clave).
- * Ej.: parrilla → grill, bar → copa, pastelería → panadería.
+ * Ej.: parrilla / parilla → grill, bar → copa, pastelería → panadería.
  */
 export function getProductionAreaIcon(areaOrName) {
   const id = typeof areaOrName === 'object' ? String(areaOrName?.id || '') : '';
@@ -52,27 +52,32 @@ export function getProductionAreaIcon(areaOrName) {
   const has = (...words) => words.some((w) => {
     const f = fold(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (!f) return false;
+    if (hay.includes(fold(w))) return true;
     return new RegExp(`(?:^|[^a-z0-9])${f}(?:$|[^a-z0-9])`).test(hay);
   });
 
-  if (has('parrilla', 'grill', 'asador', 'bbq', 'churrasco', 'brasas', 'carbon')) {
+  if (has(
+    'parrilla', 'parilla', 'parrila', 'grill', 'asador', 'bbq', 'churrasco',
+    'brasas', 'carbon', 'plancha',
+  )) {
     return MdOutdoorGrill;
   }
   if (has('pizza', 'pizzeria')) return MdLocalPizza;
-  if (has('ramen', 'fideos', 'pasta', 'tallarin')) return MdRamenDining;
+  if (has('ramen', 'fideos', 'pasta', 'tallarin', 'sushi', 'nikkei')) return MdRamenDining;
   if (has('sopa', 'sopas', 'caldo', 'caldos')) return MdSoupKitchen;
   if (has('postre', 'postres', 'helado', 'helados', 'dulce', 'dulces', 'reposteria')) {
     return MdIcecream;
   }
   if (has('panaderia', 'pasteleria', 'horno', 'bakery')) return MdBakeryDining;
-  if (has('cafe', 'cafeteria', 'coffee', 'espresso', 'te')) return MdCoffee;
-  if (has('jugo', 'jugos', 'smoothie', 'licuado', 'blender')) return MdBlender;
+  if (has('cafe', 'cafeteria', 'coffee', 'espresso')) return MdCoffee;
+  if (has('jugo', 'jugos', 'smoothie', 'licuado', 'blender', 'jugueria')) return MdBlender;
   if (has('vino', 'wine', 'vinoteca')) return MdWineBar;
   if (has('licor', 'licores', 'whisky', 'ron', 'tequila', 'destilados')) return MdLiquor;
   if (has('desayuno', 'breakfast', 'brunch')) return MdBreakfastDining;
   if (has('almuerzo', 'cena', 'platos', 'comida')) return MdDinnerDining;
   if (has('fritura', 'frituras', 'fastfood', 'hamburguesa', 'snack')) return MdFastfood;
   if (has('fuego', 'flame')) return MdLocalFireDepartment;
+  if (has('ceviche', 'cevicheria', 'mariscos', 'pescado')) return MdSetMeal;
   if (has('bar', 'barra', 'coctel', 'cocktail', 'bebida', 'bebidas', 'tragos')) {
     return MdLocalBar;
   }
@@ -80,6 +85,5 @@ export function getProductionAreaIcon(areaOrName) {
   if (has('cocina', 'kitchen', 'chef')) return MdKitchen;
   if (has('restaurante', 'salon', 'comedor')) return MdRestaurant;
 
-  // Por defecto: cocina genérica
-  return MdKitchen;
+  return MdRestaurant;
 }

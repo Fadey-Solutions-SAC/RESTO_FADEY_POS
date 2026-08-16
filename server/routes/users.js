@@ -4,10 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql, hasUsersColumn, ensureUsersSchemaColumns } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { getActiveCajaById, getFirstAutoAssignCajaId } = require('../cajaSettings');
-const {
-  isKnownProductionAreaId,
-  syncAreaUserLinksFromUsers,
-} = require('../services/productionAreasService');
+const { syncAreaUserLinksFromUsers } = require('../services/productionAreasService');
 const {
   rawWorkedMinutesExpr,
   effectiveWorkedMinutesExpr,
@@ -215,7 +212,6 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     const cajaStationId = cajaNorm.caja_station_id;
 
     const prodNorm = normalizeProductionFields(role, req.body || {});
-    if (prodNorm.error) return res.status(400).json({ error: prodNorm.error });
     const finalRole = prodNorm.role;
 
     const restaurant = queryOne('SELECT id FROM restaurants LIMIT 1');
@@ -223,14 +219,28 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     const isMaster = req.user?.role === 'master_admin';
     /** Solo el maestro crea al dueño del negocio; admins del personal no llevan esta marca. */
     const isBuyerAdmin = isMaster && finalRole === 'admin' ? 1 : 0;
+    try { ensureUsersSchemaColumns(); } catch (_) { /* el INSERT omite columnas que no existan */ }
+
+    const insertFields = {
+      id,
+      username,
+      email,
+      password_hash: hash,
+      full_name: fullName,
+      role: finalRole,
+      restaurant_id: restaurant?.id || '',
+      phone,
+      is_active: isActive,
+      caja_station_id: cajaStationId,
+      is_buyer_admin: isBuyerAdmin,
+    };
+    const insertCols = Object.keys(insertFields).filter((col) => {
+      if (['id', 'username', 'email', 'password_hash', 'full_name', 'role'].includes(col)) return true;
+      return hasUsersColumn(col);
+    });
     runSql(
-      `INSERT INTO users
-        (id, username, email, password_hash, full_name, role, restaurant_id, phone, is_active, caja_station_id, production_area_id, production_area_ids, is_buyer_admin)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id, username, email, hash, fullName, finalRole, restaurant?.id, phone, isActive,
-        cajaStationId, prodNorm.production_area_id, prodNorm.production_area_ids, isBuyerAdmin,
-      ]
+      `INSERT INTO users (${insertCols.join(', ')}) VALUES (${insertCols.map(() => '?').join(', ')})`,
+      insertCols.map((col) => insertFields[col]),
     );
     const permissionsObj =
       isMaster && finalRole === 'admin'
@@ -249,16 +259,11 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
       [uuidv4(), id, JSON.stringify(permissionsObj)]
     );
     try { syncAreaUserLinksFromUsers(); } catch (_) { /* ignore */ }
-    return res.status(201).json(
-      withPublicEmail(
-        queryOne(
-          `SELECT id, username, email, full_name, role, is_active, phone, caja_station_id,
-            production_area_id, production_area_ids, is_buyer_admin, created_at
-           FROM users WHERE id = ?`,
-          [id]
-        )
-      )
+    const created = listUsersRows().find((u) => u.id === id) || queryOne(
+      'SELECT id, username, email, full_name, role, is_active, phone, created_at FROM users WHERE id = ?',
+      [id],
     );
+    return res.status(201).json(withPublicEmail(created));
   } catch (err) {
     return res.status(400).json({ error: err.message || 'No se pudo crear el usuario' });
   }
@@ -266,11 +271,16 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
 
 router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
   try {
+    try { ensureUsersSchemaColumns(); } catch (_) { /* noop */ }
     const current = queryOne(
-      `SELECT id, username, email, full_name, role, phone, is_active, caja_station_id,
-        production_area_id, production_area_ids FROM users WHERE id = ?`,
+      'SELECT id, username, email, full_name, role, phone, is_active FROM users WHERE id = ?',
       [req.params.id]
     );
+    if (!current?.id) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (hasUsersColumn('caja_station_id')) {
+      const extra = queryOne('SELECT caja_station_id FROM users WHERE id = ?', [req.params.id]);
+      current.caja_station_id = extra?.caja_station_id || '';
+    }
     if (!current?.id) return res.status(404).json({ error: 'Usuario no encontrado' });
 
     const username = req.body?.username === undefined ? current.username : String(req.body.username || '').trim();
@@ -318,22 +328,21 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     if (cajaNorm.error) return res.status(400).json({ error: cajaNorm.error });
     const cajaStationId = cajaNorm.caja_station_id;
 
-    const prodBody = {
-      production_area_id:
-        req.body?.production_area_id === undefined ? current.production_area_id : req.body.production_area_id,
-      production_area_ids:
-        req.body?.production_area_ids === undefined ? current.production_area_ids : req.body.production_area_ids,
-    };
-    const prodNorm = normalizeProductionFields(role, prodBody);
-    if (prodNorm.error) return res.status(400).json({ error: prodNorm.error });
+    const prodNorm = normalizeProductionFields(role, req.body || {});
 
+    const setCols = {
+      username,
+      email,
+      full_name: fullName,
+      role: prodNorm.role,
+      phone,
+      is_active: isActive,
+    };
+    if (hasUsersColumn('caja_station_id')) setCols.caja_station_id = cajaStationId;
+    const setNames = Object.keys(setCols);
     runSql(
-      `UPDATE users SET username = ?, email = ?, full_name = ?, role = ?, phone = ?, is_active = ?,
-        caja_station_id = ?, production_area_id = ?, production_area_ids = ? WHERE id = ?`,
-      [
-        username, email, fullName, prodNorm.role, phone, isActive, cajaStationId,
-        prodNorm.production_area_id, prodNorm.production_area_ids, req.params.id,
-      ]
+      `UPDATE users SET ${setNames.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
+      [...setNames.map((c) => setCols[c]), req.params.id],
     );
 
     const payrollPatch = {};
@@ -370,17 +379,11 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     }
 
     try { syncAreaUserLinksFromUsers(); } catch (_) { /* ignore */ }
-    return res.json(
-      withPublicEmail(
-        queryOne(
-          `SELECT id, username, email, full_name, role, is_active, phone, caja_station_id,
-            production_area_id, production_area_ids,
-            payroll_pay_mode, payroll_amount, payroll_schedule_note, payroll_payment_day, created_at
-           FROM users WHERE id = ?`,
-          [req.params.id]
-        )
-      )
+    const updated = listUsersRows().find((u) => u.id === req.params.id) || queryOne(
+      'SELECT id, username, email, full_name, role, is_active, phone, created_at FROM users WHERE id = ?',
+      [req.params.id],
     );
+    return res.json(withPublicEmail(updated));
   } catch (err) {
     return res.status(400).json({ error: err.message || 'No se pudo actualizar el usuario' });
   }

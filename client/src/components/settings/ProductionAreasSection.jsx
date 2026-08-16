@@ -243,15 +243,31 @@ export default function ProductionAreasSection() {
             </h4>
             <div>
               <label className="block text-sm font-medium mb-1">Nombre</label>
-              <input
-                className="input-field w-full"
-                value={form.name}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, name: toProductionAreaTitleCase(e.target.value) }))
-                }
-                placeholder="Ej. Parrilla, Cocina Techo"
-                required
-              />
+              {(() => {
+                const PreviewIcon = getProductionAreaIcon({
+                  id: editArea?.id || '',
+                  name: form.name,
+                });
+                return (
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <PreviewIcon className="text-xl text-[var(--ui-accent)]" />
+                    </div>
+                    <input
+                      className="input-field w-full pl-11"
+                      value={form.name}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, name: toProductionAreaTitleCase(e.target.value) }))
+                      }
+                      placeholder="Ej. Parrilla, Cocina Techo"
+                      required
+                    />
+                  </div>
+                );
+              })()}
+              <p className="text-[11px] ui-text-muted mt-1">
+                El icono cambia con el nombre (Parrilla, Bar, Cocina, Pizza…).
+              </p>
             </div>
             {editArea && (
               <label className="flex items-center gap-2 text-sm">

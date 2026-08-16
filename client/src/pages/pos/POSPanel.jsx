@@ -449,6 +449,7 @@ export default function POSPanel() {
   const selectedTableIdRef = useRef(null);
   const tableDetailIdRef = useRef(null);
   const checkoutInFlightRef = useRef(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const showBillRef = useRef(false);
   const showMenuRef = useRef(false);
   const editSessionInitialParaLlevarRef = useRef(false);
@@ -1817,6 +1818,7 @@ export default function POSPanel() {
         checkoutBody.discounts_by_order = discountsByOrder;
       }
 
+      setCheckoutBusy(true);
       const checkoutRes = await api.post('/pos/checkout-table', checkoutBody);
       const postPaidOrders = Array.isArray(checkoutRes?.orders) ? checkoutRes.orders : [];
       const printDiscountsByOrder = useLineSplit
@@ -1921,7 +1923,10 @@ export default function POSPanel() {
       resetBillingForm();
       loadData();
     } catch (err) { toast.error(err.message); }
-    finally { checkoutInFlightRef.current = false; }
+    finally {
+      checkoutInFlightRef.current = false;
+      setCheckoutBusy(false);
+    }
   };
 
   const toggleOrderItemSelection = (itemId) => {
@@ -4305,6 +4310,7 @@ export default function POSPanel() {
       <Modal
         isOpen={showBill}
         onClose={() => {
+          if (checkoutBusy) return;
           clientCheckoutOpenedKeyRef.current = '';
           setShowBill(false);
           setAmountReceived('');
@@ -4943,13 +4949,16 @@ export default function POSPanel() {
                 <button
                   type="button"
                   onClick={cobrarMesa}
-                  className={`w-full py-3 rounded-xl text-white font-bold text-lg sm:text-xl shadow-lg uppercase tracking-wide ${
+                  disabled={checkoutBusy}
+                  className={`w-full py-3 rounded-xl text-white font-bold text-lg sm:text-xl shadow-lg uppercase tracking-wide disabled:opacity-80 disabled:cursor-wait ${
                     addToAccountEnabled
                       ? 'bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-600 shadow-sky-700/25'
                       : 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] shadow-[#1D4ED8]/25'
                   }`}
                 >
-                  {addToAccountEnabled ? 'AGREGAR A CUENTA' : 'COBRAR MESA'}
+                  {checkoutBusy
+                    ? (addToAccountEnabled ? 'AGREGANDO...' : 'COBRANDO...')
+                    : (addToAccountEnabled ? 'AGREGAR A CUENTA' : 'COBRAR MESA')}
                 </button>
               </div>
             </div>

@@ -2619,6 +2619,8 @@ function ensureUsersSchemaColumns() {
   }
   return have;
 }
+
+function queryAll(sql, params = []) {
   const stmt = db.prepare(sql);
   const safeParams = normalizeSqlParams(params);
   if (safeParams.length) stmt.bind(safeParams);

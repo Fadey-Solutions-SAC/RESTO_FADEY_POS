@@ -120,8 +120,8 @@ export default function Login() {
         {coverImage ? <img src={resolveMediaUrl(coverImage)} alt="" /> : null}
       </div>
       <div className="rf-login-page__content rf-login-page__content--visible">
-        <div className="w-full max-w-md relative z-10 px-4">
-          <div className="text-center mb-6">
+        <div className="rf-login-center w-full max-w-md relative z-10 px-4">
+          <div className="rf-login-brand text-center mb-6">
             <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl mx-auto mb-4 shadow-lg overflow-hidden flex items-center justify-center bg-[var(--ui-surface)] ring-1 ring-[color:var(--ui-border)]">
               {brandLogo ? (
                 <img
@@ -140,22 +140,22 @@ export default function Login() {
             </h1>
           </div>
 
-          <div className="rf-login-card bg-[var(--ui-surface)] backdrop-blur-xl rounded-2xl shadow-2xl p-6 sm:p-8 border border-[color:var(--ui-border)]">
+          <div className="rf-login-card">
             {step === 1 && (
               <>
-                <h2 className="rf-font-display text-xl font-bold text-[var(--ui-body-text)] mb-1">{t('login.title')}</h2>
-                <p className="text-sm text-[var(--ui-muted)] mb-6">{t('login.subtitle')}</p>
+                <h2 className="rf-font-display text-xl font-bold mb-1">{t('login.title')}</h2>
+                <p className="rf-login-card__subtitle text-sm mb-6">{t('login.subtitle')}</p>
                 <form onSubmit={handleContinue} className="space-y-5">
                   <div>
-                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1.5">{t('login.username')}</label>
+                    <label className="block text-sm font-medium mb-1.5">{t('login.username')}</label>
                     <div className="relative">
-                      <MdPerson className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-xl pointer-events-none" />
+                      <MdPerson className="rf-login-field-icon absolute left-3 top-1/2 -translate-y-1/2 text-xl pointer-events-none" />
                       <input
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         placeholder={t('login.usernamePlaceholder')}
-                        className="input-field pl-10"
+                        className="rf-login-input pl-10"
                         required
                         autoComplete="username"
                       />
@@ -163,22 +163,22 @@ export default function Login() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1.5">{t('login.password')}</label>
+                    <label className="block text-sm font-medium mb-1.5">{t('login.password')}</label>
                     <div className="relative">
-                      <MdLock className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-xl pointer-events-none" />
+                      <MdLock className="rf-login-field-icon absolute left-3 top-1/2 -translate-y-1/2 text-xl pointer-events-none" />
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder={t('login.passwordPlaceholder')}
-                        className="input-field pl-10 pr-10"
+                        className="rf-login-input pl-10 pr-10"
                         required
                         autoComplete="current-password"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] hover:text-[var(--ui-body-text)] transition-colors"
+                        className="rf-login-field-toggle absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
                       >
                         {showPassword ? <MdVisibilityOff className="text-xl" /> : <MdVisibility className="text-xl" />}
                       </button>
@@ -188,7 +188,7 @@ export default function Login() {
                   <button
                     type="submit"
                     disabled={loading || !policyReady}
-                    className="w-full py-3 btn-primary rounded-lg font-semibold text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rf-login-submit w-full py-3 font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {!policyReady ? (
                       <span className="flex items-center justify-center gap-2">
@@ -216,26 +216,26 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={() => { setStep(1); setPhotoLogin(null); }}
-                    className="p-2 rounded-lg hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]"
+                    className="rf-login-back p-2 rounded-lg"
                     aria-label={t('common:actions.back', { defaultValue: 'Volver' })}
                     disabled={loading}
                   >
                     <MdArrowBack className="text-xl" />
                   </button>
                   <div>
-                    <h2 className="text-xl font-bold text-[var(--ui-body-text)] flex items-center gap-2">
-                      <MdCameraAlt className="text-[var(--ui-accent)]" /> {t('login.attendanceTitle')}
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                      <MdCameraAlt className="text-[#2563EB]" /> {t('login.attendanceTitle')}
                     </h2>
                   </div>
                 </div>
-                <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 mb-5">
+                <div className="rf-login-photo-box rounded-xl p-4 mb-5">
                   <AttendancePhotoCapture onCapture={setPhotoLogin} disabled={loading} />
                 </div>
                 <button
                   type="button"
                   onClick={() => void submitLogin()}
                   disabled={loading || !photoLogin}
-                  className="w-full py-3 btn-primary rounded-lg font-semibold text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rf-login-submit w-full py-3 font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">
@@ -250,7 +250,7 @@ export default function Login() {
             )}
           </div>
 
-          <p className="text-center text-[var(--ui-muted)] text-xs mt-6 select-none" aria-hidden="true">
+          <p className="rf-login-footer text-center text-xs mt-6 select-none" aria-hidden="true">
             {t('login.footer')}
           </p>
         </div>
