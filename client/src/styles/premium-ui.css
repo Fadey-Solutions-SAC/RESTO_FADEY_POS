@@ -34,6 +34,21 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.rf-login-lock,
+html.rf-login-lock body {
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+html.rf-login-lock #root {
+  height: 100%;
+  min-height: 0 !important;
+  max-height: 100%;
+  overflow: hidden !important;
+}
+
 h1, h2, h3, h4 {
   font-family: var(--ui-font-display);
   letter-spacing: -0.02em;
@@ -328,10 +343,15 @@ h1, h2, h3, h4 {
   }
 
   .rf-login-page {
-    position: relative;
-    height: 100vh;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     height: 100dvh;
+    max-height: 100dvh;
     overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: manipulation;
     color: #e8f4fc;
   }
 
@@ -380,9 +400,9 @@ h1, h2, h3, h4 {
     inset: 0;
     background: linear-gradient(
       to bottom,
-      rgba(11, 13, 23, 0.42) 0%,
-      rgba(11, 13, 23, 0.55) 55%,
-      rgba(11, 13, 23, 0.78) 100%
+      rgba(11, 13, 23, 0.28) 0%,
+      rgba(11, 13, 23, 0.38) 50%,
+      rgba(11, 13, 23, 0.62) 100%
     );
   }
 
@@ -521,13 +541,14 @@ h1, h2, h3, h4 {
     z-index: 1;
     height: 100%;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
+    overscroll-behavior: none;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1rem;
-    padding-bottom: max(2.75rem, calc(1rem + env(safe-area-inset-bottom)));
+    padding: 0.75rem 1rem 2.5rem;
+    padding-bottom: max(2.5rem, calc(1.25rem + env(safe-area-inset-bottom)));
     background: transparent;
   }
 
@@ -535,88 +556,126 @@ h1, h2, h3, h4 {
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    width: 100%;
+    max-height: 100%;
+    overflow: hidden;
   }
 
-  .rf-login-card {
-    padding: 1.5rem;
-    border-radius: 1.75rem !important;
+  .rf-login-brand {
+    flex-shrink: 0;
+    margin-bottom: clamp(0.5rem, 2vh, 1.25rem);
+  }
+
+  .rf-login-brand-logo {
+    display: block;
+    width: clamp(3.5rem, 12vh, 7rem);
+    height: clamp(3.5rem, 12vh, 7rem);
+    margin-bottom: clamp(0.35rem, 1.2vh, 1rem);
+    object-fit: contain;
+    object-position: center;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+
+  .rf-login-form {
+    padding: 0;
+    background: transparent !important;
     border: none !important;
-    background: #ececec !important;
-    box-shadow:
-      0 24px 60px rgba(0, 0, 0, 0.45),
-      0 0 32px rgba(0, 174, 239, 0.18) !important;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    color: #0b0d17;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    color: #e8f4fc;
+    flex-shrink: 1;
+    min-height: 0;
   }
 
-  @media (min-width: 640px) {
-    .rf-login-card {
-      padding: 2rem;
-    }
+  .rf-login-title {
+    font-family: 'Segoe Script', 'Lucida Handwriting', 'Apple Chancery', cursive;
+    font-size: clamp(1.65rem, 5.5vh, 2.65rem);
+    font-weight: 600;
+    line-height: 1.15;
+    color: #7ee8f0;
+    text-shadow: 0 0 22px rgba(0, 174, 239, 0.45);
+    margin: 0 0 0.15rem;
   }
 
-  .rf-login-page .rf-login-card h2,
-  .rf-login-page .rf-login-card label {
-    color: #0b0d17;
+  .rf-login-page .rf-login-form h2,
+  .rf-login-page .rf-login-form label {
+    color: #f8fafc;
   }
 
-  .rf-login-card__subtitle {
-    color: #6b7280;
+  .rf-login-subtitle {
+    color: rgba(248, 250, 252, 0.88);
+    font-size: 0.875rem;
+    margin: 0 0 clamp(0.65rem, 2vh, 1.35rem);
+  }
+
+  .rf-login-fields {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.65rem, 1.8vh, 1.25rem);
   }
 
   .rf-login-field-icon,
   .rf-login-field-toggle {
-    color: #4b5563;
+    color: #475569;
+    z-index: 1;
   }
 
   .rf-login-field-toggle:hover {
-    color: #0b0d17;
+    color: #0f172a;
   }
 
   .rf-login-back {
-    color: #6b7280;
+    color: rgba(248, 250, 252, 0.8);
   }
 
   .rf-login-back:hover {
-    background: rgba(15, 23, 42, 0.06);
-    color: #0b0d17;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
   }
 
   .rf-login-photo-box {
-    border: 1px solid #c5d7f7;
-    background: #e8effe;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.14);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    max-height: 28vh;
+    overflow: hidden;
   }
 
   .rf-login-input {
     display: block;
     width: 100%;
-    height: 2.75rem;
+    height: clamp(2.5rem, 6.5vh, 3rem);
     padding-top: 0.5rem;
     padding-bottom: 0.5rem;
-    background: #e8effe;
-    border: 1px solid #c5d7f7;
-    border-radius: 0.75rem;
-    color: #0b0d17;
+    background: rgba(236, 240, 245, 0.82);
+    border: 1px solid rgba(126, 232, 240, 0.45);
+    border-radius: 9999px;
+    color: #0f172a;
     outline: none;
-    box-shadow: none;
+    box-shadow: 0 0 0 1px rgba(0, 174, 239, 0.12), 0 8px 24px rgba(0, 0, 0, 0.18);
   }
 
   .rf-login-input::placeholder {
-    color: #9ca3af;
+    color: #64748b;
   }
 
   .rf-login-input:focus {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    border-color: #7ee8f0;
+    box-shadow: 0 0 0 3px rgba(0, 174, 239, 0.28);
   }
 
   .rf-login-submit {
     border: none;
-    border-radius: 0.75rem;
-    background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+    border-radius: 0.85rem;
+    background: linear-gradient(180deg, #1e4b6b 0%, #163a58 100%);
     color: #fff;
-    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45), 0 0 20px rgba(0, 174, 239, 0.28);
+    box-shadow:
+      0 0 0 1px rgba(126, 232, 240, 0.35),
+      0 0 28px rgba(0, 174, 239, 0.55),
+      0 10px 24px rgba(0, 0, 0, 0.35);
   }
 
   .rf-login-submit:hover:not(:disabled) {
@@ -624,12 +683,19 @@ h1, h2, h3, h4 {
   }
 
   .rf-login-footer {
-    color: rgba(232, 244, 252, 0.62);
-    letter-spacing: 0.04em;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: max(0.7rem, env(safe-area-inset-bottom));
+    z-index: 2;
+    margin: 0;
+    color: rgba(232, 244, 252, 0.7);
+    letter-spacing: 0.06em;
+    pointer-events: none;
   }
 
   .rf-login-page__content--visible {
-    animation: rf-entry-panel-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: none;
   }
 
   @keyframes rf-entry-logo-in {

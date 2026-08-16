@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api, resolveMediaUrl } from '../utils/api';
 import toast from 'react-hot-toast';
-import { MdStorefront, MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt } from 'react-icons/md';
+import { MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt } from 'react-icons/md';
 import AttendancePhotoCapture from '../components/AttendancePhotoCapture';
 import { getStoredAppLocale, setAppLocale } from '../i18n';
 import { getDefaultStaffPath } from '../utils/staffModuleAccess';
@@ -33,6 +33,17 @@ export default function Login() {
   useEffect(() => {
     const stored = getStoredAppLocale();
     if (stored) void setAppLocale(stored);
+  }, []);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    html.classList.add('rf-login-lock');
+    body.classList.add('rf-login-lock');
+    return () => {
+      html.classList.remove('rf-login-lock');
+      body.classList.remove('rf-login-lock');
+    };
   }, []);
 
   useEffect(() => {
@@ -121,31 +132,25 @@ export default function Login() {
       </div>
       <div className="rf-login-page__content rf-login-page__content--visible">
         <div className="rf-login-center w-full max-w-md relative z-10 px-4">
-          <div className="rf-login-brand text-center mb-6">
-            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl mx-auto mb-4 shadow-lg overflow-hidden flex items-center justify-center bg-[var(--ui-surface)] ring-1 ring-[color:var(--ui-border)]">
-              {brandLogo ? (
-                <img
-                  src={resolveMediaUrl(brandLogo)}
-                  alt={restaurantName}
-                  className="h-full w-full object-cover object-center"
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-[var(--ui-accent)] to-[var(--ui-accent-hover)] flex items-center justify-center">
-                  <MdStorefront className="text-white text-5xl" />
-                </div>
-              )}
-            </div>
+          <div className="rf-login-brand text-center">
+            {brandLogo ? (
+              <img
+                src={resolveMediaUrl(brandLogo)}
+                alt=""
+                className="rf-login-brand-logo mx-auto"
+              />
+            ) : null}
             <h1 className="rf-font-display text-3xl font-bold text-[#e8f4fc] tracking-tight px-1">
               {restaurantName}
             </h1>
           </div>
 
-          <div className="rf-login-card">
+          <div className="rf-login-form">
             {step === 1 && (
               <>
-                <h2 className="rf-font-display text-xl font-bold mb-1">{t('login.title')}</h2>
-                <p className="rf-login-card__subtitle text-sm mb-6">{t('login.subtitle')}</p>
-                <form onSubmit={handleContinue} className="space-y-5">
+                <h2 className="rf-login-title">{t('login.title')}</h2>
+                <p className="rf-login-subtitle">{t('login.subtitle')}</p>
+                <form onSubmit={handleContinue} className="rf-login-fields">
                   <div>
                     <label className="block text-sm font-medium mb-1.5">{t('login.username')}</label>
                     <div className="relative">
@@ -249,12 +254,11 @@ export default function Login() {
               </>
             )}
           </div>
-
-          <p className="rf-login-footer text-center text-xs mt-6 select-none" aria-hidden="true">
-            {t('login.footer')}
-          </p>
         </div>
       </div>
+      <p className="rf-login-footer text-center text-xs select-none" aria-hidden="true">
+        {t('login.footer')}
+      </p>
     </div>
   );
 }
