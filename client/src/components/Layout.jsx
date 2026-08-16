@@ -88,6 +88,7 @@ export default function Layout() {
   const isMozoBlocked = user?.role === 'mozo' && cajaOpen === false && !checkingCaja;
   const shellTitleKey = getShellModuleTitleKey(location.pathname);
   const shellTitle = shellTitleKey ? td(shellTitleKey) : '';
+  const isCajaPage = location.pathname === '/admin/caja' || location.pathname.startsWith('/admin/caja/');
 
   return (
     <div className="min-h-screen bg-[var(--ui-body-bg)]">
@@ -101,7 +102,7 @@ export default function Layout() {
         onClose={() => setMobileMenuOpen(false)}
         onToggleMenu={() => (isMobile ? setMobileMenuOpen((prev) => !prev) : setCollapsed((prev) => !prev))}
       />
-      <div className={`transition-all duration-300 ${isMobile ? 'ml-0' : (collapsed ? 'ml-[var(--ui-sidebar-width-collapsed)]' : 'ml-[var(--ui-sidebar-width)]')}`}>
+      <div className={`transition-all duration-300 ${isCajaPage ? 'flex flex-col h-dvh overflow-hidden' : ''} ${isMobile ? 'ml-0' : (collapsed ? 'ml-[var(--ui-sidebar-width-collapsed)]' : 'ml-[var(--ui-sidebar-width)]')}`}>
         <header className="rf-shell-header h-[var(--ui-shell-header-h)] shrink-0 flex items-center justify-between px-3 sm:px-6 sticky top-0 z-30 border-b border-[color:var(--ui-sidebar-border)]">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             {isMobile ? (
@@ -159,8 +160,14 @@ export default function Layout() {
             </div>
           </div>
         </header>
-        <OfflineCajaBanner />
-        <main className="rf-main-content p-3 sm:p-6 bg-[var(--ui-body-bg)] min-h-[calc(100vh-var(--ui-shell-header-h))]">
+        <div className="shrink-0">
+          <OfflineCajaBanner />
+        </div>
+        <main className={`rf-main-content p-3 sm:p-6 bg-[var(--ui-body-bg)] ${
+          isCajaPage
+            ? 'flex-1 min-h-0 overflow-y-auto flex flex-col'
+            : 'min-h-[calc(100vh-var(--ui-shell-header-h))]'
+        }`}>
           {isMozoBlocked ? (
             <div className="flex flex-col items-center justify-center py-32 text-center">
               <div className="w-24 h-24 bg-[var(--ui-surface)] rounded-3xl flex items-center justify-center mb-6 border border-[color:var(--ui-border)]">

@@ -3202,13 +3202,21 @@ export default function POSPanel() {
     );
   };
 
+  const cobrarMapReady = activeCajaOption === 'cobrar' && posRegisterReady;
+
   return (
-    <div>
-      <div className="mb-3">
+    <div
+      className={
+        cobrarMapReady
+          ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+          : undefined
+      }
+    >
+      <div className={cobrarMapReady ? 'flex min-h-0 flex-1 flex-col' : 'mb-3'}>
       {activeCajaOption === 'cobrar' && (
         posRegisterReady ? (
         <>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 shrink-0 mb-2">
         <h2 className="font-semibold text-slate-700 flex items-center gap-2 text-base sm:text-lg min-w-0">
           <span
             className={`inline-flex items-center justify-center w-7 h-7 rounded-full border shrink-0 ${
@@ -3272,7 +3280,7 @@ export default function POSPanel() {
       </div>
 
       {tablesBySalon.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-2 flex flex-wrap gap-2 shrink-0">
           {tablesBySalon.map(({ zone, label, tables: salonTables }) => {
             const active = selectedPosSalon === zone;
             return (
@@ -3296,7 +3304,7 @@ export default function POSPanel() {
         </div>
       )}
 
-      <div className="min-w-0 space-y-6 mb-4">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain space-y-6 pb-2">
         {selectedSalonTables.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
             {selectedSalonTables.map((table) => {
@@ -3575,68 +3583,68 @@ export default function POSPanel() {
         </div>
       )}
 
-      <div className={`grid ${cajaStatGridCols} gap-3 w-full`}>
+      <div className={`grid ${cajaStatGridCols} gap-2 w-full shrink-0 pt-1`}>
         {showReservasStatCard && (
         <button
           type="button"
           onClick={() => openCajaView('reservas')}
-          className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem] hover:border-indigo-300"
+          className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0 hover:border-indigo-300"
         >
-          <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
-            <MdReceipt className="text-indigo-600 text-xl" />
+          <div className="w-7 h-7 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdReceipt className="text-indigo-600 text-base" />
           </div>
-          <div>
-            <p className="text-xs ui-text-muted">Reservas</p>
-            <p className="text-xl font-bold text-indigo-700">{reservationQueue.length}</p>
+          <div className="min-w-0 text-left">
+            <p className="text-[10px] leading-tight ui-text-muted">Reservas</p>
+            <p className="text-sm font-bold text-indigo-700 leading-tight tabular-nums">{reservationQueue.length}</p>
           </div>
         </button>
         )}
-        <div className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem]">
-          <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
-            <MdTableRestaurant className="text-sky-600 text-xl" />
+        <div className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0">
+          <div className="w-7 h-7 bg-sky-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdTableRestaurant className="text-sky-600 text-base" />
           </div>
-          <div>
-            <p className="text-xs ui-text-muted">Total Mesas</p>
-            <p className="text-xl font-bold">{mesaPhysicalTables.length}</p>
-          </div>
-        </div>
-        <div className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem]">
-          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-            <MdPeople className="text-red-600 text-xl" />
-          </div>
-          <div>
-            <p className="text-xs ui-text-muted">Ocupadas</p>
-            <p className="text-xl font-bold text-red-600">{occupiedTables.length}</p>
+          <div className="min-w-0 text-left">
+            <p className="text-[10px] leading-tight ui-text-muted">Total Mesas</p>
+            <p className="text-sm font-bold leading-tight tabular-nums">{mesaPhysicalTables.length}</p>
           </div>
         </div>
-        <div className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem]">
-          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
-            <MdCheckCircle className="text-emerald-600 text-xl" />
+        <div className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0">
+          <div className="w-7 h-7 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdPeople className="text-red-600 text-base" />
           </div>
-          <div>
-            <p className="text-xs ui-text-muted">Disponibles</p>
-            <p className="text-xl font-bold text-emerald-600">{mesaPhysicalTables.length - occupiedTables.length}</p>
+          <div className="min-w-0 text-left">
+            <p className="text-[10px] leading-tight ui-text-muted">Ocupadas</p>
+            <p className="text-sm font-bold text-red-600 leading-tight tabular-nums">{occupiedTables.length}</p>
           </div>
         </div>
-        <div className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem]">
-          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
-            <MdAttachMoney className="text-emerald-600 text-xl" />
+        <div className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0">
+          <div className="w-7 h-7 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdCheckCircle className="text-emerald-600 text-base" />
           </div>
-          <div>
-            <p className="text-xs text-emerald-600">Ventas del día</p>
-            <p className="text-xl font-bold text-emerald-700">{formatCurrency(todaySales)}</p>
+          <div className="min-w-0 text-left">
+            <p className="text-[10px] leading-tight ui-text-muted">Disponibles</p>
+            <p className="text-sm font-bold text-emerald-600 leading-tight tabular-nums">{mesaPhysicalTables.length - occupiedTables.length}</p>
+          </div>
+        </div>
+        <div className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0">
+          <div className="w-7 h-7 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdAttachMoney className="text-emerald-600 text-base" />
+          </div>
+          <div className="min-w-0 text-left">
+            <p className="text-[10px] leading-tight text-emerald-600">Ventas del día</p>
+            <p className="text-sm font-bold text-emerald-700 leading-tight tabular-nums">{formatCurrency(todaySales)}</p>
           </div>
         </div>
         <button
           type="button"
           onClick={prepareClose}
           disabled={!register}
-          className="card flex flex-col items-center justify-center text-center gap-2 p-4 min-h-[5.5rem] hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="card flex flex-row items-center gap-2 px-2.5 py-1.5 min-h-0 hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-            <MdClose className="text-red-600 text-xl" />
+          <div className="w-7 h-7 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
+            <MdClose className="text-red-600 text-base" />
           </div>
-          <p className="text-base sm:text-xl font-bold text-red-700 leading-tight">Cerrar Caja</p>
+          <p className="text-sm font-bold text-red-700 leading-tight">Cerrar Caja</p>
         </button>
       </div>
         </>
