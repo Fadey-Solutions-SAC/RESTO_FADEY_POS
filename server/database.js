@@ -1418,6 +1418,7 @@ async function initDatabase() {
     addProductColIfMissing('kardex_insumo_den', "ALTER TABLE products ADD COLUMN kardex_insumo_den REAL DEFAULT 1");
     addProductColIfMissing('kardex_insumo_modo', "ALTER TABLE products ADD COLUMN kardex_insumo_modo TEXT DEFAULT 'unidad'");
     addProductColIfMissing('kardex_insumo_gramos', "ALTER TABLE products ADD COLUMN kardex_insumo_gramos REAL NOT NULL DEFAULT 0");
+    addProductColIfMissing('kardex_insumos', "ALTER TABLE products ADD COLUMN kardex_insumos TEXT DEFAULT '[]'");
     addProductColIfMissing('purchase_price', 'ALTER TABLE products ADD COLUMN purchase_price REAL');
     addProductColIfMissing('schedule_enabled', 'ALTER TABLE products ADD COLUMN schedule_enabled INTEGER NOT NULL DEFAULT 0');
     addProductColIfMissing('available_from', "ALTER TABLE products ADD COLUMN available_from TEXT DEFAULT ''");

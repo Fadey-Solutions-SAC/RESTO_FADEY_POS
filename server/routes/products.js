@@ -14,6 +14,7 @@ const {
 const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 const { parseProductMinStock } = require('../utils/productStockThreshold');
 const { resolveProductProductionAreaId } = require('../services/productionAreasService');
+const { attachKardexInsumos, buildKardexPersistFromRequest } = require('../utils/productKardexInsumos');
 
 const router = express.Router();
 
@@ -141,6 +142,7 @@ function normalizeProductForClient(p, options = {}) {
   if (options.attachSchedule !== false) {
     attachScheduleStatus(p, options.now || new Date(), options.restaurantSchedule ?? getRestaurantSchedule());
   }
+  attachKardexInsumos(p);
   return p;
 }
 
@@ -197,11 +199,6 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     tax_type,
     modifier_id,
     note_required,
-    kardex_insumo_id,
-    kardex_insumo_num,
-    kardex_insumo_den,
-    kardex_insumo_modo,
-    kardex_insumo_gramos,
     purchase_price,
     schedule_enabled,
     available_from,
@@ -246,33 +243,17 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     : 'inafecto';
   const safeModifierId = String(modifier_id || '').trim();
   const safeNoteRequired = Number(note_required) === 1 ? 1 : 0;
-  const safeKardexInsumo =
-    safeProcessType === 'transformed' ? String(kardex_insumo_id || '').trim() : '';
-  const modoRaw = String(kardex_insumo_modo || 'unidad').toLowerCase();
-  const safeKardexModo = safeKardexInsumo && modoRaw === 'peso' ? 'peso' : 'unidad';
-  let safeKardexNum = 1;
-  let safeKardexDen = 1;
-  let safeKardexGramos = 0;
-  if (safeKardexInsumo) {
-    if (safeKardexModo === 'peso') {
-      const g = Number(kardex_insumo_gramos);
-      safeKardexGramos = g > 0 && Number.isFinite(g) ? g : 0;
-    } else {
-      const n = Number(kardex_insumo_num);
-      const d = Number(kardex_insumo_den);
-      safeKardexNum = n > 0 && Number.isFinite(n) ? n : 1;
-      safeKardexDen = d > 0 && Number.isFinite(d) ? d : 1;
-    }
-  }
+  const kardexPersist = buildKardexPersistFromRequest(req.body, null, safeProcessType);
   runSql(
     `INSERT INTO products (
       id, name, description, price, image, category_id, restaurant_id, stock,
       process_type, stock_warehouse_id, production_area, tax_type, modifier_id, note_required,
       kardex_insumo_id, kardex_insumo_num, kardex_insumo_den, kardex_insumo_modo, kardex_insumo_gramos,
+      kardex_insumos,
       purchase_price,
       schedule_enabled, available_from, available_to, available_days, schedule_type,
       catalog_listed_at, idle_sales_days, min_stock
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, ?)`,
     [
       id,
       productName,
@@ -288,11 +269,12 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
       safeTaxType,
       safeModifierId,
       safeNoteRequired,
-      safeKardexInsumo,
-      safeKardexModo === 'peso' ? 1 : safeKardexNum,
-      safeKardexModo === 'peso' ? 1 : safeKardexDen,
-      safeKardexInsumo ? safeKardexModo : 'unidad',
-      safeKardexInsumo ? safeKardexGramos : 0,
+      kardexPersist.kardex_insumo_id,
+      kardexPersist.kardex_insumo_num,
+      kardexPersist.kardex_insumo_den,
+      kardexPersist.kardex_insumo_modo,
+      kardexPersist.kardex_insumo_gramos,
+      kardexPersist.kardex_insumos,
       storedPurchase,
       scheduleFields.schedule_enabled,
       scheduleFields.available_from,
@@ -337,11 +319,6 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     tax_type,
     modifier_id,
     note_required,
-    kardex_insumo_id,
-    kardex_insumo_num,
-    kardex_insumo_den,
-    kardex_insumo_modo,
-    kardex_insumo_gramos,
     purchase_price,
     schedule_enabled,
     available_from,
@@ -416,53 +393,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     safeCategoryId = catPut.id;
   }
   const safeIsActive = is_active === undefined ? null : is_active;
-
-  const safeKardexInsumoUpd =
-    kardex_insumo_id === undefined
-      ? null
-      : (finalProcessType === 'transformed' ? String(kardex_insumo_id || '').trim() : '');
-  const safeKardexNumUpd = kardex_insumo_num === undefined ? null : Number(kardex_insumo_num);
-  const safeKardexDenUpd = kardex_insumo_den === undefined ? null : Number(kardex_insumo_den);
-  let finalKardexInsumo = safeKardexInsumoUpd === null ? (current.kardex_insumo_id || '') : safeKardexInsumoUpd;
-  let finalKardexNum = safeKardexNumUpd === null || !Number.isFinite(safeKardexNumUpd) || safeKardexNumUpd <= 0
-    ? (Number(current.kardex_insumo_num) > 0 ? Number(current.kardex_insumo_num) : 1)
-    : safeKardexNumUpd;
-  let finalKardexDen = safeKardexDenUpd === null || !Number.isFinite(safeKardexDenUpd) || safeKardexDenUpd <= 0
-    ? (Number(current.kardex_insumo_den) > 0 ? Number(current.kardex_insumo_den) : 1)
-    : safeKardexDenUpd;
-  if (finalProcessType === 'non_transformed') {
-    finalKardexInsumo = '';
-    finalKardexNum = 1;
-    finalKardexDen = 1;
-  } else if (!String(finalKardexInsumo || '').trim()) {
-    finalKardexNum = 1;
-    finalKardexDen = 1;
-  }
-
-  const modoIn = kardex_insumo_modo === undefined
-    ? null
-    : String(kardex_insumo_modo || 'unidad').toLowerCase();
-  const gramosIn = kardex_insumo_gramos === undefined ? null : Number(kardex_insumo_gramos);
-  const currentModo = String(current.kardex_insumo_modo || 'unidad').toLowerCase() === 'peso' ? 'peso' : 'unidad';
-  const finalKardexModo = finalProcessType === 'non_transformed' || !String(finalKardexInsumo || '').trim()
-    ? 'unidad'
-    : (modoIn === null
-      ? currentModo
-      : (modoIn === 'peso' ? 'peso' : 'unidad'));
-  let finalKardexNumPut = finalProcessType === 'non_transformed' ? 1 : finalKardexNum;
-  let finalKardexDenPut = finalProcessType === 'non_transformed' ? 1 : finalKardexDen;
-  let finalKardexGramos = 0;
-  if (finalProcessType === 'transformed' && String(finalKardexInsumo || '').trim()) {
-    if (finalKardexModo === 'peso') {
-      finalKardexNumPut = 1;
-      finalKardexDenPut = 1;
-      finalKardexGramos = gramosIn != null && Number.isFinite(gramosIn) && gramosIn > 0
-        ? gramosIn
-        : (Number(current.kardex_insumo_gramos) > 0 ? Number(current.kardex_insumo_gramos) : 0);
-    } else {
-      finalKardexGramos = 0;
-    }
-  }
+  const kardexPersist = buildKardexPersistFromRequest(req.body, current, finalProcessType);
 
   const finalMinStock = finalProcessType === 'non_transformed'
     ? (min_stock !== undefined ? parseProductMinStock(min_stock) : parseProductMinStock(current.min_stock))
@@ -488,6 +419,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       kardex_insumo_den = ?,
       kardex_insumo_modo = ?,
       kardex_insumo_gramos = ?,
+      kardex_insumos = ?,
       purchase_price = ?,
       min_stock = ?,
       schedule_enabled = COALESCE(?, schedule_enabled),
@@ -511,11 +443,12 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       safeTaxType,
       safeModifierId,
       safeNoteRequired,
-      finalProcessType === 'non_transformed' ? '' : (finalKardexInsumo || ''),
-      finalProcessType === 'non_transformed' ? 1 : finalKardexNumPut,
-      finalProcessType === 'non_transformed' ? 1 : finalKardexDenPut,
-      finalProcessType === 'non_transformed' ? 'unidad' : finalKardexModo,
-      finalProcessType === 'non_transformed' ? 0 : (finalKardexModo === 'peso' ? finalKardexGramos : 0),
+      kardexPersist.kardex_insumo_id,
+      kardexPersist.kardex_insumo_num,
+      kardexPersist.kardex_insumo_den,
+      kardexPersist.kardex_insumo_modo,
+      kardexPersist.kardex_insumo_gramos,
+      kardexPersist.kardex_insumos,
       safePurchasePrice === undefined ? current.purchase_price : safePurchasePrice,
       finalMinStock,
       scheduleUpdate ? scheduleUpdate.schedule_enabled : null,

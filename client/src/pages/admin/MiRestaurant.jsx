@@ -676,7 +676,7 @@ export default function MiRestaurant() {
         body.hours = h;
       }
       await api.post(`/users/${payrollInvestModal.id}/payroll-investment`, body);
-      toast.success('Pago de nómina sumado a inversión');
+      toast.success('Pago de nómina sumado a gastos operativos');
       setPayrollInvestModal(null);
       setPayrollHours('');
       setPayrollConcept('');
@@ -813,7 +813,7 @@ export default function MiRestaurant() {
                           }}
                           className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
                         >
-                          Pago → inversión
+                          Pago → gastos
                         </button>
                       </div>
                     </div>
@@ -1475,7 +1475,7 @@ export default function MiRestaurant() {
       >
         <div className="space-y-3">
           <p className="text-sm text-[var(--ui-muted)]">
-            Se registra un movimiento en <strong>inversión</strong> según el monto de nómina (jornada completa o horas × tarifa).
+            Se registra un movimiento en <strong>gastos operativos</strong> según el monto de nómina (jornada completa o horas × tarifa).
           </p>
           {payrollInvestModal && String(payrollInvestModal.payroll_pay_mode || '').toLowerCase() === 'hora' ? (
             <div>

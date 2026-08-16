@@ -91,11 +91,7 @@ function buildGeneralKpis(from, to) {
   const reports = getReportsHelpers();
   const financeMonth = reports.financeMonthToDateSnapshot?.() || {};
   const op = reports.buildOperationalIntelligence?.({ role: 'admin' }) || {};
-  const monthCogs = Number(financeMonth.product_cogs_total || 0) + Number(financeMonth.kardex_cogs_total || 0);
-  const monthOperating =
-    Number(financeMonth.losses_combined_total || 0)
-    + Number(financeMonth.purchases_total || 0)
-    + monthCogs;
+  const monthOperating = Number(financeMonth.operating_expenses || 0);
 
   const productsSold = queryOne(
     `SELECT COALESCE(SUM(oi.quantity), 0) AS qty FROM order_items oi
@@ -160,12 +156,18 @@ function buildFinancialSection(from, to) {
      WHERE date(datetime(occurred_at, 'localtime')) BETWEEN date(?) AND date(?)`,
     params
   );
+  const payrollRow = queryOne(
+    `SELECT COALESCE(SUM(amount), 0) AS total FROM investment_movements
+     WHERE date(datetime(created_at, 'localtime')) BETWEEN date(?) AND date(?)`,
+    params
+  );
   const totalSales = Number(salesMetrics.sales || 0);
   const totalPurchases = Number(purchases?.total || 0);
   const totalProductCogs = Number(cogs.purchase_cogs || 0);
   const totalKardexCogs = Number(cogs.kardex_cogs || 0);
-  const investmentTotal = totalPurchases + totalProductCogs + totalKardexCogs;
-  const totalExpenses = Number(cashExp?.total || 0) + Number(losses?.total || 0);
+  const investmentTotal = totalProductCogs + totalKardexCogs;
+  const payrollTotal = Number(payrollRow?.total || 0);
+  const totalExpenses = Number(cashExp?.total || 0) + Number(losses?.total || 0) + totalPurchases + payrollTotal;
   const gross = totalSales - investmentTotal;
   const net = totalSales - investmentTotal - totalExpenses;
 
@@ -194,8 +196,9 @@ function buildFinancialSection(from, to) {
     product_cogs_total: totalProductCogs,
     kardex_cogs_total: totalKardexCogs,
     investment_total: investmentTotal,
-    /** Compras + costo de venta (precio compra e insumos) + caja/pérdidas. */
-    operating_expenses: totalExpenses + investmentTotal,
+    payroll_total: payrollTotal,
+    /** Compras + pérdidas + egresos de caja + pagos de personal. */
+    operating_expenses: totalExpenses,
     cash_flow_in: Number(cashFlow?.income || 0),
     cash_flow_out: Number(cashFlow?.expense || 0),
     payment_methods: paymentMethods || [],

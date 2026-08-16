@@ -8,6 +8,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../database');
 const kx = require('../services/kardexInventoryService');
 const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
+const { unlinkInsumoFromProducts } = require('../utils/productKardexInsumos');
 
 const router = express.Router();
 router.use(authenticateToken, requireRole('admin'));
@@ -182,7 +183,7 @@ router.delete('/insumos/:id', (req, res) => {
         [id, id]
       );
       tx.run('DELETE FROM inventory_expenses WHERE product_id = ?', [id]);
-      tx.run(`UPDATE products SET kardex_insumo_id = '' WHERE kardex_insumo_id = ?`, [id]);
+      unlinkInsumoFromProducts(tx, id);
       tx.run('DELETE FROM insumos WHERE id = ?', [id]);
     });
     logAudit({

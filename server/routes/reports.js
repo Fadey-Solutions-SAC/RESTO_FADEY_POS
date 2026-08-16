@@ -624,13 +624,28 @@ function financeRolling7dSnapshot() {
      WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL} >= date(${s.TODAY}, '-6 days')`
   );
   const cogs = sumSalesCogsSinceDaysAgo(6);
+  const payrollRow = queryOne(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM investment_movements
+     WHERE date(datetime(created_at, '-05:00')) >= date(${s.TODAY}, '-6 days')`
+  );
   const totalSales = Number(salesRow?.total_sales || 0);
   const cashExpenses = Number(cashExpensesRow?.total || 0);
   const lossEventsTotal = Number(lossEventsRow?.total || 0);
   const totalPurchases = Number(purchasesRow?.total || 0);
+  const payrollTotal = Number(payrollRow?.total || 0);
   const lossesCombined = lossEventsTotal + cashExpenses;
-  const approxProfit = totalSales - totalPurchases - cogs.total - lossesCombined;
-  return { totalSales, lossesCombined, approxProfit, totalPurchases, kardexCogs: cogs.kardex_cogs, productCogs: cogs.purchase_cogs };
+  const operatingExpenses = totalPurchases + lossesCombined + payrollTotal;
+  const approxProfit = totalSales - cogs.total - operatingExpenses;
+  return {
+    totalSales,
+    lossesCombined,
+    approxProfit,
+    totalPurchases,
+    payrollTotal,
+    operatingExpenses,
+    kardexCogs: cogs.kardex_cogs,
+    productCogs: cogs.purchase_cogs,
+  };
 }
 
 /** Mes calendario en curso: ventas cobradas, compras, salidas y utilidad aprox. (base Informes · Finanzas). */
@@ -651,6 +666,10 @@ function financeMonthToDateSnapshot() {
     `SELECT COALESCE(SUM(amount), 0) as total FROM finance_loss_events
      WHERE strftime('%Y-%m', datetime(occurred_at, '-05:00')) = ${s.MONTH}`
   );
+  const payrollRow = queryOne(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM investment_movements
+     WHERE strftime('%Y-%m', datetime(created_at, '-05:00')) = ${s.MONTH}`
+  );
   const ymRow = { ym: s.MONTH.replace(/'/g, '') };
   const totalSales = Number(monthMetrics.sales || 0);
   const totalPurchases = Number(purchasesRow?.total || 0);
@@ -658,10 +677,12 @@ function financeMonthToDateSnapshot() {
   const totalKardexCogs = Number(cogs.kardex_cogs || 0);
   const cashExpenses = Number(cashExpensesRow?.total || 0);
   const lossEventsTotal = Number(lossEventsRow?.total || 0);
+  const payrollTotal = Number(payrollRow?.total || 0);
   const lossesCombined = lossEventsTotal + cashExpenses;
-  const investmentTotal = totalPurchases + totalProductCogs + totalKardexCogs;
+  const investmentTotal = totalProductCogs + totalKardexCogs;
+  const operatingExpenses = totalPurchases + lossesCombined + payrollTotal;
   const approxGrossMargin = totalSales - investmentTotal;
-  const approxProfit = totalSales - investmentTotal - lossesCombined;
+  const approxProfit = totalSales - investmentTotal - operatingExpenses;
   return {
     month_key: String(ymRow?.ym || ''),
     sales_total: totalSales,
@@ -669,6 +690,9 @@ function financeMonthToDateSnapshot() {
     purchases_total: totalPurchases,
     product_cogs_total: totalProductCogs,
     kardex_cogs_total: totalKardexCogs,
+    payroll_total: payrollTotal,
+    investment_total: investmentTotal,
+    operating_expenses: operatingExpenses,
     loss_events_total: lossEventsTotal,
     cash_expenses_total: cashExpenses,
     losses_combined_total: lossesCombined,
@@ -1149,12 +1173,12 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
   const productCogs = Number(cogs.purchase_cogs || 0);
   const kardexCogs = Number(cogs.kardex_cogs || 0);
   const cogsTotal = productCogs + kardexCogs;
-  const periodInvestment = totalInvestmentMovements + totalPurchases + cogsTotal;
   const cashExpenses = Number(cashExpensesRow?.total || 0);
   const lossEventsTotal = Number(lossEventsRow?.total || 0);
   const lossesCombined = lossEventsTotal + cashExpenses;
-  const approxGross = totalSales - totalPurchases - cogsTotal;
-  const approxProfit = totalSales - totalPurchases - cogsTotal - lossEventsTotal - cashExpenses;
+  const operatingExpenses = totalPurchases + lossesCombined + totalInvestmentMovements;
+  const approxGross = totalSales - cogsTotal;
+  const approxProfit = totalSales - cogsTotal - operatingExpenses;
 
   let business_intel = null;
   try {
@@ -1167,9 +1191,9 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
     filters: { from, to },
     sales: { total: totalSales, orders: Number(salesMetrics.orders || 0) },
     investment: {
-      /** Nómina/aportes + compras + costo de venta (precio compra e insumos). */
-      total: periodInvestment,
-      movements_total: periodInvestment,
+      /** Costo de venta: precio de compra e insumos descontados (por cantidad vendida). */
+      total: cogsTotal,
+      movements_total: cogsTotal,
       payroll_total: totalInvestmentMovements,
       cogs_total: cogsTotal,
       product_cogs_total: productCogs,
@@ -1181,6 +1205,8 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
     },
     purchases: { total: totalPurchases },
     cash_expenses: { total: cashExpenses },
+    payroll: { total: totalInvestmentMovements },
+    operating_expenses: operatingExpenses,
     loss_events: { total: lossEventsTotal, count: Number(lossEventsRow?.n || 0) },
     loss_by_category: lossByCat.map((r) => ({
       category: r.category,
@@ -1188,7 +1214,7 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
       event_count: Number(r.event_count || 0),
     })),
     losses_combined_total: lossesCombined,
-    /** Ventas − compras de inventario en el rango (no usa valor de inventario actual). */
+    /** Ventas − costo de venta (precio de compra e insumos de lo vendido). */
     approx_gross_margin: approxGross,
     approx_profit: approxProfit,
     business_intel,

@@ -14,6 +14,10 @@ const PAID_ORDER_JOIN = `o.status != 'cancelled'
 /** Producto cuyo costo ya sale por kardex (no duplicar con purchase_price). */
 const PRODUCT_USES_INSUMO_SQL = `(
   TRIM(IFNULL(p.kardex_insumo_id, '')) != ''
+  OR (
+    TRIM(IFNULL(p.kardex_insumos, '')) != ''
+    AND TRIM(IFNULL(p.kardex_insumos, '')) NOT IN ('[]', 'null')
+  )
   OR EXISTS (
     SELECT 1 FROM recetas r
     WHERE r.product_id = p.id AND IFNULL(r.activo, 1) = 1

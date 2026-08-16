@@ -6,6 +6,7 @@
 const { v4: uuidv4 } = require('uuid');
 const { getKardexMetodoValorizacion } = require('./businessConfigService');
 const { isUnidadUm, recipeQtyToStock } = require('../utils/insumoUnidadMedida');
+const { resolveKardexInsumoLines } = require('../utils/productKardexInsumos');
 
 function normalizeKardexTimestamp(eventAt) {
   const raw = String(eventAt || '').trim();
@@ -268,65 +269,70 @@ function revertirSalidasVentaPedido(tx, orderId, userId) {
   return { skipped: false, reverted: rows.length };
 }
 
+function salidaUnKardexLine(tx, line, qtyLine, { referenciaId, userId, eventAt }) {
+  const insumoId = String(line?.insumo_id || '').trim();
+  if (!insumoId) return { skipped: true, reason: 'sin_insumo' };
+  const insRow = tx.queryOne('SELECT unidad_medida, kg_por_unidad, stock_unidades, stock_actual FROM insumos WHERE id = ?', [insumoId]);
+  const modo = String(line.modo || 'unidad').toLowerCase();
+  const umInsumo = insRow ? insRow.unidad_medida : '';
+  const asUnidades = isUnidadUm(umInsumo) || modo !== 'peso';
+  if (!asUnidades) {
+    const q = Number(line.qty) || 0;
+    const need = recipeQtyToStock(q, umInsumo) * qtyLine;
+    if (need <= 0) return { skipped: true, reason: 'sin_masa' };
+    registrarSalida(tx, {
+      insumoId,
+      cantidad: need,
+      soloMasa: true,
+      referencia: 'venta_masa',
+      referenciaId,
+      userId,
+      eventAt,
+    });
+    return { skipped: false };
+  }
+  const qtyUnidad = Number(line.qty) || 0;
+  const fracU = qtyUnidad * qtyLine;
+  if (fracU <= 0) return { skipped: true, reason: 'sin_unidades' };
+  const kpu0 = insRow ? Number(insRow.kg_por_unidad) || 0 : 0;
+  if (kpu0 > 1e-12) {
+    const needKg = fracU * kpu0;
+    registrarSalida(tx, {
+      insumoId,
+      cantidad: needKg,
+      unidadesSalida: fracU,
+      referencia: 'venta',
+      referenciaId,
+      userId,
+      eventAt,
+    });
+  } else {
+    registrarSalida(tx, {
+      insumoId,
+      cantidad: fracU,
+      referencia: 'venta',
+      referenciaId,
+      userId,
+      eventAt,
+    });
+  }
+  return { skipped: false };
+}
+
 function salidaInsumosPorProducto(tx, { productId, quantity, referencia, referenciaId, userId, eventAt }) {
   const pid = String(productId || '').trim();
   const qtyLine = Number(quantity || 0);
   if (!pid || qtyLine <= 0) return { skipped: true, reason: 'sin_producto' };
 
   const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [pid]);
-  const directInsumo = product ? String(product.kardex_insumo_id || '').trim() : '';
-  if (directInsumo) {
-    const insRow = tx.queryOne('SELECT unidad_medida, kg_por_unidad, stock_unidades, stock_actual FROM insumos WHERE id = ?', [directInsumo]);
-    const modo = String(product.kardex_insumo_modo || 'unidad').toLowerCase();
-    const umInsumo = insRow ? insRow.unidad_medida : '';
-    const asUnidades = isUnidadUm(umInsumo) || modo !== 'peso';
-    if (!asUnidades) {
-      const q = Number(product.kardex_insumo_gramos) || 0;
-      const need = recipeQtyToStock(q, umInsumo) * qtyLine;
-      if (need <= 0) return { skipped: true, reason: 'sin_masa' };
-      registrarSalida(tx, {
-        insumoId: directInsumo,
-        cantidad: need,
-        soloMasa: true,
-        referencia: 'venta_masa',
-        referenciaId,
-        userId,
-        eventAt,
-      });
-      return { skipped: false };
+  const kardexLines = resolveKardexInsumoLines(product || {});
+  if (kardexLines.length) {
+    let any = false;
+    for (const line of kardexLines) {
+      const result = salidaUnKardexLine(tx, line, qtyLine, { referenciaId, userId, eventAt });
+      if (!result.skipped) any = true;
     }
-    const num = Number(product.kardex_insumo_num);
-    const den = Number(product.kardex_insumo_den);
-    const n = num > 0 && Number.isFinite(num) ? num : 1;
-    const d = den > 0 && Number.isFinite(den) ? den : 1;
-    const qtyUnidad = isUnidadUm(umInsumo) && modo === 'peso'
-      ? (Number(product.kardex_insumo_gramos) || 0)
-      : (n / d);
-    const fracU = qtyUnidad * qtyLine;
-    if (fracU <= 0) return { skipped: true, reason: 'sin_unidades' };
-    const kpu0 = insRow ? Number(insRow.kg_por_unidad) || 0 : 0;
-    if (kpu0 > 1e-12) {
-      const needKg = fracU * kpu0;
-      registrarSalida(tx, {
-        insumoId: directInsumo,
-        cantidad: needKg,
-        unidadesSalida: fracU,
-        referencia: 'venta',
-        referenciaId,
-        userId,
-        eventAt,
-      });
-    } else {
-      registrarSalida(tx, {
-        insumoId: directInsumo,
-        cantidad: fracU,
-        referencia: 'venta',
-        referenciaId,
-        userId,
-        eventAt,
-      });
-    }
-    return { skipped: false };
+    return any ? { skipped: false } : { skipped: true, reason: 'sin_cantidad' };
   }
 
   const rec = tx.queryOne(
