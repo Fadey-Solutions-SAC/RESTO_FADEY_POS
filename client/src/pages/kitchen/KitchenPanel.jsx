@@ -223,7 +223,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
       if (filter !== 'all') qs.set('type', filter);
       qs.set('station', areaId);
       const data = await api.get(`/orders/kitchen?${qs.toString()}`);
-      setOrders(data);
+      setOrders(Array.isArray(data) ? data : []);
       if (usesItemLevelReady) {
         const ids = new Set();
         (data || []).forEach((order) => {

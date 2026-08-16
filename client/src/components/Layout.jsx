@@ -11,6 +11,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppLocaleBootstrap } from '../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../hooks/useStaffSessionHeartbeat';
+import { getShellModuleTitleKey } from '../utils/shellModuleTitle';
 import OfflineCajaBanner from './OfflineCajaBanner';
 
 export default function Layout() {
