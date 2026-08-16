@@ -243,7 +243,7 @@ export default function Tables() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-2xl font-bold text-[var(--ui-body-text)]">Mesas</h1>
+        <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">Mesas</h1>
         <p className="mt-1 text-sm text-[var(--ui-muted)]">
           {isMozo
             ? 'Salones y mesas de su caja asignada'

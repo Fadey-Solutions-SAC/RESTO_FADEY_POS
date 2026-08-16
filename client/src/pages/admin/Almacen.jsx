@@ -1271,7 +1271,7 @@ export default function Almacen() {
       <>
       <div>
         <div className="flex items-center justify-between mb-5">
-          <h1 className="text-2xl font-bold text-[var(--ui-body-text)]">Control De Recursos · {activeViewLabel}</h1>
+          <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">Control De Recursos · {activeViewLabel}</h1>
         </div>
 
         {activeView === 'requerimiento' && (
@@ -1963,7 +1963,7 @@ export default function Almacen() {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold text-[var(--ui-body-text)]">Control De Recursos</h1>
+        <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">Control De Recursos</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={() => {

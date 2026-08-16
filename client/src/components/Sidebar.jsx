@@ -13,6 +13,7 @@ import {
   MdCreditCard, MdPeopleAlt, MdRestaurantMenu, MdLocalOffer,
   MdDiscount, MdWarehouse, MdDeliveryDining, MdAssessment,
   MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdTouchApp,
+  MdMenu,
 } from 'react-icons/md';
 import { getProductionAreaIcon } from '../utils/productionAreaUi';
 
@@ -62,7 +63,7 @@ const ALMACEN_SUB_IDS = [
   'movimiento_interno', 'ir_modulo_logistica', 'requerimiento', 'recepcion', 'ir_modulo_gastos',
 ];
 
-export default function Sidebar({ collapsed, isMobile = false, mobileOpen = false, onClose = () => {} }) {
+export default function Sidebar({ collapsed, isMobile = false, mobileOpen = false, onClose = () => {}, onToggleMenu = () => {} }) {
   const { t } = useTranslation('dashboard');
   const { t: tc } = useTranslation('common');
   const { user } = useAuth();
@@ -247,10 +248,33 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
           isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
         }`}
       >
-        <div className="rf-sidebar-brand w-9 h-9 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
-          <MdStorefront className="text-white text-lg" />
-        </div>
-        {!isCollapsed && <span className="rf-font-display font-bold text-base text-[var(--ui-body-text)] tracking-tight truncate">{tc('layout.brandName')}</span>}
+        {isCollapsed ? (
+          <button
+            type="button"
+            onClick={onToggleMenu}
+            className="p-2 hover:bg-[var(--ui-sidebar-hover)] rounded-lg transition-colors"
+            aria-label={tc('layout.menu', { defaultValue: 'Menú' })}
+          >
+            <MdMenu className="text-xl text-[var(--ui-body-text)]" />
+          </button>
+        ) : (
+          <>
+            <div className="rf-sidebar-brand w-9 h-9 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+              <MdStorefront className="text-white text-lg" />
+            </div>
+            <span className="rf-font-display font-bold text-base text-[var(--ui-body-text)] tracking-tight truncate min-w-0 flex-1">
+              {tc('layout.brandName')}
+            </span>
+            <button
+              type="button"
+              onClick={onToggleMenu}
+              className="p-2 hover:bg-[var(--ui-sidebar-hover)] rounded-lg transition-colors shrink-0"
+              aria-label={tc('layout.menu', { defaultValue: 'Menú' })}
+            >
+              <MdMenu className="text-xl text-[var(--ui-body-text)]" />
+            </button>
+          </>
+        )}
       </div>
 
       <nav className="flex-1 px-1.5 py-2 space-y-0.5 overflow-y-auto scrollbar-thin">

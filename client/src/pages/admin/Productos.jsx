@@ -805,7 +805,7 @@ export default function Productos() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-[var(--ui-body-text)]">{t('categories.title')}</h1>
+        <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">{t('categories.title')}</h1>
         <div />
       </div>
 

@@ -85,7 +85,7 @@ export default function Descuentos() {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold rf-page-title">Descuentos</h1>
+        <h1 className="text-2xl font-bold rf-page-title rf-module-page-title">Descuentos</h1>
         <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2"><MdAdd /> Nuevo Descuento</button>
       </div>
 

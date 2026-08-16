@@ -163,7 +163,7 @@ export default function WorkTime() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ui-body-text)] flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-[var(--ui-body-text)] flex items-center gap-2 rf-module-page-title">
             <MdAccessTime className="text-gold-600" /> Tiempo trabajado
           </h1>
           <p className="text-sm text-[var(--ui-muted)] mt-1 max-w-2xl">

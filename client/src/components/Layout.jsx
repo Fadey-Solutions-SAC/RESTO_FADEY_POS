@@ -10,9 +10,11 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppLocaleBootstrap } from '../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../hooks/useStaffSessionHeartbeat';
+import { getShellModuleTitleKey } from '../utils/shellModuleTitle';
 
 export default function Layout() {
   const { t } = useTranslation('common');
+  const { t: td } = useTranslation('dashboard');
   useAppLocaleBootstrap();
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 1024 : false);
@@ -76,6 +78,8 @@ export default function Layout() {
   }, [isMobile]);
 
   const isMozoBlocked = user?.role === 'mozo' && cajaOpen === false && !checkingCaja;
+  const shellTitleKey = getShellModuleTitleKey(location.pathname);
+  const shellTitle = shellTitleKey ? td(shellTitleKey) : '';
 
   return (
     <div className="min-h-screen bg-[var(--ui-body-bg)]">
@@ -87,16 +91,26 @@ export default function Layout() {
         isMobile={isMobile}
         mobileOpen={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
+        onToggleMenu={() => (isMobile ? setMobileMenuOpen((prev) => !prev) : setCollapsed((prev) => !prev))}
       />
       <div className={`transition-all duration-300 ${isMobile ? 'ml-0' : (collapsed ? 'ml-[var(--ui-sidebar-width-collapsed)]' : 'ml-[var(--ui-sidebar-width)]')}`}>
         <header className="rf-shell-header h-[var(--ui-shell-header-h)] shrink-0 flex items-center justify-between px-3 sm:px-6 sticky top-0 z-30 border-b border-[color:var(--ui-sidebar-border)]">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => (isMobile ? setMobileMenuOpen(prev => !prev) : setCollapsed(!collapsed))}
-              className="p-2 hover:bg-[var(--ui-sidebar-hover)] rounded-lg transition-colors"
-            >
-              <MdMenu className="text-xl text-[var(--ui-body-text)]" />
-            </button>
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            {isMobile ? (
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen((prev) => !prev)}
+                className="p-2 hover:bg-[var(--ui-sidebar-hover)] rounded-lg transition-colors shrink-0"
+                aria-label={t('layout.menu', { defaultValue: 'Menú' })}
+              >
+                <MdMenu className="text-xl text-[var(--ui-body-text)]" />
+              </button>
+            ) : null}
+            {shellTitle ? (
+              <h1 className="text-2xl font-bold text-[var(--ui-body-text)] truncate leading-tight rf-page-title">
+                {shellTitle}
+              </h1>
+            ) : null}
           </div>
           <div className="flex items-center gap-3">
             {user?.role === 'master_admin' && (

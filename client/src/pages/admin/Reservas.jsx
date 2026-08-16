@@ -255,7 +255,7 @@ export default function Reservas() {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold rf-page-title">Reservas</h1>
+        <h1 className="text-2xl font-bold rf-page-title rf-module-page-title">Reservas</h1>
         <button
           onClick={() => {
             resetForm();

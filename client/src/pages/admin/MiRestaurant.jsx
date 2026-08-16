@@ -740,7 +740,7 @@ export default function MiRestaurant() {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold text-[var(--ui-body-text)]">Mi Restaurante · {activeViewLabel}</h1>
+        <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">Mi Restaurante · {activeViewLabel}</h1>
         {showSaveButton ? (
           <button type="button" onClick={save} className="btn-primary flex items-center gap-2"><MdSave /> Guardar Cambios</button>
         ) : null}

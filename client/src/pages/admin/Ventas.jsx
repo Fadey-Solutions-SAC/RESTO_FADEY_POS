@@ -633,7 +633,7 @@ export default function Ventas() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] mb-3">{t('title')}</h1>
+      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] mb-3 rf-module-page-title">{t('title')}</h1>
 
       <div className="flex flex-wrap gap-2 mb-5">
         {[

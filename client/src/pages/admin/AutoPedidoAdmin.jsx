@@ -297,7 +297,7 @@ export default function AutoPedidoAdmin() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-2xl font-bold rf-page-title flex items-center gap-2">
+        <h1 className="text-2xl font-bold rf-page-title rf-module-page-title flex items-center gap-2">
           <MdQrCode2 className="text-[var(--ui-accent)]" />
           Auto pedido
         </h1>

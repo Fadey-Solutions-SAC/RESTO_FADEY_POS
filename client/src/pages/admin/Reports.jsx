@@ -40,6 +40,15 @@ import {
   buildProductSalesCsv,
   buildClosedRegisterProductsTxt,
 } from '../../utils/productSalesExport';
+import {
+  mapSalesAccountExportRow,
+  buildDailySalesDownloadBaseName,
+  buildMonthlySalesDownloadBaseName,
+  buildDailySalesCsv,
+  buildDailySalesTxt,
+  buildMonthlySalesCsv,
+  buildMonthlySalesTxt,
+} from '../../utils/salesReportExport';
 
 const PAYMENT_METHOD_LABELS = {
   efectivo: 'Efectivo',
@@ -943,6 +952,56 @@ export default function Reports() {
     }
   };
 
+  const downloadSalesPeriodReport = (format = 'csv') => {
+    if (tab === 'daily') {
+      if (!dailyData) {
+        toast.error('Cargue el informe del día para descargar');
+        return;
+      }
+      const periodLabel = formatDate(dailyData.date || salesDailyDate);
+      const accounts = dailySalesAccounts.map((account) =>
+        mapSalesAccountExportRow(account, { formatDate, formatTime }),
+      );
+      const baseName = buildDailySalesDownloadBaseName(dailyData.date || salesDailyDate);
+      if (format === 'txt') {
+        downloadBlobFile(`${baseName}.txt`, buildDailySalesTxt(dailyData, accounts, { periodLabel, formatCurrency }));
+        toast.success(`Informe del ${periodLabel} descargado (TXT)`);
+        return;
+      }
+      downloadBlobFile(
+        `${baseName}.csv`,
+        buildDailySalesCsv(dailyData, accounts, { periodLabel }),
+        'text/csv;charset=utf-8',
+      );
+      toast.success(`Informe del ${periodLabel} descargado (CSV)`);
+      return;
+    }
+    if (tab === 'monthly') {
+      if (!monthlyData) {
+        toast.error('Cargue el informe del mes para descargar');
+        return;
+      }
+      const periodLabel = formatMonthLabel(monthlyData.month || salesMonth);
+      const baseName = buildMonthlySalesDownloadBaseName(monthlyData.month || salesMonth);
+      if (format === 'txt') {
+        downloadBlobFile(
+          `${baseName}.txt`,
+          buildMonthlySalesTxt(monthlyData, { periodLabel, formatCurrency, formatDate }),
+        );
+        toast.success(`Informe de ${periodLabel} descargado (TXT)`);
+        return;
+      }
+      downloadBlobFile(
+        `${baseName}.csv`,
+        buildMonthlySalesCsv(monthlyData, { periodLabel, formatDate }),
+        'text/csv;charset=utf-8',
+      );
+      toast.success(`Informe de ${periodLabel} descargado (CSV)`);
+      return;
+    }
+    toast.error('Seleccione Informe del Día o Informe del Mes');
+  };
+
   const downloadProductSalesReport = (report, format = 'csv') => {
     const hasProducts = (report?.sold_products || []).length > 0
       || (report?.by_register || []).some((b) => (b.sold_products || []).length > 0);
@@ -1271,7 +1330,7 @@ export default function Reports() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] mb-6 rf-page-title">Informes</h1>
+      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] mb-6 rf-page-title rf-module-page-title">Informes</h1>
       <div className="mb-6">
         <div className="flex flex-wrap gap-2">
           {sectionCards.map(section => {
@@ -1371,6 +1430,28 @@ export default function Reports() {
             <t.icon /> {t.label}
           </button>
         ))}
+        {(tab === 'daily' || tab === 'monthly') && (
+          <div className="flex gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={() => downloadSalesPeriodReport('csv')}
+              disabled={tab === 'daily' ? !dailyData : !monthlyData}
+              className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 disabled:opacity-50 bg-[var(--ui-surface)]"
+              title={tab === 'daily' ? `Descargar ventas del ${formatDate(salesDailyDate)}` : `Descargar ventas de ${formatMonthLabel(salesMonth)}`}
+            >
+              <MdDownload /> CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadSalesPeriodReport('txt')}
+              disabled={tab === 'daily' ? !dailyData : !monthlyData}
+              className="text-xs px-3 py-1.5 border border-[color:var(--ui-border)] rounded-lg inline-flex items-center gap-1 disabled:opacity-50 bg-[var(--ui-surface)]"
+              title={tab === 'daily' ? `Descargar ventas del ${formatDate(salesDailyDate)}` : `Descargar ventas de ${formatMonthLabel(salesMonth)}`}
+            >
+              <MdDownload /> TXT
+            </button>
+          </div>
+        )}
       </div>
 
       {tab === 'daily' && dailyLoading && !dailyData && (

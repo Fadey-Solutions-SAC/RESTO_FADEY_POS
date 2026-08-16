@@ -208,7 +208,7 @@ export default function Delivery() {
   return (
     <div>
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
-        <h1 className="text-2xl font-bold rf-page-title">Delivery</h1>
+        <h1 className="text-2xl font-bold rf-page-title rf-module-page-title">Delivery</h1>
         {!isMozo && (
           <div className="flex flex-wrap gap-2">
             <button onClick={openNewOrder} className="btn-primary flex items-center gap-2 text-sm">

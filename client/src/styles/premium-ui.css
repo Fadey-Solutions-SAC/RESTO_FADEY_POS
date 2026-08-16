@@ -66,6 +66,10 @@ h1, h2, h3, h4 {
 .rf-page-title {
   color: var(--ui-body-text);
 }
+/* El título del módulo vive en la franja superior; no duplicar en el cuerpo. */
+.rf-main-content h1.rf-module-page-title {
+  display: none !important;
+}
 .rf-section-title {
   color: var(--ui-body-text);
 }
