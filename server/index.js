@@ -374,7 +374,7 @@ function logSqlitePersistenceWarnings() {
 ********************************************************************************
 `);
   } else if (cloudEphemeralHost && persistentMount) {
-    console.log(`[SQLite] DB_PATH parece volumen persistente: ${info.path}`);
+    console.log(`[SQLite] DB_PATH parece volumen persistente: ${info.path} (motor ${info.engine})`);
   }
 }
 
@@ -427,7 +427,7 @@ async function start() {
     }
   }
   logSqlitePersistenceWarnings();
-  console.log(`[DB] SQLite path: ${getDbPath()}`);
+  console.log(`[DB] SQLite path: ${getDbPath()} (${getDatabasePersistenceInfo().engine})`);
   console.log(`[uploads] Archivos estáticos en: ${uploadsDir}`);
   console.log('[printing] Bridge de impresión: rutas /api/printing/* y GET /api/printers (USB vía Node en esta máquina).');
   if (typeof billingRoutes.startBillingAutoRetryJob === 'function') {
@@ -483,6 +483,13 @@ async function start() {
   };
   process.on('SIGTERM', () => flushSqliteOnExit('SIGTERM'));
   process.on('SIGINT', () => flushSqliteOnExit('SIGINT'));
+  process.on('beforeExit', () => {
+    try {
+      flushSaveDb();
+    } catch (err) {
+      console.warn('[sqlite] flush beforeExit:', err.message || err);
+    }
+  });
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {
       console.error(`[server] puerto ocupado: ${LISTEN_HOST}:${PORT}. Cierre la instancia previa o cambie PORT.`);

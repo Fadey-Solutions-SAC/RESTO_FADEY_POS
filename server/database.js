@@ -10,7 +10,18 @@ const {
   writeSnapshotBackup,
   ensureDailyBackup,
   getPersistentBackupsDir,
+  getLastGoodPath,
 } = require('./sqlitePersist');
+const {
+  loadBetterSqlite3,
+  openNativeWithRecover,
+  reopenNative,
+  probeSqliteBuffer,
+  checkpointNative,
+  vacuumNativeInto,
+  isNativeDb,
+  removeWalSidecars,
+} = require('./sqliteEngine');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'restaurant.db');
 const DB_PATH = path.resolve(process.env.DB_PATH || DEFAULT_DB_PATH);
@@ -31,12 +42,36 @@ function getDatabasePersistenceInfo() {
     path: DB_PATH,
     fileExistedBeforeInit: dbFileExistedBeforeInit,
     dbPathFromEnv: !!process.env.DB_PATH,
+    engine: isNativeDb(db) ? 'native-wal' : 'sqljs',
   };
 }
 
 function getDb() {
   if (!db) throw new Error('Database not initialized');
   return db;
+}
+
+function diskHasPopulatedCopy() {
+  const guard = readDbGuard();
+  const guardUsers = Number(guard?.users || 0);
+  const guardProducts = Number(guard?.products || 0);
+  let mainBytes = 0;
+  try {
+    mainBytes = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0;
+  } catch {
+    mainBytes = 0;
+  }
+  let lastGoodBytes = 0;
+  try {
+    const lastGood = getLastGoodPath(DB_PATH);
+    lastGoodBytes = fs.existsSync(lastGood) ? fs.statSync(lastGood).size : 0;
+  } catch {
+    lastGoodBytes = 0;
+  }
+  if (guardUsers > 0 || guardProducts > 0) return true;
+  if (mainBytes > 100 * 1024) return true;
+  if (lastGoodBytes > 100 * 1024) return true;
+  return false;
 }
 
 function saveDb() {
@@ -47,13 +82,44 @@ function saveDb() {
   }
   persistBusy = true;
   try {
+    if (isNativeDb(db)) {
+      checkpointNative(db._native, 'FULL');
+      const usersCount = countTableRows('users');
+      const productsCount = countTableRows('products');
+      if (usersCount > 0 || productsCount > 0) {
+        allowEmptyPersist = false;
+        writeDbGuard({
+          users: usersCount,
+          products: productsCount,
+          bytes: fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0,
+        });
+      }
+      return;
+    }
     const parentDir = path.dirname(DB_PATH);
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
     }
+    const usersCount = countTableRows('users');
+    const productsCount = countTableRows('products');
+    const populatedNow = usersCount > 0 || productsCount > 0;
+    if (!populatedNow && !allowEmptyPersist && diskHasPopulatedCopy()) {
+      console.error(
+        '[sqlite] RECHAZADO: no se escribe una base vacía sobre datos existentes. Se conserva restaurant.db y .lastgood.',
+      );
+      return;
+    }
     const data = db.export();
     const buffer = Buffer.from(data);
-    writeFileAtomic(DB_PATH, buffer);
+    writeFileAtomic(DB_PATH, buffer, { keepPrevious: populatedNow });
+    if (populatedNow) {
+      allowEmptyPersist = false;
+      writeDbGuard({
+        users: usersCount,
+        products: productsCount,
+        bytes: buffer.length,
+      });
+    }
   } catch (err) {
     console.error(JSON.stringify({
       level: 'error',
@@ -78,6 +144,7 @@ function saveDb() {
 }
 
 function scheduleSaveDb() {
+  if (isNativeDb(db)) return;
   if (persistTimer) return;
   persistTimer = setTimeout(() => {
     persistTimer = null;
@@ -104,12 +171,19 @@ function createSafetyBackup({ force = false } = {}) {
     return null;
   }
   flushSaveDb();
-  if (!fs.existsSync(DB_PATH)) return null;
-  const buffer = fs.readFileSync(DB_PATH);
-  if (buffer.length < 512) return null;
   const usersCount = countTableRows('users');
   const productsCount = countTableRows('products');
   if (usersCount === 0 && productsCount === 0) return null;
+  let buffer;
+  if (isNativeDb(db)) {
+    const lastGood = getLastGoodPath(DB_PATH);
+    vacuumNativeInto(db._native, lastGood);
+    buffer = fs.readFileSync(lastGood);
+  } else {
+    if (!fs.existsSync(DB_PATH)) return null;
+    buffer = fs.readFileSync(DB_PATH);
+    if (buffer.length < 512) return null;
+  }
   const autoPath = writeSnapshotBackup(DB_PATH, buffer, 'restaurant_auto');
   ensureDailyBackup(DB_PATH, buffer);
   lastAutoBackupAt = now;
@@ -202,6 +276,14 @@ function assertSafeDbBeforePersist({ usersCount, productsCount, previousBytes })
 
 function createBackupFile() {
   flushSaveDb();
+  if (isNativeDb(db)) {
+    const destDir = getPersistentBackupsDir(DB_PATH);
+    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '_');
+    const dest = path.join(destDir, `restaurant_manual_${ts}.db`);
+    vacuumNativeInto(db._native, dest);
+    return dest;
+  }
   const buffer = fs.readFileSync(DB_PATH);
   if (!buffer || buffer.length < 512) {
     throw new Error('No hay una base de datos válida para respaldar');
@@ -216,27 +298,24 @@ async function restoreDbFromBuffer(fileBuffer) {
   if (fileBuffer.length < 512) {
     throw new Error('El archivo es demasiado pequeño para ser una base SQLite válida');
   }
-  const SQL = await initSqlJs();
-  let probe;
-  try {
-    probe = new SQL.Database(fileBuffer);
-    probe.run('PRAGMA foreign_keys = ON');
-    probe.exec('SELECT 1');
-    probe.close();
-  } catch (err) {
-    throw new Error(`No se pudo leer el backup SQLite: ${err?.message || 'archivo corrupto o incompatible'}`);
-  }
-
-  const parentDir = path.dirname(DB_PATH);
-  try {
-    if (!fs.existsSync(parentDir)) {
-      fs.mkdirSync(parentDir, { recursive: true });
+  const BetterSqlite = loadBetterSqlite3();
+  if (BetterSqlite) {
+    try {
+      probeSqliteBuffer(BetterSqlite, fileBuffer);
+    } catch (err) {
+      throw new Error(`No se pudo leer el backup SQLite: ${err?.message || 'archivo corrupto o incompatible'}`);
     }
-    writeFileAtomic(DB_PATH, Buffer.from(fileBuffer));
-  } catch (err) {
-    throw new Error(
-      `No se pudo guardar en ${DB_PATH}: ${err?.message || err}. En Render monte un disco en /data y use DB_PATH=/data/restaurant.db`,
-    );
+  } else {
+    const SQL = await initSqlJs();
+    let probe;
+    try {
+      probe = new SQL.Database(fileBuffer);
+      probe.run('PRAGMA foreign_keys = ON');
+      probe.exec('SELECT 1');
+      probe.close();
+    } catch (err) {
+      throw new Error(`No se pudo leer el backup SQLite: ${err?.message || 'archivo corrupto o incompatible'}`);
+    }
   }
 
   if (db && typeof db.close === 'function') {
@@ -245,18 +324,45 @@ async function restoreDbFromBuffer(fileBuffer) {
     } catch (_) {
       // noop
     }
+    db = null;
   }
+
+  const parentDir = path.dirname(DB_PATH);
   try {
-    const diskBuffer = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(diskBuffer);
-    db.run('PRAGMA foreign_keys = ON');
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+    writeFileAtomic(DB_PATH, Buffer.from(fileBuffer), { keepPrevious: true });
+    removeWalSidecars(DB_PATH);
+  } catch (err) {
+    throw new Error(
+      `No se pudo guardar en ${DB_PATH}: ${err?.message || err}. En Render monte un disco en /data y use DB_PATH=/data/restaurant.db`,
+    );
+  }
+
+  try {
+    if (BetterSqlite) {
+      db = reopenNative(BetterSqlite, DB_PATH);
+    } else {
+      const SQL = await initSqlJs();
+      const diskBuffer = fs.readFileSync(DB_PATH);
+      db = new SQL.Database(diskBuffer);
+      db.run('PRAGMA foreign_keys = ON');
+    }
   } catch (err) {
     throw new Error(`Backup guardado en disco pero no se pudo abrir: ${err?.message || err}`);
+  }
+
+  try {
+    ensureUsersRoleAllowsProduccion();
+  } catch (migErr) {
+    console.warn('[backup] CHECK rol produccion tras restaurar:', migErr.message || migErr);
   }
 
   const restaurant = queryOne('SELECT name FROM restaurants LIMIT 1');
   const usersCount = countTableRows('users');
   const productsCount = countTableRows('products');
+  allowEmptyPersist = false;
   if (usersCount > 0 || productsCount > 0) {
     writeDbGuard({
       users: usersCount,
@@ -264,6 +370,11 @@ async function restoreDbFromBuffer(fileBuffer) {
       bytes: fileBuffer.length,
       restaurant_name: restaurant?.name || '',
     });
+    try {
+      createSafetyBackup({ force: true });
+    } catch (backupErr) {
+      console.warn('[sqlite-backup] copia tras restaurar:', backupErr.message || backupErr);
+    }
   }
   console.info('[backup] Restaurado:', restaurant?.name || '(sin nombre)', '→', DB_PATH, `(${fileBuffer.length} bytes)`);
 }
@@ -513,8 +624,6 @@ async function initDatabase() {
   if (dbReady) return dbReady;
 
   dbReady = (async () => {
-    const SQL = await initSqlJs();
-
     let previousBytes = 0;
     dbFileExistedBeforeInit = fs.existsSync(DB_PATH);
     if (dbFileExistedBeforeInit) {
@@ -523,82 +632,105 @@ async function initDatabase() {
       } catch {
         previousBytes = 0;
       }
-      let fileBuffer = Buffer.alloc(0);
-      try {
-        fileBuffer = fs.readFileSync(DB_PATH);
-      } catch (readErr) {
-        console.error('[sqlite] no se pudo leer el archivo; arranque vacío:', readErr?.message || readErr);
-        db = new SQL.Database();
-        enableEmptyBoot('no se pudo leer el archivo.');
+    }
+
+    const BetterSqlite = loadBetterSqlite3();
+    if (BetterSqlite) {
+      const opened = await openNativeWithRecover(BetterSqlite, DB_PATH, {
+        minUsers: Number(readDbGuard()?.users || 0),
+      });
+      db = opened.db;
+      if (opened.emptyBoot) {
+        enableEmptyBoot(opened.reason || 'arranque nativo vacío.');
       }
-      if (!db) {
-        if (fileBuffer.length < 512) {
-          console.warn(
-            `[sqlite] ${DB_PATH} está vacío o truncado (${fileBuffer.length} bytes); se buscará copia en el disco.`,
-          );
-        }
-        try {
-        const opened = openOrRecoverSqliteFile(SQL, DB_PATH, fileBuffer, {
-          minUsers: Number(readDbGuard()?.users || 0),
-        });
-        if (opened.error) {
-          console.error('[sqlite] no se pudo recuperar la base:', opened.error.message || opened.error);
-          db = new SQL.Database();
-          enableEmptyBoot('no hay copia usable.');
-        } else {
-          db = opened.db;
-          if (opened.recovered) {
-            previousBytes = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : previousBytes;
-          }
-          try {
-            const u = Number(queryOne('SELECT COUNT(*) as c FROM users')?.c) || 0;
-            const p = Number(queryOne('SELECT COUNT(*) as c FROM products')?.c) || 0;
-            if (u === 0 && p === 0) {
-              try { db.close(); } catch { /* ignore */ }
-              db = new SQL.Database();
-              enableEmptyBoot('copia sin usuarios/productos.');
-            }
-          } catch {
-            try { db.close(); } catch { /* ignore */ }
-            db = new SQL.Database();
-            enableEmptyBoot('esquema ilegible.');
-          }
-        }
-      } catch (err) {
-        console.error('[sqlite] error abriendo la base; arranque vacío:', err?.message || err);
-        db = new SQL.Database();
-        enableEmptyBoot('error al abrir el archivo.');
-      }
+      if (opened.recovered && fs.existsSync(DB_PATH)) {
+        previousBytes = fs.statSync(DB_PATH).size;
+        dbFileExistedBeforeInit = true;
       }
     } else {
-      try {
-        const guard = readDbGuard();
-        if (guard && Number(guard.users || 0) > 0) {
-          console.warn(`[sqlite] Falta ${DB_PATH}; se buscará copia (marcador: ${guard.users} usuario(s)).`);
-          const opened = openOrRecoverSqliteFile(SQL, DB_PATH, Buffer.alloc(0), {
-            minUsers: Number(guard.users || 0),
-          });
-          if (opened.error) {
-            db = new SQL.Database();
-            enableEmptyBoot('no hay copia usable.');
-          } else {
-            db = opened.db;
-            previousBytes = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0;
-            dbFileExistedBeforeInit = true;
-          }
-        } else {
+      const SQL = await initSqlJs();
+      if (dbFileExistedBeforeInit) {
+        let fileBuffer = Buffer.alloc(0);
+        try {
+          fileBuffer = fs.readFileSync(DB_PATH);
+        } catch (readErr) {
+          console.error('[sqlite] no se pudo leer el archivo; arranque vacío:', readErr?.message || readErr);
           db = new SQL.Database();
+          enableEmptyBoot('no se pudo leer el archivo.');
         }
-      } catch (missingErr) {
-        console.error('[sqlite] error buscando copia; arranque vacío:', missingErr?.message || missingErr);
+        if (!db) {
+          if (fileBuffer.length < 512) {
+            console.warn(
+              `[sqlite] ${DB_PATH} está vacío o truncado (${fileBuffer.length} bytes); se buscará copia en el disco.`,
+            );
+          }
+          try {
+            const opened = openOrRecoverSqliteFile(SQL, DB_PATH, fileBuffer, {
+              minUsers: Number(readDbGuard()?.users || 0),
+            });
+            if (opened.error) {
+              console.error('[sqlite] no se pudo recuperar la base:', opened.error.message || opened.error);
+              db = new SQL.Database();
+              enableEmptyBoot('no hay copia usable.');
+            } else {
+              db = opened.db;
+              if (opened.recovered) {
+                previousBytes = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : previousBytes;
+              }
+              try {
+                const u = Number(queryOne('SELECT COUNT(*) as c FROM users')?.c) || 0;
+                const p = Number(queryOne('SELECT COUNT(*) as c FROM products')?.c) || 0;
+                if (u === 0 && p === 0) {
+                  try { db.close(); } catch { /* ignore */ }
+                  db = new SQL.Database();
+                  enableEmptyBoot('copia sin usuarios/productos.');
+                }
+              } catch {
+                try { db.close(); } catch { /* ignore */ }
+                db = new SQL.Database();
+                enableEmptyBoot('esquema ilegible.');
+              }
+            }
+          } catch (err) {
+            console.error('[sqlite] error abriendo la base; arranque vacío:', err?.message || err);
+            db = new SQL.Database();
+            enableEmptyBoot('error al abrir el archivo.');
+          }
+        }
+      } else {
+        try {
+          const guard = readDbGuard();
+          if (guard && Number(guard.users || 0) > 0) {
+            console.warn(`[sqlite] Falta ${DB_PATH}; se buscará copia (marcador: ${guard.users} usuario(s)).`);
+            const opened = openOrRecoverSqliteFile(SQL, DB_PATH, Buffer.alloc(0), {
+              minUsers: Number(guard.users || 0),
+            });
+            if (opened.error) {
+              db = new SQL.Database();
+              enableEmptyBoot('no hay copia usable.');
+            } else {
+              db = opened.db;
+              previousBytes = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0;
+              dbFileExistedBeforeInit = true;
+            }
+          } else {
+            db = new SQL.Database();
+          }
+        } catch (missingErr) {
+          console.error('[sqlite] error buscando copia; arranque vacío:', missingErr?.message || missingErr);
+          db = new SQL.Database();
+          enableEmptyBoot('error buscando copia.');
+        }
+      }
+
+      if (!db) {
         db = new SQL.Database();
-        enableEmptyBoot('error buscando copia.');
+        enableEmptyBoot('sin instancia sql.js.');
       }
     }
 
     if (!db) {
-      db = new SQL.Database();
-      enableEmptyBoot('sin instancia sql.js.');
+      throw new Error('No se pudo inicializar SQLite');
     }
 
     db.run('PRAGMA foreign_keys = ON');
@@ -1686,61 +1818,8 @@ async function initDatabase() {
     addUserColIfMissing('production_area_ids', "ALTER TABLE users ADD COLUMN production_area_ids TEXT DEFAULT '[]'");
     ensureUsersSchemaColumns();
 
-    /** Ampliar roles con `produccion` (reemplazo de cocina/bar en UI). */
     try {
-      const usersSql = queryOne("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'");
-      const sqlText = String(usersSql?.sql || '');
-      if (sqlText && !sqlText.includes("'produccion'")) {
-        db.run('PRAGMA foreign_keys = OFF');
-        db.run('ALTER TABLE users RENAME TO users_role_mig');
-        db.run(`
-          CREATE TABLE users (
-            id TEXT PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            full_name TEXT NOT NULL,
-            role TEXT NOT NULL CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion')),
-            restaurant_id TEXT,
-            is_active INTEGER DEFAULT 1,
-            phone TEXT DEFAULT '',
-            avatar TEXT DEFAULT '',
-            caja_station_id TEXT DEFAULT '',
-            production_area_id TEXT DEFAULT '',
-            production_area_ids TEXT DEFAULT '[]',
-            payroll_pay_mode TEXT DEFAULT '',
-            payroll_amount REAL DEFAULT 0,
-            payroll_schedule_note TEXT DEFAULT '',
-            payroll_payment_day INTEGER DEFAULT 0,
-            is_buyer_admin INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT (datetime('now'))
-          )
-        `);
-        const migCols = queryAll('PRAGMA table_info(users_role_mig)').map((c) => c.name);
-        const want = [
-          'id', 'username', 'email', 'password_hash', 'full_name', 'role', 'restaurant_id',
-          'is_active', 'phone', 'avatar', 'caja_station_id', 'production_area_id', 'production_area_ids',
-          'payroll_pay_mode', 'payroll_amount', 'payroll_schedule_note', 'payroll_payment_day',
-          'is_buyer_admin', 'created_at',
-        ];
-        const selectExpr = want.map((col) => {
-          if (migCols.includes(col)) return col;
-          if (col === 'production_area_ids') return `'[]'`;
-          if (col === 'is_buyer_admin' || col === 'payroll_payment_day') return '0';
-          if (col === 'payroll_amount') return '0';
-          return `''`;
-        }).join(', ');
-        db.run(`INSERT INTO users (${want.join(', ')}) SELECT ${selectExpr} FROM users_role_mig`);
-        db.run('DROP TABLE users_role_mig');
-        db.run('PRAGMA foreign_keys = ON');
-        db.run(
-          `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_caja_station_unique
-           ON users(caja_station_id)
-           WHERE trim(coalesce(caja_station_id, '')) != ''
-             AND lower(trim(coalesce(role, ''))) = 'cajero'`
-        );
-        console.log('[migration] users: rol produccion añadido al CHECK');
-      }
+      ensureUsersRoleAllowsProduccion();
     } catch (e) {
       console.warn('[migration] users produccion role:', e.message || e);
     }
@@ -2737,6 +2816,104 @@ function hasUsersColumn(colName) {
   return pragmaTableColumnNames('users').includes(String(colName || '').trim());
 }
 
+const USERS_ROLE_CHECK_SQL =
+  "CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion'))";
+
+function readUsersTableCreateSql() {
+  try {
+    const row = queryOne("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'");
+    if (!row) return '';
+    return String(row.sql || row.SQL || '');
+  } catch {
+    return '';
+  }
+}
+
+function probeUsersRoleAllowsProduccion() {
+  const marker = `__rf_role_probe_${Date.now()}`;
+  try {
+    db.run('SAVEPOINT rf_probe_role');
+    db.run(
+      "INSERT INTO users (id, username, email, password_hash, full_name, role) VALUES (?, ?, ?, 'x', 'x', 'produccion')",
+      [marker, marker, `${marker}@probe.local`],
+    );
+    db.run('ROLLBACK TO SAVEPOINT rf_probe_role');
+    db.run('RELEASE SAVEPOINT rf_probe_role');
+    return true;
+  } catch {
+    try { db.run('ROLLBACK TO SAVEPOINT rf_probe_role'); } catch { /* ignore */ }
+    try { db.run('RELEASE SAVEPOINT rf_probe_role'); } catch { /* ignore */ }
+    return false;
+  }
+}
+
+/** El CHECK antiguo no incluye `produccion`; SQLite no deja ALTER CHECK, hay que recrear la tabla. */
+function ensureUsersRoleAllowsProduccion() {
+  if (!db) return false;
+  const createSql = readUsersTableCreateSql();
+  if (createSql.includes("'produccion'")) return true;
+  if (!createSql && probeUsersRoleAllowsProduccion()) return true;
+
+  const cols = queryAll('PRAGMA table_info(users)') || [];
+  if (!cols.length) return false;
+
+  const ddlParts = cols.map((c) => {
+    const name = String(c.name || c.NAME || '').trim();
+    if (name === 'id') return 'id TEXT PRIMARY KEY';
+    if (name === 'username') return 'username TEXT UNIQUE NOT NULL';
+    if (name === 'email') return 'email TEXT UNIQUE NOT NULL';
+    if (name === 'role') return `role TEXT NOT NULL ${USERS_ROLE_CHECK_SQL}`;
+    const type = String(c.type || 'TEXT').trim() || 'TEXT';
+    let piece = `${name} ${type}`;
+    if (Number(c.notnull) === 1) piece += ' NOT NULL';
+    if (c.dflt_value !== null && c.dflt_value !== undefined && String(c.dflt_value).trim() !== '') {
+      piece += ` DEFAULT ${c.dflt_value}`;
+    }
+    return piece;
+  });
+
+  const indexes = (queryAll(
+    "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'users' AND sql IS NOT NULL",
+  ) || []).filter((idx) => String(idx.sql || idx.SQL || '').trim());
+
+  db.run('PRAGMA foreign_keys = OFF');
+  try {
+    db.run('DROP TABLE IF EXISTS users_role_mig');
+    db.run('ALTER TABLE users RENAME TO users_role_mig');
+    db.run(`CREATE TABLE users (\n${ddlParts.join(',\n')}\n)`);
+    const destCols = (queryAll('PRAGMA table_info(users)') || []).map((c) => String(c.name));
+    const srcCols = (queryAll('PRAGMA table_info(users_role_mig)') || []).map((c) => String(c.name));
+    const copy = destCols.filter((n) => srcCols.includes(n));
+    db.run(`INSERT INTO users (${copy.join(', ')}) SELECT ${copy.join(', ')} FROM users_role_mig`);
+    db.run('DROP TABLE users_role_mig');
+    for (const idx of indexes) {
+      const idxSql = String(idx.sql || idx.SQL || '').trim();
+      if (!idxSql) continue;
+      try {
+        db.run(idxSql);
+      } catch (idxErr) {
+        console.warn('[migration] recrear índice users:', idxErr.message || idxErr);
+      }
+    }
+    db.run('PRAGMA foreign_keys = ON');
+    console.info('[migration] users: CHECK de rol incluye produccion');
+    try { flushSaveDb(); } catch { /* ignore */ }
+    return true;
+  } catch (err) {
+    try {
+      const oldCols = queryAll('PRAGMA table_info(users_role_mig)') || [];
+      if (oldCols.length) {
+        db.run('DROP TABLE IF EXISTS users');
+        db.run('ALTER TABLE users_role_mig RENAME TO users');
+      }
+    } catch {
+      /* ignore */
+    }
+    try { db.run('PRAGMA foreign_keys = ON'); } catch { /* ignore */ }
+    throw err;
+  }
+}
+
 /** Añade columnas de users que el código espera (no falla el alta si el .db es antiguo). */
 function ensureUsersSchemaColumns() {
   const needed = [
@@ -2998,4 +3175,5 @@ module.exports = {
   ensureOrdersPaidAtColumns,
   hasUsersColumn,
   ensureUsersSchemaColumns,
+  ensureUsersRoleAllowsProduccion,
 };

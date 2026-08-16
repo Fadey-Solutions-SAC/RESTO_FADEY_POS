@@ -13,17 +13,67 @@ function getPersistentBackupsDir(dbPath) {
   return path.join(path.dirname(dbPath), 'backups');
 }
 
-function atomicReplaceFile(srcTmp, destPath) {
+function getLastGoodPath(dbPath) {
+  return `${path.resolve(dbPath)}.lastgood`;
+}
+
+function fileSizeOrZero(filePath) {
+  try {
+    return fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Conserva el .db actual como .lastgood solo si parece una copia útil.
+ * Nunca pisa un lastgood grande con un archivo vacío o truncado.
+ */
+function preserveCurrentAsLastGood(destAbs) {
+  const destSize = fileSizeOrZero(destAbs);
+  if (destSize < 512) return;
+  const lastGood = getLastGoodPath(destAbs);
+  const lastSize = fileSizeOrZero(lastGood);
+  if (lastSize > destSize && destSize < 100 * 1024) {
+    return;
+  }
+  try {
+    if (fs.existsSync(lastGood)) fs.unlinkSync(lastGood);
+  } catch {
+    /* ignore */
+  }
+  try {
+    fs.renameSync(destAbs, lastGood);
+  } catch {
+    try {
+      fs.copyFileSync(destAbs, lastGood);
+    } catch (copyErr) {
+      console.warn('[sqlite-persist] no se pudo conservar lastgood:', copyErr.message || copyErr);
+    }
+  }
+}
+
+function atomicReplaceFile(srcTmp, destPath, { keepPrevious = false } = {}) {
   const destAbs = path.resolve(destPath);
   const srcAbs = path.resolve(srcTmp);
-  if (process.platform === 'win32') {
+  const lastGood = getLastGoodPath(destAbs);
+
+  if (keepPrevious && fs.existsSync(destAbs)) {
+    preserveCurrentAsLastGood(destAbs);
+  }
+
+  if (process.platform === 'win32' && fs.existsSync(destAbs)) {
     const bak = `${destAbs}.prev`;
     try {
       if (fs.existsSync(bak)) fs.unlinkSync(bak);
     } catch {
       /* ignore */
     }
-    if (fs.existsSync(destAbs)) fs.renameSync(destAbs, bak);
+    try {
+      fs.renameSync(destAbs, bak);
+    } catch {
+      try { fs.unlinkSync(destAbs); } catch { /* ignore */ }
+    }
     try {
       fs.renameSync(srcAbs, destAbs);
     } catch (err) {
@@ -35,10 +85,18 @@ function atomicReplaceFile(srcTmp, destPath) {
     try { fs.unlinkSync(bak); } catch { /* ignore */ }
     return;
   }
-  fs.renameSync(srcAbs, destAbs);
+
+  try {
+    fs.renameSync(srcAbs, destAbs);
+  } catch (err) {
+    if (keepPrevious && fs.existsSync(lastGood) && !fs.existsSync(destAbs)) {
+      try { fs.renameSync(lastGood, destAbs); } catch { /* ignore */ }
+    }
+    throw err;
+  }
 }
 
-function writeFileAtomic(destPath, buffer) {
+function writeFileAtomic(destPath, buffer, { keepPrevious = false } = {}) {
   const dir = path.dirname(destPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const tmp = `${destPath}.${process.pid}.${Date.now()}.tmp`;
@@ -50,7 +108,7 @@ function writeFileAtomic(destPath, buffer) {
     fs.closeSync(fd);
   }
   try {
-    atomicReplaceFile(tmp, destPath);
+    atomicReplaceFile(tmp, destPath, { keepPrevious });
   } catch (err) {
     try { fs.unlinkSync(tmp); } catch { /* ignore */ }
     throw err;
@@ -155,6 +213,7 @@ function leftoverTmpCandidates(dbPath) {
 
 module.exports = {
   getPersistentBackupsDir,
+  getLastGoodPath,
   writeFileAtomic,
   writeSnapshotBackup,
   ensureDailyBackup,

@@ -46,5 +46,15 @@
     "requerimiento": "Requisition",
     "recepcion": "Receiving",
     "ir_modulo_gastos": "Go to expenses module"
+  },
+  "informesSub": {
+    "ventas": "Sales",
+    "descuentos": "Discounts & comps",
+    "productos": "Products",
+    "caja": "Cash register",
+    "compras": "Purchases",
+    "finanzas": "Finance",
+    "facturacion": "E-invoicing",
+    "inventario": "Inventory"
   }
 }

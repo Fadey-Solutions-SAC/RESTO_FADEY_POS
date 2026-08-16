@@ -46,5 +46,15 @@
     "requerimiento": "Requerimiento",
     "recepcion": "Recepción",
     "ir_modulo_gastos": "Ir a módulo de gastos"
+  },
+  "informesSub": {
+    "ventas": "Ventas",
+    "descuentos": "Descuentos y cortesías",
+    "productos": "Productos",
+    "caja": "Caja",
+    "compras": "Compras",
+    "finanzas": "Finanzas",
+    "facturacion": "Facturación electrónica",
+    "inventario": "Inventario"
   }
 }

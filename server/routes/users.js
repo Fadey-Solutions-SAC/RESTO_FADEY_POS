@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, queryOne, runSql, hasUsersColumn, ensureUsersSchemaColumns } = require('../database');
+const { queryAll, queryOne, runSql, hasUsersColumn, ensureUsersSchemaColumns, ensureUsersRoleAllowsProduccion } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { getActiveCajaById, getFirstAutoAssignCajaId } = require('../cajaSettings');
 const { syncAreaUserLinksFromUsers } = require('../services/productionAreasService');
@@ -220,6 +220,9 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     /** Solo el maestro crea al dueño del negocio; admins del personal no llevan esta marca. */
     const isBuyerAdmin = isMaster && finalRole === 'admin' ? 1 : 0;
     try { ensureUsersSchemaColumns(); } catch (_) { /* el INSERT omite columnas que no existan */ }
+    try { ensureUsersRoleAllowsProduccion(); } catch (migErr) {
+      console.warn('[users] CHECK produccion:', migErr.message || migErr);
+    }
 
     const insertFields = {
       id,
@@ -272,6 +275,9 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
 router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     try { ensureUsersSchemaColumns(); } catch (_) { /* noop */ }
+    try { ensureUsersRoleAllowsProduccion(); } catch (migErr) {
+      console.warn('[users] CHECK produccion:', migErr.message || migErr);
+    }
     const current = queryOne(
       'SELECT id, username, email, full_name, role, phone, is_active FROM users WHERE id = ?',
       [req.params.id]

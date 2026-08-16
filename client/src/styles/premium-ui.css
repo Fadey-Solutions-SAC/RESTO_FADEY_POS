@@ -161,6 +161,45 @@ h1, h2, h3, h4 {
     box-shadow: var(--ui-shadow-md);
   }
 
+  .rf-sidebar-logo-name {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    min-width: 0;
+    flex: 1 1 auto;
+    line-height: 1.15;
+  }
+
+  .rf-sidebar-menu-btn {
+    flex-shrink: 0;
+    width: 1.65rem;
+    height: 1.65rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.45rem;
+  }
+
+  .rf-sidebar-burger {
+    width: 0.78rem;
+    height: 0.62rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .rf-sidebar-burger span {
+    display: block;
+    height: 1.5px;
+    width: 100%;
+    border-radius: 1px;
+    background: currentColor;
+  }
+
   .rf-nav-link {
     @apply flex items-center gap-2 px-2 py-2 rounded-xl text-sm font-medium;
     color: var(--ui-muted);

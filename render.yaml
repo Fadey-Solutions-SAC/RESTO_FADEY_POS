@@ -18,6 +18,7 @@ services:
     runtime: node
     plan: starter
     branch: main
+    # Dashboard: Node Version 22.x (node:sqlite + WAL). No usar 18/20.
     buildCommand: bash scripts/render-build.sh
     startCommand: bash scripts/render-start.sh
     healthCheckPath: /api/healthz

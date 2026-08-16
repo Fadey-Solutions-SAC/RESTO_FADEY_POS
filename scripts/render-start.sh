@@ -61,25 +61,13 @@ if [[ -n "${DB_PATH:-}" ]] && [[ "$DB_PATH" == /data/* ]]; then
 
   local_guard="/data/.restaurant_db_guard.json"
   if [[ -f "$local_guard" ]] && [[ ! -f "$DB_PATH" ]]; then
-    if ls /data/backups/*.db >/dev/null 2>&1; then
-      echo "[render-start] Falta $DB_PATH; Node restaurará desde /data/backups."
-    else
-      echo "[render-start] ERROR: Hay marcador de base con datos pero falta $DB_PATH."
-      echo "[render-start] NO se iniciará con una base vacía. Restaure backup o snapshot de Render."
-      exit 1
-    fi
+    echo "[render-start] Falta $DB_PATH; Node restaurará desde lastgood o /data/backups si existen."
   fi
 
   if [[ -f "$DB_PATH" ]]; then
     db_bytes="$(wc -c < "$DB_PATH" 2>/dev/null | tr -d ' ' || echo 0)"
-    if [[ "${db_bytes:-0}" -lt 512 ]] && [[ -f "$local_guard" ]]; then
-      if ls /data/backups/*.db >/dev/null 2>&1; then
-        echo "[render-start] $DB_PATH está vacío/truncado (${db_bytes} bytes). Node restaurará desde /data/backups."
-      else
-        echo "[render-start] ERROR: $DB_PATH existe pero está vacío/corrupto (${db_bytes} bytes) con marcador de datos."
-        echo "[render-start] NO se arranca para evitar sobrescribir clientes reales. Restaure backup .db."
-        exit 1
-      fi
+    if [[ "${db_bytes:-0}" -lt 512 ]]; then
+      echo "[render-start] $DB_PATH está vacío/truncado (${db_bytes} bytes). Node restaurará lastgood/backups o arrancará de cero."
     fi
   fi
 fi
@@ -120,28 +108,41 @@ try_sqlite_recover() {
     echo "[render-start] sqlite3 no disponible para .recover"
     return 1
   fi
-  local clean="/data/restaurant.db.sqljs-clean"
-  rm -f "$clean"
+
+  sqlite_count() {
+    sqlite3 "$1" "SELECT COUNT(*) FROM $2;" 2>/dev/null | tr -d '[:space:]' || echo 0
+  }
+
   if sqlite3 "$src" "SELECT 1;" >/dev/null 2>&1; then
-    echo "[render-start] sqlite3 abre el archivo; generando copia .backup para sql.js…"
-    sqlite3 "$src" ".backup '$clean'" || true
-    local clean_bytes
-    clean_bytes="$(wc -c < "$clean" 2>/dev/null | tr -d ' ' || echo 0)"
-    echo "[render-start] .backup bytes=${clean_bytes}"
-    if [[ "${clean_bytes:-0}" -gt 512 ]]; then
-      local users
-      users="$(sqlite3 "$clean" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo 0)"
-      echo "[render-start] .backup users=${users}"
-      if [[ "${users:-0}" -gt 0 ]]; then
-        cp -f "$src" "/data/restaurant.db.before-sqljs-clean" || true
-        cp -f "$clean" "$src"
-        echo "[render-start] restaurant.db reemplazado con copia limpia .backup"
-        return 0
-      fi
-      echo "[render-start] .backup sin usuarios; no se reemplaza. Node arrancará de cero."
+    local users products
+    users="$(sqlite_count "$src" users)"
+    products="$(sqlite_count "$src" products)"
+    echo "[render-start] SQLite abre ${src} users=${users:-0} products=${products:-0}"
+    if [[ "${users:-0}" -gt 0 || "${products:-0}" -gt 0 ]]; then
+      echo "[render-start] Base saludable; no se reescribe en el arranque."
+      return 0
     fi
   fi
-  echo "[render-start] SQLite no abre o .backup vacío; intentando .recover…"
+
+  local lastgood="${src}.lastgood"
+  if [[ -f "$lastgood" ]] && sqlite3 "$lastgood" "SELECT 1;" >/dev/null 2>&1; then
+    local lg_users lg_products
+    lg_users="$(sqlite_count "$lastgood" users)"
+    lg_products="$(sqlite_count "$lastgood" products)"
+    if [[ "${lg_users:-0}" -gt 0 || "${lg_products:-0}" -gt 0 ]]; then
+      echo "[render-start] Restaurando desde lastgood (users=${lg_users} products=${lg_products})"
+      cp -f "$src" "${src}.malformed-pre-lastgood" || true
+      cp -f "$lastgood" "$src"
+      return 0
+    fi
+  fi
+
+  if sqlite3 "$src" "SELECT 1;" >/dev/null 2>&1; then
+    echo "[render-start] sqlite3 abre el archivo sin usuarios; no se reemplaza con .backup vacío."
+    echo "[render-start] Node arrancará y buscará backups."
+    return 1
+  fi
+  echo "[render-start] SQLite no abre; intentando .recover…"
   local rec="/data/restaurant.recovered.db"
   local sql="/tmp/restaurant.recover.sql"
   rm -f "$rec" "$sql"
@@ -167,15 +168,16 @@ try_sqlite_recover() {
   sqlite3 "$rec" < "$sql"
   set -e
   if [[ -f "$rec" ]] && sqlite3 "$rec" "SELECT 1;" >/dev/null 2>&1; then
-    local users
-    users="$(sqlite3 "$rec" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo 0)"
-    if [[ "${users:-0}" -gt 0 ]]; then
-      echo "[render-start] recover OK, users=${users}. Reemplazando $src"
+    local rec_users rec_products
+    rec_users="$(sqlite_count "$rec" users)"
+    rec_products="$(sqlite_count "$rec" products)"
+    if [[ "${rec_users:-0}" -gt 0 || "${rec_products:-0}" -gt 0 ]]; then
+      echo "[render-start] recover OK, users=${rec_users} products=${rec_products}. Reemplazando $src"
       cp -f "$src" "/data/restaurant.db.malformed-pre-recover" || true
       cp -f "$rec" "$src"
       return 0
     fi
-    echo "[render-start] recover sin usuarios; no se reemplaza. Node arrancará de cero."
+    echo "[render-start] recover sin datos de negocio; no se reemplaza. Node arrancará de cero."
   fi
   echo "[render-start] recover no produjo una base que se pueda abrir"
   return 1
@@ -186,6 +188,7 @@ if [[ -n "${DB_PATH:-}" && -f "$DB_PATH" ]]; then
 fi
 
 cd "$ROOT"
+echo "[render-start] Node $(node -v) — SQLite nativo requiere Node 22.5+"
 echo "[render-start] Iniciando Node (PORT=${PORT:-3001})…"
 export _RENDER_START_WRAPPER=1
 exec node server/index.js

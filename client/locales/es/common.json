@@ -50,7 +50,7 @@
     "registerNotOpenBody": "No se puede operar sin una caja abierta. El cajero o administrador debe abrir la caja para que puedas acceder al sistema.",
     "waitingRegister": "Esperando apertura de caja…",
     "endShift": "Finalizar jornada",
-    "brandName": "Resto-FADEY"
+    "brandName": "Resto Fadey"
   },
   "app": {
     "loading": "Cargando…",

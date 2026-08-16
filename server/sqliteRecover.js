@@ -6,7 +6,7 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { leftoverTmpCandidates, writeFileAtomic } = require('./sqlitePersist');
+const { leftoverTmpCandidates, writeFileAtomic, getLastGoodPath } = require('./sqlitePersist');
 
 function countTableSqlJs(database, table) {
   try {
@@ -158,6 +158,7 @@ function listBackupCandidates(dbPath) {
         || lower.endsWith('.bak')
         || lower.endsWith('.db.bak')
         || lower.endsWith('.sqlite')
+        || lower.endsWith('.lastgood')
         || (lower.endsWith('.tmp') && !lower.includes('recover') && !lower.includes('restore'));
       if (!looksDb) continue;
       const p = path.resolve(path.join(d, name));
@@ -189,6 +190,7 @@ function listLastResortCandidates(dbPath) {
     const isLastResort = lower.includes('malformed')
       || lower.includes('before-sqljs-clean')
       || lower.endsWith('.prev')
+      || lower.endsWith('.lastgood')
       || lower.includes('.db.sqljs-clean');
     if (!isLastResort) continue;
     const p = path.resolve(path.join(dir, name));
@@ -224,6 +226,23 @@ function openOrRecoverSqliteFile(SQL, dbPath, fileBuffer, { minUsers = 0 } = {})
     }
   } else {
     console.error('[sqlite-recover] Archivo principal ausente o demasiado pequeño.');
+  }
+
+  const lastGoodPath = getLastGoodPath(dbPath);
+  if (fs.existsSync(lastGoodPath)) {
+    try {
+      const buf = fs.readFileSync(lastGoodPath);
+      const database = openSqlJsBuffer(SQL, buf);
+      const users = countUsersSqlJs(database);
+      if (users > 0 || hasBusinessData(database)) {
+        writeFileAtomic(dbPath, buf, { keepPrevious: false });
+        console.warn(`[sqlite-recover] Restaurado desde ${lastGoodPath} (${users} usuario(s)).`);
+        return { db: database, recovered: true };
+      }
+      database.close();
+    } catch (lastGoodErr) {
+      console.warn('[sqlite-recover] lastgood no usable:', lastGoodErr.message || lastGoodErr);
+    }
   }
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '_');

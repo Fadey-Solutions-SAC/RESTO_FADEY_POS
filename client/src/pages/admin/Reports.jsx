@@ -573,10 +573,19 @@ function openNativeDatePicker(inputEl) {
   inputEl.click();
 }
 
+const INFORMES_SECTION_IDS = ['ventas', 'descuentos', 'productos', 'caja', 'compras', 'finanzas', 'facturacion', 'inventario'];
+
+function resolveInformesSection(searchParams) {
+  const raw = String(searchParams.get('view') || searchParams.get('seccion') || '').trim();
+  if (raw === 'cortesias') return 'descuentos';
+  if (INFORMES_SECTION_IDS.includes(raw)) return raw;
+  return 'ventas';
+}
+
 export default function Reports() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [reportSection, setReportSection] = useState('ventas');
+  const [reportSection, setReportSection] = useState(() => resolveInformesSection(new URLSearchParams(window.location.search)));
   const [tab, setTab] = useState('daily');
   const [salesDailyDate, setSalesDailyDate] = useState(localTodayYmd);
   const [salesMonth, setSalesMonth] = useState(localMonthYm);
@@ -714,15 +723,8 @@ export default function Reports() {
   }, [salesMonth, tab, reportSection, loadMonthly]);
 
   useEffect(() => {
-    if (searchParams.get('seccion') === 'facturacion') {
-      setReportSection('facturacion');
-    } else if (searchParams.get('seccion') === 'productos') {
-      setReportSection('productos');
-    } else if (searchParams.get('seccion') === 'finanzas') {
-      setReportSection('finanzas');
-    } else if (searchParams.get('seccion') === 'cortesias' || searchParams.get('seccion') === 'descuentos') {
-      setReportSection('descuentos');
-    }
+    const nextSection = resolveInformesSection(searchParams);
+    setReportSection((prev) => (prev === nextSection ? prev : nextSection));
     const resaltar = String(searchParams.get('resaltar') || '').trim();
     if (resaltar) {
       setDescuentosHighlightIds(resaltar.split(',').map((id) => id.trim()).filter(Boolean));
@@ -756,6 +758,7 @@ export default function Reports() {
     }
     setReportSection('descuentos');
     const params = new URLSearchParams();
+    params.set('view', 'descuentos');
     params.set('seccion', 'descuentos');
     params.set('resaltar', recordIds.join(','));
     if (dateKey) {
@@ -1331,25 +1334,9 @@ export default function Reports() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-[var(--ui-body-text)] mb-6 rf-page-title rf-module-page-title">Informes</h1>
-      <div className="mb-6">
-        <div className="flex flex-wrap gap-2">
-          {sectionCards.map(section => {
-            const isActive = reportSection === section.id;
-            return (
-              <button
-                key={section.id}
-                onClick={() => setReportSection(section.id)}
-                className={`rf-tab-btn ${isActive ? 'rf-tab-btn--active' : ''}`}
-              >
-                {section.title}
-              </button>
-            );
-          })}
-        </div>
-        {activeSectionMeta?.desc && (
-          <p className="text-sm text-[var(--ui-muted)] mt-3">{activeSectionMeta.desc}</p>
-        )}
-      </div>
+      {activeSectionMeta?.desc && (
+        <p className="text-sm text-[var(--ui-muted)] mb-6">{activeSectionMeta.desc}</p>
+      )}
 
       {reportSection === 'descuentos' && (
         <div id="informes-descuentos-panel">

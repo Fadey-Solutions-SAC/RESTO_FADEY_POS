@@ -57,6 +57,9 @@
   "optionalDependencies": {
     "printer": "*"
   },
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "overrides": {
     "brace-expansion": "^2.0.2",
     "form-data": "^4.0.5",

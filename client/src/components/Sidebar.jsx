@@ -13,7 +13,6 @@ import {
   MdCreditCard, MdPeopleAlt, MdRestaurantMenu, MdLocalOffer,
   MdDiscount, MdWarehouse, MdDeliveryDining, MdAssessment,
   MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdTouchApp,
-  MdMenu,
 } from 'react-icons/md';
 import { getProductionAreaIcon } from '../utils/productionAreaUi';
 
@@ -61,6 +60,9 @@ const MI_RESTAURANT_SUB_IDS = [
 ];
 const ALMACEN_SUB_IDS = [
   'movimiento_interno', 'ir_modulo_logistica', 'requerimiento', 'recepcion', 'ir_modulo_gastos',
+];
+const INFORMES_SUB_IDS = [
+  'ventas', 'descuentos', 'productos', 'caja', 'compras', 'finanzas', 'facturacion', 'inventario',
 ];
 
 export default function Sidebar({ collapsed, isMobile = false, mobileOpen = false, onClose = () => {}, onToggleMenu = () => {} }) {
@@ -187,6 +189,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const [isCajaExpanded, setIsCajaExpanded] = useState(location.pathname.startsWith('/admin/caja'));
   const [isMiRestaurantExpanded, setIsMiRestaurantExpanded] = useState(location.pathname.startsWith('/admin/mi-restaurant'));
   const [isAlmacenExpanded, setIsAlmacenExpanded] = useState(location.pathname.startsWith('/admin/almacen'));
+  const [isInformesExpanded, setIsInformesExpanded] = useState(location.pathname.startsWith('/admin/informes'));
   const hasLinkPermission = (link) => {
     if (link?.isProductionArea) {
       return canSeeProduction;
@@ -203,6 +206,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
     if (subAlmacen[id] === false) return false;
     return true;
   }).map((id) => ({ id, label: t(`almacenSub.${id}`) }));
+  const informesSubOptions = INFORMES_SUB_IDS.map((id) => ({ id, label: t(`informesSub.${id}`) }));
   const planProfesional = user?.service_plan === 'profesional';
   const subMi = user?.sub_permissions?.mi_restaurant || {};
   const miRestaurantSubOptionsByPlan = MI_RESTAURANT_SUB_IDS.filter((id) => {
@@ -245,33 +249,41 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
     }`}>
       <div
         className={`rf-sidebar-logo-bar flex items-center shrink-0 h-[var(--ui-shell-header-h)] border-b border-[color:var(--ui-sidebar-border)] ${
-          isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
+          isCollapsed ? 'justify-center px-0' : 'gap-1.5 px-2'
         }`}
       >
         {isCollapsed ? (
           <button
             type="button"
             onClick={onToggleMenu}
-            className="p-2 hover:bg-[var(--ui-sidebar-hover)] rounded-lg transition-colors"
+            className="rf-sidebar-menu-btn hover:bg-[var(--ui-sidebar-hover)] transition-colors text-[var(--ui-body-text)]"
             aria-label={tc('layout.menu', { defaultValue: 'Menú' })}
           >
-            <MdMenu className="text-xl text-[var(--ui-body-text)]" />
+            <span className="rf-sidebar-burger" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
           </button>
         ) : (
           <>
-            <div className="rf-sidebar-brand w-9 h-9 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
-              <MdStorefront className="text-white text-lg" />
+            <div className="rf-sidebar-brand w-8 h-8 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+              <MdStorefront className="text-white text-base" />
             </div>
-            <span className="rf-font-display font-bold text-base text-[var(--ui-body-text)] tracking-tight truncate min-w-0 flex-1">
+            <span className="rf-sidebar-logo-name rf-font-display text-[var(--ui-body-text)]">
               {tc('layout.brandName')}
             </span>
             <button
               type="button"
               onClick={onToggleMenu}
-              className="p-2 hover:bg-[var(--ui-sidebar-hover)] rounded-lg transition-colors shrink-0"
+              className="rf-sidebar-menu-btn hover:bg-[var(--ui-sidebar-hover)] transition-colors text-[var(--ui-body-text)]"
               aria-label={tc('layout.menu', { defaultValue: 'Menú' })}
             >
-              <MdMenu className="text-xl text-[var(--ui-body-text)]" />
+              <span className="rf-sidebar-burger" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
             </button>
           </>
         )}
@@ -281,7 +293,13 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
         {visibleLinks.map(link => (
           <div key={link.to}>
             <NavLink
-              to={link.moduleId === 'caja' ? '/admin/caja?view=cobrar' : link.to}
+              to={
+                link.moduleId === 'caja'
+                  ? '/admin/caja?view=cobrar'
+                  : link.moduleId === 'informes'
+                    ? '/admin/informes?view=ventas'
+                    : link.to
+              }
               end={link.end}
               className={linkClass}
               title={link.label}
@@ -317,6 +335,15 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                     return;
                   }
                   setIsAlmacenExpanded(true);
+                }
+                if (link.to === '/admin/informes') {
+                  const isInInformes = location.pathname.startsWith('/admin/informes');
+                  if (isInInformes) {
+                    e.preventDefault();
+                    setIsInformesExpanded((prev) => !prev);
+                    return;
+                  }
+                  setIsInformesExpanded(true);
                 }
                 if (isMobile) onClose();
               }}
@@ -372,6 +399,27 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                   >
                     <span>{option.label}</span>
                     {option.isNew && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500 text-white">NUEVO</span>}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+
+            {!isCollapsed && link.to === '/admin/informes' && isInformesExpanded && (
+              <div className="mt-1 ml-8 space-y-0.5">
+                {informesSubOptions.map((option) => (
+                  <NavLink
+                    key={option.id}
+                    to={`/admin/informes?view=${option.id}`}
+                    className={({ isActive }) => {
+                      const raw = new URLSearchParams(location.search).get('view')
+                        || new URLSearchParams(location.search).get('seccion')
+                        || 'ventas';
+                      const current = raw === 'cortesias' ? 'descuentos' : raw;
+                      const selected = isActive && current === option.id;
+                      return `rf-nav-sublink !whitespace-normal leading-snug ${selected ? 'rf-nav-sublink--active' : ''}`;
+                    }}
+                  >
+                    {option.label}
                   </NavLink>
                 ))}
               </div>
