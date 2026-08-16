@@ -111,6 +111,60 @@ if ! command -v sqlite3 >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; t
   (apt-get update -qq && apt-get install -y -qq sqlite3) || echo "[render-start] WARN: no se pudo instalar sqlite3."
 fi
 
+try_sqlite_recover() {
+  local src="${1:-}"
+  if [[ -z "$src" || ! -f "$src" ]]; then
+    return 1
+  fi
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    echo "[render-start] sqlite3 no disponible para .recover"
+    return 1
+  fi
+  if sqlite3 "$src" "SELECT 1;" >/dev/null 2>&1; then
+    echo "[render-start] SQLite abre correctamente."
+    return 0
+  fi
+  echo "[render-start] SQLite no abre; intentando .recover (el código de salida distinto de 0 es normal)…"
+  local rec="/data/restaurant.recovered.db"
+  local sql="/tmp/restaurant.recover.sql"
+  rm -f "$rec" "$sql"
+  set +e
+  sqlite3 "$src" ".recover" > "$sql" 2>/tmp/restaurant.recover.err
+  local st=$?
+  set -e
+  local sql_bytes
+  sql_bytes="$(wc -c < "$sql" 2>/dev/null | tr -d ' ' || echo 0)"
+  echo "[render-start] .recover exit=${st} sql_bytes=${sql_bytes}"
+  if [[ "${sql_bytes:-0}" -lt 64 ]]; then
+    set +e
+    sqlite3 "$src" ".dump" > "$sql" 2>/tmp/restaurant.dump.err
+    set -e
+    sql_bytes="$(wc -c < "$sql" 2>/dev/null | tr -d ' ' || echo 0)"
+    echo "[render-start] .dump sql_bytes=${sql_bytes}"
+  fi
+  if [[ "${sql_bytes:-0}" -lt 64 ]]; then
+    echo "[render-start] recover/dump vacío"
+    return 1
+  fi
+  set +e
+  sqlite3 "$rec" < "$sql"
+  set -e
+  if [[ -f "$rec" ]] && sqlite3 "$rec" "SELECT 1;" >/dev/null 2>&1; then
+    local users
+    users="$(sqlite3 "$rec" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo 0)"
+    echo "[render-start] recover OK, users=${users}. Reemplazando $src"
+    cp -f "$src" "/data/restaurant.db.malformed-pre-recover" || true
+    cp -f "$rec" "$src"
+    return 0
+  fi
+  echo "[render-start] recover no produjo una base que se pueda abrir"
+  return 1
+}
+
+if [[ -n "${DB_PATH:-}" && -f "$DB_PATH" ]]; then
+  try_sqlite_recover "$DB_PATH" || true
+fi
+
 cd "$ROOT"
 echo "[render-start] Iniciando Node (PORT=${PORT:-3001})…"
 export _RENDER_START_WRAPPER=1

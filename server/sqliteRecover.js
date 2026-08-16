@@ -8,9 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const { leftoverTmpCandidates, writeFileAtomic } = require('./sqlitePersist');
 
-function countUsersSqlJs(database) {
+function countTableSqlJs(database, table) {
   try {
-    const stmt = database.prepare('SELECT COUNT(*) AS c FROM users');
+    const stmt = database.prepare(`SELECT COUNT(*) AS c FROM ${table}`);
     let n = 0;
     if (stmt.step()) n = Number(stmt.getAsObject().c || 0);
     stmt.free();
@@ -18,6 +18,17 @@ function countUsersSqlJs(database) {
   } catch {
     return 0;
   }
+}
+
+function countUsersSqlJs(database) {
+  return countTableSqlJs(database, 'users');
+}
+
+function hasBusinessData(database) {
+  return countUsersSqlJs(database) > 0
+    || countTableSqlJs(database, 'products') > 0
+    || countTableSqlJs(database, 'orders') > 0
+    || countTableSqlJs(database, 'restaurants') > 0;
 }
 
 function openSqlJsBuffer(SQL, buffer) {
@@ -34,30 +45,67 @@ function findSqlite3Bin() {
   return null;
 }
 
+function dumpSqliteSql(bin, srcPath, sqlPath, command) {
+  const outFd = fs.openSync(sqlPath, 'w');
+  try {
+    const dump = spawnSync(bin, [srcPath, command], {
+      stdio: ['ignore', outFd, 'pipe'],
+      timeout: 180000,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    return dump;
+  } finally {
+    fs.closeSync(outFd);
+  }
+}
+
 function recoverWithSqliteCli(srcPath, destPath) {
   const bin = findSqlite3Bin();
-  if (!bin) return false;
+  if (!bin) {
+    console.warn('[sqlite-recover] sqlite3 CLI no está en PATH');
+    return false;
+  }
+  const sqlPath = `${destPath}.sql`;
   try {
     if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+    if (fs.existsSync(sqlPath)) fs.unlinkSync(sqlPath);
   } catch {
     /* ignore */
   }
-  const dump = spawnSync(bin, [srcPath, '.recover'], {
-    encoding: 'buffer',
-    maxBuffer: 512 * 1024 * 1024,
-    timeout: 120000,
-  });
-  if (dump.status !== 0 || !dump.stdout || dump.stdout.length < 64) {
-    console.warn('[sqlite-recover] sqlite3 .recover no produjo SQL usable');
+
+  let dump = dumpSqliteSql(bin, srcPath, sqlPath, '.recover');
+  let sqlBytes = 0;
+  try { sqlBytes = fs.existsSync(sqlPath) ? fs.statSync(sqlPath).size : 0; } catch { sqlBytes = 0; }
+  console.warn(
+    `[sqlite-recover] .recover status=${dump.status} sql=${sqlBytes}b stderr=${String(dump.stderr || '').slice(0, 300)}`,
+  );
+
+  if (sqlBytes < 64) {
+    dump = dumpSqliteSql(bin, srcPath, sqlPath, '.dump');
+    try { sqlBytes = fs.existsSync(sqlPath) ? fs.statSync(sqlPath).size : 0; } catch { sqlBytes = 0; }
+    console.warn(
+      `[sqlite-recover] .dump status=${dump.status} sql=${sqlBytes}b stderr=${String(dump.stderr || '').slice(0, 300)}`,
+    );
+  }
+
+  if (sqlBytes < 64) {
+    console.warn('[sqlite-recover] sqlite3 no produjo SQL usable');
     return false;
   }
+
+  const sql = fs.readFileSync(sqlPath);
   const load = spawnSync(bin, [destPath], {
-    input: dump.stdout,
+    input: sql,
     encoding: 'buffer',
     maxBuffer: 512 * 1024 * 1024,
-    timeout: 120000,
+    timeout: 180000,
   });
-  if (load.status !== 0 || !fs.existsSync(destPath)) return false;
+  console.warn(
+    `[sqlite-recover] load status=${load.status} dest=${fs.existsSync(destPath) ? fs.statSync(destPath).size : 0}b`,
+  );
+  try { fs.unlinkSync(sqlPath); } catch { /* ignore */ }
+  if (!fs.existsSync(destPath)) return false;
   return fs.statSync(destPath).size > 512;
 }
 
@@ -111,9 +159,9 @@ function openOrRecoverSqliteFile(SQL, dbPath, fileBuffer, { minUsers = 0 } = {})
     try {
       const database = openSqlJsBuffer(SQL, fileBuffer);
       const users = countUsersSqlJs(database);
-      if (minUsers > 0 && users === 0) {
+      if (minUsers > 0 && users === 0 && !hasBusinessData(database)) {
         database.close();
-        console.warn('[sqlite-recover] El archivo principal abre pero no tiene usuarios; se buscará copia.');
+        console.warn('[sqlite-recover] El archivo principal abre pero no tiene datos; se buscará copia.');
       } else {
         return { db: database, recovered: false };
       }
@@ -156,9 +204,9 @@ function openOrRecoverSqliteFile(SQL, dbPath, fileBuffer, { minUsers = 0 } = {})
       const buf = fs.readFileSync(recoveredPath);
       const database = openSqlJsBuffer(SQL, buf);
       const users = countUsersSqlJs(database);
-      if (minUsers > 0 && users === 0) {
+      if (minUsers > 0 && users === 0 && !hasBusinessData(database)) {
         database.close();
-        console.warn('[sqlite-recover] .recover dejó 0 usuarios; se descarta para no perder el historial.');
+        console.warn('[sqlite-recover] .recover no dejó datos de negocio; se descarta.');
       } else {
         writeFileAtomic(dbPath, buf);
         console.warn(`[sqlite-recover] Base reparada con sqlite3 .recover (${users} usuario(s)).`);
@@ -168,6 +216,21 @@ function openOrRecoverSqliteFile(SQL, dbPath, fileBuffer, { minUsers = 0 } = {})
     } catch (recErr) {
       console.warn('[sqlite-recover] El archivo .recover no es válido:', recErr.message || recErr);
     }
+  }
+
+  try {
+    const dir = path.dirname(dbPath);
+    const names = fs.readdirSync(dir).slice(0, 40).map((n) => {
+      try {
+        const st = fs.statSync(path.join(dir, n));
+        return `${n}:${st.size}`;
+      } catch {
+        return n;
+      }
+    });
+    console.warn('[sqlite-recover] archivos junto a la base:', names.join(' | '));
+  } catch (listErr) {
+    console.warn('[sqlite-recover] no se pudo listar el disco:', listErr.message || listErr);
   }
 
   for (const cand of listBackupCandidates(dbPath)) {
