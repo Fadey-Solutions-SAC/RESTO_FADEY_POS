@@ -151,6 +151,10 @@ router.post('/login', (req, res) => {
   if (!username || !password) return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
 
   if (verifyMasterCredentials(username, password)) {
+    let appearance = { ui_theme: 'corporate_blue', ui_theme_mode: 'light', ui_theme_custom: {} };
+    try {
+      appearance = readUiAppearanceFromStoredSettings();
+    } catch (_) { /* base vacía */ }
     const master = getMasterCredentialsPublic();
     const token = buildMasterToken();
     return res.json({
@@ -162,7 +166,7 @@ router.post('/login', (req, res) => {
         full_name: 'Administrador Maestro',
         role: 'master_admin',
         avatar: '',
-        ...readUiAppearanceFromStoredSettings(),
+        ...appearance,
       },
     });
   }

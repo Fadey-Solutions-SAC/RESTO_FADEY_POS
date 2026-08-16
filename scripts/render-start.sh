@@ -120,11 +120,22 @@ try_sqlite_recover() {
     echo "[render-start] sqlite3 no disponible para .recover"
     return 1
   fi
+  local clean="/data/restaurant.db.sqljs-clean"
+  rm -f "$clean"
   if sqlite3 "$src" "SELECT 1;" >/dev/null 2>&1; then
-    echo "[render-start] SQLite abre correctamente."
-    return 0
+    echo "[render-start] sqlite3 abre el archivo; generando copia .backup para sql.js…"
+    sqlite3 "$src" ".backup '$clean'" || true
+    local clean_bytes
+    clean_bytes="$(wc -c < "$clean" 2>/dev/null | tr -d ' ' || echo 0)"
+    echo "[render-start] .backup bytes=${clean_bytes}"
+    if [[ "${clean_bytes:-0}" -gt 512 ]]; then
+      cp -f "$src" "/data/restaurant.db.before-sqljs-clean" || true
+      cp -f "$clean" "$src"
+      echo "[render-start] restaurant.db reemplazado con copia limpia .backup"
+      return 0
+    fi
   fi
-  echo "[render-start] SQLite no abre; intentando .recover (el código de salida distinto de 0 es normal)…"
+  echo "[render-start] SQLite no abre o .backup vacío; intentando .recover…"
   local rec="/data/restaurant.recovered.db"
   local sql="/tmp/restaurant.recover.sql"
   rm -f "$rec" "$sql"

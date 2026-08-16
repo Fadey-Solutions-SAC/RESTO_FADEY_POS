@@ -60,6 +60,31 @@ function dumpSqliteSql(bin, srcPath, sqlPath, command) {
   }
 }
 
+function sqlite3CopyViaBackup(srcPath, destPath) {
+  const bin = findSqlite3Bin();
+  if (!bin) return false;
+  try {
+    if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+  } catch {
+    /* ignore */
+  }
+  const destEsc = String(destPath).replace(/'/g, "''");
+  const attempts = [
+    [srcPath, `.backup '${destEsc}'`],
+    [srcPath, `VACUUM INTO '${destEsc}'`],
+  ];
+  for (const args of attempts) {
+    const r = spawnSync(bin, args, { encoding: 'utf8', timeout: 180000 });
+    let size = 0;
+    try { size = fs.existsSync(destPath) ? fs.statSync(destPath).size : 0; } catch { size = 0; }
+    console.warn(
+      `[sqlite-recover] ${String(args[1]).slice(0, 28)} status=${r.status} size=${size} stderr=${String(r.stderr || '').slice(0, 240)}`,
+    );
+    if (size > 512) return true;
+  }
+  return false;
+}
+
 function recoverWithSqliteCli(srcPath, destPath) {
   const bin = findSqlite3Bin();
   if (!bin) {
@@ -74,18 +99,18 @@ function recoverWithSqliteCli(srcPath, destPath) {
     /* ignore */
   }
 
-  let dump = dumpSqliteSql(bin, srcPath, sqlPath, '.recover');
+  let dump = dumpSqliteSql(bin, srcPath, sqlPath, '.dump');
   let sqlBytes = 0;
   try { sqlBytes = fs.existsSync(sqlPath) ? fs.statSync(sqlPath).size : 0; } catch { sqlBytes = 0; }
   console.warn(
-    `[sqlite-recover] .recover status=${dump.status} sql=${sqlBytes}b stderr=${String(dump.stderr || '').slice(0, 300)}`,
+    `[sqlite-recover] .dump status=${dump.status} sql=${sqlBytes}b stderr=${String(dump.stderr || '').slice(0, 300)}`,
   );
 
   if (sqlBytes < 64) {
-    dump = dumpSqliteSql(bin, srcPath, sqlPath, '.dump');
+    dump = dumpSqliteSql(bin, srcPath, sqlPath, '.recover');
     try { sqlBytes = fs.existsSync(sqlPath) ? fs.statSync(sqlPath).size : 0; } catch { sqlBytes = 0; }
     console.warn(
-      `[sqlite-recover] .dump status=${dump.status} sql=${sqlBytes}b stderr=${String(dump.stderr || '').slice(0, 300)}`,
+      `[sqlite-recover] .recover status=${dump.status} sql=${sqlBytes}b stderr=${String(dump.stderr || '').slice(0, 300)}`,
     );
   }
 
@@ -179,6 +204,20 @@ function openOrRecoverSqliteFile(SQL, dbPath, fileBuffer, { minUsers = 0 } = {})
     console.warn('[sqlite-recover] Copia del archivo dañado:', corruptCopy);
   } catch (copyErr) {
     console.warn('[sqlite-recover] No se pudo copiar el dañado:', copyErr.message || copyErr);
+  }
+
+  const sqljsClean = `${dbPath}.sqljs-clean`;
+  if (sqlite3CopyViaBackup(dbPath, sqljsClean)) {
+    try {
+      const buf = fs.readFileSync(sqljsClean);
+      const database = openSqlJsBuffer(SQL, buf);
+      writeFileAtomic(dbPath, buf);
+      console.warn(`[sqlite-recover] Reescrito con sqlite3 .backup (${countUsersSqlJs(database)} usuario(s)).`);
+      try { fs.unlinkSync(sqljsClean); } catch { /* ignore */ }
+      return { db: database, recovered: true };
+    } catch (backupErr) {
+      console.warn('[sqlite-recover] sqlite3 .backup no lo abre sql.js:', backupErr.message || backupErr);
+    }
   }
 
   for (const cand of leftoverTmpCandidates(dbPath)) {

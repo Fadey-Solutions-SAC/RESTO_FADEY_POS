@@ -94,28 +94,40 @@ function getMasterAuthConfig() {
 }
 
 function getMasterCredentialsPublic() {
-  const auth = getMasterAuthConfig();
-  return { username: auth.username };
+  try {
+    const auth = getMasterAuthConfig();
+    return { username: auth.username };
+  } catch {
+    return { username: effectiveMasterLoginPair().username };
+  }
 }
 
 function verifyMasterCredentials(username, password) {
-  const auth = getMasterAuthConfig();
-  const incomingUsername = String(username || '').trim();
-  const incomingPassword = String(password || '');
-  if (!incomingUsername || !incomingPassword) return false;
-  if (incomingUsername === auth.username && bcrypt.compareSync(incomingPassword, auth.password_hash)) {
-    return true;
+  try {
+    const auth = getMasterAuthConfig();
+    const incomingUsername = String(username || '').trim();
+    const incomingPassword = String(password || '');
+    if (!incomingUsername || !incomingPassword) return false;
+    if (incomingUsername === auth.username && bcrypt.compareSync(incomingPassword, auth.password_hash)) {
+      return true;
+    }
+    const eff = effectiveMasterLoginPair();
+    if (incomingUsername === eff.username && incomingPassword === eff.password) {
+      upsertSetting(MASTER_AUTH_KEY, {
+        username: eff.username,
+        password_hash: bcrypt.hashSync(eff.password, 10),
+        updated_at: new Date().toISOString(),
+      });
+      return true;
+    }
+    return false;
+  } catch (err) {
+    const eff = effectiveMasterLoginPair();
+    const incomingUsername = String(username || '').trim();
+    const incomingPassword = String(password || '');
+    console.warn('[master-auth] login sin BD, se usa MASTER_USERNAME/PASSWORD:', err?.message || err);
+    return incomingUsername === eff.username && incomingPassword === eff.password;
   }
-  const eff = effectiveMasterLoginPair();
-  if (incomingUsername === eff.username && incomingPassword === eff.password) {
-    upsertSetting(MASTER_AUTH_KEY, {
-      username: eff.username,
-      password_hash: bcrypt.hashSync(eff.password, 10),
-      updated_at: new Date().toISOString(),
-    });
-    return true;
-  }
-  return false;
 }
 
 function updateMasterCredentials({ current_password, new_username, new_password }) {
