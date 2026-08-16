@@ -1,8 +1,8 @@
 /**
  * Origen del API:
- * - Si defines VITE_API_URL (p. ej. en .env), se usa siempre.
+ * - En cada despliegue: VITE_API_URL (Vercel / .env). Sin URLs de clientes en el código.
  * - En desarrollo (npm run dev) sin variable: `/api` → proxy de Vite al backend local (p. ej. :3001).
- * - En build de producción sin variable: URL por defecto en la nube (despliegue clásico).
+ * - En producción sin variable: `/api` (mismo origen). El front mostrará error hasta definir VITE_API_URL.
  *
  * Impresión USB (Node + módulo `printer` en Windows):
  * - Debe apuntar al backend local. Use `VITE_LOCAL_PRINTING_API` (build) o en runtime:
@@ -14,13 +14,6 @@ import { translateApiErrorMessage } from '../i18n/translateApiError';
 
 const rawApi = import.meta.env.VITE_API_URL;
 const hasExplicitApi = rawApi !== undefined && rawApi !== null && String(rawApi).trim() !== '';
-const LEGACY_DEFAULT_API = 'https://resto-fadey-api.onrender.com';
-
-/** Front Vercel → API Render (sin `/api`). Tiene prioridad sobre VITE_API_URL mal configurada. */
-const VERCEL_HOST_API = Object.freeze({
-  'sistemademo.vercel.app': 'https://sistema-demo-m80e.onrender.com',
-  'zoilas-suite-escape.vercel.app': 'https://zoilas-suite-escape.onrender.com',
-});
 
 function normalizeApiOrigin(url) {
   let o = String(url || '').trim().replace(/\/$/, '');
@@ -33,20 +26,9 @@ if (hasExplicitApi) {
   API_ORIGIN = normalizeApiOrigin(String(rawApi).trim());
 }
 
-function resolveHostnameApiOrigin() {
-  if (typeof window === 'undefined') return '';
-  const host = String(window.location.hostname || '').toLowerCase();
-  return VERCEL_HOST_API[host] || '';
-}
-
-/** Origen del API sin `/api` (Vercel por hostname, VITE_API_URL o fallback legacy). */
+/** Origen del API sin `/api`. Solo VITE_API_URL (o localStorage); nunca un host fijo. */
 export function getConfiguredApiOrigin() {
-  if (typeof window !== 'undefined') {
-    const mapped = resolveHostnameApiOrigin();
-    if (mapped) return mapped;
-  }
   if (hasExplicitApi && API_ORIGIN) return API_ORIGIN;
-  if (import.meta.env.PROD) return LEGACY_DEFAULT_API;
   return '';
 }
 
@@ -104,22 +86,18 @@ export function usesInstalledLocalPrinting() {
   return hasElectronPrinting() || isDesktopEmbeddedRuntime();
 }
 
-if (import.meta.env.PROD && typeof window !== 'undefined' && resolveHostnameApiOrigin()) {
-  console.info('[api] Host Vercel → API Render:', resolveHostnameApiOrigin());
-}
-
 function assertBackupApiReachable() {
   if (typeof window === 'undefined') return;
   const base = getApiBase();
   const origin = getApiOrigin();
   if (base.startsWith('/') || origin === window.location.origin) {
     throw new Error(
-      'El respaldo se estaba enviando a Vercel (405). En Vercel → Environment → VITE_API_URL debe ser la URL de Render, ej. https://zoilas-suite-escape.onrender.com (sin /api), y luego Redeploy.',
+      'El respaldo se estaba enviando al frontend (405). En Vercel → Environment → VITE_API_URL ponga la URL pública de ESTE Web Service de Render (sin /api) y haga Redeploy.',
     );
   }
   if (/\.vercel\.app$/i.test(origin)) {
     throw new Error(
-      'VITE_API_URL apunta a Vercel, no al API. Use la URL de Render (onrender.com), no la del frontend (.vercel.app).',
+      'VITE_API_URL apunta al frontend (Vercel), no al API. Use la URL del Web Service de Render de este cliente, no la de .vercel.app.',
     );
   }
 }
@@ -282,7 +260,7 @@ async function request(endpoint, options = {}) {
       const frontOrigin = typeof window !== 'undefined' ? window.location.origin : 'su dominio Vercel';
       throw new Error(
         `No se pudo conectar al API (${origin}). ` +
-          `Vercel → VITE_API_URL = URL de Render (sin /api) y Redeploy. ` +
+          `Vercel → VITE_API_URL = URL de ESTE Web Service de Render (sin /api) y Redeploy. ` +
           `Render → CORS_ORIGIN debe incluir ${frontOrigin}.`,
       );
     }
