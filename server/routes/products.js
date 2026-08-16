@@ -236,6 +236,7 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
 
   const id = uuidv4();
   const safeProcessType = process_type === 'non_transformed' ? 'non_transformed' : 'transformed';
+  const storedPurchase = safeProcessType === 'transformed' ? null : parsedPurchase;
   const safeStock = safeProcessType === 'transformed' ? 0 : Math.max(0, Number(stock || 0));
   const safeMinStock = safeProcessType === 'non_transformed' ? parseProductMinStock(min_stock) : 0;
   const safeWarehouseId = safeProcessType === 'transformed' ? '' : resolveWarehouseId(stock_warehouse_id);
@@ -292,7 +293,7 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
       safeKardexModo === 'peso' ? 1 : safeKardexDen,
       safeKardexInsumo ? safeKardexModo : 'unidad',
       safeKardexInsumo ? safeKardexGramos : 0,
-      parsedPurchase,
+      storedPurchase,
       scheduleFields.schedule_enabled,
       scheduleFields.available_from,
       scheduleFields.available_to,
@@ -387,6 +388,9 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
   }
   const safeProcessType = process_type === 'non_transformed' ? 'non_transformed' : (process_type === 'transformed' ? 'transformed' : null);
   const finalProcessType = safeProcessType || current.process_type || 'transformed';
+  if (finalProcessType === 'transformed') {
+    safePurchasePrice = null;
+  }
   const forceZeroStock = finalProcessType === 'transformed';
   /** Parches solo de imagen (p. ej. Auto pedido): no envían `stock`; null → COALESCE deja el valor en BD (sql.js rechaza `undefined`). */
   const nextStock = forceZeroStock ? 0 : (stock === undefined ? null : stock);

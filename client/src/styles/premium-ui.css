@@ -516,8 +516,9 @@ h1, h2, h3, h4 {
     z-index: 1;
     width: min(58vw, 340px);
     height: min(58vw, 340px);
-    border-radius: 50%;
-    overflow: hidden;
+    aspect-ratio: 1;
+    border-radius: 50% !important;
+    overflow: hidden !important;
     flex-shrink: 0;
     box-shadow:
       0 0 40px rgba(0, 174, 239, 0.45),
@@ -530,6 +531,7 @@ h1, h2, h3, h4 {
     height: 100%;
     object-fit: cover;
     object-position: center center;
+    border-radius: 50%;
   }
 
   .rf-entry-splash__brand {
@@ -614,8 +616,10 @@ h1, h2, h3, h4 {
     width: clamp(3.5rem, 12vh, 7rem);
     height: clamp(3.5rem, 12vh, 7rem);
     margin-bottom: clamp(0.35rem, 1.2vh, 1rem);
-    object-fit: contain;
+    object-fit: cover;
     object-position: center;
+    border-radius: 50%;
+    overflow: hidden;
     background: transparent;
     border: none;
     box-shadow: none;

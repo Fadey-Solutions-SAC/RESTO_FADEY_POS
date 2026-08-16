@@ -5,6 +5,7 @@ import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../.
 import { useSocket } from '../../hooks/useSocket';
 import { showStockInOrderingUI, isProductLowStock, productStockStatus } from '../../utils/productStockDisplay';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
+import { isUnidadUm, kardexRecipeInputUnit, normalizeInsumoUm } from '../../utils/insumoUnidadMedida';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import ContextMenu from '../../components/ContextMenu';
@@ -47,6 +48,19 @@ function normalizeComboFormItems(items) {
 
 function isProductInactive(p) {
   return Number(p?.is_active ?? 1) === 0;
+}
+
+function kardexQtyFromForm(form) {
+  const modo = String(form?.kardex_insumo_modo || '').toLowerCase();
+  if (modo === 'peso') {
+    const g = parseFloat(form.kardex_insumo_gramos);
+    if (Number.isFinite(g) && g > 0) return g;
+  }
+  const n = parseFloat(form?.kardex_insumo_num);
+  const d = parseFloat(form?.kardex_insumo_den) || 1;
+  if (Number.isFinite(n) && n > 0) return n / (d > 0 ? d : 1);
+  const g = parseFloat(form?.kardex_insumo_gramos);
+  return Number.isFinite(g) && g > 0 ? g : 0;
 }
 
 const EMPTY_PRODUCT_FORM = {
@@ -523,7 +537,7 @@ export default function Productos() {
       description: p.description || '',
       price: p.price,
       purchase_price:
-        p.purchase_price != null && Number(p.purchase_price) > 0
+        p.process_type === 'non_transformed' && p.purchase_price != null && Number(p.purchase_price) > 0
           ? String(p.purchase_price)
           : '',
       category_id: p.category_id || '',
@@ -607,17 +621,19 @@ export default function Productos() {
         toast.error(t('validation.selectCategory'));
         return;
       }
-      if (
-        !isNonTransformed
-        && (productForm.kardex_insumo_modo === 'unidad' || productForm.kardex_insumo_modo === 'peso')
-        && !String(productForm.kardex_insumo_id || '').trim()
-      ) {
-        toast.error(t('products.kardexInsumo'));
+      const hasK = !isNonTransformed && String(productForm.kardex_insumo_id || '').trim();
+      const selectedInsumo = hasK
+        ? insumosKardex.find((i) => String(i.id) === String(productForm.kardex_insumo_id))
+        : null;
+      const insumoEsUnidad = hasK && isUnidadUm(selectedInsumo?.unidad_medida);
+      const kardexQty = kardexQtyFromForm(productForm);
+      if (hasK && !(kardexQty > 0)) {
+        toast.error(t('products.kardexQtyPositive'));
         return;
       }
 
-      const rawPurchase = String(productForm.purchase_price ?? '').trim();
-      if (rawPurchase !== '') {
+      const rawPurchase = isNonTransformed ? String(productForm.purchase_price ?? '').trim() : '';
+      if (isNonTransformed && rawPurchase !== '') {
         const pp = parseFloat(rawPurchase);
         if (!Number.isFinite(pp) || pp < 0) {
           toast.error(t('products.invalidPurchasePrice'));
@@ -632,18 +648,13 @@ export default function Productos() {
         }
       }
 
-      const kn = parseFloat(productForm.kardex_insumo_num) || 1;
-      const kd = parseFloat(productForm.kardex_insumo_den) || 1;
-      const kg = parseFloat(productForm.kardex_insumo_gramos) || 0;
-      const hasK = !isNonTransformed && String(productForm.kardex_insumo_id || '').trim();
-      const modoPeso = hasK && productForm.kardex_insumo_modo === 'peso';
-      if (modoPeso && kg <= 0) {
-        toast.error(t('products.gramsPositive'));
-        return;
-      }
+      const kn = insumoEsUnidad ? kardexQty : 1;
+      const kd = 1;
+      const kg = insumoEsUnidad ? 0 : kardexQty;
+      const modoPeso = hasK && !insumoEsUnidad;
       const payload = {
         ...productForm,
-        purchase_price: rawPurchase === '' ? null : parseFloat(rawPurchase),
+        purchase_price: isNonTransformed && rawPurchase !== '' ? parseFloat(rawPurchase) : null,
         schedule_enabled: Number(productForm.schedule_enabled) === 1 ? 1 : 0,
         available_days: normalizeAvailableDays(productForm.available_days),
         stock: isNonTransformed ? stockAmount : 0,
@@ -1169,6 +1180,7 @@ export default function Productos() {
                 stock: 0,
                 min_stock: '',
                 stock_warehouse_id: '',
+                purchase_price: '',
                 kardex_insumo_id: productForm.kardex_insumo_id || '',
                 kardex_insumo_num: productForm.kardex_insumo_num || '1',
                 kardex_insumo_den: productForm.kardex_insumo_den || '1',
@@ -1215,158 +1227,150 @@ export default function Productos() {
               <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.salePrice')}</label>
               <input type="number" step="0.01" min="0" value={productForm.price} onChange={e => setProductForm({ ...productForm, price: e.target.value })} className="input-field" required placeholder="0.00" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.purchasePrice')}</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={productForm.purchase_price}
-                onChange={e => setProductForm({ ...productForm, purchase_price: e.target.value })}
-                className="input-field"
-                placeholder={t('products.purchasePricePlaceholder')}
-              />
-              <p className="text-xs ui-text-muted mt-1">{t('products.purchasePriceHint')}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              {productForm.process_type === 'non_transformed' ? (
-                <>
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.minStock')}</label>
-                  <input
-                    type="number"
-                    value={productForm.min_stock}
-                    onChange={e => setProductForm({ ...productForm, min_stock: e.target.value })}
-                    className="input-field"
-                    placeholder="0"
-                    min="0"
-                  />
-                  <p className="text-xs ui-text-muted mt-1 mb-3">{t('products.minStockHint')}</p>
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.initialStock')}</label>
-                  <input
-                    type="number"
-                    value={productForm.stock}
-                    onChange={e => setProductForm({ ...productForm, stock: e.target.value })}
-                    className="input-field"
-                    placeholder="0"
-                    min="0"
-                  />
-                </>
-              ) : (
-                <>
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Insumo a descontar</label>
-                  <select
-                    className="input-field text-sm"
-                    value={
-                      productForm.kardex_insumo_modo === 'unidad' || productForm.kardex_insumo_modo === 'peso'
-                        ? productForm.kardex_insumo_modo
-                        : ''
-                    }
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (!v) {
-                        setProductForm({
-                          ...productForm,
-                          kardex_insumo_modo: '',
-                          kardex_insumo_id: '',
-                          kardex_insumo_num: '1',
-                          kardex_insumo_den: '1',
-                          kardex_insumo_gramos: '0',
-                        });
-                        return;
-                      }
+            {productForm.process_type === 'non_transformed' ? (
+              <div>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.purchasePrice')}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={productForm.purchase_price}
+                  onChange={e => setProductForm({ ...productForm, purchase_price: e.target.value })}
+                  className="input-field"
+                  placeholder={t('products.purchasePricePlaceholder')}
+                />
+                <p className="text-xs ui-text-muted mt-1">{t('products.purchasePriceHint')}</p>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.kardexInsumoLabel')}</label>
+                <select
+                  className="input-field text-sm"
+                  value={productForm.kardex_insumo_id}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (!id) {
                       setProductForm({
                         ...productForm,
-                        kardex_insumo_modo: v,
                         kardex_insumo_id: '',
-                        kardex_insumo_num: v === 'unidad' ? '1' : '1',
-                        kardex_insumo_den: v === 'unidad' ? '1' : '1',
-                        kardex_insumo_gramos: v === 'peso' ? (productForm.kardex_insumo_gramos && productForm.kardex_insumo_gramos !== '0' ? productForm.kardex_insumo_gramos : '') : '0',
+                        kardex_insumo_modo: '',
+                        kardex_insumo_num: '1',
+                        kardex_insumo_den: '1',
+                        kardex_insumo_gramos: '0',
                       });
-                    }}
-                  >
-                    <option value="">&nbsp;</option>
-                    <option value="unidad">Fracción por unidad</option>
-                    <option value="peso">Peso fijo</option>
-                  </select>
-                  {(productForm.kardex_insumo_modo === 'unidad' || productForm.kardex_insumo_modo === 'peso') && (
-                    <>
-                      <label className="block text-xs ui-text-muted mt-2 mb-0.5">Insumo</label>
-                      <select
-                        value={productForm.kardex_insumo_id}
-                        onChange={e => setProductForm({ ...productForm, kardex_insumo_id: e.target.value })}
-                        className="input-field text-sm"
-                      >
-                        <option value="">— Elija insumo —</option>
-                        {insumosKardex.filter((i) => {
-                          if (Number(i.activo) === 0) return false;
-                          const area = String(i.insumo_area || 'cocina').toLowerCase() === 'bar' ? 'bar' : 'cocina';
-                          const prodArea = String(productForm.production_area || 'cocina').toLowerCase() === 'bar' ? 'bar' : 'cocina';
-                          return area === prodArea;
-                        }).map((i) => {
-                          const um = String(i.unidad_medida || 'kg')
-                            .replace(/[0-9]/g, '')
-                            .trim() || 'kg';
-                          if (productForm.kardex_insumo_modo === 'peso') {
-                            return (
-                              <option key={i.id} value={i.id}>
-                                {i.nombre} (U.M. {um})
-                              </option>
-                            );
-                          }
-                          const uS = i.stock_unidades != null ? Number(i.stock_unidades) : 0;
-                          return (
-                            <option key={i.id} value={i.id}>
-                              {i.nombre} — {formatInsumoQty(uS)} U, {formatInsumoWithUnit(i.stock_actual, um)}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </>
-                  )}
-                  {productForm.kardex_insumo_id && productForm.kardex_insumo_modo === 'unidad' ? (
+                      return;
+                    }
+                    const ins = insumosKardex.find((i) => String(i.id) === String(id));
+                    const asUnidad = isUnidadUm(ins?.unidad_medida);
+                    const prevQty = kardexQtyFromForm(productForm);
+                    const qtyStr = prevQty > 0 ? String(prevQty) : '';
+                    setProductForm({
+                      ...productForm,
+                      kardex_insumo_id: id,
+                      kardex_insumo_modo: asUnidad ? 'unidad' : 'peso',
+                      kardex_insumo_num: asUnidad ? (qtyStr || '1') : '1',
+                      kardex_insumo_den: '1',
+                      kardex_insumo_gramos: asUnidad ? '0' : (qtyStr || ''),
+                    });
+                  }}
+                >
+                  <option value="">{t('products.kardexInsumoChoose')}</option>
+                  {insumosKardex.filter((i) => {
+                    if (Number(i.activo) === 0) return false;
+                    const area = String(i.insumo_area || 'cocina').toLowerCase() === 'bar' ? 'bar' : 'cocina';
+                    const prodArea = String(productForm.production_area || 'cocina').toLowerCase() === 'bar' ? 'bar' : 'cocina';
+                    return area === prodArea;
+                  }).map((i) => {
+                    const um = kardexRecipeInputUnit(i.unidad_medida);
+                    const stockUm = normalizeInsumoUm(i.unidad_medida);
+                    if (isUnidadUm(stockUm)) {
+                      const uS = i.stock_unidades != null ? Number(i.stock_unidades) : 0;
+                      return (
+                        <option key={i.id} value={i.id}>
+                          {i.nombre} (U.M. {um}) — {formatInsumoQty(uS)} U
+                        </option>
+                      );
+                    }
+                    return (
+                      <option key={i.id} value={i.id}>
+                        {i.nombre} (U.M. {stockUm}) — {formatInsumoWithUnit(i.stock_actual, stockUm)}
+                      </option>
+                    );
+                  })}
+                </select>
+                <p className="text-xs ui-text-muted mt-1">{t('products.kardexInsumoHint')}</p>
+                {productForm.kardex_insumo_id ? (() => {
+                  const ins = insumosKardex.find((i) => String(i.id) === String(productForm.kardex_insumo_id));
+                  const inputUm = kardexRecipeInputUnit(ins?.unidad_medida);
+                  const asUnidad = isUnidadUm(ins?.unidad_medida);
+                  const den = parseFloat(productForm.kardex_insumo_den) || 1;
+                  const qty = kardexQtyFromForm(productForm);
+                  const modoPeso = String(productForm.kardex_insumo_modo || '').toLowerCase() === 'peso';
+                  const raw = (asUnidad && !modoPeso) ? productForm.kardex_insumo_num : productForm.kardex_insumo_gramos;
+                  const shown = asUnidad && !modoPeso && den !== 1
+                    ? (qty > 0 ? String(qty) : '')
+                    : (raw === '0' || raw == null || raw === '' ? '' : String(raw));
+                  const stockUm = normalizeInsumoUm(ins?.unidad_medida);
+                  return (
                     <div className="mt-2">
-                      <label className="block text-xs ui-text-muted mb-0.5">Fracción (a / b) por plato</label>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={productForm.kardex_insumo_num}
-                          onChange={e => setProductForm({ ...productForm, kardex_insumo_num: e.target.value })}
-                          className="input-field w-16 text-sm py-1.5"
-                        />
-                        <span className="ui-text-muted font-medium">/</span>
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={productForm.kardex_insumo_den}
-                          onChange={e => setProductForm({ ...productForm, kardex_insumo_den: e.target.value })}
-                          className="input-field w-16 text-sm py-1.5"
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                  {productForm.kardex_insumo_id && productForm.kardex_insumo_modo === 'peso' ? (
-                    <div className="mt-2">
-                      <label className="block text-xs ui-text-muted mb-0.5">Gramos por plato</label>
+                      <label className="block text-xs ui-text-muted mb-0.5">
+                        {t('products.kardexQtyPerDish', { unit: inputUm })}
+                      </label>
                       <input
                         type="number"
-                        min="0.1"
-                        step="1"
-                        value={productForm.kardex_insumo_gramos}
-                        onChange={e => setProductForm({ ...productForm, kardex_insumo_gramos: e.target.value })}
+                        min="0"
+                        step="any"
+                        value={shown}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setProductForm({
+                            ...productForm,
+                            kardex_insumo_modo: asUnidad ? 'unidad' : 'peso',
+                            kardex_insumo_num: asUnidad ? (v || '') : '1',
+                            kardex_insumo_den: '1',
+                            kardex_insumo_gramos: asUnidad ? '0' : v,
+                          });
+                        }}
                         className="input-field text-sm py-1.5 w-full"
-                        placeholder="ej. 250"
-                        title="Gramos de insumo (descuento en kg al cobrar)"
+                        placeholder={inputUm === 'unidad' ? 'ej. 3' : inputUm === 'ml' ? 'ej. 50' : 'ej. 250'}
                       />
+                      <p className="text-xs ui-text-muted mt-1">
+                        {stockUm === 'kg'
+                          ? t('products.kardexQtyHintKg')
+                          : stockUm === 'L'
+                            ? t('products.kardexQtyHintL')
+                            : t('products.kardexQtyHintExact', { unit: inputUm })}
+                      </p>
                     </div>
-                  ) : null}
-                </>
-              )}
-            </div>
+                  );
+                })() : null}
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {productForm.process_type === 'non_transformed' && (
+              <div>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.minStock')}</label>
+                <input
+                  type="number"
+                  value={productForm.min_stock}
+                  onChange={e => setProductForm({ ...productForm, min_stock: e.target.value })}
+                  className="input-field"
+                  placeholder="0"
+                  min="0"
+                />
+                <p className="text-xs ui-text-muted mt-1 mb-3">{t('products.minStockHint')}</p>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.initialStock')}</label>
+                <input
+                  type="number"
+                  value={productForm.stock}
+                  onChange={e => setProductForm({ ...productForm, stock: e.target.value })}
+                  className="input-field"
+                  placeholder="0"
+                  min="0"
+                />
+              </div>
+            )}
             <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Categoría *</label>
               <select
                 required

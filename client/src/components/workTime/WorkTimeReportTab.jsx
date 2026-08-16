@@ -11,9 +11,6 @@ const ATT_LABEL = {
 };
 
 export default function WorkTimeReportTab({
-  users,
-  filters,
-  setFilters,
   sessions,
   summary,
   loading,
@@ -44,26 +41,6 @@ export default function WorkTimeReportTab({
           <button type="button" onClick={loadReport} className="btn-secondary text-sm" disabled={loading}>
             {loading ? 'Actualizando…' : 'Actualizar'}
           </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-          <div>
-            <label className="block text-xs text-[var(--ui-muted)] mb-1">Desde</label>
-            <input type="date" value={filters.from} onChange={(e) => setFilters((p) => ({ ...p, from: e.target.value }))} className="input-field" />
-          </div>
-          <div>
-            <label className="block text-xs text-[var(--ui-muted)] mb-1">Hasta</label>
-            <input type="date" value={filters.to} onChange={(e) => setFilters((p) => ({ ...p, to: e.target.value }))} className="input-field" />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-xs text-[var(--ui-muted)] mb-1">Usuario</label>
-            <select value={filters.user_id} onChange={(e) => setFilters((p) => ({ ...p, user_id: e.target.value }))} className="input-field">
-              <option value="all">Todos los usuarios</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.full_name} (@{u.username})</option>
-              ))}
-            </select>
-          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

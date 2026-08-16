@@ -80,6 +80,7 @@ export function IndicatorsFinancialPanel({ data }) {
         <IndicatorStatCard label="Utilidad neta" value={formatCurrency(f.net_profit_approx)} accent="emerald" />
         <IndicatorStatCard label="Margen neto" value={`${f.margin_pct ?? 0}%`} />
         <IndicatorStatCard label="Compras" value={formatCurrency(f.purchases_total)} />
+        <IndicatorStatCard label="Inversión período" value={formatCurrency(f.investment_total)} accent="violet" />
         <IndicatorStatCard label="Gastos operativos" value={formatCurrency(f.operating_expenses)} accent="amber" />
         <IndicatorStatCard label="Flujo caja (+)" value={formatCurrency(f.cash_flow_in)} />
         <IndicatorStatCard label="Flujo caja (-)" value={formatCurrency(f.cash_flow_out)} />
@@ -93,7 +94,7 @@ export function IndicatorsFinancialPanel({ data }) {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={[
               { name: 'Ventas', monto: f.total_sales },
-              { name: 'Compras', monto: f.purchases_total },
+              { name: 'Inversión', monto: f.investment_total },
               { name: 'Gastos', monto: f.operating_expenses },
               { name: 'Utilidad', monto: Math.max(0, f.net_profit_approx) },
             ]}>

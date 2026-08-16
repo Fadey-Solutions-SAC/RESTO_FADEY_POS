@@ -26,6 +26,7 @@ const {
   queryProductSalesRanking,
 } = require('../utils/salesAccountGrouping');
 const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurchaseDate');
+const { sumSalesCogsForRange, sumSalesCogsForMonth, sumSalesCogsSinceDaysAgo } = require('../utils/salesCogs');
 const { getOrderItemsWithProductionArea } = require('../services/orderItemsProductionService');
 const { filterKitchenOrdersForStation } = require('../utils/kitchenStationReady');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
@@ -622,13 +623,14 @@ function financeRolling7dSnapshot() {
     `SELECT COALESCE(SUM(total_cost), 0) as total FROM inventory_expenses
      WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL} >= date(${s.TODAY}, '-6 days')`
   );
+  const cogs = sumSalesCogsSinceDaysAgo(6);
   const totalSales = Number(salesRow?.total_sales || 0);
   const cashExpenses = Number(cashExpensesRow?.total || 0);
   const lossEventsTotal = Number(lossEventsRow?.total || 0);
   const totalPurchases = Number(purchasesRow?.total || 0);
   const lossesCombined = lossEventsTotal + cashExpenses;
-  const approxProfit = totalSales - totalPurchases - lossesCombined;
-  return { totalSales, lossesCombined, approxProfit, totalPurchases };
+  const approxProfit = totalSales - totalPurchases - cogs.total - lossesCombined;
+  return { totalSales, lossesCombined, approxProfit, totalPurchases, kardexCogs: cogs.kardex_cogs, productCogs: cogs.purchase_cogs };
 }
 
 /** Mes calendario en curso: ventas cobradas, compras, salidas y utilidad aprox. (base Informes · Finanzas). */
@@ -640,12 +642,7 @@ function financeMonthToDateSnapshot() {
     `SELECT COALESCE(SUM(total_cost), 0) as total FROM inventory_expenses
      WHERE strftime('%Y-%m', ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL}) = ${s.MONTH}`
   );
-  const kardexCogsRow = queryOne(
-    `SELECT COALESCE(SUM(costo_total), 0) as total FROM kardex
-     WHERE tipo_movimiento = 'salida'
-       AND referencia IN ('venta', 'venta_masa')
-       AND strftime('%Y-%m', fecha) = ${s.MONTH}`
-  );
+  const cogs = sumSalesCogsForMonth();
   const cashExpensesRow = queryOne(
     `SELECT COALESCE(SUM(amount), 0) as total FROM cash_movements
      WHERE type = 'expense' AND strftime('%Y-%m', datetime(created_at, '-05:00')) = ${s.MONTH}`
@@ -657,11 +654,12 @@ function financeMonthToDateSnapshot() {
   const ymRow = { ym: s.MONTH.replace(/'/g, '') };
   const totalSales = Number(monthMetrics.sales || 0);
   const totalPurchases = Number(purchasesRow?.total || 0);
-  const totalKardexCogs = Number(kardexCogsRow?.total || 0);
+  const totalProductCogs = Number(cogs.purchase_cogs || 0);
+  const totalKardexCogs = Number(cogs.kardex_cogs || 0);
   const cashExpenses = Number(cashExpensesRow?.total || 0);
   const lossEventsTotal = Number(lossEventsRow?.total || 0);
   const lossesCombined = lossEventsTotal + cashExpenses;
-  const investmentTotal = totalPurchases + totalKardexCogs;
+  const investmentTotal = totalPurchases + totalProductCogs + totalKardexCogs;
   const approxGrossMargin = totalSales - investmentTotal;
   const approxProfit = totalSales - investmentTotal - lossesCombined;
   return {
@@ -669,6 +667,7 @@ function financeMonthToDateSnapshot() {
     sales_total: totalSales,
     orders_count: Number(monthMetrics.orders || 0),
     purchases_total: totalPurchases,
+    product_cogs_total: totalProductCogs,
     kardex_cogs_total: totalKardexCogs,
     loss_events_total: lossEventsTotal,
     cash_expenses_total: cashExpenses,
@@ -1112,6 +1111,7 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
      WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL} BETWEEN date(?) AND date(?)`,
     [from, to]
   );
+  const cogs = sumSalesCogsForRange(from, to);
   const cashExpensesRow = queryOne(
     `SELECT COALESCE(SUM(amount), 0) as total FROM cash_movements
      WHERE type = 'expense'
@@ -1129,7 +1129,7 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
      GROUP BY category ORDER BY total DESC`,
     [from, to]
   );
-  const totalInvestment = Number(investmentRow?.total || 0);
+  const totalInvestmentMovements = Number(investmentRow?.total || 0);
   const inventoryInvestmentRow = queryOne(
     `SELECT COALESCE(SUM(stock * purchase_price), 0) AS total FROM products
      WHERE is_active = 1 AND purchase_price IS NOT NULL AND purchase_price > 0`
@@ -1146,11 +1146,15 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
   const inventoryInvestmentTotal =
     Number(inventoryInvestmentRow?.total || 0) + insumosInvestment;
   const totalPurchases = Number(purchasesRow?.total || 0);
+  const productCogs = Number(cogs.purchase_cogs || 0);
+  const kardexCogs = Number(cogs.kardex_cogs || 0);
+  const cogsTotal = productCogs + kardexCogs;
+  const periodInvestment = totalInvestmentMovements + totalPurchases + cogsTotal;
   const cashExpenses = Number(cashExpensesRow?.total || 0);
   const lossEventsTotal = Number(lossEventsRow?.total || 0);
   const lossesCombined = lossEventsTotal + cashExpenses;
-  const approxGross = totalSales - totalPurchases;
-  const approxProfit = totalSales - totalPurchases - lossEventsTotal - cashExpenses;
+  const approxGross = totalSales - totalPurchases - cogsTotal;
+  const approxProfit = totalSales - totalPurchases - cogsTotal - lossEventsTotal - cashExpenses;
 
   let business_intel = null;
   try {
@@ -1163,9 +1167,14 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
     filters: { from, to },
     sales: { total: totalSales, orders: Number(salesMetrics.orders || 0) },
     investment: {
-      /** Movimientos de inversión en el rango (nómina, aportes, etc.). */
-      total: totalInvestment,
-      movements_total: totalInvestment,
+      /** Nómina/aportes + compras + costo de venta (precio compra e insumos). */
+      total: periodInvestment,
+      movements_total: periodInvestment,
+      payroll_total: totalInvestmentMovements,
+      cogs_total: cogsTotal,
+      product_cogs_total: productCogs,
+      kardex_cogs_total: kardexCogs,
+      purchases_in_period: totalPurchases,
       /** Valor actual del inventario (foto, no filtrada por fechas). */
       inventory_snapshot: inventoryInvestmentTotal,
       inventory_total: inventoryInvestmentTotal,

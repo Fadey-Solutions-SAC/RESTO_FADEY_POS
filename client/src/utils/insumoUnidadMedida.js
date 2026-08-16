@@ -40,3 +40,11 @@ export function labelInsumoUm(raw) {
   const hit = INSUMO_UM_OPTIONS.find((o) => o.value.toLowerCase() === String(v).toLowerCase());
   return hit?.label || v;
 }
+
+/** Unidad en la que el cocinero escribe la receta (kg→g, L→ml; el resto es exacta). */
+export function kardexRecipeInputUnit(raw) {
+  const u = normalizeInsumoUm(raw);
+  if (u === 'kg') return 'g';
+  if (u === 'L') return 'ml';
+  return u;
+}

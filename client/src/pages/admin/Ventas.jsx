@@ -712,6 +712,7 @@ export default function Ventas() {
           isVoidedTab={isVoidedTab}
           emptyMessage={isVoidedTab ? 'Sin ventas anuladas' : 'Sin ventas encontradas'}
           onStatusClick={goToDescuentosHighlight}
+          onPurged={() => { void load(); void loadAdjustments(); }}
           sortKey={sortKey}
           sortDir={sortDir}
           onSort={toggleSort}

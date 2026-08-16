@@ -26,7 +26,7 @@ const MODULE_LABELS = {
   produccion: 'Producción',
   cocina: 'Cocina',
   bar: 'Bar',
-  tiempo_trabajado: 'Tiempo trabajado',
+  tiempo_trabajado: 'Recursos humanos',
 };
 
 const CAJA_SUBS = [

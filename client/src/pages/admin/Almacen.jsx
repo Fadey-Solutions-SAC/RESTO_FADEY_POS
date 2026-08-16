@@ -1962,41 +1962,9 @@ export default function Almacen() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">Control De Recursos</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setWarehouseForm({ name: '', description: '', linkedInsumos: false });
-              setShowWarehouseModal(true);
-            }}
-            className="btn-secondary flex items-center gap-2 text-sm"
-          >
-            <MdAdd /> Nuevo almacén
-          </button>
-          <button
-            onClick={() => {
-              if (selectedIsInsumosWarehouse) {
-                setEditingInsumo(null);
-                setShowInsumoModal(true);
-                return;
-              }
-              setItemForm(prev => ({
-                ...prev,
-                category_id: '',
-                stock_warehouse: getDefaultCreateWarehouseId(),
-                note_required: 0,
-              }));
-              setShowCreateModal(true);
-            }}
-            className="btn-primary flex items-center gap-2 text-sm"
-          >
-            <MdAdd /> Nuevo producto
-          </button>
-        </div>
-      </div>
+      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">Control De Recursos</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+      <div className="flex flex-wrap items-stretch gap-3 mb-5">
         {warehouses.map(w => {
           const linkedProducts = isInsumosWarehouse(w)
             ? insumosActivos.length
@@ -2014,7 +1982,7 @@ export default function Almacen() {
               }}
               role="button"
               tabIndex={0}
-              className={`bg-white rounded-xl border p-3 flex flex-col min-h-28 text-left transition-colors ${
+              className={`bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
                 sameWarehouseId(selectedWarehouseView, w.id)
                   ? 'border-gold-500 ring-2 ring-gold-200'
                   : 'border-slate-200 hover:border-gold-300'
@@ -2045,6 +2013,38 @@ export default function Almacen() {
             </div>
           );
         })}
+        <div className="flex flex-col justify-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setWarehouseForm({ name: '', description: '', linkedInsumos: false });
+              setShowWarehouseModal(true);
+            }}
+            className="btn-secondary flex items-center justify-center gap-2 text-sm whitespace-nowrap"
+          >
+            <MdAdd /> Nuevo almacén
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedIsInsumosWarehouse) {
+                setEditingInsumo(null);
+                setShowInsumoModal(true);
+                return;
+              }
+              setItemForm(prev => ({
+                ...prev,
+                category_id: '',
+                stock_warehouse: getDefaultCreateWarehouseId(),
+                note_required: 0,
+              }));
+              setShowCreateModal(true);
+            }}
+            className="btn-primary flex items-center justify-center gap-2 text-sm whitespace-nowrap"
+          >
+            <MdAdd /> Nuevo producto
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-5">

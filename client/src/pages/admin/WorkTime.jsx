@@ -161,14 +161,43 @@ export default function WorkTime() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ui-body-text)] flex items-center gap-2 rf-module-page-title">
-            <MdAccessTime className="text-gold-600" /> Tiempo trabajado
-          </h1>
-          <p className="text-sm text-[var(--ui-muted)] mt-1 max-w-2xl">
-            Control laboral, productividad y rendimiento conectado con caja, cocina, delivery, pedidos y mesas.
-          </p>
+      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] flex items-center gap-2 rf-module-page-title">
+        <MdAccessTime className="text-gold-600" /> Recursos humanos
+      </h1>
+
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex items-center gap-1.5 h-9 px-2 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+            <span className="text-[var(--ui-muted)] shrink-0">Desde</span>
+            <input
+              type="date"
+              value={filters.from}
+              onChange={(e) => setFilters((p) => ({ ...p, from: e.target.value }))}
+              className="bg-transparent border-0 p-0 text-xs outline-none text-[var(--ui-body-text)] min-w-0"
+            />
+          </label>
+          <label className="flex items-center gap-1.5 h-9 px-2 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+            <span className="text-[var(--ui-muted)] shrink-0">Hasta</span>
+            <input
+              type="date"
+              value={filters.to}
+              onChange={(e) => setFilters((p) => ({ ...p, to: e.target.value }))}
+              className="bg-transparent border-0 p-0 text-xs outline-none text-[var(--ui-body-text)] min-w-0"
+            />
+          </label>
+          <label className="flex items-center gap-1.5 h-9 px-2 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] bg-[var(--ui-surface)] min-w-[10rem]">
+            <span className="text-[var(--ui-muted)] shrink-0">Usuario</span>
+            <select
+              value={filters.user_id}
+              onChange={(e) => setFilters((p) => ({ ...p, user_id: e.target.value }))}
+              className="bg-transparent border-0 p-0 text-xs outline-none text-[var(--ui-body-text)] flex-1 min-w-0"
+            >
+              <option value="all">Todos</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.full_name}</option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn-secondary text-sm flex items-center gap-1" onClick={() => { loadReport(); loadAnalytics(); }} disabled={loading || analyticsLoading}>
@@ -177,26 +206,6 @@ export default function WorkTime() {
           <button type="button" className="btn-secondary text-sm flex items-center gap-1" onClick={exportCsv}>
             <MdDownload /> Exportar
           </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 card py-3">
-        <div>
-          <label className="block text-xs text-[var(--ui-muted)] mb-1">Desde</label>
-          <input type="date" value={filters.from} onChange={(e) => setFilters((p) => ({ ...p, from: e.target.value }))} className="input-field" />
-        </div>
-        <div>
-          <label className="block text-xs text-[var(--ui-muted)] mb-1">Hasta</label>
-          <input type="date" value={filters.to} onChange={(e) => setFilters((p) => ({ ...p, to: e.target.value }))} className="input-field" />
-        </div>
-        <div className="md:col-span-2">
-          <label className="block text-xs text-[var(--ui-muted)] mb-1">Usuario</label>
-          <select value={filters.user_id} onChange={(e) => setFilters((p) => ({ ...p, user_id: e.target.value }))} className="input-field">
-            <option value="all">Todos</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.full_name}</option>
-            ))}
-          </select>
         </div>
       </div>
 
@@ -223,9 +232,6 @@ export default function WorkTime() {
 
       {mainTab === 'reporte' ? (
         <WorkTimeReportTab
-          users={users}
-          filters={filters}
-          setFilters={setFilters}
           sessions={sessions}
           summary={summary}
           loading={loading}

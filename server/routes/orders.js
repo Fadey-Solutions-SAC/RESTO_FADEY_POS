@@ -25,6 +25,8 @@ const { userCanEliminarLiberarMesa, userCanAjusteBarAutoDismiss } = require('../
 const { orderHasBarItems, orderHasKitchenItems, stripKitchenItemMeta, filterItemsForKitchenStation } = require('../utils/productionArea');
 const { getOrderItemsWithProductionArea, enrichOrderItemsWithComboAreas } = require('../services/orderItemsProductionService');
 const { ensureOrdersSchema } = require('../utils/ensureOrdersSchema');
+const { verifySalePurgePin } = require('../utils/salePurgePin');
+const { purgeOrdersFromSystem, loadOrdersByIds, deleteOrderRelatedRows } = require('../utils/purgeOrderFromSystem');
 const { upsertOrderStationState } = require('../services/productionAreasService');
 const {
   allRequiredStationsReady,
@@ -293,6 +295,44 @@ router.put('/bar-station-settings', authenticateToken, (req, res) => {
   } catch (err) {
     logRouteError(req, err, { phase: 'bar-station-settings' });
     res.status(400).json({ error: publicErrorMessage(err, 'No se pudo guardar ajustes de bar') });
+  }
+});
+
+/** Elimina ventas (p. ej. observadas) de todo el sistema. Requiere PIN 2546. */
+router.post('/purge-from-system', authenticateToken, requireRole('admin', 'master_admin'), (req, res) => {
+  if (!verifySalePurgePin(req.body?.pin)) {
+    return res.status(403).json({ error: 'Contraseña incorrecta' });
+  }
+  const ids = Array.isArray(req.body?.order_ids) ? req.body.order_ids : [];
+  const orders = loadOrdersByIds(ids);
+  if (!orders.length) {
+    return res.status(404).json({ error: 'Venta no encontrada' });
+  }
+  try {
+    const result = purgeOrdersFromSystem(orders, { userId: req.user?.id || '' });
+    logAudit({
+      actorUserId: req.user?.id || '',
+      actorName: req.user?.full_name || req.user?.username || '',
+      action: 'order.purge_system',
+      resourceType: 'order',
+      resourceId: result.deleted.join(','),
+      details: {
+        order_ids: result.deleted,
+        order_numbers: orders.map((o) => o.order_number),
+      },
+    });
+    const io = req.app.get('io');
+    if (io) {
+      for (const order of orders) {
+        io.emit('order-update', { id: order.id, deleted: true, order_number: order.order_number });
+      }
+      io.emit('inventory-update', {});
+    }
+    emitInventoryUpdate({});
+    res.json({ success: true, deleted: result.deleted });
+  } catch (err) {
+    logRouteError(req, err, { phase: 'purge_from_system', ids });
+    res.status(500).json({ error: publicErrorMessage(err, 'No se pudo eliminar la venta del sistema') });
   }
 });
 
@@ -1218,14 +1258,7 @@ router.delete('/:id', authenticateToken, requireRole('admin', 'master_admin'), (
   }
   try {
     withTransaction((tx) => {
-      tx.run('DELETE FROM order_items WHERE order_id = ?', [order.id]);
-      tx.run('DELETE FROM electronic_documents WHERE order_id = ?', [order.id]);
-      tx.run('DELETE FROM delivery_assignments WHERE order_id = ?', [order.id]);
-      try {
-        tx.run('DELETE FROM finance_loss_events WHERE order_id = ?', [order.id]);
-      } catch (_) {
-        /* tabla opcional */
-      }
+      deleteOrderRelatedRows(tx, order.id);
       tx.run('DELETE FROM orders WHERE id = ?', [order.id]);
     });
     logAudit({

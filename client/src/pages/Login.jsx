@@ -137,7 +137,7 @@ export default function Login() {
               <img
                 src={resolveMediaUrl(brandLogo)}
                 alt=""
-                className="rf-login-brand-logo mx-auto"
+                className="rf-login-brand-logo mx-auto rounded-full"
               />
             ) : null}
             <h1 className="rf-font-display text-3xl font-bold text-[#e8f4fc] tracking-tight px-1">

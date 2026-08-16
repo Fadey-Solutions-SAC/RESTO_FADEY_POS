@@ -1591,6 +1591,7 @@ export default function Reports() {
               groups={dailySalesAccounts}
               emptyMessage="No hay cuentas cobradas en este día"
               onStatusClick={goToDescuentosHighlight}
+              onPurged={() => { void loadDaily(); }}
             />
           </div>
         </div>
@@ -1639,6 +1640,7 @@ export default function Reports() {
               groups={monthlySalesAccounts}
               emptyMessage="No hay cuentas cobradas en este mes"
               onStatusClick={goToDescuentosHighlight}
+              onPurged={() => { void loadMonthly(); }}
             />
           </div>
 
@@ -2224,7 +2226,9 @@ export default function Reports() {
                   <div className="ui-finance-kpi ui-finance-kpi--amber">
                     <p className="ui-finance-kpi__label">Inversión en el período</p>
                     <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.investment?.movements_total ?? financeOverview.investment?.total)}</p>
-                    <p className="ui-finance-kpi__sub">Movimientos en el rango (nómina, aportes, etc.)</p>
+                    <p className="ui-finance-kpi__sub">
+                      Precio de compra en ventas, insumos descontados, compras y nómina
+                    </p>
                   </div>
                   <div className="ui-finance-kpi">
                     <p className="ui-finance-kpi__label">Valor inventario (actual)</p>
@@ -2242,7 +2246,7 @@ export default function Reports() {
                     <p className="ui-finance-kpi__label">Ganancia aproximada</p>
                     <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.approx_profit)}</p>
                     <p className="ui-finance-kpi__sub">
-                      Ventas − compras − pérdidas registradas − egresos de caja en el rango
+                      Ventas − compras − costo de venta (precio compra e insumos) − pérdidas − egresos
                     </p>
                   </div>
                   <div className="ui-finance-kpi">
@@ -2260,11 +2264,11 @@ export default function Reports() {
                   <div className="ui-finance-kpi ui-finance-kpi--violet">
                     <p className="ui-finance-kpi__label">Margen bruto aprox.</p>
                     <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.approx_gross_margin)}</p>
-                    <p className="ui-finance-kpi__sub">Ventas − compras de inventario en el rango</p>
+                    <p className="ui-finance-kpi__sub">Ventas − compras − costo de venta (precio compra e insumos)</p>
                   </div>
                 </div>
                 <p className="text-xs text-[var(--ui-muted)]">
-                  Rango: {financeOverview.filters?.from} — {financeOverview.filters?.to}. Ganancia = ventas − compras − pérdidas − egresos.
+                  Rango: {financeOverview.filters?.from} — {financeOverview.filters?.to}. Ganancia = ventas − compras − costo de venta − pérdidas − egresos.
                   El valor de inventario es una foto actual y no entra en esa fórmula.
                 </p>
               </>

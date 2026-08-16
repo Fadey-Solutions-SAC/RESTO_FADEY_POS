@@ -6,6 +6,7 @@ const { queryAll, queryOne } = require('../database');
 const { buildRankings, buildProductivityByUser } = require('./workProductivityService');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
 const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurchaseDate');
+const { sumSalesCogsForRange } = require('../utils/salesCogs');
 const {
   getPaidSalesEventSql,
   metricsFromPaidOrdersWhere,
@@ -90,6 +91,11 @@ function buildGeneralKpis(from, to) {
   const reports = getReportsHelpers();
   const financeMonth = reports.financeMonthToDateSnapshot?.() || {};
   const op = reports.buildOperationalIntelligence?.({ role: 'admin' }) || {};
+  const monthCogs = Number(financeMonth.product_cogs_total || 0) + Number(financeMonth.kardex_cogs_total || 0);
+  const monthOperating =
+    Number(financeMonth.losses_combined_total || 0)
+    + Number(financeMonth.purchases_total || 0)
+    + monthCogs;
 
   const productsSold = queryOne(
     `SELECT COALESCE(SUM(oi.quantity), 0) AS qty FROM order_items oi
@@ -113,10 +119,7 @@ function buildGeneralKpis(from, to) {
     orders_month: Number(monthMetrics.orders || 0),
     net_profit_approx: Number(financeMonth.approx_profit || 0),
     gross_margin_approx: Number(financeMonth.approx_gross_margin || 0),
-    operating_expenses:
-      Number(financeMonth.losses_combined_total || 0)
-      + Number(financeMonth.purchases_total || 0)
-      + Number(financeMonth.kardex_cogs_total || 0),
+    operating_expenses: monthOperating,
     total_revenue_month: salesMonth,
     avg_ticket: paidToday > 0 ? salesToday / paidToday : 0,
     active_orders: Number(activeOrders?.c || 0),
@@ -131,10 +134,7 @@ function buildGeneralKpis(from, to) {
     growth_month_pct: Math.round(growthPct * 10) / 10,
     register_open: Boolean(op.summary?.registerOpen),
     staff_on_shift: Number(openSessions?.c || 0),
-    operating_expenses_period:
-      Number(financeMonth.losses_combined_total || 0)
-      + Number(financeMonth.purchases_total || 0)
-      + Number(financeMonth.kardex_cogs_total || 0),
+    operating_expenses_period: monthOperating,
   };
 }
 
@@ -149,14 +149,7 @@ function buildFinancialSection(from, to) {
      WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL} BETWEEN date(?) AND date(?)`,
     params
   );
-  /** Costo de insumos consumidos en ventas (ej. 3 alitas × S/ 3 = S/ 9 por plato). */
-  const kardexCogs = queryOne(
-    `SELECT COALESCE(SUM(costo_total), 0) AS total FROM kardex
-     WHERE tipo_movimiento = 'salida'
-       AND referencia IN ('venta', 'venta_masa')
-       AND date(fecha) BETWEEN date(?) AND date(?)`,
-    params
-  );
+  const cogs = sumSalesCogsForRange(from, to);
   const cashExp = queryOne(
     `SELECT COALESCE(SUM(amount), 0) AS total FROM cash_movements
      WHERE type = 'expense' AND date(datetime(created_at, 'localtime')) BETWEEN date(?) AND date(?)`,
@@ -169,8 +162,9 @@ function buildFinancialSection(from, to) {
   );
   const totalSales = Number(salesMetrics.sales || 0);
   const totalPurchases = Number(purchases?.total || 0);
-  const totalKardexCogs = Number(kardexCogs?.total || 0);
-  const investmentTotal = totalPurchases + totalKardexCogs;
+  const totalProductCogs = Number(cogs.purchase_cogs || 0);
+  const totalKardexCogs = Number(cogs.kardex_cogs || 0);
+  const investmentTotal = totalPurchases + totalProductCogs + totalKardexCogs;
   const totalExpenses = Number(cashExp?.total || 0) + Number(losses?.total || 0);
   const gross = totalSales - investmentTotal;
   const net = totalSales - investmentTotal - totalExpenses;
@@ -197,8 +191,10 @@ function buildFinancialSection(from, to) {
     net_profit_approx: net,
     margin_pct: totalSales > 0 ? Math.round((net / totalSales) * 1000) / 10 : 0,
     purchases_total: totalPurchases,
+    product_cogs_total: totalProductCogs,
     kardex_cogs_total: totalKardexCogs,
-    /** Compras + costo de insumos en ventas + caja/pérdidas (inversión y gastos del período). */
+    investment_total: investmentTotal,
+    /** Compras + costo de venta (precio compra e insumos) + caja/pérdidas. */
     operating_expenses: totalExpenses + investmentTotal,
     cash_flow_in: Number(cashFlow?.income || 0),
     cash_flow_out: Number(cashFlow?.expense || 0),

@@ -4,7 +4,6 @@ import { api } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { getPresetRange } from '../../utils/indicatorsDatePresets';
 import {
-  MdInsights,
   MdDashboard,
   MdAttachMoney,
   MdStore,
@@ -31,7 +30,7 @@ import {
   IndicatorsInsightsPanel,
 } from '../../components/indicadores/IndicatorsHubPanels';
 import IndicatorsAlertsPanel from '../../components/indicadores/IndicatorsAlertsPanel';
-import IndicatorsDateFilters from '../../components/indicadores/IndicatorsDateFilters';
+import IndicatorsDateFilters, { INDICADORES_CTRL } from '../../components/indicadores/IndicatorsDateFilters';
 import IndicatorsExportMenu from '../../components/indicadores/IndicatorsExportMenu';
 
 const TABS = [
@@ -188,50 +187,50 @@ export default function Indicadores() {
   }
 
   return (
-    <div className="space-y-4 relative">
+    <div className="space-y-2 relative -mt-1 sm:-mt-3">
       {refreshing ? (
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-gold-500/30 overflow-hidden z-10">
           <div className="h-full w-1/3 bg-gold-500 animate-pulse" />
         </div>
       ) : null}
 
-      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] flex items-center gap-2 rf-module-page-title">
-        <MdInsights className="text-gold-600" /> Indicadores
-      </h1>
-
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
         <IndicatorsDateFilters
           preset={preset}
           onPresetChange={handlePresetChange}
           filters={filters}
           onFiltersChange={setFilters}
         />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
-            className="btn-secondary text-sm flex items-center gap-1"
+            className={`${INDICADORES_CTRL} w-[7.5rem] justify-center bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:opacity-60`}
             disabled={refreshing}
             onClick={() => void loadHub(true)}
           >
             <MdSync className={refreshing ? 'animate-spin' : ''} />
             {refreshing ? 'Actualizando…' : 'Actualizar'}
           </button>
-          <button type="button" className="btn-secondary text-sm flex items-center gap-1" onClick={() => setExportOpen(true)}>
+          <button
+            type="button"
+            className={`${INDICADORES_CTRL} w-[7.5rem] justify-center bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]`}
+            onClick={() => setExportOpen(true)}
+          >
             <MdDownload /> Exportar
           </button>
         </div>
       </div>
 
-      <div className="relative w-full max-w-xs" ref={moduleRef}>
+      <div className="relative min-w-[7.5rem] w-[11.5rem]" ref={moduleRef}>
         <button
           type="button"
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+          className={`${INDICADORES_CTRL} w-full justify-between bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]`}
           onClick={() => setModuleOpen((open) => !open)}
           aria-haspopup="listbox"
           aria-expanded={moduleOpen}
         >
-          <ActiveModuleIcon className="text-gold-600 shrink-0" />
-          <span className="flex-1 text-left">{activeModule.label}</span>
+          <ActiveModuleIcon className="text-gold-600 shrink-0 text-sm" />
+          <span className="flex-1 text-left truncate">{activeModule.label}</span>
           {activeModule.id === 'alertas' && alertCount > 0 ? (
             <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px]">{alertCount}</span>
           ) : null}
@@ -255,7 +254,7 @@ export default function Indicadores() {
                     selectTab(t.id);
                     setModuleOpen(false);
                   }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left ${
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left ${
                     selected
                       ? 'bg-gold-600 text-white'
                       : 'text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'

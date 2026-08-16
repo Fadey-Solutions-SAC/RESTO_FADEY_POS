@@ -5,6 +5,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const { getKardexMetodoValorizacion } = require('./businessConfigService');
+const { isUnidadUm, recipeQtyToStock } = require('../utils/insumoUnidadMedida');
 
 function normalizeKardexTimestamp(eventAt) {
   const raw = String(eventAt || '').trim();
@@ -275,14 +276,17 @@ function salidaInsumosPorProducto(tx, { productId, quantity, referencia, referen
   const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [pid]);
   const directInsumo = product ? String(product.kardex_insumo_id || '').trim() : '';
   if (directInsumo) {
+    const insRow = tx.queryOne('SELECT unidad_medida, kg_por_unidad, stock_unidades, stock_actual FROM insumos WHERE id = ?', [directInsumo]);
     const modo = String(product.kardex_insumo_modo || 'unidad').toLowerCase();
-    if (modo === 'peso') {
-      const g = Number(product.kardex_insumo_gramos) || 0;
-      const needKg = (g / 1000) * qtyLine;
-      if (needKg <= 0) return { skipped: true, reason: 'sin_masa' };
+    const umInsumo = insRow ? insRow.unidad_medida : '';
+    const asUnidades = isUnidadUm(umInsumo) || modo !== 'peso';
+    if (!asUnidades) {
+      const q = Number(product.kardex_insumo_gramos) || 0;
+      const need = recipeQtyToStock(q, umInsumo) * qtyLine;
+      if (need <= 0) return { skipped: true, reason: 'sin_masa' };
       registrarSalida(tx, {
         insumoId: directInsumo,
-        cantidad: needKg,
+        cantidad: need,
         soloMasa: true,
         referencia: 'venta_masa',
         referenciaId,
@@ -295,10 +299,12 @@ function salidaInsumosPorProducto(tx, { productId, quantity, referencia, referen
     const den = Number(product.kardex_insumo_den);
     const n = num > 0 && Number.isFinite(num) ? num : 1;
     const d = den > 0 && Number.isFinite(den) ? den : 1;
-    const fracU = (n / d) * qtyLine;
+    const qtyUnidad = isUnidadUm(umInsumo) && modo === 'peso'
+      ? (Number(product.kardex_insumo_gramos) || 0)
+      : (n / d);
+    const fracU = qtyUnidad * qtyLine;
     if (fracU <= 0) return { skipped: true, reason: 'sin_unidades' };
-    const insL = tx.queryOne('SELECT kg_por_unidad, stock_unidades, stock_actual FROM insumos WHERE id = ?', [directInsumo]);
-    const kpu0 = insL ? Number(insL.kg_por_unidad) || 0 : 0;
+    const kpu0 = insRow ? Number(insRow.kg_por_unidad) || 0 : 0;
     if (kpu0 > 1e-12) {
       const needKg = fracU * kpu0;
       registrarSalida(tx, {
