@@ -13,6 +13,7 @@ export function useStaffSessionHeartbeat(user) {
 
     const ping = () => {
       if (document.visibilityState === 'hidden') return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       api.post('/auth/heartbeat', {}).catch(() => {});
     };
 

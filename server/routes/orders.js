@@ -509,10 +509,26 @@ router.post('/', authenticateToken, (req, res) => {
       type: req.body?.type,
       table_number: req.body?.table_number,
     });
-    const orderId = uuidv4();
+    let orderId = String(req.body?.id || '').trim();
+    if (orderId) {
+      const existing = getOrderWithItems(orderId);
+      if (existing) {
+        return res.status(200).json({
+          ...existing,
+          merged_into_existing: false,
+          new_item_ids: [],
+          replayed: true,
+        });
+      }
+    } else {
+      orderId = uuidv4();
+    }
     const actor = actorFromRequest(req);
+    const body = orderId && req.body?.id
+      ? { ...req.body, offline_force_new: true }
+      : req.body;
     const result = withTransaction((tx) =>
-      createOrMergeTableOrderInTransaction(tx, orderId, req.body, actor)
+      createOrMergeTableOrderInTransaction(tx, orderId, body, actor)
     );
 
     const order = getOrderWithItems(result.orderId);

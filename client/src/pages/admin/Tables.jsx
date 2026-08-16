@@ -147,6 +147,11 @@ export default function Tables() {
   useActiveInterval(pollTables, 10000);
   useSocket('order-update', loadTables);
   useSocket('table-update', loadTables);
+  useEffect(() => {
+    const onSynced = () => loadTables();
+    window.addEventListener('rf-offline-synced', onSynced);
+    return () => window.removeEventListener('rf-offline-synced', onSynced);
+  }, [loadTables]);
   useSocket('salones-update', loadTables);
   useSocket('inventory-update', loadProducts);
   useSocket('staff-data-update', (p) => {

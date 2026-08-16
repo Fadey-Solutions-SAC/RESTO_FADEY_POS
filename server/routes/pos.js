@@ -741,6 +741,9 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         if (order.status === 'delivered' && order.payment_status === 'paid') {
           return;
         }
+        if (String(order.payment_status || '').toLowerCase() === 'paid') {
+          return;
+        }
         const extraDiscountRaw = Math.max(0, Number(discountsByOrder[orderId] || 0));
         let extraDiscount = extraDiscountRaw;
         if (isCourtesyCheckout) {
@@ -765,6 +768,15 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       });
 
       const toCharge = chargedRows;
+      if (!toCharge.length && effectiveOrderIds.length) {
+        const replayIds = [...new Set(effectiveOrderIds)].filter((id) => {
+          const o = tx.queryOne('SELECT payment_status FROM orders WHERE id = ?', [id]);
+          return String(o?.payment_status || '').toLowerCase() === 'paid';
+        });
+        if (replayIds.length === [...new Set(effectiveOrderIds)].length) {
+          return { chargedOrderIds: replayIds, discountsAppliedByOrder, replayed: true };
+        }
+      }
       const batchTotal = round2(toCharge.reduce((s, r) => s + r.total, 0));
 
       let primaryMethod = isCourtesyCheckout ? COURTESY_PAYMENT_METHOD : paymentMethod;
@@ -836,7 +848,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       return { chargedOrderIds, discountsAppliedByOrder };
     });
 
-    const { chargedOrderIds, discountsAppliedByOrder } = txResult;
+    const { chargedOrderIds, discountsAppliedByOrder, replayed } = txResult;
     const courtesyIds = new Set(
       chargedOrderIds.filter((id) => {
         const row = queryOne('SELECT payment_method FROM orders WHERE id = ?', [id]);
@@ -844,7 +856,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       })
     );
     const salesOrderIds = chargedOrderIds.filter((id) => !courtesyIds.has(id));
-    if (!chargeToCustomerAccount && salesOrderIds.length) {
+    if (!replayed && !chargeToCustomerAccount && salesOrderIds.length) {
       try {
         const { markProductsSoldOnPaidOrders } = require('../services/productSalesTrackingService');
         markProductsSoldOnPaidOrders(salesOrderIds);

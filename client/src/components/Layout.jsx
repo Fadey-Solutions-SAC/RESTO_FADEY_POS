@@ -4,13 +4,14 @@ import Sidebar from './Sidebar';
 import NotificationCenter from './NotificationCenter';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
+import { isBrowserOffline, isNetworkFailure } from '../utils/offlinePos';
 import { useSocket } from '../hooks/useSocket';
 import { MdPointOfSale, MdLock, MdAdminPanelSettings, MdStorefront } from 'react-icons/md';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppLocaleBootstrap } from '../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../hooks/useStaffSessionHeartbeat';
-import { getShellModuleTitleKey } from '../utils/shellModuleTitle';
+import OfflineCajaBanner from './OfflineCajaBanner';
 
 export default function Layout() {
   const { t } = useTranslation('common');
@@ -37,7 +38,13 @@ export default function Layout() {
   const checkCaja = useCallback(() => {
     api.get('/pos/register-status')
       .then((data) => setCajaOpen(data.is_open))
-      .catch(() => setCajaOpen(false))
+      .catch((err) => {
+        if (isBrowserOffline() || isNetworkFailure(err)) {
+          setCajaOpen((prev) => (prev == null ? true : prev));
+          return;
+        }
+        setCajaOpen(false);
+      })
       .finally(() => setCheckingCaja(false));
   }, []);
 
@@ -151,6 +158,7 @@ export default function Layout() {
             </div>
           </div>
         </header>
+        <OfflineCajaBanner />
         <main className="rf-main-content p-3 sm:p-6 bg-[var(--ui-body-bg)] min-h-[calc(100vh-var(--ui-shell-header-h))]">
           {isMozoBlocked ? (
             <div className="flex flex-col items-center justify-center py-32 text-center">

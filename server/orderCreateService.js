@@ -389,6 +389,7 @@ function createOrMergeTableOrderInTransaction(tx, orderId, body, actor) {
   let tableNumber = String(body.table_number || '').trim();
   let tableId = String(body.table_id || '').trim();
   const targetOrderId = String(body.target_order_id || '').trim();
+  const forceNew = Boolean(body?.offline_force_new);
   if (orderType === 'dine_in' && (tableId || tableNumber) && !body.hold_kitchen_for_reservation) {
     const resolved = resolveDineInTableContextTx(tx, { tableId, tableNumber });
     tableId = resolved.tableId;
@@ -400,18 +401,20 @@ function createOrMergeTableOrderInTransaction(tx, orderId, body, actor) {
       table_number: tableNumber,
       customer_name: String(body.customer_name || '').trim() || resolved.tableName,
     };
-    if (targetOrderId) {
-      const explicit = resolveExplicitMergeTargetTx(tx, targetOrderId, {
-        tableId,
-        tableNumberRaw: tableNumber,
-        incomingItems: body.items,
-      });
-      const merged = tryAppendToMergeableOrderTx(tx, explicit, body, actor, tableId);
+    if (!forceNew) {
+      if (targetOrderId) {
+        const explicit = resolveExplicitMergeTargetTx(tx, targetOrderId, {
+          tableId,
+          tableNumberRaw: tableNumber,
+          incomingItems: body.items,
+        });
+        const merged = tryAppendToMergeableOrderTx(tx, explicit, body, actor, tableId);
+        if (merged) return merged;
+      }
+      const existing = findMergeableTableOrderTx(tx, tableNumber, { tableId, incomingItems: body.items });
+      const merged = tryAppendToMergeableOrderTx(tx, existing, body, actor, tableId);
       if (merged) return merged;
     }
-    const existing = findMergeableTableOrderTx(tx, tableNumber, { tableId, incomingItems: body.items });
-    const merged = tryAppendToMergeableOrderTx(tx, existing, body, actor, tableId);
-    if (merged) return merged;
   }
   const created = createOrderInTransaction(tx, orderId, body, actor);
   tx.run(

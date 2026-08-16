@@ -667,7 +667,7 @@ export default function POSPanel() {
   /** Solo con 2+ cajas activas el admin puede cambiar de caja. */
   const canSwitchCaja = isPosAdmin && cajaStations.length > 1 && Boolean(adminAttachedRegisterId);
   /** Admin opera el mapa solo con caja elegida; cajero con su turno abierto. */
-  const posRegisterReady = isPosAdmin ? adminRegisterContextLive : Boolean(register);
+  const posRegisterReady = isPosAdmin ? (adminRegisterContextLive || Boolean(register)) : Boolean(register);
   const openCajaView = useCallback(
     (view) => {
       const allowed = cajaOptionsForRole.some((o) => o.id === view);
@@ -687,7 +687,7 @@ export default function POSPanel() {
           : String(adminRegisterIdRef.current || '').trim();
       const stationsResEarly = await api.get('/pos/caja-stations').catch(() => null);
       const stationsList = Array.isArray(stationsResEarly?.stations) ? stationsResEarly.stations : [];
-      setCajaStations(stationsList);
+      setCajaStations((prev) => (stationsList.length ? stationsList : prev));
       /** Una sola caja activa: adjuntar automáticamente el turno abierto (sin botón Cambiar caja). */
       if (posRole === 'admin' && !adminRid && stationsList.length === 1) {
         const onlyOpenId = String(stationsList[0]?.open_register?.id || '').trim();
@@ -802,6 +802,7 @@ export default function POSPanel() {
       setAllOrders(ordersData || []);
       setRegister((prev) => {
         if (regResolved) return regResolved;
+        if (prev) return prev;
         if (posRole === 'admin' && adminRid && adminRegisterStillOpen && prev) return prev;
         return regResolved;
       });
@@ -881,6 +882,7 @@ export default function POSPanel() {
   const reservationAlertToastIdsRef = useRef(new Set());
 
   const syncReservationAlertToasts = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     try {
       const data = await api.get('/reports/reservation-caja-alerts');
       const alerts = (data?.alerts || []).filter((a) => String(a?.id || '').startsWith('reserva_caja_'));
@@ -966,6 +968,11 @@ export default function POSPanel() {
     void loadData();
     void syncReservationAlertToasts();
   });
+  useEffect(() => {
+    const onSynced = () => { void loadData(); };
+    window.addEventListener('rf-offline-synced', onSynced);
+    return () => window.removeEventListener('rf-offline-synced', onSynced);
+  }, []);
 
   useEffect(() => {
     void syncReservationAlertToasts();

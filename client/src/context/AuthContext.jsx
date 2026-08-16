@@ -1,6 +1,32 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { api, getApiOrigin } from '../utils/api';
 import { applyUiThemeFromAppSettings } from '../theme/uiTheme';
+import { isBrowserOffline, readGetCache, saveGetCache } from '../utils/offlinePos';
+
+const STAFF_USER_KEY = 'rf_offline_staff_user';
+
+function persistStaffUser(profile) {
+  if (!profile || profile.type === 'customer') return;
+  try {
+    localStorage.setItem(STAFF_USER_KEY, JSON.stringify(profile));
+  } catch {
+    /* ignore */
+  }
+  saveGetCache('/auth/me', profile);
+}
+
+function readPersistedStaffUser() {
+  const fromCache = readGetCache('/auth/me');
+  if (fromCache && typeof fromCache === 'object') return fromCache;
+  try {
+    const raw = localStorage.getItem(STAFF_USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 function applyAuthUserTheme(profile) {
   if (!profile) return;
@@ -38,6 +64,7 @@ function isLikelyTransientAuthError(err) {
 }
 
 async function waitForApiReady(maxAttempts = 12) {
+  if (isBrowserOffline()) return;
   const origin = getApiOrigin();
   if (!origin || typeof window === 'undefined') return;
   for (let i = 0; i < maxAttempts; i += 1) {
@@ -56,19 +83,28 @@ async function waitForApiReady(maxAttempts = 12) {
 }
 
 async function restoreStaffSession() {
-  await waitForApiReady();
+  const cachedMe = () => readPersistedStaffUser();
+  if (isBrowserOffline()) {
+    const hit = cachedMe();
+    if (hit) return hit;
+  }
   let lastErr = null;
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  await waitForApiReady(isBrowserOffline() ? 0 : 4);
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
       const data = await api.get('/auth/me');
       return data;
     } catch (err) {
       lastErr = err;
       if (shouldClearAuthToken(err)) throw err;
+      const hit = cachedMe();
+      if (hit && (isLikelyTransientAuthError(err) || isBrowserOffline())) return hit;
       if (!isLikelyTransientAuthError(err)) throw err;
-      await new Promise((r) => setTimeout(r, 600 + attempt * 400));
+      await new Promise((r) => setTimeout(r, 400 + attempt * 300));
     }
   }
+  const hit = cachedMe();
+  if (hit) return hit;
   throw lastErr || new Error('No se pudo restaurar la sesión');
 }
 
@@ -93,12 +129,14 @@ export function AuthProvider({ children }) {
           localStorage.setItem('token', data.token);
         }
         applyAuthUserTheme(data);
+        persistStaffUser({ ...data, type: 'staff' });
         setUser({ ...data, type: 'staff' });
       })
       .catch((err) => {
         if (cancelled) return;
         if (shouldClearAuthToken(err)) {
           localStorage.removeItem('token');
+          try { localStorage.removeItem(STAFF_USER_KEY); } catch { /* ignore */ }
           setUser(null);
         }
         /* Fallo de red / API lenta: se conserva el token para el próximo intento */
@@ -118,6 +156,7 @@ export function AuthProvider({ children }) {
     const data = await api.post('/auth/login', body);
     localStorage.setItem('token', data.token);
     applyAuthUserTheme(data.user);
+    persistStaffUser({ ...data.user, type: 'staff' });
     setUser({ ...data.user, type: 'staff' });
     return data.user;
   };
@@ -147,6 +186,7 @@ export function AuthProvider({ children }) {
       /* Cerrar UI aunque el API no responda */
     }
     localStorage.removeItem('token');
+    try { localStorage.removeItem(STAFF_USER_KEY); } catch { /* ignore */ }
     setUser(null);
     window.location.href = '/';
   };
@@ -160,11 +200,13 @@ export function AuthProvider({ children }) {
         localStorage.setItem('token', data.token);
       }
       applyAuthUserTheme(data);
+      persistStaffUser({ ...data, type: 'staff' });
       setUser({ ...data, type: 'staff' });
       return data;
     } catch (err) {
       if (shouldClearAuthToken(err)) {
         localStorage.removeItem('token');
+        try { localStorage.removeItem(STAFF_USER_KEY); } catch { /* ignore */ }
         setUser(null);
       }
       return null;

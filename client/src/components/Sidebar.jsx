@@ -256,10 +256,10 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
           <button
             type="button"
             onClick={onToggleMenu}
-            className="h-full w-full flex flex-col items-center justify-center gap-1 hover:bg-[var(--ui-sidebar-hover)] transition-colors text-[var(--ui-body-text)]"
+            className="h-full w-full flex flex-row items-center justify-center gap-1 hover:bg-[var(--ui-sidebar-hover)] transition-colors text-[var(--ui-body-text)]"
             aria-label={tc('layout.menu', { defaultValue: 'Menú' })}
           >
-            <div className="rf-sidebar-brand w-7 h-7 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
+            <div className="rf-sidebar-brand w-6 h-6 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
               <MdStorefront className="text-white text-sm" />
             </div>
             <span className="rf-sidebar-burger" aria-hidden="true">

@@ -11,6 +11,19 @@
  * - Las llamadas bajo `api.printing.*` usan esa base; el resto del sistema sigue usando API_BASE.
  */
 import { translateApiErrorMessage } from '../i18n/translateApiError';
+import {
+  enqueueMutation,
+  flushOfflineQueue,
+  isBrowserOffline,
+  isNetworkFailure,
+  isOfflinePosMutation,
+  optimisticMutationResult,
+  overlayCachedGet,
+  prepareMutation,
+  readGetCache,
+  saveGetCache,
+  shouldCacheGet,
+} from './offlinePos';
 
 const rawApi = import.meta.env.VITE_API_URL;
 const hasExplicitApi = rawApi !== undefined && rawApi !== null && String(rawApi).trim() !== '';
@@ -249,23 +262,64 @@ async function request(endpoint, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
+  const method = String(options.method || 'GET').toUpperCase();
+  const skipOffline = Boolean(options.skipOffline);
   const url = `${getApiBase()}${endpoint}`;
+  const fetchOptions = { ...options };
+  delete fetchOptions.skipOffline;
+
+  const useLocalFallback = () => {
+    if (skipOffline) return null;
+    if (method === 'GET') {
+      const cached = overlayCachedGet(endpoint, readGetCache(endpoint));
+      if (cached != null) return cached;
+    }
+    if (isOfflinePosMutation(method, endpoint)) {
+      const job = prepareMutation(method, endpoint, options.body);
+      enqueueMutation(job);
+      return optimisticMutationResult(job);
+    }
+    return null;
+  };
+
+  if (!skipOffline && isBrowserOffline()) {
+    const local = useLocalFallback();
+    if (local != null) return local;
+  }
+
+  let timeoutId = null;
+  if (!fetchOptions.signal) {
+    const timeoutMs = skipOffline ? 25000 : 8000;
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      fetchOptions.signal = AbortSignal.timeout(timeoutMs);
+    } else if (typeof AbortController !== 'undefined') {
+      const ctrl = new AbortController();
+      timeoutId = setTimeout(() => ctrl.abort(), timeoutMs);
+      fetchOptions.signal = ctrl.signal;
+    }
+  }
+
   let res;
   try {
-    res = await fetch(url, { ...options, headers });
+    res = await fetch(url, { ...fetchOptions, headers });
   } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    const local = useLocalFallback();
+    if (local != null && isNetworkFailure(err)) return local;
     const msg = String(err?.message || err || '');
-    if (/failed to fetch|networkerror|load failed|network/i.test(msg)) {
+    if (/failed to fetch|networkerror|load failed|network|abort/i.test(msg) || err?.name === 'AbortError') {
       const origin = getApiOrigin() || url;
       const frontOrigin = typeof window !== 'undefined' ? window.location.origin : 'su dominio Vercel';
       throw new Error(
         `No se pudo conectar al API (${origin}). ` +
+          `Caja puede seguir en modo local si ya cargó mesas y productos. ` +
           `Vercel → VITE_API_URL = URL de ESTE Web Service de Render (sin /api) y Redeploy. ` +
           `Render → CORS_ORIGIN debe incluir ${frontOrigin}.`,
       );
     }
     throw err;
   }
+  if (timeoutId) clearTimeout(timeoutId);
   const refreshedToken = res.headers.get('X-Refreshed-Token');
   if (refreshedToken && typeof window !== 'undefined') {
     try {
@@ -283,6 +337,19 @@ async function request(endpoint, options = {}) {
   }
 
   if (!res.ok) {
+    if (!skipOffline && method === 'GET' && res.status >= 502 && res.status <= 504) {
+      const cached = overlayCachedGet(endpoint, readGetCache(endpoint));
+      if (cached != null) return cached;
+    }
+    if (
+      !skipOffline
+      && isOfflinePosMutation(method, endpoint)
+      && (res.status >= 502 && res.status <= 504)
+    ) {
+      const job = prepareMutation(method, endpoint, options.body);
+      enqueueMutation(job);
+      return optimisticMutationResult(job);
+    }
     if (
       res.status === 401
       && data?.code === 'SESSION_IDLE_TIMEOUT'
@@ -307,6 +374,11 @@ async function request(endpoint, options = {}) {
     if (data?.code) err.code = data.code;
     if (data?.target_table) err.targetTable = data.target_table;
     throw err;
+  }
+
+  if (method === 'GET' && !skipOffline && shouldCacheGet(endpoint)) {
+    saveGetCache(endpoint, data);
+    return overlayCachedGet(endpoint, data);
   }
 
   return data;
@@ -590,6 +662,14 @@ export const api = {
       method: 'DELETE',
       ...(body != null ? { body: JSON.stringify(body) } : {}),
     }),
+  flushOfflineQueue: () =>
+    flushOfflineQueue((job) =>
+      request(job.endpoint, {
+        method: job.method,
+        body: job.body,
+        skipOffline: true,
+      }),
+    ),
   /** Mismo token que el API principal; base URL puede ser el Node local (USB / RAW). */
   printing: {
     get: (endpoint, options = {}) => printingRequest(endpoint, { method: 'GET', cache: 'no-store', ...options }),

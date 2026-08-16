@@ -41,6 +41,8 @@ import BackgroundKitchenAutoPrinter from './components/BackgroundKitchenAutoPrin
 import PrintingAssistantAutoDiscover from './components/PrintingAssistantAutoDiscover';
 import { ADMIN_MODULE_PATHS, hasModulePermission, getDefaultStaffPath } from './utils/staffModuleAccess';
 import { useDeliverySettings } from './hooks/useDeliveryEnabled';
+import { api } from './utils/api';
+import { startOfflinePosListeners } from './utils/offlinePos';
 
 function DeliveryModuleGate({ children }) {
   const { enabled, loaded } = useDeliverySettings();
@@ -158,6 +160,13 @@ export default function App() {
 }
 
 function AppRoutes({ user }) {
+  useEffect(() => {
+    if (!user || user.type !== 'staff') return undefined;
+    return startOfflinePosListeners(() => {
+      api.flushOfflineQueue().catch(() => {});
+    });
+  }, [user]);
+
   return (
     <>
       <Routes>
