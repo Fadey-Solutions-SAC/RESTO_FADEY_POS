@@ -603,67 +603,65 @@ export default function Ventas() {
   if (loading) return <div className="flex justify-center py-16"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>;
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-2 mb-5">
-        {[
-          { id: 'activas', label: t('tabs.active') },
-          { id: 'anuladas', label: t('tabs.voided') },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => handleSaleTabChange(tab.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
-              saleTab === tab.id
-                ? 'bg-[var(--ui-accent)] text-white border-[color:var(--ui-accent)] shadow-md'
-                : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+    <div className="-mt-1 sm:-mt-3">
+      <div className="flex flex-wrap items-stretch gap-2 mb-2 min-w-0">
+        {isVoidedTab ? (
+          <>
+            <div className="card !py-2 !px-3 border-l-4 border-l-sky-500 flex-1 min-w-[8rem]">
+              <p className="text-[10px] leading-tight text-sky-600">{t('totals.voidedCount')}</p>
+              <p className="text-lg font-bold text-[var(--ui-body-text)] leading-tight">{displayGroups.length}</p>
+            </div>
+            <div className="card !py-2 !px-3 border-l-4 border-l-slate-400 flex-1 min-w-[8rem]">
+              <p className="text-[10px] leading-tight ui-text-muted">{t('totals.voidedReferenceTotal')}</p>
+              <p className="text-lg font-bold text-[var(--ui-body-text)] leading-tight">{formatCurrency(totals.total)}</p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="card !py-2 !px-3 border-l-4 border-l-slate-400 flex-1 min-w-[8rem]">
+              <p className="text-[10px] leading-tight ui-text-muted">Total Ventas</p>
+              <p className="text-lg font-bold text-[var(--ui-body-text)] leading-tight">{formatCurrency(totals.total)}</p>
+            </div>
+            <div className="card !py-2 !px-3 border-l-4 border-l-emerald-500 flex-1 min-w-[8rem]">
+              <p className="text-[10px] leading-tight text-emerald-600">Cobrado</p>
+              <p className="text-lg font-bold text-emerald-400 leading-tight">{formatCurrency(totals.paid)}</p>
+            </div>
+            <div className="card !py-2 !px-3 border-l-4 border-l-amber-500 flex-1 min-w-[8rem]">
+              <p className="text-[10px] leading-tight text-amber-600">Pendiente</p>
+              <p className="text-lg font-bold text-amber-300 leading-tight">{formatCurrency(totals.pending)}</p>
+            </div>
+            <div className="card !py-2 !px-3 border-l-4 border-l-sky-500 flex-1 min-w-[8rem]">
+              <p className="text-[10px] leading-tight text-sky-600">Cuentas cobradas</p>
+              <p className="text-lg font-bold text-[var(--ui-body-text)] leading-tight">{totals.count}</p>
+              {lifetimeSales > 0 ? (
+                <p className="text-[10px] text-[var(--ui-muted)] leading-tight">Interno {formatSaleNumero(lifetimeSales)}</p>
+              ) : null}
+            </div>
+          </>
+        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {[
+            { id: 'activas', label: t('tabs.active') },
+            { id: 'anuladas', label: t('tabs.voided') },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => handleSaleTabChange(tab.id)}
+              className={`h-full min-h-[2.5rem] px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors border ${
+                saleTab === tab.id
+                  ? 'bg-[var(--ui-accent)] text-white border-[color:var(--ui-accent)] shadow-md'
+                  : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {isVoidedTab ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-          <div className="card border-l-4 border-l-sky-500">
-            <p className="text-xs text-sky-600">{t('totals.voidedCount')}</p>
-            <p className="text-xl font-bold text-[var(--ui-body-text)]">{displayGroups.length}</p>
-          </div>
-          <div className="card border-l-4 border-l-slate-400">
-            <p className="text-xs ui-text-muted">{t('totals.voidedReferenceTotal')}</p>
-            <p className="text-xl font-bold text-[var(--ui-body-text)]">{formatCurrency(totals.total)}</p>
-            <p className="text-[10px] text-[var(--ui-muted)] mt-1">{t('totals.voidedReferenceHint')}</p>
-          </div>
-        </div>
-      ) : (
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
-        <div className="card border-l-4 border-l-slate-400"><p className="text-xs ui-text-muted">Total Ventas</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{formatCurrency(totals.total)}</p></div>
-        <div className="card border-l-4 border-l-emerald-500"><p className="text-xs text-emerald-600">Cobrado</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totals.paid)}</p></div>
-        <div className="card border-l-4 border-l-amber-500"><p className="text-xs text-amber-600">Pendiente</p><p className="text-xl font-bold text-amber-300">{formatCurrency(totals.pending)}</p></div>
-        <div className="card border-l-4 border-l-sky-500">
-          <p className="text-xs text-sky-600">Cuentas cobradas</p>
-          <p className="text-xl font-bold text-[var(--ui-body-text)]">{totals.count}</p>
-          {lifetimeSales > 0 ? (
-            <p className="text-[10px] text-[var(--ui-muted)] mt-1">Interno {formatSaleNumero(lifetimeSales)}</p>
-          ) : null}
-        </div>
-      </div>
-      )}
-      {!isVoidedTab ? (
-        <div className="flex justify-end mb-5">
-          <DownloadExcelTxtButtons
-            onExcel={() => downloadDetalleVentas('excel')}
-            onTxt={() => downloadDetalleVentas('txt')}
-            excelTitle="Descargar detalle de ventas (Excel)"
-            txtTitle="Descargar detalle de ventas (TXT)"
-            disabled={!filtered.length}
-          />
-        </div>
-      ) : null}
-
-      <div className="rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-5">
-        <div className="flex flex-wrap gap-3 mb-4">
+      <div className="rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <div className="relative flex-1 min-w-[220px]">
             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)]" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por #, mesa (ej. 20 o M20) o cliente..." className="input-field pl-9" />
@@ -682,6 +680,16 @@ export default function Ventas() {
               <option key={name} value={name}>{name}</option>
             ))}
           </select>
+          {!isVoidedTab ? (
+            <DownloadExcelTxtButtons
+              onExcel={() => downloadDetalleVentas('excel')}
+              onTxt={() => downloadDetalleVentas('txt')}
+              excelTitle="Descargar detalle de ventas (Excel)"
+              txtTitle="Descargar detalle de ventas (TXT)"
+              disabled={!filtered.length}
+              className="shrink-0"
+            />
+          ) : null}
           <input
             type="date"
             value={fromDate}

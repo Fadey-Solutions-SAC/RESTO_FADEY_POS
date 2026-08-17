@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
@@ -62,6 +63,8 @@ export default function Indicadores() {
   const [loadError, setLoadError] = useState(null);
   const debounceRef = useRef(null);
   const moduleRef = useRef(null);
+  const menuListRef = useRef(null);
+  const [menuPos, setMenuPos] = useState(null);
 
   useEffect(() => {
     const next = String(searchParams.get('tab') || '').trim();
@@ -115,10 +118,35 @@ export default function Indicadores() {
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
+  const updateMenuPos = useCallback(() => {
+    const el = moduleRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setMenuPos({
+      top: r.bottom + 4,
+      left: r.left,
+      width: Math.max(r.width, 184),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!moduleOpen) return undefined;
+    updateMenuPos();
+    const onWin = () => updateMenuPos();
+    window.addEventListener('resize', onWin);
+    window.addEventListener('scroll', onWin, true);
+    return () => {
+      window.removeEventListener('resize', onWin);
+      window.removeEventListener('scroll', onWin, true);
+    };
+  }, [moduleOpen, updateMenuPos]);
+
   useEffect(() => {
     if (!moduleOpen) return undefined;
     const onDoc = (e) => {
-      if (moduleRef.current && !moduleRef.current.contains(e.target)) setModuleOpen(false);
+      const t = e.target;
+      if (moduleRef.current?.contains(t) || menuListRef.current?.contains(t)) return;
+      setModuleOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -187,19 +215,26 @@ export default function Indicadores() {
   }
 
   return (
-    <div className="space-y-2 relative -mt-1 sm:-mt-3">
+    <div className="space-y-2 relative -mt-1 sm:-mt-3 min-w-0">
       {refreshing ? (
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-gold-500/30 overflow-hidden z-10">
           <div className="h-full w-1/3 bg-gold-500 animate-pulse" />
         </div>
       ) : null}
 
-      <div className="flex items-center gap-1 flex-nowrap overflow-x-auto">
-        <div className="relative shrink-0 min-w-[7.5rem] w-[10.5rem]" ref={moduleRef}>
+      <div className="flex items-center gap-1 min-w-0">
+        <div className="relative shrink-0 min-w-[7.5rem] w-[10.5rem] z-30" ref={moduleRef}>
           <button
             type="button"
             className={`${INDICADORES_CTRL} w-full justify-between bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]`}
-            onClick={() => setModuleOpen((open) => !open)}
+            onClick={() => {
+              if (moduleOpen) {
+                setModuleOpen(false);
+                return;
+              }
+              updateMenuPos();
+              setModuleOpen(true);
+            }}
             aria-haspopup="listbox"
             aria-expanded={moduleOpen}
           >
@@ -210,9 +245,19 @@ export default function Indicadores() {
             ) : null}
             <MdKeyboardArrowDown className={`shrink-0 text-[var(--ui-muted)] transition ${moduleOpen ? 'rotate-180' : ''}`} />
           </button>
-          {moduleOpen ? (
+        </div>
+        {moduleOpen && menuPos
+          ? createPortal(
             <div
-              className="absolute z-20 mt-1 w-full min-w-[11.5rem] rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg py-1 max-h-80 overflow-auto"
+              ref={menuListRef}
+              className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg py-1 max-h-80 overflow-auto"
+              style={{
+                position: 'fixed',
+                top: menuPos.top,
+                left: menuPos.left,
+                width: menuPos.width,
+                zIndex: 80,
+              }}
               role="listbox"
             >
               {TABS.map((t) => {
@@ -244,9 +289,11 @@ export default function Indicadores() {
                   </button>
                 );
               })}
-            </div>
-          ) : null}
-        </div>
+            </div>,
+            document.body,
+          )
+          : null}
+        <div className="flex items-center gap-1 flex-nowrap overflow-x-auto min-w-0">
         <IndicatorsDateFilters
           preset={preset}
           onPresetChange={handlePresetChange}
@@ -269,6 +316,7 @@ export default function Indicadores() {
         >
           <MdDownload /> Exportar
         </button>
+        </div>
       </div>
 
       <div className={refreshing ? 'opacity-90 transition-opacity' : ''}>{renderPanel()}</div>

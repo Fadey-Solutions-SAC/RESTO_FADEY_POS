@@ -2272,14 +2272,14 @@ export default function Reports() {
                     <p className="ui-finance-kpi__label">Inversión en el período</p>
                     <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.investment?.movements_total ?? financeOverview.investment?.total)}</p>
                     <p className="ui-finance-kpi__sub">
-                      Precio de compra e insumos de lo vendido (suma por cantidad)
+                      Compras, productos de almacén e insumos
                     </p>
                   </div>
                   <div className="ui-finance-kpi ui-finance-kpi--amber">
                     <p className="ui-finance-kpi__label">Gastos operativos</p>
                     <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.operating_expenses ?? 0)}</p>
                     <p className="ui-finance-kpi__sub">
-                      Compras, pérdidas, egresos de caja y pagos de personal
+                      Precio de compra e insumos de cada producto, pérdidas, egresos y pagos
                     </p>
                   </div>
                   <div className="ui-finance-kpi ui-finance-kpi--emerald">
@@ -2309,7 +2309,7 @@ export default function Reports() {
                     <p className="ui-finance-kpi__label">Ganancia aproximada</p>
                     <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.approx_profit)}</p>
                     <p className="ui-finance-kpi__sub">
-                      Ventas − inversión (precio compra e insumos) − gastos operativos
+                      Ventas − gastos operativos (costo de cada producto, pérdidas, egresos y pagos)
                     </p>
                   </div>
                   <div className="ui-finance-kpi ui-finance-kpi--red">
@@ -2323,12 +2323,12 @@ export default function Reports() {
                   <div className="ui-finance-kpi ui-finance-kpi--violet">
                     <p className="ui-finance-kpi__label">Margen bruto aprox.</p>
                     <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.approx_gross_margin)}</p>
-                    <p className="ui-finance-kpi__sub">Ventas − costo de venta (precio compra e insumos)</p>
+                    <p className="ui-finance-kpi__sub">Ventas − precio de compra e insumos de cada producto</p>
                   </div>
                 </div>
                 <p className="text-xs text-[var(--ui-muted)]">
-                  Rango: {financeOverview.filters?.from} — {financeOverview.filters?.to}. Utilidad bruta = ventas − inversión.
-                  Utilidad neta = bruta − gastos operativos (compras, pérdidas, pagos). El valor de inventario y el de insumos son una foto actual y no entran en esa fórmula.
+                  Rango: {financeOverview.filters?.from} — {financeOverview.filters?.to}. Inversión = compras + productos de almacén + insumos.
+                  Gastos operativos = precio de compra e insumos de cada producto + pérdidas + egresos + pagos. Utilidad neta = ventas − gastos operativos.
                 </p>
               </>
             )}

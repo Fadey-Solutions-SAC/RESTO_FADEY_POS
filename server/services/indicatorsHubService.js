@@ -8,6 +8,7 @@ const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold'
 const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurchaseDate');
 const { sumSalesCogsForRange } = require('../utils/salesCogs');
 const { insumoValorInventario } = require('../utils/insumoUnidadMedida');
+const { composeFinanceTotals } = require('../utils/financeInvestmentOperating');
 const {
   getPaidSalesEventSql,
   metricsFromPaidOrdersWhere,
@@ -166,11 +167,21 @@ function buildFinancialSection(from, to) {
   const totalPurchases = Number(purchases?.total || 0);
   const totalProductCogs = Number(cogs.purchase_cogs || 0);
   const totalKardexCogs = Number(cogs.kardex_cogs || 0);
-  const investmentTotal = totalProductCogs + totalKardexCogs;
   const payrollTotal = Number(payrollRow?.total || 0);
-  const totalExpenses = Number(cashExp?.total || 0) + Number(losses?.total || 0) + totalPurchases + payrollTotal;
-  const gross = totalSales - investmentTotal;
-  const net = totalSales - investmentTotal - totalExpenses;
+  const lossEventsTotal = Number(losses?.total || 0);
+  const cashExpensesTotal = Number(cashExp?.total || 0);
+  const composed = composeFinanceTotals({
+    purchases: totalPurchases,
+    productCogs: totalProductCogs,
+    kardexCogs: totalKardexCogs,
+    lossEvents: lossEventsTotal,
+    cashExpenses: cashExpensesTotal,
+    payroll: payrollTotal,
+  });
+  const investmentTotal = composed.investment_total;
+  const totalExpenses = composed.operating_expenses;
+  const gross = totalSales - composed.cogs_total;
+  const net = totalSales - totalExpenses;
 
   const paymentMethods = summarizePaymentMethodsByAccount(periodOrders);
 
@@ -197,8 +208,11 @@ function buildFinancialSection(from, to) {
     product_cogs_total: totalProductCogs,
     kardex_cogs_total: totalKardexCogs,
     investment_total: investmentTotal,
+    investment_purchases: totalPurchases,
+    investment_warehouse: composed.warehouse_products,
+    investment_insumos: composed.inventory_insumos,
     payroll_total: payrollTotal,
-    /** Compras + pérdidas + egresos de caja + pagos de personal. */
+    /** Precio de compra e insumos de cada producto + pérdidas + egresos + pagos. */
     operating_expenses: totalExpenses,
     cash_flow_in: Number(cashFlow?.income || 0),
     cash_flow_out: Number(cashFlow?.expense || 0),

@@ -1,5 +1,5 @@
 /**
- * Costo de venta del período (inversión):
+ * Costo de venta del período (entra en gastos operativos):
  * - no transformados: precio de compra × cantidad cobrada
  * - transformados: insumos descontados al cobrar (kardex) o receta × costo promedio
  */

@@ -27,7 +27,7 @@ const {
 } = require('../utils/salesAccountGrouping');
 const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurchaseDate');
 const { sumSalesCogsForRange, sumSalesCogsForMonth, sumSalesCogsSinceDaysAgo } = require('../utils/salesCogs');
-const { insumoValorInventario } = require('../utils/insumoUnidadMedida');
+const { composeFinanceTotals } = require('../utils/financeInvestmentOperating');
 const { getOrderItemsWithProductionArea } = require('../services/orderItemsProductionService');
 const { filterKitchenOrdersForStation } = require('../utils/kitchenStationReady');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
@@ -635,8 +635,16 @@ function financeRolling7dSnapshot() {
   const totalPurchases = Number(purchasesRow?.total || 0);
   const payrollTotal = Number(payrollRow?.total || 0);
   const lossesCombined = lossEventsTotal + cashExpenses;
-  const operatingExpenses = totalPurchases + lossesCombined + payrollTotal;
-  const approxProfit = totalSales - cogs.total - operatingExpenses;
+  const composed = composeFinanceTotals({
+    purchases: totalPurchases,
+    productCogs: cogs.purchase_cogs,
+    kardexCogs: cogs.kardex_cogs,
+    lossEvents: lossEventsTotal,
+    cashExpenses,
+    payroll: payrollTotal,
+  });
+  const operatingExpenses = composed.operating_expenses;
+  const approxProfit = totalSales - operatingExpenses;
   return {
     totalSales,
     lossesCombined,
@@ -644,6 +652,7 @@ function financeRolling7dSnapshot() {
     totalPurchases,
     payrollTotal,
     operatingExpenses,
+    investmentTotal: composed.investment_total,
     kardexCogs: cogs.kardex_cogs,
     productCogs: cogs.purchase_cogs,
   };
@@ -680,10 +689,18 @@ function financeMonthToDateSnapshot() {
   const lossEventsTotal = Number(lossEventsRow?.total || 0);
   const payrollTotal = Number(payrollRow?.total || 0);
   const lossesCombined = lossEventsTotal + cashExpenses;
-  const investmentTotal = totalProductCogs + totalKardexCogs;
-  const operatingExpenses = totalPurchases + lossesCombined + payrollTotal;
-  const approxGrossMargin = totalSales - investmentTotal;
-  const approxProfit = totalSales - investmentTotal - operatingExpenses;
+  const composed = composeFinanceTotals({
+    purchases: totalPurchases,
+    productCogs: totalProductCogs,
+    kardexCogs: totalKardexCogs,
+    lossEvents: lossEventsTotal,
+    cashExpenses,
+    payroll: payrollTotal,
+  });
+  const investmentTotal = composed.investment_total;
+  const operatingExpenses = composed.operating_expenses;
+  const approxGrossMargin = totalSales - composed.cogs_total;
+  const approxProfit = totalSales - operatingExpenses;
   return {
     month_key: String(ymRow?.ym || ''),
     sales_total: totalSales,
@@ -1157,29 +1174,27 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
     [from, to]
   );
   const totalInvestmentMovements = Number(investmentRow?.total || 0);
-  const inventoryInvestmentRow = queryOne(
-    `SELECT COALESCE(SUM(stock * purchase_price), 0) AS total FROM products
-     WHERE is_active = 1 AND purchase_price IS NOT NULL AND purchase_price > 0`
-  );
-  const inventoryProductsTotal = Number(inventoryInvestmentRow?.total || 0);
-  let insumosInvestment = 0;
-  try {
-    const insRows = queryAll('SELECT * FROM insumos WHERE activo = 1');
-    insumosInvestment = (insRows || []).reduce((sum, row) => sum + insumoValorInventario(row), 0);
-  } catch (_) {
-    insumosInvestment = 0;
-  }
-  const inventoryInvestmentTotal = inventoryProductsTotal + insumosInvestment;
   const totalPurchases = Number(purchasesRow?.total || 0);
   const productCogs = Number(cogs.purchase_cogs || 0);
   const kardexCogs = Number(cogs.kardex_cogs || 0);
-  const cogsTotal = productCogs + kardexCogs;
   const cashExpenses = Number(cashExpensesRow?.total || 0);
   const lossEventsTotal = Number(lossEventsRow?.total || 0);
   const lossesCombined = lossEventsTotal + cashExpenses;
-  const operatingExpenses = totalPurchases + lossesCombined + totalInvestmentMovements;
+  const composed = composeFinanceTotals({
+    purchases: totalPurchases,
+    productCogs,
+    kardexCogs,
+    lossEvents: lossEventsTotal,
+    cashExpenses,
+    payroll: totalInvestmentMovements,
+  });
+  const inventoryProductsTotal = composed.warehouse_products;
+  const insumosInvestment = composed.inventory_insumos;
+  const inventoryInvestmentTotal = composed.inventory_total;
+  const cogsTotal = composed.cogs_total;
+  const operatingExpenses = composed.operating_expenses;
   const approxGross = totalSales - cogsTotal;
-  const approxProfit = totalSales - cogsTotal - operatingExpenses;
+  const approxProfit = totalSales - operatingExpenses;
 
   let business_intel = null;
   try {
@@ -1192,15 +1207,14 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
     filters: { from, to },
     sales: { total: totalSales, orders: Number(salesMetrics.orders || 0) },
     investment: {
-      /** Costo de venta: precio de compra e insumos descontados (por cantidad vendida). */
-      total: cogsTotal,
-      movements_total: cogsTotal,
+      /** Compras + productos de almacén + insumos. */
+      total: composed.investment_total,
+      movements_total: composed.investment_total,
       payroll_total: totalInvestmentMovements,
       cogs_total: cogsTotal,
       product_cogs_total: productCogs,
       kardex_cogs_total: kardexCogs,
       purchases_in_period: totalPurchases,
-      /** Valor actual del inventario de productos (foto, no filtrada por fechas). */
       inventory_snapshot: inventoryProductsTotal,
       inventory_products: inventoryProductsTotal,
       inventory_insumos: insumosInvestment,
@@ -1217,7 +1231,7 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
       event_count: Number(r.event_count || 0),
     })),
     losses_combined_total: lossesCombined,
-    /** Ventas − costo de venta (precio de compra e insumos de lo vendido). */
+    /** Ventas − costo de productos vendidos (precio de compra e insumos). */
     approx_gross_margin: approxGross,
     approx_profit: approxProfit,
     business_intel,

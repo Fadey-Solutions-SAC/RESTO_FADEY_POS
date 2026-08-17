@@ -45,13 +45,15 @@ export function IndicatorsGeneralPanel({ data }) {
   const g = data?.general || {};
   const cmp = data?.financial?.comparison_prev_period;
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-        <IndicatorStatCard icon={MdAttachMoney} label="Ventas período" value={formatCurrency(g.period_sales)} sub={`${g.period_orders ?? 0} cuentas`} accent="emerald" />
-        <IndicatorStatCard icon={MdAttachMoney} label="Ventas hoy" value={formatCurrency(g.sales_today)} sub={`${g.orders_today ?? 0} cuentas`} />
-        <IndicatorStatCard icon={MdAttachMoney} label="Ventas semana" value={formatCurrency(g.sales_week)} accent="sky" />
-        <IndicatorStatCard icon={MdAttachMoney} label="Ventas mes" value={formatCurrency(g.sales_month)} trend={g.growth_month_pct} />
-        <IndicatorStatCard icon={MdAttachMoney} label="Utilidad neta (aprox.)" value={formatCurrency(g.net_profit_approx)} sub="Mes en curso" accent="emerald" />
+    <div className="space-y-3 min-w-0">
+      <div className="grid grid-cols-5 gap-3 w-full min-w-0">
+        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas período" value={formatCurrency(g.period_sales)} sub={`${g.period_orders ?? 0} cuentas`} accent="emerald" />
+        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas hoy" value={formatCurrency(g.sales_today)} sub={`${g.orders_today ?? 0} cuentas`} />
+        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas semana" value={formatCurrency(g.sales_week)} accent="sky" />
+        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas mes" value={formatCurrency(g.sales_month)} trend={g.growth_month_pct} />
+        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Utilidad neta (aprox.)" value={formatCurrency(g.net_profit_approx)} sub="Mes en curso" accent="emerald" />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 w-full min-w-0">
         <IndicatorStatCard icon={MdShoppingCart} label="Ticket promedio" value={formatCurrency(g.avg_ticket)} />
         <IndicatorStatCard icon={MdShoppingCart} label="Pedidos activos" value={g.active_orders ?? 0} accent="amber" />
         <IndicatorStatCard icon={MdTableBar} label="Mesas ocupadas" value={g.tables_occupied ?? 0} />
@@ -80,8 +82,18 @@ export function IndicatorsFinancialPanel({ data }) {
         <IndicatorStatCard label="Utilidad neta" value={formatCurrency(f.net_profit_approx)} accent="emerald" />
         <IndicatorStatCard label="Margen neto" value={`${f.margin_pct ?? 0}%`} />
         <IndicatorStatCard label="Compras" value={formatCurrency(f.purchases_total)} />
-        <IndicatorStatCard label="Inversión período" value={formatCurrency(f.investment_total)} accent="violet" />
-        <IndicatorStatCard label="Gastos operativos" value={formatCurrency(f.operating_expenses)} accent="amber" />
+        <IndicatorStatCard
+          label="Inversión período"
+          value={formatCurrency(f.investment_total)}
+          sub="Compras, productos de almacén e insumos"
+          accent="violet"
+        />
+        <IndicatorStatCard
+          label="Gastos operativos"
+          value={formatCurrency(f.operating_expenses)}
+          sub="Precio de compra e insumos de cada producto, pérdidas, egresos y pagos"
+          accent="amber"
+        />
         <IndicatorStatCard label="Flujo caja (+)" value={formatCurrency(f.cash_flow_in)} />
         <IndicatorStatCard label="Flujo caja (-)" value={formatCurrency(f.cash_flow_out)} />
         <IndicatorStatCard label="Efectivo" value={formatCurrency(f.sales_efectivo)} />
