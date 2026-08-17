@@ -715,25 +715,24 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
 
   .card.ui-informe-kpi {
     display: grid;
-    grid-template-columns: 2.5rem minmax(0, 1fr);
+    grid-template-columns: 1.4rem minmax(0, 1fr);
     grid-template-areas:
-      "title title"
-      "badge value"
+      "badge title"
       "symbol value"
       "sub sub";
-    column-gap: 0.55rem;
-    row-gap: 0.22rem;
-    align-content: start;
-    padding: 0.8rem 0.85rem 0.7rem;
-    min-height: 7.1rem;
+    column-gap: 0.4rem;
+    row-gap: 0.12rem;
+    align-items: center;
+    padding: 0.6rem 0.7rem;
+    min-height: 0;
     height: 100%;
   }
   .ui-informe-kpi__title {
     grid-area: title;
-    margin: 0 0 0.15rem;
-    font-size: 0.68rem;
+    margin: 0;
+    font-size: 0.65rem;
     font-weight: 700;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--ui-muted);
     line-height: 1.2;
@@ -743,32 +742,31 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
   }
   .ui-informe-kpi__badge {
     grid-area: badge;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 0.8rem;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 0.4rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.25rem;
+    font-size: 0.85rem;
     justify-self: center;
   }
   .ui-informe-kpi__symbol {
     grid-area: symbol;
     justify-self: center;
     align-self: center;
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 800;
     line-height: 1;
-    min-height: 0.9rem;
   }
   .ui-informe-kpi__symbol--empty {
     visibility: hidden;
   }
   .ui-informe-kpi__number {
     grid-area: value;
-    align-self: end;
+    align-self: center;
     margin: 0;
-    font-size: clamp(1.05rem, 1.35vw, 1.35rem);
+    font-size: 1.15rem;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.02em;
@@ -779,19 +777,13 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
   }
   .ui-informe-kpi__sub {
     grid-area: sub;
-    margin: 0.15rem 0 0;
-    min-height: 1.55em;
-    font-size: 0.62rem;
+    margin: 0.08rem 0 0;
+    font-size: 0.6rem;
     color: var(--ui-muted);
-    line-height: 1.25;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    line-height: 1.2;
+    white-space: nowrap;
     overflow: hidden;
-    line-clamp: 2;
-  }
-  .ui-informe-kpi__sub--empty {
-    visibility: hidden;
+    text-overflow: ellipsis;
   }
   .ui-informe-kpi--emerald .ui-informe-kpi__badge {
     background: color-mix(in srgb, #10b981 18%, var(--ui-surface-2));

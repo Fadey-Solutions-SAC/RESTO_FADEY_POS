@@ -211,6 +211,13 @@ function downloadExcel(order) {
 const PAYMENT_METHOD_KEYS = ['efectivo', 'yape', 'plin', 'tarjeta', 'online'];
 const DOC_TYPE_KEYS = ['nota_venta', 'boleta', 'factura'];
 
+function onPrimaryClick(handler) {
+  return (event) => {
+    if (event?.detail > 1) return;
+    handler(event);
+  };
+}
+
 function mesaSortValue(group) {
   const table = String(group?.primary?.table_number || '').trim();
   const n = parseInt(table.replace(/\D/g, ''), 10);
@@ -666,14 +673,22 @@ export default function Ventas() {
           showActions
           renderActions={(group, o) => (
             <div className="flex items-center gap-1 relative">
-              <button type="button" onClick={() => openGroupDetail(group)} className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700" title="Ver"><MdVisibility /></button>
-              <button type="button" onClick={() => openReceipt(o, group)} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={onPrimaryClick(() => openGroupDetail(group))}
+                onDoubleClick={(event) => event.preventDefault()}
+                className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700"
+                title="Ver detalle"
+              >
+                <MdVisibility />
+              </button>
+              <button type="button" onClick={onPrimaryClick(() => openReceipt(o, group))} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
+              <button
+                type="button"
+                onClick={onPrimaryClick(() => {
                   if (group.comprobanteCount === 1) downloadExcel({ ...o, local_name: restaurantName });
                   else group.orders.forEach((ord) => downloadExcel({ ...ord, local_name: restaurantName }));
-                }}
+                })}
                 className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700"
                 title="Excel"
               >
@@ -683,10 +698,10 @@ export default function Ventas() {
                 <>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={onPrimaryClick(() => {
                       if (group.comprobanteCount === 1) startEdit(o);
                       else openGroupDetail(group);
-                    }}
+                    })}
                     className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600"
                     title="Editar"
                   >
@@ -694,10 +709,10 @@ export default function Ventas() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={onPrimaryClick(() => {
                       if (group.comprobanteCount === 1) openVoidModal(o);
                       else openGroupDetail(group);
-                    }}
+                    })}
                     disabled={group.orders.every((ord) => ord.status === 'cancelled')}
                     className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700 disabled:opacity-50"
                     title="Anular venta"

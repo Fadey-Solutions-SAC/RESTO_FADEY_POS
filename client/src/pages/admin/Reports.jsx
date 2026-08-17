@@ -591,15 +591,15 @@ function InformeKpiCard({
   const number = currency ? Number(amount || 0).toFixed(2) : String(value ?? 0);
   return (
     <div className={`card ui-informe-kpi ui-informe-kpi--${tone}`}>
-      <p className="ui-informe-kpi__title">{title}</p>
       <div className="ui-informe-kpi__badge">{Icon ? <Icon /> : null}</div>
+      <p className="ui-informe-kpi__title">{title}</p>
       {currency ? (
         <span className="ui-informe-kpi__symbol">S/</span>
       ) : (
         <span className="ui-informe-kpi__symbol ui-informe-kpi__symbol--empty" aria-hidden="true" />
       )}
       <p className="ui-informe-kpi__number">{number}</p>
-      <p className={`ui-informe-kpi__sub${sub ? '' : ' ui-informe-kpi__sub--empty'}`}>{sub || '\u00a0'}</p>
+      {sub ? <p className="ui-informe-kpi__sub">{sub}</p> : null}
     </div>
   );
 }

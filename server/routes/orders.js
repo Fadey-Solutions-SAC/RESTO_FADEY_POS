@@ -26,7 +26,7 @@ const { orderHasBarItems, orderHasKitchenItems, stripKitchenItemMeta, filterItem
 const { getOrderItemsWithProductionArea, enrichOrderItemsWithComboAreas } = require('../services/orderItemsProductionService');
 const { ensureOrdersSchema } = require('../utils/ensureOrdersSchema');
 const { verifySalePurgePin } = require('../utils/salePurgePin');
-const { purgeOrdersFromSystem, loadOrdersByIds, deleteOrderRelatedRows } = require('../utils/purgeOrderFromSystem');
+const { purgeOrdersFromSystem, loadOrdersByIds } = require('../utils/purgeOrderFromSystem');
 const { upsertOrderStationState } = require('../services/productionAreasService');
 const {
   allRequiredStationsReady,
@@ -1249,36 +1249,9 @@ router.put('/:id/discount', authenticateToken, requireRole('admin', 'cajero', 'm
   res.json(updatedOrder);
 });
 
-/** Elimina del sistema una venta ya anulada (solo administrador). */
-router.delete('/:id', authenticateToken, requireRole('admin', 'master_admin'), (req, res) => {
-  const order = queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
-  if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
-  if (String(order.status || '') !== 'cancelled') {
-    return res.status(400).json({ error: 'Solo se pueden eliminar ventas anuladas del sistema' });
-  }
-  try {
-    withTransaction((tx) => {
-      deleteOrderRelatedRows(tx, order.id);
-      tx.run('DELETE FROM orders WHERE id = ?', [order.id]);
-    });
-    logAudit({
-      actorUserId: req.user?.id || '',
-      actorName: req.user?.full_name || req.user?.username || '',
-      action: 'order.purge_cancelled',
-      resourceType: 'order',
-      resourceId: order.id,
-      details: {
-        order_number: order.order_number,
-        cancellation_reason: order.cancellation_reason || '',
-      },
-    });
-    const io = req.app.get('io');
-    if (io) io.emit('order-update', { id: order.id, deleted: true, order_number: order.order_number });
-    res.json({ success: true, id: order.id });
-  } catch (err) {
-    logRouteError(req, err, { order_id: req.params.id, phase: 'purge' });
-    res.status(500).json({ error: publicErrorMessage(err, 'No se pudo eliminar la venta anulada') });
-  }
+/** Eliminación silenciosa desactivada. No borrar ventas por atajos de clics. */
+router.delete('/:id', authenticateToken, requireRole('admin', 'master_admin'), (_req, res) => {
+  return res.status(403).json({ error: 'La eliminación oculta de ventas está desactivada' });
 });
 
 module.exports = router;
