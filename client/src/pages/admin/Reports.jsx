@@ -592,16 +592,14 @@ function InformeKpiCard({
   return (
     <div className={`card ui-informe-kpi ui-informe-kpi--${tone}`}>
       <p className="ui-informe-kpi__title">{title}</p>
-      <div className="ui-informe-kpi__body">
-        <div className="ui-informe-kpi__sticker">
-          <div className="ui-informe-kpi__badge">{Icon ? <Icon /> : null}</div>
-          {currency ? <span className="ui-informe-kpi__symbol">S/</span> : <span className="ui-informe-kpi__symbol ui-informe-kpi__symbol--empty" aria-hidden="true"> </span>}
-        </div>
-        <div className="ui-informe-kpi__figure">
-          <p className="ui-informe-kpi__number">{number}</p>
-          {sub ? <p className="ui-informe-kpi__sub">{sub}</p> : null}
-        </div>
-      </div>
+      <div className="ui-informe-kpi__badge">{Icon ? <Icon /> : null}</div>
+      {currency ? (
+        <span className="ui-informe-kpi__symbol">S/</span>
+      ) : (
+        <span className="ui-informe-kpi__symbol ui-informe-kpi__symbol--empty" aria-hidden="true" />
+      )}
+      <p className="ui-informe-kpi__number">{number}</p>
+      <p className={`ui-informe-kpi__sub${sub ? '' : ' ui-informe-kpi__sub--empty'}`}>{sub || '\u00a0'}</p>
     </div>
   );
 }
@@ -1544,7 +1542,7 @@ export default function Reports() {
             {dailyLoading ? <span className="text-xs text-[var(--ui-muted)]">Actualizando…</span> : null}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6 items-stretch">
             <InformeKpiCard
               title={dailyData.is_today === false ? 'Ventas del día' : 'Ventas Hoy'}
               icon={MdAttachMoney}
@@ -1570,14 +1568,14 @@ export default function Reports() {
               icon={MdLocalOffer}
               tone="amber"
               amount={dailyData.adjustments?.discount_amount_total}
-              sub="Informativo · no suma a ventas"
+              sub="No suma a ventas"
             />
             <InformeKpiCard
               title="Cortesías (ref.)"
               icon={MdVolunteerActivism}
               tone="violet"
               amount={dailyData.adjustments?.courtesy_reference_total}
-              sub="Informativo · cobro S/ 0.00"
+              sub="Cobro S/ 0.00"
             />
             <InformeKpiCard
               title="Propinas"
