@@ -12,7 +12,7 @@ const {
 } = require('../efactConnection');
 const { getControlConfig } = require('../masterAdminService');
 const { scheduleWhatsappPdfSend } = require('../whatsappLaptopNotify');
-const { exportBillingPdfToUploads, isHttpUrl: isHttpPdfUrl } = require('../billingPdfStorage');
+const { exportBillingPdfToUploads, exportBillingFileToUploads, isHttpUrl: isHttpPdfUrl } = require('../billingPdfStorage');
 const { saveLocalFallbackReceiptPdf, ensureLocalFallbackPdfForDocumentRow } = require('../billingLocalReceiptPdf');
 const { getOrderWithItems } = require('../orderCreateService');
 const { getSocketIo, emitBillingDocumentUpdate } = require('../socketBroadcast');
@@ -35,8 +35,12 @@ function slimBillingDocumentRow(row) {
     full_number: row.full_number,
     provider_status: row.provider_status,
     provider_message: row.provider_message,
+    sunat_description: row.sunat_description,
     pdf_url: row.pdf_url,
+    xml_url: row.xml_url,
+    cdr_url: row.cdr_url,
     updated_at: row.updated_at,
+    print_caja: String(row.provider_status || '').toLowerCase() === 'accepted',
   };
 }
 
@@ -248,12 +252,27 @@ async function refreshDocWithLocalPdfIfNeeded(docId, restaurant) {
   return row;
 }
 
+function persistBillingArtifacts(docId, { pdfUrl, xmlUrl, cdrUrl }) {
+  const pdfStored =
+    exportBillingPdfToUploads(docId, pdfUrl) || (isHttpPdfUrl(pdfUrl) ? String(pdfUrl || '').trim() : '');
+  const xmlStored =
+    exportBillingFileToUploads(docId, xmlUrl, 'xml') || (isHttpPdfUrl(xmlUrl) ? String(xmlUrl || '').trim() : '');
+  const cdrStored =
+    exportBillingFileToUploads(docId, cdrUrl, 'cdr') || (isHttpPdfUrl(cdrUrl) ? String(cdrUrl || '').trim() : '');
+  return { pdfStored, xmlStored, cdrStored };
+}
+
 function applyProviderResultToDocument(docId, result) {
   const pr = result.providerResponse;
   const fromPaths = pr && typeof pr === 'object' ? String(pr.paths?.pdf || '').trim() : '';
   const rawPdf = String(result.pdfUrl || '').trim() || fromPaths;
-  const pdfStored =
-    exportBillingPdfToUploads(docId, rawPdf) || (isHttpPdfUrl(rawPdf) ? rawPdf : '');
+  const rawXml = String(result.xmlUrl || '').trim();
+  const rawCdr = String(result.cdrUrl || '').trim();
+  const { pdfStored, xmlStored, cdrStored } = persistBillingArtifacts(docId, {
+    pdfUrl: rawPdf,
+    xmlUrl: rawXml,
+    cdrUrl: rawCdr,
+  });
   runSql(
     `UPDATE electronic_documents
      SET provider_status = ?, provider_message = ?, hash_code = ?, sunat_description = ?,
@@ -264,8 +283,8 @@ function applyProviderResultToDocument(docId, result) {
       String(result.providerMessage || ''),
       String(result.hashCode || ''),
       String(result.sunatDescription || ''),
-      String(result.xmlUrl || ''),
-      String(result.cdrUrl || ''),
+      String(xmlStored || rawXml || ''),
+      String(cdrStored || rawCdr || ''),
       String(pdfStored || ''),
       JSON.stringify(result.providerResponse || {}),
       docId,
@@ -658,6 +677,28 @@ router.get('/documents', authenticateToken, requireRole('admin', 'cajero'), asyn
     if (restaurant && rows.length) {
       rows = await Promise.all(
         rows.map(async (row) => {
+          const pdfIsLocal = String(row.pdf_url || '') && !String(row.pdf_url || '').startsWith('/uploads') && !isHttpPdfUrl(row.pdf_url);
+          const xmlIsLocal = String(row.xml_url || '') && !String(row.xml_url || '').startsWith('/uploads') && !isHttpPdfUrl(row.xml_url);
+          const cdrIsLocal = String(row.cdr_url || '') && !String(row.cdr_url || '').startsWith('/uploads') && !isHttpPdfUrl(row.cdr_url);
+          if (pdfIsLocal || xmlIsLocal || cdrIsLocal) {
+            const arts = persistBillingArtifacts(row.id, {
+              pdfUrl: row.pdf_url,
+              xmlUrl: row.xml_url,
+              cdrUrl: row.cdr_url,
+            });
+            if (arts.pdfStored || arts.xmlStored || arts.cdrStored) {
+              runSql(
+                `UPDATE electronic_documents SET pdf_url = ?, xml_url = ?, cdr_url = ?, updated_at = datetime('now') WHERE id = ?`,
+                [
+                  arts.pdfStored || row.pdf_url || '',
+                  arts.xmlStored || row.xml_url || '',
+                  arts.cdrStored || row.cdr_url || '',
+                  row.id,
+                ]
+              );
+              row = queryOne('SELECT * FROM electronic_documents WHERE id = ?', [row.id]) || row;
+            }
+          }
           if (String(row.doc_type) === 'nota_venta' && !String(row.pdf_url || '').trim()) {
             const r = await refreshDocWithLocalPdfIfNeeded(row.id, restaurant);
             return r || row;
@@ -849,20 +890,18 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
   } = await sendToProvider(restaurant, providerPayload);
   const pdfFromPaths = String(providerResponse?.paths?.pdf || '').trim();
 
-  assertSunatOutcomeAcceptedOrOfflinePending(restaurant, useEfact, {
-    providerStatus,
-    providerMessage,
-    sunatDescription,
-  });
-
   if (replaceExisting && existingDoc) {
     runSql('DELETE FROM electronic_documents WHERE order_id = ?', [orderId]);
   }
 
   const docId = uuidv4();
   const rawPdfInsert = String(pdfUrl || '').trim() || pdfFromPaths;
-  let pdfFinal =
-    exportBillingPdfToUploads(docId, rawPdfInsert) || (isHttpPdfUrl(rawPdfInsert) ? rawPdfInsert : '');
+  const { pdfStored, xmlStored, cdrStored } = persistBillingArtifacts(docId, {
+    pdfUrl: rawPdfInsert,
+    xmlUrl,
+    cdrUrl,
+  });
+  let pdfFinal = pdfStored;
   if (!pdfFinal) {
     try {
       pdfFinal = await saveLocalFallbackReceiptPdf(docId, {
@@ -913,8 +952,8 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
       String(providerMessage || ''),
       String(hashCode || ''),
       String(sunatDescription || ''),
-      String(xmlUrl || ''),
-      String(cdrUrl || ''),
+      String(xmlStored || xmlUrl || ''),
+      String(cdrStored || cdrUrl || ''),
       String(pdfFinal || ''),
       JSON.stringify(providerPayload),
       JSON.stringify(providerResponse || {}),

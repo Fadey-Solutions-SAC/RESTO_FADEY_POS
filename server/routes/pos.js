@@ -849,7 +849,17 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
 
       if (!chargeToCustomerAccount && chargedOrderIds.length) {
         const { assignSaleNumberToOrderIdsTx } = require('../services/saleNumberService');
-        assignSaleNumberToOrderIdsTx(tx, chargedOrderIds);
+        const saleN = assignSaleNumberToOrderIdsTx(tx, chargedOrderIds);
+        if (saleN > 0) {
+          const docNum = `001-${String(saleN).padStart(8, '0')}`;
+          const ph = chargedOrderIds.map(() => '?').join(',');
+          tx.run(
+            `UPDATE orders SET sale_document_number = ?
+             WHERE id IN (${ph})
+               AND IFNULL(NULLIF(trim(sale_document_type), ''), 'nota_venta') = 'nota_venta'`,
+            [docNum, ...chargedOrderIds],
+          );
+        }
       }
 
       return { chargedOrderIds, discountsAppliedByOrder };

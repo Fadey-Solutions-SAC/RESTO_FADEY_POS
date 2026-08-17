@@ -132,6 +132,34 @@ def _parse_send_bill_response(xml_text: str) -> RespuestaSunat:
     return RespuestaSunat(ok=True, cdr_zip_bytes=cdr_zip, raw_response=xml_text[:4000])
 
 
+def parsear_codigo_cdr(xml_bytes: bytes):
+    """Lee ResponseCode y Description del XML CDR (ApplicationResponse)."""
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return None, None
+    code = None
+    desc = None
+    for el in root.iter():
+        tag = el.tag.split("}")[-1] if "}" in el.tag else el.tag
+        if tag == "ResponseCode" and el.text and code is None:
+            code = el.text.strip()
+        if tag in ("Description", "StatusReason") and el.text and desc is None:
+            desc = el.text.strip()
+    return code, desc
+
+
+def cdr_es_aceptado(codigo) -> bool:
+    """0 y 0100–1999 = aceptado (a veces con observaciones). 2000–3999 = rechazo."""
+    if codigo is None:
+        return True
+    digits = "".join(c for c in str(codigo) if c.isdigit())
+    if not digits:
+        return False
+    n = int(digits)
+    return n == 0 or (100 <= n <= 1999)
+
+
 def enviar_comprobante(zip_bytes: bytes, nombre_zip: str, cfg: SunatConfig, timeout: int = 120) -> RespuestaSunat:
     """
     POST al BillService con sendBill.
@@ -163,7 +191,31 @@ def enviar_comprobante(zip_bytes: bytes, nombre_zip: str, cfg: SunatConfig, time
         )
 
     res = _parse_send_bill_response(text)
-    if res.ok:
+    if res.ok and res.cdr_zip_bytes:
+        try:
+            _nombre, xml_cdr = extraer_xml_cdr_desde_zip(res.cdr_zip_bytes)
+        except Exception as e:
+            logger.warning("No se pudo abrir el ZIP del CDR: %s", e)
+            xml_cdr = None
+        if xml_cdr:
+            code, desc = parsear_codigo_cdr(xml_cdr)
+            res.codigo = code
+            if code is not None and not cdr_es_aceptado(code):
+                res.ok = False
+                res.mensaje = f"SUNAT rechazó (código {code}): {desc or 'Revise el CDR'}".strip()
+                logger.warning("CDR rechazo: %s", res.mensaje)
+            else:
+                res.ok = True
+                res.mensaje = (
+                    f"SUNAT aceptó (código {code or '0'}): {desc or 'Correcto'}".strip()
+                    if code is not None
+                    else (desc or "SUNAT respondió con CDR")
+                )
+                logger.info("SUNAT respondió con CDR: %s", res.mensaje)
+        else:
+            logger.info("SUNAT respondió con CDR (ZIP sin XML reconocible).")
+            res.mensaje = res.mensaje or "SUNAT respondió con CDR"
+    elif res.ok:
         logger.info("SUNAT respondió con CDR (ZIP).")
     else:
         logger.warning("SUNAT / parse: %s", res.mensaje)

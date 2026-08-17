@@ -239,7 +239,12 @@ def procesar_venta(
             _finalize_abs_paths(result)
             return result
         res = enviar_comprobante(zip_bytes, nombre_zip, sunat_cfg)
-        result["sunat"] = {"ok": bool(res.ok), "mensaje": res.mensaje or ""}
+        result["sunat"] = {
+            "ok": bool(res.ok),
+            "codigo": res.codigo or "",
+            "mensaje": res.mensaje or "",
+            "respondio": bool(res.cdr_zip_bytes) or bool(res.raw_response),
+        }
         if res.ok and res.cdr_zip_bytes:
             cdr_zip_path = rutas.cdr / nombre_zip
             cdr_zip_path.write_bytes(res.cdr_zip_bytes)

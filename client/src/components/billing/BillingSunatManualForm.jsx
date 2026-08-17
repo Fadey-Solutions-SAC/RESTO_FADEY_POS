@@ -251,6 +251,21 @@ export default function BillingSunatManualForm({
               <p className="text-[10px] text-[var(--ui-muted)] mt-1">Guardada. Pulse el campo para cambiarla.</p>
             ) : null}
           </div>
+          <div className="md:col-span-2">
+            <label className={`block text-xs font-medium mb-1 ${labelCls}`}>Ambiente SUNAT</label>
+            <select
+              className={inputCls}
+              value={billingPanel?.sunat_modo === 'produccion' ? 'produccion' : 'beta'}
+              disabled={disabled}
+              onChange={(e) => onBillingPanelField('sunat_modo', e.target.value)}
+            >
+              <option value="beta">Beta (pruebas)</option>
+              <option value="produccion">Producción</option>
+            </select>
+            <p className="text-[10px] text-[var(--ui-muted)] mt-1">
+              Use beta hasta validar el certificado. Producción emite comprobantes reales.
+            </p>
+          </div>
         </div>
       </div>
 

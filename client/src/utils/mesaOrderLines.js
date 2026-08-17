@@ -193,26 +193,31 @@ function salesAccountPaidAtBucket(order) {
 }
 
 /**
- * Agrupa comandas ya cobradas en cuentas de venta (1 cobro de mesa = 1 cuenta).
- * Salón: mesa + caja + minuto de cobro. Cliente sin mesa: cliente + caja + minuto. Resto: 1 pedido.
+ * Agrupa comandas ya cobradas en cuentas de venta (1 cobro de mesa = 1 cuenta = 1 comprobante).
+ * Si hay N.º de venta, esa es la cuenta. Si no, salón: mesa + caja + minuto de cobro.
  */
 export function groupPaidOrdersBySalesAccount(orders = []) {
   const buckets = new Map();
   for (const order of orders) {
     if (!order) continue;
-    const table = String(order.table_number || '').trim();
-    const isMesa = order.type === 'dine_in' && table;
+    const saleNum = Number(order.sale_number || 0);
     let key;
-    if (isMesa) {
-      const registerId = String(order.cash_register_id || '');
-      key = `mesa:${table}:${registerId}:${salesAccountPaidAtBucket(order)}`;
+    if (saleNum > 0) {
+      key = `venta:${saleNum}`;
     } else {
-      const customerId = String(order.customer_id || '').trim();
-      const registerId = String(order.cash_register_id || '');
-      if (customerId) {
-        key = `cliente:${customerId}:${registerId}:${salesAccountPaidAtBucket(order)}`;
+      const table = String(order.table_number || '').trim();
+      const isMesa = order.type === 'dine_in' && table;
+      if (isMesa) {
+        const registerId = String(order.cash_register_id || '');
+        key = `mesa:${table}:${registerId}:${salesAccountPaidAtBucket(order)}`;
       } else {
-        key = `pedido:${order.id || ''}`;
+        const customerId = String(order.customer_id || '').trim();
+        const registerId = String(order.cash_register_id || '');
+        if (customerId) {
+          key = `cliente:${customerId}:${registerId}:${salesAccountPaidAtBucket(order)}`;
+        } else {
+          key = `pedido:${order.id || ''}`;
+        }
       }
     }
     if (!buckets.has(key)) buckets.set(key, []);
@@ -528,6 +533,8 @@ export function buildSalesDisplayGroups(orders = [], { groupOpenMesaByTableOnly 
 
 export function getSalesAccountKey(order) {
   if (!order) return '';
+  const saleNum = Number(order.sale_number || 0);
+  if (saleNum > 0) return `venta:${saleNum}`;
   const table = String(order.table_number || '').trim();
   const isMesa = order.type === 'dine_in' && table;
   if (isMesa) {

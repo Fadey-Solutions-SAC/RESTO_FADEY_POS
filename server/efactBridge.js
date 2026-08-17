@@ -183,6 +183,7 @@ function mapEfactResponseToProviderResult(parsed, responseOk) {
 
   const sunat = parsed?.sunat;
   const sunatOk = sunat && sunat.ok === true;
+  const sunatRespondio = Boolean(sunat?.respondio) || Boolean(pathsHaveCdr(parsed));
   const flowFailed = parsed?.ok === false;
   const paths = parsed?.paths || {};
   const hasSignedXml = Boolean(paths.xml_firmado);
@@ -193,22 +194,30 @@ function mapEfactResponseToProviderResult(parsed, responseOk) {
   if (sunatOk) providerStatus = 'accepted';
   else if (flowFailed || (sunat && sunat.ok === false)) providerStatus = 'error';
   else if (noSunatFlow) providerStatus = 'error';
+  else if (sunatRespondio && !sunatOk) providerStatus = 'error';
+  else if (hasSignedXml && sunat == null) providerStatus = 'sent';
 
   const noCertMsg =
-    'Configure CERT_PFX_PATH y CERT_PFX_PASSWORD en el .env de server/efact y reinicie python api_server.py (desde esa carpeta) o el contenedor Docker.';
+    'Falta certificado digital (.pfx/.p12) o su contraseña. Súbalo en Facturación electrónica y guarde.';
 
+  const sunatMsg = String(sunat?.mensaje || parsed?.mensaje || '');
   return {
     providerStatus,
     providerMessage: noSunatFlow
       ? noCertMsg
-      : (parsed?.mensaje || sunat?.mensaje || (parsed?.ok ? 'Procesado por bot local' : 'Revisar respuesta del bot')),
-    hashCode: '',
-    sunatDescription: String(sunat?.mensaje || ''),
+      : (sunatMsg || (parsed?.ok ? 'Procesado por bot local' : 'Revisar respuesta del bot')),
+    hashCode: String(sunat?.codigo || ''),
+    sunatDescription: sunatMsg,
     xmlUrl: String(paths.xml_firmado || paths.xml_sin_firma || ''),
     cdrUrl: String(paths.cdr_xml || paths.cdr_zip || ''),
     pdfUrl: String(paths.pdf || ''),
     providerResponse: parsed || {},
   };
+}
+
+function pathsHaveCdr(parsed) {
+  const p = parsed?.paths;
+  return Boolean(p && (p.cdr_xml || p.cdr_zip));
 }
 
 async function sendEfactSale(restaurant, saleJson) {

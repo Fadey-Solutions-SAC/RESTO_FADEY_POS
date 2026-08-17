@@ -5,10 +5,9 @@
 const { queryAll, queryOne } = require('../database');
 const { buildRankings, buildProductivityByUser } = require('./workProductivityService');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
-const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurchaseDate');
 const { sumSalesCogsForRange } = require('../utils/salesCogs');
 const { insumoValorInventario } = require('../utils/insumoUnidadMedida');
-const { composeFinanceTotals } = require('../utils/financeInvestmentOperating');
+const { composeFinanceTotals, sumPeriodPurchasesSplit } = require('../utils/financeInvestmentOperating');
 const {
   getPaidSalesEventSql,
   metricsFromPaidOrdersWhere,
@@ -49,10 +48,10 @@ function localDateKey(d = new Date()) {
 }
 
 function defaultRange() {
-  const to = new Date();
-  const from = new Date(to);
-  from.setDate(from.getDate() - 29);
-  return { from: localDateKey(from), to: localDateKey(to) };
+  const { getBusinessTodayDateKey } = require('../utils/appDateTime');
+  const to = getBusinessTodayDateKey();
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(to) ? `${to.slice(0, 8)}01` : to;
+  return { from, to };
 }
 
 function orderDateFilter(from, to, params, ps = getPaidSalesEventSql()) {
@@ -86,6 +85,8 @@ function buildGeneralKpis(from, to) {
   const activeOrders = queryOne("SELECT COUNT(*) AS c FROM orders WHERE status IN ('pending','preparing','ready')");
   const salesToday = Number(todayMetrics.sales || 0);
   const paidToday = Number(todayMetrics.orders || 0);
+  const periodSales = Number(periodMetrics.sales || 0);
+  const periodOrders = Number(periodMetrics.orders || 0);
   const salesMonth = Number(monthMetrics.sales || 0);
   const salesPrevMonth = Number(prevMonthRow?.sales || 0);
   const growthPct = salesPrevMonth > 0 ? ((salesMonth - salesPrevMonth) / salesPrevMonth) * 100 : 0;
@@ -107,8 +108,8 @@ function buildGeneralKpis(from, to) {
   const openSessions = queryOne('SELECT COUNT(*) AS c FROM user_work_sessions WHERE logout_at IS NULL');
 
   return {
-    period_sales: Number(periodMetrics.sales || 0),
-    period_orders: Number(periodMetrics.orders || 0),
+    period_sales: periodSales,
+    period_orders: periodOrders,
     sales_today: salesToday,
     orders_today: paidToday,
     sales_week: Number(weekMetrics.sales || 0),
@@ -119,7 +120,7 @@ function buildGeneralKpis(from, to) {
     gross_margin_approx: Number(financeMonth.approx_gross_margin || 0),
     operating_expenses: monthOperating,
     total_revenue_month: salesMonth,
-    avg_ticket: paidToday > 0 ? salesToday / paidToday : 0,
+    avg_ticket: periodOrders > 0 ? periodSales / periodOrders : 0,
     active_orders: Number(activeOrders?.c || 0),
     tables_occupied: Number(op.summary?.tablesWithActiveOrders || 0),
     delivery_active: Number(op.summary?.deliveryActiveCount || 0),
@@ -142,11 +143,7 @@ function buildFinancialSection(from, to) {
   const dateF = `${ps.ORDER_DATE} BETWEEN date(?) AND date(?)`;
   const salesMetrics = metricsFromPaidOrdersWhere(`${dateF}`, params);
   const periodOrders = queryPaidSalesOrders(`${dateF}`, params);
-  const purchases = queryOne(
-    `SELECT COALESCE(SUM(total_cost), 0) AS total FROM inventory_expenses
-     WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL} BETWEEN date(?) AND date(?)`,
-    params
-  );
+  const purchaseSplit = sumPeriodPurchasesSplit(from, to);
   const cogs = sumSalesCogsForRange(from, to);
   const cashExp = queryOne(
     `SELECT COALESCE(SUM(amount), 0) AS total FROM cash_movements
@@ -164,7 +161,7 @@ function buildFinancialSection(from, to) {
     params
   );
   const totalSales = Number(salesMetrics.sales || 0);
-  const totalPurchases = Number(purchases?.total || 0);
+  const totalPurchases = purchaseSplit.total;
   const totalProductCogs = Number(cogs.purchase_cogs || 0);
   const totalKardexCogs = Number(cogs.kardex_cogs || 0);
   const payrollTotal = Number(payrollRow?.total || 0);
@@ -209,8 +206,8 @@ function buildFinancialSection(from, to) {
     kardex_cogs_total: totalKardexCogs,
     investment_total: investmentTotal,
     investment_purchases: totalPurchases,
-    investment_warehouse: composed.warehouse_products,
-    investment_insumos: composed.inventory_insumos,
+    investment_warehouse: purchaseSplit.products,
+    investment_insumos: purchaseSplit.insumos,
     payroll_total: payrollTotal,
     /** Precio de compra e insumos de cada producto + pérdidas + egresos + pagos. */
     operating_expenses: totalExpenses,
@@ -417,8 +414,10 @@ function buildInventorySection(from, to) {
   }
   const consumption = queryOne(
     `SELECT COALESCE(SUM(ABS(quantity_change)), 0) AS qty FROM inventory_logs
-     WHERE date(datetime(created_at, 'localtime')) = date('now', 'localtime') AND quantity_change < 0`
+     WHERE date(datetime(created_at, 'localtime')) BETWEEN date(?) AND date(?) AND quantity_change < 0`,
+    [from, to]
   );
+  const purchaseSplit = sumPeriodPurchasesSplit(from, to);
   const movements = queryAll(
     `SELECT il.id, p.name AS product_name, il.quantity_change AS quantity, il.reason, il.created_at
      FROM inventory_logs il
@@ -437,6 +436,9 @@ function buildInventorySection(from, to) {
     out_of_stock: oos || [],
     inventory_value: Number(valuation?.value || 0),
     insumos_value: insumosValue,
+    purchases_total: purchaseSplit.total,
+    purchases_products: purchaseSplit.products,
+    purchases_insumos: purchaseSplit.insumos,
     daily_consumption_units: Number(consumption?.qty || 0),
     waste_total: Number(waste?.total || 0),
     recent_movements: movements || [],
@@ -786,6 +788,10 @@ function buildIndicatorsHub(query = {}, opts = {}) {
     : 0;
 
   const financial = buildFinancialSection(from, to);
+  general.net_profit_approx = Number(financial.net_profit_approx || 0);
+  general.gross_margin_approx = Number(financial.gross_profit_approx || 0);
+  general.operating_expenses = Number(financial.operating_expenses || 0);
+  general.operating_expenses_period = Number(financial.operating_expenses || 0);
   const operational = buildOperationalSection(from, to);
   const inventory = buildInventorySection(from, to);
   const customers = buildCustomersSection(from, to);

@@ -46,6 +46,7 @@ import {
   printingUnreachableMessage,
   resolveMediaUrl,
 } from '../../utils/api';
+import { billingStatusLabel } from '../../utils/billingSunatStatus';
 import {
   KITCHEN_TAKEOUT_NOTE,
   orderHasTakeoutNote,
@@ -904,6 +905,18 @@ export default function POSPanel() {
   };
 
   const reservationAlertToastIdsRef = useRef(new Set());
+  const printedSunatPdfRef = useRef(new Set());
+
+  const openAcceptedSunatPdf = useCallback((doc) => {
+    if (!doc?.id) return;
+    if (String(doc.provider_status || '').toLowerCase() !== 'accepted') return;
+    const pdf = String(doc.pdf_url || '').trim();
+    if (!pdf) return;
+    if (printedSunatPdfRef.current.has(doc.id)) return;
+    printedSunatPdfRef.current.add(doc.id);
+    window.open(resolveMediaUrl(pdf), '_blank', 'noopener,noreferrer');
+    toast.success(`SUNAT aceptó ${doc.full_number || 'el comprobante'}. Se abrió el PDF para imprimir.`);
+  }, []);
 
   const syncReservationAlertToasts = useCallback(async () => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
@@ -1155,7 +1168,12 @@ export default function POSPanel() {
     }
   };
 
-  useSocket('billing-document-update', loadBillingStatus);
+  useSocket('billing-document-update', (payload) => {
+    loadBillingStatus();
+    if (payload?.print_caja || String(payload?.provider_status || '').toLowerCase() === 'accepted') {
+      openAcceptedSunatPdf(payload);
+    }
+  });
 
   useEffect(() => subscribeOfflinePos((st) => setInternetOnline(Boolean(st?.online))), []);
 
@@ -1590,12 +1608,19 @@ export default function POSPanel() {
   const billingSuccessSummary = (doc) => {
     const num = String(doc?.full_number || '').trim();
     const st = String(doc?.provider_status || '').toLowerCase();
-    const sunat = String(doc?.sunat_description || '').trim();
+    const sunat = String(doc?.sunat_description || doc?.provider_message || '').trim();
+    const label = billingStatusLabel(st);
     if (st === 'accepted') {
-      return sunat ? `${num} — ${sunat}` : `${num} — aceptado por SUNAT`;
+      return sunat ? `${num} — ${sunat}` : `${num} — ${label}`;
+    }
+    if (st === 'error') {
+      return `${num || 'Comprobante'} — ${sunat || label}`;
     }
     if (st === 'pending') {
-      return `${num || 'Comprobante'} — guardado; pendiente de sincronizar con SUNAT`;
+      return `${num || 'Comprobante'} — ${label}`;
+    }
+    if (st === 'sent') {
+      return `${num || 'Comprobante'} — ${label}`;
     }
     if (st === 'local') {
       return num ? `${num} — nota de venta (registro local)` : 'Nota de venta (registro local)';
@@ -1859,9 +1884,17 @@ export default function POSPanel() {
         : discountsByOrder;
 
       if (!chargeToAccount && billingForm.enabled) {
-        for (const order of postPaidOrders) {
-          const doc = await issueElectronicDocument(order.id);
-          issuedDocs.push(doc);
+        const billingOrders = postPaidOrders.length ? [postPaidOrders[0]] : [];
+        for (const order of billingOrders) {
+          try {
+            const doc = await issueElectronicDocument(order.id);
+            issuedDocs.push(doc);
+            if (String(doc?.provider_status || '').toLowerCase() === 'error') {
+              toast.error(doc.sunat_description || doc.provider_message || 'Error al enviar a SUNAT. Puede reintentar en Informes.');
+            }
+          } catch (billErr) {
+            toast.error(billErr.message || 'No se pudo emitir el comprobante');
+          }
         }
       }
 
@@ -1878,9 +1911,13 @@ export default function POSPanel() {
       if (issuedDocs.length > 0) {
         const detail = issuedDocs.map(billingSuccessSummary).join(' · ');
         toast.success(`${chargedCount} pedido(s) cobrados. ${detail}`);
-        const pdf = issuedDocs.find((d) => d?.pdf_url)?.pdf_url;
-        /** Sin resolveMediaUrl, `/uploads/...` se abre en el host del front (p. ej. Vercel) y la SPA puede redirigir a /admin en lugar del PDF en la API. */
+        const pdfDoc = issuedDocs.find((d) => d?.pdf_url && String(d.provider_status || '').toLowerCase() === 'accepted')
+          || issuedDocs.find((d) => d?.pdf_url && String(d.provider_status || '').toLowerCase() !== 'error');
+        const pdf = pdfDoc?.pdf_url;
         if (pdf && billingForm.doc_type !== 'nota_venta') {
+          if (pdfDoc?.id && String(pdfDoc.provider_status || '').toLowerCase() === 'accepted') {
+            printedSunatPdfRef.current.add(pdfDoc.id);
+          }
           window.open(resolveMediaUrl(pdf), '_blank', 'noopener,noreferrer');
         }
         const logoUrl = String(printRestaurantInfo.logo || '').trim() || undefined;
@@ -2521,7 +2558,15 @@ export default function POSPanel() {
         await api.put(`/orders/${createdOrder.id}/payment`, payBody);
         if (billingForm.enabled && doc) {
           toast.success(`Venta rápida cobrada · ${billingSuccessSummary(doc)}`, { id: tid });
-          if (doc?.pdf_url) window.open(resolveMediaUrl(doc.pdf_url), '_blank', 'noopener,noreferrer');
+          if (String(doc.provider_status || '').toLowerCase() === 'error') {
+            toast.error(doc.sunat_description || doc.provider_message || 'Error SUNAT. Reintente en Informes.');
+          }
+          if (doc?.pdf_url) {
+            if (String(doc.provider_status || '').toLowerCase() === 'accepted') {
+              printedSunatPdfRef.current.add(doc.id);
+            }
+            window.open(resolveMediaUrl(doc.pdf_url), '_blank', 'noopener,noreferrer');
+          }
         } else {
           toast.success('Venta rápida cobrada', { id: tid });
         }
@@ -4937,7 +4982,7 @@ export default function POSPanel() {
                     {billingResult && (
                       <div className="text-xs rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-2 py-2 text-emerald-200 flex flex-wrap items-center justify-between gap-2">
                         <span>
-                          {billingResult.full_number} · {billingResult.provider_status}
+                          {billingResult.full_number} · {billingStatusLabel(billingResult.provider_status)}
                         </span>
                         {billingResult.pdf_url && (
                           <button

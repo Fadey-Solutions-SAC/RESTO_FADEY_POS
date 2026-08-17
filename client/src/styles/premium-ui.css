@@ -273,12 +273,14 @@ h1, h2, h3, h4 {
 
   .stat-card-premium,
   .ui-finance-kpi,
+  .ui-informe-kpi,
   .ui-bi-panel {
     transition: transform var(--ui-transition), box-shadow var(--ui-transition);
   }
 
   .stat-card-premium:hover,
-  .ui-finance-kpi:hover {
+  .ui-finance-kpi:hover,
+  .ui-informe-kpi:hover {
     transform: translateY(-2px);
     box-shadow: var(--ui-shadow-md);
   }

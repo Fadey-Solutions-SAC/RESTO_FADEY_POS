@@ -64,6 +64,17 @@ def firmar_xml_ubl(xml_bytes: bytes, cert_cfg: CertificadoConfig) -> bytes:
 
     signed_root = signer.sign(root, key=key, cert=cert_x509, reference_uri="#" + root.get("Id"))
 
+    ns_ds = "http://www.w3.org/2000/09/xmldsig#"
+    ns_ext = "urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+    sig_el = signed_root.find(f".//{{{ns_ds}}}Signature")
+    ext_content = signed_root.find(f".//{{{ns_ext}}}ExtensionContent")
+    if sig_el is not None:
+        sig_el.set("Id", "SignatureSP")
+        parent = sig_el.getparent()
+        if ext_content is not None and parent is not None and parent is not ext_content:
+            parent.remove(sig_el)
+            ext_content.append(sig_el)
+
     out = etree.tostring(
         signed_root,
         xml_declaration=True,

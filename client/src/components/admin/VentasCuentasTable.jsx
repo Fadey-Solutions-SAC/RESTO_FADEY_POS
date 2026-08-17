@@ -37,9 +37,42 @@ export function docLabel(docType) {
 
 export function getOrderDocument(order) {
   const docType = order?.sale_document_type || order?.document?.doc_type || 'nota_venta';
-  const noteNumber = `001-${String(order?.order_number || 0).padStart(8, '0')}`;
-  const fullNumber = order?.sale_document_number || order?.document?.full_number || noteNumber;
+  const saleNum = Number(order?.sale_number || 0);
+  const noteNumber = saleNum > 0
+    ? `001-${String(saleNum).padStart(8, '0')}`
+    : `001-${String(order?.order_number || 0).padStart(8, '0')}`;
+  const fullNumber = order?.document?.full_number || order?.sale_document_number || noteNumber;
   return { doc_type: docType, full_number: fullNumber };
+}
+
+/** Un comprobante por cuenta de venta. Las comandas no son notas/boletas/facturas. */
+export function getAccountDocument(group) {
+  const orders = group?.orders?.length ? group.orders : (group?.primary ? [group.primary] : []);
+  const primary = group?.primary || orders[0];
+  if (!primary) return { doc_type: 'nota_venta', full_number: '' };
+
+  const billed = orders.find((o) => String(o?.document?.full_number || '').trim());
+  if (billed) {
+    return {
+      doc_type: billed.document?.doc_type || billed.sale_document_type || 'nota_venta',
+      full_number: billed.document.full_number,
+    };
+  }
+
+  const saleNums = orders.map((o) => Number(o.sale_number || 0)).filter((n) => n > 0);
+  const saleNum = saleNums.length ? Math.min(...saleNums) : 0;
+  const docType = primary.sale_document_type || primary.document?.doc_type || 'nota_venta';
+  const uniqueDocs = [...new Set(
+    orders.map((o) => String(o.sale_document_number || '').trim()).filter(Boolean),
+  )];
+
+  if (uniqueDocs.length === 1) {
+    return { doc_type: docType, full_number: uniqueDocs[0] };
+  }
+  if (saleNum > 0) {
+    return { doc_type: docType, full_number: `001-${String(saleNum).padStart(8, '0')}` };
+  }
+  return getOrderDocument(primary);
 }
 
 function SortableTh({ label, colKey, sortKey, sortDir, onSort }) {
@@ -156,14 +189,15 @@ export default function VentasCuentasTable({
         <tbody>
           {groups.map((group) => {
             const o = group.primary || {};
-            const doc = getOrderDocument(o);
+            const doc = getAccountDocument(group);
             const mesero = o.created_by_user_name || o.customer_name || '-';
             const auditBadge = getAccountAuditStatusBadge(group);
             const isPendingMesa = Boolean(group.isPendingAccount && group.isMesa);
             const isCuentaMesa = Boolean(group.isMesa && (group.isSalesAccount || group.isPendingAccount));
+            const comandaCount = (group.orders || []).length;
             const latest = parseApiDate(group.latestAt);
             const earliest = parseApiDate(group.earliestAt);
-            const sameDay = group.comprobanteCount === 1
+            const sameDay = comandaCount === 1
               || (latest && earliest && formatDate(group.latestAt) === formatDate(group.earliestAt));
             return (
               <tr key={group.key} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
@@ -174,7 +208,7 @@ export default function VentasCuentasTable({
                     <>
                       <p className="font-medium text-[var(--ui-body-text)]">{formatDate(group.latestAt)}</p>
                       <p className="text-xs text-[var(--ui-muted)]">
-                        {group.comprobanteCount > 1 && !sameDay
+                        {comandaCount > 1 && !sameDay
                           ? `${formatTime(group.earliestAt)} – ${formatTime(group.latestAt)}`
                           : formatTime(group.latestAt)}
                       </p>
@@ -188,26 +222,18 @@ export default function VentasCuentasTable({
                   {isPendingMesa ? '—' : salesAccountClienteLabel(o)}
                 </td>
                 <td className="py-2.5">
-                  {isCuentaMesa ? (
+                  {isPendingMesa ? (
                     <>
                       <p className="font-medium text-[var(--ui-body-text)]">Cuenta mesa</p>
-                      {!isPendingMesa && group.comprobanteCount > 1 ? (
-                        <p className="text-xs text-[var(--ui-muted)]">{group.comprobanteCount} comandas cobradas</p>
-                      ) : isPendingMesa ? (
-                        <p className="text-xs text-[var(--ui-muted)]">Sin cobrar</p>
-                      ) : (
-                        <p className="text-xs text-[var(--ui-muted)]">{docLabel(doc.doc_type)} · {doc.full_number}</p>
-                      )}
-                    </>
-                  ) : group.comprobanteCount > 1 ? (
-                    <>
-                      <p className="font-medium text-[var(--ui-body-text)]">{group.comprobanteCount} documentos</p>
-                      <p className="text-xs text-[var(--ui-muted)]">{docLabel(doc.doc_type)} · {doc.full_number}…</p>
+                      <p className="text-xs text-[var(--ui-muted)]">Sin cobrar</p>
                     </>
                   ) : (
                     <>
                       <p className="font-medium text-[var(--ui-body-text)]">{docLabel(doc.doc_type)}</p>
                       <p className="text-xs text-[var(--ui-muted)]">{doc.full_number}</p>
+                      {isCuentaMesa && comandaCount > 1 ? (
+                        <p className="text-[10px] text-[var(--ui-muted)]">{comandaCount} comandas de producción</p>
+                      ) : null}
                     </>
                   )}
                 </td>

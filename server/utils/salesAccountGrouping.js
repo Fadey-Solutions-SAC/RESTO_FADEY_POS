@@ -1,6 +1,6 @@
 /**
- * Cuenta de venta: agrupa comandas cobradas en un mismo cobro (mesa + caja + minuto).
- * Las comandas siguen existiendo para cocina/bar; la venta se cuenta por cuenta.
+ * Cuenta de venta: agrupa comandas cobradas en un mismo cobro (N.º de venta).
+ * Las comandas siguen existiendo para cocina/bar; la venta se cuenta por cuenta (un comprobante).
  */
 const { queryAll, queryOne, ensureOrdersPaidAtColumns } = require('../database');
 const { resolveRegionalTimezone } = require('./appDateTime');
@@ -76,6 +76,8 @@ function salesAccountPaidAtBucket(order, timeZone) {
 
 function salesAccountKey(order, timeZone = resolveRegionalTimezone(queryOne)) {
   if (!order) return '';
+  const saleNum = Number(order.sale_number || 0);
+  if (saleNum > 0) return `venta:${saleNum}`;
   const table = String(order.table_number || '').trim();
   const type = String(order.type || 'dine_in');
   const isMesa = type === 'dine_in' && table;

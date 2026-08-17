@@ -27,7 +27,7 @@ const {
 } = require('../utils/salesAccountGrouping');
 const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurchaseDate');
 const { sumSalesCogsForRange, sumSalesCogsForMonth, sumSalesCogsSinceDaysAgo } = require('../utils/salesCogs');
-const { composeFinanceTotals } = require('../utils/financeInvestmentOperating');
+const { composeFinanceTotals, sumPeriodPurchasesSplit } = require('../utils/financeInvestmentOperating');
 const { getOrderItemsWithProductionArea } = require('../services/orderItemsProductionService');
 const { filterKitchenOrdersForStation } = require('../utils/kitchenStationReady');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
@@ -1131,10 +1131,7 @@ function parseYmd(input) {
 function defaultFinanceRange() {
   const { getBusinessTodayDateKey } = require('../utils/appDateTime');
   const to = getBusinessTodayDateKey();
-  const [y, m, d] = to.split('-').map(Number);
-  const fromDate = new Date(Date.UTC(y, m - 1, d));
-  fromDate.setUTCDate(fromDate.getUTCDate() - 30);
-  const from = fromDate.toISOString().slice(0, 10);
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(to) ? `${to.slice(0, 8)}01` : to;
   return { from, to };
 }
 
@@ -1150,11 +1147,7 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
      WHERE date(datetime(created_at, 'localtime')) BETWEEN date(?) AND date(?)`,
     [from, to]
   );
-  const purchasesRow = queryOne(
-    `SELECT COALESCE(SUM(total_cost), 0) as total FROM inventory_expenses
-     WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_SQL} BETWEEN date(?) AND date(?)`,
-    [from, to]
-  );
+  const purchaseSplit = sumPeriodPurchasesSplit(from, to);
   const cogs = sumSalesCogsForRange(from, to);
   const cashExpensesRow = queryOne(
     `SELECT COALESCE(SUM(amount), 0) as total FROM cash_movements
@@ -1174,7 +1167,7 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
     [from, to]
   );
   const totalInvestmentMovements = Number(investmentRow?.total || 0);
-  const totalPurchases = Number(purchasesRow?.total || 0);
+  const totalPurchases = purchaseSplit.total;
   const productCogs = Number(cogs.purchase_cogs || 0);
   const kardexCogs = Number(cogs.kardex_cogs || 0);
   const cashExpenses = Number(cashExpensesRow?.total || 0);
@@ -1207,7 +1200,7 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
     filters: { from, to },
     sales: { total: totalSales, orders: Number(salesMetrics.orders || 0) },
     investment: {
-      /** Compras + productos de almacén + insumos. */
+      /** Compras de productos de almacén e insumos en el rango de fechas. */
       total: composed.investment_total,
       movements_total: composed.investment_total,
       payroll_total: totalInvestmentMovements,
@@ -1215,12 +1208,15 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
       product_cogs_total: productCogs,
       kardex_cogs_total: kardexCogs,
       purchases_in_period: totalPurchases,
+      purchases_products: purchaseSplit.products,
+      purchases_insumos: purchaseSplit.insumos,
+      /** Stock actual (foto; no usa el rango de fechas). */
       inventory_snapshot: inventoryProductsTotal,
-      inventory_products: inventoryProductsTotal,
-      inventory_insumos: insumosInvestment,
+      inventory_products: purchaseSplit.products,
+      inventory_insumos: purchaseSplit.insumos,
       inventory_total: inventoryInvestmentTotal,
     },
-    purchases: { total: totalPurchases },
+    purchases: { total: totalPurchases, products: purchaseSplit.products, insumos: purchaseSplit.insumos },
     cash_expenses: { total: cashExpenses },
     payroll: { total: totalInvestmentMovements },
     operating_expenses: operatingExpenses,

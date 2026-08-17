@@ -1,12 +1,14 @@
 /**
  * Inversión y gastos operativos — misma regla en Finanzas e Indicadores.
  *
- * Inversión = compras + productos de almacén + insumos.
+ * Inversión del período = compras de productos de almacén e insumos en el rango de fechas.
+ * El valor actual de stock (almacén + insumos) es una foto aparte, no entra en el período.
  * Gastos operativos = precio de compra e insumos de cada producto vendido
  *   + pérdidas + egresos de caja + pagos.
  */
 const { queryOne, queryAll } = require('../database');
 const { insumoValorInventario } = require('./insumoUnidadMedida');
+const { INVENTORY_EXPENSE_PURCHASE_DATE_IE_SQL } = require('./inventoryPurchaseDate');
 
 function n(v) {
   return Number(v || 0);
@@ -39,9 +41,38 @@ function inventorySnapshotParts() {
   };
 }
 
-/** Compras del período + valor actual de productos de almacén + valor actual de insumos. */
-function investmentFromParts({ purchases = 0, warehouseProducts = 0, insumos = 0 }) {
-  return n(purchases) + n(warehouseProducts) + n(insumos);
+/** Compras de almacén e insumos en el rango (respeta Desde–Hasta). */
+function sumPeriodPurchasesSplit(from, to, queryOneFn = queryOne) {
+  const row = queryOneFn(
+    `SELECT
+       COALESCE(SUM(ie.total_cost), 0) AS total,
+       COALESCE(SUM(CASE
+         WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = ie.product_id)
+          AND NOT EXISTS (SELECT 1 FROM insumos i WHERE i.id = ie.product_id)
+         THEN ie.total_cost ELSE 0 END), 0) AS products,
+       COALESCE(SUM(CASE
+         WHEN EXISTS (SELECT 1 FROM insumos i WHERE i.id = ie.product_id)
+           OR (
+             NOT EXISTS (SELECT 1 FROM products p WHERE p.id = ie.product_id)
+             AND EXISTS (
+               SELECT 1 FROM warehouse_locations w
+               WHERE w.id = ie.warehouse_id AND IFNULL(w.linked_insumos, 0) = 1
+             )
+           )
+         THEN ie.total_cost ELSE 0 END), 0) AS insumos
+     FROM inventory_expenses ie
+     WHERE ${INVENTORY_EXPENSE_PURCHASE_DATE_IE_SQL} BETWEEN date(?) AND date(?)`,
+    [from, to]
+  );
+  const total = n(row?.total);
+  const products = n(row?.products);
+  const insumos = n(row?.insumos);
+  return { total, products, insumos };
+}
+
+/** Solo compras del rango (productos de almacén e insumos). No suma el stock actual. */
+function investmentFromParts({ purchases = 0 }) {
+  return n(purchases);
 }
 
 /** Costo de cada producto (compra + insumos) + pérdidas + egresos + pagos. */
@@ -70,11 +101,7 @@ function composeFinanceTotals({
       ? { warehouseProducts: n(warehouseProducts), insumos: n(insumos) }
       : inventorySnapshotParts();
   const cogsTotal = n(productCogs) + n(kardexCogs);
-  const investmentTotal = investmentFromParts({
-    purchases,
-    warehouseProducts: snap.warehouseProducts,
-    insumos: snap.insumos,
-  });
+  const investmentTotal = investmentFromParts({ purchases });
   const operatingExpenses = operatingFromParts({
     productCogs,
     kardexCogs,
@@ -100,4 +127,5 @@ module.exports = {
   investmentFromParts,
   operatingFromParts,
   composeFinanceTotals,
+  sumPeriodPurchasesSplit,
 };

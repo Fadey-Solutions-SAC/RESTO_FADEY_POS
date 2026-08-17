@@ -84,7 +84,40 @@ function exportBillingPdfToUploads(docId, pdfUrl) {
   }
 }
 
+function exportBillingFileToUploads(docId, fileUrl, kind = 'file') {
+  const raw = String(fileUrl || '').trim();
+  if (!raw) return '';
+  if (isHttpUrl(raw)) return raw;
+
+  const safeId = String(docId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!safeId) return '';
+
+  const src = findExistingPdfSource(raw);
+  if (!src) {
+    console.warn('[billing-file] No se encontró el archivo del bot:', kind, raw);
+    return '';
+  }
+
+  try {
+    if (!fs.existsSync(BILLING_PDF_DIR)) {
+      fs.mkdirSync(BILLING_PDF_DIR, { recursive: true });
+    }
+    const ext = (path.extname(src) || '').toLowerCase() || (kind === 'pdf' ? '.pdf' : '.xml');
+    const suffix = kind === 'pdf' ? '' : `-${kind}`;
+    const destName = `${safeId}${suffix}${ext}`;
+    const dest = path.join(BILLING_PDF_DIR, destName);
+    fs.copyFileSync(src, dest);
+    const pub = `/uploads/billing-documents/${destName}`;
+    console.info('[billing-file] Copiado para acceso web:', pub, '←', src);
+    return pub;
+  } catch (e) {
+    console.warn('[billing-file] Error al copiar a uploads:', e.message || e);
+    return '';
+  }
+}
+
 module.exports = {
   exportBillingPdfToUploads,
+  exportBillingFileToUploads,
   isHttpUrl,
 };

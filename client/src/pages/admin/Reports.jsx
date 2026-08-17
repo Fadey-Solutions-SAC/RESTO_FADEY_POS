@@ -29,6 +29,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { INFORME_EXCEL_NAVY, INFORME_EXCEL_LABEL, INFORME_EXCEL_TOTAL } from '../../utils/informeExcelHtml';
 import { resolveInformesSection } from '../../utils/shellModuleTitle';
+import { billingStatusLabel, billingStatusClass, billingFileIsOpenable } from '../../utils/billingSunatStatus';
 import { buildPaidSalesAccountDisplayGroups, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
 import {
   downloadBlobFile,
@@ -578,6 +579,33 @@ function formatMonthLabel(ym) {
   return d.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' });
 }
 
+function InformeKpiCard({
+  title,
+  icon: Icon,
+  tone = 'emerald',
+  amount,
+  value,
+  currency = true,
+  sub,
+}) {
+  const number = currency ? Number(amount || 0).toFixed(2) : String(value ?? 0);
+  return (
+    <div className={`card ui-informe-kpi ui-informe-kpi--${tone}`}>
+      <p className="ui-informe-kpi__title">{title}</p>
+      <div className="ui-informe-kpi__body">
+        <div className="ui-informe-kpi__sticker">
+          <div className="ui-informe-kpi__badge">{Icon ? <Icon /> : null}</div>
+          {currency ? <span className="ui-informe-kpi__symbol">S/</span> : <span className="ui-informe-kpi__symbol ui-informe-kpi__symbol--empty" aria-hidden="true"> </span>}
+        </div>
+        <div className="ui-informe-kpi__figure">
+          <p className="ui-informe-kpi__number">{number}</p>
+          {sub ? <p className="ui-informe-kpi__sub">{sub}</p> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function openNativeDatePicker(inputEl) {
   if (!inputEl) return;
   if (typeof inputEl.showPicker === 'function') {
@@ -643,14 +671,7 @@ export default function Reports() {
   const [closedRegistersLoading, setClosedRegistersLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const [financeFrom, setFinanceFrom] = useState(() => {
-    const today = localTodayYmd();
-    const [y, m, d] = String(today || '').split('-').map(Number);
-    if (!y || !m || !d) return new Date().toISOString().slice(0, 10);
-    const from = new Date(Date.UTC(y, m - 1, d));
-    from.setUTCDate(from.getUTCDate() - 30);
-    return from.toISOString().slice(0, 10);
-  });
+  const [financeFrom, setFinanceFrom] = useState(() => localMonthStartYmd() || localTodayYmd());
   const [financeTo, setFinanceTo] = useState(() => localTodayYmd() || new Date().toISOString().slice(0, 10));
   const [financeOverview, setFinanceOverview] = useState(null);
   const [financeLoading, setFinanceLoading] = useState(false);
@@ -1524,65 +1545,46 @@ export default function Reports() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-            <div className="card">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center"><MdAttachMoney className="text-emerald-600 text-xl" /></div>
-                <div>
-                  <p className="text-xs text-[var(--ui-muted)]">{dailyData.is_today === false ? 'Ventas del día' : 'Ventas Hoy'}</p>
-                  <p className="text-xl font-bold text-emerald-600">{formatCurrency(dailyData.sales?.total_sales)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center"><MdReceipt className="text-sky-600 text-xl" /></div>
-                <div>
-                  <p className="text-xs text-[var(--ui-muted)]">Cuentas cobradas</p>
-                  <p className="text-xl font-bold text-sky-600">{dailyData.sales?.order_count || 0}</p>
-                  {Number(dailyData.lifetime_sales) > 0 ? (
-                    <p className="text-[10px] text-[var(--ui-muted)]">Interno {formatSaleNumero(dailyData.lifetime_sales)}</p>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gold-100 rounded-xl flex items-center justify-center"><MdTrendingUp className="text-gold-600 text-xl" /></div>
-                <div>
-                  <p className="text-xs text-[var(--ui-muted)]">IGV</p>
-                  <p className="text-xl font-bold text-gold-600">{formatCurrency(dailyData.sales?.total_tax)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center"><MdLocalOffer className="text-amber-600 text-xl" /></div>
-                <div>
-                  <p className="text-xs text-[var(--ui-muted)]">Descuentos (ref.)</p>
-                  <p className="text-xl font-bold text-amber-600">{formatCurrency(dailyData.adjustments?.discount_amount_total)}</p>
-                  <p className="text-[10px] text-[var(--ui-muted)]">Informativo · no suma a ventas</p>
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center"><MdVolunteerActivism className="text-violet-600 text-xl" /></div>
-                <div>
-                  <p className="text-xs text-[var(--ui-muted)]">Cortesías (ref.)</p>
-                  <p className="text-xl font-bold text-violet-600">{formatCurrency(dailyData.adjustments?.courtesy_reference_total)}</p>
-                  <p className="text-[10px] text-[var(--ui-muted)]">Informativo · cobro S/ 0.00</p>
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center"><MdPayments className="text-indigo-600 text-xl" /></div>
-                <div>
-                  <p className="text-xs text-[var(--ui-muted)]">Propinas</p>
-                  <p className="text-xl font-bold text-indigo-600">{formatCurrency(dailyData.sales?.total_tips)}</p>
-                </div>
-              </div>
-            </div>
+            <InformeKpiCard
+              title={dailyData.is_today === false ? 'Ventas del día' : 'Ventas Hoy'}
+              icon={MdAttachMoney}
+              tone="emerald"
+              amount={dailyData.sales?.total_sales}
+            />
+            <InformeKpiCard
+              title="Cuentas cobradas"
+              icon={MdReceipt}
+              tone="sky"
+              currency={false}
+              value={dailyData.sales?.order_count || 0}
+              sub={Number(dailyData.lifetime_sales) > 0 ? `Interno ${formatSaleNumero(dailyData.lifetime_sales)}` : undefined}
+            />
+            <InformeKpiCard
+              title="IGV"
+              icon={MdTrendingUp}
+              tone="gold"
+              amount={dailyData.sales?.total_tax}
+            />
+            <InformeKpiCard
+              title="Descuentos (ref.)"
+              icon={MdLocalOffer}
+              tone="amber"
+              amount={dailyData.adjustments?.discount_amount_total}
+              sub="Informativo · no suma a ventas"
+            />
+            <InformeKpiCard
+              title="Cortesías (ref.)"
+              icon={MdVolunteerActivism}
+              tone="violet"
+              amount={dailyData.adjustments?.courtesy_reference_total}
+              sub="Informativo · cobro S/ 0.00"
+            />
+            <InformeKpiCard
+              title="Propinas"
+              icon={MdPayments}
+              tone="indigo"
+              amount={dailyData.sales?.total_tips}
+            />
           </div>
 
           <div className="card">
@@ -1621,22 +1623,29 @@ export default function Reports() {
             {monthlyLoading ? <span className="text-xs text-[var(--ui-muted)]">Actualizando…</span> : null}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="card">
-              <p className="text-sm text-[var(--ui-muted)]">Ventas del Mes</p>
-              <p className="text-2xl font-bold text-emerald-600">{formatCurrency(monthlyData.totalMonth?.total)}</p>
-              <p className="text-xs text-[var(--ui-muted)]">{monthlyData.totalMonth?.orders || 0} cuentas</p>
-              {Number(monthlyData.lifetime_sales) > 0 ? (
-                <p className="text-[10px] text-[var(--ui-muted)]">Contador interno {formatSaleNumero(monthlyData.lifetime_sales)}</p>
-              ) : null}
-            </div>
-            <div className="card">
-              <p className="text-sm text-[var(--ui-muted)]">IGV del Mes</p>
-              <p className="text-2xl font-bold text-gold-600">{formatCurrency(monthlyData.totalMonth?.tax)}</p>
-            </div>
-            <div className="card">
-              <p className="text-sm text-[var(--ui-muted)]">Cajas Cerradas</p>
-              <p className="text-2xl font-bold text-sky-600">{monthlyData.closedRegistersMonth || 0}</p>
-            </div>
+            <InformeKpiCard
+              title="Ventas del Mes"
+              icon={MdAttachMoney}
+              tone="emerald"
+              amount={monthlyData.totalMonth?.total}
+              sub={[
+                `${monthlyData.totalMonth?.orders || 0} cuentas`,
+                Number(monthlyData.lifetime_sales) > 0 ? `Contador interno ${formatSaleNumero(monthlyData.lifetime_sales)}` : '',
+              ].filter(Boolean).join(' · ')}
+            />
+            <InformeKpiCard
+              title="IGV del Mes"
+              icon={MdTrendingUp}
+              tone="gold"
+              amount={monthlyData.totalMonth?.tax}
+            />
+            <InformeKpiCard
+              title="Cajas Cerradas"
+              icon={MdPointOfSale}
+              tone="sky"
+              currency={false}
+              value={monthlyData.closedRegistersMonth || 0}
+            />
           </div>
 
           <div className="card mb-6">
@@ -2272,7 +2281,7 @@ export default function Reports() {
                     <p className="ui-finance-kpi__label">Inversión en el período</p>
                     <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.investment?.movements_total ?? financeOverview.investment?.total)}</p>
                     <p className="ui-finance-kpi__sub">
-                      Compras, productos de almacén e insumos
+                      Compras de productos de almacén e insumos en estas fechas
                     </p>
                   </div>
                   <div className="ui-finance-kpi ui-finance-kpi--amber">
@@ -2288,22 +2297,25 @@ export default function Reports() {
                     <p className="ui-finance-kpi__sub">{financeOverview.sales?.orders || 0} cuentas</p>
                   </div>
                   <div className="ui-finance-kpi">
-                    <p className="ui-finance-kpi__label">Valor inventario (actual)</p>
+                    <p className="ui-finance-kpi__label">Productos de almacén (período)</p>
                     <p className="ui-finance-kpi__value">
-                      {formatCurrency(financeOverview.investment?.inventory_products ?? financeOverview.investment?.inventory_snapshot ?? 0)}
+                      {formatCurrency(financeOverview.investment?.purchases_products ?? financeOverview.purchases?.products ?? 0)}
                     </p>
-                    <p className="ui-finance-kpi__sub">Productos en almacén (precio de compra × stock)</p>
+                    <p className="ui-finance-kpi__sub">Compras de productos de almacén en estas fechas</p>
                   </div>
                   <div className="ui-finance-kpi">
-                    <p className="ui-finance-kpi__label">Valor de insumos (actual)</p>
+                    <p className="ui-finance-kpi__label">Insumos (período)</p>
                     <p className="ui-finance-kpi__value">
-                      {formatCurrency(financeOverview.investment?.inventory_insumos ?? 0)}
+                      {formatCurrency(financeOverview.investment?.purchases_insumos ?? financeOverview.purchases?.insumos ?? 0)}
                     </p>
-                    <p className="ui-finance-kpi__sub">Stock de insumos × costo por uso</p>
+                    <p className="ui-finance-kpi__sub">Compras de insumos en estas fechas</p>
                   </div>
                   <div className="ui-finance-kpi">
-                    <p className="ui-finance-kpi__label">Compras (inventario)</p>
-                    <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.purchases?.total)}</p>
+                    <p className="ui-finance-kpi__label">Pagos (período)</p>
+                    <p className="ui-finance-kpi__value">
+                      {formatCurrency(financeOverview.payroll?.total ?? financeOverview.investment?.payroll_total ?? 0)}
+                    </p>
+                    <p className="ui-finance-kpi__sub">Pagos registrados en estas fechas</p>
                   </div>
                   <div className="ui-finance-kpi ui-finance-kpi--sky">
                     <p className="ui-finance-kpi__label">Ganancia aproximada</p>
@@ -2327,8 +2339,8 @@ export default function Reports() {
                   </div>
                 </div>
                 <p className="text-xs text-[var(--ui-muted)]">
-                  Rango: {financeOverview.filters?.from} — {financeOverview.filters?.to}. Inversión = compras + productos de almacén + insumos.
-                  Gastos operativos = precio de compra e insumos de cada producto + pérdidas + egresos + pagos. Utilidad neta = ventas − gastos operativos.
+                  Rango: {financeOverview.filters?.from} — {financeOverview.filters?.to}. Todos los recuadros de este resumen usan esas fechas.
+                  Inversión = compras de productos de almacén + insumos. Gastos operativos = precio de compra e insumos de cada producto vendido + pérdidas + egresos + pagos. Utilidad neta = ventas − gastos operativos.
                 </p>
               </>
             )}
@@ -2461,7 +2473,9 @@ export default function Reports() {
       {reportSection === 'facturacion' && (
         <div className="card">
           <h3 className="font-bold rf-section-title mb-4">Facturación electrónica</h3>
-          <p className="text-[var(--ui-muted)] mb-4">Resumen de comprobantes electrónicos emitidos.</p>
+          <p className="text-[var(--ui-muted)] mb-4">
+            Comprobantes emitidos: se guarda cliente, serie, correlativo, XML, CDR y PDF. El estado indica si se envió a SUNAT, si respondió, si está correcto o si hubo error.
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div className="bg-slate-50 rounded-lg p-3">
               <p className="text-xs text-[var(--ui-muted)]">Cuentas cobradas hoy</p>
@@ -2490,10 +2504,10 @@ export default function Reports() {
             >
               <option value="all">Todos los estados</option>
               <option value="local">Notas locales</option>
-              <option value="accepted">Aceptados</option>
-              <option value="sent">Enviados</option>
-              <option value="pending">Pendientes</option>
-              <option value="error">Con error</option>
+              <option value="accepted">SUNAT aceptó (correcto)</option>
+              <option value="sent">Enviados a SUNAT</option>
+              <option value="pending">Pendientes de envío</option>
+              <option value="error">Error / SUNAT rechazó</option>
             </select>
             <select
               className="input-field w-auto"
@@ -2535,9 +2549,9 @@ export default function Reports() {
                   <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Comprobante</th>
                   <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Cliente</th>
                   <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Total</th>
-                  <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Estado</th>
+                  <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Estado SUNAT</th>
                   <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Acciones</th>
-                  <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">PDF</th>
+                  <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Abrir / imprimir</th>
                 </tr>
               </thead>
               <tbody>
@@ -2547,17 +2561,14 @@ export default function Reports() {
                     <td className="py-2 px-3">{doc.customer_name || 'CLIENTE VARIOS'}</td>
                     <td className="py-2 px-3 text-right font-semibold">{formatCurrency(doc.total)}</td>
                     <td className="py-2 px-3">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        doc.provider_status === 'accepted'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : doc.provider_status === 'error'
-                            ? 'bg-red-100 text-red-700'
-                            : doc.provider_status === 'local'
-                              ? 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)]'
-                              : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {doc.provider_status === 'local' ? 'local (nota)' : doc.provider_status}
+                      <span className={`text-xs px-2 py-1 rounded-full ${billingStatusClass(doc.provider_status)}`}>
+                        {billingStatusLabel(doc.provider_status)}
                       </span>
+                      {doc.sunat_description || doc.provider_message ? (
+                        <p className="text-[10px] text-[var(--ui-muted)] mt-1 max-w-[16rem] leading-snug">
+                          {doc.sunat_description || doc.provider_message}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="py-2 px-3 text-right">
                       {doc.provider_status === 'local' ? (
@@ -2572,37 +2583,61 @@ export default function Reports() {
                           <MdRefresh /> {retryingDocId === doc.id ? 'Enviando...' : 'Reintentar'}
                         </button>
                       ) : (
-                        <span className="text-xs text-[var(--ui-muted)]">OK</span>
+                        <span className="text-xs text-emerald-700">OK</span>
                       )}
                     </td>
                     <td className="py-2 px-3 text-right align-middle">
-                      {doc.pdf_url ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setBillingPdfPreview({
-                                url: doc.pdf_url,
-                                title: doc.full_number ? `PDF — ${doc.full_number}` : 'Vista previa del comprobante',
-                              })
-                            }
-                            className="inline-block h-3 w-3 rounded-full bg-white border border-slate-300 shadow-sm hover:ring-2 hover:ring-[#3B82F6] focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
-                            title="Ver PDF"
-                            aria-label="Ver PDF del comprobante"
-                          />
+                      <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+                        {billingFileIsOpenable(doc.pdf_url) ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setBillingPdfPreview({
+                                  url: doc.pdf_url,
+                                  title: doc.full_number ? `PDF — ${doc.full_number}` : 'Vista previa del comprobante',
+                                })
+                              }
+                              className="text-xs text-[#3B82F6] hover:underline whitespace-nowrap"
+                            >
+                              Ver PDF
+                            </button>
+                            <a
+                              href={resolveMediaUrl(doc.pdf_url)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-[#3B82F6] hover:underline whitespace-nowrap"
+                              title="Abrir e imprimir PDF"
+                            >
+                              Imprimir
+                            </a>
+                          </>
+                        ) : null}
+                        {billingFileIsOpenable(doc.xml_url) ? (
                           <a
-                            href={resolveMediaUrl(doc.pdf_url)}
+                            href={resolveMediaUrl(doc.xml_url)}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs text-[#3B82F6] hover:underline whitespace-nowrap"
-                            title="Abrir en otra pestaña para imprimir"
                           >
-                            Abrir / imprimir
+                            XML
                           </a>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-[var(--ui-muted)]">—</span>
-                      )}
+                        ) : null}
+                        {billingFileIsOpenable(doc.cdr_url) ? (
+                          <a
+                            href={resolveMediaUrl(doc.cdr_url)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-[#3B82F6] hover:underline whitespace-nowrap"
+                            title="Constancia de recepción SUNAT"
+                          >
+                            CDR
+                          </a>
+                        ) : null}
+                        {!billingFileIsOpenable(doc.pdf_url) && !billingFileIsOpenable(doc.xml_url) && !billingFileIsOpenable(doc.cdr_url) ? (
+                          <span className="text-xs text-[var(--ui-muted)]">—</span>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

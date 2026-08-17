@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
-import VentasCuentasTable, { getOrderDocument, docLabel, getAccountAuditStatusBadge } from '../../components/admin/VentasCuentasTable';
+import VentasCuentasTable, { getOrderDocument, getAccountDocument, docLabel, getAccountAuditStatusBadge } from '../../components/admin/VentasCuentasTable';
 import {
   mapAccountToDetalleVentaRow,
   buildDetalleVentasExcelHtml,
@@ -19,26 +19,6 @@ import {
   formatSaleNumero,
 } from '../../utils/salesReportExport';
 import { downloadBlobFile, downloadExcelFile } from '../../utils/inventoryCuadreExport';
-
-import { UI_BADGE, saleStatusBadge } from '../../utils/uiBadges';
-
-function getSaleStatusBadge(order, t) {
-  const base = saleStatusBadge(order);
-  if (order.status === 'cancelled') {
-    return { label: t('status.cancelled', { defaultValue: 'Anulada' }), className: UI_BADGE.red };
-  }
-  if (String(order.payment_method || '').trim().toLowerCase() === 'cortesia') {
-    return { label: 'Cortesía', className: UI_BADGE.violet };
-  }
-  const ps = String(order.payment_status || 'pending');
-  const label = t(`status.${ps}`, { defaultValue: base.label });
-  return { label, className: base.className };
-}
-
-function getSaleStatusDetailLabel(order, t) {
-  if (order.status === 'cancelled') return 'Anulada';
-  return t(`status.${order.payment_status}`, { defaultValue: order.payment_status });
-}
 
 function payLabel(method) {
   if (!method) return '';
@@ -854,52 +834,18 @@ export default function Ventas() {
                 </div>
               ))}
             </div>
-            {selectedGroup.comprobanteCount > 1 && !selectedGroup.isPendingAccount && (
-              <div className="border-t border-[color:var(--ui-border)] pt-3 space-y-2">
-                <p className="font-medium text-[var(--ui-body-text)]">Comprobantes de la cuenta</p>
-                {selectedGroup.orders.map((ord) => {
-                  const doc = getOrderDocument(ord);
-                  const badge = getSaleStatusBadge(ord, t);
-                  return (
-                    <div
-                      key={ord.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-sm"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium text-[var(--ui-body-text)]">
-                          #{ord.order_number} · {docLabel(doc.doc_type)} {doc.full_number}
-                        </p>
-                        <p className="text-xs text-[var(--ui-muted)]">
-                          {formatDateTime(ord.created_at)} · {payLabel(ord.payment_method)} · {formatCurrency(ord.total)}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <span className={`${badge.className} uppercase text-[10px]`}>{badge.label}</span>
-                        <button type="button" onClick={() => startEdit(ord)} className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600" title="Editar"><MdEdit /></button>
-                        <button
-                          type="button"
-                          onClick={() => openVoidModal(ord)}
-                          disabled={ord.status === 'cancelled'}
-                          className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700 disabled:opacity-50"
-                          title="Anular"
-                        >
-                          <MdCancel />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+            {selectedGroup.comprobanteCount > 1 && selectedGroup.isMesa && !selectedGroup.isPendingAccount ? (
+              <p className="text-xs text-[var(--ui-muted)]">
+                {selectedGroup.comprobanteCount} comandas de producción · un comprobante de venta
+              </p>
+            ) : null}
+            <div className="grid grid-cols-2 gap-3 text-sm border-t border-[color:var(--ui-border)] pt-3">
+              <div><p className="ui-text-muted">Metodo de Pago</p><p className="font-medium">{payLabel(selected.payment_method)}</p></div>
+              <div>
+                <p className="ui-text-muted">Comprobante</p>
+                <p className="font-medium">{(() => { const doc = getAccountDocument(selectedGroup); return `${docLabel(doc.doc_type)} - ${doc.full_number}`; })()}</p>
               </div>
-            )}
-            {selectedGroup.comprobanteCount === 1 && (
-              <div className="grid grid-cols-2 gap-3 text-sm border-t border-[color:var(--ui-border)] pt-3">
-                <div><p className="ui-text-muted">Metodo de Pago</p><p className="font-medium">{payLabel(selected.payment_method)}</p></div>
-                <div>
-                  <p className="ui-text-muted">Comprobante</p>
-                  <p className="font-medium">{(() => { const doc = getOrderDocument(selected); return `${docLabel(doc.doc_type)} - ${doc.full_number}`; })()}</p>
-                </div>
-              </div>
-            )}
+            </div>
             <div className="border-t border-[color:var(--ui-border)] pt-3 flex justify-between font-bold text-lg text-[var(--ui-body-text)]">
               <span>Total</span><span>{formatCurrency(selectedGroup.total)}</span>
             </div>

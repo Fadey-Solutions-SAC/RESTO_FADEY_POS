@@ -51,10 +51,10 @@ export function IndicatorsGeneralPanel({ data }) {
         <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas hoy" value={formatCurrency(g.sales_today)} sub={`${g.orders_today ?? 0} cuentas`} />
         <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas semana" value={formatCurrency(g.sales_week)} accent="sky" />
         <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas mes" value={formatCurrency(g.sales_month)} trend={g.growth_month_pct} />
-        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Utilidad neta (aprox.)" value={formatCurrency(g.net_profit_approx)} sub="Mes en curso" accent="emerald" />
+        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Utilidad neta (aprox.)" value={formatCurrency(g.net_profit_approx)} sub="En estas fechas" accent="emerald" />
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 w-full min-w-0">
-        <IndicatorStatCard icon={MdShoppingCart} label="Ticket promedio" value={formatCurrency(g.avg_ticket)} />
+        <IndicatorStatCard icon={MdShoppingCart} label="Ticket promedio" value={formatCurrency(g.avg_ticket)} sub="En estas fechas" />
         <IndicatorStatCard icon={MdShoppingCart} label="Pedidos activos" value={g.active_orders ?? 0} accent="amber" />
         <IndicatorStatCard icon={MdTableBar} label="Mesas ocupadas" value={g.tables_occupied ?? 0} />
         <IndicatorStatCard icon={MdDeliveryDining} label="Delivery activos" value={g.delivery_active ?? 0} />
@@ -81,12 +81,26 @@ export function IndicatorsFinancialPanel({ data }) {
         <IndicatorStatCard label="Utilidad bruta" value={formatCurrency(f.gross_profit_approx)} accent="emerald" />
         <IndicatorStatCard label="Utilidad neta" value={formatCurrency(f.net_profit_approx)} accent="emerald" />
         <IndicatorStatCard label="Margen neto" value={`${f.margin_pct ?? 0}%`} />
-        <IndicatorStatCard label="Compras" value={formatCurrency(f.purchases_total)} />
         <IndicatorStatCard
           label="Inversión período"
           value={formatCurrency(f.investment_total)}
-          sub="Compras, productos de almacén e insumos"
+          sub="Compras de almacén e insumos en estas fechas"
           accent="violet"
+        />
+        <IndicatorStatCard
+          label="Productos de almacén"
+          value={formatCurrency(f.investment_warehouse)}
+          sub="Compras en estas fechas"
+        />
+        <IndicatorStatCard
+          label="Insumos"
+          value={formatCurrency(f.investment_insumos)}
+          sub="Compras en estas fechas"
+        />
+        <IndicatorStatCard
+          label="Pagos"
+          value={formatCurrency(f.payroll_total)}
+          sub="En estas fechas"
         />
         <IndicatorStatCard
           label="Gastos operativos"
@@ -371,11 +385,13 @@ export function IndicatorsInventoryPanel({ data }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        <IndicatorStatCard label="Valor inventario" value={formatCurrency(inv.inventory_value)} />
-        <IndicatorStatCard label="Valor de insumos" value={formatCurrency(inv.insumos_value ?? 0)} />
+        <IndicatorStatCard label="Valor inventario" value={formatCurrency(inv.inventory_value)} sub="Stock actual" />
+        <IndicatorStatCard label="Valor de insumos" value={formatCurrency(inv.insumos_value ?? 0)} sub="Stock actual" />
+        <IndicatorStatCard label="Compras almacén" value={formatCurrency(inv.purchases_products ?? 0)} sub="En estas fechas" />
+        <IndicatorStatCard label="Compras insumos" value={formatCurrency(inv.purchases_insumos ?? 0)} sub="En estas fechas" />
         <IndicatorStatCard label="Stock crítico" value={inv.critical_count ?? 0} accent="amber" />
         <IndicatorStatCard label="Agotados" value={inv.oos_count ?? 0} accent="amber" />
-        <IndicatorStatCard label="Consumo hoy (uds.)" value={inv.daily_consumption_units ?? 0} />
+        <IndicatorStatCard label="Consumo (uds.)" value={inv.daily_consumption_units ?? 0} sub="En estas fechas" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="card">

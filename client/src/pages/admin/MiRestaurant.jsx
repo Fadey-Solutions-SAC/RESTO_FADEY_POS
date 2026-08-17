@@ -879,6 +879,9 @@ export default function MiRestaurant() {
                 <MdReceipt className="text-red-600 text-2xl" />
                 <h3 className="font-bold text-[var(--ui-body-text)] text-lg">Facturación electrónica</h3>
               </div>
+              <p className="text-sm text-[var(--ui-muted)]">
+                Aquí se guarda el certificado, SOL, series y datos del emisor. Los comprobantes emitidos, el estado SUNAT y los archivos PDF/XML/CDR se ven en Informes → Facturación electrónica, donde también puede abrir e imprimir.
+              </p>
 
               <fieldset disabled={!canEditBillingBot} className="border-0 p-0 m-0 min-w-0 space-y-5">
               <BillingSunatManualForm
