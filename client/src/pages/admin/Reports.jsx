@@ -2290,9 +2290,16 @@ export default function Reports() {
                   <div className="ui-finance-kpi">
                     <p className="ui-finance-kpi__label">Valor inventario (actual)</p>
                     <p className="ui-finance-kpi__value">
-                      {formatCurrency(financeOverview.investment?.inventory_snapshot ?? financeOverview.investment?.inventory_total ?? 0)}
+                      {formatCurrency(financeOverview.investment?.inventory_products ?? financeOverview.investment?.inventory_snapshot ?? 0)}
                     </p>
-                    <p className="ui-finance-kpi__sub">Foto del stock; no resta en ganancia del rango</p>
+                    <p className="ui-finance-kpi__sub">Productos en almacén (precio de compra × stock)</p>
+                  </div>
+                  <div className="ui-finance-kpi">
+                    <p className="ui-finance-kpi__label">Valor de insumos (actual)</p>
+                    <p className="ui-finance-kpi__value">
+                      {formatCurrency(financeOverview.investment?.inventory_insumos ?? 0)}
+                    </p>
+                    <p className="ui-finance-kpi__sub">Stock de insumos × costo por uso</p>
                   </div>
                   <div className="ui-finance-kpi">
                     <p className="ui-finance-kpi__label">Compras (inventario)</p>
@@ -2321,7 +2328,7 @@ export default function Reports() {
                 </div>
                 <p className="text-xs text-[var(--ui-muted)]">
                   Rango: {financeOverview.filters?.from} — {financeOverview.filters?.to}. Utilidad bruta = ventas − inversión.
-                  Utilidad neta = bruta − gastos operativos (compras, pérdidas, pagos). El valor de inventario es una foto actual y no entra en esa fórmula.
+                  Utilidad neta = bruta − gastos operativos (compras, pérdidas, pagos). El valor de inventario y el de insumos son una foto actual y no entran en esa fórmula.
                 </p>
               </>
             )}

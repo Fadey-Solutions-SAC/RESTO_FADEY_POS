@@ -2163,7 +2163,13 @@ export default function Almacen() {
               <tr className="text-left border-b border-[color:var(--ui-border)]">
                 <th className="pb-2 font-medium text-[var(--ui-body-text)]">Insumo</th>
                 <th className="pb-2 font-medium text-[var(--ui-body-text)]">U.M.</th>
-                <th className="pb-2 font-medium text-[var(--ui-body-text)]">Costo por uso</th>
+                <th
+                  className="pb-2 font-medium text-[var(--ui-body-text)]"
+                  title="Costo según la cantidad que se usa: unidad, mililitro, litro, gramo o kilogramo"
+                >
+                  Costo por uso
+                  <span className="block text-[9px] font-normal ui-text-muted whitespace-nowrap">C/u.ml.l.g.kg.o</span>
+                </th>
                 <th className="pb-2 font-medium text-right text-[var(--ui-body-text)]">Stock (kg/L)</th>
                 <th className="pb-2 font-medium text-right text-[var(--ui-body-text)]">Stock (U)</th>
                 <th className="pb-2 font-medium text-right text-[var(--ui-body-text)]">Valor insumos</th>

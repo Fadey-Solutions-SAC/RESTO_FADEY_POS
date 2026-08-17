@@ -7,6 +7,7 @@ const { buildRankings, buildProductivityByUser } = require('./workProductivitySe
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
 const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurchaseDate');
 const { sumSalesCogsForRange } = require('../utils/salesCogs');
+const { insumoValorInventario } = require('../utils/insumoUnidadMedida');
 const {
   getPaidSalesEventSql,
   metricsFromPaidOrdersWhere,
@@ -391,8 +392,15 @@ function buildInventorySection(from, to) {
      LIMIT 15`
   );
   const valuation = queryOne(
-    `SELECT COALESCE(SUM(stock * COALESCE(price, 0)), 0) AS value FROM products WHERE is_active = 1`
+    `SELECT COALESCE(SUM(stock * COALESCE(purchase_price, price, 0)), 0) AS value FROM products WHERE is_active = 1`
   );
+  let insumosValue = 0;
+  try {
+    const insRows = queryAll('SELECT * FROM insumos WHERE activo = 1');
+    insumosValue = (insRows || []).reduce((sum, row) => sum + insumoValorInventario(row), 0);
+  } catch (_) {
+    insumosValue = 0;
+  }
   const consumption = queryOne(
     `SELECT COALESCE(SUM(ABS(quantity_change)), 0) AS qty FROM inventory_logs
      WHERE date(datetime(created_at, 'localtime')) = date('now', 'localtime') AND quantity_change < 0`
@@ -414,6 +422,7 @@ function buildInventorySection(from, to) {
     critical_stock: critical || [],
     out_of_stock: oos || [],
     inventory_value: Number(valuation?.value || 0),
+    insumos_value: insumosValue,
     daily_consumption_units: Number(consumption?.qty || 0),
     waste_total: Number(waste?.total || 0),
     recent_movements: movements || [],

@@ -27,6 +27,7 @@ const {
 } = require('../utils/salesAccountGrouping');
 const { INVENTORY_EXPENSE_PURCHASE_DATE_SQL } = require('../utils/inventoryPurchaseDate');
 const { sumSalesCogsForRange, sumSalesCogsForMonth, sumSalesCogsSinceDaysAgo } = require('../utils/salesCogs');
+const { insumoValorInventario } = require('../utils/insumoUnidadMedida');
 const { getOrderItemsWithProductionArea } = require('../services/orderItemsProductionService');
 const { filterKitchenOrdersForStation } = require('../utils/kitchenStationReady');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
@@ -1160,17 +1161,15 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
     `SELECT COALESCE(SUM(stock * purchase_price), 0) AS total FROM products
      WHERE is_active = 1 AND purchase_price IS NOT NULL AND purchase_price > 0`
   );
+  const inventoryProductsTotal = Number(inventoryInvestmentRow?.total || 0);
   let insumosInvestment = 0;
   try {
-    const insRow = queryOne(
-      `SELECT COALESCE(SUM(stock_actual * costo_promedio), 0) AS total FROM insumos WHERE activo = 1`
-    );
-    insumosInvestment = Number(insRow?.total || 0);
+    const insRows = queryAll('SELECT * FROM insumos WHERE activo = 1');
+    insumosInvestment = (insRows || []).reduce((sum, row) => sum + insumoValorInventario(row), 0);
   } catch (_) {
     insumosInvestment = 0;
   }
-  const inventoryInvestmentTotal =
-    Number(inventoryInvestmentRow?.total || 0) + insumosInvestment;
+  const inventoryInvestmentTotal = inventoryProductsTotal + insumosInvestment;
   const totalPurchases = Number(purchasesRow?.total || 0);
   const productCogs = Number(cogs.purchase_cogs || 0);
   const kardexCogs = Number(cogs.kardex_cogs || 0);
@@ -1201,8 +1200,10 @@ router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, r
       product_cogs_total: productCogs,
       kardex_cogs_total: kardexCogs,
       purchases_in_period: totalPurchases,
-      /** Valor actual del inventario (foto, no filtrada por fechas). */
-      inventory_snapshot: inventoryInvestmentTotal,
+      /** Valor actual del inventario de productos (foto, no filtrada por fechas). */
+      inventory_snapshot: inventoryProductsTotal,
+      inventory_products: inventoryProductsTotal,
+      inventory_insumos: insumosInvestment,
       inventory_total: inventoryInvestmentTotal,
     },
     purchases: { total: totalPurchases },

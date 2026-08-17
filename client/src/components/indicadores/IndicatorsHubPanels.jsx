@@ -358,8 +358,9 @@ export function IndicatorsInventoryPanel({ data }) {
   const inv = data?.inventory || {};
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <IndicatorStatCard label="Valor inventario" value={formatCurrency(inv.inventory_value)} />
+        <IndicatorStatCard label="Valor de insumos" value={formatCurrency(inv.insumos_value ?? 0)} />
         <IndicatorStatCard label="Stock crítico" value={inv.critical_count ?? 0} accent="amber" />
         <IndicatorStatCard label="Agotados" value={inv.oos_count ?? 0} accent="amber" />
         <IndicatorStatCard label="Consumo hoy (uds.)" value={inv.daily_consumption_units ?? 0} />

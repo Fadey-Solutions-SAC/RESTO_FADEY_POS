@@ -637,10 +637,6 @@ export default function LogisticaKardexModule() {
 
   return (
     <div className="logistica-kardex-module space-y-4 text-[var(--ui-body-text)]">
-      <p className="text-sm text-[var(--ui-body-text)]">
-        Insumos, compras, recetas, kardex, inventario de transformables (insumos) y no transformables (cuadre en almacén).
-        Las ventas en caja descuentan según recetas.
-      </p>
       <div className="flex flex-wrap gap-1.5 border-b border-[color:var(--ui-border)] pb-2">
         {TABS.map((t) => (
           <button
@@ -842,7 +838,7 @@ export default function LogisticaKardexModule() {
               </div>
               <div className="shrink-0">
                 <label className="block text-xs ui-text-muted mb-0.5">
-                  {isUnidadUm(insumoForm.unidad_medida) ? 'Costo por uso' : 'Precio compra'}
+                  {isUnidadUm(insumoForm.unidad_medida) ? 'Costo por uso (C/u.ml.l.g.kg.o)' : 'Precio compra'}
                 </label>
                 <input
                   type="text"
@@ -945,9 +941,10 @@ export default function LogisticaKardexModule() {
                   </th>
                   <th
                     className="p-2.5 text-right"
-                    title="Costo de cada porción o unidad de medida que se usa en recetas y ventas"
+                    title="Costo según la cantidad que se usa: unidad, mililitro, litro, gramo o kilogramo"
                   >
                     Costo por uso
+                    <span className="block text-[9px] font-normal ui-text-muted whitespace-nowrap">C/u.ml.l.g.kg.o</span>
                   </th>
                   <th className="p-2.5 text-right" title="Stock × costo por uso (valorizado de insumos)">
                     Valor insumos
@@ -1119,7 +1116,7 @@ export default function LogisticaKardexModule() {
                 )}
                 <div>
                   <label className="block text-[10px] ui-text-muted">
-                    {porUnidad ? 'Costo por uso' : 'Costo S/ U.M.'}
+                    {porUnidad ? 'Costo por uso (C/u.ml.l.g.kg.o)' : 'Costo S/ U.M.'}
                   </label>
                   <input
                     type="number"

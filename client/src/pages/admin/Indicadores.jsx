@@ -195,6 +195,58 @@ export default function Indicadores() {
       ) : null}
 
       <div className="flex items-center gap-1 flex-nowrap overflow-x-auto">
+        <div className="relative shrink-0 min-w-[7.5rem] w-[10.5rem]" ref={moduleRef}>
+          <button
+            type="button"
+            className={`${INDICADORES_CTRL} w-full justify-between bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]`}
+            onClick={() => setModuleOpen((open) => !open)}
+            aria-haspopup="listbox"
+            aria-expanded={moduleOpen}
+          >
+            <ActiveModuleIcon className="text-gold-600 shrink-0 text-sm" />
+            <span className="flex-1 text-left truncate">{activeModule.label}</span>
+            {activeModule.id === 'alertas' && alertCount > 0 ? (
+              <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px]">{alertCount}</span>
+            ) : null}
+            <MdKeyboardArrowDown className={`shrink-0 text-[var(--ui-muted)] transition ${moduleOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {moduleOpen ? (
+            <div
+              className="absolute z-20 mt-1 w-full min-w-[11.5rem] rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg py-1 max-h-80 overflow-auto"
+              role="listbox"
+            >
+              {TABS.map((t) => {
+                const Icon = t.icon;
+                const selected = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onClick={() => {
+                      selectTab(t.id);
+                      setModuleOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left ${
+                      selected
+                        ? 'bg-gold-600 text-white'
+                        : 'text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                    }`}
+                  >
+                    <Icon />
+                    <span className="flex-1">{t.label}</span>
+                    {t.id === 'alertas' && alertCount > 0 ? (
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${selected ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>
+                        {alertCount}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
         <IndicatorsDateFilters
           preset={preset}
           onPresetChange={handlePresetChange}
@@ -217,59 +269,6 @@ export default function Indicadores() {
         >
           <MdDownload /> Exportar
         </button>
-      </div>
-
-      <div className="relative min-w-[7.5rem] w-[11.5rem]" ref={moduleRef}>
-        <button
-          type="button"
-          className={`${INDICADORES_CTRL} w-full justify-between bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]`}
-          onClick={() => setModuleOpen((open) => !open)}
-          aria-haspopup="listbox"
-          aria-expanded={moduleOpen}
-        >
-          <ActiveModuleIcon className="text-gold-600 shrink-0 text-sm" />
-          <span className="flex-1 text-left truncate">{activeModule.label}</span>
-          {activeModule.id === 'alertas' && alertCount > 0 ? (
-            <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px]">{alertCount}</span>
-          ) : null}
-          <MdKeyboardArrowDown className={`shrink-0 text-[var(--ui-muted)] transition ${moduleOpen ? 'rotate-180' : ''}`} />
-        </button>
-        {moduleOpen ? (
-          <div
-            className="absolute z-20 mt-1 w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg py-1 max-h-80 overflow-auto"
-            role="listbox"
-          >
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const selected = tab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => {
-                    selectTab(t.id);
-                    setModuleOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left ${
-                    selected
-                      ? 'bg-gold-600 text-white'
-                      : 'text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-                  }`}
-                >
-                  <Icon />
-                  <span className="flex-1">{t.label}</span>
-                  {t.id === 'alertas' && alertCount > 0 ? (
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${selected ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>
-                      {alertCount}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
       </div>
 
       <div className={refreshing ? 'opacity-90 transition-opacity' : ''}>{renderPanel()}</div>

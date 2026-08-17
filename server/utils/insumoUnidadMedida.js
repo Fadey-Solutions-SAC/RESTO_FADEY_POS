@@ -50,6 +50,12 @@ function insumoEstaBajoMinimo(insumo) {
   return (uMin > 0 && uAct < uMin) || (sMin > 0 && sAct < sMin);
 }
 
+function insumoValorInventario(insumo) {
+  const costo = Number(insumo?.costo_promedio || 0) || 0;
+  if (isUnidadUm(insumo?.unidad_medida)) return insumoStockEnUnidades(insumo) * costo;
+  return (Number(insumo?.stock_actual || 0) || 0) * costo;
+}
+
 /**
  * Cantidad capturada en el plato → unidades de stock_actual.
  * kg/L: el dato se guarda en g/ml (uso de cocina) y se convierte a la U.M. base.
@@ -70,5 +76,6 @@ module.exports = {
   isMasaOrLitrajeUm,
   insumoStockEnUnidades,
   insumoEstaBajoMinimo,
+  insumoValorInventario,
   recipeQtyToStock,
 };

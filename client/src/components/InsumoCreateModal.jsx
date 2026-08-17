@@ -161,7 +161,7 @@ export default function InsumoCreateModal({ isOpen, onClose, onSaved, insumo = n
           </div>
           <div className="w-[6.5rem]">
             <label className="block text-xs text-[#9CA3AF] mb-0.5">
-              {isUnidadUm(form.unidad_medida) ? 'Costo por uso' : 'Precio compra'}
+              {isUnidadUm(form.unidad_medida) ? 'Costo por uso (C/u.ml.l.g.kg.o)' : 'Precio compra'}
             </label>
             <input
               type="text"
