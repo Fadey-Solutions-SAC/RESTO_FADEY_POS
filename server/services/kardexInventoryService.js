@@ -5,7 +5,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const { getKardexMetodoValorizacion } = require('./businessConfigService');
-const { isUnidadUm, recipeQtyToStock } = require('../utils/insumoUnidadMedida');
+const { isUnidadUm, isMasaOrLitrajeUm, recipeQtyToStock } = require('../utils/insumoUnidadMedida');
 const { resolveKardexInsumoLines } = require('../utils/productKardexInsumos');
 
 function normalizeKardexTimestamp(eventAt) {
@@ -28,26 +28,33 @@ function registrarEntrada(tx, { insumoId, cantidad, costoUnitario, referencia, r
   if (cant <= 0 || Number.isNaN(cant)) throw new Error('La cantidad de entrada debe ser mayor a 0');
   if (costoN < 0 || Number.isNaN(costoN)) throw new Error('Costo unitario inválido');
 
-  const uAnt = Number(ins.stock_unidades != null ? ins.stock_unidades : 0) || 0;
+  const porUnidad = isUnidadUm(ins.unidad_medida);
+  const stockAnt = Number(ins.stock_actual || 0);
+  let uAnt = Number(ins.stock_unidades != null ? ins.stock_unidades : 0) || 0;
+  if (porUnidad && uAnt < 1e-12 && stockAnt > 1e-12) uAnt = stockAnt;
+
   const hasUnidadesMov = unidadesIngreso != null;
   const uInMov = hasUnidadesMov ? Math.max(0, Number(unidadesIngreso) || 0) : 0;
-  const uRes = uAnt + (hasUnidadesMov ? uInMov : 0);
+  const unitsAdd = porUnidad ? (uInMov > 0 ? uInMov : cant) : (hasUnidadesMov ? uInMov : 0);
+  const qtyAdd = porUnidad ? unitsAdd : cant;
+  const uRes = uAnt + unitsAdd;
   const kpuAnt = Number(ins.kg_por_unidad != null ? ins.kg_por_unidad : 0) || 0;
   let kpuN = kpuAnt;
-  if (uRes > 1e-9) {
-    kpuN = (kpuAnt * uAnt + cant) / uRes;
-  } else {
-    kpuN = 0;
+  if (!porUnidad) {
+    if (uRes > 1e-9) {
+      kpuN = (kpuAnt * uAnt + cant) / uRes;
+    } else {
+      kpuN = 0;
+    }
   }
 
-  const stockAnt = Number(ins.stock_actual || 0);
   const costoAnt = Number(ins.costo_promedio || 0);
-  const stockRes = stockAnt + cant;
+  const stockRes = stockAnt + qtyAdd;
   const nuevoCosto =
-    stockRes > 0 ? (stockAnt * costoAnt + cant * costoN) / stockRes : costoN;
-  const costoTotal = cant * costoN;
+    stockRes > 0 ? (stockAnt * costoAnt + qtyAdd * costoN) / stockRes : costoN;
+  const costoTotal = qtyAdd * costoN;
 
-  if (hasUnidadesMov) {
+  if (porUnidad || hasUnidadesMov) {
     tx.run(
       `UPDATE insumos SET stock_actual = ?, stock_unidades = ?, costo_promedio = ?, kg_por_unidad = ?, updated_at = datetime('now') WHERE id = ?`,
       [stockRes, uRes, nuevoCosto, kpuN, insumoId]
@@ -69,7 +76,7 @@ function registrarEntrada(tx, { insumoId, cantidad, costoUnitario, referencia, r
     [
       kid,
       insumoId,
-      cant,
+      qtyAdd,
       costoN,
       costoTotal,
       stockAnt,
@@ -98,7 +105,10 @@ function registrarSalida(tx, { insumoId, cantidad, unidadesSalida, soloMasa, ref
   if (!ins) throw new Error(`Insumo no encontrado: ${insumoId}`);
   if (!Number(ins.activo)) throw new Error(`Insumo inactivo: ${ins.nombre}`);
 
-  const uAnt = Number(ins.stock_unidades != null ? ins.stock_unidades : 0) || 0;
+  const porUnidad = isUnidadUm(ins.unidad_medida);
+  const stockAnt = Number(ins.stock_actual || 0);
+  let uAnt = Number(ins.stock_unidades != null ? ins.stock_unidades : 0) || 0;
+  if (porUnidad && uAnt < 1e-12 && stockAnt > 1e-12) uAnt = stockAnt;
   const kpu = Number(ins.kg_por_unidad != null ? ins.kg_por_unidad : 0) || 0;
   const useUnidadExacta = unidadesSalida != null && unidadesSalida !== '' && Number.isFinite(Number(unidadesSalida));
   const dUin = useUnidadExacta ? Math.max(0, Number(unidadesSalida)) : 0;
@@ -116,7 +126,6 @@ function registrarSalida(tx, { insumoId, cantidad, unidadesSalida, soloMasa, ref
     if (need <= 0 || Number.isNaN(need)) throw new Error('La cantidad de salida debe ser mayor a 0');
   }
 
-  const stockAnt = Number(ins.stock_actual || 0);
   if (stockAnt + 1e-9 < need) {
     throw new Error(
       `Stock insuficiente para «${ins.nombre}»: hay ${stockAnt} ${ins.unidad_medida}, se requieren ${need}`
@@ -127,6 +136,13 @@ function registrarSalida(tx, { insumoId, cantidad, unidadesSalida, soloMasa, ref
   let dU = 0;
   if (soloKilos) {
     dU = 0;
+  } else if (porUnidad) {
+    dU = useUnidadExacta && dUin > 0 ? dUin : need;
+    if (dU - uAnt > 1e-4) {
+      throw new Error(
+        `Unidades de «${ins.nombre}» insuficientes: se requieren ${dU.toFixed(3)} U, hay ${uAnt.toFixed(3)} U.`
+      );
+    }
   } else if (useUnidadExacta && dUin > 0 && kpu > 1e-12) {
     dU = dUin;
   } else if (kpu > 1e-12 && uAnt > 1e-12) {
@@ -273,9 +289,23 @@ function salidaUnKardexLine(tx, line, qtyLine, { referenciaId, userId, eventAt }
   const insumoId = String(line?.insumo_id || '').trim();
   if (!insumoId) return { skipped: true, reason: 'sin_insumo' };
   const insRow = tx.queryOne('SELECT unidad_medida, kg_por_unidad, stock_unidades, stock_actual FROM insumos WHERE id = ?', [insumoId]);
-  const modo = String(line.modo || 'unidad').toLowerCase();
   const umInsumo = insRow ? insRow.unidad_medida : '';
-  const asUnidades = isUnidadUm(umInsumo) || modo !== 'peso';
+  if (isMasaOrLitrajeUm(umInsumo)) {
+    const q = Number(line.qty) || 0;
+    const need = recipeQtyToStock(q, umInsumo) * qtyLine;
+    if (need <= 0) return { skipped: true, reason: 'sin_masa' };
+    registrarSalida(tx, {
+      insumoId,
+      cantidad: need,
+      soloMasa: true,
+      referencia: 'venta_masa',
+      referenciaId,
+      userId,
+      eventAt,
+    });
+    return { skipped: false };
+  }
+  const asUnidades = isUnidadUm(umInsumo) || String(line.modo || 'unidad').toLowerCase() !== 'peso';
   if (!asUnidades) {
     const q = Number(line.qty) || 0;
     const need = recipeQtyToStock(q, umInsumo) * qtyLine;
@@ -364,6 +394,29 @@ function aplicarSalidasVentaPedido(tx, orderId, userId, eventAt) {
   const movAt = eventAt || null;
   const items = tx.queryAll('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
   for (const line of items) {
+    if (String(line.variant_name || '').toLowerCase() === 'combo') {
+      const combo = tx.queryOne(
+        `SELECT id FROM combos WHERE name = ? AND IFNULL(active, 1) = 1 ORDER BY updated_at DESC LIMIT 1`,
+        [String(line.product_name || '').trim()],
+      );
+      const comps = combo?.id
+        ? tx.queryAll('SELECT product_id, quantity FROM combo_items WHERE combo_id = ?', [combo.id])
+        : [];
+      if (comps.length) {
+        const qtyCombo = Number(line.quantity || 0);
+        for (const c of comps) {
+          salidaInsumosPorProducto(tx, {
+            productId: c.product_id,
+            quantity: Number(c.quantity || 0) * qtyCombo,
+            referencia: 'venta',
+            referenciaId: orderId,
+            userId,
+            eventAt: movAt,
+          });
+        }
+        continue;
+      }
+    }
     salidaInsumosPorProducto(tx, {
       productId: line.product_id,
       quantity: line.quantity,

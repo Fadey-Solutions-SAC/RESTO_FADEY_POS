@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSocket } from '../../hooks/useSocket';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { api, formatCurrency, formatDate, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
+import { api, formatCurrency, formatDate, formatDateKey, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
 import { UI_BADGE } from '../../utils/uiBadges';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -9,8 +9,24 @@ import { MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline, MdEd
 import Modal from '../../components/Modal';
 import LogisticaKardexModule from '../../components/LogisticaKardexModule';
 import InsumoCreateModal from '../../components/InsumoCreateModal';
+import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
+import {
+  isUnidadUm,
+  insumoStockEnUnidades,
+  insumoStockEnMasa,
+  insumoEstaBajoMinimo,
+  insumoValorInventario,
+} from '../../utils/insumoUnidadMedida';
 import { isProductLowStock, productStockStatus, effectiveProductMinStock, DEFAULT_NON_TRANSFORMED_MIN_STOCK } from '../../utils/productStockDisplay';
+import { INFORME_EXCEL_NAVY, INFORME_EXCEL_LABEL, INFORME_EXCEL_TOTAL } from '../../utils/informeExcelHtml';
+import {
+  downloadBlobFile,
+  downloadExcelFile,
+  buildPurchaseExcelHtml,
+  buildPurchaseTxt,
+  mapPurchaseInformeRows,
+} from '../../utils/inventoryCuadreExport';
 
 const WAREHOUSE_CATEGORY_NAMES = {
   products: 'PRODUCTOS ALMACEN',
@@ -88,13 +104,9 @@ function insumoUnidadMedidaDisplay(insumo) {
 
 /** Estado visual alineado con KPI stock bajo del kardex. */
 function insumoEstadoStock(insumo) {
-  const uMin = Number(insumo.minimo_unidades || 0);
-  const uAct = Number(insumo.stock_unidades ?? 0);
-  const sMin = Number(insumo.stock_minimo || 0);
-  const sAct = Number(insumo.stock_actual ?? 0);
-  const lowU = uMin > 0 && uAct < uMin;
-  const lowM = sMin > 0 && sAct < sMin;
-  if (lowU || lowM) return 'bajo';
+  if (insumoEstaBajoMinimo(insumo)) return 'bajo';
+  const uAct = insumoStockEnUnidades(insumo);
+  const sAct = isUnidadUm(insumo?.unidad_medida) ? uAct : Number(insumo.stock_actual ?? 0);
   if (sAct <= 1e-9 && uAct <= 1e-9) return 'agotado';
   return 'normal';
 }
@@ -256,8 +268,33 @@ const ALMACEN_VIEWS = [
   { id: 'ir_modulo_logistica', label: 'Inventario y kardex' },
   { id: 'requerimiento', label: 'Requerimiento' },
   { id: 'recepcion', label: 'Recepción' },
-  { id: 'ir_modulo_gastos', label: 'Ir a módulo de gastos' },
+  { id: 'ir_modulo_gastos', label: 'Gastos' },
 ];
+
+function downloadGastoGroup(group, format = 'excel', { usuario } = {}) {
+  if (!group?.items?.length) {
+    toast.error('No hay líneas para descargar');
+    return;
+  }
+  const idShort = String(group.id || 'gasto').slice(0, 8);
+  const dateKey = String(group.purchase_date || group.created_at || '').slice(0, 10);
+  const baseName = `gasto-${idShort}-${dateKey || new Date().toISOString().slice(0, 10)}`;
+  const opts = {
+    formatCurrency,
+    formatDate,
+    formatDateKey,
+    usuario,
+    title: 'INFORME DE GASTOS',
+    sheetName: 'Gastos',
+  };
+  if (format === 'txt') {
+    downloadBlobFile(`${baseName}.txt`, buildPurchaseTxt(group, opts));
+    toast.success('Gasto descargado (TXT)');
+    return;
+  }
+  downloadExcelFile(baseName, buildPurchaseExcelHtml(group, opts));
+  toast.success('Gasto descargado (Excel)');
+}
 
 export default function Almacen() {
   const { user } = useAuth();
@@ -464,6 +501,9 @@ export default function Almacen() {
 
   useSocket('inventory-update', () => {
     void load();
+    if (activeView === 'ir_modulo_gastos') {
+      api.get('/inventory/expenses').then((expenses) => setExpenseHistory(expenses || [])).catch(() => {});
+    }
   });
   useSocket('staff-data-update', (p) => {
     if (p?.domain === 'catalog') void load();
@@ -560,18 +600,18 @@ export default function Almacen() {
     (p) => p.process === 'non_transformed' && isProductLowStock(p.stock, p.min_stock)
   );
   const lowFromKardex = (kardexBajoMin || []).map((i) => {
+    const porUnidad = isUnidadUm(i.unidad_medida);
     const uMin = Number(i.minimo_unidades) || 0;
     const sMin = Number(i.stock_minimo) || 0;
-    const uAct = Number(i.stock_unidades) || 0;
+    const uAct = insumoStockEnUnidades(i);
     const sAct = Number(i.stock_actual) || 0;
-    const bajoU = uMin > 0 && uAct < uMin;
     return {
       id: i.id,
       name: i.nombre,
-      stock: bajoU ? uAct : sAct,
-      minimo: bajoU ? uMin : sMin,
+      stock: porUnidad || (uMin > 0 && uAct < uMin) ? uAct : sAct,
+      minimo: porUnidad || (uMin > 0 && uAct < uMin) ? uMin : sMin,
       isKardex: true,
-      kardexPorU: bajoU,
+      kardexPorU: porUnidad || (uMin > 0 && uAct < uMin),
       umed: String(i.unidad_medida || 'kg').replace(/[0-9]/g, '').trim() || 'kg',
     };
   });
@@ -668,17 +708,15 @@ export default function Almacen() {
       )
     : [];
   const insumosTotalValue = insumosPorVista.reduce(
-    (s, i) => s + Number(i.stock_actual || 0) * Number(i.costo_promedio || 0),
+    (s, i) => s + insumoValorInventario(i),
     0
   );
-  const insumosLowCount = insumosPorVista.filter((i) => {
-    const uMin = Number(i.minimo_unidades || 0);
-    const uAct = Number(i.stock_unidades || 0);
-    const sMin = Number(i.stock_minimo || 0);
-    const sAct = Number(i.stock_actual || 0);
-    return (uMin > 0 && uAct < uMin) || (sMin > 0 && sAct < sMin);
-  }).length;
-  const insumosTotalUnits = insumosPorVista.reduce((s, i) => s + Number(i.stock_unidades || 0), 0);
+  const insumosTotalValueAll = insumosActivos.reduce(
+    (s, i) => s + insumoValorInventario(i),
+    0
+  );
+  const insumosLowCount = insumosPorVista.filter((i) => insumoEstaBajoMinimo(i)).length;
+  const insumosTotalUnits = insumosPorVista.reduce((s, i) => s + insumoStockEnUnidades(i), 0);
   const totalValue = selectedIsInsumosWarehouse
     ? insumosTotalValue
     : productsForSelectedWarehouse.reduce((s, p) => s + (p.price * p.stock), 0);
@@ -710,6 +748,7 @@ export default function Almacen() {
       return acc;
     }, {})
   ).sort((a, b) => new Date(b.purchase_date || b.created_at || 0) - new Date(a.purchase_date || a.created_at || 0));
+  const reportUsuario = user?.full_name || user?.username || '—';
 
   const startExpenseGroupEdit = (group) => {
     const draft = {};
@@ -1264,23 +1303,14 @@ export default function Almacen() {
   };
 
   if (loading) return <div className="flex justify-center py-16"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>;
-  const activeViewLabel = almacenViewsForPlan.find(option => option.id === activeView)?.label || 'Movimiento interno';
 
   if (activeView !== 'movimiento_interno') {
     return (
       <>
       <div>
-        <div className="flex items-center justify-between mb-5">
-          <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">Control De Recursos · {activeViewLabel}</h1>
-        </div>
-
         {activeView === 'requerimiento' && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-            <h3 className="font-bold rf-section-title mb-2">Requerimiento interno</h3>
-            <p className="ui-text-muted mb-4">
-              Genere una plantilla CSV para compras. Puede incluir solo productos bajo stock mínimo o{' '}
-              <strong>todos los no transformables</strong> de una categoría (cervezas, snacks, etc.).
-            </p>
+            <h3 className="font-bold rf-section-title mb-4">Requerimiento interno</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Alcance</label>
@@ -1326,11 +1356,7 @@ export default function Almacen() {
 
         {activeView === 'recepcion' && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-            <h3 className="font-bold rf-section-title mb-2">Recepción de mercadería</h3>
-            <p className="ui-text-muted mb-4">
-              Se usa el último requerimiento descargado. Ingresa cantidad y costo para recepcionar compra.
-              Puedes <strong>agregar productos adicionales</strong> no incluidos en el requerimiento (existente o nuevo).
-            </p>
+            <h3 className="font-bold rf-section-title mb-4">Recepción de mercadería</h3>
             {!latestRequirement?.items?.length ? (
               <div className="text-sm ui-text-muted bg-slate-50 border border-slate-200 rounded-lg p-4">
                 No hay requerimientos descargados. Primero crea uno en Requerimiento.
@@ -1445,6 +1471,9 @@ export default function Almacen() {
                               ? (() => {
                                   const k = kardexInsumos.find((x) => x.id === line.product_id);
                                   if (!k) return '—';
+                                  if (isUnidadUm(k.unidad_medida)) {
+                                    return `${formatInsumoQty(insumoStockEnUnidades(k))} U`;
+                                  }
                                   return formatInsumoWithUnit(k.stock_actual, insumoUnidadMedidaDisplay(k));
                                 })()
                               : (products.find((p) => p.id === line.product_id)?.stock ?? '—')}
@@ -1534,128 +1563,159 @@ export default function Almacen() {
         )}
 
         {activeView === 'ir_modulo_gastos' && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-            <h3 className="font-bold rf-section-title mb-2">Módulo de gastos</h3>
-            <p className="ui-text-muted mb-4">
-              Gastos separados por compra, con fecha y detalle de productos recepcionados.
-              Para guardar cambios se solicita la contraseña de un usuario administrador.
-            </p>
-            <div className="space-y-4">
-              {expenseGroups.length === 0 && (
-                <p className="text-sm ui-text-muted">Aún no hay gastos registrados.</p>
-              )}
-              {expenseGroups.map(group => {
+          <div className="space-y-4">
+            {expenseGroups.length === 0 ? (
+              <div className="card">
+                <p className="text-[var(--ui-muted)]">No hay gastos registrados.</p>
+              </div>
+            ) : (
+              expenseGroups.map((group) => {
                 const isEditing = expenseEditGroupId === group.id;
-                const displayTotal = isEditing ? expenseEditDraftTotal(group) : group.total;
+                const rows = isEditing
+                  ? (group.items || []).map((item) => {
+                    const qty = Number(expenseEditDraft[item.id]?.quantity ?? item.quantity ?? 0);
+                    const unitario = Number(expenseEditDraft[item.id]?.unit_cost ?? item.unit_cost ?? 0);
+                    return {
+                      id: item.id,
+                      producto: String(item.product_name || 'Producto').trim() || 'Producto',
+                      cantidad: qty,
+                      unitario,
+                      total: qty * unitario,
+                    };
+                  })
+                  : mapPurchaseInformeRows(group);
+                const qtyTotal = rows.reduce((s, r) => s + Number(r.cantidad || 0), 0);
+                const grand = isEditing
+                  ? expenseEditDraftTotal(group)
+                  : (rows.reduce((s, r) => s + Number(r.total || 0), 0) || Number(group.total || 0));
+                const period = formatDateKey(String(group.purchase_date || group.created_at || '').slice(0, 10))
+                  || formatDate(group.purchase_date || group.created_at)
+                  || '—';
                 return (
-                <div key={group.id} className="border border-slate-200 rounded-xl p-4 bg-slate-50/60">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <p className="font-semibold rf-section-title">
-                      Compra {group.requirement_id ? `· Req ${group.requirement_id.slice(0, 8)}` : ''}
-                    </p>
-                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                      <p className="text-xs font-medium text-[var(--ui-body-text)]">
-                        Compra: {formatDate(group.purchase_date || group.created_at)}
-                      </p>
-                      <p className="text-xs ui-text-muted">Registro: {formatDate(group.created_at)}</p>
+                  <div key={group.id} className="card overflow-x-auto p-0">
+                    <div className="flex items-center justify-end gap-2 px-3 pt-3 flex-wrap">
+                      <DownloadExcelTxtButtons
+                        disabled={isEditing}
+                        onExcel={() => downloadGastoGroup(group, 'excel', { usuario: reportUsuario })}
+                        onTxt={() => downloadGastoGroup(group, 'txt', { usuario: reportUsuario })}
+                        excelTitle="Descargar informe de gastos en Excel"
+                        txtTitle="Descargar informe de gastos en TXT"
+                      />
                       {!isEditing ? (
                         <button
                           type="button"
                           onClick={() => startExpenseGroupEdit(group)}
-                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-slate-200 text-slate-800 hover:bg-slate-300"
+                          className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-surface-2)]"
                         >
                           <MdEdit className="text-sm" /> Editar
                         </button>
                       ) : (
                         <>
-                          <button type="button" onClick={cancelExpenseGroupEdit} className="text-xs px-2.5 py-1.5 rounded-lg btn-secondary">
+                          <button type="button" onClick={cancelExpenseGroupEdit} className="text-xs px-3 py-1.5 rounded-lg btn-secondary">
                             Cancelar
                           </button>
-                          <button type="button" onClick={() => requestSaveExpenseGroup(group)} className="text-xs px-2.5 py-1.5 rounded-lg btn-primary">
+                          <button type="button" onClick={() => requestSaveExpenseGroup(group)} className="text-xs px-3 py-1.5 rounded-lg btn-primary">
                             Guardar
                           </button>
                         </>
                       )}
                     </div>
-                  </div>
-                  {isEditing ? (
-                    <div className="mb-3 space-y-3">
-                      <div>
-                        <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Fecha de compra</label>
-                        <input
-                          type="date"
-                          className="input-field text-sm py-1.5 w-auto max-w-xs"
-                          value={expenseEditPurchaseDate}
-                          onChange={(e) => setExpenseEditPurchaseDate(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Notas de la compra</label>
-                        <input
-                          className="input-field text-sm py-1.5"
-                          value={expenseEditNotes}
-                          onChange={(e) => setExpenseEditNotes(e.target.value)}
-                          placeholder="Observaciones (opcional)"
-                        />
-                      </div>
+                    <div
+                      className="text-white text-center font-bold py-4 text-lg uppercase tracking-wide"
+                      style={{ background: INFORME_EXCEL_NAVY }}
+                    >
+                      Informe de gastos
                     </div>
-                  ) : group.notes ? (
-                    <p className="text-xs ui-text-muted mb-2">{group.notes}</p>
-                  ) : null}
-                  <div className="grid grid-cols-12 text-xs ui-text-muted border-b border-slate-200 pb-1 mb-1.5">
-                    <div className="col-span-7">Lista de productos</div>
-                    <div className="col-span-3 text-right">Precio por unidad</div>
-                    <div className="col-span-2 text-right">Cantidad comprada</div>
-                  </div>
-                  <div className="space-y-1.5">
-                    {group.items.map(item => (
-                      <div key={item.id} className="text-sm grid grid-cols-12 items-center gap-1 border-b border-slate-200/70 pb-1">
-                        <span className="col-span-7 text-slate-700">{item.product_name || 'Producto'}</span>
+                    <div className="grid grid-cols-[8rem_minmax(0,1fr)] text-sm border-b border-[#808080] mt-2">
+                      <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Periodo</div>
+                      <div className="px-3 py-1.5 text-center">
                         {isEditing ? (
-                          <>
-                            <div className="col-span-3">
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                className="input-field py-1 text-sm text-right"
-                                value={expenseEditDraft[item.id]?.unit_cost ?? ''}
-                                onChange={(e) => setExpenseEditDraft((prev) => ({
-                                  ...prev,
-                                  [item.id]: { ...prev[item.id], unit_cost: e.target.value },
-                                }))}
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <input
-                                type="number"
-                                min="0"
-                                step="1"
-                                className="input-field py-1 text-sm text-right"
-                                value={expenseEditDraft[item.id]?.quantity ?? ''}
-                                onChange={(e) => setExpenseEditDraft((prev) => ({
-                                  ...prev,
-                                  [item.id]: { ...prev[item.id], quantity: e.target.value },
-                                }))}
-                              />
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <span className="col-span-3 text-right text-slate-700">{formatCurrency(item.unit_cost)}</span>
-                            <span className="col-span-2 text-right text-slate-700">{item.quantity}</span>
-                          </>
-                        )}
+                          <input
+                            type="date"
+                            className="input-field text-sm py-1 w-auto max-w-xs mx-auto"
+                            value={expenseEditPurchaseDate}
+                            onChange={(e) => setExpenseEditPurchaseDate(e.target.value)}
+                          />
+                        ) : period}
                       </div>
-                    ))}
+                      <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Usuario</div>
+                      <div className="px-3 py-1.5 text-center">{reportUsuario}</div>
+                      {isEditing || group.notes ? (
+                        <>
+                          <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Notas</div>
+                          <div className="px-3 py-1.5 text-center">
+                            {isEditing ? (
+                              <input
+                                className="input-field text-sm py-1"
+                                value={expenseEditNotes}
+                                onChange={(e) => setExpenseEditNotes(e.target.value)}
+                                placeholder="Observaciones (opcional)"
+                              />
+                            ) : group.notes}
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-white text-center" style={{ background: INFORME_EXCEL_NAVY }}>
+                          <th className="py-2 px-2 font-semibold text-left">Producto</th>
+                          <th className="py-2 px-2 font-semibold text-right">Cantidad</th>
+                          <th className="py-2 px-2 font-semibold text-right">Precio unitario</th>
+                          <th className="py-2 px-2 font-semibold text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => (
+                          <tr key={row.id} className="border-b border-[#808080]">
+                            <td className="py-2 px-2">{row.producto}</td>
+                            <td className="py-2 px-2 text-right tabular-nums">
+                              {isEditing ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  className="input-field py-1 text-sm text-right"
+                                  value={expenseEditDraft[row.id]?.quantity ?? ''}
+                                  onChange={(e) => setExpenseEditDraft((prev) => ({
+                                    ...prev,
+                                    [row.id]: { ...prev[row.id], quantity: e.target.value },
+                                  }))}
+                                />
+                              ) : row.cantidad}
+                            </td>
+                            <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">
+                              {isEditing ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  className="input-field py-1 text-sm text-right"
+                                  value={expenseEditDraft[row.id]?.unit_cost ?? ''}
+                                  onChange={(e) => setExpenseEditDraft((prev) => ({
+                                    ...prev,
+                                    [row.id]: { ...prev[row.id], unit_cost: e.target.value },
+                                  }))}
+                                />
+                              ) : formatCurrency(row.unitario)}
+                            </td>
+                            <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="font-bold border-t border-[#808080]">
+                          <td className="py-2.5 px-2" style={{ background: INFORME_EXCEL_TOTAL }}>TOTAL</td>
+                          <td className="py-2.5 px-2 text-right tabular-nums">{qtyTotal}</td>
+                          <td />
+                          <td className="py-2.5 px-2 text-right tabular-nums">{formatCurrency(grand)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
                   </div>
-                  <div className="mt-3 flex justify-end">
-                    <p className="font-bold text-red-700">Total compra: {formatCurrency(displayTotal)}</p>
-                  </div>
-                </div>
-              );
-              })}
-            </div>
+                );
+              })
+            )}
           </div>
         )}
 
@@ -1962,8 +2022,6 @@ export default function Almacen() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">Control De Recursos</h1>
-
       <div className="flex flex-wrap items-stretch gap-3 mb-5">
         {warehouses.map(w => {
           const linkedProducts = isInsumosWarehouse(w)
@@ -2047,11 +2105,12 @@ export default function Almacen() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-5">
         <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Total Ítems</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{selectedIsInsumosWarehouse ? insumosPorVista.length : productsForSelectedWarehouse.length}</p></div>
-        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Valor del Inventario</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totalValue)}</p></div>
-        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Inversión de inventario</p><p className="text-xl font-bold text-violet-400">{formatCurrency(totalInventoryInvestment)}</p></div>
-        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Stock Bajo</p><p className="text-xl font-bold text-red-400">{selectedIsInsumosWarehouse ? insumosLowCount : lowStock.length}</p></div>
+        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Valor del Inventario</p><p className="text-xl font-bold ui-text-success">{formatCurrency(totalValue)}</p></div>
+        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Valor de insumos</p><p className="text-xl font-bold ui-text-success">{formatCurrency(insumosTotalValueAll)}</p></div>
+        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Inversión de inventario</p><p className="text-xl font-bold" style={{ color: 'var(--ui-accent)' }}>{formatCurrency(totalInventoryInvestment)}</p></div>
+        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Stock Bajo</p><p className="text-xl font-bold ui-text-danger">{selectedIsInsumosWarehouse ? insumosLowCount : lowStock.length}</p></div>
         <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Unidades Totales</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{selectedIsInsumosWarehouse ? insumosTotalUnits : productsForSelectedWarehouse.reduce((s, p) => s + p.stock, 0)}</p></div>
       </div>
       {lowStock.length > 0 && (
@@ -2104,10 +2163,10 @@ export default function Almacen() {
               <tr className="text-left border-b border-[color:var(--ui-border)]">
                 <th className="pb-2 font-medium text-[var(--ui-body-text)]">Insumo</th>
                 <th className="pb-2 font-medium text-[var(--ui-body-text)]">U.M.</th>
-                <th className="pb-2 font-medium text-[var(--ui-body-text)]">Costo prom.</th>
+                <th className="pb-2 font-medium text-[var(--ui-body-text)]">Costo por uso</th>
                 <th className="pb-2 font-medium text-right text-[var(--ui-body-text)]">Stock (kg/L)</th>
                 <th className="pb-2 font-medium text-right text-[var(--ui-body-text)]">Stock (U)</th>
-                <th className="pb-2 font-medium text-right text-[var(--ui-body-text)]">Valor</th>
+                <th className="pb-2 font-medium text-right text-[var(--ui-body-text)]">Valor insumos</th>
                 <th className="pb-2 font-medium text-[var(--ui-body-text)]">Estado</th>
                 <th className="pb-2 font-medium text-right text-[var(--ui-body-text)] w-40"></th>
               </tr>
@@ -2115,9 +2174,10 @@ export default function Almacen() {
             <tbody>
               {insumosTablaFiltrados.map((i) => {
                 const um = insumoUnidadMedidaDisplay(i);
-                const sAct = Number(i.stock_actual || 0);
-                const uAct = Number(i.stock_unidades ?? 0);
-                const valor = sAct * Number(i.costo_promedio || 0);
+                const porUnidad = isUnidadUm(i.unidad_medida);
+                const sAct = insumoStockEnMasa(i);
+                const uAct = insumoStockEnUnidades(i);
+                const valor = insumoValorInventario(i);
                 const est = insumoEstadoStock(i);
                 const badgeClass =
                   est === 'normal'
@@ -2140,13 +2200,13 @@ export default function Almacen() {
                       </span>
                       {i.nombre}
                     </td>
-                    <td className="py-3 text-[var(--ui-body-text)]">{um}</td>
+                    <td className="py-3 text-[var(--ui-body-text)]">{porUnidad ? 'Unidad' : um}</td>
                     <td className="py-3 text-[var(--ui-body-text)] tabular-nums">{formatCurrency(Number(i.costo_promedio || 0))}</td>
                     <td className="py-3 text-right text-[var(--ui-body-text)] tabular-nums">
-                      {formatInsumoWithUnit(sAct, um)}
+                      {porUnidad ? '—' : formatInsumoWithUnit(sAct, um)}
                     </td>
                     <td className="py-3 text-right text-[var(--ui-body-text)] tabular-nums">
-                      {Number(i.kg_por_unidad || 0) > 1e-12 ? `${formatInsumoQty(uAct)} U` : '—'}
+                      {porUnidad || Number(i.kg_por_unidad || 0) > 1e-12 ? `${formatInsumoQty(uAct)} U` : '—'}
                     </td>
                     <td className="py-3 text-right text-[var(--ui-body-text)] tabular-nums">{formatCurrency(valor)}</td>
                     <td className="py-3">

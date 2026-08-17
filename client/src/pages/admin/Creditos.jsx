@@ -64,8 +64,7 @@ export default function Creditos() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold rf-page-title rf-module-page-title">Créditos</h1>
+      <div className="flex items-center justify-end mb-5">
         <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2"><MdAdd /> Nuevo Crédito</button>
       </div>
 

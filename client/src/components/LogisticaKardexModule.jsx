@@ -17,6 +17,10 @@ import {
   isMasaOrLitrajeUm,
   isUnidadUm,
   normalizeInsumoUm,
+  insumoStockEnUnidades,
+  insumoStockEnMasa,
+  insumoEstaBajoMinimo,
+  insumoValorInventario,
 } from '../utils/insumoUnidadMedida';
 import toast from 'react-hot-toast';
 import { MdWarning, MdInventory2, MdAdd, MdList, MdExpandMore, MdExpandLess } from 'react-icons/md';
@@ -44,6 +48,12 @@ const EMPTY_INSUMO_FORM = () => ({
   minimo_kg: '0',
   activo: true,
 });
+
+function insumoOptionStockLabel(i) {
+  const um = (String(i?.unidad_medida || 'kg').replace(/[0-9]/g, '') || 'kg').trim() || 'kg';
+  if (isUnidadUm(um)) return `${i.nombre} (${formatInsumoQty(insumoStockEnUnidades(i))} U)`;
+  return `${i.nombre} (${formatInsumoWithUnit(i.stock_actual, um)} · ${formatInsumoQty(i.stock_unidades != null ? i.stock_unidades : 0)} U)`;
+}
 
 function parseWarehouseMeta(description, fallbackStock) {
   const raw = description || '';
@@ -80,15 +90,15 @@ function InventarioFisicoResumenLine({ f, b, s }) {
   }
   if (nf === 0 && ns === 0) {
     return (
-      <span className="text-emerald-400/95">
+      <span className="ui-text-success">
         Está bien: coincide con kardex ({nb} {nb === 1 ? 'ítem' : 'ítems'})
       </span>
     );
   }
   const parts = [];
-  if (nf > 0) parts.push({ key: 'f', node: <span className="text-rose-400 font-medium">Falta: {nf}</span> });
-  if (nb > 0) parts.push({ key: 'b', node: <span className="text-emerald-400/90">Bien: {nb}</span> });
-  if (ns > 0) parts.push({ key: 's', node: <span className="text-sky-400/95 font-medium">Sobra: {ns}</span> });
+  if (nf > 0) parts.push({ key: 'f', node: <span className="ui-text-danger font-medium">Falta: {nf}</span> });
+  if (nb > 0) parts.push({ key: 'b', node: <span className="ui-text-success">Bien: {nb}</span> });
+  if (ns > 0) parts.push({ key: 's', node: <span className="ui-text-info font-medium">Sobra: {ns}</span> });
   return (
     <span className="text-[var(--ui-body-text)]">
       {parts.map((p, i) => (
@@ -179,6 +189,14 @@ export default function LogisticaKardexModule() {
     [insumos]
   );
   const insumosListaActiva = insumoAreaTab === 'bar' ? insumosBar : insumosCocina;
+  const valorInsumosLista = useMemo(
+    () => insumosListaActiva.reduce((s, i) => s + insumoValorInventario(i), 0),
+    [insumosListaActiva]
+  );
+  const valorInsumosTotal = useMemo(
+    () => insumos.reduce((s, i) => s + insumoValorInventario(i), 0),
+    [insumos]
+  );
   const insumosCompraFiltrados = compraAreaTab === 'bar' ? insumosBar : insumosCocina;
   const insumosInvFisicoFiltrados = invFisicoAreaTab === 'bar' ? insumosBar : insumosCocina;
   const insumosAjusteFiltrados = ajusteAreaTab === 'bar' ? insumosBar : insumosCocina;
@@ -324,7 +342,11 @@ export default function LogisticaKardexModule() {
       nombre: String(row.nombre || ''),
       unidad_medida: um,
       precio_compra: String(Number(row.costo_promedio || 0)),
-      cantidad_inicial: String(Number(row.stock_actual || 0)),
+      cantidad_inicial: String(
+        isUnidadUm(um)
+          ? insumoStockEnUnidades(row)
+          : Number(row.stock_actual || 0)
+      ),
       minimo_unidades: masa ? '0' : String(Number(row.minimo_unidades || 0)),
       minimo_kg: und ? '0' : String(Number(row.stock_minimo || 0)),
       activo: Number(row.activo) !== 0,
@@ -335,15 +357,27 @@ export default function LogisticaKardexModule() {
     e.preventDefault();
     const items = [];
     for (const l of compraLines) {
-      if (!l.insumo_id || l.cantidad === '' || l.costo_unitario === '') continue;
-      const cantidad = parseLocaleNumber(l.cantidad);
-      const costo_unitario = parseLocaleNumber(l.costo_unitario);
-      if (!Number.isFinite(cantidad) || cantidad <= 0) {
-        toast.error('Revisa la cantidad en kg/L (mayor a 0, ej. 10,5 o 10.5).');
+      if (!l.insumo_id) continue;
+      const ins = insumos.find((i) => String(i.id) === String(l.insumo_id));
+      const porUnidad = Boolean(ins) && isUnidadUm(ins.unidad_medida);
+      const costo_unitario = l.costo_unitario === '' ? NaN : parseLocaleNumber(l.costo_unitario);
+      if (!Number.isFinite(costo_unitario) || costo_unitario < 0) {
+        toast.error(porUnidad ? 'Revisa el costo por uso (S/ de cada porción).' : 'Revisa el costo unitario (S/ por kg, L, etc.).');
         return;
       }
-      if (!Number.isFinite(costo_unitario) || costo_unitario < 0) {
-        toast.error('Revisa el costo unitario (S/ por kg, L, etc. según el insumo).');
+      if (porUnidad) {
+        const u = parseLocaleNumber(l.unidades);
+        if (!Number.isFinite(u) || u <= 0) {
+          toast.error('En insumos por unidad (alitas, etc.) la cantidad va en Cant. (U), mayor a 0.');
+          return;
+        }
+        items.push({ insumo_id: l.insumo_id, cantidad: u, costo_unitario, unidades: u });
+        continue;
+      }
+      if (l.cantidad === '' || l.costo_unitario === '') continue;
+      const cantidad = parseLocaleNumber(l.cantidad);
+      if (!Number.isFinite(cantidad) || cantidad <= 0) {
+        toast.error('Revisa la cantidad en kg/L (mayor a 0, ej. 10,5 o 10.5).');
         return;
       }
       const row = { insumo_id: l.insumo_id, cantidad, costo_unitario };
@@ -363,7 +397,7 @@ export default function LogisticaKardexModule() {
     }
     try {
       await api.post(`${BASE}/compras`, { items });
-      toast.success('Compra registrada en kardex');
+      toast.success('Compra registrada: stock de almacén actualizado e incluida en informes e indicadores');
       setCompraLines([{ insumo_id: '', cantidad: '', costo_unitario: '', unidades: '' }]);
       loadCore();
     } catch (err) {
@@ -628,34 +662,37 @@ export default function LogisticaKardexModule() {
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
           <div className="bg-[var(--ui-surface)] rounded-xl border border-[color:var(--ui-border)] p-4">
-            <p className="text-[var(--ui-muted)] text-sm">Valor total del inventario (insumos)</p>
-            <p className="text-2xl font-bold text-emerald-400 mt-1">{formatCurrency(dashboard.valor_inventario_total)}</p>
-            <p className="text-xs text-[var(--ui-muted)] mt-2">{dashboard.total_insumos} insumos activos</p>
+            <p className="text-[var(--ui-muted)] text-sm">Valor del inventario</p>
+            <p className="text-2xl font-bold ui-text-success mt-1">{formatCurrency(dashboard.valor_inventario_total)}</p>
+            <p className="text-sm text-[var(--ui-body-text)] mt-2">
+              Valor de insumos:{' '}
+              <span className="font-semibold ui-text-success">{formatCurrency(valorInsumosTotal)}</span>
+            </p>
+            <p className="text-xs text-[var(--ui-muted)] mt-1">{dashboard.total_insumos} insumos activos</p>
           </div>
-          <div className="bg-[var(--ui-surface)] rounded-xl border border-[color:var(--ui-border)] p-4">
-            <p className="text-amber-300/90 text-sm flex items-center gap-1.5">
+          <div className="bg-[var(--ui-surface)] rounded-xl border border-[color:var(--ui-live-alert-warning-border)] p-4" style={{ background: 'var(--ui-live-alert-warning-bg)' }}>
+            <p className="ui-text-warning text-sm flex items-center gap-1.5 font-semibold">
               <MdWarning className="inline" /> Bajo mínimo (U o kg/L según creación)
             </p>
-            <p className="text-xl font-bold text-amber-400 mt-1">{dashboard.insumos_bajo_minimo?.length || 0}</p>
+            <p className="text-xl font-bold ui-text-warning mt-1">{dashboard.insumos_bajo_minimo?.length || 0}</p>
             <ul className="mt-2 max-h-28 overflow-y-auto text-sm space-y-0.5">
               {(dashboard.insumos_bajo_minimo || []).map((i) => {
-                const uMin = Number(i.minimo_unidades) || 0;
                 const um = String(i.unidad_medida || 'kg').replace(/[0-9]/g, '').trim() || 'kg';
+                const uMin = Number(i.minimo_unidades) || 0;
                 const sMin = Number(i.stock_minimo) || 0;
-                const uAct = Number(i.stock_unidades) || 0;
-                const sAct = Number(i.stock_actual) || 0;
-                const bajoU = uMin > 0 && uAct < uMin;
-                const detail = bajoU
-                  ? `${formatInsumoQty(uAct)} U / mín. ${formatInsumoQty(uMin)} U`
-                  : `${formatInsumoWithUnit(sAct, um)} / mín. ${formatInsumoQty(sMin)} ${um}`;
+                const detail = isUnidadUm(um)
+                  ? `${formatInsumoQty(insumoStockEnUnidades(i))} U / mín. ${formatInsumoQty(uMin)} U`
+                  : ((uMin > 0 && Number(i.stock_unidades) < uMin)
+                    ? `${formatInsumoQty(Number(i.stock_unidades) || 0)} U / mín. ${formatInsumoQty(uMin)} U`
+                    : `${formatInsumoWithUnit(Number(i.stock_actual) || 0, um)} / mín. ${formatInsumoQty(sMin)} ${um}`);
                 const tag = (i.insumo_area || 'cocina') === 'bar' ? 'Bar' : 'Cocina';
                 return (
                   <li key={i.id} className="flex justify-between text-[var(--ui-body-text)] gap-2">
                     <span>
-                      <span className="text-[10px] uppercase text-sky-400/90 mr-1">{tag}</span>
+                      <span className="text-[10px] uppercase ui-text-info mr-1 font-semibold">{tag}</span>
                       {i.nombre}
                     </span>
-                    <span className="text-red-400 text-right">{detail}</span>
+                    <span className="ui-text-danger text-right font-medium">{detail}</span>
                   </li>
                 );
               })}
@@ -667,22 +704,34 @@ export default function LogisticaKardexModule() {
           </div>
           {dashboard.por_area && (
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-sky-500/30 bg-[var(--ui-surface-2)] p-3 text-sm">
-                <p className="font-semibold text-sky-300 mb-1">Insumos de cocina</p>
+              <div
+                className="rounded-xl border p-3 text-sm"
+                style={{
+                  borderColor: 'var(--ui-live-alert-info-border)',
+                  background: 'var(--ui-live-alert-info-bg)',
+                }}
+              >
+                <p className="font-semibold ui-text-info mb-1">Insumos de cocina</p>
                 <p className="text-[var(--ui-body-text)]">
                   {dashboard.por_area.cocina?.total_insumos ?? 0} activos · valor{' '}
-                  <span className="text-emerald-400 font-medium">{formatCurrency(dashboard.por_area.cocina?.valor_inventario ?? 0)}</span>
+                  <span className="ui-text-success font-semibold">{formatCurrency(dashboard.por_area.cocina?.valor_inventario ?? 0)}</span>
                   {' · '}
-                  <span className="text-amber-300">{dashboard.por_area.cocina?.bajo_minimo_count ?? 0}</span> bajo mínimo
+                  <span className="ui-text-warning font-semibold">{dashboard.por_area.cocina?.bajo_minimo_count ?? 0}</span> bajo mínimo
                 </p>
               </div>
-              <div className="rounded-xl border border-indigo-500/30 bg-[var(--ui-surface-2)] p-3 text-sm">
-                <p className="font-semibold text-indigo-300 mb-1">Insumos de bar</p>
+              <div
+                className="rounded-xl border p-3 text-sm"
+                style={{
+                  borderColor: 'color-mix(in srgb, var(--ui-accent) 40%, var(--ui-border))',
+                  background: 'color-mix(in srgb, var(--ui-accent) 10%, var(--ui-surface))',
+                }}
+              >
+                <p className="font-semibold mb-1" style={{ color: 'var(--ui-accent)' }}>Insumos de bar</p>
                 <p className="text-[var(--ui-body-text)]">
                   {dashboard.por_area.bar?.total_insumos ?? 0} activos · valor{' '}
-                  <span className="text-emerald-400 font-medium">{formatCurrency(dashboard.por_area.bar?.valor_inventario ?? 0)}</span>
+                  <span className="ui-text-success font-semibold">{formatCurrency(dashboard.por_area.bar?.valor_inventario ?? 0)}</span>
                   {' · '}
-                  <span className="text-amber-300">{dashboard.por_area.bar?.bajo_minimo_count ?? 0}</span> bajo mínimo
+                  <span className="ui-text-warning font-semibold">{dashboard.por_area.bar?.bajo_minimo_count ?? 0}</span> bajo mínimo
                 </p>
               </div>
             </div>
@@ -724,6 +773,10 @@ export default function LogisticaKardexModule() {
               Insumos de bar
             </button>
             <div className="flex-1 min-w-[8px]" aria-hidden="true" />
+            <p className="text-sm text-[var(--ui-body-text)] shrink-0">
+              Valor insumos:{' '}
+              <span className="font-semibold ui-text-success tabular-nums">{formatCurrency(valorInsumosLista)}</span>
+            </p>
             <button
               type="button"
               onClick={() => setShowInsumoAddForm((v) => !v)}
@@ -744,14 +797,8 @@ export default function LogisticaKardexModule() {
               )}
             </button>
           </div>
-          <p className="text-[var(--ui-muted)] text-xs -mt-2">
-            Catálogos separados en base de datos (`insumo_area`); mismo kardex y ventas.
-          </p>
-          <p className="text-[var(--ui-body-text)] text-xs max-w-3xl">
-            <strong className="text-[var(--ui-body-text)]">Kardex y recetas usan cantidad en kg/L (o ml).</strong>{' '}
-            <strong>Cant. (U)</strong> y el promedio kg/U se alimentan con la compra; las ventas por receta descontarán
-            <strong> kg</strong> y <strong>U</strong> si aplica. Los mínimos (U y kg/L) definen alerta y requisición según
-            rellenes cada uno (0 = no aplicar); no se listan en la tabla de abajo.
+          <p className="text-[var(--ui-body-text)] text-sm max-w-3xl">
+            El sistema usará la cantidad en productos (Unidad / Peso / Cantidad) para descontar y obtener el costo de producción total del producto.
           </p>
           {showInsumoAddForm ? (
           <form
@@ -782,7 +829,11 @@ export default function LogisticaKardexModule() {
                       minimo_kg: isUnidadUm(um) ? '0' : f.minimo_kg,
                     }));
                   }}
-                  title="Unidad de medida del insumo"
+                  title={
+                    normalizeInsumoUm(insumoForm.unidad_medida) === 'g'
+                      ? 'Stock en gramos para descontar por receta (ej. 250 g por plato). 1 000 g o más se muestran como kg'
+                      : 'Unidad de medida del insumo'
+                  }
                 >
                   {INSUMO_UM_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -790,7 +841,9 @@ export default function LogisticaKardexModule() {
                 </select>
               </div>
               <div className="shrink-0">
-                <label className="block text-xs ui-text-muted mb-0.5">Precio compra</label>
+                <label className="block text-xs ui-text-muted mb-0.5">
+                  {isUnidadUm(insumoForm.unidad_medida) ? 'Costo por uso' : 'Precio compra'}
+                </label>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -798,11 +851,17 @@ export default function LogisticaKardexModule() {
                   value={insumoForm.precio_compra}
                   onChange={(e) => setInsumoForm((f) => ({ ...f, precio_compra: e.target.value }))}
                   placeholder="0,00"
-                  title="Costo por 1 U.M. (ej. por cada alita)"
+                  title={
+                    isUnidadUm(insumoForm.unidad_medida)
+                      ? 'Costo de cada porción o pieza que se usa (ej. cada alita)'
+                      : 'Costo por 1 U.M. (kg, L, etc.)'
+                  }
                 />
               </div>
               <div className="shrink-0">
-                <label className="block text-xs ui-text-muted mb-0.5">Cant. inicial</label>
+                <label className="block text-xs ui-text-muted mb-0.5">
+                  {isUnidadUm(insumoForm.unidad_medida) ? 'Cant. inicial (U)' : 'Cant. inicial'}
+                </label>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -886,31 +945,32 @@ export default function LogisticaKardexModule() {
                   </th>
                   <th
                     className="p-2.5 text-right"
-                    title="S/ por kg, L, ml, etc. según la U.M. de masa (costo promedio del kardex; mismo criterio que al comprar)"
+                    title="Costo de cada porción o unidad de medida que se usa en recetas y ventas"
                   >
-                    Costo
+                    Costo por uso
                   </th>
-                  <th className="p-2.5 text-right" title="Cant. kg/L × costo (valorizado)">
-                    Valor inv.
+                  <th className="p-2.5 text-right" title="Stock × costo por uso (valorizado de insumos)">
+                    Valor insumos
                   </th>
                   <th className="p-2.5 text-right">Acción</th>
                 </tr>
               </thead>
               <tbody>
                 {insumosListaActiva.map((i) => {
-                  const uAct = Number(i.stock_unidades != null ? i.stock_unidades : 0);
-                  const uMin = Number(i.minimo_unidades != null ? i.minimo_unidades : 0);
-                  const sAct = Number(i.stock_actual != null ? i.stock_actual : 0);
-                  const sMin = Number(i.stock_minimo != null ? i.stock_minimo : 0);
-                  const kpu = Number(i.kg_por_unidad != null ? i.kg_por_unidad : 0) || 0;
-                  const lowU = uMin > 0 && uAct < uMin;
-                  const lowM = sMin > 0 && sAct < sMin;
-                  const low = lowU || lowM;
                   const umc = String(i.unidad_medida || '').replace(/[0-9]/g, '').trim();
-                  const showKg = sAct > 0;
+                  const porUnidad = isUnidadUm(umc);
+                  const uAct = insumoStockEnUnidades(i);
+                  const sAct = insumoStockEnMasa(i);
+                  const kpu = Number(i.kg_por_unidad != null ? i.kg_por_unidad : 0) || 0;
+                  const low = insumoEstaBajoMinimo(i);
+                  const showKg = !porUnidad && sAct > 0;
                   const showU = uAct > 0;
                   return (
-                    <tr key={i.id} className={`border-b border-slate-600/40 ${low ? 'bg-red-950/30' : ''}`}>
+                    <tr
+                      key={i.id}
+                      className="border-b border-slate-600/40"
+                      style={low ? { background: 'var(--ui-live-alert-warning-bg)' } : undefined}
+                    >
                       <td className="p-2.5 font-medium text-[var(--ui-body-text)]">{i.nombre}</td>
                       <td className="p-2.5 text-[var(--ui-body-text)] tabular-nums">
                         {showKg ? formatInsumoWithUnit(i.stock_actual, umc) : <span className="text-[var(--ui-muted)]">—</span>}
@@ -918,8 +978,8 @@ export default function LogisticaKardexModule() {
                       <td className="p-2.5 text-[var(--ui-body-text)] tabular-nums">
                         {showU ? `${formatInsumoQty(uAct)} U` : <span className="text-[var(--ui-muted)]">—</span>}
                       </td>
-                      <td className="p-2.5 text-amber-200/90 tabular-nums text-sm">
-                        {kpu > 0 ? (
+                      <td className="p-2.5 ui-text-warning tabular-nums text-sm">
+                        {!porUnidad && kpu > 0 ? (
                           <span title="Usado al vender: por cada kg que descuenta la receta, también bajan las U (p. ej. cuartos de pollo)">
                             {formatInsumoQty(kpu)} {umc}/U
                           </span>
@@ -928,8 +988,8 @@ export default function LogisticaKardexModule() {
                         )}
                       </td>
                       <td className="p-2.5 text-right tabular-nums text-[var(--ui-body-text)]">{formatCurrency(i.costo_promedio || 0)}</td>
-                      <td className="p-2.5 text-right text-emerald-400/90 tabular-nums">
-                        {formatCurrency((Number(i.stock_actual) * Number(i.costo_promedio)) || 0)}
+                      <td className="p-2.5 text-right ui-text-success tabular-nums">
+                        {formatCurrency(insumoValorInventario(i))}
                       </td>
                       <td className="p-2.5 text-right">
                         <button
@@ -953,6 +1013,15 @@ export default function LogisticaKardexModule() {
                   </tr>
                 )}
               </tbody>
+              {insumosListaActiva.length > 0 && (
+                <tfoot>
+                  <tr className="border-t border-[color:var(--ui-border)] font-semibold">
+                    <td className="p-2.5" colSpan="5">Total valor insumos</td>
+                    <td className="p-2.5 text-right ui-text-success tabular-nums">{formatCurrency(valorInsumosLista)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
@@ -986,18 +1055,19 @@ export default function LogisticaKardexModule() {
             </button>
           </div>
           <p className="text-[var(--ui-body-text)] text-sm">
-            <strong className="text-[var(--ui-body-text)]">Cant. kg / L</strong> y <strong className="text-[var(--ui-body-text)]">costo</strong> = peso/volumen comprado (S/ por kg, L, etc.).
-            <strong> Unid.</strong> = pollos, cajas, bultos, etc. Si pones <strong>kg y unidades</strong>, el sistema
-            promedia <strong>kg / U</strong> (p. ej. 50 kg ÷ 20 piezas = 2,5 kg por unidad) y al <strong>vender por receta</strong> (cuartos, octavos) descuenta
-            a la vez el <strong>kg</strong> y la parte de <strong>U</strong> que corresponda. Solo kg (sin U) sigue yendo al kardex de masa. Formato numérico{' '}
+            Insumos por pieza (alitas, etc.): cantidad en <strong>Cant. (U)</strong> y <strong>costo por uso</strong> (lo que vale cada porción).
+            {' '}Insumos por peso/volumen: <strong>Cant. kg / L</strong> y costo por kg o L; <strong>Cant. (U)</strong> es opcional (cajas, pollos).
+            Si pones kg y unidades juntas, el sistema promedia kg/U. Formato numérico{' '}
             <span className="whitespace-nowrap">es-PE (coma decimal)</span>.
           </p>
           <form onSubmit={runCompra} className="space-y-2">
             {compraLines.map((row, idx) => {
+              const sel = insumosCompraFiltrados.find((i) => String(i.id) === String(row.insumo_id));
+              const porUnidad = Boolean(sel) && isUnidadUm(sel.unidad_medida);
               const cq = row.cantidad != null && String(row.cantidad).trim() !== '' ? parseLocaleNumber(row.cantidad) : NaN;
               const uq = row.unidades != null && String(row.unidades).trim() !== '' ? parseLocaleNumber(row.unidades) : NaN;
               const razon =
-                Number.isFinite(cq) && cq > 0 && Number.isFinite(uq) && uq > 0 ? (cq / uq) : null;
+                !porUnidad && Number.isFinite(cq) && cq > 0 && Number.isFinite(uq) && uq > 0 ? (cq / uq) : null;
               return (
                 <div key={idx} className="space-y-0.5">
               <div className="flex flex-wrap gap-2 items-end">
@@ -1015,6 +1085,13 @@ export default function LogisticaKardexModule() {
                     const um = String(i.unidad_medida || 'kg')
                       .replace(/[0-9]/g, '')
                       .trim() || 'kg';
+                    if (isUnidadUm(um)) {
+                      return (
+                        <option key={i.id} value={i.id}>
+                          {i.nombre} ({formatInsumoQty(insumoStockEnUnidades(i))} U)
+                        </option>
+                      );
+                    }
                     return (
                       <option key={i.id} value={i.id}>
                         {i.nombre} ({formatInsumoWithUnit(i.stock_actual, um)} · {formatInsumoQty(i.stock_unidades != null ? i.stock_unidades : 0)} U)
@@ -1022,6 +1099,7 @@ export default function LogisticaKardexModule() {
                     );
                   })}
                 </select>
+                {!porUnidad && (
                 <div>
                   <label className="block text-[10px] ui-text-muted">Cant. kg / L</label>
                   <input
@@ -1038,8 +1116,11 @@ export default function LogisticaKardexModule() {
                     }}
                   />
                 </div>
+                )}
                 <div>
-                  <label className="block text-[10px] ui-text-muted">Costo S/ U.M.</label>
+                  <label className="block text-[10px] ui-text-muted">
+                    {porUnidad ? 'Costo por uso' : 'Costo S/ U.M.'}
+                  </label>
                   <input
                     type="number"
                     min="0"
@@ -1052,10 +1133,13 @@ export default function LogisticaKardexModule() {
                       n[idx] = { ...n[idx], costo_unitario: e.target.value };
                       setCompraLines(n);
                     }}
+                    title={porUnidad ? 'Costo de cada porción o pieza que se usa' : 'Costo por kg, L, etc.'}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] ui-text-muted">Unid. (opcional)</label>
+                  <label className="block text-[10px] ui-text-muted">
+                    {porUnidad ? 'Cant. (U)' : 'Unid. (opcional)'}
+                  </label>
                   <input
                     type="number"
                     min="0"
@@ -1068,7 +1152,7 @@ export default function LogisticaKardexModule() {
                       n[idx] = { ...n[idx], unidades: e.target.value };
                       setCompraLines(n);
                     }}
-                    title="Suma a unidades (cajas, bultos) si aplica a esta compra"
+                    title={porUnidad ? 'Cantidad en unidades (alitas, piezas)' : 'Suma a unidades (cajas, bultos) si aplica a esta compra'}
                   />
                 </div>
                 {compraLines.length > 1 && (
@@ -1167,7 +1251,7 @@ export default function LogisticaKardexModule() {
                   >
                     <option value="">— Insumo —</option>
                     {insumosParaReceta.map((i) => (
-                      <option key={i.id} value={i.id}>{i.nombre}</option>
+                      <option key={i.id} value={i.id}>{insumoOptionStockLabel(i)}</option>
                     ))}
                   </select>
                   <input
@@ -1249,26 +1333,16 @@ export default function LogisticaKardexModule() {
                 <option value="">— Seleccionar —</option>
                 {insumosCocina.length > 0 && (
                   <optgroup label="Insumos de cocina">
-                    {insumosCocina.map((i) => {
-                      const umc = (String(i.unidad_medida || 'kg').replace(/[0-9]/g, '') || 'kg').trim() || 'kg';
-                      return (
-                        <option key={i.id} value={i.id}>
-                          {i.nombre} ({formatInsumoWithUnit(i.stock_actual, umc)} · {formatInsumoQty(i.stock_unidades != null ? i.stock_unidades : 0)} U)
-                        </option>
-                      );
-                    })}
+                    {insumosCocina.map((i) => (
+                      <option key={i.id} value={i.id}>{insumoOptionStockLabel(i)}</option>
+                    ))}
                   </optgroup>
                 )}
                 {insumosBar.length > 0 && (
                   <optgroup label="Insumos de bar">
-                    {insumosBar.map((i) => {
-                      const umc = (String(i.unidad_medida || 'kg').replace(/[0-9]/g, '') || 'kg').trim() || 'kg';
-                      return (
-                        <option key={i.id} value={i.id}>
-                          {i.nombre} ({formatInsumoWithUnit(i.stock_actual, umc)} · {formatInsumoQty(i.stock_unidades != null ? i.stock_unidades : 0)} U)
-                        </option>
-                      );
-                    })}
+                    {insumosBar.map((i) => (
+                      <option key={i.id} value={i.id}>{insumoOptionStockLabel(i)}</option>
+                    ))}
                   </optgroup>
                 )}
               </select>
@@ -1305,15 +1379,15 @@ export default function LogisticaKardexModule() {
               {' · '}
               {(() => {
                 const um = String(kardexData.insumo?.unidad_medida || '').replace(/[0-9]/g, '').trim();
+                const porUnidad = isUnidadUm(um);
                 const sAct = Number(kardexData.insumo?.stock_actual || 0);
-                const uAct = Number(kardexData.insumo?.stock_unidades || 0);
-                const hasKg = sAct > 0;
-                const hasU = uAct > 0;
+                const uAct = insumoStockEnUnidades(kardexData.insumo);
                 return (
                   <span>
-                    Stock: {hasKg ? formatInsumoWithUnit(sAct, um) : '—'}
-                    {' · '}
-                    U: {hasU ? `${formatInsumoQty(uAct)} U` : '—'}
+                    Stock: {porUnidad
+                      ? `${formatInsumoQty(uAct)} U`
+                      : (sAct > 0 ? formatInsumoWithUnit(sAct, um) : '—')}
+                    {!porUnidad ? ` · U: ${uAct > 0 ? `${formatInsumoQty(uAct)} U` : '—'}` : ''}
                   </span>
                 );
               })()}
@@ -1698,14 +1772,9 @@ export default function LogisticaKardexModule() {
               onChange={(e) => setAjusteForm((f) => ({ ...f, insumo_id: e.target.value }))}
             >
               <option value="">—</option>
-              {insumosAjusteFiltrados.map((i) => {
-                const umc = (String(i.unidad_medida || 'kg').replace(/[0-9]/g, '') || 'kg').trim() || 'kg';
-                return (
-                <option key={i.id} value={i.id}>
-                  {i.nombre} ({formatInsumoWithUnit(i.stock_actual, umc)} · {formatInsumoQty(i.stock_unidades != null ? i.stock_unidades : 0)} U)
-                </option>
-                );
-              })}
+              {insumosAjusteFiltrados.map((i) => (
+                <option key={i.id} value={i.id}>{insumoOptionStockLabel(i)}</option>
+              ))}
             </select>
           </div>
           <div>

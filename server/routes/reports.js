@@ -1111,11 +1111,13 @@ function parseYmd(input) {
 }
 
 function defaultFinanceRange() {
-  const today = new Date();
-  const to = today.toISOString().split('T')[0];
-  const from = new Date(today);
-  from.setDate(from.getDate() - 30);
-  return { from: from.toISOString().split('T')[0], to };
+  const { getBusinessTodayDateKey } = require('../utils/appDateTime');
+  const to = getBusinessTodayDateKey();
+  const [y, m, d] = to.split('-').map(Number);
+  const fromDate = new Date(Date.UTC(y, m - 1, d));
+  fromDate.setUTCDate(fromDate.getUTCDate() - 30);
+  const from = fromDate.toISOString().slice(0, 10);
+  return { from, to };
 }
 
 router.get('/finance-overview', authenticateToken, requireRole('admin'), (req, res) => {

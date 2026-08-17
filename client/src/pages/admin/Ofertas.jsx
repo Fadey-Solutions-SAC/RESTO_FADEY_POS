@@ -158,8 +158,7 @@ export default function Ofertas() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold rf-page-title rf-module-page-title">Ofertas</h1>
+      <div className="flex items-center justify-end mb-5">
         <button
           type="button"
           onClick={() => setShowModal(true)}

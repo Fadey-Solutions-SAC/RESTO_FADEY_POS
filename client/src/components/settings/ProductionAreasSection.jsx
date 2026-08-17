@@ -182,9 +182,6 @@ export default function ProductionAreasSection() {
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div>
           <h3 className="font-bold text-[var(--ui-body-text)]">Áreas de producción</h3>
-          <p className="text-sm ui-text-muted">
-            Solo se vinculan usuarios de producción. Los pedidos llegan por el área del producto; el mozo opera mesas de su caja.
-          </p>
         </div>
         <button type="button" onClick={openNew} className="btn-primary flex items-center gap-2 text-sm">
           <MdAdd /> Nueva área

@@ -369,6 +369,52 @@ html[data-ui-color-scheme='light'] #root .text-neutral-400 {
   color: #262626 !important;
 }
 
+/* Pasteles de estado (amber/sky/emerald 200–400) ilegibles en modo claro */
+html[data-ui-color-scheme='light'] #root [class*='text-amber-200'],
+html[data-ui-color-scheme='light'] #root [class*='text-amber-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-amber-400'] {
+  color: var(--ui-live-warning-text) !important;
+}
+html[data-ui-color-scheme='light'] #root [class*='text-yellow-200'],
+html[data-ui-color-scheme='light'] #root [class*='text-yellow-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-yellow-400'] {
+  color: var(--ui-live-warning-text) !important;
+}
+html[data-ui-color-scheme='light'] #root [class*='text-emerald-200'],
+html[data-ui-color-scheme='light'] #root [class*='text-emerald-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-emerald-400'],
+html[data-ui-color-scheme='light'] #root [class*='text-green-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-green-400'] {
+  color: var(--ui-live-success-text) !important;
+}
+html[data-ui-color-scheme='light'] #root [class*='text-sky-200'],
+html[data-ui-color-scheme='light'] #root [class*='text-sky-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-sky-400'],
+html[data-ui-color-scheme='light'] #root [class*='text-cyan-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-cyan-400'] {
+  color: var(--ui-live-info-text) !important;
+}
+html[data-ui-color-scheme='light'] #root [class*='text-indigo-200'],
+html[data-ui-color-scheme='light'] #root [class*='text-indigo-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-indigo-400'],
+html[data-ui-color-scheme='light'] #root [class*='text-violet-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-violet-400'],
+html[data-ui-color-scheme='light'] #root [class*='text-purple-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-purple-400'] {
+  color: var(--ui-accent) !important;
+}
+html[data-ui-color-scheme='light'] #root [class*='text-red-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-red-400'],
+html[data-ui-color-scheme='light'] #root [class*='text-rose-300'],
+html[data-ui-color-scheme='light'] #root [class*='text-rose-400'] {
+  color: var(--ui-live-danger-text) !important;
+}
+html[data-ui-color-scheme='light'] #root .bg-red-950\/30,
+html[data-ui-color-scheme='light'] #root .bg-red-950\/40,
+html[data-ui-color-scheme='light'] #root .bg-red-950\/20 {
+  background-color: color-mix(in srgb, var(--ui-danger) 12%, var(--ui-surface)) !important;
+}
+
 /*
  * Tema oscuro: text-slate-600+ son tonos oscuros de la escala estándar → ilegibles sobre fondo oscuro.
  */
@@ -493,6 +539,27 @@ html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] .text-
 html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] .text-slate-100,
 html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] .text-slate-200 {
   color: #f1f5f9 !important;
+}
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-amber-'],
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-yellow-'] {
+  color: #fcd34d !important;
+}
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-emerald-'],
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-green-'] {
+  color: #6ee7b7 !important;
+}
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-sky-'],
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-cyan-'] {
+  color: #7dd3fc !important;
+}
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-indigo-'],
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-violet-'],
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-purple-'] {
+  color: #c4b5fd !important;
+}
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-red-'],
+html[data-ui-color-scheme='light'] #root [data-ui-isolate='dark-surface'] [class*='text-rose-'] {
+  color: #fda4af !important;
 }
 
 /* Badges: colores definidos en @layer con utilidades embebidas */

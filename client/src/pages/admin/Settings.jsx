@@ -1416,8 +1416,6 @@ export default function Settings() {
     });
   };
 
-  const activeMenu = MENU_ITEMS.find(m => m.id === activeSection);
-
   return (
     <div className="flex gap-6 -mt-2">
       {/* Sidebar Menu */}
@@ -1454,9 +1452,8 @@ export default function Settings() {
 
       {/* Content Area */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-3 mb-5">
-          {activeMenu && <activeMenu.icon className="text-2xl text-[var(--ui-accent)]" />}
-          <h1 className="text-2xl font-bold text-[var(--ui-body-text)]">{activeMenu?.label || 'Configuración'}</h1>
+        {(activeSection === 'regional' || (activeSection && PARTIAL_SECTIONS.has(activeSection))) ? (
+        <div className="flex items-center gap-3 mb-3">
           {activeSection === 'regional' && (
             <span
               className={`text-xs px-2 py-1 rounded-full border border-[color:var(--ui-border)] ${
@@ -1480,6 +1477,7 @@ export default function Settings() {
             </span>
           )}
         </div>
+        ) : null}
         {activeSection && activeSection !== 'config_historial' ? (
           <SettingsConfigHubBanner
             hub={configHub}
@@ -1636,8 +1634,7 @@ export default function Settings() {
         {/* LOCALES */}
         {activeSection === 'locales' && restaurant && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm ui-text-muted">Locales registrados</p>
+            <div className="flex justify-end items-center">
               <button
                 onClick={() => openSettingsCrudModal('locales')}
                 className="btn-primary flex items-center gap-2 text-sm"
@@ -1712,8 +1709,7 @@ export default function Settings() {
         {/* ALMACENES Y PRODUCCIÓN */}
         {activeSection === 'almacenes' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm ui-text-muted">Gestión de almacenes y áreas de producción</p>
+            <div className="flex justify-end items-center">
               <button
                 onClick={() => openSettingsCrudModal('almacenes')}
                 className="btn-primary flex items-center gap-2 text-sm"
@@ -1752,10 +1748,7 @@ export default function Settings() {
         {/* CAJAS */}
         {activeSection === 'cajas' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm ui-text-muted">
-                Defina aquí cada caja física; luego vincúlela a un usuario con rol Cajero en Usuarios.
-              </p>
+            <div className="flex justify-end items-center">
               <button onClick={() => openSettingsCrudModal('cajas')} className="btn-primary flex items-center gap-2 text-sm"><MdAdd /> Nueva Caja</button>
             </div>
             <div className="card">
@@ -1785,8 +1778,7 @@ export default function Settings() {
         {/* COMPROBANTES */}
         {activeSection === 'comprobantes' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm ui-text-muted">Configuración de comprobantes de venta</p>
+            <div className="flex justify-end items-center">
               <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => openSettingsCrudModal('comprobantes')}><MdAdd /> Nuevo Comprobante</button>
             </div>
             <div className="card space-y-4">
@@ -2033,7 +2025,6 @@ export default function Settings() {
         {/* IMPUESTOS */}
         {activeSection === 'impuestos' && restaurant && (
           <div className="space-y-4">
-            <p className="text-sm ui-text-muted">Configuración de impuestos aplicables</p>
             <div className="card space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -2081,8 +2072,7 @@ export default function Settings() {
         {/* TARJETAS */}
         {activeSection === 'tarjetas' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm ui-text-muted">Tarjetas de crédito/débito aceptadas</p>
+            <div className="flex justify-end items-center">
               <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => openSettingsCrudModal('tarjetas')}><MdAdd /> Nueva Tarjeta</button>
             </div>
             <div className="card">
@@ -2113,8 +2103,7 @@ export default function Settings() {
         {/* TURNOS */}
         {activeSection === 'turnos' && restaurant && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm ui-text-muted">Horarios y turnos del restaurante</p>
+            <div className="flex justify-end items-center">
               <button onClick={saveRestaurant} className="btn-primary flex items-center gap-2 text-sm"><MdSave /> Guardar</button>
             </div>
             <div className="card">
@@ -2291,8 +2280,7 @@ export default function Settings() {
         {/* MONEDAS */}
         {activeSection === 'monedas' && restaurant && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm ui-text-muted">Monedas disponibles en el sistema</p>
+            <div className="flex justify-end items-center">
               <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => openSettingsCrudModal('monedas')}>
                 <MdAdd /> Nueva Moneda
               </button>
@@ -2324,7 +2312,6 @@ export default function Settings() {
         {/* MONEDA DE FACTURACIÓN */}
         {activeSection === 'moneda_facturacion' && restaurant && (
           <div className="space-y-4">
-            <p className="text-sm ui-text-muted">Moneda predeterminada para la facturación</p>
             <div className="card space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -2348,8 +2335,7 @@ export default function Settings() {
         {/* CUENTAS DE TRANSFERENCIA */}
         {activeSection === 'cuentas_transferencia' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm ui-text-muted">Cuentas bancarias para transferencias</p>
+            <div className="flex justify-end items-center">
               <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => openSettingsCrudModal('cuentas_transferencia')}><MdAdd /> Nueva Cuenta</button>
             </div>
             <div className="card">
@@ -2373,8 +2359,7 @@ export default function Settings() {
         {/* GESTIÓN DE MARCAS */}
         {activeSection === 'marcas' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm ui-text-muted">Marcas registradas en el sistema</p>
+            <div className="flex justify-end items-center">
               <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => openSettingsCrudModal('marcas')}><MdAdd /> Nueva Marca</button>
             </div>
             <div className="card">
@@ -2404,9 +2389,7 @@ export default function Settings() {
         {/* CATEGORÍA ANULAR VENTA */}
         {activeSection === 'categoria_anular' && (
           <div className="space-y-4">
-            <p className="text-sm ui-text-muted">Motivos de anulación de venta</p>
-            <div className="flex justify-between items-center">
-              <div />
+            <div className="flex justify-end items-center">
               <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => openSettingsCrudModal('categoria_anular')}><MdAdd /> Nuevo Motivo</button>
             </div>
             <div className="card">
@@ -2432,8 +2415,7 @@ export default function Settings() {
         {/* FORMAS DE PAGO */}
         {activeSection === 'formas_pago' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm ui-text-muted">Métodos de pago aceptados</p>
+            <div className="flex justify-end items-center">
               <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => openSettingsCrudModal('formas_pago')}><MdAdd /> Nueva Forma de Pago</button>
             </div>
             <div className="card">
@@ -2468,12 +2450,6 @@ export default function Settings() {
                   <h2 className="text-lg font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
                     <MdAutoGraph className="text-[var(--ui-accent)]" /> Módulo empresarial (Fase A)
                   </h2>
-                  <p className="text-sm text-[var(--ui-muted)] mt-1 max-w-3xl">
-                    Parámetros de costos, rentabilidad, inventario, automatización e inteligencia comercial. Los
-                    cambios quedan versionados en historial; el método de valorización se refleja en nuevos movimientos
-                    de kardex (la contabilidad numérica sigue en promedio ponderado hasta activar FIFO/último costo en
-                    versiones futuras).
-                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="btn-secondary text-sm" onClick={() => loadBusinessConfigEffective()} disabled={bizLoading}>

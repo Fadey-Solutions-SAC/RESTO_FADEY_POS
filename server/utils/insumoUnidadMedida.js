@@ -21,6 +21,35 @@ function isUnidadUm(raw) {
   return normalizeInsumoUm(raw) === 'unidad';
 }
 
+function isMasaOrLitrajeUm(raw) {
+  const u = normalizeInsumoUm(raw).toLowerCase();
+  return ['kg', 'g', 'mg', 'l', 'ml', 'lt', 'onza', 'oz', 't'].includes(u);
+}
+
+function insumoStockEnUnidades(insumo) {
+  if (!insumo) return 0;
+  const u = Number(insumo.stock_unidades);
+  const s = Number(insumo.stock_actual);
+  if (isUnidadUm(insumo.unidad_medida)) {
+    if (Number.isFinite(u) && Math.abs(u) > 1e-12) return u;
+    return Number.isFinite(s) ? s : 0;
+  }
+  return Number.isFinite(u) ? u : 0;
+}
+
+function insumoEstaBajoMinimo(insumo) {
+  if (!insumo) return false;
+  if (isUnidadUm(insumo.unidad_medida)) {
+    const uMin = Number(insumo.minimo_unidades) || 0;
+    return uMin > 0 && insumoStockEnUnidades(insumo) < uMin;
+  }
+  const uMin = Number(insumo.minimo_unidades) || 0;
+  const uAct = Number(insumo.stock_unidades) || 0;
+  const sMin = Number(insumo.stock_minimo) || 0;
+  const sAct = Number(insumo.stock_actual) || 0;
+  return (uMin > 0 && uAct < uMin) || (sMin > 0 && sAct < sMin);
+}
+
 /**
  * Cantidad capturada en el plato → unidades de stock_actual.
  * kg/L: el dato se guarda en g/ml (uso de cocina) y se convierte a la U.M. base.
@@ -38,5 +67,8 @@ function recipeQtyToStock(qty, unidadMedida) {
 module.exports = {
   normalizeInsumoUm,
   isUnidadUm,
+  isMasaOrLitrajeUm,
+  insumoStockEnUnidades,
+  insumoEstaBajoMinimo,
   recipeQtyToStock,
 };

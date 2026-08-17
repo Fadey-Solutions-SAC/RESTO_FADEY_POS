@@ -9,6 +9,9 @@ const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../da
 const kx = require('../services/kardexInventoryService');
 const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 const { unlinkInsumoFromProducts } = require('../utils/productKardexInsumos');
+const { emitInventoryUpdate, emitStaffDataUpdate } = require('../socketBroadcast');
+const { resolvePurchaseDate } = require('../utils/inventoryPurchaseDate');
+const { insumoEstaBajoMinimo } = require('../utils/insumoUnidadMedida');
 
 const router = express.Router();
 router.use(authenticateToken, requireRole('admin'));
@@ -80,7 +83,8 @@ router.post('/insumos', (req, res) => {
     const pc = costo_promedio != null ? Number(costo_promedio) : precio_compra != null ? Number(precio_compra) : 0;
     const costo = !Number.isFinite(pc) || pc < 0 ? 0 : pc;
     const id = uuidv4();
-    const sa = Math.max(
+    const porUnidad = umed === 'unidad';
+    let sa = Math.max(
       0,
       Number(
         cantidad_inicial != null
@@ -90,18 +94,25 @@ router.post('/insumos', (req, res) => {
             : stock_actual
       ) || 0
     );
-    const su = Math.max(0, Number(stock_unidades) || 0);
+    let su = Math.max(0, Number(stock_unidades) || 0);
+    if (porUnidad) {
+      const units = su > 0 ? su : sa;
+      sa = units;
+      su = units;
+    }
     const mu = Math.max(0, Number(minimo_unidades) || 0);
-    const smin = Math.max(
-      0,
-      Number(
-        stock_minimo != null
-          ? stock_minimo
-          : minimo_masa != null
-            ? minimo_masa
-            : minimo_kg
-      ) || 0
-    );
+    const smin = porUnidad
+      ? 0
+      : Math.max(
+          0,
+          Number(
+            stock_minimo != null
+              ? stock_minimo
+              : minimo_masa != null
+                ? minimo_masa
+                : minimo_kg
+          ) || 0
+        );
     runSql(
       `INSERT INTO insumos (id, nombre, unidad_medida, stock_actual, stock_unidades, minimo_unidades, kg_por_unidad, stock_minimo, costo_promedio, activo, insumo_area, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
@@ -138,6 +149,18 @@ router.put('/insumos/:id', (req, res) => {
       activo,
       insumo_area,
     } = req.body || {};
+    const umed = unidad_medida != null ? sanitizeUnidadMasa(unidad_medida) : sanitizeUnidadMasa(cur.unidad_medida);
+    const porUnidad = umed === 'unidad';
+    const qty = cantidad_inicial != null
+      ? Math.max(0, Number(cantidad_inicial))
+      : (stock_actual != null ? Math.max(0, Number(stock_actual)) : null);
+    let suVal = stock_unidades != null ? Math.max(0, Number(stock_unidades)) : null;
+    let saVal = qty;
+    if (porUnidad) {
+      const units = suVal != null ? suVal : qty;
+      suVal = units;
+      saVal = units;
+    }
     runSql(
       `UPDATE insumos SET nombre = COALESCE(?, nombre), unidad_medida = COALESCE(?, unidad_medida),
        stock_unidades = COALESCE(?, stock_unidades), minimo_unidades = COALESCE(?, minimo_unidades),
@@ -148,14 +171,12 @@ router.put('/insumos/:id', (req, res) => {
        updated_at = datetime('now') WHERE id = ?`,
       [
         nombre != null ? normalizeCatalogDisplayName(nombre) : null,
-        unidad_medida != null ? sanitizeUnidadMasa(unidad_medida) : null,
-        stock_unidades != null ? Math.max(0, Number(stock_unidades)) : null,
+        unidad_medida != null ? umed : null,
+        suVal,
         minimo_unidades != null ? Math.max(0, Number(minimo_unidades)) : null,
-        stock_minimo != null ? Math.max(0, Number(stock_minimo)) : null,
+        porUnidad ? 0 : (stock_minimo != null ? Math.max(0, Number(stock_minimo)) : null),
         costo_promedio != null ? Math.max(0, Number(costo_promedio)) : null,
-        cantidad_inicial != null
-          ? Math.max(0, Number(cantidad_inicial))
-          : (stock_actual != null ? Math.max(0, Number(stock_actual)) : null),
+        saVal,
         activo != null ? (activo ? 1 : 0) : null,
         insumo_area != null ? normalizeInsumoArea(insumo_area) : null,
         req.params.id,
@@ -232,11 +253,35 @@ router.get('/kardex/:insumoId', (req, res) => {
 /** POST /compras */
 router.post('/compras', (req, res) => {
   try {
-    const { items } = req.body || {};
+    const { items, purchase_date } = req.body || {};
     if (!Array.isArray(items) || !items.length) {
       return res.status(400).json({ error: 'items[] requerido: insumo_id, cantidad, costo_unitario' });
     }
-    const opId = withTransaction((tx) => kx.registrarCompraInsumos(tx, items, req.user.id));
+    const purchaseDate = resolvePurchaseDate(purchase_date);
+    const opId = withTransaction((tx) => {
+      const id = kx.registrarCompraInsumos(tx, items, req.user.id);
+      const wh = tx.queryOne(
+        `SELECT id FROM warehouse_locations
+         WHERE is_active = 1
+           AND (linked_insumos = 1 OR LOWER(name) = LOWER('Almacen de insumos'))
+         ORDER BY linked_insumos DESC
+         LIMIT 1`
+      );
+      const warehouseId = wh?.id || '';
+      for (const it of items) {
+        const iid = String(it.insumo_id || '').trim();
+        const cant = Number(it.cantidad);
+        const cu = Number(it.costo_unitario);
+        if (!iid || !(cant > 0) || Number.isNaN(cu) || cu < 0) continue;
+        const totalCost = Math.round(cant * cu * 100) / 100;
+        tx.run(
+          `INSERT INTO inventory_expenses (id, requirement_id, product_id, warehouse_id, quantity, unit_cost, total_cost, notes, created_by, purchase_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [uuidv4(), id, iid, warehouseId, cant, cu, totalCost, 'Compra kardex (insumo)', req.user.id, purchaseDate]
+        );
+      }
+      return id;
+    });
     logAudit({
       actorUserId: req.user.id,
       actorName: req.user.full_name || '',
@@ -245,6 +290,8 @@ router.post('/compras', (req, res) => {
       resourceId: opId,
       details: { items: items.length },
     });
+    emitInventoryUpdate({});
+    emitStaffDataUpdate({ domain: 'finance_ops' });
     res.status(201).json({ ok: true, operacion_id: opId });
   } catch (err) {
     res.status(400).json({ error: err.message || 'Error en compra de insumos' });
@@ -480,15 +527,7 @@ router.post('/ajustes', (req, res) => {
 router.get('/dashboard', (req, res) => {
   try {
     const insumos = queryAll('SELECT * FROM insumos WHERE activo = 1 ORDER BY insumo_area ASC, nombre ASC');
-    const bajo = insumos.filter((i) => {
-      const uMin = Number(i.minimo_unidades) || 0;
-      const uAct = Number(i.stock_unidades) || 0;
-      const mMin = Number(i.stock_minimo) || 0;
-      const sAct = Number(i.stock_actual) || 0;
-      const bajoU = uMin > 0 && uAct < uMin;
-      const bajoMasa = mMin > 0 && sAct < mMin;
-      return bajoU || bajoMasa;
-    });
+    const bajo = insumos.filter((i) => insumoEstaBajoMinimo(i));
     const valor = insumos.reduce(
       (s, i) => s + Number(i.stock_actual || 0) * Number(i.costo_promedio || 0),
       0

@@ -3,7 +3,7 @@ import { api, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
-import { MdAdd, MdDelete, MdSave, MdContentCopy, MdQrCode2, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff } from 'react-icons/md';
+import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff } from 'react-icons/md';
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import {
@@ -296,19 +296,9 @@ export default function AutoPedidoAdmin() {
 
   return (
     <div>
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold rf-page-title rf-module-page-title flex items-center gap-2">
-          <MdQrCode2 className="text-[var(--ui-accent)]" />
-          Auto pedido
-        </h1>
-      </div>
-
       <div className="card mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-[color:var(--ui-accent)]/35 bg-[var(--ui-surface)]">
         <div className="min-w-0">
           <p className="font-semibold text-[var(--ui-body-text)]">Productos e imágenes del menú</p>
-          <p className="text-xs ui-text-muted mt-0.5">
-            Gestiona fotos y datos de platos para el auto pedido. Puedes ocultar esta sección si solo usas cartas PDF.
-          </p>
         </div>
         <button
           type="button"
@@ -485,8 +475,7 @@ export default function AutoPedidoAdmin() {
       </div>
 
       <div className="card">
-        <h2 className="text-lg font-semibold rf-section-title mb-2">Enlaces y QR por mesa</h2>
-        <p className="text-sm ui-text-muted mb-4">Imprime o muestra el QR en cada mesa. El cliente solo verá la vista de auto pedido.</p>
+        <h2 className="text-lg font-semibold rf-section-title mb-4">Enlaces y QR por mesa</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {tables.map((t) => {
             const url = selfOrderUrlForTable(t.number);

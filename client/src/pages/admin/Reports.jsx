@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { api, formatCurrency, formatDate, formatDateTime, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
+import { api, formatCurrency, formatDate, formatDateKey, formatDateTime, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import {
@@ -27,6 +27,7 @@ import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButt
 import VentasCuentasTable from '../../components/admin/VentasCuentasTable';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
+import { INFORME_EXCEL_NAVY, INFORME_EXCEL_LABEL, INFORME_EXCEL_TOTAL } from '../../utils/informeExcelHtml';
 import { resolveInformesSection } from '../../utils/shellModuleTitle';
 import { buildPaidSalesAccountDisplayGroups, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
 import {
@@ -36,8 +37,9 @@ import {
   buildInventoryCuadreCsv,
   buildInventoryCuadreTxt,
   buildInventoryCuadresTxt,
-  buildPurchaseCsv,
+  buildPurchaseExcelHtml,
   buildPurchaseTxt,
+  mapPurchaseInformeRows,
 } from '../../utils/inventoryCuadreExport';
 import {
   buildProductSalesTxt,
@@ -109,7 +111,7 @@ function downloadInventoryCuadresByDate(group, format = 'excel') {
   toast.success(`Cuadres del ${group.dateLabel} descargados (Excel)`);
 }
 
-function downloadPurchaseGroup(group, format = 'excel') {
+function downloadPurchaseGroup(group, format = 'excel', { usuario } = {}) {
   if (!group?.items?.length) {
     toast.error('No hay líneas para descargar');
     return;
@@ -117,12 +119,13 @@ function downloadPurchaseGroup(group, format = 'excel') {
   const idShort = String(group.id || 'compra').slice(0, 8);
   const dateKey = String(group.purchase_date || group.created_at || '').slice(0, 10);
   const baseName = `compra-${idShort}-${dateKey || new Date().toISOString().slice(0, 10)}`;
+  const opts = { formatCurrency, formatDate, formatDateKey, usuario };
   if (format === 'txt') {
-    downloadBlobFile(`${baseName}.txt`, buildPurchaseTxt(group, { formatCurrency, formatDate }));
+    downloadBlobFile(`${baseName}.txt`, buildPurchaseTxt(group, opts));
     toast.success('Compra descargada (TXT)');
     return;
   }
-  downloadExcelFile(baseName, buildPurchaseCsv({ ...group, formatDate }));
+  downloadExcelFile(baseName, buildPurchaseExcelHtml(group, opts));
   toast.success('Compra descargada (Excel)');
 }
 
@@ -641,11 +644,14 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
 
   const [financeFrom, setFinanceFrom] = useState(() => {
-    const t = new Date();
-    t.setDate(t.getDate() - 30);
-    return t.toISOString().split('T')[0];
+    const today = localTodayYmd();
+    const [y, m, d] = String(today || '').split('-').map(Number);
+    if (!y || !m || !d) return new Date().toISOString().slice(0, 10);
+    const from = new Date(Date.UTC(y, m - 1, d));
+    from.setUTCDate(from.getUTCDate() - 30);
+    return from.toISOString().slice(0, 10);
   });
-  const [financeTo, setFinanceTo] = useState(() => new Date().toISOString().split('T')[0]);
+  const [financeTo, setFinanceTo] = useState(() => localTodayYmd() || new Date().toISOString().slice(0, 10));
   const [financeOverview, setFinanceOverview] = useState(null);
   const [financeLoading, setFinanceLoading] = useState(false);
   const [lossEvents, setLossEvents] = useState(null);
@@ -700,6 +706,14 @@ export default function Reports() {
     useCallback(() => {
       if (reportSectionRef.current !== 'facturacion') return;
       loadBillingDocumentsRef.current().catch(() => setBillingDocuments([]));
+    }, [])
+  );
+
+  useSocket(
+    'inventory-update',
+    useCallback(() => {
+      if (reportSectionRef.current !== 'compras') return;
+      api.get('/inventory/expenses').then(setPurchaseExpenses).catch(() => setPurchaseExpenses([]));
     }, [])
   );
 
@@ -2153,40 +2167,72 @@ export default function Reports() {
       )}
 
       {reportSection === 'compras' && (
-        <div className="card">
-          <h3 className="font-bold rf-section-title mb-4">Compras recepcionadas</h3>
+        <div className="space-y-4">
           {purchaseGroups.length === 0 ? (
-            <p className="text-[var(--ui-muted)]">No hay compras registradas.</p>
-          ) : (
-            <div className="space-y-4">
-              {purchaseGroups.map(group => (
-                <div key={group.id} className="border border-slate-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
-                    <div>
-                      <p className="font-semibold rf-section-title">Compra {group.id.slice(0, 8)}</p>
-                      <p className="text-xs text-[var(--ui-muted)] mt-0.5">
-                        Fecha de compra: {formatDate(group.purchase_date || group.created_at)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <DownloadExcelTxtButtons
-                        onExcel={() => downloadPurchaseGroup(group, 'excel')}
-                        onTxt={() => downloadPurchaseGroup(group, 'txt')}
-                        excelTitle="Descargar compra en Excel"
-                        txtTitle="Descargar compra en TXT"
-                      />
-                      <p className="font-bold text-red-700">{formatCurrency(group.total)}</p>
-                    </div>
-                  </div>
-                  {group.items.map(item => (
-                    <div key={item.id} className="text-sm flex justify-between border-b border-slate-100 py-1">
-                      <span>{item.product_name || 'Producto'} · {item.quantity} u</span>
-                      <span>{formatCurrency(item.unit_cost)} c/u</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
+            <div className="card">
+              <p className="text-[var(--ui-muted)]">No hay compras registradas.</p>
             </div>
+          ) : (
+            purchaseGroups.map((group) => {
+              const rows = mapPurchaseInformeRows(group);
+              const qty = rows.reduce((s, r) => s + Number(r.cantidad || 0), 0);
+              const grand = rows.reduce((s, r) => s + Number(r.total || 0), 0) || Number(group.total || 0);
+              const period = formatDateKey(String(group.purchase_date || group.created_at || '').slice(0, 10))
+                || formatDate(group.purchase_date || group.created_at)
+                || '—';
+              return (
+                <div key={group.id} className="card overflow-x-auto p-0">
+                  <div className="flex items-center justify-end gap-2 px-3 pt-3">
+                    <DownloadExcelTxtButtons
+                      onExcel={() => downloadPurchaseGroup(group, 'excel', { usuario: reportUsuario })}
+                      onTxt={() => downloadPurchaseGroup(group, 'txt', { usuario: reportUsuario })}
+                      excelTitle="Descargar informe de compras en Excel"
+                      txtTitle="Descargar informe de compras en TXT"
+                    />
+                  </div>
+                  <div
+                    className="text-white text-center font-bold py-4 text-lg uppercase tracking-wide"
+                    style={{ background: INFORME_EXCEL_NAVY }}
+                  >
+                    Informe de compras
+                  </div>
+                  <div className="grid grid-cols-[8rem_minmax(0,1fr)] text-sm border-b border-[#808080] mt-2">
+                    <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Periodo</div>
+                    <div className="px-3 py-1.5 text-center">{period}</div>
+                    <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Usuario</div>
+                    <div className="px-3 py-1.5 text-center">{reportUsuario}</div>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-white text-center" style={{ background: INFORME_EXCEL_NAVY }}>
+                        <th className="py-2 px-2 font-semibold text-left">Producto</th>
+                        <th className="py-2 px-2 font-semibold text-right">Cantidad</th>
+                        <th className="py-2 px-2 font-semibold text-right">Precio unitario</th>
+                        <th className="py-2 px-2 font-semibold text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row) => (
+                        <tr key={row.id} className="border-b border-[#808080]">
+                          <td className="py-2 px-2">{row.producto}</td>
+                          <td className="py-2 px-2 text-right tabular-nums">{row.cantidad}</td>
+                          <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.unitario)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="font-bold border-t border-[#808080]">
+                        <td className="py-2.5 px-2" style={{ background: INFORME_EXCEL_TOTAL }}>TOTAL</td>
+                        <td className="py-2.5 px-2 text-right tabular-nums">{qty}</td>
+                        <td />
+                        <td className="py-2.5 px-2 text-right tabular-nums">{formatCurrency(grand)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              );
+            })
           )}
         </div>
       )}
@@ -2236,6 +2282,11 @@ export default function Reports() {
                       Compras, pérdidas, egresos de caja y pagos de personal
                     </p>
                   </div>
+                  <div className="ui-finance-kpi ui-finance-kpi--emerald">
+                    <p className="ui-finance-kpi__label">Ventas (cuentas cobradas)</p>
+                    <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.sales?.total)}</p>
+                    <p className="ui-finance-kpi__sub">{financeOverview.sales?.orders || 0} cuentas</p>
+                  </div>
                   <div className="ui-finance-kpi">
                     <p className="ui-finance-kpi__label">Valor inventario (actual)</p>
                     <p className="ui-finance-kpi__value">
@@ -2243,10 +2294,9 @@ export default function Reports() {
                     </p>
                     <p className="ui-finance-kpi__sub">Foto del stock; no resta en ganancia del rango</p>
                   </div>
-                  <div className="ui-finance-kpi ui-finance-kpi--emerald">
-                    <p className="ui-finance-kpi__label">Ventas (cuentas cobradas)</p>
-                    <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.sales?.total)}</p>
-                    <p className="ui-finance-kpi__sub">{financeOverview.sales?.orders || 0} cuentas</p>
+                  <div className="ui-finance-kpi">
+                    <p className="ui-finance-kpi__label">Compras (inventario)</p>
+                    <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.purchases?.total)}</p>
                   </div>
                   <div className="ui-finance-kpi ui-finance-kpi--sky">
                     <p className="ui-finance-kpi__label">Ganancia aproximada</p>
@@ -2254,10 +2304,6 @@ export default function Reports() {
                     <p className="ui-finance-kpi__sub">
                       Ventas − inversión (precio compra e insumos) − gastos operativos
                     </p>
-                  </div>
-                  <div className="ui-finance-kpi">
-                    <p className="ui-finance-kpi__label">Compras (inventario)</p>
-                    <p className="ui-finance-kpi__value">{formatCurrency(financeOverview.purchases?.total)}</p>
                   </div>
                   <div className="ui-finance-kpi ui-finance-kpi--red">
                     <p className="ui-finance-kpi__label">Pérdidas (eventos + egresos caja)</p>

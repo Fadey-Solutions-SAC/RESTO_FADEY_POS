@@ -46,13 +46,38 @@ export function getShellModuleTitleKey(pathname) {
   return hit ? `nav.${hit.moduleId}` : null;
 }
 
-/** Título visible en la franja superior (Informes incluye el submódulo). */
+/** Título visible en la franja superior (Informes y Control De Recursos incluyen el submódulo). */
+export const ALMACEN_SECTION_IDS = [
+  'movimiento_interno',
+  'ir_modulo_logistica',
+  'requerimiento',
+  'recepcion',
+  'ir_modulo_gastos',
+];
+
+export function resolveAlmacenSection(search) {
+  const params = typeof search === 'string'
+    ? new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+    : (search || new URLSearchParams());
+  const raw = String(params.get('view') || '').trim();
+  if (ALMACEN_SECTION_IDS.includes(raw)) return raw;
+  return 'movimiento_interno';
+}
+
 export function getShellModuleTitle(pathname, search, t) {
   const key = getShellModuleTitleKey(pathname);
   if (!key || typeof t !== 'function') return '';
   const base = t(key);
-  if (!String(pathname || '').startsWith('/admin/informes')) return base;
-  const section = resolveInformesSection(search);
-  const sub = t(`informesSub.${section}`);
-  return sub ? `${base} - ${sub}` : base;
+  const path = String(pathname || '');
+  if (path.startsWith('/admin/informes')) {
+    const section = resolveInformesSection(search);
+    const sub = t(`informesSub.${section}`);
+    return sub ? `${base} - ${sub}` : base;
+  }
+  if (path.startsWith('/admin/almacen')) {
+    const section = resolveAlmacenSection(search);
+    const sub = t(`almacenSub.${section}`);
+    return sub ? `${base} - ${sub}` : base;
+  }
+  return base;
 }

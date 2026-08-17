@@ -739,12 +739,11 @@ export default function MiRestaurant() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">Mi Restaurante · {activeViewLabel}</h1>
-        {showSaveButton ? (
+      {showSaveButton ? (
+        <div className="flex items-center justify-end mb-5">
           <button type="button" onClick={save} className="btn-primary flex items-center gap-2"><MdSave /> Guardar Cambios</button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {activeView === 'mi_empresa' && (
         <MiRestaurantEmpresaHub

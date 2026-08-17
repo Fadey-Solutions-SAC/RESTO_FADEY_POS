@@ -64,7 +64,7 @@ const ALMACEN_SUBS = [
   { id: 'ir_modulo_logistica', label: 'Inventario y kardex' },
   { id: 'requerimiento', label: 'Requerimiento' },
   { id: 'recepcion', label: 'Recepción' },
-  { id: 'ir_modulo_gastos', label: 'Ir a módulo de gastos' },
+  { id: 'ir_modulo_gastos', label: 'Gastos' },
 ];
 
 const PARENTS_WITH_SUBS = new Set(['caja', 'mi_restaurant', 'almacen']);

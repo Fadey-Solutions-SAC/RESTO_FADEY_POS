@@ -207,19 +207,16 @@ export default function Delivery() {
 
   return (
     <div>
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
-        <h1 className="text-2xl font-bold rf-page-title rf-module-page-title">Delivery</h1>
-        {!isMozo && (
-          <div className="flex flex-wrap gap-2">
-            <button onClick={openNewOrder} className="btn-primary flex items-center gap-2 text-sm">
-              <MdAdd /> Nuevo Pedido
-            </button>
-            <button onClick={() => setTab('active')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'active' ? 'bg-gold-600 text-white' : 'bg-white border text-[var(--ui-muted)] hover:bg-slate-50'}`}>Activos ({activeOrders.length})</button>
-            <button onClick={() => setTab('today')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'today' ? 'bg-gold-600 text-white' : 'bg-white border text-[var(--ui-muted)] hover:bg-slate-50'}`}>Hoy ({todayDeliveries.length})</button>
-            <button onClick={() => setTab('completed')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'completed' ? 'bg-gold-600 text-white' : 'bg-white border text-[var(--ui-muted)] hover:bg-slate-50'}`}>Completados ({completedOrders.length})</button>
-          </div>
-        )}
-      </div>
+      {!isMozo && (
+        <div className="flex flex-wrap justify-end gap-2 mb-5">
+          <button onClick={openNewOrder} className="btn-primary flex items-center gap-2 text-sm">
+            <MdAdd /> Nuevo Pedido
+          </button>
+          <button onClick={() => setTab('active')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'active' ? 'bg-gold-600 text-white' : 'bg-white border text-[var(--ui-muted)] hover:bg-slate-50'}`}>Activos ({activeOrders.length})</button>
+          <button onClick={() => setTab('today')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'today' ? 'bg-gold-600 text-white' : 'bg-white border text-[var(--ui-muted)] hover:bg-slate-50'}`}>Hoy ({todayDeliveries.length})</button>
+          <button onClick={() => setTab('completed')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'completed' ? 'bg-gold-600 text-white' : 'bg-white border text-[var(--ui-muted)] hover:bg-slate-50'}`}>Completados ({completedOrders.length})</button>
+        </div>
+      )}
 
       {isMozo ? (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-10 text-center max-w-lg mx-auto">

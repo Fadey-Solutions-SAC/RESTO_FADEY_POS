@@ -1,4 +1,5 @@
 import { buildFixedWidthTable, sortProductsByName } from './fixedWidthTxt';
+import { buildStyledInformeExcelHtml, formatSolesExcel } from './informeExcelHtml';
 
 export function downloadBlobFile(filename, content, mime = 'text/plain;charset=utf-8') {
   const blob = new Blob([content], { type: mime });
@@ -129,58 +130,90 @@ export function buildInventoryCuadresTxt(groups = [], { formatDateTime } = {}) {
   return `${lines.join('\n')}\n`;
 }
 
-export function buildPurchaseCsv(group = {}) {
-  const dateStr = group.formatDate
-    ? group.formatDate(group.purchase_date || group.created_at)
-    : String(group.purchase_date || group.created_at || '').slice(0, 10);
-  const rows = [['Compra ID', 'Fecha', 'Producto', 'Cantidad', 'Costo unitario', 'Subtotal'].map(csvCell).join(',')];
-  const sortedItems = sortProductsByName(group.items || []);
-  for (const item of sortedItems) {
-    const subtotal = Number(item.total_cost ?? (Number(item.quantity || 0) * Number(item.unit_cost || 0)));
-    rows.push([
-      group.id,
-      dateStr,
-      item.product_name || 'Producto',
-      item.quantity,
-      item.unit_cost,
-      subtotal,
-    ].map(csvCell).join(','));
-  }
-  rows.push(['', '', '', '', 'Total', group.total].map(csvCell).join(','));
-  return `${rows.join('\n')}\n`;
+export function mapPurchaseInformeRows(group = {}) {
+  return sortProductsByName(group.items || []).map((item) => {
+    const cantidad = Number(item.quantity || 0);
+    const unitario = Number(item.unit_cost || 0);
+    const total = Number(item.total_cost ?? cantidad * unitario);
+    return {
+      id: item.id,
+      producto: String(item.product_name || 'Producto').trim() || 'Producto',
+      cantidad,
+      unitario,
+      total,
+    };
+  });
 }
 
-export function buildPurchaseTxt(group = {}, { formatCurrency, formatDate } = {}) {
-  const idShort = String(group.id || '').slice(0, 8);
+export function buildPurchaseExcelHtml(group = {}, { formatDate, formatDateKey, usuario, title, sheetName } = {}) {
+  const mapped = mapPurchaseInformeRows(group);
+  const qty = mapped.reduce((s, r) => s + Number(r.cantidad || 0), 0);
+  const grand = mapped.reduce((s, r) => s + Number(r.total || 0), 0) || Number(group.total || 0);
+  const dateRaw = group.purchase_date || group.created_at;
+  const period = formatDateKey?.(String(dateRaw || '').slice(0, 10))
+    || (formatDate ? formatDate(dateRaw) : String(dateRaw || '').slice(0, 10))
+    || '—';
+  return buildStyledInformeExcelHtml({
+    title: title || 'INFORME DE COMPRAS',
+    sheetName: sheetName || 'Compras',
+    periodLabel: period,
+    usuario: usuario || '—',
+    headers: [
+      { label: 'Producto', width: 260 },
+      { label: 'Cantidad', width: 90 },
+      { label: 'Precio unitario', width: 120 },
+      { label: 'Total', width: 120 },
+    ],
+    rows: mapped.map((row) => [
+      { text: row.producto, align: 'left' },
+      { text: String(row.cantidad), align: 'right' },
+      { text: formatSolesExcel(row.unitario), align: 'right' },
+      { text: formatSolesExcel(row.total), align: 'right' },
+    ]),
+    totalCells: [
+      { text: 'TOTAL', align: 'left' },
+      { text: String(qty), align: 'right' },
+      { text: '', align: 'right' },
+      { text: formatSolesExcel(grand), align: 'right' },
+    ],
+  });
+}
+
+/** @deprecated usar buildPurchaseExcelHtml */
+export function buildPurchaseCsv(group = {}) {
+  return buildPurchaseExcelHtml(group, { formatDate: group.formatDate, usuario: group.usuario });
+}
+
+export function buildPurchaseTxt(group = {}, { formatCurrency, formatDate, formatDateKey, usuario, title } = {}) {
+  const mapped = mapPurchaseInformeRows(group);
+  const qty = mapped.reduce((s, r) => s + Number(r.cantidad || 0), 0);
+  const grand = mapped.reduce((s, r) => s + Number(r.total || 0), 0) || Number(group.total || 0);
+  const dateRaw = group.purchase_date || group.created_at;
+  const period = formatDateKey?.(String(dateRaw || '').slice(0, 10))
+    || (formatDate ? formatDate(dateRaw) : String(dateRaw || '').slice(0, 10))
+    || '—';
+  const fmtMoney = formatCurrency || formatSolesExcel;
   const lines = [
-    'COMPROBANTE DE COMPRA',
-    '='.repeat(24),
-    `ID: ${group.id}`,
-    `Referencia: Compra ${idShort}`,
-    `Fecha de compra: ${formatDate ? formatDate(group.purchase_date || group.created_at) : '—'}`,
-    `Total: ${formatCurrency ? formatCurrency(group.total) : group.total}`,
+    title || 'INFORME DE COMPRAS',
+    '='.repeat(20),
+    `Periodo: ${period}`,
+    `Usuario: ${usuario || '—'}`,
     '',
   ];
-  const sortedItems = sortProductsByName(group.items || []);
-  if (sortedItems.length) {
-    lines.push(
-      ...buildFixedWidthTable({
-        headers: ['Producto', 'Cant.', 'Costo u.', 'Subtotal'],
-        widths: [38, 8, 12, 12],
-        aligns: ['left', 'right', 'right', 'right'],
-        rows: sortedItems.map((item) => {
-          const subtotal = Number(item.total_cost ?? (Number(item.quantity || 0) * Number(item.unit_cost || 0)));
-          return [
-            item.product_name || 'Producto',
-            Number(item.quantity || 0),
-            formatCurrency ? formatCurrency(item.unit_cost) : item.unit_cost,
-            formatCurrency ? formatCurrency(subtotal) : subtotal,
-          ];
-        }),
-      }),
-      '',
-      `Total compra: ${formatCurrency ? formatCurrency(group.total) : group.total}`,
-    );
+  if (mapped.length) {
+    lines.push(...buildFixedWidthTable({
+      headers: ['Producto', 'Cantidad', 'Precio unitario', 'Total'],
+      widths: [36, 10, 16, 14],
+      aligns: ['left', 'right', 'right', 'right'],
+      rows: mapped.map((row) => [
+        row.producto,
+        row.cantidad,
+        fmtMoney(row.unitario),
+        fmtMoney(row.total),
+      ]),
+    }));
+    lines.push('');
+    lines.push(`TOTAL  Cantidad ${qty}  ${fmtMoney(grand)}`);
   } else {
     lines.push('(Sin productos)');
   }

@@ -1,21 +1,30 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { api, formatCurrency, formatDateTime } from '../../utils/api';
+import { api, formatCurrency, formatDate, formatDateKey, formatDateTime } from '../../utils/api';
 import { downloadBlobFile, downloadExcelFile } from '../../utils/inventoryCuadreExport';
 import DownloadExcelTxtButtons from './DownloadExcelTxtButtons';
 import {
   formatMesaLabel,
   parseAdjustmentReason,
   adjustmentReferenceAmount,
+  clienteOMesaLabel,
 } from '../../utils/mesaOrderLines';
 import {
   buildSalesAdjustmentsCsv,
   buildSalesAdjustmentsTxt,
   buildSalesAdjustmentsDownloadBaseName,
+  buildDescuentosExcelHtml,
+  buildDescuentosTxt,
+  mapDescuentosInformeRows,
+  buildCortesiasExcelHtml,
+  buildCortesiasTxt,
+  mapCortesiasInformeRows,
 } from '../../utils/salesAdjustmentsExport';
 import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdDelete, MdRemoveCircleOutline, MdVisibility } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import { adjustmentKindBadge } from '../../utils/uiBadges';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
+import { INFORME_EXCEL_NAVY, INFORME_EXCEL_LABEL, INFORME_EXCEL_TOTAL } from '../../utils/informeExcelHtml';
 
 function toInputDate(d) {
   const y = d.getFullYear();
@@ -154,10 +163,12 @@ export default function CortesiasReportSection({
   highlightTo = '',
   onHighlightClear,
 }) {
+  const { user } = useAuth();
+  const reportUsuario = user?.full_name || user?.username || 'Administrador';
   const [fromDate, setFromDate] = useState(localMonthStartYmd);
   const [toDate, setToDate] = useState(() => toInputDate(new Date()));
   const [search, setSearch] = useState('');
-  const [kindFilter, setKindFilter] = useState('all');
+  const [kindFilter, setKindFilter] = useState('descuento');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({ summary: {}, orders: [] });
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -173,6 +184,10 @@ export default function CortesiasReportSection({
     if (highlightFrom) setFromDate(highlightFrom);
     if (highlightTo) setToDate(highlightTo);
   }, [highlightFrom, highlightTo]);
+
+  useEffect(() => {
+    if ((highlightRecordIds || []).length) setKindFilter('all');
+  }, [highlightRecordIds]);
 
   useEffect(() => {
     if (highlightTimerRef.current) {
@@ -258,13 +273,39 @@ export default function CortesiasReportSection({
     return rows.filter((o) => {
       const reason = rowReason(o).toLowerCase();
       const mesa = String(o.table_number || '').toLowerCase();
+      const cliente = clienteOMesaLabel(o).toLowerCase();
       const mesero = String(o.created_by_user_name || o.customer_name || '').toLowerCase();
       const num = String(o.order_number || '');
       const kind = kindLabel(o.adjustment_kind).toLowerCase();
       const products = (o.items || []).map((it) => `${it.quantity}× ${it.product_name}`.toLowerCase()).join(' ');
-      return reason.includes(q) || mesa.includes(q) || mesero.includes(q) || num.includes(q) || kind.includes(q) || products.includes(q);
+      return reason.includes(q) || mesa.includes(q) || cliente.includes(q) || mesero.includes(q) || num.includes(q) || kind.includes(q) || products.includes(q);
     });
   }, [data.orders, search, kindFilter]);
+
+  const discountInformeRows = useMemo(
+    () => mapDescuentosInformeRows(filteredOrders, formatDate),
+    [filteredOrders],
+  );
+
+  const discountInformeTotal = useMemo(
+    () => discountInformeRows.reduce((s, r) => s + Number(r.monto || 0), 0),
+    [discountInformeRows],
+  );
+
+  const courtesyInformeRows = useMemo(
+    () => mapCortesiasInformeRows(filteredOrders, formatDate),
+    [filteredOrders],
+  );
+
+  const courtesyInformeQty = useMemo(
+    () => courtesyInformeRows.reduce((s, r) => s + Number(r.cantidad || 0), 0),
+    [courtesyInformeRows],
+  );
+
+  const courtesyInformeTotal = useMemo(
+    () => courtesyInformeRows.reduce((s, r) => s + Number(r.valor || 0), 0),
+    [courtesyInformeRows],
+  );
 
   const groupedProducts = useMemo(
     () => (kindFilter === 'all'
@@ -293,26 +334,70 @@ export default function CortesiasReportSection({
     return groupedProducts.filter((g) => g.kind !== 'eliminado').length;
   }, [groupedProducts, showReferenceTotal]);
 
-  const filteredSummary = useMemo(() => {
+  const overviewSummary = useMemo(() => {
     let courtesyCount = 0;
     let discountCount = 0;
     let eliminadoCount = 0;
-    for (const o of filteredOrders) {
+    for (const o of data.orders) {
       const kind = o.adjustment_kind;
       if (kind === 'cortesia') courtesyCount += 1;
       else if (kind === 'descuento') discountCount += 1;
       else if (kind === 'eliminado') eliminadoCount += 1;
     }
     return {
-      count: filteredOrders.length,
       courtesy_count: courtesyCount,
       discount_count: discountCount,
       eliminado_count: eliminadoCount,
-      product_lines: groupedProducts.length,
     };
-  }, [filteredOrders, groupedProducts.length]);
+  }, [data.orders]);
 
   const downloadReport = (format = 'excel') => {
+    if (kindFilter === 'descuento') {
+      if (!discountInformeRows.length) {
+        toast.error('No hay descuentos para descargar en el periodo seleccionado');
+        return;
+      }
+      const payload = {
+        fromDate,
+        toDate,
+        orders: filteredOrders,
+        formatDate,
+        formatDateKey,
+        usuario: reportUsuario,
+      };
+      const baseName = buildSalesAdjustmentsDownloadBaseName(fromDate, toDate, 'descuento');
+      if (format === 'txt') {
+        downloadBlobFile(`${baseName}.txt`, buildDescuentosTxt(payload));
+        toast.success('Informe descargado (TXT)');
+        return;
+      }
+      downloadExcelFile(baseName, buildDescuentosExcelHtml(payload));
+      toast.success('Informe descargado (Excel)');
+      return;
+    }
+    if (kindFilter === 'cortesia') {
+      if (!courtesyInformeRows.length) {
+        toast.error('No hay cortesías para descargar en el periodo seleccionado');
+        return;
+      }
+      const payload = {
+        fromDate,
+        toDate,
+        orders: filteredOrders,
+        formatDate,
+        formatDateKey,
+        usuario: reportUsuario,
+      };
+      const baseName = buildSalesAdjustmentsDownloadBaseName(fromDate, toDate, 'cortesia');
+      if (format === 'txt') {
+        downloadBlobFile(`${baseName}.txt`, buildCortesiasTxt(payload));
+        toast.success('Informe descargado (TXT)');
+        return;
+      }
+      downloadExcelFile(baseName, buildCortesiasExcelHtml(payload));
+      toast.success('Informe descargado (Excel)');
+      return;
+    }
     if (!groupedProducts.length) {
       toast.error('No hay productos para descargar en el periodo seleccionado');
       return;
@@ -346,21 +431,21 @@ export default function CortesiasReportSection({
   return (
     <div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="card border-l-4 border-l-violet-500">
+        <button type="button" onClick={() => setKindFilter('cortesia')} className={`card border-l-4 border-l-violet-500 text-left ${kindFilter === 'cortesia' ? 'ring-2 ring-violet-400' : ''}`}>
           <p className="text-xs ui-text-muted">Cortesías</p>
-          <p className="text-2xl font-bold text-violet-600">{filteredSummary.courtesy_count}</p>
+          <p className="text-2xl font-bold text-violet-600">{overviewSummary.courtesy_count}</p>
           <p className="text-xs text-[var(--ui-muted)] mt-1">Registros en el periodo</p>
-        </div>
-        <div className="card border-l-4 border-l-amber-500">
+        </button>
+        <button type="button" onClick={() => setKindFilter('descuento')} className={`card border-l-4 border-l-amber-500 text-left ${kindFilter === 'descuento' ? 'ring-2 ring-amber-400' : ''}`}>
           <p className="text-xs ui-text-muted">Descuentos</p>
-          <p className="text-2xl font-bold text-amber-600">{filteredSummary.discount_count}</p>
+          <p className="text-2xl font-bold text-amber-600">{overviewSummary.discount_count}</p>
           <p className="text-xs text-[var(--ui-muted)] mt-1">Registros en el periodo</p>
-        </div>
-        <div className="card border-l-4 border-l-red-500">
+        </button>
+        <button type="button" onClick={() => setKindFilter('eliminado')} className={`card border-l-4 border-l-red-500 text-left ${kindFilter === 'eliminado' ? 'ring-2 ring-red-400' : ''}`}>
           <p className="text-xs ui-text-muted">Eliminados</p>
-          <p className="text-2xl font-bold text-red-600">{filteredSummary.eliminado_count}</p>
+          <p className="text-2xl font-bold text-red-600">{overviewSummary.eliminado_count}</p>
           <p className="text-xs text-[var(--ui-muted)] mt-1">Registros en el periodo</p>
-        </div>
+        </button>
       </div>
 
       <div className="card mb-4">
@@ -381,7 +466,7 @@ export default function CortesiasReportSection({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Producto, motivo, mesa, mesero, N° pedido…"
+                placeholder="Cliente, mesa, motivo, N° venta, usuario…"
                 className="input-field pl-9 w-full"
               />
             </div>
@@ -392,7 +477,13 @@ export default function CortesiasReportSection({
           <DownloadExcelTxtButtons
             onExcel={() => downloadReport('excel')}
             onTxt={() => downloadReport('txt')}
-            disabled={!groupedProducts.length}
+            disabled={
+              kindFilter === 'descuento'
+                ? !discountInformeRows.length
+                : kindFilter === 'cortesia'
+                  ? !courtesyInformeRows.length
+                  : !groupedProducts.length
+            }
           />
         </div>
         {!datesValid && (
@@ -415,12 +506,174 @@ export default function CortesiasReportSection({
           ))}
         </div>
         <p className="text-xs text-[var(--ui-muted)] mt-3">
-          Cortesías y descuentos descuentan inventario al cobrar. Los eliminados de mesa no afectan inventario.
-          En Todos cada movimiento aparece aparte, del más antiguo al más reciente. En Cortesías, Descuentos o Eliminados
-          se agrupan por producto; use «Ver motivo» para el detalle de cada registro.
+          En Descuentos y Cortesías, Cliente es la mesa (salón) o el nombre del cliente (delivery/mostrador).
         </p>
       </div>
 
+      {kindFilter === 'descuento' ? (
+        <div className="card overflow-x-auto p-0">
+          <div
+            className="text-white text-center font-bold py-4 text-lg uppercase tracking-wide"
+            style={{ background: INFORME_EXCEL_NAVY }}
+          >
+            Informe de descuentos
+          </div>
+          <div className="grid grid-cols-[8rem_minmax(0,1fr)] text-sm border-b border-[#808080]">
+            <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Periodo</div>
+            <div className="px-3 py-1.5 text-center">
+              {formatDateKey(fromDate) || fromDate} - {formatDateKey(toDate) || toDate}
+            </div>
+            <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Usuario</div>
+            <div className="px-3 py-1.5 text-center">{reportUsuario}</div>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-white text-center" style={{ background: INFORME_EXCEL_NAVY }}>
+                <th className="py-2 px-2 font-semibold">Fecha</th>
+                <th className="py-2 px-2 font-semibold">N.º Venta</th>
+                <th className="py-2 px-2 font-semibold">Cliente</th>
+                <th className="py-2 px-2 font-semibold">Motivo</th>
+                <th className="py-2 px-2 font-semibold">Usuario</th>
+                <th className="py-2 px-2 font-semibold text-right">Monto</th>
+                <th className="py-2 px-2 font-semibold w-10" />
+              </tr>
+            </thead>
+            <tbody>
+              {discountInformeRows.map((row) => (
+                <tr
+                  key={row.id}
+                  id={activeHighlightIds.has(String(row.id)) ? `adjustment-product-${row.id}` : undefined}
+                  className={`border-b border-[#808080] ${
+                    activeHighlightIds.has(String(row.id)) ? HIGHLIGHT_ROW_CLASS : ''
+                  }`}
+                >
+                  <td className="py-2 px-2 text-center whitespace-nowrap tabular-nums">{row.fecha}</td>
+                  <td className="py-2 px-2 text-center whitespace-nowrap">{row.nVenta}</td>
+                  <td className="py-2 px-2">{row.cliente}</td>
+                  <td className="py-2 px-2">{row.motivo}</td>
+                  <td className="py-2 px-2">{row.usuario}</td>
+                  <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.monto)}</td>
+                  <td className="py-2 px-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteTarget(row.record);
+                        setAdminPassword('');
+                      }}
+                      className="p-1 rounded-lg text-[var(--ui-muted)] hover:bg-red-50 hover:text-red-600"
+                      title="Eliminar registro"
+                    >
+                      <MdDelete />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {discountInformeRows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-[var(--ui-muted)]">
+                    {datesValid
+                      ? 'No hay descuentos en el periodo seleccionado'
+                      : 'Seleccione un rango de fechas válido'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {discountInformeRows.length > 0 && (
+              <tfoot>
+                <tr className="font-bold border-t border-[#808080]">
+                  <td className="py-2.5 px-2" style={{ background: INFORME_EXCEL_TOTAL }}>TOTAL</td>
+                  <td colSpan={4} />
+                  <td className="py-2.5 px-2 text-right tabular-nums">{formatCurrency(discountInformeTotal)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      ) : kindFilter === 'cortesia' ? (
+        <div className="card overflow-x-auto p-0">
+          <div
+            className="text-white text-center font-bold py-4 text-lg uppercase tracking-wide"
+            style={{ background: INFORME_EXCEL_NAVY }}
+          >
+            Informe de cortesías
+          </div>
+          <div className="grid grid-cols-[8rem_minmax(0,1fr)] text-sm border-b border-[#808080]">
+            <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Periodo</div>
+            <div className="px-3 py-1.5 text-center">
+              {formatDateKey(fromDate) || fromDate} - {formatDateKey(toDate) || toDate}
+            </div>
+            <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Usuario</div>
+            <div className="px-3 py-1.5 text-center">{reportUsuario}</div>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-white text-center" style={{ background: INFORME_EXCEL_NAVY }}>
+                <th className="py-2 px-2 font-semibold">Fecha</th>
+                <th className="py-2 px-2 font-semibold">N.º Venta</th>
+                <th className="py-2 px-2 font-semibold">Cliente</th>
+                <th className="py-2 px-2 font-semibold">Producto</th>
+                <th className="py-2 px-2 font-semibold text-right">Cantidad</th>
+                <th className="py-2 px-2 font-semibold text-right">Valor</th>
+                <th className="py-2 px-2 font-semibold">Autorizado por</th>
+                <th className="py-2 px-2 font-semibold w-10" />
+              </tr>
+            </thead>
+            <tbody>
+              {courtesyInformeRows.map((row) => (
+                <tr
+                  key={row.id}
+                  id={activeHighlightIds.has(String(row.orderId)) ? `adjustment-product-${row.orderId}` : undefined}
+                  className={`border-b border-[#808080] ${
+                    activeHighlightIds.has(String(row.orderId)) ? HIGHLIGHT_ROW_CLASS : ''
+                  }`}
+                >
+                  <td className="py-2 px-2 text-center whitespace-nowrap tabular-nums">{row.fecha}</td>
+                  <td className="py-2 px-2 text-center whitespace-nowrap">{row.nVenta}</td>
+                  <td className="py-2 px-2">{row.cliente}</td>
+                  <td className="py-2 px-2">{row.producto}</td>
+                  <td className="py-2 px-2 text-right tabular-nums">{row.cantidad}</td>
+                  <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.valor)}</td>
+                  <td className="py-2 px-2">{row.autorizado}</td>
+                  <td className="py-2 px-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteTarget(row.record);
+                        setAdminPassword('');
+                      }}
+                      className="p-1 rounded-lg text-[var(--ui-muted)] hover:bg-red-50 hover:text-red-600"
+                      title="Eliminar registro"
+                    >
+                      <MdDelete />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {courtesyInformeRows.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-10 text-center text-[var(--ui-muted)]">
+                    {datesValid
+                      ? 'No hay cortesías en el periodo seleccionado'
+                      : 'Seleccione un rango de fechas válido'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {courtesyInformeRows.length > 0 && (
+              <tfoot>
+                <tr className="font-bold border-t border-[#808080]">
+                  <td className="py-2.5 px-2" style={{ background: INFORME_EXCEL_TOTAL }}>TOTAL</td>
+                  <td colSpan={3} />
+                  <td className="py-2.5 px-2 text-right tabular-nums">{courtesyInformeQty}</td>
+                  <td className="py-2.5 px-2 text-right tabular-nums">{formatCurrency(courtesyInformeTotal)}</td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      ) : (
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -530,6 +783,7 @@ export default function CortesiasReportSection({
           )}
         </table>
       </div>
+      )}
 
       <Modal
         isOpen={!!detailTarget}

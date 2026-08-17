@@ -31,7 +31,9 @@ function formFromInsumo(row) {
     nombre: String(row.nombre || ''),
     unidad_medida: um,
     precio_compra: String(Number(row.costo_promedio || 0)),
-    cantidad_inicial: String(Number(row.stock_actual || 0)),
+    cantidad_inicial: String(
+      isUnidadUm(um) ? (Number(row.stock_unidades) || Number(row.stock_actual) || 0) : Number(row.stock_actual || 0)
+    ),
     minimo_unidades: masa ? '0' : String(Number(row.minimo_unidades || 0)),
     minimo_kg: und ? '0' : String(Number(row.stock_minimo || 0)),
     activo: Number(row.activo) !== 0,
@@ -158,7 +160,9 @@ export default function InsumoCreateModal({ isOpen, onClose, onSaved, insumo = n
             </select>
           </div>
           <div className="w-[6.5rem]">
-            <label className="block text-xs text-[#9CA3AF] mb-0.5">Precio compra</label>
+            <label className="block text-xs text-[#9CA3AF] mb-0.5">
+              {isUnidadUm(form.unidad_medida) ? 'Costo por uso' : 'Precio compra'}
+            </label>
             <input
               type="text"
               inputMode="decimal"
@@ -166,11 +170,19 @@ export default function InsumoCreateModal({ isOpen, onClose, onSaved, insumo = n
               value={form.precio_compra}
               onChange={(e) => setForm((f) => ({ ...f, precio_compra: e.target.value }))}
               placeholder="0,00"
-              title="Costo por unidad de medida (ej. por cada alita)"
+              title={
+                isUnidadUm(form.unidad_medida)
+                  ? 'Costo de cada porción o pieza que se usa (ej. cada alita)'
+                  : 'Costo por unidad de medida'
+              }
             />
           </div>
           <div className="w-[5.5rem]">
-            <label className="block text-xs text-[#9CA3AF] mb-0.5">{isEdit ? 'Cant. actual' : 'Cant. inicial'}</label>
+            <label className="block text-xs text-[#9CA3AF] mb-0.5">
+              {isUnidadUm(form.unidad_medida)
+                ? (isEdit ? 'Cant. actual (U)' : 'Cant. inicial (U)')
+                : (isEdit ? 'Cant. actual' : 'Cant. inicial')}
+            </label>
             <input
               type="text"
               inputMode="decimal"

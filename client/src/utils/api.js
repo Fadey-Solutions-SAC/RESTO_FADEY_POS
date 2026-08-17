@@ -11,6 +11,7 @@
  * - Las llamadas bajo `api.printing.*` usan esa base; el resto del sistema sigue usando API_BASE.
  */
 import { translateApiErrorMessage } from '../i18n/translateApiError';
+import { scaleInsumoDisplayQty } from './insumoUnidadMedida';
 import {
   enqueueMutation,
   flushOfflineQueue,
@@ -935,11 +936,12 @@ export function formatInsumoQty(n) {
   return insumoQtyFormatter.format(v);
 }
 
-/** Cantidad en U.M. + unidad (ej. "10 kg", "1,5 L") */
+/** Cantidad en U.M. + unidad. 1 000 g o más se muestran como kg; 1 000 ml o más como L. */
 export function formatInsumoWithUnit(qty, unidad) {
-  const u = String(unidad || '').trim();
-  if (!u) return formatInsumoQty(qty);
-  return `${formatInsumoQty(qty)} ${u}`;
+  const { qty: n, unit } = scaleInsumoDisplayQty(qty, unidad);
+  if (!Number.isFinite(n)) return '—';
+  if (!unit) return formatInsumoQty(n);
+  return `${formatInsumoQty(n)} ${unit}`;
 }
 
 /** Clave yyyy-MM-dd → dd/mm/aaaa sin desfase por zona horaria. */

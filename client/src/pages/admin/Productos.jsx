@@ -5,7 +5,7 @@ import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../.
 import { useSocket } from '../../hooks/useSocket';
 import { showStockInOrderingUI, isProductLowStock, productStockStatus } from '../../utils/productStockDisplay';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
-import { isUnidadUm, kardexRecipeInputUnit, normalizeInsumoUm } from '../../utils/insumoUnidadMedida';
+import { isUnidadUm, kardexRecipeInputUnit, normalizeInsumoUm, insumoStockEnUnidades } from '../../utils/insumoUnidadMedida';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import ContextMenu from '../../components/ContextMenu';
@@ -832,11 +832,6 @@ export default function Productos() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-[var(--ui-body-text)] rf-module-page-title">{t('categories.title')}</h1>
-        <div />
-      </div>
-
       <div className="flex gap-3 mb-5">
         {TABS.map(tab => {
           const Icon = tab.icon;
@@ -1293,10 +1288,9 @@ export default function Productos() {
                             const um = kardexRecipeInputUnit(i.unidad_medida);
                             const stockUm = normalizeInsumoUm(i.unidad_medida);
                             if (isUnidadUm(stockUm)) {
-                              const uS = i.stock_unidades != null ? Number(i.stock_unidades) : 0;
                               return (
                                 <option key={i.id} value={i.id}>
-                                  {i.nombre} (U.M. {um}) — {formatInsumoQty(uS)} U
+                                  {i.nombre} (U.M. {um}) — {formatInsumoQty(insumoStockEnUnidades(i))} U
                                 </option>
                               );
                             }
@@ -1311,7 +1305,9 @@ export default function Productos() {
                       <div>
                         {idx === 0 && (
                           <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">
-                            {t('products.kardexQtyLabel')}
+                            {ins
+                              ? t('products.kardexQtyPerDish', { unit: inputUm || 'U' })
+                              : t('products.kardexQtyLabel')}
                           </label>
                         )}
                         <input
@@ -1321,7 +1317,12 @@ export default function Productos() {
                           value={line.qty}
                           onChange={(e) => setLine({ qty: e.target.value })}
                           className="input-field text-sm py-1.5 w-full"
-                          placeholder={inputUm === 'ml' ? '50' : inputUm === 'unidad' ? '3' : '1'}
+                          placeholder={inputUm === 'ml' ? '50' : inputUm === 'g' ? '250' : inputUm === 'unidad' ? '3' : '1'}
+                          title={
+                            inputUm === 'g'
+                              ? 'Gramos a descontar por cada plato vendido'
+                              : undefined
+                          }
                         />
                       </div>
                       {lines.length > 1 ? (
@@ -1358,6 +1359,20 @@ export default function Productos() {
                   <MdAdd className="text-base" />
                   {t('products.kardexInsumoAdd')}
                 </button>
+                {(() => {
+                  const first = (productForm.kardex_insumos || []).find((row) => String(row?.insumo_id || '').trim());
+                  const ins = insumosKardex.find((i) => String(i.id) === String(first?.insumo_id));
+                  if (!ins) return null;
+                  const stockUm = normalizeInsumoUm(ins.unidad_medida);
+                  const inputUm = kardexRecipeInputUnit(ins.unidad_medida);
+                  if (stockUm === 'kg') {
+                    return <p className="text-xs ui-text-muted">{t('products.kardexQtyHintKg')}</p>;
+                  }
+                  if (stockUm === 'L') {
+                    return <p className="text-xs ui-text-muted">{t('products.kardexQtyHintL')}</p>;
+                  }
+                  return <p className="text-xs ui-text-muted">{t('products.kardexQtyHintExact', { unit: inputUm })}</p>;
+                })()}
               </div>
             )}
           </div>

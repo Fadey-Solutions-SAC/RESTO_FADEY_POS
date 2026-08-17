@@ -161,12 +161,9 @@ export default function SettingsAppearancePanel({
   return (
     <div className="max-w-4xl space-y-5">
       <div className="card">
-        <h3 className="rf-font-display text-lg font-semibold text-[var(--ui-body-text)] mb-1">
+        <h3 className="rf-font-display text-lg font-semibold text-[var(--ui-body-text)] mb-4">
           Temas premium
         </h3>
-        <p className="text-sm text-[var(--ui-muted)] mb-4">
-          Paletas profesionales aplicadas al instante en sidebar, tablas, formularios, gráficos, modales y todo el panel.
-        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {premiumOptions.map((opt) => (
             <ThemePreviewCard
@@ -208,10 +205,7 @@ export default function SettingsAppearancePanel({
       </div>
 
       <div className="card">
-        <h3 className="text-base font-semibold text-[var(--ui-body-text)] mb-1">Personalización avanzada</h3>
-        <p className="text-sm text-[var(--ui-muted)] mb-4">
-          Ajuste fino sobre el tema «{preset.label}». Vista previa en tiempo real.
-        </p>
+        <h3 className="text-base font-semibold text-[var(--ui-body-text)] mb-4">Personalización avanzada</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {CUSTOM_THEME_VAR_KEYS.map(({ key, label }) => (
             <label key={key} className="block">

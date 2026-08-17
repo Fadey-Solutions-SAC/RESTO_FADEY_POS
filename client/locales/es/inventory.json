@@ -102,7 +102,7 @@
     "kardexQtyLabel": "Cantidad",
     "kardexQtyPerDish": "Cantidad por plato ({{unit}})",
     "kardexQtyPositive": "Indica la cantidad a descontar por plato (mayor a 0).",
-    "kardexQtyHintExact": "Se descuenta la cantidad exacta en {{unit}}, según la U.M. del insumo.",
+    "kardexQtyHintExact": "Al vender se descuenta esa cantidad exacta en {{unit}} (ej. 250 g por plato). En el listado, 1 000 g o más se muestran como kilogramos.",
     "kardexQtyHintKg": "Se anota en gramos; el kardex descuenta en kg (250 g = 0,25 kg).",
     "kardexQtyHintL": "Se anota en ml; el kardex descuenta en litros (50 ml = 0,05 L).",
     "kardexInsumoFraction": "Fracción por unidad",

@@ -3,7 +3,6 @@ import { api } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
 import {
-  MdAccessTime,
   MdDashboard,
   MdTrendingUp,
   MdStore,
@@ -161,10 +160,6 @@ export default function WorkTime() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-[var(--ui-body-text)] flex items-center gap-2 rf-module-page-title">
-        <MdAccessTime className="text-gold-600" /> Recursos humanos
-      </h1>
-
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex items-center gap-1.5 h-9 px-2 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">

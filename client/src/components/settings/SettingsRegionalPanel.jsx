@@ -33,14 +33,10 @@ export default function SettingsRegionalPanel({ regional, setRegional, onSave, s
   return (
     <div className="space-y-4">
       <div className="card">
-        <h3 className="font-semibold text-[var(--ui-body-text)] mb-1">Configuración regional</h3>
-        <p className="text-sm text-[var(--ui-muted)] mb-4">
-          Se aplica a tickets, reportes, caja y comprobantes.{' '}
-          <strong className="text-[var(--ui-body-text)]">No se guarda solo:</strong> pulsa «Guardar regional» al terminar.
-          {hasUnsaved ? (
-            <span className="block mt-1 text-amber-700 dark:text-amber-300">Tienes cambios pendientes en esta sección.</span>
-          ) : null}
-        </p>
+        <h3 className="font-semibold text-[var(--ui-body-text)] mb-4">Configuración regional</h3>
+        {hasUnsaved ? (
+          <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">Tienes cambios pendientes en esta sección.</p>
+        ) : null}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">País</label>

@@ -63,11 +63,31 @@ h1, h2, h3, h4 {
 .ui-text-muted {
   color: var(--ui-muted);
 }
+.ui-text-success {
+  color: var(--ui-live-success-text);
+}
+.ui-text-warning {
+  color: var(--ui-live-warning-text);
+}
+.ui-text-danger {
+  color: var(--ui-live-danger-text);
+}
+.ui-text-info {
+  color: var(--ui-live-info-text);
+}
 .rf-page-title {
   color: var(--ui-body-text);
 }
 /* El título del módulo vive en la franja superior; no duplicar en el cuerpo. */
 .rf-main-content h1.rf-module-page-title {
+  display: none !important;
+}
+.rf-main-content h1.rf-module-page-title + p,
+.rf-main-content .rf-module-page-lead,
+.rf-main-content .rf-page-subtitle {
+  display: none !important;
+}
+.rf-main-content div:has(> h1.rf-module-page-title:only-child) {
   display: none !important;
 }
 .rf-section-title {

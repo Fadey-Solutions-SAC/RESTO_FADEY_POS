@@ -45,7 +45,7 @@
     "ir_modulo_logistica": "Inventory & kardex",
     "requerimiento": "Requisition",
     "recepcion": "Receiving",
-    "ir_modulo_gastos": "Go to expenses module"
+    "ir_modulo_gastos": "Expenses"
   },
   "informesSub": {
     "ventas": "Sales",

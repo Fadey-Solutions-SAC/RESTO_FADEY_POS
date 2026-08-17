@@ -1469,6 +1469,17 @@ async function initDatabase() {
     } catch (_) {
       /* tabla insumos ausente aún */
     }
+    try {
+      db.run(
+        `UPDATE insumos
+         SET stock_unidades = stock_actual
+         WHERE LOWER(REPLACE(TRIM(COALESCE(unidad_medida,'')), ' ', '')) IN ('unidad', 'u', 'und', 'unidades')
+           AND COALESCE(stock_unidades, 0) < 0.0000001
+           AND COALESCE(stock_actual, 0) > 0.0000001`
+      );
+    } catch (_) {
+      /* insumos aún no listos */
+    }
 
     const orderColumns = queryAll('PRAGMA table_info(orders)');
     if (!orderColumns.some(col => col.name === 'sale_document_type')) {

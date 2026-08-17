@@ -315,6 +315,30 @@ export function formatMesaLabel(tableNumber) {
   return `M${t.padStart(2, '0')}`;
 }
 
+/** N.º de venta para informes (V-001). */
+export function formatSaleNumber(orderNumber) {
+  const n = Number(orderNumber);
+  if (Number.isFinite(n) && n > 0) return `V-${String(Math.trunc(n)).padStart(3, '0')}`;
+  const raw = String(orderNumber || '').trim();
+  return raw || '—';
+}
+
+/**
+ * Columna Cliente del informe de descuentos: mesa en salón, nombre en delivery/mostrador.
+ * No son campos distintos — Cliente también es la mesa.
+ */
+export function clienteOMesaLabel(order) {
+  const mesa = String(order?.table_number || '').trim();
+  if (mesa && (order?.type === 'dine_in' || !String(order?.customer_name || '').trim() || String(order?.customer_name || '').toLowerCase().startsWith('mesa'))) {
+    return formatMesaLabel(mesa);
+  }
+  const name = String(order?.customer_name || '').trim();
+  if (name) return name;
+  if (mesa) return formatMesaLabel(mesa);
+  if (order?.type === 'delivery') return 'Delivery';
+  return 'Mostrador';
+}
+
 const TABLE_ORDER_MERGE_WINDOW_MS = 40 * 60 * 1000;
 
 function isWithinTableMergeWindow(order) {

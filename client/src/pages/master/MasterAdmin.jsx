@@ -387,7 +387,6 @@ export default function MasterAdmin() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold text-[var(--ui-body-text)]">Administrador Maestro</h1>
-              <p className="text-sm text-[var(--ui-muted)]">Control de dueños, contratos, SUNAT y pago por uso del restaurante, fecha de facturación, bloqueo global y notificaciones.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button onClick={logout} className="btn-secondary flex items-center gap-2"><MdLogout /> Salir</button>
@@ -413,9 +412,6 @@ export default function MasterAdmin() {
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
                   <h3 className="font-semibold rf-section-title">Administrador dueño del negocio</h3>
-                  <p className="text-xs ui-text-muted mt-1">
-                    Solo el dueño creado aquí. Los administradores del personal se crean y eliminan en Configuración → Usuarios dentro del sistema.
-                  </p>
                 </div>
                 <button
                   type="button"

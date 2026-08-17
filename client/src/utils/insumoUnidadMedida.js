@@ -35,6 +35,43 @@ export function isUnidadUm(raw) {
   return normalizeInsumoUm(raw) === 'unidad';
 }
 
+/** Stock en piezas para U.M. Unidad (alitas, huevos, etc.). Usa Cant. (U), no kg/L. */
+export function insumoStockEnUnidades(insumo) {
+  if (!insumo) return 0;
+  const u = Number(insumo.stock_unidades);
+  const s = Number(insumo.stock_actual);
+  if (isUnidadUm(insumo.unidad_medida)) {
+    if (Number.isFinite(u) && Math.abs(u) > 1e-12) return u;
+    return Number.isFinite(s) ? s : 0;
+  }
+  return Number.isFinite(u) ? u : 0;
+}
+
+export function insumoStockEnMasa(insumo) {
+  if (!insumo || isUnidadUm(insumo.unidad_medida)) return 0;
+  const s = Number(insumo.stock_actual);
+  return Number.isFinite(s) ? s : 0;
+}
+
+export function insumoEstaBajoMinimo(insumo) {
+  if (!insumo) return false;
+  if (isUnidadUm(insumo.unidad_medida)) {
+    const uMin = Number(insumo.minimo_unidades) || 0;
+    return uMin > 0 && insumoStockEnUnidades(insumo) < uMin;
+  }
+  const uMin = Number(insumo.minimo_unidades) || 0;
+  const uAct = Number(insumo.stock_unidades) || 0;
+  const sMin = Number(insumo.stock_minimo) || 0;
+  const sAct = Number(insumo.stock_actual) || 0;
+  return (uMin > 0 && uAct < uMin) || (sMin > 0 && sAct < sMin);
+}
+
+export function insumoValorInventario(insumo) {
+  const costo = Number(insumo?.costo_promedio || 0) || 0;
+  if (isUnidadUm(insumo?.unidad_medida)) return insumoStockEnUnidades(insumo) * costo;
+  return (Number(insumo?.stock_actual || 0) || 0) * costo;
+}
+
 export function labelInsumoUm(raw) {
   const v = normalizeInsumoUm(raw);
   const hit = INSUMO_UM_OPTIONS.find((o) => o.value.toLowerCase() === String(v).toLowerCase());
@@ -47,4 +84,17 @@ export function kardexRecipeInputUnit(raw) {
   if (u === 'kg') return 'g';
   if (u === 'L') return 'ml';
   return u;
+}
+
+/** Muestra g/ml en kg/L cuando llegan a 1 000 (el stock interno no cambia). */
+export function scaleInsumoDisplayQty(qty, unidad) {
+  const n = Number(qty);
+  const um = normalizeInsumoUm(unidad);
+  const fallback = String(unidad || '').replace(/[0-9]/g, '').trim();
+  if (!Number.isFinite(n)) return { qty: n, unit: um || fallback };
+  if (um === 'g' && Math.abs(n) >= 1000 - 1e-9) return { qty: n / 1000, unit: 'kg' };
+  if (um === 'ml' && Math.abs(n) >= 1000 - 1e-9) return { qty: n / 1000, unit: 'L' };
+  if (um === 'mg' && Math.abs(n) >= 1000 - 1e-9) return { qty: n / 1000, unit: 'g' };
+  if (um === 'unidad') return { qty: n, unit: 'U' };
+  return { qty: n, unit: um || fallback };
 }
