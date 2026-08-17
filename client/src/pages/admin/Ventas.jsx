@@ -266,7 +266,6 @@ export default function Ventas() {
   const [sortKey, setSortKey] = useState('fecha');
   const [sortDir, setSortDir] = useState('desc');
   const navigate = useNavigate();
-  const viewTapRef = useRef({ key: '', count: 0, timer: null });
 
   const load = async () => {
     try {
@@ -425,43 +424,6 @@ export default function Ventas() {
     setSelectedGroup(group);
     setSelected(group.primary);
     setEditing(null);
-  };
-
-  const purgeVoidedGroupSilently = async (group) => {
-    try {
-      for (const ord of group.orders) {
-        await api.delete(`/orders/${ord.id}`);
-      }
-      closeDetail();
-      await load();
-    } catch (err) {
-      toast.error(err.message || 'No se pudo completar la operación');
-    }
-  };
-
-  const handleViewGroupClick = (group) => {
-    const allCancelled = group.orders.every((o) => o.status === 'cancelled');
-    if (!allCancelled) {
-      openGroupDetail(group);
-      return;
-    }
-    const key = group.key;
-    if (viewTapRef.current.key !== key) {
-      viewTapRef.current = { key, count: 1, timer: null };
-    } else {
-      viewTapRef.current.count += 1;
-    }
-    clearTimeout(viewTapRef.current.timer);
-    if (viewTapRef.current.count >= 3) {
-      viewTapRef.current = { key: '', count: 0, timer: null };
-      void purgeVoidedGroupSilently(group);
-      return;
-    }
-    viewTapRef.current.timer = setTimeout(() => {
-      const taps = viewTapRef.current.count;
-      viewTapRef.current = { key: '', count: 0, timer: null };
-      if (taps === 1) openGroupDetail(group);
-    }, 1200);
   };
 
   const closeDetail = () => {
@@ -698,14 +660,13 @@ export default function Ventas() {
           isVoidedTab={isVoidedTab}
           emptyMessage={isVoidedTab ? 'Sin ventas anuladas' : 'Sin ventas encontradas'}
           onStatusClick={goToDescuentosHighlight}
-          onPurged={() => { void load(); void loadAdjustments(); }}
           sortKey={sortKey}
           sortDir={sortDir}
           onSort={toggleSort}
           showActions
           renderActions={(group, o) => (
             <div className="flex items-center gap-1 relative">
-              <button type="button" onClick={() => handleViewGroupClick(group)} className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700" title="Ver"><MdVisibility /></button>
+              <button type="button" onClick={() => openGroupDetail(group)} className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700" title="Ver"><MdVisibility /></button>
               <button type="button" onClick={() => openReceipt(o, group)} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
               <button
                 type="button"

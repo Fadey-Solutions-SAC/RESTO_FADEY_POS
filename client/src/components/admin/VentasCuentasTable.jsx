@@ -1,10 +1,7 @@
-import { useRef, useState } from 'react';
-import { formatCurrency, formatDate, formatTime, parseApiDate, api } from '../../utils/api';
+import { formatCurrency, formatDate, formatTime, parseApiDate } from '../../utils/api';
 import { salesAccountClienteLabel } from '../../utils/salesReportExport';
 import { UI_BADGE } from '../../utils/uiBadges';
 import i18n from '../../i18n';
-import Modal from '../Modal';
-import toast from 'react-hot-toast';
 
 export function getAccountAuditStatusBadge(group) {
   const orders = group?.orders || [];
@@ -100,68 +97,11 @@ export default function VentasCuentasTable({
   showActions = false,
   renderActions,
   onStatusClick,
-  onPurged,
   sortKey,
   sortDir,
   onSort,
 }) {
   const colSpan = (isVoidedTab ? 8 : 9) + (showActions ? 1 : 0);
-  const obsTapRef = useRef({ key: '', count: 0, timer: null });
-  const [purgeGroup, setPurgeGroup] = useState(null);
-  const [purgePin, setPurgePin] = useState('');
-  const [purgeBusy, setPurgeBusy] = useState(false);
-
-  const closePurgeModal = () => {
-    if (purgeBusy) return;
-    setPurgeGroup(null);
-    setPurgePin('');
-  };
-
-  const confirmPurgeSale = async () => {
-    const pwd = String(purgePin || '').trim();
-    if (!pwd) {
-      toast.error('Ingrese la contraseña');
-      return;
-    }
-    const ids = (purgeGroup?.orders || []).map((o) => o.id).filter(Boolean);
-    if (!ids.length) {
-      toast.error('No se encontró la venta');
-      return;
-    }
-    setPurgeBusy(true);
-    try {
-      await api.post('/orders/purge-from-system', { pin: pwd, order_ids: ids });
-      toast.success('Venta eliminada del sistema');
-      setPurgeGroup(null);
-      setPurgePin('');
-      onPurged?.();
-    } catch (err) {
-      toast.error(err.message || 'No se pudo eliminar la venta');
-    } finally {
-      setPurgeBusy(false);
-    }
-  };
-
-  const handleObservedClick = (group) => {
-    const key = group?.key || group?.primary?.id || '';
-    if (obsTapRef.current.key !== key) {
-      obsTapRef.current = { key, count: 1, timer: null };
-    } else {
-      obsTapRef.current.count += 1;
-    }
-    clearTimeout(obsTapRef.current.timer);
-    if (obsTapRef.current.count >= 3) {
-      obsTapRef.current = { key: '', count: 0, timer: null };
-      setPurgePin('');
-      setPurgeGroup(group);
-      return;
-    }
-    obsTapRef.current.timer = setTimeout(() => {
-      const taps = obsTapRef.current.count;
-      obsTapRef.current = { key: '', count: 0, timer: null };
-      if (taps >= 1) onStatusClick?.(group);
-    }, 700);
-  };
 
   return (
     <div className="overflow-x-auto">
@@ -247,7 +187,7 @@ export default function VentasCuentasTable({
                   {auditBadge.clickable ? (
                     <button
                       type="button"
-                      onClick={() => handleObservedClick(group)}
+                      onClick={() => onStatusClick?.(group)}
                       className={auditBadge.className}
                       title="Ver en Descuentos y Cortesías"
                     >
@@ -270,40 +210,6 @@ export default function VentasCuentasTable({
           )}
         </tbody>
       </table>
-      <Modal isOpen={!!purgeGroup} onClose={closePurgeModal} title="Eliminar venta del sistema" size="sm">
-        <div className="space-y-4">
-          <p className="text-sm ui-text-muted">
-            Esta venta se eliminará de todo el sistema. Ingrese la contraseña para confirmar.
-          </p>
-          <div>
-            <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Contraseña</label>
-            <input
-              type="password"
-              value={purgePin}
-              onChange={(e) => setPurgePin(e.target.value)}
-              className="input-field"
-              autoFocus
-              disabled={purgeBusy}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmPurgeSale();
-              }}
-            />
-          </div>
-          <div className="flex gap-3">
-            <button type="button" onClick={closePurgeModal} className="btn-secondary flex-1" disabled={purgeBusy}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={() => void confirmPurgeSale()}
-              className="btn-primary flex-1 bg-red-600 hover:bg-red-700"
-              disabled={purgeBusy}
-            >
-              {purgeBusy ? 'Eliminando…' : 'Eliminar'}
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }
