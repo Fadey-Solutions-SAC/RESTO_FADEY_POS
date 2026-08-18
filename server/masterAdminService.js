@@ -783,6 +783,27 @@ function releaseAutoLockIfComprobantePresent(urlTrimmed, options = {}) {
   upsertSetting(MASTER_SETTING_KEY, control);
 }
 
+/** Desbloqueo inmediato al enviar comprobante cuando el cierre fue por mora o pago por uso. */
+function releasePaymentBlockOnComprobanteSubmit() {
+  const control = { ...getControlConfig() };
+  if (Number(control.global_lock_enabled || 0) !== 1) return false;
+  const reason = String(control.global_lock_reason || '').trim();
+  const isPaymentLock =
+    Number(control.pago_uso_comprobante_lock_auto || 0) === 1
+    || reason === DEFAULT_MORA_LOCK_REASON
+    || reason === REASON_PAGO_USO_SIN_COMPROBANTE
+    || /falta de pago|comprobante|pago por uso/i.test(reason);
+  if (!isPaymentLock) return false;
+  clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
+  control.global_lock_enabled = 0;
+  control.pago_uso_comprobante_lock_auto = 0;
+  control.global_lock_reason = '';
+  control.lock_enabled_at = new Date().toISOString();
+  control.lock_enabled_by = 'Sistema automático';
+  upsertSetting(MASTER_SETTING_KEY, control);
+  return true;
+}
+
 function syncPagoUsoProximaFechaFromBillingAnchor(anchorDateKey) {
   const anchor = String(anchorDateKey || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor)) return;
@@ -888,4 +909,5 @@ module.exports = {
   buildPagoUsoComprobanteUiState,
   assertComprobantePagoUsoChangeAllowed,
   releaseAutoLockIfComprobantePresent,
+  releasePaymentBlockOnComprobanteSubmit,
 };

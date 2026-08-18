@@ -234,6 +234,7 @@ function isPaymentApprovedForUnlock(pago) {
   const pp = pago?.platform_payment || {};
   const estado = normalizePaymentEstado(pp.estado);
   if (estado === PAYMENT_STATUSES.APPROVED) return true;
+  if (estado === PAYMENT_STATUSES.PENDING) return true;
   if (isApprovalNoticeActive(pp)) return true;
   if (isLicensePeriodActive(pago)) return true;
   if (!estado && String(pago?.comprobante_pago_url || '').trim()) return true;
@@ -569,6 +570,17 @@ async function registerPendingComprobantePayment({ comprobanteUrl, monto = null,
   notifyPaymentPending();
 
   await pushComprobanteToCentral({ comprobanteUrl: url, referencia: ref });
+
+  try {
+    const {
+      releasePaymentBlockOnComprobanteSubmit,
+      evaluateAutomaticBillingRules,
+    } = require('../masterAdminService');
+    releasePaymentBlockOnComprobanteSubmit();
+    evaluateAutomaticBillingRules();
+  } catch (_) {
+    /* opcional */
+  }
 
   return getPublicPlatformPaymentState();
 }

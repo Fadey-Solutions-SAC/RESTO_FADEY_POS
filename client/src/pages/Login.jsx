@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api, resolveMediaUrl } from '../utils/api';
@@ -26,6 +26,8 @@ export default function Login() {
   const [brandLogo, setBrandLogo] = useState('');
   const [coverImage, setCoverImage] = useState('');
   const [restaurantName, setRestaurantName] = useState(FALLBACK_RESTAURANT_NAME);
+  const [systemLocked, setSystemLocked] = useState(false);
+  const [lockReason, setLockReason] = useState('');
 
   const photosRequired = attendancePolicy.loginRequired;
   const policyReady = !attendancePolicy.loading;
@@ -44,6 +46,16 @@ export default function Login() {
       html.classList.remove('rf-login-lock');
       body.classList.remove('rf-login-lock');
     };
+  }, []);
+
+  useEffect(() => {
+    api
+      .getSystemLockStatus()
+      .then((lock) => {
+        setSystemLocked(!!lock?.locked);
+        setLockReason(String(lock?.reason || '').trim());
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -91,6 +103,10 @@ export default function Login() {
       navigate(getDefaultStaffPath(user), { replace: true });
     } catch (err) {
       const msg = String(err?.message || '');
+      if (/bloqueado|423|falta de pago/i.test(msg)) {
+        setSystemLocked(true);
+        setLockReason(msg);
+      }
       if (/foto|inicio de jornada|jornada/i.test(msg)) {
         setAttendancePolicy((p) => ({ ...p, loading: false, loginRequired: true }));
         setPhotoLogin(null);
@@ -211,6 +227,20 @@ export default function Login() {
                       t('login.enter')
                     )}
                   </button>
+
+                  {systemLocked ? (
+                    <div className="mt-4 space-y-2 text-center">
+                      <p className="text-xs text-amber-200/90">
+                        {lockReason || 'Sistema bloqueado por falta de pago.'}
+                      </p>
+                      <Link
+                        to="/desbloquear-pago"
+                        className="inline-flex w-full items-center justify-center rounded-lg border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/15 transition-colors"
+                      >
+                        Cargar comprobante de pago
+                      </Link>
+                    </div>
+                  ) : null}
                 </form>
               </>
             )}

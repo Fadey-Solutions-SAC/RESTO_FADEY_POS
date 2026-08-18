@@ -1,16 +1,28 @@
 const express = require('express');
+const path = require('path');
+const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { queryOne, runSql } = require('../database');
 const { JWT_SECRET, authenticateToken } = require('../middleware/auth');
+const { getUploadsRoot } = require('../uploadsPath');
 const {
   getLockState,
   verifyMasterCredentials,
   getMasterCredentialsPublic,
   getControlConfig,
   getPadronQuotaPublic,
+  buildPagoUsoComprobanteUiState,
+  releasePaymentBlockOnComprobanteSubmit,
+  evaluateAutomaticBillingRules,
 } = require('../masterAdminService');
+const {
+  readPagoUso,
+  writePagoUso,
+  submitComprobanteToPanel,
+  applyNewComprobanteUploadToPago,
+} = require('../services/platformPaymentService');
 const { normalizePlan } = require('../servicePlan');
 const { getEffectivePermissions, buildSubPermissions } = require('../planModuleCatalog');
 const { getRawUserPermissionsJson } = require('../lib/cajaPermissions');
@@ -28,6 +40,17 @@ const { touchWorkSessionActivity } = require('../services/workActivityTracker');
 const { STAFF_IDLE_LOGOUT_MINUTES } = require('../constants/staffSessionPolicy');
 
 const router = express.Router();
+
+const unlockComprobanteUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, getUploadsRoot()),
+    filename: (req, file, cb) => {
+      const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext || '.bin'}`);
+    },
+  }),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
 
 const { getValidUiThemeId } = require('../uiThemeCatalog');
 
@@ -411,6 +434,73 @@ router.get('/me', authenticateToken, (req, res) => {
     if (refreshed) payload.token = refreshed;
   }
   res.json(payload);
+});
+
+/** Estado público del bloqueo (login sin sesión). */
+router.get('/system-lock', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const lock = getLockState();
+  const pago = readPagoUso();
+  const schedule = buildPagoUsoComprobanteUiState();
+  return res.json({
+    locked: lock.locked,
+    reason: lock.reason,
+    unlock_available: lock.locked,
+    pago_uso: {
+      numero_cuenta: String(pago.numero_cuenta || '').trim(),
+      nombre_empresa_cobro: String(pago.nombre_empresa_cobro || '').trim(),
+      fecha_proxima_facturacion: String(pago.fecha_proxima_facturacion || '').trim(),
+    },
+    comprobante_window: schedule?.upload_comprobante_message || '',
+  });
+});
+
+/**
+ * Carga y envía comprobante sin iniciar sesión (solo mientras el sistema esté bloqueado).
+ * Desbloquea al instante tras registrar el envío.
+ */
+router.post('/unlock-comprobante', (req, res) => {
+  unlockComprobanteUpload.single('comprobante')(req, res, async (uploadErr) => {
+    try {
+      const lock = getLockState();
+      if (!lock.locked) {
+        return res.status(400).json({ error: 'El sistema no está bloqueado.' });
+      }
+      if (uploadErr) {
+        return res.status(400).json({ error: uploadErr.message || 'No se pudo subir el comprobante.' });
+      }
+      if (!req.file) {
+        return res.status(400).json({ error: 'Seleccione una imagen o PDF del comprobante.' });
+      }
+      const monto = Number(req.body?.monto);
+      if (!Number.isFinite(monto) || monto <= 0) {
+        return res.status(400).json({ error: 'Indique el monto pagado (S/) mayor a cero.' });
+      }
+
+      const url = `/uploads/${req.file.filename}`;
+      const prevPago = readPagoUso();
+      const prevUrl = String(prevPago.comprobante_pago_url || '').trim();
+      let nextPago = applyNewComprobanteUploadToPago(prevPago, url, prevUrl);
+      nextPago.monto_comprobante = Math.round(monto * 100) / 100;
+      writePagoUso(nextPago);
+
+      const result = await submitComprobanteToPanel({ comprobanteUrl: url, monto });
+      releasePaymentBlockOnComprobanteSubmit();
+      evaluateAutomaticBillingRules();
+
+      const stillLocked = getLockState().locked;
+      return res.json({
+        ok: true,
+        unlocked: !stillLocked,
+        message: stillLocked
+          ? (result.central_user_message || 'Comprobante registrado. Si el bloqueo persiste, contacte soporte.')
+          : 'Comprobante enviado. El sistema fue desbloqueado. Ya puede iniciar sesión.',
+        central_user_message: result.central_user_message || '',
+      });
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'No se pudo procesar el comprobante.' });
+    }
+  });
 });
 
 module.exports = router;

@@ -7,6 +7,7 @@ import { registerServiceWorkerAfterSplash } from './serviceWorkerRegister';
 
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import LoginComprobanteUnlock from './pages/LoginComprobanteUnlock';
 import RestoFadeyEntrySplash from './components/RestoFadeyEntrySplash';
 import Escritorio from './pages/admin/Escritorio';
 import Ventas from './pages/admin/Ventas';
@@ -172,6 +173,7 @@ function AppRoutes({ user }) {
       <Routes>
       <Route path="/auto-pedido" element={<SelfOrder />} />
       <Route path="/auto-pedido-cliente" element={<SelfOrderCliente />} />
+      <Route path="/desbloquear-pago" element={<LoginComprobanteUnlock />} />
       <Route path="/" element={user && user.type === 'staff' ? <Navigate to={
         getDefaultStaffPath(user)
       } /> : <Login />} />

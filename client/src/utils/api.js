@@ -677,6 +677,24 @@ export const api = {
     post: (endpoint, body = {}) => printingRequest(endpoint, { method: 'POST', body: JSON.stringify(body) }),
     put: (endpoint, body) => printingRequest(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
   },
+  getSystemLockStatus: async () => {
+    const res = await fetch(`${getApiBase()}/auth/system-lock`, { cache: 'no-store' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'No se pudo consultar el bloqueo del sistema');
+    return data;
+  },
+  submitUnlockComprobante: async ({ file, monto }) => {
+    const formData = new FormData();
+    formData.append('comprobante', file);
+    formData.append('monto', String(monto));
+    const res = await fetch(`${getApiBase()}/auth/unlock-comprobante`, {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || data?.message || 'No se pudo enviar el comprobante');
+    return data;
+  },
   upload: async (file) => {
     const token = localStorage.getItem('token');
     const formData = new FormData();

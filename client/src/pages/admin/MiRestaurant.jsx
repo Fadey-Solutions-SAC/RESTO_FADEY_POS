@@ -1204,7 +1204,7 @@ export default function MiRestaurant() {
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Número de cuenta</label>
                   <input
-                    className="input-field"
+                    className="input-field text-sm tabular-nums"
                     placeholder="CCI, número de cuenta o datos de transferencia"
                     value={appConfig.pago_uso_sistema?.numero_cuenta || ''}
                     onChange={(e) => updateAppCfg('pago_uso_sistema', 'numero_cuenta', e.target.value)}
@@ -1213,7 +1213,7 @@ export default function MiRestaurant() {
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre de la empresa a la que debes pagar</label>
                   <input
-                    className="input-field"
+                    className="input-field text-sm"
                     placeholder="Razón social o nombre del beneficiario"
                     value={appConfig.pago_uso_sistema?.nombre_empresa_cobro || ''}
                     onChange={(e) => updateAppCfg('pago_uso_sistema', 'nombre_empresa_cobro', e.target.value)}
@@ -1229,7 +1229,7 @@ export default function MiRestaurant() {
                     type="number"
                     min="0.01"
                     step="0.01"
-                    className="input-field max-w-xs"
+                    className="input-field max-w-xs text-sm tabular-nums"
                     placeholder="Ej. 99.00"
                     value={appConfig.pago_uso_sistema?.monto_comprobante ?? ''}
                     onChange={(e) => updateAppCfg('pago_uso_sistema', 'monto_comprobante', e.target.value)}

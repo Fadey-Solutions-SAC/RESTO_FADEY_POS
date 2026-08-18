@@ -48,7 +48,12 @@ export default function IndicatorStatCard({
           {label}
         </p>
       </div>
-      <p className={`${large ? 'text-3xl' : 'text-2xl'} font-bold text-[var(--ui-body-text)] tabular-nums truncate`}>
+      <p
+        className={`${
+          large ? 'text-lg sm:text-xl' : 'text-base sm:text-lg'
+        } font-bold text-[var(--ui-body-text)] tabular-nums leading-tight break-words`}
+        title={typeof value === 'string' || typeof value === 'number' ? String(value) : undefined}
+      >
         {value}
       </p>
       {sub ? <p className="text-xs text-[var(--ui-muted)] mt-1 truncate">{sub}</p> : null}
