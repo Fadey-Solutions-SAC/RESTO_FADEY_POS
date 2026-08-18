@@ -32,6 +32,7 @@ const { getOrderItemsWithProductionArea } = require('../services/orderItemsProdu
 const { filterKitchenOrdersForStation } = require('../utils/kitchenStationReady');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
 const { KITCHEN_ARRIVAL_ALERT_MIN, KITCHEN_PREP_ALERT_MIN } = require('../constants/kitchenTiming');
+const { logRouteError, publicErrorMessage } = require('../utils/routeErrors');
 
 const router = express.Router();
 const FINANCIAL_FILTER = FINANCIAL_FILTER_SQL;
@@ -805,6 +806,7 @@ router.get('/slow-moving-products', authenticateToken, requireRole('admin', 'caj
 });
 
 router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  try {
   const ps = getPaidSalesEventSql();
   const today = getLocalTodayDateKey();
   const dateKey = parseYmd(req.query.date) || today;
@@ -878,6 +880,10 @@ router.get('/daily', authenticateToken, requireRole('admin', 'cajero'), (req, re
       }
     })(),
   });
+  } catch (err) {
+    logRouteError(req, err, { phase: 'reports_daily' });
+    res.status(500).json({ error: publicErrorMessage(err, 'No se pudo cargar el informe de ventas del día') });
+  }
 });
 
 function parseReportMonth(input) {
@@ -895,6 +901,7 @@ function monthRangeEndingAt(monthKey, count = 12) {
 }
 
 router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  try {
   const ps = getPaidSalesEventSql();
   const { getBusinessMonthKey } = require('../utils/appDateTime');
   const monthKey = parseReportMonth(req.query.month) || getBusinessMonthKey(queryOne);
@@ -969,6 +976,10 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
       }
     })(),
   });
+  } catch (err) {
+    logRouteError(req, err, { phase: 'reports_monthly' });
+    res.status(500).json({ error: publicErrorMessage(err, 'No se pudo cargar el informe de ventas del mes') });
+  }
 });
 
 router.get('/closed-registers', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {

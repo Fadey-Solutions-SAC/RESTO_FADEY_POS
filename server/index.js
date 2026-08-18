@@ -76,7 +76,7 @@ const corsOptions = {
     return cb(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Access-Control-Request-Private-Network'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Backup-Bytes', 'Access-Control-Request-Private-Network'],
   exposedHeaders: ['X-Refreshed-Token'],
 };
 const io = new Server(server, {

@@ -18,6 +18,9 @@ import {
   buildCortesiasExcelHtml,
   buildCortesiasTxt,
   mapCortesiasInformeRows,
+  buildEliminadosExcelHtml,
+  buildEliminadosTxt,
+  mapEliminadosInformeRows,
 } from '../../utils/salesAdjustmentsExport';
 import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdDelete, MdRemoveCircleOutline, MdVisibility } from 'react-icons/md';
 import Modal from '../../components/Modal';
@@ -168,7 +171,7 @@ export default function CortesiasReportSection({
   const [fromDate, setFromDate] = useState(localMonthStartYmd);
   const [toDate, setToDate] = useState(() => toInputDate(new Date()));
   const [search, setSearch] = useState('');
-  const [kindFilter, setKindFilter] = useState('descuento');
+  const [kindFilter, setKindFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({ summary: {}, orders: [] });
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -307,6 +310,21 @@ export default function CortesiasReportSection({
     [courtesyInformeRows],
   );
 
+  const eliminadoInformeRows = useMemo(
+    () => mapEliminadosInformeRows(filteredOrders, formatDate),
+    [filteredOrders],
+  );
+
+  const eliminadoInformeQty = useMemo(
+    () => eliminadoInformeRows.reduce((s, r) => s + Number(r.cantidad || 0), 0),
+    [eliminadoInformeRows],
+  );
+
+  const eliminadoInformeTotal = useMemo(
+    () => eliminadoInformeRows.reduce((s, r) => s + Number(r.valor || 0), 0),
+    [eliminadoInformeRows],
+  );
+
   const groupedProducts = useMemo(
     () => (kindFilter === 'all'
       ? flattenAdjustmentRows(filteredOrders)
@@ -398,6 +416,29 @@ export default function CortesiasReportSection({
       toast.success('Informe descargado (Excel)');
       return;
     }
+    if (kindFilter === 'eliminado') {
+      if (!eliminadoInformeRows.length) {
+        toast.error('No hay eliminados para descargar en el periodo seleccionado');
+        return;
+      }
+      const payload = {
+        fromDate,
+        toDate,
+        orders: filteredOrders,
+        formatDate,
+        formatDateKey,
+        usuario: reportUsuario,
+      };
+      const baseName = buildSalesAdjustmentsDownloadBaseName(fromDate, toDate, 'eliminado');
+      if (format === 'txt') {
+        downloadBlobFile(`${baseName}.txt`, buildEliminadosTxt(payload));
+        toast.success('Informe descargado (TXT)');
+        return;
+      }
+      downloadExcelFile(baseName, buildEliminadosExcelHtml(payload));
+      toast.success('Informe descargado (Excel)');
+      return;
+    }
     if (!groupedProducts.length) {
       toast.error('No hay productos para descargar en el periodo seleccionado');
       return;
@@ -482,7 +523,9 @@ export default function CortesiasReportSection({
                 ? !discountInformeRows.length
                 : kindFilter === 'cortesia'
                   ? !courtesyInformeRows.length
-                  : !groupedProducts.length
+                  : kindFilter === 'eliminado'
+                    ? !eliminadoInformeRows.length
+                    : !groupedProducts.length
             }
           />
         </div>
@@ -506,7 +549,7 @@ export default function CortesiasReportSection({
           ))}
         </div>
         <p className="text-xs text-[var(--ui-muted)] mt-3">
-          En Descuentos y Cortesías, Cliente es la mesa (salón) o el nombre del cliente (delivery/mostrador).
+          En Descuentos, Cortesías y Eliminados, Cliente es la mesa (salón) o el nombre del cliente (delivery/mostrador).
         </p>
       </div>
 
@@ -667,6 +710,92 @@ export default function CortesiasReportSection({
                   <td colSpan={3} />
                   <td className="py-2.5 px-2 text-right tabular-nums">{courtesyInformeQty}</td>
                   <td className="py-2.5 px-2 text-right tabular-nums">{formatCurrency(courtesyInformeTotal)}</td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      ) : kindFilter === 'eliminado' ? (
+        <div className="card overflow-x-auto p-0">
+          <div
+            className="text-white text-center font-bold py-4 text-lg uppercase tracking-wide"
+            style={{ background: INFORME_EXCEL_NAVY }}
+          >
+            Informe de eliminados
+          </div>
+          <div className="grid grid-cols-[8rem_minmax(0,1fr)] text-sm border-b border-[#808080]">
+            <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Periodo</div>
+            <div className="px-3 py-1.5 text-center">
+              {formatDateKey(fromDate) || fromDate} - {formatDateKey(toDate) || toDate}
+            </div>
+            <div className="font-bold px-3 py-1.5" style={{ background: INFORME_EXCEL_LABEL }}>Usuario</div>
+            <div className="px-3 py-1.5 text-center">{reportUsuario}</div>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-white text-center" style={{ background: INFORME_EXCEL_NAVY }}>
+                <th className="py-2 px-2 font-semibold">Fecha</th>
+                <th className="py-2 px-2 font-semibold">N.º Venta</th>
+                <th className="py-2 px-2 font-semibold">Cliente</th>
+                <th className="py-2 px-2 font-semibold">Producto</th>
+                <th className="py-2 px-2 font-semibold text-right">Cantidad</th>
+                <th className="py-2 px-2 font-semibold">Motivo</th>
+                <th className="py-2 px-2 font-semibold text-right">Valor</th>
+                <th className="py-2 px-2 font-semibold">Usuario</th>
+                <th className="py-2 px-2 font-semibold w-10" />
+              </tr>
+            </thead>
+            <tbody>
+              {eliminadoInformeRows.map((row) => (
+                <tr
+                  key={row.id}
+                  id={activeHighlightIds.has(String(row.orderId)) ? `adjustment-product-${row.orderId}` : undefined}
+                  className={`border-b border-[#808080] ${
+                    activeHighlightIds.has(String(row.orderId)) ? HIGHLIGHT_ROW_CLASS : ''
+                  }`}
+                >
+                  <td className="py-2 px-2 text-center whitespace-nowrap tabular-nums">{row.fecha}</td>
+                  <td className="py-2 px-2 text-center whitespace-nowrap">{row.nVenta}</td>
+                  <td className="py-2 px-2">{row.cliente}</td>
+                  <td className="py-2 px-2">{row.producto}</td>
+                  <td className="py-2 px-2 text-right tabular-nums">{row.cantidad}</td>
+                  <td className="py-2 px-2">{row.motivo}</td>
+                  <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.valor)}</td>
+                  <td className="py-2 px-2">{row.usuario}</td>
+                  <td className="py-2 px-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteTarget(row.record);
+                        setAdminPassword('');
+                      }}
+                      className="p-1 rounded-lg text-[var(--ui-muted)] hover:bg-red-50 hover:text-red-600"
+                      title="Eliminar registro"
+                    >
+                      <MdDelete />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {eliminadoInformeRows.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="py-10 text-center text-[var(--ui-muted)]">
+                    {datesValid
+                      ? 'No hay productos eliminados en el periodo seleccionado'
+                      : 'Seleccione un rango de fechas válido'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {eliminadoInformeRows.length > 0 && (
+              <tfoot>
+                <tr className="font-bold border-t border-[#808080]">
+                  <td className="py-2.5 px-2" style={{ background: INFORME_EXCEL_TOTAL }}>TOTAL</td>
+                  <td colSpan={3} />
+                  <td className="py-2.5 px-2 text-right tabular-nums">{eliminadoInformeQty}</td>
+                  <td />
+                  <td className="py-2.5 px-2 text-right tabular-nums">{formatCurrency(eliminadoInformeTotal)}</td>
                   <td colSpan={2} />
                 </tr>
               </tfoot>

@@ -762,6 +762,16 @@ function buildChartsData(from, to) {
 }
 
 function buildIndicatorsHub(query = {}, opts = {}) {
+  try {
+    require('../database').ensureOrdersReportColumns();
+  } catch (err) {
+    console.warn('[indicators-hub] esquema orders:', err?.message || err);
+  }
+  try {
+    require('./saleNumberService').ensureSaleNumberSchema();
+  } catch (err) {
+    console.warn('[indicators-hub] sale_number:', err?.message || err);
+  }
   const def = defaultRange();
   const from = parseDateKey(query.from) || def.from;
   const to = parseDateKey(query.to) || def.to;

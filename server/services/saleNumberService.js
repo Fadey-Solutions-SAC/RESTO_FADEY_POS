@@ -12,9 +12,13 @@ function ensureSaleNumberSchema() {
     )
   `);
   runSql('INSERT OR IGNORE INTO sale_sequence (id, current_number) VALUES (1, 0)');
-  const cols = queryAll('PRAGMA table_info(orders)') || [];
-  if (!cols.some((c) => c.name === 'sale_number')) {
-    runSql('ALTER TABLE orders ADD COLUMN sale_number INTEGER');
+  try {
+    require('../database').ensureOrdersReportColumns();
+  } catch (_) {
+    const cols = queryAll('PRAGMA table_info(orders)') || [];
+    if (!cols.some((c) => c.name === 'sale_number' || c.NAME === 'sale_number')) {
+      runSql('ALTER TABLE orders ADD COLUMN sale_number INTEGER');
+    }
   }
 }
 

@@ -102,7 +102,10 @@ function writeFileAtomic(destPath, buffer, { keepPrevious = false } = {}) {
   const tmp = `${destPath}.${process.pid}.${Date.now()}.tmp`;
   const fd = fs.openSync(tmp, 'w');
   try {
-    fs.writeSync(fd, buffer, 0, buffer.length, 0);
+    const written = fs.writeSync(fd, buffer, 0, buffer.length, 0);
+    if (written !== buffer.length) {
+      throw new Error(`Escritura incompleta del backup (${written} de ${buffer.length} bytes)`);
+    }
     fs.fsyncSync(fd);
   } finally {
     fs.closeSync(fd);

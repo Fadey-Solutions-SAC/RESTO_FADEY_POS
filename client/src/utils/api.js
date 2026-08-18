@@ -695,13 +695,42 @@ export const api = {
     assertBackupApiReachable();
     const token = localStorage.getItem('token');
     if (!token) throw new Error('Debe iniciar sesión como administrador maestro');
+    const expectedBytes = Number(file?.size || 0);
+    const fullBuffer = await file.arrayBuffer();
+    if (fullBuffer.byteLength !== expectedBytes) {
+      throw new Error(
+        `No se pudo leer el archivo completo en este equipo (${fullBuffer.byteLength} de ${expectedBytes} bytes). Copie el .db otra vez y reintente.`,
+      );
+    }
+    const head = new TextDecoder().decode(new Uint8Array(fullBuffer).subarray(0, 16));
+    if (!head.startsWith('SQLite format')) {
+      throw new Error('El archivo no es un backup SQLite válido (debe empezar con «SQLite format 3»).');
+    }
+    const pageSizeRaw = new DataView(fullBuffer).getUint16(16, false);
+    const pageSize = pageSizeRaw === 1 ? 65536 : pageSizeRaw;
+    const pageCount = new DataView(fullBuffer).getUint32(28, false);
+    if (pageCount > 0 && pageSize >= 512) {
+      const declared = pageSize * pageCount;
+      if (fullBuffer.byteLength < declared) {
+        throw new Error(
+          `El backup está truncado (${fullBuffer.byteLength} bytes; se esperaban ${declared}). Descárguelo de nuevo antes de restaurar.`,
+        );
+      }
+    }
     const formData = new FormData();
-    formData.append('backup', file);
+    formData.append(
+      'backup',
+      new Blob([fullBuffer], { type: 'application/octet-stream' }),
+      file.name || 'restaurant_backup.db',
+    );
     let res;
     try {
       res = await fetch(`${getApiBase()}/restaurant/restore`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Backup-Bytes': String(expectedBytes),
+        },
         body: formData,
       });
     } catch (err) {
@@ -762,14 +791,24 @@ export const api = {
       throw new Error('El servidor devolvió HTML en lugar del .db. Revise VITE_API_URL en Vercel.');
     }
     const blob = await res.blob();
-    const head = await blob.slice(0, 16).text();
+    const full = await blob.arrayBuffer();
+    const head = new TextDecoder().decode(new Uint8Array(full).subarray(0, 16));
     if (!head.startsWith('SQLite format')) {
       throw new Error('La respuesta no es un archivo SQLite válido. Revise VITE_API_URL en Vercel.');
     }
+    const pageSizeRaw = new DataView(full).getUint16(16, false);
+    const pageSize = pageSizeRaw === 1 ? 65536 : pageSizeRaw;
+    const pageCount = new DataView(full).getUint32(28, false);
+    if (pageCount > 0 && pageSize >= 512 && full.byteLength < pageSize * pageCount) {
+      throw new Error(
+        `La descarga del backup quedó incompleta (${full.byteLength} bytes). Reintente Guardar backup.`,
+      );
+    }
+    const completeBlob = new Blob([full], { type: 'application/octet-stream' });
     const disposition = res.headers.get('content-disposition') || '';
     const match = disposition.match(/filename="?([^"]+)"?/i);
     const filename = match?.[1] || `restaurant_backup_${new Date().toISOString().slice(0, 10)}.db`;
-    return { blob, filename };
+    return { blob: completeBlob, filename };
   },
   /** Certificado SUNAT .pfx / .p12 → `uploads/billing-certs/` en el servidor Node. */
   uploadBillingCert: async (file) => {

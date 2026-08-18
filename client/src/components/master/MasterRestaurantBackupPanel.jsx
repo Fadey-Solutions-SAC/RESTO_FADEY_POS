@@ -56,8 +56,10 @@ export default function MasterRestaurantBackupPanel({ onAfterMutate, cardClassNa
     try {
       const data = await api.restoreBackup(file);
       const name = String(data?.restaurant_name || '').trim();
+      const bytes = Number(data?.bytes || 0);
+      const sizeLabel = bytes > 0 ? ` · ${(bytes / (1024 * 1024)).toFixed(2)} MB` : '';
       const detail = name
-        ? `${name} · ${data?.products_count ?? '?'} productos · ${data?.users_count ?? '?'} usuarios`
+        ? `${name} · ${data?.products_count ?? '?'} productos · ${data?.users_count ?? '?'} usuarios · ${data?.orders_count ?? '?'} pedidos${sizeLabel}`
         : '';
       toast.success(
         `${data?.message || 'Información restaurada correctamente'}${detail ? ` (${detail})` : ''}. Inicie sesión con el administrador del restaurante.`,
@@ -105,7 +107,8 @@ export default function MasterRestaurantBackupPanel({ onAfterMutate, cardClassNa
       <div className={cardClassName}>
         <h3 className={titleCls}>Respaldo y restauración de información</h3>
         <p className={bodyCls}>
-          Descarga una copia completa de datos antes de actualizar la app y luego restaura desde ese archivo para recuperar toda la información.
+          Antes de cambiar el web service, descargue el backup .db completo y luego restáurelo en el servidor nuevo.
+          El archivo se lee entero en este equipo (cabecera SQLite y tamaño) y el API verifica que no llegue truncado.
           Tras restaurar, cierre sesión y entre con el <strong>usuario administrador del restaurante</strong> incluido en ese backup (no el maestro).
         </p>
         {apiOrigin ? (

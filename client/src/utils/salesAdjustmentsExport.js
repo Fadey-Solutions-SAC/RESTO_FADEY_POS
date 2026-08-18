@@ -248,6 +248,129 @@ export function buildCortesiasExcelHtml({ fromDate, toDate, orders, formatDate, 
   });
 }
 
+export function mapEliminadosInformeRows(orders, formatDate) {
+  const fmt = typeof formatDate === 'function' ? formatDate : (v) => String(v || '');
+  const rows = [];
+  (orders || [])
+    .filter((o) => o.adjustment_kind === 'eliminado')
+    .forEach((o) => {
+      const fechaRaw = o.row_source === 'product_removal'
+        ? (o.created_at || o.updated_at)
+        : (o.paid_at || o.created_at || o.updated_at);
+      const base = {
+        orderId: o.id,
+        fecha: fmt(fechaRaw),
+        sortTime: rowFechaSort(o),
+        nVenta: formatSaleNumber(o.order_number),
+        cliente: clienteOMesaLabel(o),
+        motivo: rowReason(o),
+        usuario: String(o.created_by_user_name || '').trim() || '—',
+        record: o,
+      };
+      courtesyItems(o).forEach((it, idx) => {
+        const cantidad = Number(it.quantity ?? it.quantity_removed ?? 0);
+        rows.push({
+          ...base,
+          id: `${o.id}::${it.id || it.product_id || idx}`,
+          producto: itemProductName(it),
+          cantidad,
+          valor: itemLineValor(it),
+        });
+      });
+    });
+  return rows.sort((a, b) => {
+    if (a.sortTime !== b.sortTime) return a.sortTime - b.sortTime;
+    const v = String(a.nVenta).localeCompare(String(b.nVenta), 'es');
+    if (v) return v;
+    return String(a.producto).localeCompare(String(b.producto), 'es');
+  });
+}
+
+const ELIMINADOS_HEADERS = [
+  { label: 'Fecha', width: 90 },
+  { label: 'N.º Venta', width: 90 },
+  { label: 'Cliente', width: 140 },
+  { label: 'Producto', width: 180 },
+  { label: 'Cantidad', width: 80 },
+  { label: 'Motivo', width: 200 },
+  { label: 'Valor', width: 100 },
+  { label: 'Usuario', width: 120 },
+];
+
+export function buildEliminadosExcelHtml({ fromDate, toDate, orders, formatDate, formatDateKey, usuario } = {}) {
+  const period = [formatDateKey?.(fromDate) || fromDate, formatDateKey?.(toDate) || toDate]
+    .filter(Boolean)
+    .join(' - ') || '—';
+  const mapped = mapEliminadosInformeRows(orders, formatDate);
+  const qty = mapped.reduce((s, r) => s + Number(r.cantidad || 0), 0);
+  const total = mapped.reduce((s, r) => s + Number(r.valor || 0), 0);
+  return buildStyledInformeExcelHtml({
+    title: 'INFORME DE ELIMINADOS',
+    sheetName: 'Eliminados',
+    periodLabel: period,
+    usuario: usuario || '—',
+    headers: ELIMINADOS_HEADERS,
+    rows: mapped.map((row) => [
+      { text: row.fecha, align: 'center' },
+      { text: row.nVenta, align: 'center' },
+      { text: row.cliente, align: 'left' },
+      { text: row.producto, align: 'left' },
+      { text: String(row.cantidad), align: 'right' },
+      { text: row.motivo, align: 'left' },
+      { text: formatSolesExcel(row.valor), align: 'right' },
+      { text: row.usuario, align: 'left' },
+    ]),
+    totalCells: [
+      { text: 'TOTAL', align: 'left' },
+      { text: '', align: 'center' },
+      { text: '', align: 'left' },
+      { text: '', align: 'left' },
+      { text: String(qty), align: 'right' },
+      { text: '', align: 'left' },
+      { text: formatSolesExcel(total), align: 'right' },
+      { text: '', align: 'left' },
+    ],
+  });
+}
+
+export function buildEliminadosTxt({ fromDate, toDate, orders, formatDate, formatDateKey, usuario } = {}) {
+  const period = [formatDateKey?.(fromDate) || fromDate, formatDateKey?.(toDate) || toDate]
+    .filter(Boolean)
+    .join(' - ') || '—';
+  const mapped = mapEliminadosInformeRows(orders, formatDate);
+  const qty = mapped.reduce((s, r) => s + Number(r.cantidad || 0), 0);
+  const total = mapped.reduce((s, r) => s + Number(r.valor || 0), 0);
+  const lines = [
+    'INFORME DE ELIMINADOS',
+    '='.repeat(22),
+    `Periodo: ${period}`,
+    `Usuario: ${usuario || '—'}`,
+    '',
+  ];
+  if (mapped.length) {
+    lines.push(...buildFixedWidthTable({
+      headers: ['Fecha', 'N.º Venta', 'Cliente', 'Producto', 'Cant.', 'Motivo', 'Valor', 'Usuario'],
+      widths: [12, 10, 14, 18, 6, 22, 12, 14],
+      aligns: ['left', 'left', 'left', 'left', 'right', 'left', 'right', 'left'],
+      rows: mapped.map((row) => [
+        row.fecha,
+        row.nVenta,
+        row.cliente,
+        row.producto,
+        row.cantidad,
+        row.motivo,
+        formatSolesExcel(row.valor),
+        row.usuario,
+      ]),
+    }));
+    lines.push('');
+    lines.push(`TOTAL  Cantidad ${qty}  Valor ${formatSolesExcel(total)}`);
+  } else {
+    lines.push('(Sin eliminados en el periodo)');
+  }
+  return `${lines.join('\n')}\n`;
+}
+
 export function buildCortesiasTxt({ fromDate, toDate, orders, formatDate, formatDateKey, usuario } = {}) {
   const period = [formatDateKey?.(fromDate) || fromDate, formatDateKey?.(toDate) || toDate]
     .filter(Boolean)

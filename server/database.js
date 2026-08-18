@@ -12,6 +12,7 @@ const {
   getPersistentBackupsDir,
   getLastGoodPath,
 } = require('./sqlitePersist');
+const { assertCompleteSqliteBuffer } = require('./utils/sqliteBackupIntegrity');
 const {
   loadBetterSqlite3,
   openNativeWithRecover,
@@ -291,17 +292,81 @@ function createBackupFile() {
   return writeSnapshotBackup(DB_PATH, buffer, 'restaurant_manual');
 }
 
-async function restoreDbFromBuffer(fileBuffer) {
+function migrateRestoredDatabase() {
+  try {
+    runSql('CREATE TABLE IF NOT EXISTS schema_migrations (migration_key TEXT PRIMARY KEY)');
+  } catch (_) { /* noop */ }
+  try {
+    ensureUsersRoleAllowsProduccion();
+  } catch (migErr) {
+    console.warn('[backup] CHECK rol produccion tras restaurar:', migErr.message || migErr);
+  }
+  try {
+    ensureUsersSchemaColumns();
+  } catch (migErr) {
+    console.warn('[backup] columnas users tras restaurar:', migErr.message || migErr);
+  }
+  try {
+    ensureOrdersReportColumns();
+  } catch (migErr) {
+    console.warn('[backup] esquema orders tras restaurar:', migErr.message || migErr);
+  }
+  try {
+    runSql(`
+      CREATE TABLE IF NOT EXISTS order_product_removals (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        order_number INTEGER,
+        product_id TEXT,
+        product_name TEXT NOT NULL,
+        quantity_removed REAL NOT NULL DEFAULT 1,
+        unit_price REAL NOT NULL DEFAULT 0,
+        line_total REAL NOT NULL DEFAULT 0,
+        removal_reason TEXT NOT NULL DEFAULT '',
+        table_number TEXT,
+        order_type TEXT,
+        actor_user_id TEXT,
+        actor_name TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    runSql('CREATE INDEX IF NOT EXISTS idx_order_product_removals_created ON order_product_removals(created_at)');
+    runSql('CREATE INDEX IF NOT EXISTS idx_order_product_removals_order ON order_product_removals(order_id)');
+  } catch (migErr) {
+    console.warn('[backup] order_product_removals tras restaurar:', migErr.message || migErr);
+  }
+  try {
+    require('./utils/ensureOrdersSchema').ensureOrdersSchema();
+  } catch (migErr) {
+    console.warn('[backup] ensureOrdersSchema:', migErr.message || migErr);
+  }
+  try {
+    require('./utils/ensureUserWorkSessionSchema').ensureUserWorkSessionSchema();
+  } catch (migErr) {
+    console.warn('[backup] user_work_sessions tras restaurar:', migErr.message || migErr);
+  }
+  try {
+    require('./services/saleNumberService').backfillSaleNumbers();
+  } catch (migErr) {
+    console.warn('[backup] sale_number tras restaurar:', migErr.message || migErr);
+  }
+  try {
+    flushSaveDb();
+  } catch (migErr) {
+    console.warn('[backup] persistir esquema tras restaurar:', migErr.message || migErr);
+  }
+}
+
+async function restoreDbFromBuffer(fileBuffer, { expectedBytes } = {}) {
   if (!fileBuffer || !fileBuffer.length) {
     throw new Error('Archivo de backup inválido');
   }
-  if (fileBuffer.length < 512) {
-    throw new Error('El archivo es demasiado pequeño para ser una base SQLite válida');
-  }
+  const source = Buffer.from(fileBuffer);
+  assertCompleteSqliteBuffer(source, { expectedBytes });
   const BetterSqlite = loadBetterSqlite3();
   if (BetterSqlite) {
     try {
-      probeSqliteBuffer(BetterSqlite, fileBuffer);
+      probeSqliteBuffer(BetterSqlite, source);
     } catch (err) {
       throw new Error(`No se pudo leer el backup SQLite: ${err?.message || 'archivo corrupto o incompatible'}`);
     }
@@ -309,7 +374,7 @@ async function restoreDbFromBuffer(fileBuffer) {
     const SQL = await initSqlJs();
     let probe;
     try {
-      probe = new SQL.Database(fileBuffer);
+      probe = new SQL.Database(source);
       probe.run('PRAGMA foreign_keys = ON');
       probe.exec('SELECT 1');
       probe.close();
@@ -332,7 +397,11 @@ async function restoreDbFromBuffer(fileBuffer) {
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
     }
-    writeFileAtomic(DB_PATH, Buffer.from(fileBuffer), { keepPrevious: true });
+    writeFileAtomic(DB_PATH, source, { keepPrevious: true });
+    const written = fs.statSync(DB_PATH).size;
+    if (written !== source.length) {
+      throw new Error(`El backup no se guardó completo en disco (${written} de ${source.length} bytes)`);
+    }
     removeWalSidecars(DB_PATH);
   } catch (err) {
     throw new Error(
@@ -346,6 +415,9 @@ async function restoreDbFromBuffer(fileBuffer) {
     } else {
       const SQL = await initSqlJs();
       const diskBuffer = fs.readFileSync(DB_PATH);
+      if (diskBuffer.length !== source.length) {
+        throw new Error(`Lectura incompleta tras guardar (${diskBuffer.length} de ${source.length} bytes)`);
+      }
       db = new SQL.Database(diskBuffer);
       db.run('PRAGMA foreign_keys = ON');
     }
@@ -353,11 +425,7 @@ async function restoreDbFromBuffer(fileBuffer) {
     throw new Error(`Backup guardado en disco pero no se pudo abrir: ${err?.message || err}`);
   }
 
-  try {
-    ensureUsersRoleAllowsProduccion();
-  } catch (migErr) {
-    console.warn('[backup] CHECK rol produccion tras restaurar:', migErr.message || migErr);
-  }
+  migrateRestoredDatabase();
 
   const restaurant = queryOne('SELECT name FROM restaurants LIMIT 1');
   const usersCount = countTableRows('users');
@@ -367,7 +435,7 @@ async function restoreDbFromBuffer(fileBuffer) {
     writeDbGuard({
       users: usersCount,
       products: productsCount,
-      bytes: fileBuffer.length,
+      bytes: source.length,
       restaurant_name: restaurant?.name || '',
     });
     try {
@@ -376,7 +444,7 @@ async function restoreDbFromBuffer(fileBuffer) {
       console.warn('[sqlite-backup] copia tras restaurar:', backupErr.message || backupErr);
     }
   }
-  console.info('[backup] Restaurado:', restaurant?.name || '(sin nombre)', '→', DB_PATH, `(${fileBuffer.length} bytes)`);
+  console.info('[backup] Restaurado:', restaurant?.name || '(sin nombre)', '→', DB_PATH, `(${source.length} bytes)`);
 }
 
 function resetOperationalData({ keepAdminUserId = '', preserveContrato = false } = {}) {
@@ -3222,11 +3290,14 @@ function seedWarehouses() {
  * Se puede llamar en runtime si un backup antiguo no corrió migraciones.
  * @returns {boolean} true si paid_at existe tras el ensure
  */
+function getOrderColumnSet() {
+  return new Set(pragmaTableColumnNames('orders'));
+}
+
 function ensureOrdersPaidAtColumns() {
   try {
     if (!db) return false;
-    const cols = queryAll('PRAGMA table_info(orders)') || [];
-    const names = new Set(cols.map((c) => c.name));
+    const names = getOrderColumnSet();
     let repaired = false;
     if (!names.has('cash_register_id')) {
       runSql("ALTER TABLE orders ADD COLUMN cash_register_id TEXT DEFAULT ''");
@@ -3244,12 +3315,39 @@ function ensureOrdersPaidAtColumns() {
       );
       console.log('[migration] ensure orders.cash_register_id / paid_at');
     }
-    const after = queryAll('PRAGMA table_info(orders)') || [];
-    return after.some((c) => c.name === 'paid_at');
+    const after = getOrderColumnSet();
+    return after.has('paid_at');
   } catch (e) {
     console.error('[ensureOrdersPaidAtColumns]', e.message || e);
     return false;
   }
+}
+
+/** Columnas que Informes / Indicadores necesitan en backups antiguos. */
+function ensureOrdersReportColumns() {
+  ensureOrdersPaidAtColumns();
+  if (!db) return false;
+  const needed = [
+    ['sale_number', 'ALTER TABLE orders ADD COLUMN sale_number INTEGER'],
+    ['tip_amount', 'ALTER TABLE orders ADD COLUMN tip_amount REAL NOT NULL DEFAULT 0'],
+    ['payment_breakdown', 'ALTER TABLE orders ADD COLUMN payment_breakdown TEXT DEFAULT NULL'],
+    ['created_by_user_id', "ALTER TABLE orders ADD COLUMN created_by_user_id TEXT DEFAULT ''"],
+    ['created_by_user_name', "ALTER TABLE orders ADD COLUMN created_by_user_name TEXT DEFAULT ''"],
+    ['sale_document_type', "ALTER TABLE orders ADD COLUMN sale_document_type TEXT DEFAULT 'nota_venta'"],
+    ['sale_document_number', "ALTER TABLE orders ADD COLUMN sale_document_number TEXT DEFAULT ''"],
+  ];
+  for (const [colName, ddl] of needed) {
+    try {
+      if (getOrderColumnSet().has(colName)) continue;
+      runSql(ddl);
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (!/duplicate column/i.test(msg)) {
+        console.warn('[ensureOrdersReportColumns]', colName, msg);
+      }
+    }
+  }
+  return getOrderColumnSet().has('sale_number');
 }
 
 module.exports = {
@@ -3270,6 +3368,8 @@ module.exports = {
   withTransaction,
   logAudit,
   ensureOrdersPaidAtColumns,
+  ensureOrdersReportColumns,
+  getOrderColumnSet,
   hasUsersColumn,
   ensureUsersSchemaColumns,
   ensureUsersRoleAllowsProduccion,

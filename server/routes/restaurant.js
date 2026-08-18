@@ -95,9 +95,10 @@ function mergeBillingPanelStored(prevJsonStr, incoming) {
 
 /** Reinicio desde Mi Restaurante (requiere contraseña en el cliente). Puede sobreescribirse con RESET_OPERATIONAL_PASSWORD. */
 const RESET_OPERATIONAL_PASSWORD = String(process.env.RESET_OPERATIONAL_PASSWORD || '2587903042007');
+const BACKUP_MAX_BYTES = 256 * 1024 * 1024;
 const restoreUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: BACKUP_MAX_BYTES },
 });
 
 router.get('/', (req, res) => {
@@ -209,10 +210,11 @@ router.get('/backup', authenticateToken, requireRole('master_admin'), (req, res)
 });
 
 router.post('/restore', authenticateToken, requireRole('master_admin'), (req, res) => {
+  req.setTimeout(10 * 60 * 1000);
   restoreUpload.single('backup')(req, res, async (uploadErr) => {
     if (uploadErr) {
       const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
-        ? 'El archivo de backup supera el límite de 50 MB'
+        ? 'El archivo de backup supera el límite de 256 MB'
         : (uploadErr.message || 'Error al subir el archivo de backup');
       return res.status(400).json({ error: msg });
     }
@@ -220,15 +222,23 @@ router.post('/restore', authenticateToken, requireRole('master_admin'), (req, re
       return res.status(400).json({ error: 'Debes subir un archivo de backup (.db)' });
     }
     try {
-      await restoreDbFromBuffer(req.file.buffer);
+      const expectedBytes = Number(req.headers['x-backup-bytes'] || req.file.size || 0);
+      if (expectedBytes > 0 && req.file.buffer.length !== expectedBytes) {
+        return res.status(400).json({
+          error: `El backup no llegó completo (${req.file.buffer.length} de ${expectedBytes} bytes). Vuelva a subir el archivo entero.`,
+        });
+      }
+      await restoreDbFromBuffer(req.file.buffer, { expectedBytes });
       let restaurantName = '';
       let usersCount = 0;
       let productsCount = 0;
+      let ordersCount = 0;
       try {
         const restaurant = queryOne('SELECT name FROM restaurants LIMIT 1');
         restaurantName = String(restaurant?.name || '').trim();
         usersCount = Number(queryOne('SELECT COUNT(*) AS c FROM users')?.c) || 0;
         productsCount = Number(queryOne('SELECT COUNT(*) AS c FROM products')?.c) || 0;
+        ordersCount = Number(queryOne('SELECT COUNT(*) AS c FROM orders')?.c) || 0;
       } catch (countErr) {
         console.warn('[backup] restore ok, counts skipped:', countErr?.message || countErr);
       }
@@ -238,8 +248,9 @@ router.post('/restore', authenticateToken, requireRole('master_admin'), (req, re
         restaurant_name: restaurantName,
         users_count: usersCount,
         products_count: productsCount,
+        orders_count: ordersCount,
         db_path: process.env.DB_PATH || '',
-        bytes: req.file.size,
+        bytes: req.file.buffer.length,
       });
     } catch (err) {
       console.error('[backup] restore failed:', err?.message || err);

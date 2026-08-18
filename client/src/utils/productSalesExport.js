@@ -34,7 +34,8 @@ export function productSalesPeriodLabel(report, formatDate) {
 }
 
 export function mapProductosInformeRows(products) {
-  return sortProductsByName(products).map((row, index) => ({
+  const sold = (products || []).filter((row) => Number(row.total_qty || 0) > 0);
+  return sortProductsByName(sold).map((row, index) => ({
     codigo: `P${String(index + 1).padStart(3, '0')}`,
     producto: String(row.product_name || '').trim(),
     categoria: String(row.category_name || '').trim(),
@@ -104,7 +105,7 @@ export function buildProductSalesTxt(report, { title = 'INFORME DE PRODUCTOS', f
   lines.push(`Periodo: ${period}`);
   lines.push(`Usuario: ${usuario || '—'}`);
   if (reportHasInventoryStock(report)) {
-    lines.push('Incluye inventario completo de almacén (no transformables).');
+    lines.push('Incluye stock actual de almacén en productos vendidos.');
   }
   lines.push('');
   if (mapped.length) {

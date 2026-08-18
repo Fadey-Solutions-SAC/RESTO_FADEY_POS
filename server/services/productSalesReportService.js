@@ -241,44 +241,34 @@ function queryWarehouseCatalogProducts() {
 }
 
 function mergeSoldWithInventoryCatalog(soldRows) {
-  const soldMap = new Map();
-  for (const row of soldRows || []) {
-    const key = String(row.product_id || row.product_name || '').trim() || row.product_name;
-    soldMap.set(key, row);
-  }
   const catalog = queryWarehouseCatalogProducts();
-  const seen = new Set();
-  const merged = catalog.map((p) => {
+  const stockByKey = new Map();
+  for (const p of catalog || []) {
     const key = String(p.product_id || p.product_name || '').trim();
-    seen.add(key);
-    const sold = soldMap.get(key);
-    if (sold) {
-      return {
-        ...sold,
-        current_stock: Number(p.current_stock || 0),
-        category_name: p.category_name || sold.category_name || '',
-      };
-    }
-    return {
-      product_id: p.product_id,
-      product_name: p.product_name,
-      total_qty: 0,
-      total_amount: 0,
-      discount_amount: 0,
-      order_count: 0,
-      unit_price: 0,
+    if (!key) continue;
+    stockByKey.set(key, {
       current_stock: Number(p.current_stock || 0),
       category_name: p.category_name || '',
-    };
-  });
-  for (const [key, sold] of soldMap.entries()) {
-    if (seen.has(key)) continue;
-    merged.push({
-      ...sold,
-      current_stock: sold.current_stock != null ? sold.current_stock : null,
     });
   }
-  return merged.sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), 'es'));
+  return (soldRows || [])
+    .filter((row) => Number(row.total_qty || 0) > 0)
+    .map((sold) => {
+      const key = String(sold.product_id || sold.product_name || '').trim() || sold.product_name;
+      const catalogRow = stockByKey.get(key);
+      if (!catalogRow) {
+        return {
+          ...sold,
+          current_stock: sold.current_stock != null ? sold.current_stock : null,
+        };
+      }
+      return {
+        ...sold,
+        current_stock: catalogRow.current_stock,
+        category_name: catalogRow.category_name || sold.category_name || '',
+      };
+    })
+    .sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), 'es'));
 }
 
 function applyInventoryToReport(report, includeInventory) {

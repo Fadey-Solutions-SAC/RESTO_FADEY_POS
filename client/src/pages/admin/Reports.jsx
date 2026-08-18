@@ -155,7 +155,7 @@ function ProductSalesTable({
   emptyMessage = 'No hay productos vendidos en el periodo.',
   actions = null,
 }) {
-  const rows = products || [];
+  const rows = productsSoldWithQty(products);
   if (!rows.length) {
     return <p className="text-sm text-[var(--ui-muted)]">{emptyMessage}</p>;
   }
@@ -169,7 +169,7 @@ function ProductSalesTable({
         <span><strong className="text-[var(--ui-body-text)]">{rows.length}</strong> producto(s)</span>
         <span><strong className="text-[var(--ui-body-text)]">{totalQty}</strong> unidades vendidas</span>
         <span>Total ventas: <strong className="text-emerald-600">{formatCurrency(totalAmount)}</strong></span>
-        {withStock ? <span>Incluye catálogo de almacén con stock actual</span> : null}
+        {withStock ? <span>Stock actual de almacén en productos vendidos</span> : null}
       </div>
       <table className="w-full text-sm">
         <thead>
@@ -270,6 +270,7 @@ const CLOSED_REGISTER_PRINT_STYLES = `
 function buildSoldProductsPrintTable(soldProducts = []) {
   if (!Array.isArray(soldProducts) || !soldProducts.length) return '';
   const rows = soldProducts
+    .filter((item) => Number(item.total_qty || 0) > 0)
     .map((item) => {
       const qty = Number(item.total_qty || 0);
       const total = Number(item.total_amount || 0);
@@ -282,6 +283,7 @@ function buildSoldProductsPrintTable(soldProducts = []) {
       </tr>`;
     })
     .join('');
+  if (!rows) return '';
   return `<p class="section-title">Productos vendidos</p>
     <table class="products-table">
       <thead><tr><th>Producto</th><th class="num">Cant.</th><th class="num">P. unit.</th><th class="num">Total</th></tr></thead>
@@ -636,6 +638,8 @@ export default function Reports() {
   const monthInputRef = useRef(null);
   const [dailyData, setDailyData] = useState(null);
   const [monthlyData, setMonthlyData] = useState(null);
+  const [dailyError, setDailyError] = useState('');
+  const [monthlyError, setMonthlyError] = useState('');
   const [ranking, setRanking] = useState([]);
   const [rankingPeriod, setRankingPeriod] = useState('month');
   const [purchaseExpenses, setPurchaseExpenses] = useState([]);
@@ -685,19 +689,33 @@ export default function Reports() {
 
   const loadDaily = useCallback((date = salesDailyDate) => {
     setDailyLoading(true);
+    setDailyError('');
     const qs = date ? `?date=${encodeURIComponent(date)}` : '';
     return api.get(`/reports/daily${qs}`)
-      .then(setDailyData)
-      .catch(console.error)
+      .then((data) => {
+        setDailyData(data);
+        setDailyError('');
+      })
+      .catch((err) => {
+        setDailyData(null);
+        setDailyError(err.message || 'No se pudo cargar el informe de ventas del día');
+      })
       .finally(() => setDailyLoading(false));
   }, [salesDailyDate]);
 
   const loadMonthly = useCallback((month = salesMonth) => {
     setMonthlyLoading(true);
+    setMonthlyError('');
     const qs = month ? `?month=${encodeURIComponent(month)}` : '';
     return api.get(`/reports/monthly${qs}`)
-      .then(setMonthlyData)
-      .catch(console.error)
+      .then((data) => {
+        setMonthlyData(data);
+        setMonthlyError('');
+      })
+      .catch((err) => {
+        setMonthlyData(null);
+        setMonthlyError(err.message || 'No se pudo cargar el informe de ventas del mes');
+      })
       .finally(() => setMonthlyLoading(false));
   }, [salesMonth]);
   const loadRanking = (period) => api.get(`/reports/ranking?period=${period}`).then(setRanking).catch(console.error);
@@ -1052,8 +1070,8 @@ export default function Reports() {
   };
 
   const downloadProductSalesReport = (report, format = 'excel') => {
-    const hasProducts = (report?.sold_products || []).length > 0
-      || (report?.by_register || []).some((b) => (b.sold_products || []).length > 0);
+    const hasProducts = productsSoldWithQty(report?.sold_products).length > 0
+      || (report?.by_register || []).some((b) => productsSoldWithQty(b.sold_products).length > 0);
     if (!hasProducts) {
       toast.error('No hay productos para descargar');
       return;
@@ -1132,7 +1150,7 @@ export default function Reports() {
 
   const productoDisplayedProducts = useMemo(() => {
     if (!productoTotalReport) return [];
-    return productoTotalReport.sold_products || [];
+    return productsSoldWithQty(productoTotalReport.sold_products);
   }, [productoTotalReport]);
 
   const productoCurrentSoldReport = useMemo(() => {
@@ -1162,33 +1180,43 @@ export default function Reports() {
   }, [productoTotalMode, productoSelectedIds, closedRegistersList]);
 
   const dailySalesAccounts = useMemo(() => {
-    const paid = (dailyData?.orders || []).filter(
-      (o) => o.payment_status === 'paid' && o.status !== 'cancelled',
-    );
-    return buildPaidSalesAccountDisplayGroups(paid, dailyAdjustments)
-      .filter((group) => group.salesOrderCount > 0)
-      .map((group) => ({
-        ...group,
-        paidAt: group.latestAt,
-        total: group.total,
-        primary: group.primary,
-        orders: group.orders,
-      }));
+    try {
+      const paid = (dailyData?.orders || []).filter(
+        (o) => o.payment_status === 'paid' && o.status !== 'cancelled',
+      );
+      return buildPaidSalesAccountDisplayGroups(paid, dailyAdjustments)
+        .filter((group) => group.salesOrderCount > 0)
+        .map((group) => ({
+          ...group,
+          paidAt: group.latestAt,
+          total: group.total,
+          primary: group.primary,
+          orders: group.orders,
+        }));
+    } catch (err) {
+      console.error('[informes] cuentas del día:', err);
+      return [];
+    }
   }, [dailyData?.orders, dailyAdjustments]);
 
   const monthlySalesAccounts = useMemo(() => {
-    const paid = (monthlyData?.orders || []).filter(
-      (o) => o.payment_status === 'paid' && o.status !== 'cancelled',
-    );
-    return buildPaidSalesAccountDisplayGroups(paid, monthlyAdjustments)
-      .filter((group) => group.salesOrderCount > 0)
-      .map((group) => ({
-        ...group,
-        paidAt: group.latestAt,
-        total: group.total,
-        primary: group.primary,
-        orders: group.orders,
-      }));
+    try {
+      const paid = (monthlyData?.orders || []).filter(
+        (o) => o.payment_status === 'paid' && o.status !== 'cancelled',
+      );
+      return buildPaidSalesAccountDisplayGroups(paid, monthlyAdjustments)
+        .filter((group) => group.salesOrderCount > 0)
+        .map((group) => ({
+          ...group,
+          paidAt: group.latestAt,
+          total: group.total,
+          primary: group.primary,
+          orders: group.orders,
+        }));
+    } catch (err) {
+      console.error('[informes] cuentas del mes:', err);
+      return [];
+    }
   }, [monthlyData?.orders, monthlyAdjustments]);
 
   const loadProductoCurrentReport = async ({ silent = false } = {}) => {
@@ -1529,6 +1557,19 @@ export default function Reports() {
       {tab === 'daily' && dailyLoading && !dailyData && (
         <p className="text-sm text-[var(--ui-muted)] mb-4">Cargando informe del día…</p>
       )}
+      {tab === 'daily' && !dailyLoading && !dailyData && (
+        <div className="card text-center py-12">
+          <p className="font-medium text-[var(--ui-body-text)]">No se pudo cargar el informe del día</p>
+          <p className="text-sm text-[var(--ui-muted)] mt-1">{dailyError || 'Tras restaurar una copia, recargue o reintente.'}</p>
+          <button
+            type="button"
+            onClick={() => void loadDaily(salesDailyDate)}
+            className="mt-4 text-sm px-4 py-2 rounded-lg bg-[#3B82F6] text-white hover:bg-blue-600 inline-flex items-center gap-1"
+          >
+            <MdRefresh /> Reintentar
+          </button>
+        </div>
+      )}
 
       {tab === 'daily' && dailyData && (
         <div>
@@ -1611,6 +1652,19 @@ export default function Reports() {
 
       {tab === 'monthly' && monthlyLoading && !monthlyData && (
         <p className="text-sm text-[var(--ui-muted)] mb-4">Cargando informe del mes…</p>
+      )}
+      {tab === 'monthly' && !monthlyLoading && !monthlyData && (
+        <div className="card text-center py-12">
+          <p className="font-medium text-[var(--ui-body-text)]">No se pudo cargar el informe del mes</p>
+          <p className="text-sm text-[var(--ui-muted)] mt-1">{monthlyError || 'Tras restaurar una copia, recargue o reintente.'}</p>
+          <button
+            type="button"
+            onClick={() => void loadMonthly(salesMonth)}
+            className="mt-4 text-sm px-4 py-2 rounded-lg bg-[#3B82F6] text-white hover:bg-blue-600 inline-flex items-center gap-1"
+          >
+            <MdRefresh /> Reintentar
+          </button>
+        </div>
       )}
 
       {tab === 'monthly' && monthlyData && (
@@ -1883,9 +1937,7 @@ export default function Reports() {
                       products={productoDisplayedProducts}
                       showOrders
                       showInventory={productoIncludeInventory}
-                      emptyMessage={productoIncludeInventory
-                        ? 'No hay productos de almacén registrados.'
-                        : 'No hay ventas de productos en el periodo indicado.'}
+                      emptyMessage="No hay ventas de productos en el periodo indicado."
                       actions={(
                         <DownloadExcelTxtButtons
                           onExcel={() => downloadProductSalesReport(productoTotalReport, 'excel')}
@@ -2000,9 +2052,7 @@ export default function Reports() {
                           products={productoDisplayedProducts}
                           showOrders
                           showInventory={productoIncludeInventory}
-                          emptyMessage={productoIncludeInventory
-                            ? 'No hay productos de almacén registrados.'
-                            : 'No hay ventas de productos en los cierres seleccionados.'}
+                          emptyMessage="No hay ventas de productos en los cierres seleccionados."
                           actions={(
                             <DownloadExcelTxtButtons
                               onExcel={() => downloadProductSalesReport(productoTotalReport, 'excel')}

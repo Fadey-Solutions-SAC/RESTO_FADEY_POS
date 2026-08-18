@@ -2,7 +2,7 @@
  * Cuenta de venta: agrupa comandas cobradas en un mismo cobro (N.º de venta).
  * Las comandas siguen existiendo para cocina/bar; la venta se cuenta por cuenta (un comprobante).
  */
-const { queryAll, queryOne, ensureOrdersPaidAtColumns } = require('../database');
+const { queryAll, queryOne, ensureOrdersPaidAtColumns, ensureOrdersReportColumns, getOrderColumnSet } = require('../database');
 const { resolveRegionalTimezone } = require('./appDateTime');
 
 const PAID_SALES_BASE_WHERE = `status != 'cancelled'
@@ -21,18 +21,36 @@ function paidAtSql(alias = '') {
 }
 
 function salesAccountOrderSelectSql() {
-  const hasPaidAt = ensureOrdersPaidAtColumns();
-  const paidCol = hasPaidAt ? 'paid_at' : 'NULL AS paid_at';
-  let registerCol = "'' AS cash_register_id";
-  try {
-    const cols = queryAll('PRAGMA table_info(orders)') || [];
-    if (cols.some((c) => c.name === 'cash_register_id')) registerCol = 'cash_register_id';
-  } catch {
-    /* ignore */
-  }
-  return `id, type, table_number, ${registerCol}, customer_id, customer_name, order_number, sale_number,
-  ${paidCol}, updated_at, created_at, total, subtotal, tax, discount, tip_amount,
-  payment_method, payment_breakdown, payment_status, status, created_by_user_id, created_by_user_name`;
+  ensureOrdersReportColumns();
+  const names = getOrderColumnSet();
+  const field = (name, fallback) => (names.has(name) ? `o.${name}` : fallback);
+  const updatedAt = names.has('updated_at')
+    ? 'o.updated_at'
+    : (names.has('created_at') ? 'o.created_at AS updated_at' : "'' AS updated_at");
+  return [
+    'o.id',
+    field('type', "'' AS type"),
+    field('table_number', "'' AS table_number"),
+    field('cash_register_id', "'' AS cash_register_id"),
+    field('customer_id', 'NULL AS customer_id'),
+    field('customer_name', "'' AS customer_name"),
+    field('order_number', 'NULL AS order_number'),
+    field('sale_number', 'NULL AS sale_number'),
+    field('paid_at', 'NULL AS paid_at'),
+    updatedAt,
+    field('created_at', "'' AS created_at"),
+    field('total', '0 AS total'),
+    field('subtotal', '0 AS subtotal'),
+    field('tax', '0 AS tax'),
+    field('discount', '0 AS discount'),
+    field('tip_amount', '0 AS tip_amount'),
+    field('payment_method', "'' AS payment_method"),
+    field('payment_breakdown', 'NULL AS payment_breakdown'),
+    field('payment_status', "'' AS payment_status"),
+    field('status', "'' AS status"),
+    field('created_by_user_id', "'' AS created_by_user_id"),
+    field('created_by_user_name', "'' AS created_by_user_name"),
+  ].join(', ');
 }
 
 function partsFromDate(date, timeZone) {
@@ -110,15 +128,23 @@ function countSalesAccounts(orders = [], queryOneFn = queryOne) {
 }
 
 function queryPaidSalesOrders(whereSql, params = [], queryAllFn = queryAll) {
-  ensureOrdersPaidAtColumns();
+  ensureOrdersReportColumns();
   const clause = String(whereSql || '').trim() || '1=1';
-  return queryAllFn(
+  const run = () => queryAllFn(
     `SELECT ${salesAccountOrderSelectSql()}
      FROM orders o
      WHERE ${PAID_SALES_JOIN_WHERE}
        AND (${clause})`,
     params,
   ) || [];
+  try {
+    return run();
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/no such column/i.test(msg)) throw err;
+    ensureOrdersReportColumns();
+    return run();
+  }
 }
 
 function countSalesAccountsWhere(whereSql, params = [], queryOneFn = queryOne) {

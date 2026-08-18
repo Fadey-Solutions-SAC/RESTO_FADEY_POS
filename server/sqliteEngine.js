@@ -322,6 +322,15 @@ function probeSqliteBuffer(BetterSqlite, fileBuffer) {
   try {
     const nativeDb = new BetterSqlite(tmp, { readonly: true, fileMustExist: true });
     nativeDb.prepare('SELECT 1 AS ok').get();
+    try {
+      const check = nativeDb.prepare('PRAGMA quick_check').get();
+      const ok = String(check?.quick_check || check?.integrity_check || 'ok').toLowerCase();
+      if (ok && ok !== 'ok') {
+        throw new Error(`El backup no pasa verificación SQLite (${ok})`);
+      }
+    } catch (err) {
+      if (/verificación SQLite/i.test(String(err?.message || ''))) throw err;
+    }
     nativeDb.close();
   } finally {
     try { fs.unlinkSync(tmp); } catch { /* ignore */ }
