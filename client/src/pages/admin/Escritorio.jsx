@@ -51,6 +51,7 @@ const formatDateForLabel = (value) => {
   if (!y || !m || !d) return value;
   return `${d}/${m}/${y}`;
 };
+const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
 
 function enumerateDateRangeDays(fromYmd, toYmd) {
   const from = String(fromYmd || '').trim();
@@ -194,6 +195,8 @@ export default function Escritorio() {
   const [startDate, setStartDate] = useState(getCurrentMonthRange().start);
   const [endDate, setEndDate] = useState(getCurrentMonthRange().end);
   const [datePickStep, setDatePickStep] = useState('idle');
+  const [pendingStart, setPendingStart] = useState('');
+  const [pendingEnd, setPendingEnd] = useState('');
   const [rankingMode, setRankingMode] = useState('dias');
   const [cajaStations, setCajaStations] = useState([]);
   const [selectedCajaStationId, setSelectedCajaStationId] = useState('');
@@ -700,40 +703,71 @@ export default function Escritorio() {
   const dateRangeDisplay = datePreset === 'total'
     ? 'Desde inicio – Hoy'
     : `${formatDateForLabel(startDate)} – ${formatDateForLabel(endDate)}`;
+  const datePickerCaption = datePickStep === 'start'
+    ? 'Selecciona INICIO'
+    : datePickStep === 'end'
+      ? 'Selecciona FIN'
+      : (datePreset === 'custom' ? 'Periodo' : datePreset === 'week' ? 'Semana' : datePreset === 'total' ? 'Todos' : 'Mes');
+  const datePickerValue = datePickStep === 'start'
+    ? '—'
+    : datePickStep === 'end'
+      ? `${formatDateForLabel(pendingStart)} – …`
+      : dateRangeDisplay;
+  const resetPendingRange = () => {
+    setDatePickStep('idle');
+    setPendingStart('');
+    setPendingEnd('');
+  };
   const applyMonthRange = () => {
     const monthRange = getCurrentMonthRange();
     setDatePreset('month');
     setStartDate(monthRange.start);
     setEndDate(monthRange.end);
+    resetPendingRange();
   };
   const applyWeekRange = () => {
     const weekRange = getCurrentWeekRange();
     setDatePreset('week');
     setStartDate(weekRange.start);
     setEndDate(weekRange.end);
+    resetPendingRange();
   };
   const applyTotalRange = () => {
     const totalRange = getTotalRange();
     setDatePreset('total');
     setStartDate(totalRange.start);
     setEndDate(totalRange.end);
+    resetPendingRange();
   };
   const openNativeDatePicker = (inputRef) => {
     const input = inputRef?.current;
     if (!input) return;
-    if (typeof input.showPicker === 'function') {
-      input.showPicker();
-      return;
+    try {
+      if (typeof input.showPicker === 'function') {
+        input.showPicker();
+        return;
+      }
+    } catch {
+      /* showPicker puede fallar si el input no está visible; se usa click. */
     }
     input.click();
   };
   const startRangeSelection = () => {
     setDatePickStep('start');
-    setTimeout(() => openNativeDatePicker(startDateInputRef), 0);
+    setPendingStart('');
+    setPendingEnd('');
+    const input = startDateInputRef.current;
+    if (input) input.value = '';
+    openNativeDatePicker(startDateInputRef);
   };
-  const continueRangeSelection = () => {
-    setDatePickStep('end');
-    setTimeout(() => openNativeDatePicker(endDateInputRef), 0);
+  const applyCustomRange = (fromValue, toValue) => {
+    if (!isIsoDate(fromValue) || !isIsoDate(toValue)) return;
+    const from = fromValue < toValue ? fromValue : toValue;
+    const to = fromValue < toValue ? toValue : fromValue;
+    setStartDate(from);
+    setEndDate(to);
+    setDatePreset('custom');
+    resetPendingRange();
   };
 
   if (loading) {
@@ -1036,23 +1070,32 @@ export default function Escritorio() {
             <button
               type="button"
               onClick={startRangeSelection}
-              className="col-span-6 rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5 text-left hover:border-[var(--ui-accent-muted)] transition-colors min-w-0"
+              className={`col-span-6 rounded-md border px-2 py-1.5 text-left transition-colors min-w-0 ${
+                datePreset === 'custom' || datePickStep !== 'idle'
+                  ? 'bg-[var(--ui-accent)] border-[var(--ui-accent)] text-white'
+                  : 'bg-[var(--ui-surface-2)] border-[color:var(--ui-border)] hover:border-[var(--ui-accent-muted)]'
+              }`}
             >
-              <div className="flex items-center gap-2 text-[var(--ui-muted)] text-xs">
-                <MdDateRange className="shrink-0 text-[var(--ui-accent-muted)]" />
-                <span className="truncate">{datePickStep === 'end' ? 'Selecciona FIN' : 'Selecciona INICIO'}</span>
-                <MdKeyboardArrowDown className="ml-auto shrink-0 text-[var(--ui-accent-muted)]" />
+              <div className={`flex items-center gap-2 text-xs ${
+                datePreset === 'custom' || datePickStep !== 'idle' ? 'text-white/80' : 'text-[var(--ui-muted)]'
+              }`}>
+                <MdDateRange className={`shrink-0 ${
+                  datePreset === 'custom' || datePickStep !== 'idle' ? 'text-white' : 'text-[var(--ui-accent-muted)]'
+                }`} />
+                <span className="truncate">{datePickerCaption}</span>
+                <MdKeyboardArrowDown className={`ml-auto shrink-0 ${
+                  datePreset === 'custom' || datePickStep !== 'idle' ? 'text-white' : 'text-[var(--ui-accent-muted)]'
+                }`} />
               </div>
-              <p className="mt-0.5 text-[13px] font-medium text-[var(--ui-body-text)] whitespace-nowrap truncate tabular-nums">
-                {dateRangeDisplay}
+              <p className={`mt-0.5 text-[13px] font-medium whitespace-nowrap truncate tabular-nums ${
+                datePreset === 'custom' || datePickStep !== 'idle' ? 'text-white' : 'text-[var(--ui-body-text)]'
+              }`}>
+                {datePickerValue}
               </p>
             </button>
             <button
               type="button"
-              onClick={() => {
-                applyWeekRange();
-                setDatePickStep('idle');
-              }}
+              onClick={applyWeekRange}
               className={`col-span-2 rounded-md border px-2 py-1.5 text-xs font-semibold transition-colors ${
                 datePreset === 'week'
                   ? 'bg-[var(--ui-accent)] border-[var(--ui-accent)] text-white'
@@ -1063,10 +1106,7 @@ export default function Escritorio() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                applyMonthRange();
-                setDatePickStep('idle');
-              }}
+              onClick={applyMonthRange}
               className={`col-span-2 rounded-md border px-2 py-1.5 text-xs font-semibold transition-colors ${
                 datePreset === 'month'
                   ? 'bg-[var(--ui-accent)] border-[var(--ui-accent)] text-white'
@@ -1077,10 +1117,7 @@ export default function Escritorio() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                applyTotalRange();
-                setDatePickStep('idle');
-              }}
+              onClick={applyTotalRange}
               className={`col-span-2 rounded-md border px-2 py-1.5 text-xs font-semibold transition-colors ${
                 datePreset === 'total'
                   ? 'bg-[var(--ui-accent)] border-[var(--ui-accent)] text-white'
@@ -1092,13 +1129,20 @@ export default function Escritorio() {
             <input
               ref={startDateInputRef}
               type="date"
-              value={startDate}
-              max={endDate || undefined}
+              value={datePickStep === 'start' ? pendingStart : (pendingStart || startDate || '')}
               onChange={(e) => {
-                setDatePreset('custom');
-                setStartDate(e.target.value);
-                continueRangeSelection();
+                const next = e.target.value;
+                if (!isIsoDate(next)) return;
+                setPendingStart(next);
+                setPendingEnd('');
+                setDatePickStep('end');
+                window.setTimeout(() => {
+                  const input = endDateInputRef.current;
+                  if (input) input.value = '';
+                  openNativeDatePicker(endDateInputRef);
+                }, 80);
               }}
+              onCancel={resetPendingRange}
               className="sr-only"
               tabIndex={-1}
               aria-hidden="true"
@@ -1106,13 +1150,14 @@ export default function Escritorio() {
             <input
               ref={endDateInputRef}
               type="date"
-              value={endDate}
-              min={startDate || undefined}
+              value={datePickStep === 'end' ? pendingEnd : (endDate || '')}
+              min={pendingStart || startDate || undefined}
               onChange={(e) => {
-                setDatePreset('custom');
-                setEndDate(e.target.value);
-                setDatePickStep('idle');
+                const next = e.target.value;
+                if (!isIsoDate(next) || !isIsoDate(pendingStart)) return;
+                applyCustomRange(pendingStart, next);
               }}
+              onCancel={resetPendingRange}
               className="sr-only"
               tabIndex={-1}
               aria-hidden="true"
