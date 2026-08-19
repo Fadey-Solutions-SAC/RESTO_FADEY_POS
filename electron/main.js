@@ -6,7 +6,7 @@ const http = require('http');
 const { execFile, spawn } = require('child_process');
 const express = require('express');
 const cors = require('cors');
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, shell, dialog } = require('electron');
 const { buildTicket } = require('../server/printing/escposBuilder');
 const { getThermalGdiFontPx } = require('../server/printing/thermalMagnify');
 const thermalPrintLayoutJson = require('../server/printing/thermalPrintLayout.json');
@@ -1050,6 +1050,12 @@ function updateTrayMenu() {
         void shell.openExternal(`http://127.0.0.1:${apiPort}`).catch(() => {});
       },
     });
+    template.push({
+      label: 'Buscar actualizaciones',
+      click: () => {
+        void checkDesktopUpdates({ notifyIfNone: true });
+      },
+    });
   }
   template.push(
     {
@@ -1099,6 +1105,91 @@ function configureAutoStart() {
   } catch (err) {
     console.warn('[electron] no se pudo activar inicio con Windows:', err?.message || err);
   }
+}
+
+let autoUpdaterRef = null;
+let autoUpdateCheckInFlight = false;
+let lastAutoUpdateNoticeAt = 0;
+
+function getAutoUpdater() {
+  if (autoUpdaterRef) return autoUpdaterRef;
+  try {
+    autoUpdaterRef = require('electron-updater').autoUpdater;
+    autoUpdaterRef.autoDownload = true;
+    autoUpdaterRef.autoInstallOnAppQuit = true;
+    autoUpdaterRef.allowDowngrade = false;
+    autoUpdaterRef.on('error', (err) => {
+      console.warn('[electron-updater]', err?.message || err);
+    });
+    autoUpdaterRef.on('update-available', (info) => {
+      console.log('[electron-updater] disponible:', info?.version);
+      showTrayBalloon(
+        'Resto FADEY',
+        `Hay una actualización (${info?.version || ''}). Se descargará e instalará sola.`,
+      );
+    });
+    autoUpdaterRef.on('update-downloaded', (info) => {
+      console.log('[electron-updater] descargada:', info?.version);
+      showTrayBalloon(
+        'Resto FADEY',
+        'Actualización lista. El sistema se reiniciará para aplicarla.',
+      );
+      setTimeout(() => {
+        try {
+          autoUpdaterRef.quitAndInstall(false, true);
+        } catch (err) {
+          console.warn('[electron-updater] install:', err?.message || err);
+        }
+      }, 2500);
+    });
+  } catch (err) {
+    console.warn('[electron] electron-updater no disponible:', err?.message || err);
+    autoUpdaterRef = null;
+  }
+  return autoUpdaterRef;
+}
+
+async function checkDesktopUpdates({ notifyIfNone = false } = {}) {
+  if (!app.isPackaged) return;
+  const updater = getAutoUpdater();
+  if (!updater || autoUpdateCheckInFlight) return;
+  autoUpdateCheckInFlight = true;
+  try {
+    const result = await updater.checkForUpdates();
+    const remote = result?.updateInfo?.version;
+    if (notifyIfNone && remote && remote === app.getVersion()) {
+      const now = Date.now();
+      if (now - lastAutoUpdateNoticeAt > 20_000) {
+        lastAutoUpdateNoticeAt = now;
+        dialog.showMessageBox({
+          type: 'info',
+          title: 'Resto FADEY',
+          message: `Ya está en la última versión (${app.getVersion()}).`,
+        }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.warn('[electron-updater] check:', err?.message || err);
+    if (notifyIfNone) {
+      dialog.showMessageBox({
+        type: 'warning',
+        title: 'Resto FADEY',
+        message: 'No se pudo buscar actualizaciones. Revise internet o publique un Release en GitHub.',
+      }).catch(() => {});
+    }
+  } finally {
+    autoUpdateCheckInFlight = false;
+  }
+}
+
+function startDesktopAutoUpdater() {
+  if (!app.isPackaged) return;
+  const updater = getAutoUpdater();
+  if (!updater) return;
+  void checkDesktopUpdates();
+  setInterval(() => {
+    void checkDesktopUpdates();
+  }, 4 * 60 * 60 * 1000);
 }
 
 function registerProtocolClient() {
@@ -1224,6 +1315,7 @@ if (!acquiredSingleInstance) {
     createTray();
     void startPrintingAssistantServer();
     registerPrintingIpc();
+    startDesktopAutoUpdater();
     app.on('activate', () => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
     });

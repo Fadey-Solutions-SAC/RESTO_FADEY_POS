@@ -482,12 +482,17 @@ router.post('/open-register', authenticateToken, requireRole('admin', 'cajero'),
 });
 
 router.get('/current-register', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
-  const register = resolvePosRegister(req);
-  if (!register) return res.json(null);
+  try {
+    const register = resolvePosRegister(req);
+    if (!register) return res.json(null);
 
-  const { sales, movements, notes, expectedCash } = buildRegisterSnapshot(register);
+    const { sales, movements, notes, expectedCash } = buildRegisterSnapshot(register);
 
-  res.json({ ...register, ...sales, ...movements, ...notes, expected_cash: expectedCash });
+    res.json({ ...register, ...sales, ...movements, ...notes, expected_cash: expectedCash });
+  } catch (err) {
+    console.error('[pos/current-register]', err?.message || err);
+    return res.status(500).json({ error: err.message || 'No se pudo leer el turno de caja' });
+  }
 });
 
 router.post('/close-register', authenticateToken, requireRole('admin', 'cajero'), async (req, res) => {

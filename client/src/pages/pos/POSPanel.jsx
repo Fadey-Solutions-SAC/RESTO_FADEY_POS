@@ -5,6 +5,81 @@ function roundMoneySoles(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
+function parsePosTimestampMs(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return NaN;
+  const hasZone = /Z|[+-]\d{2}:\d{2}$/i.test(raw);
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+  return new Date(hasZone ? raw : `${normalized}Z`).getTime();
+}
+
+function isPaidRegisterSaleOrder(order) {
+  if (!order || String(order.status || '') === 'cancelled') return false;
+  if (String(order.payment_status || '') !== 'paid') return false;
+  const method = String(order.payment_method || '').toLowerCase();
+  return method !== 'cortesia' && method !== 'cuenta_cliente';
+}
+
+function orderBelongsToOpenRegister(order, register, endAt) {
+  if (!isPaidRegisterSaleOrder(order) || !register?.opened_at) return false;
+  const registerId = String(register.id || '').trim();
+  const orderRegisterId = String(order.cash_register_id || '').trim();
+  if (registerId && orderRegisterId === registerId) return true;
+  if (orderRegisterId && registerId && orderRegisterId !== registerId) return false;
+  const openedMs = parsePosTimestampMs(register.opened_at);
+  const endMs = endAt instanceof Date ? endAt.getTime() : parsePosTimestampMs(endAt);
+  const eventMs = parsePosTimestampMs(order.paid_at || order.updated_at || order.created_at);
+  if (!Number.isFinite(openedMs) || !Number.isFinite(eventMs) || !Number.isFinite(endMs)) return false;
+  return eventMs >= openedMs && eventMs <= endMs;
+}
+
+function addAmountToPaymentBucket(buckets, method, amount) {
+  const n = roundMoneySoles(amount);
+  const pm = String(method || 'efectivo').toLowerCase();
+  if (pm === 'yape') buckets.yape += n;
+  else if (pm === 'plin') buckets.plin += n;
+  else if (pm === 'tarjeta') buckets.tarjeta += n;
+  else if (pm === 'online') buckets.online += n;
+  else buckets.efectivo += n;
+}
+
+function summarizePaidOrdersForRegister(orders, register, endAt) {
+  const buckets = { efectivo: 0, yape: 0, plin: 0, tarjeta: 0, online: 0 };
+  let total = 0;
+  let tips = 0;
+  const matched = [];
+  for (const order of orders || []) {
+    if (!orderBelongsToOpenRegister(order, register, endAt)) continue;
+    matched.push(order);
+    const amount = roundMoneySoles(order.total || 0);
+    total = roundMoneySoles(total + amount);
+    tips = roundMoneySoles(tips + Number(order.tip_amount || 0));
+    let breakdown = null;
+    const raw = order.payment_breakdown;
+    if (raw && typeof raw === 'object') breakdown = raw;
+    else if (typeof raw === 'string' && raw.trim()) {
+      try { breakdown = JSON.parse(raw); } catch (_) { breakdown = null; }
+    }
+    if (breakdown && typeof breakdown === 'object' && !Array.isArray(breakdown)
+      && Object.keys(breakdown).length >= 2) {
+      for (const [k, v] of Object.entries(breakdown)) addAmountToPaymentBucket(buckets, k, v);
+    } else {
+      addAmountToPaymentBucket(buckets, order.payment_method, amount);
+    }
+  }
+  return {
+    total_sales: total,
+    total_cash: roundMoneySoles(buckets.efectivo),
+    total_yape: roundMoneySoles(buckets.yape),
+    total_plin: roundMoneySoles(buckets.plin),
+    total_card: roundMoneySoles(buckets.tarjeta),
+    total_online: roundMoneySoles(buckets.online),
+    total_tips: tips,
+    order_count: matched.length,
+    orders: matched,
+  };
+}
+
 function emptyMultiPaymentAmounts() {
   return { efectivo: '', yape: '', plin: '', tarjeta: '', online: '' };
 }
@@ -1314,9 +1389,21 @@ export default function POSPanel() {
     await loadData({ adminRegisterOverride: '' });
   };
 
-  const prepareClose = () => {
-    setClosingAtPreview(new Date());
-    setClosingData(register);
+  const prepareClose = async () => {
+    const now = new Date();
+    setClosingAtPreview(now);
+    try {
+      await loadData();
+    } catch (_) {
+      /* usa el estado actual */
+    }
+    const posRole = String(posUserRef.current?.role || '').toLowerCase();
+    const adminRid = String(adminRegisterIdRef.current || '').trim();
+    const currentRegPath = posRole === 'admin'
+      ? (adminRid ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}` : null)
+      : '/pos/current-register';
+    const fresh = currentRegPath ? await api.get(currentRegPath).catch(() => null) : null;
+    setClosingData(fresh || register);
     setClosingAmount('');
     setClosingNotes('');
     setDenominations({
@@ -2705,24 +2792,34 @@ export default function POSPanel() {
   const filteredProducts = filterOrderingProducts(products, { search, selectedCat });
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
-  const registerSales = Number(register?.total_sales || 0);
+  const registerLiveSales = useMemo(
+    () => summarizePaidOrdersForRegister(allOrders, closingData || register, closingAtPreview || new Date()),
+    [allOrders, closingData, register, closingAtPreview],
+  );
+  const registerSales = Number(register?.total_sales || 0) > 0
+    ? Number(register.total_sales || 0)
+    : registerLiveSales.total_sales;
   const todaySales = registerSales;
   const openingAmt = register?.opening_amount || 0;
 
-  const totalCash = register?.total_cash || 0;
-  const totalYape = register?.total_yape || 0;
-  const totalPlin = register?.total_plin || 0;
-  const totalCard = register?.total_card || 0;
+  const totalCash = Number(register?.total_cash || 0) > 0 ? Number(register.total_cash || 0) : registerLiveSales.total_cash;
+  const totalYape = Number(register?.total_yape || 0) > 0 ? Number(register.total_yape || 0) : registerLiveSales.total_yape;
+  const totalPlin = Number(register?.total_plin || 0) > 0 ? Number(register.total_plin || 0) : registerLiveSales.total_plin;
+  const totalCard = Number(register?.total_card || 0) > 0 ? Number(register.total_card || 0) : registerLiveSales.total_card;
   const totalIncome = register?.total_income || 0;
   const totalExpense = register?.total_expense || 0;
-  const totalTips = register?.total_tips || 0;
+  const totalTips = Number(register?.total_tips || 0) > 0 ? Number(register.total_tips || 0) : registerLiveSales.total_tips;
   const notesCredit = register?.notes_credit || 0;
   const notesDebit = register?.notes_debit || 0;
-  const expectedCash =
-    register?.expected_cash ??
-    roundMoneySoles(
+  const useLiveRegisterSales = !(Number(register?.total_sales || 0) > 0) && registerLiveSales.total_sales > 0;
+  const expectedCash = useLiveRegisterSales
+    ? roundMoneySoles(
       openingAmt + totalCash + totalTips + totalIncome - totalExpense + notesCredit - notesDebit,
-    );
+    )
+    : (register?.expected_cash ??
+      roundMoneySoles(
+        openingAmt + totalCash + totalTips + totalIncome - totalExpense + notesCredit - notesDebit,
+      ));
   const expectedRounded = roundMoneySoles(expectedCash);
 
   const closingAmt =
@@ -2741,11 +2838,11 @@ export default function POSPanel() {
    */
   const registerPaymentRows = useMemo(() => {
     const by = {
-      efectivo: Number(register?.total_cash || 0),
-      yape: Number(register?.total_yape || 0),
-      plin: Number(register?.total_plin || 0),
-      tarjeta: Number(register?.total_card || 0),
-      online: Number(register?.total_online || 0),
+      efectivo: Number(register?.total_cash || 0) > 0 ? Number(register.total_cash || 0) : registerLiveSales.total_cash,
+      yape: Number(register?.total_yape || 0) > 0 ? Number(register.total_yape || 0) : registerLiveSales.total_yape,
+      plin: Number(register?.total_plin || 0) > 0 ? Number(register.total_plin || 0) : registerLiveSales.total_plin,
+      tarjeta: Number(register?.total_card || 0) > 0 ? Number(register.total_card || 0) : registerLiveSales.total_card,
+      online: Number(register?.total_online || 0) > 0 ? Number(register.total_online || 0) : registerLiveSales.total_online,
     };
     const opts = paymentOptions || [];
     const rows = opts.map((opt) => ({
@@ -2762,7 +2859,7 @@ export default function POSPanel() {
       });
     }
     return rows;
-  }, [register, paymentOptions]);
+  }, [register, paymentOptions, registerLiveSales]);
 
   const paymentRowAmountClass = (value) => {
     switch (value) {
@@ -2794,18 +2891,10 @@ export default function POSPanel() {
   }, [closingAtPreview]);
 
   const registerSoldProducts = useMemo(() => {
-    const openedAt = closingData?.opened_at || register?.opened_at;
-    if (!openedAt) return [];
-    const endAt = closingAtPreview || new Date();
-    const parseTs = (v) => new Date(String(v || '').includes('T') ? v : `${v}Z`).getTime();
-    const openedMs = parseTs(openedAt);
-    const endMs = endAt.getTime();
+    const sessionRegister = closingData || register;
+    if (!sessionRegister?.opened_at) return [];
     const map = new Map();
-    for (const order of allOrders || []) {
-      if (String(order.status || '') === 'cancelled') continue;
-      if (String(order.payment_status || '') !== 'paid') continue;
-      const eventMs = parseTs(order.updated_at || order.created_at);
-      if (eventMs < openedMs || eventMs > endMs) continue;
+    for (const order of registerLiveSales.orders || []) {
       for (const item of order.items || []) {
         const key = `${item.product_id}|${item.product_name}`;
         const prev = map.get(key) || {
@@ -2825,7 +2914,7 @@ export default function POSPanel() {
         unit_price: row.total_qty > 0 ? row.total_amount / row.total_qty : 0,
       }))
       .sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), 'es'));
-  }, [allOrders, closingData?.opened_at, register?.opened_at, closingAtPreview]);
+  }, [registerLiveSales, closingData, register]);
 
   const hydratedSelectedOrders = useMemo(
     () => (selectedTable?.orders || []).map((o) => ({
@@ -5193,7 +5282,7 @@ export default function POSPanel() {
               ))}
               <div className="sep"></div>
               <div className="row total-row"><span>TOTAL VENTAS</span><span>{formatCurrency(registerSales)}</span></div>
-              <div className="row bold"><span>N° de cuentas cobradas</span><span>{closingData.order_count || 0}</span></div>
+              <div className="row bold"><span>N° de cuentas cobradas</span><span>{closingData.order_count || registerLiveSales.order_count || 0}</span></div>
               {registerSoldProducts.length > 0 && (
                 <>
                   <div className="sep"></div>

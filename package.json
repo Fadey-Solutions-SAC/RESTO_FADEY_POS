@@ -1,6 +1,6 @@
 {
   "name": "restaurant-platform",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Plataforma completa para restaurante - Admin, Cocina, POS, Cliente, Delivery",
   "private": true,
   "workspaces": [
@@ -39,7 +39,7 @@
     "concurrently": "^9.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.1",
+    "electron-updater": "^6.8.9",
     "jimp": "^0.22.12",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
@@ -140,6 +140,11 @@
       }
     ],
     "publish": [
+      {
+        "provider": "github",
+        "owner": "Fadey-Solutions-SAC",
+        "repo": "RESTO_FADEY_POS"
+      },
       {
         "provider": "generic",
         "url": "https://updates.restofadey.com/desktop"

@@ -30,33 +30,33 @@ function normalizeRegisterArg(registerOrOpenedAt) {
 
 function buildRegisterSalesSql(register) {
   ensureOrdersPaidAtColumns();
-  const eventAt = paidAtSql('');
   const selectCols = salesAccountOrderSelectSql();
   const id = String(register?.id || '').trim();
   const openedAt = register?.opened_at;
   const closedAt = register?.closed_at || null;
   if (!openedAt) return null;
 
-  const baseWhere = `status != 'cancelled'
-    AND payment_status = 'paid'
-    AND IFNULL(payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')`;
+  const eventAtO = paidAtSql('o');
+  const baseWhereO = `o.status != 'cancelled'
+    AND o.payment_status = 'paid'
+    AND IFNULL(o.payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')`;
 
   if (id) {
     const params = [id, openedAt];
     let legacyEnd = '';
     if (closedAt) {
-      legacyEnd = ` AND ${eventAt} <= ?`;
+      legacyEnd = ` AND ${eventAtO} <= ?`;
       params.push(closedAt);
     }
     return {
       sql: `SELECT ${selectCols}
-            FROM orders
-            WHERE ${baseWhere}
+            FROM orders o
+            WHERE ${baseWhereO}
               AND (
-                IFNULL(cash_register_id, '') = ?
+                IFNULL(o.cash_register_id, '') = ?
                 OR (
-                  IFNULL(cash_register_id, '') = ''
-                  AND ${eventAt} >= ?${legacyEnd}
+                  IFNULL(o.cash_register_id, '') = ''
+                  AND ${eventAtO} >= ?${legacyEnd}
                 )
               )`,
       params,
@@ -66,14 +66,14 @@ function buildRegisterSalesSql(register) {
   const params = [openedAt];
   let endSql = '';
   if (closedAt) {
-    endSql = ` AND ${eventAt} <= ?`;
+    endSql = ` AND ${eventAtO} <= ?`;
     params.push(closedAt);
   }
   return {
     sql: `SELECT ${selectCols}
-          FROM orders
-          WHERE ${baseWhere}
-            AND ${eventAt} >= ?${endSql}`,
+          FROM orders o
+          WHERE ${baseWhereO}
+            AND ${eventAtO} >= ?${endSql}`,
     params,
   };
 }
@@ -123,8 +123,13 @@ function queryRegisterSessionSales(registerOrOpenedAt) {
   const register = normalizeRegisterArg(registerOrOpenedAt);
   const built = buildRegisterSalesSql(register);
   if (!built) return emptySalesTotals();
-  const rows = queryAll(built.sql, built.params) || [];
-  return aggregatePaidOrders(rows);
+  try {
+    const rows = queryAll(built.sql, built.params) || [];
+    return aggregatePaidOrders(rows);
+  } catch (err) {
+    console.error('[register-session-sales]', err?.message || err);
+    return emptySalesTotals();
+  }
 }
 
 /** Pedidos pagados dentro de un turno ya cerrado. */
