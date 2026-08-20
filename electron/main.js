@@ -646,6 +646,14 @@ function buildAssistantExpressApp() {
       res.status(500).json({ error: err?.message || 'No se pudo obtener impresoras' });
     }
   });
+  assistant.get('/printers', async (_req, res) => {
+    try {
+      const list = await getPrinters();
+      res.json(list.map((p) => ({ name: p.name })));
+    } catch (err) {
+      res.status(500).json({ error: err?.message || 'No se pudo obtener impresoras' });
+    }
+  });
   assistant.get('/api/printing/config', (_req, res) => {
     try {
       res.json(loadConfig());

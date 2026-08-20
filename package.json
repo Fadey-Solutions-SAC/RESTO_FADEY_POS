@@ -107,7 +107,8 @@
     ],
     "asarUnpack": [
       "**/*.node",
-      "node_modules/sql.js/**"
+      "node_modules/sql.js/**",
+      "node_modules/printer/**"
     ],
     "win": {
       "target": [

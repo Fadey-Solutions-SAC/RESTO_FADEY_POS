@@ -201,15 +201,34 @@ app.post('/api/upload/billing-cert', authenticateToken, requireRole('admin', 'ma
 });
 
 app.get('/api/healthz', (req, res) => res.json({ ok: true, uptime: process.uptime(), bridge: 'restaurant-node' }));
+
+function readPrintingAssistantOriginFromBridgeFile() {
+  try {
+    const cfgPath = String(process.env.PRINTING_CONFIG_PATH || '').trim();
+    const baseDir = cfgPath ? path.dirname(cfgPath) : '';
+    if (!baseDir) return '';
+    const bridgeFile = path.join(baseDir, 'printing-bridge-port.json');
+    if (!fs.existsSync(bridgeFile)) return '';
+    const raw = JSON.parse(fs.readFileSync(bridgeFile, 'utf8'));
+    const port = Number(raw?.port);
+    if (!Number.isFinite(port) || port <= 0) return '';
+    return `http://127.0.0.1:${port}`;
+  } catch (_) {
+    return '';
+  }
+}
+
 /** Instalación Windows: el front local descubre impresión sin escanear puertos del asistente. */
 app.get('/api/printing/bridge', (req, res) => {
   const port = Number(process.env.PORT) || 3001;
+  const printingAssistantOrigin = readPrintingAssistantOriginFromBridgeFile();
   res.json({
     status: 'ok',
     mode: 'embedded',
     port,
     origin: `http://127.0.0.1:${port}`,
     service: 'resto-fadey-embedded-api',
+    printingAssistantOrigin: printingAssistantOrigin || undefined,
   });
 });
 app.get('/api/readyz', async (req, res) => {

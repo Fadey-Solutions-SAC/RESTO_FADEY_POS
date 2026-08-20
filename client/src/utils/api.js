@@ -496,7 +496,7 @@ async function discoverAssistantAndPersist() {
   }
   const rows = await Promise.all(tasks);
   const assistants = rows.filter((r) => r.ok && r.assistant);
-  if (!assistants.length) return false;
+  if (!assistants.length) return '';
 
   assistants.sort((a, b) => {
     if (a.port !== b.port) return a.port - b.port;
@@ -510,7 +510,26 @@ async function discoverAssistantAndPersist() {
     /* noop */
   }
   console.info('[printing] Asistente Electron detectado en', pick.origin, '(repo/dominio independiente)');
-  return true;
+  return pick.origin;
+}
+
+/** Origen del asistente Express (puerto 3002+ en .exe) con detección completa de impresoras. */
+export async function resolvePrintingAssistantOrigin() {
+  if (typeof window === 'undefined') return '';
+  const persisted = getPersistedPrintingBridgeOrigin();
+  if (persisted) {
+    const probe = await probeOriginHealth(persisted, 2200);
+    if (probe.ok && probe.assistant) return probe.origin || persisted;
+  }
+  const timeoutMs = 2400;
+  for (const host of ASSISTANT_LOCAL_HOSTS) {
+    for (const port of ASSISTANT_STANDARD_PORTS) {
+      const origin = `http://${host}:${port}`;
+      const row = await probeOriginHealth(origin, timeoutMs);
+      if (row.ok && row.assistant) return row.origin || origin;
+    }
+  }
+  return '';
 }
 
 /**
@@ -519,12 +538,24 @@ async function discoverAssistantAndPersist() {
  */
 export async function ensureLocalPrintingAssistantDiscovered() {
   if (typeof window === 'undefined') return false;
-  if (hasElectronPrinting() || isDesktopEmbeddedRuntime()) return true;
+  if (hasElectronPrinting()) return true;
   for (let attempt = 0; attempt < 10; attempt += 1) {
-    if (await discoverAssistantAndPersist()) return true;
+    const origin = await discoverAssistantAndPersist();
+    if (origin) return true;
+    if (isDesktopEmbeddedRuntime()) {
+      const assistant = await resolvePrintingAssistantOrigin();
+      if (assistant) {
+        try {
+          window.localStorage?.setItem('resto_local_printing_api', assistant);
+        } catch (_) {
+          /* noop */
+        }
+        return true;
+      }
+    }
     await new Promise((r) => setTimeout(r, 700 + attempt * 350));
   }
-  return false;
+  return isDesktopEmbeddedRuntime();
 }
 
 /** Origen del bridge sin sufijo `/api` (ej. `http://127.0.0.1:3001`). */
@@ -685,35 +716,72 @@ export async function fetchUsbPrintersFromBridge(moduleKey = '') {
   await checkPrintingHealth();
   const mod = encodeURIComponent(String(moduleKey || '').trim());
   const q = mod ? `?module=${mod}` : '';
+
+  const urls = [];
+  if (isDesktopEmbeddedRuntime()) {
+    try {
+      const embeddedOrigin = getPrintingBridgeOriginOnly();
+      const bridgeRes = await fetch(`${embeddedOrigin}/api/printing/bridge`, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      if (bridgeRes.ok) {
+        const bridge = await bridgeRes.json();
+        const hint = String(bridge?.printingAssistantOrigin || '').trim();
+        if (hint) {
+          urls.push(`${hint.replace(/\/$/, '')}/api/printers${q}`);
+          urls.push(`${hint.replace(/\/$/, '')}/printers${q}`);
+        }
+      }
+    } catch (_) {
+      /* noop */
+    }
+  }
+  const assistantOrigin = await resolvePrintingAssistantOrigin();
+  if (assistantOrigin) {
+    urls.push(`${assistantOrigin}/api/printers${q}`);
+    urls.push(`${assistantOrigin}/printers${q}`);
+  }
   if (isLocalPrintingBridge()) {
     const origin = getPrintingBridgeOriginOnly();
-    const urls = [
-      `${origin}/printers${q}`,
-      `${String(getPrintingApiBase()).replace(/\/$/, '')}/printers${q}`,
-    ].filter(Boolean);
-    let lastErr = null;
-    for (const url of urls) {
-      try {
-        const res = await fetch(url, {
-          method: 'GET',
-          cache: 'no-store',
-          headers: { Accept: 'application/json' },
-        });
-        const text = await res.text();
-        let data = null;
-        try {
-          data = text ? JSON.parse(text) : null;
-        } catch (_) {
-          data = null;
-        }
-        if (res.ok) return normalizeUsbPrinterList(data);
-        if (data?.error) lastErr = new Error(data.error);
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-    if (lastErr) throw lastErr;
+    urls.push(`${origin}/printers${q}`);
+    urls.push(`${String(getPrintingApiBase()).replace(/\/$/, '')}/printers${q}`);
   }
+
+  let lastErr = null;
+  let best = [];
+  for (const url of [...new Set(urls.filter(Boolean))]) {
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      const text = await res.text();
+      let data = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch (_) {
+        data = null;
+      }
+      if (res.ok) {
+        const list = normalizeUsbPrinterList(data);
+        if (list.length) {
+          console.info('[printing] impresoras detectadas vía', url, `(${list.length})`);
+          return list;
+        }
+        if (!best.length) best = list;
+        continue;
+      }
+      if (data?.error) lastErr = new Error(data.error);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (best.length) return best;
+  if (lastErr) throw lastErr;
+
   const data = await printingRequest(`/printers${q}`, { method: 'GET', cache: 'no-store' });
   return normalizeUsbPrinterList(data);
 }

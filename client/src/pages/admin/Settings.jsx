@@ -10,6 +10,7 @@ import {
   fetchUsbPrintersFromBridge,
   normalizeUsbPrinterList,
   printingUnreachableMessage,
+  usesInstalledLocalPrinting,
 } from '../../utils/api';
 import PrintingAssistantDownloadButton from '../../components/printing/PrintingAssistantDownloadButton';
 import { useAuth } from '../../context/AuthContext';
@@ -757,8 +758,21 @@ export default function Settings() {
   useSocket('inventory-update', () => { void reloadConfigHub?.(); });
 
   useEffect(() => {
-    if (activeSection === 'impresoras' && hasElectronPrinting()) {
+    if (activeSection !== 'impresoras') return;
+    if (hasElectronPrinting()) {
       detectUsbPrintersElectronAuto();
+      return;
+    }
+    if (usesInstalledLocalPrinting()) {
+      printingModuleKeys.forEach((moduleKey) => {
+        fetchUsbPrintersFromBridge(moduleKey)
+          .then((list) => {
+            setDetectedPrintersByModule((prev) => ({ ...prev, [moduleKey]: list }));
+          })
+          .catch((err) => {
+            console.warn('[printing] auto-detect en app instalada:', err?.message || err);
+          });
+      });
     }
   }, [activeSection]);
   useEffect(() => {

@@ -1,4 +1,5 @@
 const { execFileSync } = require('child_process');
+const path = require('path');
 
 let printerLib = null;
 try {
@@ -23,11 +24,17 @@ function parsePrinterNameJson(stdout) {
     .filter((p) => p.name);
 }
 
+function getPowerShellExecutable() {
+  if (process.platform !== 'win32') return 'powershell.exe';
+  const windir = process.env.WINDIR || process.env.SystemRoot || 'C:\\Windows';
+  return path.join(windir, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+}
+
 function getPrintersFromPowerShell() {
   if (process.platform !== 'win32') return [];
   try {
     const stdout = execFileSync(
-      'powershell.exe',
+      getPowerShellExecutable(),
       [
         '-NoProfile',
         '-ExecutionPolicy',
@@ -35,7 +42,7 @@ function getPrintersFromPowerShell() {
         '-Command',
         'Get-Printer | Select-Object -ExpandProperty Name | ConvertTo-Json -Compress',
       ],
-      { windowsHide: true, timeout: 8000, encoding: 'utf8', maxBuffer: 1024 * 1024 },
+      { windowsHide: true, timeout: 12000, encoding: 'utf8', maxBuffer: 1024 * 1024 },
     );
     const list = parsePrinterNameJson(stdout);
     if (list.length) {
@@ -103,9 +110,9 @@ function getNetworkPrinters() {
   ].join('; ');
   try {
     const stdout = execFileSync(
-      'powershell.exe',
+      getPowerShellExecutable(),
       ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps],
-      { windowsHide: true, timeout: 8000, encoding: 'utf8', maxBuffer: 1024 * 1024 },
+      { windowsHide: true, timeout: 12000, encoding: 'utf8', maxBuffer: 1024 * 1024 },
     );
     const parsed = JSON.parse(String(stdout || '').trim() || '[]');
     const arr = Array.isArray(parsed) ? parsed : [parsed];
