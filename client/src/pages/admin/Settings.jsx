@@ -7,6 +7,7 @@ import {
   getPersistedPrintingBridgeOrigin,
   getPrintingApiBase,
   hasElectronPrinting,
+  fetchUsbPrintersFromBridge,
   normalizeUsbPrinterList,
   printingUnreachableMessage,
 } from '../../utils/api';
@@ -546,16 +547,10 @@ export default function Settings() {
   };
   const detectUsbPrintersForModule = (moduleKey) => {
     setPrintingBusy(true);
-    const health = hasElectronPrinting()
-      ? electronPrinting.health()
-      : checkPrintingHealth();
-    health
-      .then(() => (hasElectronPrinting()
-        ? electronPrinting.getPrinters(moduleKey)
-        : api.printing.get(`/printers?module=${encodeURIComponent(moduleKey)}`)))
-      .then((data) => {
-        const list = normalizeUsbPrinterList(data);
+    fetchUsbPrintersFromBridge(moduleKey)
+      .then((list) => {
         setDetectedPrintersByModule((prev) => ({ ...prev, [moduleKey]: list }));
+        if (!list.length) toast('No se detectaron impresoras en Windows. Verifique que SAT 22TUE esté instalada.');
         refreshPrinterStatus();
       })
       .catch((err) => toast.error(err.message || printingUnreachableMessage()))

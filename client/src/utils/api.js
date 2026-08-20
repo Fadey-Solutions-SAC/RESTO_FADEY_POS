@@ -528,10 +528,30 @@ export async function ensureLocalPrintingAssistantDiscovered() {
 }
 
 /** Origen del bridge sin sufijo `/api` (ej. `http://127.0.0.1:3001`). */
-function getPrintingBridgeOriginOnly() {
+export function getPrintingBridgeOriginOnly() {
   const apiBase = String(getPrintingApiBase() || '').trim().replace(/\/$/, '');
+  if (apiBase.startsWith('/')) {
+    if (typeof window !== 'undefined') return window.location.origin;
+    return '';
+  }
   const stripped = apiBase.replace(/\/api\/?$/i, '');
   return stripped || apiBase;
+}
+
+/** Bridge apunta al Node local en esta PC (127.0.0.1 / localhost). */
+export function isLocalPrintingBridge() {
+  if (typeof window === 'undefined') return false;
+  if (isDesktopEmbeddedRuntime() || hasElectronPrinting()) return true;
+  try {
+    const apiBase = String(getPrintingApiBase() || '').trim();
+    if (apiBase.startsWith('/')) return isLocalHostName(window.location?.hostname);
+    const origin = getPrintingBridgeOriginOnly();
+    if (!origin) return false;
+    const u = new URL(origin.startsWith('http') ? origin : `http://${origin}`);
+    return isLocalHostName(u.hostname);
+  } catch (_) {
+    return false;
+  }
 }
 
 export async function checkPrintingHealth() {
@@ -607,9 +627,11 @@ export async function checkPrintingHealth() {
 }
 
 async function printingRequest(endpoint, options = {}) {
-  const token = localStorage.getItem('token');
   const headers = { 'Content-Type': 'application/json', ...options.headers };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (!isLocalPrintingBridge()) {
+    const token = localStorage.getItem('token');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  }
   const base = getPrintingApiBase();
   let res;
   try {
@@ -648,6 +670,52 @@ export function normalizeUsbPrinterList(data) {
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.printers)) return data.printers;
   return [];
+}
+
+/**
+ * Impresoras instaladas en Windows (Get-Printer). En bridge local usa GET /printers sin JWT
+ * para evitar "Token inválido" cuando el panel está en Vercel/Render.
+ */
+export async function fetchUsbPrintersFromBridge(moduleKey = '') {
+  if (hasElectronPrinting()) {
+    await electronPrinting.health();
+    const data = await electronPrinting.getPrinters(moduleKey);
+    return normalizeUsbPrinterList(data);
+  }
+  await checkPrintingHealth();
+  const mod = encodeURIComponent(String(moduleKey || '').trim());
+  const q = mod ? `?module=${mod}` : '';
+  if (isLocalPrintingBridge()) {
+    const origin = getPrintingBridgeOriginOnly();
+    const urls = [
+      `${origin}/printers${q}`,
+      `${String(getPrintingApiBase()).replace(/\/$/, '')}/printers${q}`,
+    ].filter(Boolean);
+    let lastErr = null;
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+        });
+        const text = await res.text();
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch (_) {
+          data = null;
+        }
+        if (res.ok) return normalizeUsbPrinterList(data);
+        if (data?.error) lastErr = new Error(data.error);
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (lastErr) throw lastErr;
+  }
+  const data = await printingRequest(`/printers${q}`, { method: 'GET', cache: 'no-store' });
+  return normalizeUsbPrinterList(data);
 }
 
 export { printingUnreachableMessage };

@@ -3,6 +3,7 @@ import {
   checkPrintingHealth,
   electronPrinting,
   ensureLocalPrintingAssistantDiscovered,
+  fetchUsbPrintersFromBridge,
   getApiOrigin,
   hasElectronPrinting,
   isDesktopEmbeddedRuntime,
@@ -274,14 +275,7 @@ export async function verifyPrintingLinkStatus() {
 }
 
 export async function detectUsbPrintersForModule(moduleKey) {
-  if (hasElectronPrinting()) {
-    await electronPrinting.health();
-    const data = await electronPrinting.getPrinters(moduleKey);
-    return normalizeUsbPrinterList(data);
-  }
-  await checkPrintingHealth();
-  const data = await api.printing.get(`/printers?module=${encodeURIComponent(moduleKey)}`);
-  return normalizeUsbPrinterList(data);
+  return fetchUsbPrintersFromBridge(moduleKey);
 }
 
 export async function savePrintingModuleAutoPrint(fullConfig, moduleKey, autoPrint) {

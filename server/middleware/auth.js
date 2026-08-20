@@ -100,9 +100,21 @@ function requireRole(...roles) {
   };
 }
 
+function isLoopbackHost(host) {
+  const h = String(host || '').replace(/^\[|\]$/g, '').toLowerCase();
+  return h === '127.0.0.1' || h === '::1' || h === 'localhost';
+}
+
 function isLoopbackRequest(req) {
   const raw = String(req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/i, '');
-  return raw === '127.0.0.1' || raw === '::1' || raw === 'localhost';
+  if (isLoopbackHost(raw)) return true;
+  try {
+    const host = String(req.headers?.host || '').split(':')[0];
+    if (isLoopbackHost(host)) return true;
+  } catch (_) {
+    /* noop */
+  }
+  return false;
 }
 
 /**
