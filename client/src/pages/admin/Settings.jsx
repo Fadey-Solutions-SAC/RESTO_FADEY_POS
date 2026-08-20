@@ -29,7 +29,7 @@ import {
   MdSecurity, MdDashboard, MdEventSeat, MdDeliveryDining, MdPhotoCamera,
   MdAssessment, MdInsights, MdLocalOffer, MdDiscount,
   MdTableBar, MdPeopleAlt, MdRestaurantMenu, MdTouchApp, MdPalette,
-  MdAutoGraph,
+  MdAutoGraph, MdStars,
 } from 'react-icons/md';
 import { applyUiThemeFromAppSettings } from '../../theme/uiTheme';
 import { UI_BADGE } from '../../utils/uiBadges';
@@ -72,6 +72,7 @@ const ALL_MODULES = [
   { id: 'delivery', label: 'Delivery', icon: MdDeliveryDining, defaultRoles: ['admin', 'cajero', 'mozo'] },
   { id: 'informes', label: 'Informes', icon: MdAssessment, defaultRoles: ['admin', 'cajero'] },
   { id: 'indicadores', label: 'Indicadores', icon: MdInsights, defaultRoles: ['admin'] },
+  { id: 'fidelizacion', label: 'Fidelización', icon: MdStars, defaultRoles: ['admin'] },
   { id: 'mi_restaurant', label: 'Mi Restaurante', icon: MdStorefront, defaultRoles: ['admin'] },
   { id: 'tiempo_trabajado', label: 'Recursos humanos', icon: MdAccessTime, defaultRoles: ['admin'] },
   { id: 'configuracion', label: 'Configuración', icon: MdSettings, defaultRoles: ['admin'] },
@@ -220,16 +221,15 @@ const DEFAULT_APP_SETTINGS = {
   ui_theme_custom: {},
 };
 
-/** Alineado con server/routes/auth readJornadaLaboralFlags (legacy requiere_foto_asistencia). */
+/** Alineado con server/services/jornadaLaboralService.normalizeJornadaLaboral */
 function getJornadaLaboralToggles(jl) {
   const o = jl && typeof jl === 'object' ? jl : {};
-  const legacy = Number(o.requiere_foto_asistencia) === 1;
   const inicio = Object.prototype.hasOwnProperty.call(o, 'requiere_foto_inicio_sesion')
     ? Number(o.requiere_foto_inicio_sesion) === 1
-    : legacy;
+    : false;
   const fin = Object.prototype.hasOwnProperty.call(o, 'requiere_foto_fin_jornada')
     ? Number(o.requiere_foto_fin_jornada) === 1
-    : legacy;
+    : false;
   return { inicio, fin };
 }
 

@@ -312,6 +312,17 @@ function migrateRestoredDatabase() {
     console.warn('[backup] esquema orders tras restaurar:', migErr.message || migErr);
   }
   try {
+    ensureLoyaltySurveysTable();
+  } catch (migErr) {
+    console.warn('[backup] loyalty_surveys tras restaurar:', migErr.message || migErr);
+  }
+  try {
+    const { ensureJornadaLaboralDefaultsInSettings } = require('./services/jornadaLaboralService');
+    ensureJornadaLaboralDefaultsInSettings();
+  } catch (migErr) {
+    console.warn('[backup] jornada_laboral tras restaurar:', migErr.message || migErr);
+  }
+  try {
     runSql(`
       CREATE TABLE IF NOT EXISTS order_product_removals (
         id TEXT PRIMARY KEY,
@@ -916,6 +927,18 @@ async function initDatabase() {
         created_at TEXT DEFAULT (datetime('now'))
       )
     `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS loyalty_surveys (
+        id TEXT PRIMARY KEY,
+        customer_name TEXT NOT NULL,
+        comment TEXT DEFAULT '',
+        rating INTEGER NOT NULL,
+        answers_json TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.run('CREATE INDEX IF NOT EXISTS idx_loyalty_surveys_created_at ON loyalty_surveys(created_at)');
 
     db.run(`
       CREATE TABLE IF NOT EXISTS categories (
@@ -2515,6 +2538,18 @@ async function initDatabase() {
     /** Backups restaurados pueden tener migration_key sin columnas nuevas en orders. */
     ensureOrdersPaidAtColumns();
     try {
+      ensureLoyaltySurveysTable();
+    } catch (e) {
+      console.warn('[migration] loyalty_surveys:', e.message || e);
+    }
+    try {
+      const { ensureJornadaLaboralDefaultsInSettings, applyJornadaFotoDefaultOffMigration } = require('./services/jornadaLaboralService');
+      ensureJornadaLaboralDefaultsInSettings();
+      applyJornadaFotoDefaultOffMigration();
+    } catch (e) {
+      console.warn('[migration] jornada_laboral:', e.message || e);
+    }
+    try {
       const { backfillSaleNumbers } = require('./services/saleNumberService');
       backfillSaleNumbers();
     } catch (e) {
@@ -2542,7 +2577,7 @@ async function initDatabase() {
             social_tiktok: '',
             description: '',
           },
-          branding: { logo_ticket: '', favicon: '', qr_hero_image: '' },
+          branding: { logo_ticket: '', favicon: '', qr_hero_image: '', encuesta_cover_image: '' },
           ticket: {
             paper_width_mm: 80,
             alignment: 'center',
@@ -2730,19 +2765,17 @@ async function initDatabase() {
         next.impresoras = nextPrinters;
       }
       const jl = next.jornada_laboral && typeof next.jornada_laboral === 'object' ? next.jornada_laboral : {};
-      const legacy = Number(jl.requiere_foto_asistencia) === 1;
       const hasInicio = Object.prototype.hasOwnProperty.call(jl, 'requiere_foto_inicio_sesion');
       const hasFin = Object.prototype.hasOwnProperty.call(jl, 'requiere_foto_fin_jornada');
       if (!hasInicio || !hasFin) {
-        const inicioVal = hasInicio ? (Number(jl.requiere_foto_inicio_sesion) === 1 ? 1 : 0) : (legacy ? 1 : 0);
-        const finVal = hasFin ? (Number(jl.requiere_foto_fin_jornada) === 1 ? 1 : 0) : (legacy ? 1 : 0);
+        const { normalizeJornadaLaboral } = require('./services/jornadaLaboralService');
         next = {
           ...next,
-          jornada_laboral: {
+          jornada_laboral: normalizeJornadaLaboral({
             ...jl,
-            requiere_foto_inicio_sesion: inicioVal,
-            requiere_foto_fin_jornada: finVal,
-          },
+            requiere_foto_inicio_sesion: hasInicio ? jl.requiere_foto_inicio_sesion : 0,
+            requiere_foto_fin_jornada: hasFin ? jl.requiere_foto_fin_jornada : 0,
+          }),
         };
       }
       const DEFAULT_PRIMARY_CAJA_ID = 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001';
@@ -3285,13 +3318,23 @@ function seedWarehouses() {
   });
 }
 
-/**
- * Garantiza columnas de cobro en orders (paid_at / cash_register_id).
- * Se puede llamar en runtime si un backup antiguo no corrió migraciones.
- * @returns {boolean} true si paid_at existe tras el ensure
- */
 function getOrderColumnSet() {
   return new Set(pragmaTableColumnNames('orders'));
+}
+
+function ensureLoyaltySurveysTable() {
+  if (!db) return;
+  runSql(`
+    CREATE TABLE IF NOT EXISTS loyalty_surveys (
+      id TEXT PRIMARY KEY,
+      customer_name TEXT NOT NULL,
+      comment TEXT DEFAULT '',
+      rating INTEGER NOT NULL,
+      answers_json TEXT DEFAULT '{}',
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  runSql('CREATE INDEX IF NOT EXISTS idx_loyalty_surveys_created_at ON loyalty_surveys(created_at)');
 }
 
 function ensureOrdersPaidAtColumns() {
@@ -3369,6 +3412,7 @@ module.exports = {
   logAudit,
   ensureOrdersPaidAtColumns,
   ensureOrdersReportColumns,
+  ensureLoyaltySurveysTable,
   getOrderColumnSet,
   hasUsersColumn,
   ensureUsersSchemaColumns,

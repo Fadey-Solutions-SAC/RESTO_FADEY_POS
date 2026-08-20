@@ -1032,6 +1032,7 @@ router.get('/closed-registers/:id', authenticateToken, requireRole('admin', 'caj
     [register.id]
   );
   const { querySoldProductsBetween } = require('../services/productSalesReportService');
+  const { queryRegisterSessionOrderRows } = require('../services/registerSessionSales');
   const sold_products = querySoldProductsBetween(
     register.opened_at,
     register.closed_at,
@@ -1039,24 +1040,11 @@ router.get('/closed-registers/:id', authenticateToken, requireRole('admin', 'caj
   );
   register.sold_products = sold_products;
   register.product_sales_total = sold_products.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
-  register.sales_orders = queryAll(
-    `SELECT
-      o.id,
-      o.order_number,
-      o.type,
-      o.table_number,
-      o.payment_method,
-      o.total,
-      o.created_at,
-      o.updated_at
-     FROM orders o
-     WHERE o.status != 'cancelled'
-       AND o.payment_status = 'paid'
-       AND COALESCE(o.updated_at, o.created_at) >= ?
-       AND COALESCE(o.updated_at, o.created_at) <= ?
-     ORDER BY COALESCE(o.updated_at, o.created_at) ASC`,
-    [register.opened_at, register.closed_at || new Date().toISOString()]
-  );
+  register.sales_orders = queryRegisterSessionOrderRows({
+    id: register.id,
+    opened_at: register.opened_at,
+    closed_at: register.closed_at,
+  });
   if (register.sales_orders.length > 0) {
     const orderIds = register.sales_orders.map((o) => o.id);
     const placeholders = orderIds.map(() => '?').join(',');

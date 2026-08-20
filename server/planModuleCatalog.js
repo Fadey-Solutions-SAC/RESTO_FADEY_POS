@@ -21,6 +21,7 @@ const MODULE_LABELS = {
   delivery: 'Delivery',
   informes: 'Informes',
   indicadores: 'Indicadores',
+  fidelizacion: 'Fidelización',
   mi_restaurant: 'Mi Restaurante',
   configuracion: 'Configuración',
   produccion: 'Producción',
@@ -112,7 +113,7 @@ function buildPlanModuleTreeForPlan(planKey) {
   const planSet = getModuleSetForPlan(planKey);
   const order = [
     'escritorio', 'ventas', 'caja', 'mesas', 'produccion', 'cocina', 'bar', 'delivery', 'reservas', 'auto_pedido',
-    'clientes', 'creditos', 'ofertas', 'descuentos', 'almacen', 'productos', 'informes', 'indicadores',
+    'clientes', 'fidelizacion', 'creditos', 'ofertas', 'descuentos', 'almacen', 'productos', 'informes', 'indicadores',
     'mi_restaurant', 'tiempo_trabajado', 'configuracion',
   ];
   const tree = [];

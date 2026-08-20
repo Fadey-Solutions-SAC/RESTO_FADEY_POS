@@ -107,7 +107,10 @@ export default function Login() {
         setSystemLocked(true);
         setLockReason(msg);
       }
-      if (/foto|inicio de jornada|jornada/i.test(msg)) {
+      const photoRequiredByServer =
+        err?.code === 'ATTENDANCE_PHOTO_REQUIRED'
+        || /Debe tomarse una foto para registrar el inicio de jornada/i.test(msg);
+      if (photoRequiredByServer) {
         setAttendancePolicy((p) => ({ ...p, loading: false, loginRequired: true }));
         setPhotoLogin(null);
         setStep(2);

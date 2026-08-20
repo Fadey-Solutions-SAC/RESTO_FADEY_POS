@@ -58,7 +58,8 @@ function buildRegisterSalesSql(register) {
                   IFNULL(o.cash_register_id, '') = ''
                   AND ${eventAtO} >= ?${legacyEnd}
                 )
-              )`,
+              )
+            ORDER BY ${eventAtO} ASC`,
       params,
     };
   }
@@ -73,7 +74,8 @@ function buildRegisterSalesSql(register) {
     sql: `SELECT ${selectCols}
           FROM orders o
           WHERE ${baseWhereO}
-            AND ${eventAtO} >= ?${endSql}`,
+            AND ${eventAtO} >= ?${endSql}
+          ORDER BY ${eventAtO} ASC`,
     params,
   };
 }
@@ -118,18 +120,16 @@ function aggregatePaidOrders(rows) {
   };
 }
 
-/** Pedidos pagados del turno (preferir cash_register_id; legacy por fecha). */
-function queryRegisterSessionSales(registerOrOpenedAt) {
+function queryRegisterSessionOrderRows(registerOrOpenedAt) {
   const register = normalizeRegisterArg(registerOrOpenedAt);
   const built = buildRegisterSalesSql(register);
-  if (!built) return emptySalesTotals();
-  try {
-    const rows = queryAll(built.sql, built.params) || [];
-    return aggregatePaidOrders(rows);
-  } catch (err) {
-    console.error('[register-session-sales]', err?.message || err);
-    return emptySalesTotals();
-  }
+  if (!built) return [];
+  return queryAll(built.sql, built.params) || [];
+}
+
+/** Pedidos pagados del turno (preferir cash_register_id; legacy por fecha). */
+function queryRegisterSessionSales(registerOrOpenedAt) {
+  return aggregatePaidOrders(queryRegisterSessionOrderRows(registerOrOpenedAt));
 }
 
 /** Pedidos pagados dentro de un turno ya cerrado. */
@@ -186,6 +186,7 @@ function computeExpectedCash(register, sales, movements, notes) {
 
 module.exports = {
   queryRegisterSessionSales,
+  queryRegisterSessionOrderRows,
   queryRegisterSessionSalesBetween,
   getMovementTotals,
   getCashNoteTotals,

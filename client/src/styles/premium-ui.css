@@ -628,6 +628,37 @@ h1, h2, h3, h4 {
     overflow: hidden;
   }
 
+  .rf-login-page--survey .rf-login-page__content {
+    justify-content: flex-start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .rf-login-page--survey .rf-login-center {
+    overflow: visible;
+    max-height: none;
+    padding-bottom: 1.5rem;
+  }
+
+  .rf-survey-stars {
+    display: flex;
+    gap: 0.2rem;
+  }
+
+  .rf-survey-stars button {
+    background: transparent;
+    border: 0;
+    padding: 0.15rem;
+    cursor: pointer;
+    color: rgba(232, 244, 252, 0.28);
+    font-size: 1.65rem;
+    line-height: 1;
+  }
+
+  .rf-survey-stars button.is-on {
+    color: #f5c542;
+  }
+
   .rf-login-brand {
     flex-shrink: 0;
     margin-bottom: clamp(0.5rem, 2vh, 1.25rem);

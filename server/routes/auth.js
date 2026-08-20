@@ -94,7 +94,7 @@ function normalizeAttendancePhoto(input) {
 const MODULE_IDS = [
   'escritorio', 'ventas', 'caja', 'mesas', 'reservas', 'auto_pedido', 'creditos', 'clientes',
   'productos', 'ofertas', 'descuentos', 'almacen', 'delivery', 'informes',
-  'indicadores', 'mi_restaurant', 'configuracion', 'cocina', 'bar', 'tiempo_trabajado',
+  'indicadores', 'fidelizacion', 'mi_restaurant', 'configuracion', 'cocina', 'bar', 'tiempo_trabajado',
 ];
 function isPermissionEnabled(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
@@ -122,23 +122,9 @@ function getUserPermissions(userId) {
   }, {});
 }
 
-/** Lee flags desde settings.jornada_laboral (migración desde requiere_foto_asistencia legacy). */
-function readJornadaLaboralFlags() {
-  const row = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
-  if (!row?.value) return { loginPhoto: false, logoutPhoto: false };
-  try {
-    const s = JSON.parse(row.value);
-    const jl = s?.jornada_laboral && typeof s.jornada_laboral === 'object' ? s.jornada_laboral : {};
-    const legacy = isPermissionEnabled(jl.requiere_foto_asistencia);
-    const hasInicio = Object.prototype.hasOwnProperty.call(jl, 'requiere_foto_inicio_sesion');
-    const hasFin = Object.prototype.hasOwnProperty.call(jl, 'requiere_foto_fin_jornada');
-    const loginPhoto = hasInicio ? isPermissionEnabled(jl.requiere_foto_inicio_sesion) : legacy;
-    const logoutPhoto = hasFin ? isPermissionEnabled(jl.requiere_foto_fin_jornada) : legacy;
-    return { loginPhoto, logoutPhoto };
-  } catch {
-    return { loginPhoto: false, logoutPhoto: false };
-  }
-}
+const {
+  readJornadaLaboralFlags,
+} = require('../services/jornadaLaboralService');
 
 function buildMasterToken() {
   const master = getMasterCredentialsPublic();
@@ -245,7 +231,10 @@ router.post('/login', (req, res) => {
   const isParallelLogin = openBeforeLogin > 0;
   if (loginPhoto && !isParallelLogin) {
     if (!photoLogin) {
-      return res.status(400).json({ error: 'Debe tomarse una foto para registrar el inicio de jornada' });
+      return res.status(400).json({
+        error: 'Debe tomarse una foto para registrar el inicio de jornada',
+        code: 'ATTENDANCE_PHOTO_REQUIRED',
+      });
     }
   }
   const { sessionTokenId } = startWorkSession(user, photoLogin || null);
@@ -321,7 +310,10 @@ router.post('/logout', authenticateToken, (req, res) => {
   const closingLastDevice = openCount <= 1;
   if (logoutPhoto && closingLastDevice) {
     if (!photoLogout) {
-      return res.status(400).json({ error: 'Debe tomarse una foto para registrar el fin de jornada' });
+      return res.status(400).json({
+        error: 'Debe tomarse una foto para registrar el fin de jornada',
+        code: 'ATTENDANCE_PHOTO_LOGOUT_REQUIRED',
+      });
     }
   }
   const { closed } = closeWorkSession(req.user?.id, req.user?.session_id, 'logout', photoLogout);

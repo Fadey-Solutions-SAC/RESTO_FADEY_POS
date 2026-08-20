@@ -15,6 +15,7 @@ export function defaultMiRestaurantProfile() {
       logo_ticket: '',
       favicon: '',
       qr_hero_image: '',
+      encuesta_cover_image: '',
     },
     ticket: {
       paper_width_mm: 80,

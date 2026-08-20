@@ -26,6 +26,8 @@ import Almacen from './pages/admin/Almacen';
 import Delivery from './pages/admin/Delivery';
 import Reports from './pages/admin/Reports';
 import Indicadores from './pages/admin/Indicadores';
+import Fidelizacion from './pages/admin/Fidelizacion';
+import EncuestaPublica from './pages/public/EncuestaPublica';
 import MiRestaurant from './pages/admin/MiRestaurant';
 import Settings from './pages/admin/Settings';
 import WorkTime from './pages/admin/WorkTime';
@@ -171,7 +173,7 @@ function AppRoutes({ user }) {
   return (
     <>
       <Routes>
-      <Route path="/auto-pedido" element={<SelfOrder />} />
+      <Route path="/encuesta" element={<EncuestaPublica />} />
       <Route path="/auto-pedido-cliente" element={<SelfOrderCliente />} />
       <Route path="/desbloquear-pago" element={<LoginComprobanteUnlock />} />
       <Route path="/" element={user && user.type === 'staff' ? <Navigate to={
@@ -198,6 +200,7 @@ function AppRoutes({ user }) {
         <Route path="bar" element={<ProtectedRoute roles={['admin', 'produccion', 'bar']} moduleIds={['bar', 'produccion']}><KitchenPanel station="bar" areaId="bar" /></ProtectedRoute>} />
         <Route path="informes" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="informes"><Reports /></ProtectedRoute>} />
         <Route path="indicadores" element={<ProtectedRoute roles={['admin']} moduleId="indicadores"><Indicadores /></ProtectedRoute>} />
+        <Route path="fidelizacion" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="fidelizacion"><Fidelizacion /></ProtectedRoute>} />
         <Route path="comprobantes-emitidos" element={<Navigate to="/admin/informes?seccion=facturacion" replace />} />
         <Route path="mi-restaurant" element={<ProtectedRoute roles={['admin', 'master_admin']} moduleId="mi_restaurant"><MiRestaurant /></ProtectedRoute>} />
         <Route path="configuracion" element={<ProtectedRoute roles={['admin']} moduleId="configuracion"><Settings /></ProtectedRoute>} />

@@ -4,14 +4,14 @@
  *
  * Alineación con comercial:
  * - Básico: lo anterior + Mi Restaurante (sin pestaña SUNAT), ofertas y descuentos. La pestaña «Información» (backup) solo la ve el administrador maestro en la UI.
- * - Intermedio: + QR auto-pedido, clientes/créditos, cocina/bar, indicadores, tiempo trabajado.
+ * - Intermedio: + QR auto-pedido, clientes/créditos, cocina/bar, indicadores, fidelización, tiempo trabajado.
  * - Profesional: todas las claves en MODULE_IDS.
  */
 
 const MODULE_IDS = [
   'escritorio', 'ventas', 'caja', 'mesas', 'reservas', 'auto_pedido', 'creditos', 'clientes',
   'productos', 'ofertas', 'descuentos', 'almacen', 'delivery', 'informes',
-  'indicadores', 'mi_restaurant', 'configuracion', 'produccion', 'cocina', 'bar', 'tiempo_trabajado',
+  'indicadores', 'fidelizacion', 'mi_restaurant', 'configuracion', 'produccion', 'cocina', 'bar', 'tiempo_trabajado',
 ];
 
 const BASICO = new Set([
@@ -23,7 +23,7 @@ const BASICO = new Set([
 const INTERMEDIO = new Set([
   ...BASICO,
   'auto_pedido', 'creditos', 'clientes', 'produccion', 'cocina', 'bar',
-  'indicadores', 'tiempo_trabajado',
+  'indicadores', 'fidelizacion', 'tiempo_trabajado',
 ]);
 
 const PROFESIONAL = new Set(MODULE_IDS);

@@ -1403,6 +1403,9 @@ export default function POSPanel() {
       ? (adminRid ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}` : null)
       : '/pos/current-register';
     const fresh = currentRegPath ? await api.get(currentRegPath).catch(() => null) : null;
+    if (currentRegPath && !fresh) {
+      toast.error('No se pudieron leer las ventas del turno. Reintente el cierre; no cierre si los totales salen en 0.');
+    }
     setClosingData(fresh || register);
     setClosingAmount('');
     setClosingNotes('');

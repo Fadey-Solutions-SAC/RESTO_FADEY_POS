@@ -10,6 +10,7 @@ export const ADMIN_MODULE_PATHS = [
   { path: '/admin/reservas', moduleId: 'reservas', roles: ['admin', 'cajero', 'mozo'] },
   { path: '/admin/auto-pedido', moduleId: 'auto_pedido', roles: ['admin'] },
   { path: '/admin/clientes', moduleId: 'clientes', roles: ['admin', 'cajero'] },
+  { path: '/admin/fidelizacion', moduleId: 'fidelizacion', roles: ['admin', 'cajero'] },
   { path: '/admin/creditos', moduleId: 'creditos', roles: ['admin', 'cajero'] },
   { path: '/admin/ofertas', moduleId: 'ofertas', roles: ['admin'] },
   { path: '/admin/descuentos', moduleId: 'descuentos', roles: ['admin'] },

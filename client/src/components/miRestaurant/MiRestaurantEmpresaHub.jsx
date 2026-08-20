@@ -225,12 +225,13 @@ export default function MiRestaurantEmpresaHub({
       {tab === 'identidad' && (
         <div className="card">
           <h3 className="font-bold text-[var(--ui-body-text)] mb-4">Logos e identidad visual</h3>
-          <p className="text-sm text-[var(--ui-muted)] mb-4">Se usan en tickets, encabezados, QR, inicio de sesión y reportes. Formatos PNG/JPG/WebP recomendados.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <p className="text-sm text-[var(--ui-muted)] mb-4">Se usan en tickets, encabezados, QR, inicio de sesión, encuesta de fidelización y reportes. Formatos PNG/JPG/WebP recomendados.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <ImageUploadTile label="Logo principal" url={restaurant.logo} circular onPick={() => pickFile('logo_main', onUploadLogoMain)} onClear={() => onRestaurantField('logo', '')} />
             <ImageUploadTile label="Logo tickets" url={b.logo_ticket} onPick={() => pickFile('logo_ticket', (f) => onUploadBranding('logo_ticket', f))} onClear={() => onProfileSection('branding', 'logo_ticket', '')} />
             <ImageUploadTile label="Fondo de portada" url={b.favicon} onPick={() => pickFile('favicon', (f) => onUploadBranding('favicon', f))} onClear={() => onProfileSection('branding', 'favicon', '')} />
             <ImageUploadTile label="Imagen portada QR" url={b.qr_hero_image} onPick={() => pickFile('qr_hero', (f) => onUploadBranding('qr_hero_image', f))} onClear={() => onProfileSection('branding', 'qr_hero_image', '')} />
+            <ImageUploadTile label="Fondo encuesta" url={b.encuesta_cover_image} onPick={() => pickFile('encuesta_cover', (f) => onUploadBranding('encuesta_cover_image', f))} onClear={() => onProfileSection('branding', 'encuesta_cover_image', '')} />
           </div>
         </div>
       )}

@@ -1149,13 +1149,32 @@ function getAutoUpdater() {
   return autoUpdaterRef;
 }
 
+const DESKTOP_UPDATE_FEEDS = [
+  { provider: 'github', owner: 'Fadey-Solutions-SAC', repo: 'RESTO_FADEY_POS' },
+  { provider: 'github', owner: 'MECATRONIC-MEN', repo: 'RESTAURANT' },
+  { provider: 'generic', url: 'https://updates.restofadey.com/desktop' },
+];
+
 async function checkDesktopUpdates({ notifyIfNone = false } = {}) {
   if (!app.isPackaged) return;
   const updater = getAutoUpdater();
   if (!updater || autoUpdateCheckInFlight) return;
   autoUpdateCheckInFlight = true;
   try {
-    const result = await updater.checkForUpdates();
+    let lastErr = null;
+    let result = null;
+    for (const feed of DESKTOP_UPDATE_FEEDS) {
+      try {
+        updater.setFeedURL(feed);
+        result = await updater.checkForUpdates();
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        console.warn('[electron-updater] feed', feed.owner || feed.url, err?.message || err);
+      }
+    }
+    if (lastErr) throw lastErr;
     const remote = result?.updateInfo?.version;
     if (notifyIfNone && remote && remote === app.getVersion()) {
       const now = Date.now();

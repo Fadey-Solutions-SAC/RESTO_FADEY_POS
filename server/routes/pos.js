@@ -506,7 +506,18 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
     return res.status(400).json({ error: 'El efectivo contado no puede ser negativo' });
   }
 
-  const { sales, movements, notes: cashNotes, expectedCash } = buildRegisterSnapshot(register);
+  let sales;
+  let movements;
+  let cashNotes;
+  let expectedCash;
+  try {
+    ({ sales, movements, notes: cashNotes, expectedCash } = buildRegisterSnapshot(register));
+  } catch (err) {
+    console.error('[pos/close-register] snapshot', err?.message || err);
+    return res.status(500).json({
+      error: 'No se pudieron calcular las ventas del turno. No cierre caja hasta reintentar.',
+    });
+  }
   const countedCash = roundMoneySoles(Number(closing_amount));
   const diff = roundMoneySoles(countedCash - expectedCash);
   const closedAtIso = new Date().toISOString();
@@ -1096,10 +1107,10 @@ router.get('/sales-monitor', authenticateToken, requireRole('admin', 'cajero'), 
   let where = '1=1';
   const params = [];
   if (registerId) {
-    where = `(IFNULL(cash_register_id, '') = ? OR (IFNULL(cash_register_id, '') = '' AND COALESCE(paid_at, updated_at, created_at) >= ? AND COALESCE(paid_at, updated_at, created_at) <= ?))`;
+    where = `(IFNULL(o.cash_register_id, '') = ? OR (IFNULL(o.cash_register_id, '') = '' AND COALESCE(o.paid_at, o.updated_at, o.created_at) >= ? AND COALESCE(o.paid_at, o.updated_at, o.created_at) <= ?))`;
     params.push(registerId, openedAt, endAt);
   } else {
-    where = `COALESCE(paid_at, updated_at, created_at) >= ? AND COALESCE(paid_at, updated_at, created_at) <= ?`;
+    where = `COALESCE(o.paid_at, o.updated_at, o.created_at) >= ? AND COALESCE(o.paid_at, o.updated_at, o.created_at) <= ?`;
     params.push(openedAt, endAt);
   }
   const paidOrders = queryPaidSalesOrders(where, params);

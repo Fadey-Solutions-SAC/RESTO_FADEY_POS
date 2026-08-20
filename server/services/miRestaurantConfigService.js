@@ -33,6 +33,7 @@ function defaultMiRestaurantProfile() {
       logo_ticket: '',
       favicon: '',
       qr_hero_image: '',
+      encuesta_cover_image: '',
     },
     ticket: {
       paper_width_mm: 80,
@@ -190,6 +191,7 @@ function buildEffectiveSnapshot(restaurant, profile) {
       logo_ticket: String(p.branding?.logo_ticket || r.logo || '').trim(),
       favicon: String(p.branding?.favicon || '').trim(),
       qr_hero_image: String(p.branding?.qr_hero_image || '').trim(),
+      encuesta_cover_image: String(p.branding?.encuesta_cover_image || '').trim(),
     },
     general_extras: p.general,
   };

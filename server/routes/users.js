@@ -48,7 +48,7 @@ function withPublicEmail(user) {
 const MODULE_IDS = [
   'escritorio', 'ventas', 'caja', 'mesas', 'reservas', 'auto_pedido', 'creditos', 'clientes',
   'productos', 'ofertas', 'descuentos', 'almacen', 'delivery', 'informes',
-  'indicadores', 'mi_restaurant', 'configuracion', 'cocina', 'bar', 'produccion', 'tiempo_trabajado',
+  'indicadores', 'fidelizacion', 'mi_restaurant', 'configuracion', 'cocina', 'bar', 'produccion', 'tiempo_trabajado',
 ];
 function isPermissionEnabled(value) {
   return value === true || value === 1 || value === '1' || value === 'true';

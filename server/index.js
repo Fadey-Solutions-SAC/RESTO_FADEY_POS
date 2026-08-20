@@ -229,6 +229,8 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/customer/login', authLimiter);
 
 app.use('/api/public/self-order', require('./routes/publicSelfOrder'));
+app.use('/api/public/loyalty', require('./routes/publicLoyalty'));
+app.use('/api/loyalty', require('./routes/loyalty'));
 app.use('/api/system', require('./routes/system'));
 app.use('/api/license', require('./routes/license'));
 app.use('/api/auth', require('./routes/auth'));
