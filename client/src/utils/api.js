@@ -436,6 +436,63 @@ export function getPersistedPrintingBridgeOrigin() {
   }
 }
 
+export const PRINTING_LINK_CONFIGURED_KEY = 'resto_printing_link_configured_v1';
+
+export function persistPrintingBridgeOrigin(origin) {
+  if (typeof window === 'undefined') return;
+  const o = normalizeApiOrigin(String(origin || '').trim());
+  if (!o) return;
+  try {
+    window.localStorage?.setItem('resto_local_printing_api', o);
+  } catch (_) {
+    /* noop */
+  }
+}
+
+/** Marca impresión como configurada (no mostrar «Sin vínculo» por fallos temporales). */
+export function markPrintingLinkConfigured(origin = '') {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage?.setItem(PRINTING_LINK_CONFIGURED_KEY, new Date().toISOString());
+    if (origin) persistPrintingBridgeOrigin(origin);
+  } catch (_) {
+    /* noop */
+  }
+}
+
+export function isPrintingLinkConfigured() {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (window.localStorage?.getItem(PRINTING_LINK_CONFIGURED_KEY)) return true;
+    const raw = window.localStorage?.getItem('resto_printing_config_cache_v1');
+    if (!raw) return false;
+    const cfg = JSON.parse(raw);
+    return Boolean(String(cfg?.caja?.nombre || '').trim());
+  } catch (_) {
+    return false;
+  }
+}
+
+export function buildConfiguredPrintingLinkStatus(extraDetail = '') {
+  const persisted = getPersistedPrintingBridgeOrigin();
+  const cachedRaw = typeof window !== 'undefined' ? window.localStorage?.getItem('resto_printing_config_cache_v1') : null;
+  let printerHint = '';
+  try {
+    if (cachedRaw) printerHint = String(JSON.parse(cachedRaw)?.caja?.nombre || '').trim();
+  } catch (_) {
+    /* noop */
+  }
+  const detail = extraDetail
+    || persisted
+    || (printerHint ? `Impresora: ${printerHint}` : 'Configuración guardada en esta PC');
+  return {
+    connected: true,
+    configured: true,
+    source: usesInstalledLocalPrinting() ? 'Aplicación Resto FADEY (configurada)' : 'Impresión configurada',
+    detail,
+  };
+}
+
 async function fetchPrintingHealthDetail(url, timeoutMs = 3200) {
   try {
     const opts = {
@@ -479,6 +536,11 @@ async function probeOriginHealth(originBase, timeoutMs) {
  */
 async function discoverAssistantAndPersist() {
   const timeoutMs = 2400;
+  const persisted = getPersistedPrintingBridgeOrigin();
+  if (persisted) {
+    const existing = await probeOriginHealth(persisted, timeoutMs);
+    if (existing.ok && existing.assistant) return persisted;
+  }
   const tasks = [];
   for (const host of ASSISTANT_LOCAL_HOSTS) {
     for (const port of ASSISTANT_STANDARD_PORTS) {
@@ -603,8 +665,11 @@ export function isLocalPrintingBridge() {
 export async function checkPrintingHealth() {
   if (isDesktopEmbeddedRuntime()) {
     const origin = getApiOrigin();
-    if (!origin) throw new Error('API local no configurada');
-    try {
+    if (!origin) {
+      if (isPrintingLinkConfigured()) return true;
+      throw new Error('API local no configurada');
+    }
+    const fetchOpts = (ms) => {
       const opts = {
         method: 'GET',
         cache: 'no-store',
@@ -612,13 +677,38 @@ export async function checkPrintingHealth() {
         mode: 'cors',
       };
       if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-        opts.signal = AbortSignal.timeout(5000);
+        opts.signal = AbortSignal.timeout(ms);
       }
-      const res = await fetch(`${origin}/api/healthz`, opts);
+      return opts;
+    };
+    try {
+      const res = await fetch(`${origin}/api/healthz`, fetchOpts(5000));
       if (res.ok) return true;
     } catch (_) {
       /* noop */
     }
+    try {
+      const bridgeRes = await fetch(`${origin}/api/printing/bridge`, fetchOpts(4500));
+      if (bridgeRes.ok) {
+        const bridge = await bridgeRes.json();
+        const hint = String(bridge?.printingAssistantOrigin || '').trim();
+        if (hint) {
+          const probe = await probeOriginHealth(hint, 4500);
+          if (probe.ok) {
+            persistPrintingBridgeOrigin(hint);
+            return true;
+          }
+        }
+      }
+    } catch (_) {
+      /* noop */
+    }
+    const assistant = await resolvePrintingAssistantOrigin();
+    if (assistant) {
+      persistPrintingBridgeOrigin(assistant);
+      return true;
+    }
+    if (isPrintingLinkConfigured()) return true;
     throw new Error(printingUnreachableMessage());
   }
 
@@ -627,6 +717,8 @@ export async function checkPrintingHealth() {
     const probe = await probeOriginHealth(persisted, 4500);
     if (probe.ok) return true;
   }
+
+  if (isPrintingLinkConfigured() && persisted) return true;
 
   /** Si el asistente Electron quedó en otro puerto (3002…), lo encontramos sin depender de localStorage. */
   if (await discoverAssistantAndPersist()) {

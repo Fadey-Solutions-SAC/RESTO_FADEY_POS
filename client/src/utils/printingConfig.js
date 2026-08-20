@@ -1,15 +1,20 @@
 import {
   api,
+  buildConfiguredPrintingLinkStatus,
   checkPrintingHealth,
   electronPrinting,
   ensureLocalPrintingAssistantDiscovered,
   fetchUsbPrintersFromBridge,
   getApiOrigin,
+  getPersistedPrintingBridgeOrigin,
   hasElectronPrinting,
   isDesktopEmbeddedRuntime,
+  isPrintingLinkConfigured,
+  markPrintingLinkConfigured,
   normalizeUsbPrinterList,
+  persistPrintingBridgeOrigin,
   printingUnreachableMessage,
-  getPersistedPrintingBridgeOrigin,
+  resolvePrintingAssistantOrigin,
   usesInstalledLocalPrinting,
 } from './api';
 import { tryWakePrintingAssistant } from './printingAssistantWake';
@@ -213,12 +218,10 @@ export async function maintainPrintingAssistantLink({ tryWake = false } = {}) {
   } catch (err) {
     const cached = loadPrintingConfigFromCache();
     const persisted = getPersistedPrintingBridgeOrigin();
-    if (cached || persisted) {
-      const fallback = {
-        connected: Boolean(persisted),
-        source: persisted ? 'Asistente local (reconectando…)' : 'Configuración en caché',
-        detail: persisted || 'Esperando servicio Resto FADEY',
-      };
+    if (cached || persisted || isPrintingLinkConfigured()) {
+      const fallback = buildConfiguredPrintingLinkStatus(
+        persisted ? `${persisted} · reconectando…` : 'Esperando servicio Resto FADEY',
+      );
       return finish(fallback);
     }
     return finish({
@@ -249,10 +252,12 @@ export async function verifyPrintingLinkStatus() {
     } else if (isDesktopEmbeddedRuntime()) {
       await checkPrintingHealth();
       const origin = getApiOrigin();
+      const assistant = await resolvePrintingAssistantOrigin();
+      if (assistant) persistPrintingBridgeOrigin(assistant);
       status = {
         connected: true,
         source: 'Aplicación Resto FADEY instalada',
-        detail: origin ? `Servicio local · ${origin}` : 'Servicio local en esta PC',
+        detail: assistant ? `Servicio local · ${assistant}` : (origin ? `Servicio local · ${origin}` : 'Servicio local en esta PC'),
       };
     } else {
       await checkPrintingHealth();
@@ -264,11 +269,15 @@ export async function verifyPrintingLinkStatus() {
       };
     }
   } catch (err) {
-    status = {
-      connected: false,
-      source: 'Sin vínculo',
-      detail: err?.message || printingUnreachableMessage(),
-    };
+    if (isPrintingLinkConfigured()) {
+      status = buildConfiguredPrintingLinkStatus(err?.message || 'Reconectando servicio local…');
+    } else {
+      status = {
+        connected: false,
+        source: 'Sin vínculo',
+        detail: err?.message || printingUnreachableMessage(),
+      };
+    }
   }
   emitPrintingLinkStatus(status);
   return status;
@@ -297,7 +306,17 @@ export async function savePrintingModuleConfig(fullConfig, moduleKey, moduleCfgO
   const saved = hasElectronPrinting()
     ? await electronPrinting.saveConfig(payload)
     : await api.printing.put('/printing/config', payload);
-  return cachePrintingConfig(saved || { ...fullConfig, ...payload });
+  const merged = saved || { ...fullConfig, ...payload };
+  cachePrintingConfig(merged);
+  try {
+    let origin = getPersistedPrintingBridgeOrigin();
+    if (!origin) origin = await resolvePrintingAssistantOrigin();
+    if (!origin && isDesktopEmbeddedRuntime()) origin = getApiOrigin();
+    markPrintingLinkConfigured(origin);
+  } catch (_) {
+    markPrintingLinkConfigured();
+  }
+  return merged;
 }
 
 export async function printTestForModule(moduleKey) {

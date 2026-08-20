@@ -1,15 +1,21 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   api,
+  buildConfiguredPrintingLinkStatus,
   checkPrintingHealth,
   electronPrinting,
   formatDateTime,
+  getApiOrigin,
   getPersistedPrintingBridgeOrigin,
   getPrintingApiBase,
   hasElectronPrinting,
+  isPrintingLinkConfigured,
   fetchUsbPrintersFromBridge,
+  markPrintingLinkConfigured,
   normalizeUsbPrinterList,
+  persistPrintingBridgeOrigin,
   printingUnreachableMessage,
+  resolvePrintingAssistantOrigin,
   usesInstalledLocalPrinting,
 } from '../../utils/api';
 import PrintingAssistantDownloadButton from '../../components/printing/PrintingAssistantDownloadButton';
@@ -645,11 +651,16 @@ export default function Settings() {
       ? electronPrinting.saveConfig(printingConfig)
       : api.printing.put('/printing/config', printingConfig);
     req
-      .then((saved) => {
+      .then(async (saved) => {
         if (saved && typeof saved === 'object') {
           setPrintingConfig(normalizePrintingConfig(saved));
           cachePrintingConfig(saved);
         }
+        let origin = getPersistedPrintingBridgeOrigin();
+        if (!origin) origin = await resolvePrintingAssistantOrigin();
+        if (!origin && usesInstalledLocalPrinting()) origin = getApiOrigin();
+        markPrintingLinkConfigured(origin);
+        if (origin) setManualPrintingApi(origin);
         toast.success('Configuración de impresoras guardada');
         refreshPrinterStatus();
       })
@@ -690,6 +701,13 @@ export default function Settings() {
       });
       return true;
     } catch (err) {
+      if (isPrintingLinkConfigured()) {
+        setPrintingLinkStatus({
+          checking: false,
+          ...buildConfiguredPrintingLinkStatus(err?.message || 'Reconectando servicio local…'),
+        });
+        return true;
+      }
       setPrintingLinkStatus({
         checking: false,
         connected: false,
@@ -707,9 +725,12 @@ export default function Settings() {
     }
     try {
       window.localStorage?.setItem('resto_local_printing_api', raw);
+      persistPrintingBridgeOrigin(raw);
       const ok = await verifyPrintingLink();
-      if (ok) toast.success('Asistente de impresión vinculado');
-      else toast.error('No se pudo vincular el asistente');
+      if (ok) {
+        markPrintingLinkConfigured(raw);
+        toast.success('Asistente de impresión vinculado');
+      } else toast.error('No se pudo vincular el asistente');
     } catch (_) {
       toast.error('No se pudo guardar la URL local');
     }
