@@ -117,29 +117,48 @@ function isLoopbackRequest(req) {
   return false;
 }
 
+function isCloudDeployment() {
+  return String(process.env.RENDER || '').toLowerCase() === 'true' || !!process.env.RAILWAY_ENVIRONMENT;
+}
+
+function isPrintingRoute(req) {
+  const p = String(req.originalUrl || req.url || req.path || '');
+  return /\/printing/i.test(p) || /\/printers/i.test(p);
+}
+
+function grantLocalPrintingUser(req) {
+  req.user = { id: 'loopback-printing', username: 'loopback', role: 'admin', full_name: 'Impresión local' };
+}
+
 /**
  * Impresión USB en esta PC: el panel (a veces en Vercel) envía un JWT del API remoto.
  * Ese token no coincide con JWT_SECRET local → "Token inválido".
  * En loopback se acepta igual que el asistente Electron (sin JWT).
  */
 function authenticateTokenAllowLoopback(req, res, next) {
-  if (!isLoopbackRequest(req)) return authenticateToken(req, res, next);
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
-  if (!token) {
-    req.user = { id: 'loopback-printing', username: 'loopback', role: 'admin', full_name: 'Impresión local' };
-    return next();
+  const localPrintingServer = !isCloudDeployment() || process.env.ELECTRON_RUN_AS_NODE === '1';
+  const allowWithoutJwt = isLoopbackRequest(req)
+    || (localPrintingServer && isPrintingRoute(req));
+
+  if (allowWithoutJwt) {
+    if (!token) {
+      grantLocalPrintingUser(req);
+      return next();
+    }
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      req.user = decoded.role
+        ? { ...decoded, role: decoded.role }
+        : { ...decoded, role: 'admin' };
+      return next();
+    } catch (_) {
+      grantLocalPrintingUser(req);
+      return next();
+    }
   }
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded.role
-      ? { ...decoded, role: decoded.role }
-      : { ...decoded, role: 'admin' };
-    return next();
-  } catch (_) {
-    req.user = { id: 'loopback-printing', username: 'loopback', role: 'admin', full_name: 'Impresión local' };
-    return next();
-  }
+  return authenticateToken(req, res, next);
 }
 
 function optionalAuth(req, res, next) {

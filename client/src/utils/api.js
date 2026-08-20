@@ -532,6 +532,21 @@ export async function resolvePrintingAssistantOrigin() {
   return '';
 }
 
+let printingServiceBaseCache = { at: 0, base: '' };
+
+/** Base `/api` para guardar config, imprimir y detectar (prefiere asistente Electron 3002+). */
+export async function getPrintingServiceApiBase() {
+  const now = Date.now();
+  if (printingServiceBaseCache.base && now - printingServiceBaseCache.at < 8000) {
+    return printingServiceBaseCache.base;
+  }
+  let base = getPrintingApiBase();
+  const assistant = await resolvePrintingAssistantOrigin();
+  if (assistant) base = `${assistant.replace(/\/$/, '')}/api`;
+  printingServiceBaseCache = { at: now, base };
+  return base;
+}
+
 /**
  * Ejecuta el descubrimiento del asistente local (mismo instalador para cualquier cliente / URL).
  * No lanza error; útil tras login o si el asistente tardó en abrir.
@@ -663,7 +678,7 @@ async function printingRequest(endpoint, options = {}) {
     const token = localStorage.getItem('token');
     if (token) headers['Authorization'] = `Bearer ${token}`;
   }
-  const base = getPrintingApiBase();
+  const base = await getPrintingServiceApiBase();
   let res;
   try {
     res = await fetch(`${base}${endpoint}`, { ...options, headers });
