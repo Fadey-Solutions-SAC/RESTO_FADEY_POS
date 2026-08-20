@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, resolveMediaUrl } from '../../utils/api';
+import { surveyTypeClass, DEFAULT_LOYALTY_TEXT_STYLE } from '../../utils/loyaltySurveyTypography';
 import toast from 'react-hot-toast';
 
 const FALLBACK_NAME = 'Resto Fadey App';
@@ -40,6 +41,7 @@ export default function EncuestaPublica() {
     submit_label: 'Enviar encuesta',
     thanks_title: 'Gracias',
     thanks_message: '',
+    text_style: DEFAULT_LOYALTY_TEXT_STYLE,
     questions: [],
   });
   const [name, setName] = useState('');
@@ -113,7 +115,7 @@ export default function EncuestaPublica() {
   const cover = form.cover_image;
 
   return (
-    <div className="rf-login-shell rf-login-page rf-login-page--survey">
+    <div className={`rf-login-shell rf-login-page rf-login-page--survey ${surveyTypeClass(form.text_style)}`}>
       <div
         className={`rf-login-cover-bg${cover ? ' rf-login-cover-bg--has-image' : ' rf-login-cover-bg--empty'}`}
         aria-hidden="true"

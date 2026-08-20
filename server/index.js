@@ -30,7 +30,7 @@ const crypto = require('crypto');
 const { initDatabase, getDbPath, getDatabasePersistenceInfo, flushSaveDb, createSafetyBackup } = require('./database');
 const { ensureUploadsRoot } = require('./uploadsPath');
 const jwt = require('jsonwebtoken');
-const { authenticateToken, requireRole, JWT_SECRET } = require('./middleware/auth');
+const { authenticateToken, authenticateTokenAllowLoopback, requireRole, JWT_SECRET } = require('./middleware/auth');
 const { createRateLimiter } = require('./middleware/rateLimit');
 
 const app = express();
@@ -266,7 +266,7 @@ app.get('/printers', (req, res) => {
 /** Alias solicitado: GET /api/printers → [{ "name": "..." }] (misma auth que /api/printing/printers). */
 app.get(
   '/api/printers',
-  authenticateToken,
+  authenticateTokenAllowLoopback,
   requireRole('admin', 'master_admin', 'cajero', 'mozo', 'cocina', 'bar'),
   (req, res) => {
     const mod = String(req.query.module || '').trim().toLowerCase();

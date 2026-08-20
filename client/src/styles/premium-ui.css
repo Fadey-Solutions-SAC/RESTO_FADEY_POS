@@ -659,6 +659,266 @@ h1, h2, h3, h4 {
     color: #f5c542;
   }
 
+  /* Tipografías encuesta fidelización (10 estilos) */
+  .rf-login-page--survey[class*='rf-survey-type--'] {
+    --survey-font-display: 'Inter', system-ui, sans-serif;
+    --survey-font-body: 'Inter', system-ui, sans-serif;
+    --survey-title-color: #7ee8f0;
+    --survey-title-shadow: 0 0 22px rgba(0, 174, 239, 0.45);
+    --survey-title-transform: none;
+    --survey-title-letter-spacing: 0;
+    --survey-title-font-style: normal;
+    --survey-body-color: rgba(248, 250, 252, 0.92);
+    --survey-form-bg: transparent;
+    --survey-form-border: transparent;
+    --survey-form-radius: 0;
+    --survey-form-padding: 0;
+    --survey-input-radius: 0.75rem;
+    --survey-input-bg: rgba(255, 255, 255, 0.96);
+    --survey-btn-radius: 0.75rem;
+    --survey-btn-bg: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+    --survey-btn-letter-spacing: 0.04em;
+  }
+
+  .rf-login-page--survey[class*='rf-survey-type--'] .rf-login-brand h1,
+  .rf-login-page--survey[class*='rf-survey-type--'] .rf-login-title {
+    font-family: var(--survey-font-display);
+    color: var(--survey-title-color);
+    text-shadow: var(--survey-title-shadow);
+    text-transform: var(--survey-title-transform);
+    letter-spacing: var(--survey-title-letter-spacing);
+    font-style: var(--survey-title-font-style);
+  }
+
+  .rf-login-page--survey[class*='rf-survey-type--'] .rf-login-subtitle,
+  .rf-login-page--survey[class*='rf-survey-type--'] .rf-login-form label {
+    font-family: var(--survey-font-body);
+    color: var(--survey-body-color);
+  }
+
+  .rf-login-page--survey[class*='rf-survey-type--'] .rf-login-form {
+    background: var(--survey-form-bg) !important;
+    border: 1px solid var(--survey-form-border) !important;
+    border-radius: var(--survey-form-radius) !important;
+    padding: var(--survey-form-padding) !important;
+  }
+
+  .rf-login-page--survey[class*='rf-survey-type--'] .rf-login-input {
+    font-family: var(--survey-font-body);
+    border-radius: var(--survey-input-radius);
+    background: var(--survey-input-bg);
+  }
+
+  .rf-login-page--survey[class*='rf-survey-type--'] .rf-login-submit {
+    font-family: var(--survey-font-body);
+    border-radius: var(--survey-btn-radius);
+    background: var(--survey-btn-bg);
+    letter-spacing: var(--survey-btn-letter-spacing);
+  }
+
+  .rf-survey-type--clasico .rf-login-title {
+    font-family: 'Segoe Script', 'Lucida Handwriting', 'Apple Chancery', cursive;
+  }
+
+  .rf-survey-type--refinado {
+    --survey-font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+    --survey-font-body: 'Lato', 'Inter', sans-serif;
+    --survey-title-color: #f5e6c8;
+    --survey-title-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+    --survey-title-letter-spacing: 0.03em;
+    --survey-form-bg: rgba(15, 23, 42, 0.42);
+    --survey-form-border: rgba(245, 230, 200, 0.18);
+    --survey-form-radius: 1.25rem;
+    --survey-form-padding: 1.25rem;
+    --survey-btn-bg: linear-gradient(180deg, #9a7b4f 0%, #7a5c36 100%);
+  }
+
+  .rf-survey-type--moderno {
+    --survey-font-display: 'Montserrat', 'Inter', sans-serif;
+    --survey-font-body: 'Montserrat', 'Inter', sans-serif;
+    --survey-title-color: #ffffff;
+    --survey-title-shadow: none;
+    --survey-title-transform: uppercase;
+    --survey-title-letter-spacing: 0.12em;
+    --survey-form-bg: rgba(2, 6, 23, 0.55);
+    --survey-form-border: rgba(148, 163, 184, 0.2);
+    --survey-form-radius: 0.5rem;
+    --survey-form-padding: 1.25rem;
+    --survey-input-radius: 0.35rem;
+    --survey-btn-radius: 0.35rem;
+    --survey-btn-letter-spacing: 0.14em;
+  }
+
+  .rf-survey-type--serif_elegante {
+    --survey-font-display: 'Cormorant Garamond', Georgia, serif;
+    --survey-font-body: 'Cormorant Garamond', Georgia, serif;
+    --survey-title-color: #fef3c7;
+    --survey-title-shadow: 0 0 28px rgba(251, 191, 36, 0.25);
+    --survey-title-letter-spacing: 0.06em;
+    --survey-form-bg: rgba(30, 27, 75, 0.45);
+    --survey-form-border: rgba(253, 224, 71, 0.15);
+    --survey-form-radius: 1rem;
+    --survey-form-padding: 1.35rem;
+  }
+
+  .rf-survey-type--caligrafia {
+    --survey-font-display: 'Dancing Script', 'Segoe Script', cursive;
+    --survey-font-body: 'Raleway', 'Inter', sans-serif;
+    --survey-title-color: #bae6fd;
+    --survey-title-shadow: 0 0 20px rgba(56, 189, 248, 0.35);
+    --survey-title-font-style: normal;
+    --survey-form-bg: rgba(15, 23, 42, 0.38);
+    --survey-form-border: rgba(186, 230, 253, 0.2);
+    --survey-form-radius: 1.5rem;
+    --survey-form-padding: 1.25rem;
+  }
+
+  .rf-survey-type--minimal {
+    --survey-font-display: 'Jost', 'Inter', sans-serif;
+    --survey-font-body: 'Jost', 'Inter', sans-serif;
+    --survey-title-color: #f8fafc;
+    --survey-title-shadow: none;
+    --survey-title-letter-spacing: -0.02em;
+    --survey-body-color: rgba(248, 250, 252, 0.78);
+    --survey-form-bg: rgba(255, 255, 255, 0.06);
+    --survey-form-border: rgba(255, 255, 255, 0.12);
+    --survey-form-radius: 0.75rem;
+    --survey-form-padding: 1.5rem;
+    --survey-input-bg: rgba(255, 255, 255, 0.92);
+    --survey-btn-bg: #f8fafc;
+    --survey-btn-letter-spacing: 0.08em;
+  }
+
+  .rf-survey-type--minimal .rf-login-submit {
+    color: #0f172a;
+  }
+
+  .rf-survey-type--boutique {
+    --survey-font-display: 'Cinzel', Georgia, serif;
+    --survey-font-body: 'Fauna One', 'Inter', sans-serif;
+    --survey-title-color: #fde68a;
+    --survey-title-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
+    --survey-title-transform: uppercase;
+    --survey-title-letter-spacing: 0.18em;
+    --survey-form-bg: rgba(24, 24, 27, 0.62);
+    --survey-form-border: rgba(253, 230, 138, 0.22);
+    --survey-form-radius: 0.25rem;
+    --survey-form-padding: 1.35rem;
+    --survey-btn-bg: linear-gradient(180deg, #ca8a04 0%, #a16207 100%);
+  }
+
+  .rf-survey-type--gourmet {
+    --survey-font-display: 'Libre Baskerville', Georgia, serif;
+    --survey-font-body: 'Libre Baskerville', Georgia, serif;
+    --survey-title-color: #ffedd5;
+    --survey-title-shadow: 0 1px 12px rgba(0, 0, 0, 0.45);
+    --survey-title-letter-spacing: 0.02em;
+    --survey-form-bg: rgba(69, 26, 3, 0.55);
+    --survey-form-border: rgba(254, 215, 170, 0.2);
+    --survey-form-radius: 1rem;
+    --survey-form-padding: 1.35rem;
+    --survey-btn-bg: linear-gradient(180deg, #c2410c 0%, #9a3412 100%);
+  }
+
+  .rf-survey-type--artesanal {
+    --survey-font-display: 'Cormorant Garamond', Georgia, serif;
+    --survey-font-body: 'Work Sans', 'Inter', sans-serif;
+    --survey-title-color: #ecfccb;
+    --survey-title-shadow: 0 0 16px rgba(132, 204, 22, 0.2);
+    --survey-form-bg: rgba(20, 33, 17, 0.52);
+    --survey-form-border: rgba(190, 242, 100, 0.18);
+    --survey-form-radius: 1.15rem;
+    --survey-form-padding: 1.25rem;
+    --survey-btn-bg: linear-gradient(180deg, #65a30d 0%, #4d7c0f 100%);
+  }
+
+  .rf-survey-type--contemporaneo {
+    --survey-font-display: 'Outfit', 'Inter', sans-serif;
+    --survey-font-body: 'Outfit', 'Inter', sans-serif;
+    --survey-title-color: #e0f2fe;
+    --survey-title-shadow: none;
+    --survey-title-letter-spacing: -0.03em;
+    --survey-form-bg: rgba(12, 74, 110, 0.48);
+    --survey-form-border: rgba(125, 211, 252, 0.22);
+    --survey-form-radius: 1.75rem;
+    --survey-form-padding: 1.35rem;
+    --survey-input-radius: 1rem;
+    --survey-btn-radius: 999px;
+    --survey-btn-bg: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+  }
+
+  /* Mini preview en admin Fidelización */
+  .rf-survey-preview-shell {
+    background: #000414;
+    border-radius: 1rem;
+    padding: 1rem;
+    color: #e8f4fc;
+    overflow: hidden;
+  }
+
+  .rf-survey-preview-shell .rf-login-title {
+    font-size: 1.35rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .rf-survey-preview-shell .rf-login-subtitle {
+    font-size: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .rf-survey-type-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: 0.5rem;
+  }
+
+  .rf-survey-type-picker button {
+    text-align: left;
+    padding: 0.65rem 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .rf-survey-type-picker button.is-active {
+    border-color: var(--ui-accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-accent) 35%, transparent);
+  }
+
+  .rf-survey-type-picker button .type-label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.8125rem;
+    color: var(--ui-body-text);
+  }
+
+  .rf-survey-type-picker button .type-hint {
+    display: block;
+    font-size: 0.6875rem;
+    color: var(--ui-muted);
+    margin-top: 0.15rem;
+    line-height: 1.3;
+  }
+
+  .rf-survey-type-picker button .type-sample {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.95rem;
+    line-height: 1.1;
+    opacity: 0.9;
+    font-family: var(--survey-font-display, inherit);
+    color: var(--survey-title-color, var(--ui-body-text));
+    text-transform: var(--survey-title-transform);
+    letter-spacing: var(--survey-title-letter-spacing);
+    font-style: var(--survey-title-font-style);
+    text-shadow: none;
+  }
+
+  .rf-survey-type-picker button.rf-survey-type--clasico .type-sample {
+    font-family: 'Segoe Script', 'Lucida Handwriting', cursive;
+  }
+
   .rf-login-brand {
     flex-shrink: 0;
     margin-bottom: clamp(0.5rem, 2vh, 1.25rem);

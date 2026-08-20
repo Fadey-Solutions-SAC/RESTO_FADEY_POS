@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const { normalizeTextStyle, DEFAULT_TEXT_STYLE, LOYALTY_TEXT_STYLES } = require('./loyaltySurveyTypography');
 const { queryOne, runSql } = require('./database');
 
 const SETTINGS_KEY = 'loyalty_survey_form';
@@ -26,6 +27,7 @@ function defaultForm() {
     submit_label: 'Enviar encuesta',
     thanks_title: 'Gracias',
     thanks_message: 'Recibimos tu opinión. Nos ayuda a mejorar tu experiencia.',
+    text_style: DEFAULT_TEXT_STYLE,
     questions: DEFAULT_QUESTIONS.map((q) => ({ ...q })),
   };
 }
@@ -67,6 +69,7 @@ function normalizeForm(raw) {
     submit_label: sanitizeLabel(o.submit_label, d.submit_label, 40),
     thanks_title: sanitizeLabel(o.thanks_title, d.thanks_title, 40),
     thanks_message: sanitizeLabel(o.thanks_message, d.thanks_message, 220),
+    text_style: normalizeTextStyle(o.text_style),
     questions: normalizeQuestions(o.questions),
   };
 }
@@ -104,4 +107,6 @@ module.exports = {
   readLoyaltySurveyForm,
   saveLoyaltySurveyForm,
   loyaltyQuestionIds,
+  LOYALTY_TEXT_STYLES,
+  DEFAULT_TEXT_STYLE,
 };

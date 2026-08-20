@@ -100,6 +100,36 @@ function requireRole(...roles) {
   };
 }
 
+function isLoopbackRequest(req) {
+  const raw = String(req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/i, '');
+  return raw === '127.0.0.1' || raw === '::1' || raw === 'localhost';
+}
+
+/**
+ * Impresión USB en esta PC: el panel (a veces en Vercel) envía un JWT del API remoto.
+ * Ese token no coincide con JWT_SECRET local → "Token inválido".
+ * En loopback se acepta igual que el asistente Electron (sin JWT).
+ */
+function authenticateTokenAllowLoopback(req, res, next) {
+  if (!isLoopbackRequest(req)) return authenticateToken(req, res, next);
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) {
+    req.user = { id: 'loopback-printing', username: 'loopback', role: 'admin', full_name: 'Impresión local' };
+    return next();
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded.role
+      ? { ...decoded, role: decoded.role }
+      : { ...decoded, role: 'admin' };
+    return next();
+  } catch (_) {
+    req.user = { id: 'loopback-printing', username: 'loopback', role: 'admin', full_name: 'Impresión local' };
+    return next();
+  }
+}
+
 function optionalAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -116,6 +146,8 @@ function optionalAuth(req, res, next) {
 
 module.exports = {
   authenticateToken,
+  authenticateTokenAllowLoopback,
+  isLoopbackRequest,
   requireRole,
   optionalAuth,
   JWT_SECRET,

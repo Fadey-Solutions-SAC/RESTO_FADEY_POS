@@ -5,6 +5,11 @@ import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import {
+  LOYALTY_TEXT_STYLES,
+  DEFAULT_LOYALTY_TEXT_STYLE,
+  surveyTypeClass,
+} from '../../utils/loyaltySurveyTypography';
+import {
   MdAdd,
   MdChatBubbleOutline,
   MdContentCopy,
@@ -43,6 +48,7 @@ function emptyForm() {
     submit_label: 'Enviar encuesta',
     thanks_title: 'Gracias',
     thanks_message: 'Recibimos tu opinión. Nos ayuda a mejorar tu experiencia.',
+    text_style: DEFAULT_LOYALTY_TEXT_STYLE,
     questions: [],
   };
 }
@@ -318,6 +324,26 @@ export default function Fidelizacion() {
               <p className="text-sm ui-text-muted">Cargando formato…</p>
             ) : (
               <>
+                <div>
+                  <h3 className="font-medium rf-section-title mb-1">Tipo de texto</h3>
+                  <p className="text-xs ui-text-muted mb-3">Elige un estilo tipográfico para el cuadro de la encuesta.</p>
+                  <div className="rf-survey-type-picker">
+                    {LOYALTY_TEXT_STYLES.map((style) => (
+                      <button
+                        key={style.id}
+                        type="button"
+                        disabled={!canEdit}
+                        className={`${form.text_style === style.id ? 'is-active' : ''} ${surveyTypeClass(style.id)}`}
+                        onClick={() => patchForm('text_style', style.id)}
+                      >
+                        <span className="type-label">{style.label}</span>
+                        <span className="type-hint">{style.hint}</span>
+                        <span className="type-sample rf-login-title">Aa</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label className="block text-sm">
                     <span className="ui-text-muted">Título</span>
@@ -407,31 +433,24 @@ export default function Fidelizacion() {
           <div className="space-y-4">
             <div className="card p-5">
               <h2 className="text-lg font-semibold rf-section-title mb-3">Vista del cuadro</h2>
-              <div className="rounded-2xl border border-[var(--ui-border)] bg-[var(--ui-surface)] p-4 space-y-3 text-sm">
-                <p className="font-semibold rf-section-title">{form.title || 'Título'}</p>
-                {form.subtitle ? <p className="text-xs ui-text-muted">{form.subtitle}</p> : null}
-                <div>
-                  <p className="text-xs ui-text-muted mb-1">{form.name_label}</p>
-                  <div className="h-9 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)]" />
-                </div>
-                {form.questions.map((q, i) => (
-                  <div key={q.id || `pv-${i}`}>
-                    <p className="text-xs ui-text-muted mb-1">{q.label || 'Pregunta'}</p>
-                    <StarPreview />
-                  </div>
-                ))}
-                <div>
-                  <p className="text-xs ui-text-muted mb-1">{form.rating_label}</p>
-                  <StarPreview />
-                </div>
-                {form.show_comment ? (
+              <div className={`rf-survey-preview-shell rf-login-page--survey ${surveyTypeClass(form.text_style)}`}>
+                <p className="text-xs opacity-70 mb-2">Restaurante</p>
+                <h2 className="rf-login-title">{form.title || 'Título'}</h2>
+                {form.subtitle ? <p className="rf-login-subtitle">{form.subtitle}</p> : null}
+                <div className="rf-login-form space-y-3 !p-0">
                   <div>
-                    <p className="text-xs ui-text-muted mb-1">{form.comment_label}</p>
-                    <div className="h-14 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)]" />
+                    <label className="block text-sm font-medium mb-1">{form.name_label}</label>
+                    <div className="h-9 rf-login-input opacity-80" />
                   </div>
-                ) : null}
-                <div className="h-10 rounded-lg bg-[var(--ui-accent)] text-white flex items-center justify-center text-sm font-semibold">
-                  {form.submit_label || 'Enviar'}
+                  {form.questions.slice(0, 2).map((q, i) => (
+                    <div key={q.id || `pv-${i}`}>
+                      <label className="block text-sm font-medium mb-1">{q.label || 'Pregunta'}</label>
+                      <StarPreview />
+                    </div>
+                  ))}
+                  <button type="button" className="rf-login-submit w-full py-2 text-sm" disabled>
+                    {form.submit_label || 'Enviar'}
+                  </button>
                 </div>
               </div>
             </div>

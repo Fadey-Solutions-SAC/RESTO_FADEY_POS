@@ -1,10 +1,10 @@
 const router = require('express').Router();
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const { authenticateTokenAllowLoopback, requireRole } = require('../middleware/auth');
 const { loadConfig, saveConfig, normalizeConfig, ensurePrintingModules } = require('../printing/printerConfig');
-const { getPrinters } = require('../printing/printerDetector');
+const { getPrinters, getNetworkPrinters } = require('../printing/printerDetector');
 const { print, printTest, getPrinterStatus } = require('../printing/printerService');
 
-router.use(authenticateToken, requireRole('admin', 'master_admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion'));
+router.use(authenticateTokenAllowLoopback, requireRole('admin', 'master_admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion'));
 
 router.get('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar', 'produccion'), (req, res) => {
   try {
@@ -22,6 +22,14 @@ router.put('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', '
     res.json(next);
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo guardar configuración de impresión' });
+  }
+});
+
+router.get('/network-printers', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar', 'produccion'), (req, res) => {
+  try {
+    res.json(getNetworkPrinters());
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudieron detectar impresoras de red' });
   }
 });
 
