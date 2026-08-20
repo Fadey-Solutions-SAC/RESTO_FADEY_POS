@@ -1,26 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, resolveMediaUrl } from '../../utils/api';
 import { surveyTypeClass, DEFAULT_LOYALTY_TEXT_STYLE } from '../../utils/loyaltySurveyTypography';
 import toast from 'react-hot-toast';
 
 const FALLBACK_NAME = 'Resto Fadey App';
 
-function StarPick({ value, onChange, name }) {
-  return (
-    <div className="rf-survey-stars" role="radiogroup" aria-label={name}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          type="button"
-          className={n <= value ? 'is-on' : ''}
-          aria-label={`${n} de 5`}
-          onClick={() => onChange(n)}
-        >
-          ★
-        </button>
-      ))}
-    </div>
-  );
+const DEFAULT_SCALE = [
+  { value: 5, label: 'Excelente', emoji: '😊' },
+  { value: 4, label: 'Bueno', emoji: '🙂' },
+  { value: 3, label: 'Regular', emoji: '😐' },
+  { value: 2, label: 'Malo', emoji: '☹️' },
+  { value: 1, label: 'Muy malo', emoji: '😢' },
+];
+
+function toggleId(list, id) {
+  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 }
 
 export default function EncuestaPublica() {
@@ -31,23 +25,48 @@ export default function EncuestaPublica() {
     restaurant_name: FALLBACK_NAME,
     logo: '',
     cover_image: '',
-    title: 'Tu experiencia',
-    subtitle: 'Cuéntanos cómo te fue en tu visita.',
+    title: 'Encuesta de satisfacción',
+    subtitle: 'Su opinión nos ayuda a mejorar.',
     name_label: 'Tu nombre',
-    rating_label: 'Calificación general',
-    comment_label: 'Comentario (opcional)',
-    comment_placeholder: '',
+    waiter_label: 'Mozo que te atendió',
+    visit_date_label: 'Fecha de su visita',
+    area_label: 'Área utilizada',
+    party_size_label: 'N° de personas',
+    experience_title: '1. Califique su experiencia',
+    liked_title: '2. ¿Qué fue lo que más le gustó?',
+    liked_hint: '(Puede seleccionar más de una opción)',
+    improve_title: '3. ¿Qué aspectos podemos mejorar?',
+    improve_hint: '(Puede seleccionar más de una opción)',
+    comment_label: '4. Comentarios o sugerencias',
+    comment_placeholder: 'Cuéntenos cómo podemos mejorar su próxima visita:',
     show_comment: true,
     submit_label: 'Enviar encuesta',
     thanks_title: 'Gracias',
     thanks_message: '',
     text_style: DEFAULT_LOYALTY_TEXT_STYLE,
     questions: [],
+    liked_options: [],
+    improve_options: [],
+    rating_scale: DEFAULT_SCALE,
+    waiters: [],
   });
+
   const [name, setName] = useState('');
-  const [comment, setComment] = useState('');
-  const [rating, setRating] = useState(0);
+  const [waiterId, setWaiterId] = useState('');
+  const [visitDate, setVisitDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [visitArea, setVisitArea] = useState('');
+  const [partySize, setPartySize] = useState('');
   const [answers, setAnswers] = useState({});
+  const [liked, setLiked] = useState([]);
+  const [improve, setImprove] = useState([]);
+  const [likedOther, setLikedOther] = useState('');
+  const [improveOther, setImproveOther] = useState('');
+  const [comment, setComment] = useState('');
+
+  const scale = useMemo(
+    () => (Array.isArray(form.rating_scale) && form.rating_scale.length ? form.rating_scale : DEFAULT_SCALE),
+    [form.rating_scale],
+  );
 
   useEffect(() => {
     const html = document.documentElement;
@@ -64,13 +83,21 @@ export default function EncuestaPublica() {
     api
       .get('/public/loyalty/form')
       .then((data) => {
+        const waiters = Array.isArray(data?.waiters) ? data.waiters : [];
         setForm((prev) => ({
           ...prev,
           ...data,
           restaurant_name: String(data?.restaurant_name || '').trim() || FALLBACK_NAME,
           questions: Array.isArray(data?.questions) ? data.questions : [],
+          liked_options: Array.isArray(data?.liked_options) ? data.liked_options : [],
+          improve_options: Array.isArray(data?.improve_options) ? data.improve_options : [],
+          rating_scale: Array.isArray(data?.rating_scale) && data.rating_scale.length
+            ? data.rating_scale
+            : DEFAULT_SCALE,
           show_comment: data?.show_comment !== false,
+          waiters,
         }));
+        if (waiters.length === 1) setWaiterId(String(waiters[0].id || ''));
       })
       .catch((e) => toast.error(e.message || 'No se pudo cargar la encuesta'))
       .finally(() => setLoading(false));
@@ -86,13 +113,22 @@ export default function EncuestaPublica() {
       toast.error(`Escribe ${String(form.name_label || 'tu nombre').toLowerCase()}`);
       return;
     }
-    if (!rating) {
-      toast.error(`Elige ${String(form.rating_label || 'una calificación').toLowerCase()}`);
+    if (form.waiters.length > 0 && !waiterId) {
+      toast.error(`Selecciona ${String(form.waiter_label || 'el mozo').toLowerCase()}`);
+      return;
+    }
+    if (!visitArea) {
+      toast.error(`Selecciona ${String(form.area_label || 'el área').toLowerCase()}`);
+      return;
+    }
+    const people = Number(partySize);
+    if (!Number.isFinite(people) || people < 1) {
+      toast.error(`Indica ${String(form.party_size_label || 'el número de personas').toLowerCase()}`);
       return;
     }
     for (const q of form.questions) {
       if (!answers[q.id]) {
-        toast.error('Completa todas las opciones de la experiencia');
+        toast.error('Complete todas las calificaciones de experiencia');
         return;
       }
     }
@@ -100,9 +136,16 @@ export default function EncuestaPublica() {
     try {
       await api.post('/public/loyalty', {
         customer_name: name.trim(),
-        comment: form.show_comment ? comment.trim() : '',
-        rating,
+        waiter_user_id: waiterId || undefined,
+        visit_date: visitDate,
+        visit_area: visitArea,
+        party_size: people,
         answers,
+        liked,
+        improve,
+        liked_other: likedOther.trim(),
+        improve_other: improveOther.trim(),
+        comment: form.show_comment ? comment.trim() : '',
       });
       setDone(true);
     } catch (err) {
@@ -112,95 +155,199 @@ export default function EncuestaPublica() {
     }
   };
 
-  const cover = form.cover_image;
-
   return (
-    <div className={`rf-login-shell rf-login-page rf-login-page--survey ${surveyTypeClass(form.text_style)}`}>
-      <div
-        className={`rf-login-cover-bg${cover ? ' rf-login-cover-bg--has-image' : ' rf-login-cover-bg--empty'}`}
-        aria-hidden="true"
-      >
-        {cover ? <img src={resolveMediaUrl(cover)} alt="" /> : null}
-      </div>
+    <div className={`rf-login-shell rf-login-page rf-login-page--survey rf-survey-sheet ${surveyTypeClass(form.text_style)}`}>
+      <div className="rf-login-cover-bg rf-login-cover-bg--empty" aria-hidden="true" />
       <div className="rf-login-page__content rf-login-page__content--visible">
-        <div className="rf-login-center w-full max-w-md relative z-10 px-4">
-          <div className="rf-login-brand text-center">
-            {form.logo ? (
-              <img
-                src={resolveMediaUrl(form.logo)}
-                alt=""
-                className="rf-login-brand-logo mx-auto rounded-full"
-              />
-            ) : null}
-            <h1 className="rf-font-display text-3xl font-bold text-[#e8f4fc] tracking-tight px-1">
-              {form.restaurant_name}
-            </h1>
-          </div>
+        <div className="rf-login-center rf-survey-sheet__wrap relative z-10 px-3">
+          <div className="rf-survey-sheet__card">
+            <header className="rf-survey-sheet__brand">
+              {form.logo ? (
+                <img src={resolveMediaUrl(form.logo)} alt="" className="rf-survey-sheet__logo" />
+              ) : null}
+              <h1>{form.restaurant_name}</h1>
+              <p>{form.title}</p>
+              {form.subtitle ? <p className="rf-survey-sheet__sub">{form.subtitle}</p> : null}
+            </header>
 
-          <div className="rf-login-form">
             {loading ? (
-              <p className="rf-login-subtitle">Cargando encuesta…</p>
+              <p className="rf-survey-sheet__sub text-center py-8">Cargando encuesta…</p>
             ) : done ? (
-              <>
-                <h2 className="rf-login-title">{form.thanks_title || 'Gracias'}</h2>
-                <p className="rf-login-subtitle">
+              <div className="text-center py-8 space-y-2">
+                <h2 className="rf-survey-sheet__section-title !border-0 !pb-0">{form.thanks_title || 'Gracias'}</h2>
+                <p className="rf-survey-sheet__sub">
                   {form.thanks_message
                     || `Recibimos tu opinión. Nos ayuda a mejorar tu experiencia en ${form.restaurant_name}.`}
                 </p>
-              </>
+              </div>
             ) : (
-              <>
-                <h2 className="rf-login-title">{form.title}</h2>
-                {form.subtitle ? <p className="rf-login-subtitle">{form.subtitle}</p> : null}
-                <form onSubmit={submit} className="rf-login-fields space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5">{form.name_label}</label>
+              <form onSubmit={submit} className="rf-survey-sheet__form space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="rf-survey-field">
+                    <span>{form.name_label}</span>
                     <input
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="rf-login-input"
                       maxLength={80}
                       required
                       autoComplete="name"
                     />
-                  </div>
-
-                  {form.questions.map((q) => (
-                    <div key={q.id}>
-                      <label className="block text-sm font-medium mb-1.5">{q.label}</label>
-                      <StarPick
-                        name={q.label}
-                        value={Number(answers[q.id] || 0)}
-                        onChange={(n) => setAnswer(q.id, n)}
-                      />
-                    </div>
-                  ))}
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5">{form.rating_label}</label>
-                    <StarPick name={form.rating_label} value={rating} onChange={setRating} />
-                  </div>
-
-                  {form.show_comment ? (
-                    <div>
-                      <label className="block text-sm font-medium mb-1.5">{form.comment_label}</label>
-                      <textarea
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        className="rf-login-input min-h-[5.5rem] py-2"
-                        maxLength={500}
-                        rows={3}
-                        placeholder={form.comment_placeholder || ''}
-                      />
-                    </div>
+                  </label>
+                  {form.waiters.length > 0 ? (
+                    <label className="rf-survey-field">
+                      <span>{form.waiter_label}</span>
+                      <select value={waiterId} onChange={(e) => setWaiterId(e.target.value)} required>
+                        <option value="">Selecciona un mozo…</option>
+                        {form.waiters.map((w) => (
+                          <option key={w.id} value={w.id}>{w.full_name}</option>
+                        ))}
+                      </select>
+                    </label>
                   ) : null}
+                </div>
 
-                  <button type="submit" className="rf-login-submit" disabled={sending}>
-                    {sending ? 'Enviando…' : (form.submit_label || 'Enviar encuesta')}
-                  </button>
-                </form>
-              </>
+                <div className="rf-survey-meta">
+                  <label className="rf-survey-field">
+                    <span>{form.visit_date_label}</span>
+                    <input type="date" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} required />
+                  </label>
+                  <fieldset className="rf-survey-field">
+                    <legend>{form.area_label}</legend>
+                    <div className="rf-survey-check-row">
+                      {[
+                        { id: 'restaurante', label: 'Restaurante' },
+                        { id: 'hotel', label: 'Hotel' },
+                        { id: 'ambos', label: 'Ambos' },
+                      ].map((a) => (
+                        <label key={a.id} className="rf-survey-check">
+                          <input
+                            type="radio"
+                            name="visit_area"
+                            value={a.id}
+                            checked={visitArea === a.id}
+                            onChange={() => setVisitArea(a.id)}
+                          />
+                          <span>{a.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <label className="rf-survey-field">
+                    <span>{form.party_size_label}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={partySize}
+                      onChange={(e) => setPartySize(e.target.value)}
+                      required
+                    />
+                  </label>
+                </div>
+
+                <section>
+                  <h2 className="rf-survey-sheet__section-title">{form.experience_title}</h2>
+                  <div className="rf-survey-likert">
+                    <div className="rf-survey-likert__head">
+                      <span className="rf-survey-likert__spacer" />
+                      {scale.map((s) => (
+                        <div key={s.value} className="rf-survey-likert__colhead">
+                          <span className="rf-survey-likert__emoji" aria-hidden>{s.emoji}</span>
+                          <span>{s.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {form.questions.map((q) => (
+                      <div key={q.id} className="rf-survey-likert__row" role="radiogroup" aria-label={q.label}>
+                        <div className="rf-survey-likert__label">{q.label}</div>
+                        {scale.map((s) => (
+                          <label key={s.value} className={`rf-survey-likert__cell ${answers[q.id] === s.value ? 'is-on' : ''}`}>
+                            <input
+                              type="radio"
+                              name={`q-${q.id}`}
+                              value={s.value}
+                              checked={answers[q.id] === s.value}
+                              onChange={() => setAnswer(q.id, s.value)}
+                            />
+                            <span className="rf-survey-likert__dot" />
+                          </label>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <h2 className="rf-survey-sheet__section-title">{form.liked_title}</h2>
+                  {form.liked_hint ? <p className="rf-survey-sheet__hint">{form.liked_hint}</p> : null}
+                  <div className="rf-survey-options">
+                    {form.liked_options.map((o) => (
+                      <label key={o.id} className="rf-survey-check">
+                        <input
+                          type="checkbox"
+                          checked={liked.includes(o.id)}
+                          onChange={() => setLiked((prev) => toggleId(prev, o.id))}
+                        />
+                        <span>{o.label}</span>
+                      </label>
+                    ))}
+                    <label className="rf-survey-field rf-survey-field--inline">
+                      <span>Otro:</span>
+                      <input
+                        type="text"
+                        value={likedOther}
+                        onChange={(e) => setLikedOther(e.target.value)}
+                        maxLength={120}
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                <section>
+                  <h2 className="rf-survey-sheet__section-title">{form.improve_title}</h2>
+                  {form.improve_hint ? <p className="rf-survey-sheet__hint">{form.improve_hint}</p> : null}
+                  <div className="rf-survey-options">
+                    {form.improve_options.map((o) => (
+                      <label key={o.id} className="rf-survey-check">
+                        <input
+                          type="checkbox"
+                          checked={improve.includes(o.id)}
+                          onChange={() => setImprove((prev) => toggleId(prev, o.id))}
+                        />
+                        <span>{o.label}</span>
+                      </label>
+                    ))}
+                    <label className="rf-survey-field rf-survey-field--inline">
+                      <span>Otro:</span>
+                      <input
+                        type="text"
+                        value={improveOther}
+                        onChange={(e) => setImproveOther(e.target.value)}
+                        maxLength={120}
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                {form.show_comment ? (
+                  <section>
+                    <h2 className="rf-survey-sheet__section-title">{form.comment_label}</h2>
+                    <p className="rf-survey-sheet__hint">{form.comment_placeholder}</p>
+                    <textarea
+                      className="rf-survey-textarea"
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      maxLength={800}
+                      rows={4}
+                    />
+                  </section>
+                ) : null}
+
+                <button type="submit" className="rf-survey-submit" disabled={sending}>
+                  {sending ? 'Enviando…' : (form.submit_label || 'Enviar encuesta')}
+                </button>
+              </form>
             )}
           </div>
         </div>

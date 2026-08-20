@@ -1,4 +1,4 @@
-import { MdDashboard, MdNotificationsActive, MdPsychology } from 'react-icons/md';
+import { MdDashboard, MdNotificationsActive, MdPsychology, MdStars } from 'react-icons/md';
 import { formatMinutes, formatMoney, severityBadge, ROLE_LABEL } from './workTimeUtils';
 
 function StatCard({ label, value, sub, accent = 'gold' }) {
@@ -28,7 +28,54 @@ function AreaBlock({ title, metrics }) {
   );
 }
 
-export default function WorkTimeAnalyticsPanel({ data, subTab, filters, setFilters, users, onExport }) {
+function WaiterRatingsBlock({ waiterRatings = [] }) {
+  const list = Array.isArray(waiterRatings) ? waiterRatings : [];
+  return (
+    <div className="card">
+      <h3 className="font-bold text-[var(--ui-body-text)] mb-3 flex items-center gap-2">
+        <MdStars className="text-amber-500" /> Calificación de mozos (clientes)
+      </h3>
+      {list.length === 0 ? (
+        <p className="text-sm text-[var(--ui-muted)]">
+          Aún no hay calificaciones. Cuando los clientes elijan mozo en la encuesta de fidelización, aquí verás el promedio de cada uno.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[420px]">
+            <thead>
+              <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
+                <th className="py-2 pr-2">Mozo</th>
+                <th className="py-2">Promedio</th>
+                <th className="py-2">Encuestas</th>
+                <th className="py-2">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((w) => (
+                <tr key={w.waiter_user_id} className="border-b border-[color:var(--ui-border)] last:border-0">
+                  <td className="py-2 pr-2 font-medium">{w.waiter_name}</td>
+                  <td className="py-2 font-semibold text-amber-600">
+                    {w.count ? `${Number(w.average || 0).toFixed(1)} ★` : '—'}
+                  </td>
+                  <td className="py-2">{w.count || 0}</td>
+                  <td className="py-2 text-xs">
+                    {w.is_active === false ? (
+                      <span className="text-[var(--ui-muted)]">Inactivo</span>
+                    ) : (
+                      <span className="text-emerald-600">Activo</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [] }) {
   if (!data) return <p className="text-sm text-[var(--ui-muted)]">Cargando analítica…</p>;
 
   const { dashboard, productivity, areas, rankings, alerts, insights, shifts, hours } = data;
@@ -79,41 +126,58 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, filters, setFilte
             <p className="text-xs text-[var(--ui-muted)] mt-3">Semana: {formatMinutes(hours?.weekly_minutes)} · Mes: {formatMinutes(hours?.monthly_minutes)}</p>
           </div>
         </div>
+
+        <WaiterRatingsBlock waiterRatings={waiterRatings} />
       </div>
     );
   }
 
   if (subTab === 'productividad') {
+    const ratingByUser = new Map(
+      (Array.isArray(waiterRatings) ? waiterRatings : []).map((w) => [w.waiter_user_id, w]),
+    );
     return (
-      <div className="card overflow-x-auto">
-        <table className="w-full text-sm min-w-[720px]">
-          <thead>
-            <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
-              <th className="py-2 pr-2">Empleado</th>
-              <th className="py-2">Rol</th>
-              <th className="py-2">Horas</th>
-              <th className="py-2">Activo</th>
-              <th className="py-2">Cuentas</th>
-              <th className="py-2">Ventas</th>
-              <th className="py-2">Delivery</th>
-              <th className="py-2">Prod./h</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(productivity || []).map((p) => (
-              <tr key={p.user_id} className="border-b border-[color:var(--ui-border)] last:border-0 hover:bg-[var(--ui-sidebar-hover)]">
-                <td className="py-2 pr-2 font-medium">{p.full_name}</td>
-                <td className="py-2">{ROLE_LABEL[p.role] || p.role}</td>
-                <td className="py-2">{formatMinutes(p.worked_minutes)}</td>
-                <td className="py-2">{formatMinutes(p.active_minutes)}</td>
-                <td className="py-2">{p.orders_paid}</td>
-                <td className="py-2">{formatMoney(p.sales_total)}</td>
-                <td className="py-2">{p.deliveries || '—'}</td>
-                <td className="py-2 font-semibold text-gold-600">{p.productivity_per_hour}</td>
+      <div className="space-y-4">
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm min-w-[820px]">
+            <thead>
+              <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">
+                <th className="py-2 pr-2">Empleado</th>
+                <th className="py-2">Rol</th>
+                <th className="py-2">Horas</th>
+                <th className="py-2">Activo</th>
+                <th className="py-2">Cuentas</th>
+                <th className="py-2">Ventas</th>
+                <th className="py-2">Delivery</th>
+                <th className="py-2">Prod./h</th>
+                <th className="py-2">Calif. clientes</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(productivity || []).map((p) => {
+                const wr = ratingByUser.get(p.user_id);
+                return (
+                  <tr key={p.user_id} className="border-b border-[color:var(--ui-border)] last:border-0 hover:bg-[var(--ui-sidebar-hover)]">
+                    <td className="py-2 pr-2 font-medium">{p.full_name}</td>
+                    <td className="py-2">{ROLE_LABEL[p.role] || p.role}</td>
+                    <td className="py-2">{formatMinutes(p.worked_minutes)}</td>
+                    <td className="py-2">{formatMinutes(p.active_minutes)}</td>
+                    <td className="py-2">{p.orders_paid}</td>
+                    <td className="py-2">{formatMoney(p.sales_total)}</td>
+                    <td className="py-2">{p.deliveries || '—'}</td>
+                    <td className="py-2 font-semibold text-gold-600">{p.productivity_per_hour}</td>
+                    <td className="py-2">
+                      {String(p.role || '').toLowerCase() === 'mozo'
+                        ? (wr?.count ? `${Number(wr.average).toFixed(1)} ★ (${wr.count})` : 'Sin encuestas')
+                        : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <WaiterRatingsBlock waiterRatings={waiterRatings} />
       </div>
     );
   }
@@ -154,18 +218,33 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, filters, setFilte
       rankings?.best_delivery,
       rankings?.kitchen_role,
     ].filter(Boolean);
+    const topWaiter = [...(Array.isArray(waiterRatings) ? waiterRatings : [])]
+      .filter((w) => w.count > 0)
+      .sort((a, b) => b.average - a.average || b.count - a.count)[0];
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {items.map((r) => (
-          <div key={r.label} className="card border-gold-500/20 bg-gradient-to-br from-[var(--ui-surface)] to-gold-500/5">
-            <p className="text-xs text-[var(--ui-muted)]">{r.label}</p>
-            <p className="text-lg font-bold text-[var(--ui-body-text)] mt-1">{r.full_name}</p>
-            <p className="text-sm text-gold-600 font-medium mt-1">
-              {typeof r.value === 'number' && r.label?.includes('ventas') ? formatMoney(r.value) : r.value}
-            </p>
-          </div>
-        ))}
-        {items.length === 0 ? <p className="text-sm text-[var(--ui-muted)] col-span-full">Sin datos suficientes en el período.</p> : null}
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {items.map((r) => (
+            <div key={r.label} className="card border-gold-500/20 bg-gradient-to-br from-[var(--ui-surface)] to-gold-500/5">
+              <p className="text-xs text-[var(--ui-muted)]">{r.label}</p>
+              <p className="text-lg font-bold text-[var(--ui-body-text)] mt-1">{r.full_name}</p>
+              <p className="text-sm text-gold-600 font-medium mt-1">
+                {typeof r.value === 'number' && r.label?.includes('ventas') ? formatMoney(r.value) : r.value}
+              </p>
+            </div>
+          ))}
+          {topWaiter ? (
+            <div className="card border-amber-500/30 bg-gradient-to-br from-[var(--ui-surface)] to-amber-500/5">
+              <p className="text-xs text-[var(--ui-muted)]">Mejor calificación de clientes</p>
+              <p className="text-lg font-bold text-[var(--ui-body-text)] mt-1">{topWaiter.waiter_name}</p>
+              <p className="text-sm text-amber-600 font-medium mt-1">
+                {Number(topWaiter.average).toFixed(1)} ★ · {topWaiter.count} encuesta{topWaiter.count === 1 ? '' : 's'}
+              </p>
+            </div>
+          ) : null}
+          {items.length === 0 && !topWaiter ? <p className="text-sm text-[var(--ui-muted)] col-span-full">Sin datos suficientes en el período.</p> : null}
+        </div>
+        <WaiterRatingsBlock waiterRatings={waiterRatings} />
       </div>
     );
   }

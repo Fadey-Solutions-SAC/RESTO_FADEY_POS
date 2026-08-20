@@ -935,10 +935,20 @@ async function initDatabase() {
         comment TEXT DEFAULT '',
         rating INTEGER NOT NULL,
         answers_json TEXT DEFAULT '{}',
+        waiter_user_id TEXT DEFAULT '',
+        waiter_name TEXT DEFAULT '',
+        visit_date TEXT DEFAULT '',
+        visit_area TEXT DEFAULT '',
+        party_size INTEGER DEFAULT 0,
+        liked_json TEXT DEFAULT '[]',
+        improve_json TEXT DEFAULT '[]',
+        liked_other TEXT DEFAULT '',
+        improve_other TEXT DEFAULT '',
         created_at TEXT DEFAULT (datetime('now'))
       )
     `);
     db.run('CREATE INDEX IF NOT EXISTS idx_loyalty_surveys_created_at ON loyalty_surveys(created_at)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_loyalty_surveys_waiter ON loyalty_surveys(waiter_user_id)');
 
     db.run(`
       CREATE TABLE IF NOT EXISTS categories (
@@ -3331,10 +3341,33 @@ function ensureLoyaltySurveysTable() {
       comment TEXT DEFAULT '',
       rating INTEGER NOT NULL,
       answers_json TEXT DEFAULT '{}',
+      waiter_user_id TEXT DEFAULT '',
+      waiter_name TEXT DEFAULT '',
+      visit_date TEXT DEFAULT '',
+      visit_area TEXT DEFAULT '',
+      party_size INTEGER DEFAULT 0,
+      liked_json TEXT DEFAULT '[]',
+      improve_json TEXT DEFAULT '[]',
+      liked_other TEXT DEFAULT '',
+      improve_other TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
   runSql('CREATE INDEX IF NOT EXISTS idx_loyalty_surveys_created_at ON loyalty_surveys(created_at)');
+  const cols = new Set(pragmaTableColumnNames('loyalty_surveys'));
+  const add = (name, sql) => {
+    if (!cols.has(name)) runSql(sql);
+  };
+  add('waiter_user_id', "ALTER TABLE loyalty_surveys ADD COLUMN waiter_user_id TEXT DEFAULT ''");
+  add('waiter_name', "ALTER TABLE loyalty_surveys ADD COLUMN waiter_name TEXT DEFAULT ''");
+  add('visit_date', "ALTER TABLE loyalty_surveys ADD COLUMN visit_date TEXT DEFAULT ''");
+  add('visit_area', "ALTER TABLE loyalty_surveys ADD COLUMN visit_area TEXT DEFAULT ''");
+  add('party_size', 'ALTER TABLE loyalty_surveys ADD COLUMN party_size INTEGER DEFAULT 0');
+  add('liked_json', "ALTER TABLE loyalty_surveys ADD COLUMN liked_json TEXT DEFAULT '[]'");
+  add('improve_json', "ALTER TABLE loyalty_surveys ADD COLUMN improve_json TEXT DEFAULT '[]'");
+  add('liked_other', "ALTER TABLE loyalty_surveys ADD COLUMN liked_other TEXT DEFAULT ''");
+  add('improve_other', "ALTER TABLE loyalty_surveys ADD COLUMN improve_other TEXT DEFAULT ''");
+  runSql('CREATE INDEX IF NOT EXISTS idx_loyalty_surveys_waiter ON loyalty_surveys(waiter_user_id)');
 }
 
 function ensureOrdersPaidAtColumns() {

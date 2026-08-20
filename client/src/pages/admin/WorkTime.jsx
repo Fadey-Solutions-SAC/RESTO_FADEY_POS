@@ -34,6 +34,7 @@ export default function WorkTime() {
   const [loading, setLoading] = useState(false);
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [waiterRatings, setWaiterRatings] = useState([]);
   const [photoModal, setPhotoModal] = useState(null);
   const [classifyDraft, setClassifyDraft] = useState({});
   const [classifySavingId, setClassifySavingId] = useState('');
@@ -78,6 +79,15 @@ export default function WorkTime() {
       setLoading(false);
     }
   }, [filters.from, filters.to, filters.user_id]);
+
+  const loadWaiterRatings = useCallback(async () => {
+    try {
+      const data = await api.get('/loyalty/waiter-ratings');
+      setWaiterRatings(Array.isArray(data?.waiters) ? data.waiters : []);
+    } catch (_) {
+      setWaiterRatings([]);
+    }
+  }, []);
 
   const loadAnalytics = useCallback(async () => {
     setAnalyticsLoading(true);
@@ -137,7 +147,8 @@ export default function WorkTime() {
 
   useEffect(() => {
     loadUsers();
-  }, []);
+    loadWaiterRatings();
+  }, [loadWaiterRatings]);
 
   useEffect(() => {
     loadReport();
@@ -147,8 +158,9 @@ export default function WorkTime() {
     if (mainTab !== 'reporte') loadAnalytics();
   }, [loadAnalytics, mainTab]);
 
-  useSocket('staff-data-update', () => {
+  useSocket('staff-data-update', (p) => {
     if (mainTab !== 'reporte') void loadAnalytics();
+    if (!p?.domain || p.domain === 'loyalty') void loadWaiterRatings();
   });
 
   useSocket('order-update', () => {
@@ -250,6 +262,7 @@ export default function WorkTime() {
           filters={filters}
           setFilters={setFilters}
           users={users}
+          waiterRatings={waiterRatings}
           onExport={exportCsv}
         />
       )}
