@@ -1113,26 +1113,32 @@ h1, h2, h3, h4 {
     font-family: 'Outfit', 'Inter', sans-serif;
   }
 
-  /* Tipografías en la hoja crema de la encuesta pública */
+  /* Tipografía elegida en TODOS los textos de la encuesta (sin cambiar colores) */
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card {
+    font-family: var(--survey-font-display, 'Inter', system-ui, sans-serif);
+  }
+
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card h1,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card h2,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card p,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card span,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card label,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card legend,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card li,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card input,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card select,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card textarea,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card button,
+  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__card option {
+    font-family: var(--survey-font-display, 'Inter', system-ui, sans-serif) !important;
+  }
+
   .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__brand h1,
   .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__section-title {
-    font-family: var(--survey-font-display, 'Inter', system-ui, sans-serif);
     text-transform: var(--survey-title-transform, none);
     letter-spacing: var(--survey-title-letter-spacing, 0);
     font-style: var(--survey-title-font-style, normal);
-  }
-
-  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__brand > p,
-  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__sub,
-  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-sheet__hint,
-  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-field,
-  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-check,
-  .rf-survey-sheet[class*='rf-survey-type--'] .rf-survey-likert__label {
-    font-family: var(--survey-font-body, 'Inter', system-ui, sans-serif);
-  }
-
-  .rf-survey-sheet.rf-survey-type--clasico .rf-survey-sheet__brand h1 {
-    font-family: 'Segoe Script', 'Lucida Handwriting', 'Apple Chancery', cursive;
   }
 
   .rf-survey-sheet.rf-survey-type--moderno .rf-survey-sheet__section-title {
@@ -1143,14 +1149,18 @@ h1, h2, h3, h4 {
     letter-spacing: 0.12em;
   }
 
-  .rf-survey-preview-shell[class*='rf-survey-type--'] .rf-survey-preview-title {
-    font-family: var(--survey-font-display, inherit);
-    text-transform: var(--survey-title-transform, none);
-    letter-spacing: var(--survey-title-letter-spacing, 0);
+  .rf-survey-preview-shell[class*='rf-survey-type--'],
+  .rf-survey-preview-shell[class*='rf-survey-type--'] .rf-survey-preview-title,
+  .rf-survey-preview-shell[class*='rf-survey-type--'] .rf-survey-preview-body,
+  .rf-survey-preview-shell[class*='rf-survey-type--'] p,
+  .rf-survey-preview-shell[class*='rf-survey-type--'] li,
+  .rf-survey-preview-shell[class*='rf-survey-type--'] button {
+    font-family: var(--survey-font-display, inherit) !important;
   }
 
-  .rf-survey-preview-shell[class*='rf-survey-type--'] .rf-survey-preview-body {
-    font-family: var(--survey-font-body, inherit);
+  .rf-survey-preview-shell[class*='rf-survey-type--'] .rf-survey-preview-title {
+    text-transform: var(--survey-title-transform, none);
+    letter-spacing: var(--survey-title-letter-spacing, 0);
   }
 
   .rf-login-brand {
