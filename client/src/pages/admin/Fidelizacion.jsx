@@ -429,12 +429,12 @@ export default function Fidelizacion() {
                         key={style.id}
                         type="button"
                         disabled={!canEdit}
-                        className={`${form.text_style === style.id ? 'is-active' : ''} ${surveyTypeClass(style.id)}`}
+                        className={`rf-survey-type-card ${form.text_style === style.id ? 'is-active' : ''} ${surveyTypeClass(style.id)}`}
                         onClick={() => patchForm('text_style', style.id)}
                       >
                         <span className="type-label">{style.label}</span>
                         <span className="type-hint">{style.hint}</span>
-                        <span className="type-sample rf-login-title">Aa</span>
+                        <span className="type-sample" aria-hidden="true">Aa</span>
                       </button>
                     ))}
                   </div>
@@ -554,18 +554,18 @@ export default function Fidelizacion() {
           <div className="space-y-4">
             <div className="card p-5">
               <h2 className="text-lg font-semibold rf-section-title mb-3">Vista del cuadro</h2>
-              <div className="rf-survey-preview-shell !bg-[#fbf6ea] !text-[#4a3424] border border-[#d9c4a4]">
+              <div className={`rf-survey-preview-shell !bg-[#fbf6ea] !text-[#4a3424] border border-[#d9c4a4] ${surveyTypeClass(form.text_style)}`}>
                 <p className="text-xs opacity-70 mb-1">Plantilla encuesta</p>
-                <h2 className="font-bold text-base mb-1">{form.title || 'Encuesta'}</h2>
-                {form.subtitle ? <p className="text-xs opacity-80 mb-3">{form.subtitle}</p> : null}
-                <p className="text-[11px] font-semibold uppercase tracking-wide border-b border-[#c9a66b] pb-1 mb-2">{form.experience_title}</p>
-                <ul className="text-xs space-y-1 mb-3">
+                <h2 className="rf-survey-preview-title font-bold text-base mb-1">{form.title || 'Encuesta'}</h2>
+                {form.subtitle ? <p className="rf-survey-preview-body text-xs opacity-80 mb-3">{form.subtitle}</p> : null}
+                <p className="rf-survey-preview-title text-[11px] font-semibold uppercase tracking-wide border-b border-[#c9a66b] pb-1 mb-2">{form.experience_title}</p>
+                <ul className="rf-survey-preview-body text-xs space-y-1 mb-3">
                   {form.questions.slice(0, 4).map((q, i) => (
                     <li key={q.id || `pv-${i}`}>• {q.label || 'Pregunta'}</li>
                   ))}
                 </ul>
-                <p className="text-[11px] font-semibold uppercase tracking-wide border-b border-[#c9a66b] pb-1 mb-2">{form.liked_title}</p>
-                <p className="text-[11px] opacity-80 mb-2">Checkboxes + Otro</p>
+                <p className="rf-survey-preview-title text-[11px] font-semibold uppercase tracking-wide border-b border-[#c9a66b] pb-1 mb-2">{form.liked_title}</p>
+                <p className="rf-survey-preview-body text-[11px] opacity-80 mb-2">Checkboxes + Otro</p>
                 <button type="button" className="w-full py-2 text-sm rounded-lg bg-[#b8762d] text-white" disabled>
                   {form.submit_label || 'Enviar'}
                 </button>
