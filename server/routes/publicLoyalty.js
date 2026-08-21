@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { queryOne, queryAll, runSql } = require('../database');
+const { queryOne, queryAll, runSql, ensureLoyaltySurveysTable } = require('../database');
 const { createRateLimiter } = require('../middleware/rateLimit');
 const { emitStaffDataUpdate } = require('../socketBroadcast');
 const { attachProfileToRestaurant } = require('../services/miRestaurantConfigService');
@@ -80,6 +80,7 @@ function parseIdList(raw, allowedIds) {
 
 router.get('/form', (req, res) => {
   try {
+    ensureLoyaltySurveysTable();
     const form = readLoyaltySurveyForm();
     res.json({
       ...restaurantBranding(),
@@ -101,6 +102,7 @@ router.get('/waiters', (req, res) => {
 
 router.post('/', postLimiter, (req, res) => {
   try {
+    ensureLoyaltySurveysTable();
     const form = readLoyaltySurveyForm();
     const b = req.body && typeof req.body === 'object' ? req.body : {};
     const customerName = String(b.customer_name || '').trim().replace(/\s+/g, ' ');
@@ -158,28 +160,38 @@ router.post('/', postLimiter, (req, res) => {
     const comment = form.show_comment ? String(b.comment || '').trim().slice(0, 800) : '';
 
     const id = uuidv4();
-    runSql(
-      `INSERT INTO loyalty_surveys
+    const insertSql = `INSERT INTO loyalty_surveys
         (id, customer_name, comment, rating, answers_json, waiter_user_id, waiter_name,
          visit_date, visit_area, party_size, liked_json, improve_json, liked_other, improve_other, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      [
-        id,
-        customerName,
-        comment,
-        overall,
-        JSON.stringify(answers),
-        waiterId,
-        waiterName,
-        visitDate,
-        visitArea,
-        partySize,
-        JSON.stringify(liked),
-        JSON.stringify(improve),
-        likedOther,
-        improveOther,
-      ],
-    );
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`;
+    const insertParams = [
+      id,
+      customerName,
+      comment,
+      overall,
+      JSON.stringify(answers),
+      waiterId,
+      waiterName,
+      visitDate,
+      visitArea,
+      partySize,
+      JSON.stringify(liked),
+      JSON.stringify(improve),
+      likedOther,
+      improveOther,
+    ];
+    try {
+      runSql(insertSql, insertParams);
+    } catch (insertErr) {
+      const msg = String(insertErr?.message || insertErr);
+      if (/no such column|has no column/i.test(msg)) {
+        console.warn('[loyalty] INSERT sin columnas; migrando y reintentando:', msg);
+        ensureLoyaltySurveysTable();
+        runSql(insertSql, insertParams);
+      } else {
+        throw insertErr;
+      }
+    }
     emitStaffDataUpdate({ domain: 'loyalty' });
     res.status(201).json({ success: true, id });
   } catch (err) {

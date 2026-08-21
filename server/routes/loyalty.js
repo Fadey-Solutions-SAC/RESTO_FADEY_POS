@@ -1,5 +1,5 @@
 const express = require('express');
-const { queryAll, queryOne } = require('../database');
+const { queryAll, queryOne, ensureLoyaltySurveysTable } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { readLoyaltySurveyForm, saveLoyaltySurveyForm, loyaltyQuestionIds } = require('../loyaltySurveyQuestions');
 const { emitStaffDataUpdate } = require('../socketBroadcast');
@@ -8,6 +8,14 @@ const { sendRouteError } = require('../utils/routeErrors');
 const router = express.Router();
 
 router.use(authenticateToken, requireRole('admin', 'cajero', 'master_admin'));
+router.use((_req, _res, next) => {
+  try {
+    ensureLoyaltySurveysTable();
+  } catch (_) {
+    /* noop */
+  }
+  next();
+});
 
 function parseAnswers(raw) {
   try {
