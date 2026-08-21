@@ -554,21 +554,106 @@ export default function Fidelizacion() {
           <div className="space-y-4">
             <div className="card p-5">
               <h2 className="text-lg font-semibold rf-section-title mb-3">Vista del cuadro</h2>
-              <div className={`rf-survey-preview-shell !bg-[#fbf6ea] !text-[#4a3424] border border-[#d9c4a4] ${surveyTypeClass(form.text_style)}`}>
-                <p className="text-xs opacity-70 mb-1">Plantilla encuesta</p>
-                <h2 className="rf-survey-preview-title font-bold text-base mb-1">{form.title || 'Encuesta'}</h2>
-                {form.subtitle ? <p className="rf-survey-preview-body text-xs opacity-80 mb-3">{form.subtitle}</p> : null}
-                <p className="rf-survey-preview-title text-[11px] font-semibold uppercase tracking-wide border-b border-[#c9a66b] pb-1 mb-2">{form.experience_title}</p>
-                <ul className="rf-survey-preview-body text-xs space-y-1 mb-3">
-                  {form.questions.slice(0, 4).map((q, i) => (
-                    <li key={q.id || `pv-${i}`}>• {q.label || 'Pregunta'}</li>
-                  ))}
-                </ul>
-                <p className="rf-survey-preview-title text-[11px] font-semibold uppercase tracking-wide border-b border-[#c9a66b] pb-1 mb-2">{form.liked_title}</p>
-                <p className="rf-survey-preview-body text-[11px] opacity-80 mb-2">Checkboxes + Otro</p>
-                <button type="button" className="w-full py-2 text-sm rounded-lg bg-[#b8762d] text-white" disabled>
-                  {form.submit_label || 'Enviar'}
-                </button>
+              <div className={`rf-survey-sheet rf-survey-preview-shell !p-0 !bg-transparent border-0 ${surveyTypeClass(form.text_style)}`}>
+                <div className="rf-survey-sheet__card !shadow-md">
+                  <header className="rf-survey-sheet__brand !mb-3">
+                    <h1 className="!text-lg">{form.title || 'Encuesta de satisfacción'}</h1>
+                    {form.subtitle ? <p className="rf-survey-sheet__sub">{form.subtitle}</p> : null}
+                  </header>
+
+                  <div className="space-y-3 text-left">
+                    <div className="grid grid-cols-1 gap-2">
+                      <label className="rf-survey-field">
+                        <span>{form.name_label || 'Tu nombre'}</span>
+                        <input type="text" disabled placeholder="…" />
+                      </label>
+                      <label className="rf-survey-field">
+                        <span>{form.waiter_label || 'Mozo que te atendió'}</span>
+                        <select disabled defaultValue="">
+                          <option value="">Selecciona un mozo…</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="rf-survey-meta !p-2">
+                      <label className="rf-survey-field">
+                        <span>{form.visit_date_label || 'Fecha de su visita'}</span>
+                        <input type="date" disabled />
+                      </label>
+                      <fieldset className="rf-survey-field">
+                        <legend>{form.area_label || 'Área utilizada'}</legend>
+                        <div className="rf-survey-check-row">
+                          {['Restaurante', 'Hotel', 'Ambos'].map((a) => (
+                            <label key={a} className="rf-survey-check">
+                              <input type="radio" disabled name="preview-area" />
+                              <span>{a}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                      <label className="rf-survey-field">
+                        <span>{form.party_size_label || 'N° de personas'}</span>
+                        <input type="number" disabled placeholder="2" />
+                      </label>
+                    </div>
+
+                    <section>
+                      <h2 className="rf-survey-sheet__section-title">{form.experience_title}</h2>
+                      <div className="rf-survey-likert">
+                        <div className="rf-survey-likert__head">
+                          <span className="rf-survey-likert__spacer" />
+                          {[
+                            { e: '😊', l: 'Excelente' },
+                            { e: '🙂', l: 'Bueno' },
+                            { e: '😐', l: 'Regular' },
+                            { e: '🙁', l: 'Malo' },
+                            { e: '😞', l: 'Muy malo' },
+                          ].map((s) => (
+                            <div key={s.l} className="rf-survey-likert__colhead">
+                              <span className="rf-survey-likert__emoji" aria-hidden>{s.e}</span>
+                              <span>{s.l}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {(form.questions.length ? form.questions : [{ id: 'pv', label: 'Calidad de la comida / bebidas' }])
+                          .slice(0, 3)
+                          .map((q, i) => (
+                            <div key={q.id || `pv-${i}`} className="rf-survey-likert__row">
+                              <div className="rf-survey-likert__label">{q.label || 'Pregunta'}</div>
+                              {[1, 2, 3, 4, 5].map((n) => (
+                                <span key={n} className="rf-survey-likert__cell">
+                                  <span className="rf-survey-likert__dot" />
+                                </span>
+                              ))}
+                            </div>
+                          ))}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h2 className="rf-survey-sheet__section-title">{form.liked_title}</h2>
+                      {form.liked_hint ? <p className="rf-survey-sheet__hint">{form.liked_hint}</p> : null}
+                      <div className="rf-survey-options">
+                        {(form.liked_options.length ? form.liked_options : [{ id: 'x', label: 'Comida' }, { id: 'y', label: 'Atención' }])
+                          .slice(0, 3)
+                          .map((o) => (
+                            <label key={o.id} className="rf-survey-check">
+                              <input type="checkbox" disabled />
+                              <span>{o.label}</span>
+                            </label>
+                          ))}
+                        <label className="rf-survey-field rf-survey-field--inline">
+                          <span>Otro:</span>
+                          <input type="text" disabled />
+                        </label>
+                      </div>
+                    </section>
+
+                    <button type="button" className="rf-survey-submit !mt-1 !opacity-100" disabled>
+                      {form.submit_label || 'Enviar encuesta'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 

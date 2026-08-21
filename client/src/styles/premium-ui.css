@@ -659,12 +659,115 @@ h1, h2, h3, h4 {
     color: #f5c542;
   }
 
-  /* Tipografías encuesta fidelización (10 estilos) — solo forma, no color */
-  .rf-login-page--survey[class*='rf-survey-type--'] {
-    --survey-font-display: 'Inter', system-ui, sans-serif;
+  /* Tipografías encuesta (solo forma). Cada estilo define variables con
+     especificidad suficiente para ganar a reglas genéricas de login. */
+  .rf-survey-type--clasico,
+  .rf-login-page--survey.rf-survey-type--clasico,
+  .rf-survey-sheet.rf-survey-type--clasico,
+  .rf-survey-preview-shell.rf-survey-type--clasico {
+    --survey-font-display: 'Segoe Script', 'Lucida Handwriting', 'Apple Chancery', cursive;
     --survey-font-body: 'Inter', system-ui, sans-serif;
     --survey-title-transform: none;
     --survey-title-letter-spacing: 0;
+    --survey-title-font-style: normal;
+  }
+
+  .rf-survey-type--refinado,
+  .rf-login-page--survey.rf-survey-type--refinado,
+  .rf-survey-sheet.rf-survey-type--refinado,
+  .rf-survey-preview-shell.rf-survey-type--refinado {
+    --survey-font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+    --survey-font-body: 'Playfair Display', Georgia, serif;
+    --survey-title-transform: none;
+    --survey-title-letter-spacing: 0.03em;
+    --survey-title-font-style: normal;
+  }
+
+  .rf-survey-type--moderno,
+  .rf-login-page--survey.rf-survey-type--moderno,
+  .rf-survey-sheet.rf-survey-type--moderno,
+  .rf-survey-preview-shell.rf-survey-type--moderno {
+    --survey-font-display: 'Montserrat', 'Inter', sans-serif;
+    --survey-font-body: 'Montserrat', 'Inter', sans-serif;
+    --survey-title-transform: uppercase;
+    --survey-title-letter-spacing: 0.12em;
+    --survey-title-font-style: normal;
+  }
+
+  .rf-survey-type--serif_elegante,
+  .rf-login-page--survey.rf-survey-type--serif_elegante,
+  .rf-survey-sheet.rf-survey-type--serif_elegante,
+  .rf-survey-preview-shell.rf-survey-type--serif_elegante {
+    --survey-font-display: 'Cormorant Garamond', Georgia, serif;
+    --survey-font-body: 'Cormorant Garamond', Georgia, serif;
+    --survey-title-transform: none;
+    --survey-title-letter-spacing: 0.06em;
+    --survey-title-font-style: normal;
+  }
+
+  .rf-survey-type--caligrafia,
+  .rf-login-page--survey.rf-survey-type--caligrafia,
+  .rf-survey-sheet.rf-survey-type--caligrafia,
+  .rf-survey-preview-shell.rf-survey-type--caligrafia {
+    --survey-font-display: 'Dancing Script', 'Segoe Script', cursive;
+    --survey-font-body: 'Dancing Script', 'Segoe Script', cursive;
+    --survey-title-transform: none;
+    --survey-title-letter-spacing: 0;
+    --survey-title-font-style: normal;
+  }
+
+  .rf-survey-type--minimal,
+  .rf-login-page--survey.rf-survey-type--minimal,
+  .rf-survey-sheet.rf-survey-type--minimal,
+  .rf-survey-preview-shell.rf-survey-type--minimal {
+    --survey-font-display: 'Jost', 'Inter', sans-serif;
+    --survey-font-body: 'Jost', 'Inter', sans-serif;
+    --survey-title-transform: none;
+    --survey-title-letter-spacing: -0.02em;
+    --survey-title-font-style: normal;
+  }
+
+  .rf-survey-type--boutique,
+  .rf-login-page--survey.rf-survey-type--boutique,
+  .rf-survey-sheet.rf-survey-type--boutique,
+  .rf-survey-preview-shell.rf-survey-type--boutique {
+    --survey-font-display: 'Cinzel', Georgia, serif;
+    --survey-font-body: 'Cinzel', Georgia, serif;
+    --survey-title-transform: uppercase;
+    --survey-title-letter-spacing: 0.18em;
+    --survey-title-font-style: normal;
+  }
+
+  .rf-survey-type--gourmet,
+  .rf-login-page--survey.rf-survey-type--gourmet,
+  .rf-survey-sheet.rf-survey-type--gourmet,
+  .rf-survey-preview-shell.rf-survey-type--gourmet {
+    --survey-font-display: 'Libre Baskerville', Georgia, serif;
+    --survey-font-body: 'Libre Baskerville', Georgia, serif;
+    --survey-title-transform: none;
+    --survey-title-letter-spacing: 0.02em;
+    --survey-title-font-style: normal;
+  }
+
+  .rf-survey-type--artesanal,
+  .rf-login-page--survey.rf-survey-type--artesanal,
+  .rf-survey-sheet.rf-survey-type--artesanal,
+  .rf-survey-preview-shell.rf-survey-type--artesanal {
+    --survey-font-display: 'Cormorant Garamond', Georgia, serif;
+    --survey-font-body: 'Cormorant Garamond', Georgia, serif;
+    --survey-title-transform: none;
+    --survey-title-letter-spacing: 0;
+    --survey-title-font-style: normal;
+  }
+
+  .rf-survey-type--contemporaneo,
+  .rf-login-page--survey.rf-survey-type--contemporaneo,
+  .rf-survey-sheet.rf-survey-type--contemporaneo,
+  .rf-survey-preview-shell.rf-survey-type--contemporaneo {
+    --survey-font-display: 'Outfit', 'Inter', sans-serif;
+    --survey-font-body: 'Outfit', 'Inter', sans-serif;
+    --survey-title-transform: none;
+    --survey-title-letter-spacing: -0.03em;
     --survey-title-font-style: normal;
   }
 
@@ -678,66 +781,7 @@ h1, h2, h3, h4 {
 
   .rf-login-page--survey[class*='rf-survey-type--'] .rf-login-subtitle,
   .rf-login-page--survey[class*='rf-survey-type--'] .rf-login-form label {
-    font-family: var(--survey-font-body);
-  }
-
-  .rf-survey-type--clasico {
-    --survey-font-display: 'Segoe Script', 'Lucida Handwriting', 'Apple Chancery', cursive;
-    --survey-font-body: 'Inter', system-ui, sans-serif;
-  }
-
-  .rf-survey-type--refinado {
-    --survey-font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
-    --survey-font-body: 'Lato', 'Inter', sans-serif;
-    --survey-title-letter-spacing: 0.03em;
-  }
-
-  .rf-survey-type--moderno {
-    --survey-font-display: 'Montserrat', 'Inter', sans-serif;
-    --survey-font-body: 'Montserrat', 'Inter', sans-serif;
-    --survey-title-transform: uppercase;
-    --survey-title-letter-spacing: 0.12em;
-  }
-
-  .rf-survey-type--serif_elegante {
-    --survey-font-display: 'Cormorant Garamond', Georgia, serif;
-    --survey-font-body: 'Cormorant Garamond', Georgia, serif;
-    --survey-title-letter-spacing: 0.06em;
-  }
-
-  .rf-survey-type--caligrafia {
-    --survey-font-display: 'Dancing Script', 'Segoe Script', cursive;
-    --survey-font-body: 'Raleway', 'Inter', sans-serif;
-  }
-
-  .rf-survey-type--minimal {
-    --survey-font-display: 'Jost', 'Inter', sans-serif;
-    --survey-font-body: 'Jost', 'Inter', sans-serif;
-    --survey-title-letter-spacing: -0.02em;
-  }
-
-  .rf-survey-type--boutique {
-    --survey-font-display: 'Cinzel', Georgia, serif;
-    --survey-font-body: 'Fauna One', 'Inter', sans-serif;
-    --survey-title-transform: uppercase;
-    --survey-title-letter-spacing: 0.18em;
-  }
-
-  .rf-survey-type--gourmet {
-    --survey-font-display: 'Libre Baskerville', Georgia, serif;
-    --survey-font-body: 'Libre Baskerville', Georgia, serif;
-    --survey-title-letter-spacing: 0.02em;
-  }
-
-  .rf-survey-type--artesanal {
-    --survey-font-display: 'Cormorant Garamond', Georgia, serif;
-    --survey-font-body: 'Work Sans', 'Inter', sans-serif;
-  }
-
-  .rf-survey-type--contemporaneo {
-    --survey-font-display: 'Outfit', 'Inter', sans-serif;
-    --survey-font-body: 'Outfit', 'Inter', sans-serif;
-    --survey-title-letter-spacing: -0.03em;
+    font-family: var(--survey-font-display);
   }
 
   /* Encuesta plantilla (hoja crema / Likert) */
@@ -884,17 +928,19 @@ h1, h2, h3, h4 {
 
   .rf-survey-likert {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     border: 1px solid #d9c4a4;
     border-radius: 0.75rem;
     background: rgba(255, 255, 255, 0.55);
+    overscroll-behavior-x: contain;
   }
 
   .rf-survey-likert__head,
   .rf-survey-likert__row {
     display: grid;
-    grid-template-columns: minmax(8.5rem, 1.5fr) repeat(5, minmax(3.4rem, 1fr));
+    grid-template-columns: minmax(7rem, 1.35fr) repeat(5, minmax(2.75rem, 1fr));
     gap: 0;
-    min-width: 36rem;
+    min-width: 28rem;
   }
 
   .rf-survey-likert__head {
@@ -976,6 +1022,24 @@ h1, h2, h3, h4 {
   .rf-survey-likert__cell.is-on .rf-survey-likert__dot {
     background: #b8762d;
     box-shadow: inset 0 0 0 2px #fffdf8;
+  }
+
+  @media (max-width: 420px) {
+    .rf-survey-likert__head,
+    .rf-survey-likert__row {
+      grid-template-columns: minmax(6.25rem, 1.2fr) repeat(5, minmax(2.4rem, 1fr));
+      min-width: 24.5rem;
+    }
+
+    .rf-survey-likert__colhead {
+      font-size: 0.58rem;
+      padding: 0.4rem 0.1rem;
+    }
+
+    .rf-survey-likert__label {
+      font-size: 0.72rem;
+      padding: 0.5rem 0.45rem;
+    }
   }
 
   .rf-survey-textarea {
