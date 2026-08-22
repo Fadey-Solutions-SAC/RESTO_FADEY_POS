@@ -402,24 +402,27 @@ function thermalPlainToGdiHtml(plain, fontPx) {
     .join('');
 }
 
-function printUSB(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
-  if (printerLib && typeof printerLib.printDirect === 'function') {
-    return new Promise((resolve, reject) => {
-      try {
-        printerLib.printDirect({
-          data: buffer,
-          printer: String(printerName || '').trim(),
-          type: 'RAW',
-          success: () => resolve({ ok: true }),
-          error: (err) => reject(new Error(err?.message || String(err || 'Error al imprimir RAW'))),
-        });
-      } catch (err) {
-        reject(new Error(err?.message || 'Error al imprimir RAW'));
-      }
-    });
+function printUsbRaw(printerName, buffer) {
+  if (!printerLib || typeof printerLib.printDirect !== 'function') {
+    return Promise.reject(new Error('módulo printer no disponible'));
   }
-  const win = mainWindow || BrowserWindow.getAllWindows()[0];
-  if (!win) throw new Error('no hay ventana principal para imprimir');
+  return new Promise((resolve, reject) => {
+    try {
+      printerLib.printDirect({
+        data: buffer,
+        printer: String(printerName || '').trim(),
+        type: 'RAW',
+        success: () => resolve({ ok: true, method: 'raw' }),
+        error: (err) => reject(new Error(err?.message || String(err || 'Error al imprimir RAW'))),
+      });
+    } catch (err) {
+      reject(new Error(err?.message || 'Error al imprimir RAW'));
+    }
+  });
+}
+
+/** Misma vía que el “test” de Windows (GDI / cola del driver), no ESC-POS RAW. */
+function printUsbGdi(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
   return new Promise((resolve, reject) => {
     const paperMm = (() => {
       const n = Number(paperWidthMm);
@@ -436,7 +439,6 @@ function printUSB(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
     const brandMult =
       Number.isFinite(brandScale) && brandScale > 1 ? Math.min(2.25, brandScale) : 1.38;
     const brandPx = Math.min(42, Math.round(fontPx * brandMult));
-    /** Micrómetros (1 mm = 1000) para `pageSize`; ancho = rollo configurado. */
     const pageW = Math.round(paperMm * 1000);
     const logoBlock = logoUrl
       ? `<div style="text-align:center;margin:0 auto 5px;width:100%"><img src="${escapeHtmlAttr(logoUrl)}" alt="" style="display:block;margin:0 auto;max-width:92%;max-height:24mm;object-fit:contain;image-orientation:from-image"/></div>`
@@ -473,27 +475,74 @@ function printUSB(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
       reject(new Error(desc || `fallo al cargar vista de impresión (${code})`));
     });
     printWin.webContents.on('did-finish-load', () => {
-      printWin.webContents.print(
-        {
-          silent: true,
-          deviceName: printerName,
-          printBackground: false,
-          margins: { marginType: 'none' },
-          pageSize: { width: pageW, height: 297000 },
-        },
-        (success, failureReason) => {
-          cleanup(tmpHtml);
-          if (!success) {
-            console.error('[electron-printing] fallo print (USB):', failureReason);
-            reject(new Error(failureReason || 'Error al imprimir'));
-          } else {
-            resolve({ ok: true });
-          }
-          printWin.close();
-        },
-      );
+      const targetName = String(printerName || '').trim();
+      const finish = (success, failureReason) => {
+        cleanup(tmpHtml);
+        if (!success) {
+          console.error('[electron-printing] fallo print GDI (USB):', failureReason);
+          reject(new Error(failureReason || 'Error al imprimir'));
+        } else {
+          resolve({ ok: true, method: 'gdi' });
+        }
+        printWin.close();
+      };
+      const doPrint = (deviceName) => {
+        printWin.webContents.print(
+          {
+            silent: true,
+            deviceName: deviceName || targetName,
+            printBackground: false,
+            margins: { marginType: 'none' },
+            pageSize: { width: pageW, height: 297000 },
+          },
+          finish,
+        );
+      };
+      const resolveName = printWin.webContents.getPrintersAsync
+        ? printWin.webContents.getPrintersAsync()
+        : Promise.resolve([]);
+      resolveName
+        .then((list) => {
+          const exact = (list || []).find((p) => String(p?.name || '') === targetName);
+          const loose = (list || []).find(
+            (p) => String(p?.name || '').toLowerCase() === targetName.toLowerCase(),
+          );
+          doPrint((exact || loose || {}).name || targetName);
+        })
+        .catch(() => doPrint(targetName));
     });
   });
+}
+
+/**
+ * USB: en Windows prioriza GDI (igual que la página de prueba del sistema).
+ * RAW ESC-POS a menudo “acepta” el trabajo y no imprime en drivers térmicos USB.
+ */
+function printUSB(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
+  const name = String(printerName || '').trim();
+  if (!name) return Promise.reject(new Error('impresora USB sin nombre'));
+
+  const preferGdiOnWindows = process.platform === 'win32';
+  const hasRaw = printerLib && typeof printerLib.printDirect === 'function';
+
+  if (preferGdiOnWindows) {
+    console.log(`[electron-printing] USB GDI (Windows): ${name}`);
+    return printUsbGdi(name, buffer, paperWidthMm, gdiOpts).catch((gdiErr) => {
+      if (!hasRaw) throw gdiErr;
+      console.warn('[electron-printing] GDI falló, intentando RAW:', gdiErr?.message || gdiErr);
+      return printUsbRaw(name, buffer);
+    });
+  }
+
+  if (hasRaw) {
+    console.log(`[electron-printing] USB RAW: ${name}`);
+    return printUsbRaw(name, buffer).catch((rawErr) => {
+      console.warn('[electron-printing] RAW falló, intentando GDI:', rawErr?.message || rawErr);
+      return printUsbGdi(name, buffer, paperWidthMm, gdiOpts);
+    });
+  }
+
+  return printUsbGdi(name, buffer, paperWidthMm, gdiOpts);
 }
 
 function printNetwork(ip, port, buffer) {
@@ -526,8 +575,14 @@ async function printByModule(moduleKey, payload = {}) {
     Number(cfg.anchoPapel) ||
     80;
   const viaNetwork = cfg.tipo !== 'usb';
+  /** En Windows USB usamos GDI (como el test del sistema); omitir rasters ESC-POS. */
   const useGdiUsbFallback =
-    cfg.tipo === 'usb' && (!printerLib || typeof printerLib.printDirect !== 'function');
+    cfg.tipo === 'usb'
+    && (
+      process.platform === 'win32'
+      || !printerLib
+      || typeof printerLib.printDirect !== 'function'
+    );
   const ticket = await buildTicket(
     key,
     { ...payload, paperWidth: pw, omitRasterForGdi: useGdiUsbFallback },
@@ -535,7 +590,7 @@ async function printByModule(moduleKey, payload = {}) {
   );
   if (cfg.tipo === 'usb') {
     if (!cfg.nombre) throw new Error(`impresora USB no configurada en ${key}`);
-    console.log(`[electron-printing] imprimir ${key} usb (Electron driver): ${cfg.nombre}`);
+    console.log(`[electron-printing] imprimir ${key} usb: ${cfg.nombre}`);
     return printUSB(cfg.nombre, ticket, pw, {
       logoUrl: useGdiUsbFallback ? String(payload.logoUrl || payload.logo || '').trim() : '',
       restaurantBrand: String(payload.restaurantBrand || '').trim(),

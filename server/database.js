@@ -606,7 +606,9 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
         periodo_facturacion: 'mensual',
         fecha_proxima_facturacion: '',
         numero_cuenta: '',
+        numero_telefono: '',
         nombre_empresa_cobro: '',
+        precio_plan: '',
         comprobante_pago_url: '',
         comprobante_grace_days_after_due: 3,
         comprobante_alert_sent_for: '',
@@ -2653,7 +2655,7 @@ async function initDatabase() {
       lock_enabled_at: '',
       billing_alert_sent_for: '',
     })]);
-    /* master_admin_auth: lo crea/ajusta masterAdminService al primer uso (ver MASTER_USERNAME / MASTER_PASSWORD en .env). */
+    /* master_admin_auth: se inicializa al primer uso en masterAdminService. */
     db.run('INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)', ['master_admin_notifications', JSON.stringify([])]);
     /* production: sin usuarios ni mesas demo; el maestro crea el administrador desde /master */
     db.run('INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)', ['bootstrap_mode', JSON.stringify({ mode: 'sale_ready' })]);
@@ -2674,7 +2676,9 @@ async function initDatabase() {
       periodo_facturacion: 'mensual',
       fecha_proxima_facturacion: '',
       numero_cuenta: '',
+      numero_telefono: '',
       nombre_empresa_cobro: '',
+      precio_plan: '',
       comprobante_pago_url: '',
       comprobante_grace_days_after_due: 3,
       comprobante_alert_sent_for: '',

@@ -19,7 +19,7 @@
     "ventas": "Ventas",
     "indicadores": "Indicadores",
     "fidelizacion": "Fidelización",
-    "mi_restaurant": "Mi Restaurante",
+    "mi_restaurant": "Mi empresa",
     "tiempo_trabajado": "Recursos humanos",
     "configuracion": "Configuración"
   },
@@ -38,7 +38,7 @@
     "facturacion_electronica": "Facturación electrónica",
     "pagos_sistema": "Pagos de créditos",
     "contrato": "Contrato",
-    "pago_uso_sistema": "Pago por uso del sistema",
+    "pago_uso_sistema": "Pago de plan",
     "informacion": "Información"
   },
   "almacenSub": {

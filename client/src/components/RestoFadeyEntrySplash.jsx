@@ -5,17 +5,17 @@ import {
   isEntrySplashDone,
 } from '../utils/entrySplashSession';
 
-const LOGO_SRC = '/branding/resto-fadey-splash-logo.png';
-const SPLASH_BG = '#000414';
+const LOGO_SRC = `/branding/resto-fadey-splash-logo.png?v=fy2026`;
+const SPLASH_BG = '#000000';
 /** Entrada + visible: ~2 s; salida: ~0,45 s (total ~2,45 s). */
 const SPLASH_HOLD_MS = 2000;
 const SPLASH_EXIT_MS = 450;
 
-/** Evita reiniciar animación si React remonta el componente (StrictMode / recarga SW). */
+/** Evita reiniciar animación si React remonta el componente (StrictMode). */
 let splashAnimationStarted = false;
 
 /**
- * Única pantalla splash al abrir (sin login). Logo circular centrado.
+ * Pantalla splash al abrir / recargar. Logo FY + crédito abajo a la izquierda.
  */
 export default function RestoFadeyEntrySplash({ onComplete }) {
   const [phase, setPhase] = useState('in');
@@ -36,13 +36,11 @@ export default function RestoFadeyEntrySplash({ onComplete }) {
       return undefined;
     }
 
-    if (splashAnimationStarted) {
-      finishSplash();
-      return undefined;
+    /* StrictMode remonta: reiniciar hold sin saltar la animación. */
+    if (!splashAnimationStarted) {
+      splashAnimationStarted = true;
+      markEntrySplashStarted();
     }
-
-    splashAnimationStarted = true;
-    markEntrySplashStarted();
     setPhase('in');
 
     const holdTimer = setTimeout(() => setPhase('out'), SPLASH_HOLD_MS);
@@ -55,7 +53,7 @@ export default function RestoFadeyEntrySplash({ onComplete }) {
     return () => clearTimeout(exitTimer);
   }, [phase, finishSplash]);
 
-  if (completedRef.current || isEntrySplashDone()) {
+  if (completedRef.current) {
     return null;
   }
 
@@ -91,6 +89,7 @@ export default function RestoFadeyEntrySplash({ onComplete }) {
           </div>
         </div>
       </div>
+      <p className="rf-entry-splash__credit">DESARROLLADO POR FADEY SOLUTIONS SAC</p>
     </div>
   );
 }

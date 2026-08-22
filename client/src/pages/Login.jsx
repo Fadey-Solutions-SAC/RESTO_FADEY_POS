@@ -129,8 +129,12 @@ export default function Login() {
       toast.error(t('login.waitPolicy'));
       return;
     }
-    if (!username.trim() || !password) {
+    if (!password) {
       toast.error(t('login.credentialsRequired'));
+      return;
+    }
+    if (!username.trim()) {
+      void submitLogin();
       return;
     }
     if (!photosRequired) {

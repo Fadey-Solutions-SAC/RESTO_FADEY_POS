@@ -1,8 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { MdGetApp, MdClose } from 'react-icons/md';
 
 const SNOOZE_KEY = 'resto_fadey_pwa_install_snooze_until';
 const DONE_KEY = 'resto_fadey_pwa_install_done';
+
+/** Rutas de cliente/público: no mostrar instalar app (p. ej. QR de encuesta). */
+const PUBLIC_NO_INSTALL_PREFIXES = [
+  '/encuesta',
+  '/auto-pedido-cliente',
+  '/desbloquear-pago',
+  '/customer',
+  '/menu',
+  '/cart',
+  '/my-orders',
+  '/tracking',
+];
 
 function isStandalone() {
   if (typeof window === 'undefined') return false;
@@ -12,6 +25,13 @@ function isStandalone() {
     /* */
   }
   return window.navigator.standalone === true;
+}
+
+function isPublicGuestPath(pathname) {
+  const path = String(pathname || '').toLowerCase();
+  return PUBLIC_NO_INSTALL_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
 }
 
 function isSnoozed() {
@@ -26,14 +46,16 @@ function isSnoozed() {
 
 /**
  * Muestra el botón nativo «Instalar» cuando el navegador emite beforeinstallprompt (Chrome/Edge, HTTPS).
- * La primera vez que la app puede instalarse, aparece la barra inferior automáticamente.
+ * No aparece en encuesta ni otras rutas públicas de cliente.
  */
 export default function PwaInstallPrompt() {
+  const { pathname } = useLocation();
+  const hideOnThisPage = isPublicGuestPath(pathname);
   const [deferred, setDeferred] = useState(null);
   const [showBar, setShowBar] = useState(false);
 
   const refreshBar = useCallback((event) => {
-    if (isStandalone()) {
+    if (isStandalone() || isPublicGuestPath(window.location.pathname)) {
       setShowBar(false);
       return;
     }
@@ -51,6 +73,14 @@ export default function PwaInstallPrompt() {
     }
     setShowBar(!!event);
   }, []);
+
+  useEffect(() => {
+    if (hideOnThisPage) {
+      setShowBar(false);
+    } else if (deferred) {
+      refreshBar(deferred);
+    }
+  }, [hideOnThisPage, deferred, refreshBar]);
 
   useEffect(() => {
     if (isStandalone()) return;
@@ -101,7 +131,7 @@ export default function PwaInstallPrompt() {
     setShowBar(false);
   };
 
-  if (!showBar || !deferred || isStandalone()) return null;
+  if (hideOnThisPage || !showBar || !deferred || isStandalone()) return null;
 
   return (
     <div

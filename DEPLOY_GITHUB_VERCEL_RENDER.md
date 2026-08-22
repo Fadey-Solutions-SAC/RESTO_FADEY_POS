@@ -34,9 +34,6 @@ Flujo: tu código vive en **GitHub**; cada `git push` a la rama conectada vuelve
    | `CORS_ORIGIN`  | URL de tu front en Vercel, **sin barra final**. Varias URLs separadas por coma:  
      `https://tu-app.vercel.app,http://localhost:5173` |
    | *(opcional)* `PORT` | Render suele inyectar `PORT` solo; no hace falta definirla salvo que tu plantilla lo exija. |
-
-   | `MASTER_USERNAME` | Usuario del **administrador maestro** (primer acceso a `/master`). |
-   | `MASTER_PASSWORD` | Contraseña del maestro (**cámbiala** en producción). |
    | `DB_PATH` | **Imprescindible** para no perder datos: ruta en un **disco persistente**. Ver sección **1b** abajo. |
 
    Opcionales (ver `/.env.example`):

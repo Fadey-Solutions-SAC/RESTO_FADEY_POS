@@ -19,7 +19,7 @@
     "ventas": "Sales",
     "indicadores": "Analytics",
     "fidelizacion": "Loyalty",
-    "mi_restaurant": "My Restaurant",
+    "mi_restaurant": "My company",
     "tiempo_trabajado": "Human resources",
     "configuracion": "Settings"
   },
@@ -38,7 +38,7 @@
     "facturacion_electronica": "E-invoicing",
     "pagos_sistema": "Credit payments",
     "contrato": "Contract",
-    "pago_uso_sistema": "System usage fee",
+    "pago_uso_sistema": "Plan payment",
     "informacion": "Information"
   },
   "almacenSub": {

@@ -34,7 +34,7 @@ const TABS = [
   { id: 'plan', label: 'Plan comercial', icon: MdLayers },
   { id: 'contrato', label: 'Contrato del servicio', icon: MdReceiptLong },
   { id: 'sunat_bot', label: 'Bot facturación SUNAT', icon: MdReceipt },
-  { id: 'pago_uso_sistema', label: 'Pago por uso del sistema', icon: MdPayment },
+  { id: 'pago_uso_sistema', label: 'Pago de plan', icon: MdPayment },
   { id: 'facturacion', label: 'Fecha de facturación', icon: MdEventAvailable },
   { id: 'respaldo', label: 'Respaldo', icon: MdBackup },
   { id: 'notificaciones', label: 'Notificaciones', icon: MdNotifications },

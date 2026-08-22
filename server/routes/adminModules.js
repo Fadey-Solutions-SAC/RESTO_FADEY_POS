@@ -545,6 +545,17 @@ router.put('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
         ? Math.max(1, Math.min(14, Math.round(g)))
         : (prevParsed.comprobante_grace_days_after_due ?? 3);
     }
+    if (merged.precio_plan !== undefined && merged.precio_plan !== null && merged.precio_plan !== '') {
+      const precio = Number(merged.precio_plan);
+      if (Number.isFinite(precio) && precio >= 0) {
+        merged.precio_plan = Math.round(precio * 100) / 100;
+      } else {
+        merged.precio_plan = prevParsed.precio_plan ?? '';
+      }
+    }
+    if (merged.numero_telefono !== undefined) {
+      merged.numero_telefono = String(merged.numero_telefono || '').trim().slice(0, 40);
+    }
     const prevUrlMaster = String(prevParsed.comprobante_pago_url || '').trim();
     const nextUrlMaster = String(merged.comprobante_pago_url || '').trim();
     if (nextUrlMaster && nextUrlMaster !== prevUrlMaster) {

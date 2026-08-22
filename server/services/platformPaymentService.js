@@ -777,6 +777,29 @@ function clearComprobanteDraft() {
   return { ok: true };
 }
 
+/** Solo admin maestro: elimina una entrada del historial local de comprobantes. */
+function deleteHistorialEntry(entryId) {
+  const id = String(entryId || '').trim();
+  if (!id) {
+    return { ok: false, central_user_message: 'Identificador de comprobante inválido.' };
+  }
+  const pago = readPagoUso();
+  const pp = pago.platform_payment || {};
+  const hist = Array.isArray(pp.historial) ? pp.historial : [];
+  const next = hist.filter((h) => {
+    const hid = String(h?.id || '').trim();
+    if (hid && hid === id) return false;
+    const fallback = `${h?.fecha || ''}|${h?.referencia || ''}|${voucherUrlFromHistorialEntry(h)}`;
+    return fallback !== id;
+  });
+  if (next.length === hist.length) {
+    return { ok: false, central_user_message: 'No se encontró el comprobante en el historial.' };
+  }
+  pago.platform_payment = { ...pp, historial: next };
+  writePagoUso(pago);
+  return { ok: true, payment: getPublicPlatformPaymentState() };
+}
+
 /** Guarda URL local y envía comprobante al panel SaaS (acción explícita «Enviar comprobante»). */
 async function submitComprobanteToPanel({ comprobanteUrl, monto = null } = {}) {
   const url = String(comprobanteUrl || readPagoUso().comprobante_pago_url || '').trim();
@@ -892,6 +915,7 @@ module.exports = {
   pushComprobanteToCentral,
   submitComprobanteToPanel,
   clearComprobanteDraft,
+  deleteHistorialEntry,
   confirmLicenseFromSaas,
   readPagoUso,
   writePagoUso,

@@ -9,6 +9,7 @@ const {
   pushComprobanteToCentral,
   submitComprobanteToPanel,
   clearComprobanteDraft,
+  deleteHistorialEntry,
   readPagoUso,
 } = require('../services/platformPaymentService');
 
@@ -83,6 +84,28 @@ router.post('/clear', async (req, res) => {
     return res.status(200).json({
       ok: false,
       central_user_message: err.message || 'No se pudo quitar el comprobante.',
+    });
+  }
+});
+
+/** DELETE /api/platform-payments/historial/:id — solo administrador maestro */
+router.delete('/historial/:id', requireRole('master_admin'), (req, res) => {
+  try {
+    const result = deleteHistorialEntry(req.params.id);
+    if (!result.ok) {
+      return res.status(400).json({
+        ok: false,
+        error: result.central_user_message || 'No se pudo eliminar',
+      });
+    }
+    return res.json({
+      ok: true,
+      payment: result.payment || getPublicPlatformPaymentState(),
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err.message || 'No se pudo eliminar el comprobante',
     });
   }
 });

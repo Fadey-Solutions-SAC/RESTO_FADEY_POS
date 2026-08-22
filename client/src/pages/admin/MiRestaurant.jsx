@@ -13,7 +13,10 @@ import { defaultBillingPanel, defaultBillingPanelPresence } from '../../data/sun
 import { defaultMiRestaurantProfile, mergeMiRestaurantProfile } from '../../data/miRestaurantProfileDefaults';
 import MiRestaurantEmpresaHub from '../../components/miRestaurant/MiRestaurantEmpresaHub';
 import { isDeliveryEnabledValue, notifyDeliveryEnabledChanged } from '../../hooks/useDeliveryEnabled';
-import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory } from 'react-icons/md';
+import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory, MdDelete, MdSupportAgent } from 'react-icons/md';
+
+const PAGO_USO_WHATSAPP_SUPPORT = '934029719';
+const PAGO_USO_WHATSAPP_URL = `https://wa.me/51${PAGO_USO_WHATSAPP_SUPPORT}?text=${encodeURIComponent('Hola, necesito soporte sobre el pago por uso del sistema.')}`;
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
 const DAY_NAMES = { lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles', jueves: 'Jueves', viernes: 'Viernes', sabado: 'Sábado', domingo: 'Domingo' };
@@ -25,12 +28,18 @@ function pagoHistorialEstadoLabel(estado) {
   return estado || '—';
 }
 
+function pagoHistorialItemKey(item) {
+  const id = String(item?.id || '').trim();
+  if (id) return id;
+  return `${item?.fecha || ''}|${item?.referencia || ''}|${String(item?.comprobante_pago_url || item?.voucher || '').trim()}`;
+}
+
 const MI_RESTAURANT_VIEWS = [
   { id: 'mi_empresa', label: 'Mi empresa' },
   { id: 'facturacion_electronica', label: 'Facturación electrónica' },
   { id: 'pagos_sistema', label: 'Pagos de créditos' },
   { id: 'contrato', label: 'Contrato del servicio' },
-  { id: 'pago_uso_sistema', label: 'Pago por uso del sistema' },
+  { id: 'pago_uso_sistema', label: 'Pago de plan' },
   { id: 'informacion', label: 'Información' },
 ];
 
@@ -60,6 +69,7 @@ export default function MiRestaurant() {
   const canEditPagoUsoComprobante = isMasterAdmin || isRestaurantAdmin;
   const [searchParams, setSearchParams] = useSearchParams();
   const comprobanteUsoInputRef = useRef(null);
+  const cargarMontoPendingRef = useRef(null);
   const [restaurant, setRestaurant] = useState(null);
   const [profile, setProfile] = useState(() => defaultMiRestaurantProfile());
   const [empresaTab, setEmpresaTab] = useState('info');
@@ -107,7 +117,9 @@ export default function MiRestaurant() {
       periodo_facturacion: 'mensual',
       fecha_proxima_facturacion: '',
       numero_cuenta: '',
+      numero_telefono: '',
       nombre_empresa_cobro: '',
+      precio_plan: '',
       comprobante_pago_url: '',
       monto_comprobante: '',
       comprobante_grace_days_after_due: 3,
@@ -129,7 +141,9 @@ export default function MiRestaurant() {
   const [centralResyncBusy, setCentralResyncBusy] = useState(false);
   const [enviarComprobanteBusy, setEnviarComprobanteBusy] = useState(false);
   const [comprobanteUploadBusy, setComprobanteUploadBusy] = useState(false);
-  const [pagoHistorialAbierto, setPagoHistorialAbierto] = useState(false);
+  const [cargarComprobanteModal, setCargarComprobanteModal] = useState(null);
+  const [cargarMontoDraft, setCargarMontoDraft] = useState('');
+  const [eliminarHistorialBusy, setEliminarHistorialBusy] = useState('');
   const [billingPanel, setBillingPanel] = useState(() => defaultBillingPanel());
   const [billingPanelPresence, setBillingPanelPresence] = useState(() => defaultBillingPanelPresence());
   const [staffUsers, setStaffUsers] = useState([]);
@@ -465,8 +479,12 @@ export default function MiRestaurant() {
               periodo_facturacion: periodo,
               fecha_proxima_facturacion: String(raw.fecha_proxima_facturacion || '').trim().slice(0, 32),
               numero_cuenta: String(raw.numero_cuenta || '').trim(),
+              numero_telefono: String(raw.numero_telefono || '').trim().slice(0, 40),
               nombre_empresa_cobro: String(raw.nombre_empresa_cobro || '').trim(),
               comprobante_grace_days_after_due: grace,
+              ...(Number.isFinite(Number(raw.precio_plan)) && Number(raw.precio_plan) >= 0
+                ? { precio_plan: Math.round(Number(raw.precio_plan) * 100) / 100 }
+                : { precio_plan: '' }),
               ...(Number.isFinite(montoRaw) && montoRaw > 0
                 ? { monto_comprobante: Math.round(montoRaw * 100) / 100 }
                 : {}),
@@ -698,7 +716,7 @@ export default function MiRestaurant() {
     }
   };
 
-  const uploadComprobantePagoUso = async (file) => {
+  const uploadComprobantePagoUso = async (file, montoOverride) => {
     if (!file) return;
     if (!canEditPagoUsoComprobante) {
       toast.error('No tienes permiso para cargar el comprobante.');
@@ -712,20 +730,112 @@ export default function MiRestaurant() {
         toast.error('No se recibió la URL del archivo.');
         return;
       }
-      const montoRaw = Number(appConfig.pago_uso_sistema?.monto_comprobante);
+      const montoRaw = Number(
+        montoOverride != null && montoOverride !== ''
+          ? montoOverride
+          : appConfig.pago_uso_sistema?.monto_comprobante,
+      );
       const body = { pago_uso_sistema: { comprobante_pago_url: url } };
       if (Number.isFinite(montoRaw) && montoRaw > 0) {
-        body.pago_uso_sistema.monto_comprobante = montoRaw;
+        body.pago_uso_sistema.monto_comprobante = Math.round(montoRaw * 100) / 100;
       }
       const saved = await api.put('/admin-modules/config/app', body);
       setAppConfig((prev) => ({ ...prev, ...saved }));
       await refreshPagoUsoComprobanteSchedule();
-      toast.success('Comprobante cargado. Pulse «Enviar comprobante» para mandarlo al panel.');
+
+      if (Number.isFinite(montoRaw) && montoRaw > 0) {
+        setEnviarComprobanteBusy(true);
+        try {
+          const result = await api.post('/platform-payments/submit', {
+            comprobanteUrl: url,
+            monto: Math.round(montoRaw * 100) / 100,
+          });
+          if (result?.payment) {
+            setPagoUsoComprobanteUi((prev) => ({
+              ...(prev || {}),
+              platform_payment: result.payment,
+            }));
+          }
+          await syncPagoUsoAppConfigFromServer();
+          await refreshPagoUsoComprobanteSchedule();
+          if (result?.ok === false) {
+            toast.error(result.central_user_message || 'Comprobante cargado, pero no se pudo enviar al panel.');
+          } else {
+            toast.success(result?.central_user_message || 'Comprobante enviado. Pendiente de aprobación.');
+          }
+        } catch (sendErr) {
+          toast.error(sendErr.message || 'Comprobante cargado; use Enviar si hace falta.');
+        } finally {
+          setEnviarComprobanteBusy(false);
+        }
+      } else {
+        toast.success('Comprobante cargado. Indique el monto y envíelo al panel.');
+      }
     } catch (err) {
       toast.error(err.message || 'No se pudo subir el comprobante');
     } finally {
       setComprobanteUploadBusy(false);
+      setCargarComprobanteModal(null);
+      setCargarMontoDraft('');
       if (comprobanteUsoInputRef.current) comprobanteUsoInputRef.current.value = '';
+    }
+  };
+
+  const abrirCargaComprobante = () => {
+    if (!canEditPagoUsoComprobante || comprobanteUploadBusy || enviarComprobanteBusy) return;
+    const ppUi = pagoUsoComprobanteUi?.platform_payment;
+    const urlActual = String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim();
+    const estadoPp = String(ppUi?.estado || '').toLowerCase();
+    const pendienteEnRevision =
+      (estadoPp === 'pendiente' || estadoPp === 'pending')
+      && Boolean(urlActual)
+      && ppUi?.last_central_sync_ok !== false;
+    if (pendienteEnRevision) {
+      toast.error('Hay un comprobante en revisión. Espere la respuesta antes de cargar otro.');
+      return;
+    }
+    const sugerido = Number(appConfig.pago_uso_sistema?.precio_plan);
+    setCargarMontoDraft(
+      Number.isFinite(sugerido) && sugerido > 0
+        ? String(sugerido)
+        : String(appConfig.pago_uso_sistema?.monto_comprobante || ''),
+    );
+    setCargarComprobanteModal({ step: 'monto' });
+  };
+
+  const continuarCargaAImagen = () => {
+    const monto = Number(cargarMontoDraft);
+    if (!Number.isFinite(monto) || monto <= 0) {
+      toast.error('Indique la cantidad pagada (S/) antes de continuar.');
+      return;
+    }
+    const rounded = Math.round(monto * 100) / 100;
+    updateAppCfg('pago_uso_sistema', 'monto_comprobante', rounded);
+    cargarMontoPendingRef.current = rounded;
+    setCargarComprobanteModal(null);
+    setTimeout(() => comprobanteUsoInputRef.current?.click(), 80);
+  };
+
+  const eliminarHistorialComprobante = async (item) => {
+    if (!isMasterAdmin) return;
+    const key = pagoHistorialItemKey(item);
+    if (!key || !window.confirm('¿Eliminar este comprobante del historial?')) return;
+    setEliminarHistorialBusy(key);
+    try {
+      const result = await api.delete(`/platform-payments/historial/${encodeURIComponent(key)}`);
+      if (result?.payment) {
+        setPagoUsoComprobanteUi((prev) => ({
+          ...(prev || {}),
+          platform_payment: result.payment,
+        }));
+      } else {
+        await refreshPagoUsoComprobanteSchedule();
+      }
+      toast.success('Comprobante eliminado del historial');
+    } catch (err) {
+      toast.error(err.message || 'No se pudo eliminar');
+    } finally {
+      setEliminarHistorialBusy('');
     }
   };
 
@@ -1077,11 +1187,12 @@ export default function MiRestaurant() {
               onChange={(next) => setAppConfig((prev) => ({ ...prev, contrato: next }))}
             />
           ) : activeView === 'pago_uso_sistema' ? (
-            <div className="card space-y-5">
+            <div className="relative card space-y-5">
               <div className="flex items-center gap-2">
                 <MdReceipt className="text-blue-600 text-2xl" />
-                <h3 className="font-bold text-[var(--ui-body-text)] text-lg">Pago por uso del sistema</h3>
+                <h3 className="font-bold text-[var(--ui-body-text)] text-lg">Pago de plan</h3>
               </div>
+
               {pagoUsoComprobanteUi?.platform_payment?.show_approved_banner ? (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
                   <p className="font-semibold">
@@ -1113,7 +1224,7 @@ export default function MiRestaurant() {
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                   <p className="font-semibold">Comprobante en revisión</p>
                   <p className="mt-1">
-                    Su pago está <strong>pendiente</strong> de aprobación por el administrador central.
+                    Su pago está <strong>pendiente</strong> de aprobación.
                     {pagoUsoComprobanteUi.platform_payment.referencia
                       ? ` Referencia: ${pagoUsoComprobanteUi.platform_payment.referencia}`
                       : ''}
@@ -1126,336 +1237,244 @@ export default function MiRestaurant() {
                   <p className="mt-1">Puede subir un nuevo comprobante dentro del plazo permitido.</p>
                 </div>
               ) : null}
-              {pagoUsoComprobanteUi?.policy_active && pagoUsoComprobanteUi.upload_comprobante_message ? (
-                <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 text-sm text-[var(--ui-body-text)]">
-                  <p className="whitespace-nowrap overflow-x-auto text-xs md:text-sm">
-                    {pagoUsoComprobanteUi.fecha_proxima_facturacion
-                      ? `Próxima facturación: ${pagoUsoComprobanteUi.fecha_proxima_facturacion}`
-                      : ''}
-                    {pagoUsoComprobanteUi.comprobante_upload_deadline
-                      ? ` · Carga permitida hasta: ${pagoUsoComprobanteUi.comprobante_upload_deadline}`
-                      : ''}
-                  </p>
-                </div>
-              ) : null}
-              {!canEditBillingMaster && !isRestaurantAdmin ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                  Solo el <strong>administrador maestro</strong> puede modificar esta sección. Los datos se muestran en solo lectura.
-                </div>
-              ) : null}
-              {isRestaurantAdmin && !isMasterAdmin ? (
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-                  Como <strong>administrador del restaurante</strong> puede cargar el comprobante de pago, indicar el monto y usar{' '}
-                  <strong>Enviar comprobante</strong>. La configuración de facturación (frecuencia, cuenta, días de gracia) la define el administrador maestro.
-                </div>
-              ) : null}
 
-              <fieldset disabled={!canEditBillingMaster} className="border-0 p-0 m-0 min-w-0 space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Frecuencia de facturación</label>
-                  <select
-                    className="input-field"
-                    value={appConfig.pago_uso_sistema?.periodo_facturacion === 'semestral' ? 'semestral' : 'mensual'}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      const anchor = String(billingAnchorDate || '').trim();
-                      setAppConfig((prev) => {
-                        const p = { ...(prev.pago_uso_sistema || {}), periodo_facturacion: v };
-                        if (anchor && /^\d{4}-\d{2}-\d{2}$/.test(anchor)) {
-                          p.fecha_proxima_facturacion = proximaFechaFromControlAnchor(
-                            anchor,
-                            v === 'semestral' ? 'semestral' : 'mensual',
-                          );
-                        }
-                        return { ...prev, pago_uso_sistema: p };
-                      });
-                    }}
-                  >
-                    <option value="mensual">Mensual</option>
-                    <option value="semestral">Semestral</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Próxima fecha de facturación (opcional)</label>
-                  <input
-                    type="date"
-                    className="input-field"
-                    value={appConfig.pago_uso_sistema?.fecha_proxima_facturacion || ''}
-                    onChange={(e) => updateAppCfg('pago_uso_sistema', 'fecha_proxima_facturacion', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Días de gracia para subir comprobante</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={14}
-                    className="input-field"
-                    value={Number(appConfig.pago_uso_sistema?.comprobante_grace_days_after_due ?? 3)}
-                    onChange={(e) => updateAppCfg(
-                      'pago_uso_sistema',
-                      'comprobante_grace_days_after_due',
-                      Math.max(1, Math.min(14, Number(e.target.value) || 3)),
-                    )}
-                  />
-                  <p className="text-xs text-[var(--ui-muted)] mt-1">Tras la fecha de facturación, cuántos días tiene para cargar el comprobante antes del bloqueo.</p>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Número de cuenta</label>
-                  <input
-                    className="input-field text-sm tabular-nums"
-                    placeholder="CCI, número de cuenta o datos de transferencia"
-                    value={appConfig.pago_uso_sistema?.numero_cuenta || ''}
-                    onChange={(e) => updateAppCfg('pago_uso_sistema', 'numero_cuenta', e.target.value)}
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre de la empresa a la que debes pagar</label>
-                  <input
-                    className="input-field text-sm"
-                    placeholder="Razón social o nombre del beneficiario"
-                    value={appConfig.pago_uso_sistema?.nombre_empresa_cobro || ''}
-                    onChange={(e) => updateAppCfg('pago_uso_sistema', 'nombre_empresa_cobro', e.target.value)}
-                  />
-                </div>
-              </div>
-              </fieldset>
-
-              <div className="space-y-3 pt-2 border-t border-[color:var(--ui-border)]">
-                <div>
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Monto pagado (S/)</label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    className="input-field max-w-xs text-sm tabular-nums"
-                    placeholder="Ej. 99.00"
-                    value={appConfig.pago_uso_sistema?.monto_comprobante ?? ''}
-                    onChange={(e) => updateAppCfg('pago_uso_sistema', 'monto_comprobante', e.target.value)}
-                    disabled={!canEditPagoUsoComprobante}
-                  />
-                  <p className="text-xs text-[var(--ui-muted)] mt-1">Obligatorio para enviar el comprobante al panel de aprobación.</p>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Comprobante de pago</label>
-                  <p className="text-xs text-[var(--ui-muted)] mb-2">Sube una imagen (o PDF) del voucher o transferencia.</p>
-                  <div className="flex flex-wrap items-center gap-3">
-                    {(() => {
-                      const ppUi = pagoUsoComprobanteUi?.platform_payment;
-                      const urlActual = String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim();
-                      const estadoPp = String(ppUi?.estado || '').toLowerCase();
-                      const pendienteEnRevision =
-                        (estadoPp === 'pendiente' || estadoPp === 'pending')
-                        && Boolean(urlActual)
-                        && ppUi?.last_central_sync_ok !== false;
-                      const blockRemove =
-                        Boolean(ppUi?.show_approved_banner)
-                        || (pendienteEnRevision && ppUi?.quitar_comprobante_allowed === false);
-                      const puedeCargar = canEditPagoUsoComprobante && !pendienteEnRevision && !comprobanteUploadBusy;
-                      return (
-                        <>
-                          <label className={puedeCargar ? 'cursor-pointer' : 'cursor-not-allowed'}>
-                            <span
-                              className={`btn-secondary inline-flex items-center gap-2 text-sm ${!puedeCargar ? 'opacity-50 pointer-events-none' : ''}`}
-                            >
-                              <MdUpload /> {comprobanteUploadBusy ? 'Subiendo…' : 'Cargar comprobante'}
-                            </span>
-                            <input
-                              ref={comprobanteUsoInputRef}
-                              type="file"
-                              accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
-                              className="sr-only"
-                              disabled={!puedeCargar}
-                              onChange={(e) => uploadComprobantePagoUso(e.target.files?.[0])}
-                            />
-                          </label>
-                          {pendienteEnRevision ? (
-                            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                              Hay un comprobante en revisión. Espere la respuesta o pida al maestro que lo rechace para cargar otro.
-                            </p>
-                          ) : null}
-                          {urlActual ? (
-                            <>
-                              <a
-                                href={resolveMediaUrl(urlActual)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm text-blue-600 hover:underline"
-                              >
-                                Ver archivo
-                              </a>
-                              <button
-                                type="button"
-                                className="text-sm text-red-600 hover:underline disabled:opacity-50"
-                                disabled={!canEditPagoUsoComprobante || blockRemove || comprobanteUploadBusy}
-                                onClick={() => quitarComprobantePagoUso()}
-                              >
-                                Quitar
-                              </button>
-                            </>
-                          ) : null}
-                        </>
-                      );
-                    })()}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Próxima fecha de facturación</label>
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={appConfig.pago_uso_sistema?.fecha_proxima_facturacion || ''}
+                      onChange={(e) => updateAppCfg('pago_uso_sistema', 'fecha_proxima_facturacion', e.target.value)}
+                      disabled={!canEditBillingMaster}
+                    />
                   </div>
-                  {(() => {
-                    const pp = pagoUsoComprobanteUi?.platform_payment;
-                    const url = String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim();
-                    const estadoPp = String(pp?.estado || '').toLowerCase();
-                    const pendienteEnRevision =
-                      (estadoPp === 'pendiente' || estadoPp === 'pending')
-                      && pp?.last_central_sync_ok !== false;
-                    const enviadoOk = pendienteEnRevision;
-                    const blockRemovePreview =
-                      Boolean(pp?.show_approved_banner)
-                      || (pendienteEnRevision && pagoUsoComprobanteUi?.quitar_comprobante_allowed === false);
-                    const muestraEnviar = Boolean(url) && canEditPagoUsoComprobante && !pendienteEnRevision;
-                    const tieneHistorial = pagoUsoHistorialRows.length > 0;
-                    const isPdf = url.toLowerCase().endsWith('.pdf');
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Días de gracia</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={14}
+                      className="input-field"
+                      value={Number(appConfig.pago_uso_sistema?.comprobante_grace_days_after_due ?? 3)}
+                      onChange={(e) => updateAppCfg(
+                        'pago_uso_sistema',
+                        'comprobante_grace_days_after_due',
+                        Math.max(1, Math.min(14, Number(e.target.value) || 3)),
+                      )}
+                      disabled={!canEditBillingMaster}
+                    />
+                    <p className="text-xs text-[var(--ui-muted)] mt-1">
+                      Días después del vencimiento para cargar el comprobante antes del bloqueo.
+                      {pagoUsoComprobanteUi?.comprobante_upload_deadline
+                        ? ` Carga hasta: ${pagoUsoComprobanteUi.comprobante_upload_deadline}.`
+                        : ''}
+                    </p>
+                  </div>
+                </div>
 
-                    const botonHistorial = tieneHistorial ? (
-                      <button
-                        type="button"
-                        className="btn-secondary inline-flex items-center gap-2 text-sm px-4 py-2 shrink-0"
-                        onClick={() => setPagoHistorialAbierto((v) => !v)}
-                        aria-expanded={pagoHistorialAbierto}
-                      >
-                        <MdHistory />
-                        {pagoHistorialAbierto
-                          ? 'Ocultar historial'
-                          : `Historial de pagos (${pagoUsoHistorialRows.length})`}
-                      </button>
-                    ) : null;
-
-                    const listaHistorial = pagoHistorialAbierto && tieneHistorial ? (
-                      <div className="w-full mt-3 pt-3 border-t border-[color:var(--ui-border)]">
-                        <p className="text-xs text-[var(--ui-muted)] mb-3">
-                          Comprobantes ya enviados o aprobados.
-                        </p>
-                        <ul className="space-y-3">
-                          {pagoUsoHistorialRows.map((item) => {
-                            const itemUrl = String(item.comprobante_pago_url || item.voucher || '').trim();
-                            const itemPdf = itemUrl.toLowerCase().endsWith('.pdf');
-                            const key = item.id || `${item.fecha}-${item.referencia}-${itemUrl}`;
-                            return (
-                              <li
-                                key={key}
-                                className="flex flex-wrap items-start gap-3 rounded-lg border border-[color:var(--ui-border)] p-3 bg-[var(--ui-surface-2)]"
-                              >
-                                {!itemPdf ? (
-                                  <a
-                                    href={resolveMediaUrl(itemUrl)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="shrink-0 rounded overflow-hidden border border-[color:var(--ui-border)] max-w-[88px]"
-                                  >
-                                    <img
-                                      src={resolveMediaUrl(itemUrl)}
-                                      alt=""
-                                      className="w-[88px] h-[66px] object-cover"
-                                    />
-                                  </a>
-                                ) : (
-                                  <span className="text-xs font-medium text-[var(--ui-muted)] px-2 py-1 bg-white rounded border">
-                                    PDF
-                                  </span>
-                                )}
-                                <div className="min-w-0 flex-1 text-sm">
-                                  <p className="font-medium text-[var(--ui-body-text)]">
-                                    {pagoHistorialEstadoLabel(item.estado)}
-                                    {item.monto != null ? ` · S/ ${Number(item.monto).toFixed(2)}` : ''}
-                                  </p>
-                                  <p className="text-xs text-[var(--ui-muted)] mt-0.5">
-                                    {item.fecha || '—'}
-                                    {item.referencia ? ` · Ref. ${item.referencia}` : ''}
-                                  </p>
-                                  <a
-                                    href={resolveMediaUrl(itemUrl)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-blue-600 hover:underline mt-1 inline-block"
-                                  >
-                                    Ver comprobante
-                                  </a>
-                                </div>
-                              </li>
+                <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Frecuencia</label>
+                    <select
+                      className="input-field"
+                      value={appConfig.pago_uso_sistema?.periodo_facturacion === 'semestral' ? 'semestral' : 'mensual'}
+                      disabled={!canEditBillingMaster}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const anchor = String(billingAnchorDate || '').trim();
+                        setAppConfig((prev) => {
+                          const p = { ...(prev.pago_uso_sistema || {}), periodo_facturacion: v };
+                          if (anchor && /^\d{4}-\d{2}-\d{2}$/.test(anchor)) {
+                            p.fecha_proxima_facturacion = proximaFechaFromControlAnchor(
+                              anchor,
+                              v === 'semestral' ? 'semestral' : 'mensual',
                             );
-                          })}
-                        </ul>
-                      </div>
-                    ) : null;
-
-                    if (!url && !tieneHistorial) return null;
-
-                    return (
-                      <div className="mt-3 flex flex-col gap-3">
-                        {url ? (
-                          <div className="flex flex-wrap items-end gap-3">
-                            {!isPdf ? (
-                              <div className="rounded-lg border border-[color:var(--ui-border)] overflow-hidden max-w-xs bg-[var(--ui-surface-2)]">
-                                <img
-                                  src={resolveMediaUrl(url)}
-                                  alt="Vista previa del comprobante"
-                                  className="w-full max-h-48 object-contain"
-                                />
-                              </div>
-                            ) : (
-                              <p className="text-sm text-[var(--ui-muted)]">PDF listo para enviar.</p>
-                            )}
-                          </div>
-                        ) : null}
-                        {(muestraEnviar || botonHistorial) ? (
-                          <div className="flex flex-wrap items-center justify-between gap-2 w-full">
-                            <div className="flex flex-wrap gap-2">
-                              {muestraEnviar ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="btn-primary text-sm px-4 py-2 disabled:opacity-60"
-                                    disabled={enviarComprobanteBusy || comprobanteUploadBusy}
-                                    onClick={() => enviarComprobanteAlPanel()}
-                                  >
-                                    {enviarComprobanteBusy
-                                      ? 'Enviando…'
-                                      : enviadoOk
-                                        ? 'Reenviar comprobante'
-                                        : 'Enviar comprobante'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn-secondary text-sm px-4 py-2 disabled:opacity-60"
-                                    disabled={blockRemovePreview || comprobanteUploadBusy}
-                                    onClick={() => quitarComprobantePagoUso()}
-                                  >
-                                    Quitar
-                                  </button>
-                                </>
-                              ) : null}
-                            </div>
-                            {botonHistorial}
-                          </div>
-                        ) : null}
-                        {listaHistorial}
-                      </div>
-                    );
-                  })()}
+                          }
+                          return { ...prev, pago_uso_sistema: p };
+                        });
+                      }}
+                    >
+                      <option value="mensual">Mensual</option>
+                      <option value="semestral">Semestral</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Precio del plan (S/)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="input-field tabular-nums"
+                      placeholder="Definido por admin maestro"
+                      value={appConfig.pago_uso_sistema?.precio_plan ?? ''}
+                      onChange={(e) => updateAppCfg('pago_uso_sistema', 'precio_plan', e.target.value)}
+                      disabled={!canEditBillingMaster}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="rounded-lg bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] p-3 text-sm text-[var(--ui-muted)]">
-                {canEditBillingMaster ? (
-                  <>
-                    <strong>Guardar cambios</strong> guarda frecuencia, fechas y datos de cuenta.
-                    {' '}
-                    <strong>Enviar comprobante</strong> manda el voucher al panel de aprobación.
-                  </>
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-[color:var(--ui-border)] p-4">
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">N° de cuenta</label>
+                    <input
+                      className="input-field text-sm tabular-nums"
+                      placeholder="CCI o número de cuenta"
+                      value={appConfig.pago_uso_sistema?.numero_cuenta || ''}
+                      onChange={(e) => updateAppCfg('pago_uso_sistema', 'numero_cuenta', e.target.value)}
+                      disabled={!canEditBillingMaster}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Número de teléfono</label>
+                    <input
+                      className="input-field text-sm tabular-nums"
+                      placeholder="Ej. 934029719"
+                      value={appConfig.pago_uso_sistema?.numero_telefono || ''}
+                      onChange={(e) => updateAppCfg('pago_uso_sistema', 'numero_telefono', e.target.value)}
+                      disabled={!canEditBillingMaster}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-stretch gap-2 min-w-[12rem]">
+                  <input
+                    ref={comprobanteUsoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) {
+                        cargarMontoPendingRef.current = null;
+                        return;
+                      }
+                      const monto = cargarMontoPendingRef.current
+                        ?? Number(appConfig.pago_uso_sistema?.monto_comprobante);
+                      cargarMontoPendingRef.current = null;
+                      void uploadComprobantePagoUso(file, monto);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary inline-flex items-center justify-center gap-2 text-sm px-4 py-3 disabled:opacity-60"
+                    disabled={!canEditPagoUsoComprobante || comprobanteUploadBusy || enviarComprobanteBusy}
+                    onClick={abrirCargaComprobante}
+                  >
+                    <MdUpload />
+                    {comprobanteUploadBusy || enviarComprobanteBusy ? 'Procesando…' : 'Cargar comprobante'}
+                  </button>
+                  {String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim() ? (
+                    <a
+                      href={resolveMediaUrl(appConfig.pago_uso_sistema.comprobante_pago_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-center text-xs text-blue-600 hover:underline"
+                    >
+                      Ver archivo actual
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="border-t border-[color:var(--ui-border)] pt-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="font-semibold text-[var(--ui-body-text)] inline-flex items-center gap-2">
+                    <MdHistory /> Comprobantes guardados
+                  </h4>
+                  <span className="text-xs text-[var(--ui-muted)]">{pagoUsoHistorialRows.length} registro(s)</span>
+                </div>
+                {pagoUsoHistorialRows.length === 0 ? (
+                  <p className="text-sm text-[var(--ui-muted)]">Aún no hay comprobantes en el historial.</p>
                 ) : (
-                  <>
-                    Indique el <strong>monto pagado (S/)</strong>, cargue el archivo y pulse <strong>Enviar comprobante</strong>.
-                  </>
+                  <ul className="space-y-3">
+                    {pagoUsoHistorialRows.map((item) => {
+                      const itemUrl = String(item.comprobante_pago_url || item.voucher || '').trim();
+                      const itemPdf = itemUrl.toLowerCase().endsWith('.pdf');
+                      const key = pagoHistorialItemKey(item);
+                      return (
+                        <li
+                          key={key}
+                          className="flex flex-wrap items-start gap-3 rounded-lg border border-[color:var(--ui-border)] p-3 bg-[var(--ui-surface-2)]"
+                        >
+                          {!itemPdf ? (
+                            <a
+                              href={resolveMediaUrl(itemUrl)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 rounded overflow-hidden border border-[color:var(--ui-border)] max-w-[88px]"
+                            >
+                              <img
+                                src={resolveMediaUrl(itemUrl)}
+                                alt=""
+                                className="w-[88px] h-[66px] object-cover"
+                              />
+                            </a>
+                          ) : (
+                            <span className="text-xs font-medium text-[var(--ui-muted)] px-2 py-1 bg-white rounded border">
+                              PDF
+                            </span>
+                          )}
+                          <div className="min-w-0 flex-1 text-sm">
+                            <p className="font-medium text-[var(--ui-body-text)]">
+                              {pagoHistorialEstadoLabel(item.estado)}
+                              {item.monto != null ? ` · S/ ${Number(item.monto).toFixed(2)}` : ''}
+                            </p>
+                            <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                              {item.fecha || '—'}
+                              {item.referencia ? ` · Ref. ${item.referencia}` : ''}
+                            </p>
+                            <a
+                              href={resolveMediaUrl(itemUrl)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline mt-1 inline-block"
+                            >
+                              Ver comprobante
+                            </a>
+                          </div>
+                          {isMasterAdmin ? (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-xs text-red-600 hover:underline disabled:opacity-50"
+                              disabled={eliminarHistorialBusy === key}
+                              onClick={() => eliminarHistorialComprobante(item)}
+                            >
+                              <MdDelete />
+                              {eliminarHistorialBusy === key ? 'Eliminando…' : 'Eliminar'}
+                            </button>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
               </div>
+
+              {canEditBillingMaster ? (
+                <p className="text-xs text-[var(--ui-muted)]">
+                  Use <strong>Guardar cambios</strong> para frecuencia, fechas, precio, cuenta y teléfono.
+                </p>
+              ) : (
+                <p className="text-xs text-[var(--ui-muted)]">
+                  Pulse <strong>Cargar comprobante</strong>, indique el monto y luego seleccione la imagen.
+                </p>
+              )}
+
+              <a
+                href={PAGO_USO_WHATSAPP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-2 rounded-full bg-[#25D366] text-white shadow-lg px-4 py-3 text-sm font-semibold hover:brightness-105"
+                aria-label="Soporte por WhatsApp"
+                title="Soporte WhatsApp"
+              >
+                <MdSupportAgent className="text-xl" />
+                Soporte
+              </a>
             </div>
           ) : activeView === 'informacion' ? (
             <MasterRestaurantBackupPanel onAfterMutate={loadInitialData} />
@@ -1467,6 +1486,57 @@ export default function MiRestaurant() {
           )}
         </>
       )}
+
+      <Modal
+        variant="light"
+        isOpen={Boolean(cargarComprobanteModal?.step === 'monto')}
+        onClose={() => {
+          if (!comprobanteUploadBusy) {
+            setCargarComprobanteModal(null);
+            setCargarMontoDraft('');
+          }
+        }}
+        title="Cargar comprobante"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--ui-muted)]">
+            Primero indique la cantidad pagada. En el siguiente paso seleccionará la imagen o PDF.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Cantidad (S/)</label>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              className="input-field w-full tabular-nums"
+              autoFocus
+              value={cargarMontoDraft}
+              onChange={(e) => setCargarMontoDraft(e.target.value)}
+              placeholder={
+                Number(appConfig.pago_uso_sistema?.precio_plan) > 0
+                  ? `Precio del plan: S/ ${Number(appConfig.pago_uso_sistema.precio_plan).toFixed(2)}`
+                  : 'Ej. 99.00'
+              }
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              onClick={() => {
+                setCargarComprobanteModal(null);
+                setCargarMontoDraft('');
+              }}
+            >
+              Cancelar
+            </button>
+            <button type="button" className="btn-primary text-sm" onClick={continuarCargaAImagen}>
+              Siguiente
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         variant="light"

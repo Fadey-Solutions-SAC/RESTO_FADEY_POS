@@ -34,7 +34,9 @@ const defaultAppConfig = () => ({
     periodo_facturacion: 'mensual',
     fecha_proxima_facturacion: '',
     numero_cuenta: '',
+    numero_telefono: '',
     nombre_empresa_cobro: '',
+    precio_plan: '',
     comprobante_pago_url: '',
     comprobante_grace_days_after_due: 3,
   },
@@ -248,9 +250,13 @@ export default function MasterRestaurantBillingWorkspace({ active }) {
         periodo_facturacion: periodo,
         fecha_proxima_facturacion: String(raw.fecha_proxima_facturacion || '').trim().slice(0, 32),
         numero_cuenta: String(raw.numero_cuenta || '').trim(),
+        numero_telefono: String(raw.numero_telefono || '').trim().slice(0, 40),
         nombre_empresa_cobro: String(raw.nombre_empresa_cobro || '').trim(),
         comprobante_pago_url: String(raw.comprobante_pago_url || '').trim(),
         comprobante_grace_days_after_due: grace,
+        ...(Number.isFinite(Number(raw.precio_plan)) && Number(raw.precio_plan) >= 0
+          ? { precio_plan: Math.round(Number(raw.precio_plan) * 100) / 100 }
+          : { precio_plan: '' }),
       };
       const saved = await api.put('/admin-modules/config/app', { pago_uso_sistema: payload });
       setAppConfig((prev) => ({ ...prev, ...saved }));
@@ -393,7 +399,7 @@ export default function MasterRestaurantBillingWorkspace({ active }) {
           <div className="flex items-center gap-2">
             <MdPayment className="text-blue-600 text-2xl" />
             <div>
-              <h2 className="font-bold text-[var(--ui-body-text)] text-lg">Pago por uso del sistema</h2>
+              <h2 className="font-bold text-[var(--ui-body-text)] text-lg">Pago de plan</h2>
               <p className="text-sm text-[var(--ui-muted)]">
                 Periodicidad, cuenta de destino y comprobante de pago al proveedor del software.
               </p>
@@ -464,6 +470,18 @@ export default function MasterRestaurantBillingWorkspace({ active }) {
               />
               <p className="text-xs text-[var(--ui-muted)] mt-1">Después de la fecha de facturación, días hábiles de ventana antes del bloqueo automático.</p>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Precio del plan (S/)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className="input-field tabular-nums"
+                placeholder="Monto a cobrar por el periodo"
+                value={appConfig.pago_uso_sistema?.precio_plan ?? ''}
+                onChange={(e) => updateAppCfg('pago_uso_sistema', 'precio_plan', e.target.value)}
+              />
+            </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Número de cuenta</label>
               <input
@@ -471,6 +489,15 @@ export default function MasterRestaurantBillingWorkspace({ active }) {
                 placeholder="CCI, número de cuenta o datos de transferencia"
                 value={appConfig.pago_uso_sistema?.numero_cuenta || ''}
                 onChange={(e) => updateAppCfg('pago_uso_sistema', 'numero_cuenta', e.target.value)}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Número de teléfono</label>
+              <input
+                className="input-field tabular-nums"
+                placeholder="Ej. 934029719"
+                value={appConfig.pago_uso_sistema?.numero_telefono || ''}
+                onChange={(e) => updateAppCfg('pago_uso_sistema', 'numero_telefono', e.target.value)}
               />
             </div>
             <div className="md:col-span-2">

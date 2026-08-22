@@ -6,7 +6,7 @@
  *
  * Impresión USB (Node + módulo `printer` en Windows):
  * - Debe apuntar al backend local. Use `VITE_LOCAL_PRINTING_API` (build) o en runtime:
- *   `localStorage.setItem('resto_local_printing_api', 'http://127.0.0.1:3001')`
+ *   `localStorage.setItem('resto_local_printing_api', 'http://127.0.0.1:3002')`
  *   (sin `/api` al final; se añade automáticamente).
  * - Las llamadas bajo `api.printing.*` usan esa base; el resto del sistema sigue usando API_BASE.
  */
@@ -117,16 +117,22 @@ function assertBackupApiReachable() {
 }
 
 /** Base `/api` del servidor Node local para rutas `/printing/*` (detección USB, impresión RAW). */
+let _loggedPrintingBridgeKey = '';
 export function getPrintingApiBase() {
   if (isDesktopEmbeddedRuntime()) {
     return getApiBase();
   }
+  const logOnce = (key, msg) => {
+    if (_loggedPrintingBridgeKey === key) return;
+    _loggedPrintingBridgeKey = key;
+    console.info(msg);
+  };
   if (typeof window !== 'undefined') {
     const injected = window.__RESTO_PRINTING_API__ || window.__RESTO_LOCAL_PRINTING_API__;
     if (injected && String(injected).trim()) {
       const o = normalizeApiOrigin(injected);
       if (o) {
-        console.info('[printing] Bridge URL (inyectada):', `${o}/api`);
+        logOnce(`inj:${o}`, `[printing] Bridge URL (inyectada): ${o}/api`);
         return `${o}/api`;
       }
     }
@@ -134,7 +140,7 @@ export function getPrintingApiBase() {
     if (ls && String(ls).trim()) {
       const o = normalizeApiOrigin(ls);
       if (o) {
-        console.info('[printing] Bridge URL (localStorage):', `${o}/api`);
+        logOnce(`ls:${o}`, `[printing] Bridge URL (localStorage): ${o}/api`);
         return `${o}/api`;
       }
     }
@@ -143,18 +149,18 @@ export function getPrintingApiBase() {
   if (envLocal !== undefined && envLocal !== null && String(envLocal).trim() !== '') {
     const o = normalizeApiOrigin(envLocal);
     if (o) {
-      console.info('[printing] Bridge URL (VITE_LOCAL_PRINTING_API):', `${o}/api`);
+      logOnce(`env:${o}`, `[printing] Bridge URL (VITE_LOCAL_PRINTING_API): ${o}/api`);
       return `${o}/api`;
     }
   }
   if (typeof window !== 'undefined' && import.meta.env.PROD) {
     if (/onrender\.com|vercel\.app/i.test(API_BASE)) {
-      const port = String(import.meta.env.VITE_LOCAL_PRINTING_PORT || '3001').trim() || '3001';
+      /** En .exe empaquetado el asistente de impresión está en 3002+ (3001 = API embebida). */
+      const port = String(import.meta.env.VITE_LOCAL_PRINTING_PORT || '3002').trim() || '3002';
       const o = normalizeApiOrigin(`http://127.0.0.1:${port}`);
-      console.info(
-        '[printing] API principal remota: usando bridge Node local por defecto (ajuste localStorage.resto_local_printing_api si el puerto no es',
-        `${port}):`,
-        `${o}/api`,
+      logOnce(
+        `def:${o}`,
+        `[printing] API remota: bridge local por defecto ${o}/api (asistente Electron)`,
       );
       return `${o}/api`;
     }
@@ -540,6 +546,14 @@ async function discoverAssistantAndPersist() {
   if (persisted) {
     const existing = await probeOriginHealth(persisted, timeoutMs);
     if (existing.ok && existing.assistant) return persisted;
+    /** localStorage apuntaba a API embebida (3001) u otro Node sin mode=assistant */
+    try {
+      window.localStorage?.removeItem('resto_local_printing_api');
+    } catch (_) {
+      /* noop */
+    }
+    _loggedPrintingBridgeKey = '';
+    printingServiceBaseCache = { at: 0, base: '' };
   }
   const tasks = [];
   for (const host of ASSISTANT_LOCAL_HOSTS) {
@@ -561,17 +575,16 @@ async function discoverAssistantAndPersist() {
   if (!assistants.length) return '';
 
   assistants.sort((a, b) => {
+    /** Preferir 3002+ (asistente en .exe) sobre 3001 (API embebida). */
+    const rankPort = (p) => (p >= 3002 ? 0 : 1);
+    if (rankPort(a.port) !== rankPort(b.port)) return rankPort(a.port) - rankPort(b.port);
     if (a.port !== b.port) return a.port - b.port;
     const rank = (h) => (h === '127.0.0.1' ? 0 : 1);
     return rank(a.host) - rank(b.host);
   });
   const pick = assistants[0];
-  try {
-    window.localStorage?.setItem('resto_local_printing_api', pick.origin);
-  } catch (_) {
-    /* noop */
-  }
-  console.info('[printing] Asistente Electron detectado en', pick.origin, '(repo/dominio independiente)');
+  persistPrintingBridgeOrigin(pick.origin);
+  console.info('[printing] Asistente Electron detectado en', pick.origin);
   return pick.origin;
 }
 
@@ -582,16 +595,15 @@ export async function resolvePrintingAssistantOrigin() {
   if (persisted) {
     const probe = await probeOriginHealth(persisted, 2200);
     if (probe.ok && probe.assistant) return probe.origin || persisted;
-  }
-  const timeoutMs = 2400;
-  for (const host of ASSISTANT_LOCAL_HOSTS) {
-    for (const port of ASSISTANT_STANDARD_PORTS) {
-      const origin = `http://${host}:${port}`;
-      const row = await probeOriginHealth(origin, timeoutMs);
-      if (row.ok && row.assistant) return row.origin || origin;
+    try {
+      window.localStorage?.removeItem('resto_local_printing_api');
+    } catch (_) {
+      /* noop */
     }
+    _loggedPrintingBridgeKey = '';
+    printingServiceBaseCache = { at: 0, base: '' };
   }
-  return '';
+  return discoverAssistantAndPersist();
 }
 
 let printingServiceBaseCache = { at: 0, base: '' };
@@ -602,9 +614,14 @@ export async function getPrintingServiceApiBase() {
   if (printingServiceBaseCache.base && now - printingServiceBaseCache.at < 8000) {
     return printingServiceBaseCache.base;
   }
-  let base = getPrintingApiBase();
   const assistant = await resolvePrintingAssistantOrigin();
-  if (assistant) base = `${assistant.replace(/\/$/, '')}/api`;
+  let base;
+  if (assistant) {
+    persistPrintingBridgeOrigin(assistant);
+    base = `${assistant.replace(/\/$/, '')}/api`;
+  } else {
+    base = getPrintingApiBase();
+  }
   printingServiceBaseCache = { at: now, base };
   return base;
 }

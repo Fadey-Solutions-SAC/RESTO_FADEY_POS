@@ -55,7 +55,13 @@ function buildWaiterRatings(rows) {
 
 router.get('/form', (req, res) => {
   try {
-    res.json(readLoyaltySurveyForm());
+    const form = readLoyaltySurveyForm();
+    const restaurant = queryOne('SELECT name, logo FROM restaurants LIMIT 1') || {};
+    res.json({
+      ...form,
+      restaurant_name: String(restaurant.name || '').trim() || 'Resto Fadey App',
+      logo: String(restaurant.logo || '').trim(),
+    });
   } catch (err) {
     sendRouteError(res, req, err, 'No se pudo cargar el formato de la encuesta');
   }

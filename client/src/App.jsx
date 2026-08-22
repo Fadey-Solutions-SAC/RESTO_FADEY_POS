@@ -133,7 +133,21 @@ function AdminOnlyAutoPedido() {
 
 export default function App() {
   const { user, loading } = useAuth();
-  const [splashDone, setSplashDone] = useState(() => shouldSkipEntrySplash());
+  const location = useLocation();
+  const publicGuestPath = (() => {
+    const path = String(location.pathname || '').toLowerCase();
+    return [
+      '/encuesta',
+      '/auto-pedido-cliente',
+      '/desbloquear-pago',
+      '/customer',
+      '/menu',
+      '/cart',
+      '/my-orders',
+      '/tracking',
+    ].some((p) => path === p || path.startsWith(`${p}/`));
+  })();
+  const [splashDone, setSplashDone] = useState(() => publicGuestPath || shouldSkipEntrySplash());
 
   const handleSplashComplete = useCallback(() => {
     markEntrySplashDone();
@@ -146,6 +160,11 @@ export default function App() {
     }
   }, [user, splashDone]);
 
+  /* Animación de apertura siempre antes del login / sesión (también al recargar). */
+  if (!splashDone && !publicGuestPath) {
+    return <RestoFadeyEntrySplash onComplete={handleSplashComplete} />;
+  }
+
   if (user) {
     return <AppRoutes user={user} />;
   }
@@ -153,10 +172,6 @@ export default function App() {
   const hasStoredSession = typeof localStorage !== 'undefined' && !!localStorage.getItem('token');
   if (loading && hasStoredSession) {
     return <div className="rf-splash-boot" aria-hidden="true" />;
-  }
-
-  if (!splashDone) {
-    return <RestoFadeyEntrySplash onComplete={handleSplashComplete} />;
   }
 
   return <AppRoutes user={null} />;

@@ -20,7 +20,11 @@ import {
   MdSave,
   MdSettings,
   MdStars,
+  MdVisibility,
 } from 'react-icons/md';
+import Modal from '../../components/Modal';
+import LoyaltySurveyFilledSheet from '../../components/loyalty/LoyaltySurveyFilledSheet';
+import { printLoyaltySurveySheet } from '../../utils/loyaltySurveyPrint';
 
 const VIEWS = [
   { id: 'panel', label: 'Panel', icon: MdDashboard },
@@ -82,6 +86,8 @@ export default function Fidelizacion() {
   const [formLoading, setFormLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [downloadingQr, setDownloadingQr] = useState(false);
+  const [viewResponse, setViewResponse] = useState(null);
+  const [printResponse, setPrintResponse] = useState(null);
   const url = useMemo(() => surveyUrl(), []);
 
   const setView = (id) => {
@@ -106,6 +112,9 @@ export default function Fidelizacion() {
       .then((row) => setForm({
         ...emptyForm(),
         ...row,
+        restaurant_name: row?.restaurant_name || 'Resto Fadey App',
+        logo: row?.logo || '',
+        rating_scale: Array.isArray(row?.rating_scale) ? row.rating_scale : [],
         questions: Array.isArray(row?.questions) ? row.questions : [],
         liked_options: Array.isArray(row?.liked_options) ? row.liked_options : [],
         improve_options: Array.isArray(row?.improve_options) ? row.improve_options : [],
@@ -122,6 +131,25 @@ export default function Fidelizacion() {
   useSocket('staff-data-update', (p) => {
     if (p?.domain === 'loyalty') loadSummary();
   });
+
+  const downloadFilledSurvey = useCallback((row) => {
+    if (!row) return;
+    setPrintResponse(row);
+    window.setTimeout(() => {
+      const el = document.getElementById('loyalty-survey-filled-print');
+      if (!el) {
+        toast.error('No se pudo preparar la encuesta para descargar');
+        setPrintResponse(null);
+        return;
+      }
+      const name = String(row.customer_name || 'respuesta').trim() || 'respuesta';
+      const ok = printLoyaltySurveySheet(el, `encuesta-${name}`);
+      if (!ok) {
+        toast.error('Permite ventanas emergentes para imprimir o guardar en PDF');
+      }
+      window.setTimeout(() => setPrintResponse(null), 600);
+    }, 100);
+  }, []);
 
   const patchForm = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -254,26 +282,26 @@ export default function Fidelizacion() {
       {view === 'panel' ? (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="card p-5 flex flex-col items-center text-center">
+            <div className="card p-5 flex flex-col items-center text-center !bg-[#fff8eb] !border-[#eadfc4]">
               <p className="text-sm ui-text-muted mb-1">Promedio general</p>
               <div className="flex items-center gap-2 text-4xl font-semibold rf-section-title">
-                <MdStars className="text-amber-500" />
+                <MdStars className="text-amber-500/80" />
                 {loading ? '—' : avg.toFixed(1)}
               </div>
               <p className="text-xs ui-text-muted mt-1">sobre 5 · {count} encuesta{count === 1 ? '' : 's'}</p>
             </div>
-            <div className="card p-5 flex flex-col items-center text-center">
+            <div className="card p-5 flex flex-col items-center text-center !bg-[#eef4fa] !border-[#d5e2ef]">
               <p className="text-sm ui-text-muted mb-1">Respuestas</p>
               <div className="flex items-center gap-2 text-4xl font-semibold rf-section-title">
-                <MdPeople />
+                <MdPeople className="text-sky-600/70" />
                 {loading ? '—' : count}
               </div>
               <p className="text-xs ui-text-muted mt-1">clientes que opinaron</p>
             </div>
-            <div className="card p-5 flex flex-col items-center text-center">
+            <div className="card p-5 flex flex-col items-center text-center !bg-[#f4f0f8] !border-[#e2d8ec]">
               <p className="text-sm ui-text-muted mb-1">Con comentario</p>
               <div className="flex items-center gap-2 text-4xl font-semibold rf-section-title">
-                <MdChatBubbleOutline />
+                <MdChatBubbleOutline className="text-violet-500/70" />
                 {loading ? '—' : withComment.length}
               </div>
               <p className="text-xs ui-text-muted mt-1">mensajes de clientes</p>
@@ -281,37 +309,48 @@ export default function Fidelizacion() {
           </div>
 
           {questionsAvg.length > 0 && (
-            <div className="card p-5">
+            <div className="card p-5 !bg-[#eef7f3] !border-[#d4e8df]">
               <h2 className="text-lg font-semibold rf-section-title mb-3">Promedio por experiencia</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {questionsAvg.map((q) => (
-                  <div key={q.id} className="rounded-xl border border-[var(--ui-border)] p-3">
-                    <p className="text-xs ui-text-muted mb-1">{q.label}</p>
-                    <p className="text-xl font-semibold rf-section-title">{Number(q.average || 0).toFixed(1)}</p>
-                  </div>
-                ))}
+                {questionsAvg.map((q, i) => {
+                  const tint = [
+                    '!bg-[#f7fbf9] !border-[#dceee6]',
+                    '!bg-[#f8f6fb] !border-[#e5dff0]',
+                    '!bg-[#f7f9fc] !border-[#dce6f0]',
+                    '!bg-[#fbf8f2] !border-[#eee4d4]',
+                    '!bg-[#f8f4f4] !border-[#eadfdf]',
+                    '!bg-[#f3f8f8] !border-[#d7e8e8]',
+                    '!bg-[#f6f5fa] !border-[#e1dde9]',
+                  ][i % 7];
+                  return (
+                    <div key={q.id} className={`rounded-xl border p-3 ${tint}`}>
+                      <p className="text-xs ui-text-muted mb-1">{q.label}</p>
+                      <p className="text-xl font-semibold rf-section-title">{Number(q.average || 0).toFixed(1)}</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {(likedSummary.length > 0 || improveSummary.length > 0) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="card p-5">
+              <div className="card p-5 !bg-[#eef6ef] !border-[#d5e6d7]">
                 <h2 className="text-lg font-semibold rf-section-title mb-3">Lo que más gustó</h2>
                 <ul className="space-y-2 text-sm">
                   {likedSummary.map((o) => (
-                    <li key={o.id} className="flex justify-between gap-2 border-b border-[var(--ui-border)] py-1.5 last:border-0">
+                    <li key={o.id} className="flex justify-between gap-2 border-b border-[#d5e6d7]/70 py-1.5 last:border-0">
                       <span>{o.label}</span>
                       <span className="font-semibold">{o.count}</span>
                     </li>
                   ))}
                 </ul>
               </div>
-              <div className="card p-5">
+              <div className="card p-5 !bg-[#faf3f1] !border-[#eaded9]">
                 <h2 className="text-lg font-semibold rf-section-title mb-3">Aspectos a mejorar</h2>
                 <ul className="space-y-2 text-sm">
                   {improveSummary.map((o) => (
-                    <li key={o.id} className="flex justify-between gap-2 border-b border-[var(--ui-border)] py-1.5 last:border-0">
+                    <li key={o.id} className="flex justify-between gap-2 border-b border-[#eaded9]/70 py-1.5 last:border-0">
                       <span>{o.label}</span>
                       <span className="font-semibold">{o.count}</span>
                     </li>
@@ -321,7 +360,7 @@ export default function Fidelizacion() {
             </div>
           )}
 
-          <div className="card p-5">
+          <div className="card p-5 !bg-[#eef5f9] !border-[#d5e4ee]">
             <h2 className="text-lg font-semibold rf-section-title mb-3">Calificación por mozo</h2>
             {loading ? (
               <p className="text-sm ui-text-muted">Cargando…</p>
@@ -331,30 +370,37 @@ export default function Fidelizacion() {
               </p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {waiterRatings.map((w) => (
-                  <div key={w.waiter_user_id} className="rounded-xl border border-[var(--ui-border)] p-4">
-                    <p className="font-medium rf-section-title">{w.waiter_name}</p>
-                    <p className="text-2xl font-semibold mt-1 flex items-center gap-1.5">
-                      <MdStars className="text-amber-500" />
-                      {Number(w.average || 0).toFixed(1)}
-                    </p>
-                    <p className="text-xs ui-text-muted mt-1">
-                      {w.count} encuesta{w.count === 1 ? '' : 's'} de clientes
-                    </p>
-                  </div>
-                ))}
+                {waiterRatings.map((w, i) => {
+                  const tint = [
+                    '!bg-[#f7fbfd] !border-[#dde8f0]',
+                    '!bg-[#f8f7fb] !border-[#e4e0ee]',
+                    '!bg-[#f7faf8] !border-[#dde9e2]',
+                  ][i % 3];
+                  return (
+                    <div key={w.waiter_user_id} className={`rounded-xl border p-4 ${tint}`}>
+                      <p className="font-medium rf-section-title">{w.waiter_name}</p>
+                      <p className="text-2xl font-semibold mt-1 flex items-center gap-1.5">
+                        <MdStars className="text-amber-500/80" />
+                        {Number(w.average || 0).toFixed(1)}
+                      </p>
+                      <p className="text-xs ui-text-muted mt-1">
+                        {w.count} encuesta{w.count === 1 ? '' : 's'} de clientes
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          <div className="card p-5 overflow-x-auto">
+          <div className="card p-5 overflow-x-auto !bg-[#f4f6f8] !border-[#dde3ea]">
             <h2 className="text-lg font-semibold rf-section-title mb-3">Respuestas de clientes</h2>
             {loading ? (
               <p className="text-sm ui-text-muted">Cargando…</p>
             ) : responses.length === 0 ? (
               <p className="text-sm ui-text-muted">Aún no hay encuestas. Ve a Configuración, arma el cuadro y descarga el QR.</p>
             ) : (
-              <table className="w-full text-sm min-w-[780px]">
+              <table className="w-full text-sm min-w-[860px]">
                 <thead>
                   <tr className="text-left ui-text-muted border-b border-[var(--ui-border)]">
                     <th className="py-2 pr-3 font-medium">Cliente</th>
@@ -364,7 +410,8 @@ export default function Fidelizacion() {
                     <th className="py-2 pr-3 font-medium">Pers.</th>
                     <th className="py-2 pr-3 font-medium">Nota</th>
                     <th className="py-2 pr-3 font-medium">Comentario</th>
-                    <th className="py-2 font-medium">Fecha</th>
+                    <th className="py-2 pr-3 font-medium">Fecha</th>
+                    <th className="py-2 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -385,7 +432,25 @@ export default function Fidelizacion() {
                           <p className="text-[11px] ui-text-muted">Mejorar: {r.improve_labels.join(', ')}</p>
                         ) : null}
                       </td>
-                      <td className="py-2.5 whitespace-nowrap ui-text-muted">{formatDateTime(r.created_at)}</td>
+                      <td className="py-2.5 pr-3 whitespace-nowrap ui-text-muted">{formatDateTime(r.created_at)}</td>
+                      <td className="py-2.5 whitespace-nowrap">
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            className="btn-secondary text-xs inline-flex items-center gap-1 px-2 py-1"
+                            onClick={() => setViewResponse(r)}
+                          >
+                            <MdVisibility /> Ver
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary text-xs inline-flex items-center gap-1 px-2 py-1"
+                            onClick={() => downloadFilledSurvey(r)}
+                          >
+                            <MdDownload /> Descargar
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -684,6 +749,48 @@ export default function Fidelizacion() {
           </div>
         </div>
       )}
+
+      {(printResponse || viewResponse) ? (
+        <div className="fixed left-[-12000px] top-0 w-[52rem] pointer-events-none" aria-hidden="true">
+          <LoyaltySurveyFilledSheet
+            sheetId="loyalty-survey-filled-print"
+            form={form}
+            response={printResponse || viewResponse}
+            restaurantName={form.restaurant_name || 'Resto Fadey App'}
+            logo={form.logo || ''}
+          />
+        </div>
+      ) : null}
+
+      <Modal
+        variant="light"
+        isOpen={Boolean(viewResponse)}
+        onClose={() => setViewResponse(null)}
+        title="Encuesta respondida"
+        size="xl"
+        maxHeightClass="max-h-[92vh]"
+        bodyClassName="!p-3 sm:!p-4 bg-[#f3ead7]"
+      >
+        {viewResponse ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="btn-secondary text-sm inline-flex items-center gap-1.5"
+                onClick={() => downloadFilledSurvey(viewResponse)}
+              >
+                <MdDownload /> Descargar / Imprimir
+              </button>
+            </div>
+            <LoyaltySurveyFilledSheet
+              form={form}
+              response={viewResponse}
+              restaurantName={form.restaurant_name || 'Resto Fadey App'}
+              logo={form.logo || ''}
+            />
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

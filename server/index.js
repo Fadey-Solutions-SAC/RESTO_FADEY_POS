@@ -527,8 +527,7 @@ async function start() {
    Host: ${LISTEN_HOST}  Puerto: ${PORT}
    Base de datos: ${getDbPath()}
    Impresión USB: ejecute este proceso en la PC caja (no se inicia solo desde el navegador/PWA).
-   Maestro: use MASTER_USERNAME / MASTER_PASSWORD (.env) o credenciales ya guardadas.
-   Staff: sin usuarios demo; el maestro crea el administrador en /master.
+   Staff: el administrador se crea desde el panel de control.
    Datos: en la nube use disco persistente y DB_PATH (ver .env.example).
 ======================================================
     `);

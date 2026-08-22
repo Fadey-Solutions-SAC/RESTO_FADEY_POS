@@ -22,7 +22,7 @@ const MODULE_LABELS = {
   informes: 'Informes',
   indicadores: 'Indicadores',
   fidelizacion: 'Fidelización',
-  mi_restaurant: 'Mi Restaurante',
+  mi_restaurant: 'Mi empresa',
   configuracion: 'Configuración',
   produccion: 'Producción',
   cocina: 'Cocina',
@@ -56,7 +56,7 @@ const MI_RESTAURANT_SUBS = [
   { id: 'facturacion_electronica', label: 'Facturación electrónica (SUNAT)' },
   { id: 'pagos_sistema', label: 'Pagos de créditos' },
   { id: 'contrato', label: 'Contrato del servicio' },
-  { id: 'pago_uso_sistema', label: 'Pago por uso del sistema' },
+  { id: 'pago_uso_sistema', label: 'Pago de plan' },
   { id: 'informacion', label: 'Información (respaldo)' },
 ];
 

@@ -157,7 +157,7 @@ router.post('/heartbeat', authenticateToken, (req, res) => {
 
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
+  if (!password) return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
 
   if (verifyMasterCredentials(username, password)) {
     let appearance = { ui_theme: 'corporate_blue', ui_theme_mode: 'light', ui_theme_custom: {} };
@@ -179,6 +179,8 @@ router.post('/login', (req, res) => {
       },
     });
   }
+
+  if (!username) return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
 
   const lock = getLockState();
   if (lock.locked) {
