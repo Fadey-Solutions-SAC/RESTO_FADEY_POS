@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, formatDateTime, getApiBase } from '../../utils/api';
+import { api, formatDateTime, getApiBase, hasElectronPrinting, electronPrinting } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -17,6 +17,7 @@ import {
   MdDelete,
   MdDownload,
   MdPeople,
+  MdPrint,
   MdSave,
   MdSettings,
   MdStars,
@@ -24,7 +25,7 @@ import {
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import LoyaltySurveyFilledSheet from '../../components/loyalty/LoyaltySurveyFilledSheet';
-import { printLoyaltySurveySheet } from '../../utils/loyaltySurveyPrint';
+import { buildLoyaltySurveyTicketText } from '../../utils/loyaltySurveyTicket';
 
 const VIEWS = [
   { id: 'panel', label: 'Panel', icon: MdDashboard },
@@ -87,7 +88,7 @@ export default function Fidelizacion() {
   const [saving, setSaving] = useState(false);
   const [downloadingQr, setDownloadingQr] = useState(false);
   const [viewResponse, setViewResponse] = useState(null);
-  const [printResponse, setPrintResponse] = useState(null);
+  const [printingSurveyId, setPrintingSurveyId] = useState('');
   const url = useMemo(() => surveyUrl(), []);
 
   const setView = (id) => {
@@ -132,24 +133,34 @@ export default function Fidelizacion() {
     if (p?.domain === 'loyalty') loadSummary();
   });
 
-  const downloadFilledSurvey = useCallback((row) => {
+  const printSurveyOnCaja = useCallback(async (row) => {
     if (!row) return;
-    setPrintResponse(row);
-    window.setTimeout(() => {
-      const el = document.getElementById('loyalty-survey-filled-print');
-      if (!el) {
-        toast.error('No se pudo preparar la encuesta para descargar');
-        setPrintResponse(null);
-        return;
+    const id = String(row.id || '');
+    setPrintingSurveyId(id);
+    try {
+      const text = buildLoyaltySurveyTicketText(
+        form,
+        row,
+        form.restaurant_name || 'Resto Fadey App',
+      );
+      const payload = {
+        preformatted: true,
+        text,
+        restaurantBrand: String(form.restaurant_name || '').trim(),
+        skipThermalLogo: true,
+      };
+      if (hasElectronPrinting()) {
+        await electronPrinting.printModule('caja', payload);
+      } else {
+        await api.printing.post('/printing/print/caja', payload);
       }
-      const name = String(row.customer_name || 'respuesta').trim() || 'respuesta';
-      const ok = printLoyaltySurveySheet(el, `encuesta-${name}`);
-      if (!ok) {
-        toast.error('Permite ventanas emergentes para imprimir o guardar en PDF');
-      }
-      window.setTimeout(() => setPrintResponse(null), 600);
-    }, 100);
-  }, []);
+      toast.success('Encuesta enviada a la impresora de caja');
+    } catch (err) {
+      toast.error(err?.message || 'No se pudo imprimir en caja');
+    } finally {
+      setPrintingSurveyId('');
+    }
+  }, [form]);
 
   const patchForm = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -444,10 +455,12 @@ export default function Fidelizacion() {
                           </button>
                           <button
                             type="button"
-                            className="btn-secondary text-xs inline-flex items-center gap-1 px-2 py-1"
-                            onClick={() => downloadFilledSurvey(r)}
+                            className="btn-primary text-xs inline-flex items-center gap-1 px-2 py-1 disabled:opacity-60"
+                            disabled={printingSurveyId === String(r.id || '')}
+                            onClick={() => printSurveyOnCaja(r)}
                           >
-                            <MdDownload /> Descargar
+                            <MdPrint />
+                            {printingSurveyId === String(r.id || '') ? 'Imprimiendo…' : 'Imprimir'}
                           </button>
                         </div>
                       </td>
@@ -750,18 +763,6 @@ export default function Fidelizacion() {
         </div>
       )}
 
-      {(printResponse || viewResponse) ? (
-        <div className="fixed left-[-12000px] top-0 w-[52rem] pointer-events-none" aria-hidden="true">
-          <LoyaltySurveyFilledSheet
-            sheetId="loyalty-survey-filled-print"
-            form={form}
-            response={printResponse || viewResponse}
-            restaurantName={form.restaurant_name || 'Resto Fadey App'}
-            logo={form.logo || ''}
-          />
-        </div>
-      ) : null}
-
       <Modal
         variant="light"
         isOpen={Boolean(viewResponse)}
@@ -769,25 +770,51 @@ export default function Fidelizacion() {
         title="Encuesta respondida"
         size="xl"
         maxHeightClass="max-h-[92vh]"
-        bodyClassName="!p-3 sm:!p-4 bg-[#f3ead7]"
+        headerClassName="border-b border-[#d9c4a4] bg-[#f3ead7] text-[#3d2a1c]"
+        titleClassName="text-[#3d2a1c]"
+        closeIconClassName="text-[#5a4030]"
+        bodyClassName="!bg-[#fbf6ea] !text-[#3d2a1c]"
       >
         {viewResponse ? (
-          <div className="space-y-3">
-            <div className="flex flex-wrap justify-end gap-2">
+          <div className="space-y-3 text-[#3d2a1c]">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="text-sm leading-relaxed min-w-0">
+                <p className="font-semibold text-base">{viewResponse.customer_name || 'Cliente'}</p>
+                <p>
+                  Mozo: {String(viewResponse.waiter_name || '').trim() || '—'} · Visita:{' '}
+                  {viewResponse.visit_date || '—'} · Nota:{' '}
+                  {Number(viewResponse.rating || 0).toFixed(0)}/5
+                </p>
+                {viewResponse.liked_labels?.length ? (
+                  <p className="text-[#6d5644]">Gustó: {viewResponse.liked_labels.join(', ')}</p>
+                ) : null}
+                {viewResponse.improve_labels?.length ? (
+                  <p className="text-[#6d5644]">Mejorar: {viewResponse.improve_labels.join(', ')}</p>
+                ) : null}
+                {String(viewResponse.comment || '').trim() ? (
+                  <p className="mt-1 whitespace-pre-wrap">{viewResponse.comment}</p>
+                ) : null}
+              </div>
               <button
                 type="button"
-                className="btn-secondary text-sm inline-flex items-center gap-1.5"
-                onClick={() => downloadFilledSurvey(viewResponse)}
+                className="btn-primary text-sm inline-flex items-center gap-1.5 shrink-0 disabled:opacity-60"
+                disabled={printingSurveyId === String(viewResponse.id || '')}
+                onClick={() => printSurveyOnCaja(viewResponse)}
               >
-                <MdDownload /> Descargar / Imprimir
+                <MdPrint />
+                {printingSurveyId === String(viewResponse.id || '')
+                  ? 'Imprimiendo…'
+                  : 'Imprimir en caja'}
               </button>
             </div>
-            <LoyaltySurveyFilledSheet
-              form={form}
-              response={viewResponse}
-              restaurantName={form.restaurant_name || 'Resto Fadey App'}
-              logo={form.logo || ''}
-            />
+            <div className="rounded-xl border border-[#d9c4a4] overflow-auto max-h-[65vh] bg-[#fbf6ea] p-1">
+              <LoyaltySurveyFilledSheet
+                form={form}
+                response={viewResponse}
+                restaurantName={form.restaurant_name || 'Resto Fadey App'}
+                logo={form.logo || ''}
+              />
+            </div>
           </div>
         ) : null}
       </Modal>

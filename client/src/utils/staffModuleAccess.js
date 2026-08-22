@@ -28,6 +28,10 @@ export function isPermissionEnabled(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
 }
 
+export function isPermissionExplicitlyDenied(value) {
+  return value === false || value === 0 || value === '0' || value === 'false';
+}
+
 export function hasModulePermission(user, moduleId) {
   if (!moduleId) return true;
   if (user?.role === 'master_admin') return true;
@@ -51,16 +55,22 @@ export function hasModulePermission(user, moduleId) {
 
 /**
  * Acceso a ruta admin: permiso explícito del usuario prevalece sobre la lista de roles por defecto.
+ * - true → permitir
+ * - false → denegar
+ * - ausente → permitir si el rol está en la lista por defecto del módulo
  */
 export function canAccessStaffModule(user, { moduleId, roles } = {}) {
   if (!user) return false;
   if (user.role === 'master_admin') {
     return moduleId === 'mi_restaurant' || !moduleId;
   }
+  if (moduleId && typeof user.permissions === 'object' && user.permissions != null) {
+    if (isPermissionExplicitlyDenied(user.permissions[moduleId])) return false;
+  }
   if (moduleId && hasModulePermission(user, moduleId)) return true;
   const roleList = Array.isArray(roles) ? roles : [];
-  if (roleList.length > 0 && !roleList.includes(user.role)) return false;
-  return moduleId ? hasModulePermission(user, moduleId) : roleList.includes(user.role);
+  if (roleList.length > 0) return roleList.includes(user.role);
+  return !moduleId;
 }
 
 export function getDefaultStaffPath(user) {

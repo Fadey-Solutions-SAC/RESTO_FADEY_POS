@@ -8,7 +8,7 @@ const {
 } = require('../staffChatService');
 
 const router = express.Router();
-const STAFF_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery']);
+const STAFF_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
 const MAX_BODY = 2000;
 
 function staffOnly(req, res, next) {
@@ -39,7 +39,10 @@ router.get('/state', (req, res) => {
 router.get('/recipients', (req, res) => {
   const me = String(req.user.id || '').trim();
   const rows = queryAll(
-    `SELECT id, username, full_name, role FROM users WHERE is_active = 1 AND id != ? ORDER BY full_name COLLATE NOCASE`,
+    `SELECT id, username, full_name, role FROM users
+     WHERE is_active = 1 AND id != ?
+       AND lower(trim(coalesce(role, ''))) IN ('admin','cajero','mozo','cocina','bar','delivery','produccion')
+     ORDER BY full_name COLLATE NOCASE`,
     [me]
   );
   res.json(rows || []);

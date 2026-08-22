@@ -12,15 +12,18 @@ const ROLE_LABEL = {
   cocina: 'Cocina',
   bar: 'Bar',
   delivery: 'Delivery',
+  produccion: 'Producción',
 };
 
 /**
  * Chat grupal (todos) o privado entre dos usuarios staff. Ciclo de mensajes en servidor.
  * @param {boolean} isActive — panel de mensajes visible (no sumar no leídos)
  * @param {(n:number)=>void} onUnreadDelta
+ * @param {boolean} [suppressExternalNotify] — si el padre ya notifica campana/toast
  */
-export default function StaffTeamChat({ isActive, onUnreadDelta }) {
+export default function StaffTeamChat({ isActive, onUnreadDelta, suppressExternalNotify = false }) {
   const { user } = useAuth();
+  const meId = String(user?.id || '');
   const [mode, setMode] = useState('group');
   const [recipients, setRecipients] = useState([]);
   const [privateUserId, setPrivateUserId] = useState('');
@@ -88,13 +91,21 @@ export default function StaffTeamChat({ isActive, onUnreadDelta }) {
   }, [loadMessages]);
 
   useEffect(() => {
+    if (isActive) loadMessages();
+  }, [isActive, loadMessages]);
+
+  useEffect(() => {
     const s = getSocket();
     const token = localStorage.getItem('token');
     if (token) s.emit('join-staff', { token });
 
     const onMsg = (msg) => {
-      const me = user?.id;
-      if (!me || !msg?.id) return;
+      if (!meId || !msg?.id) return;
+
+      const sender = String(msg.sender_id || '');
+      const recipient = msg.recipient_id == null || msg.recipient_id === ''
+        ? ''
+        : String(msg.recipient_id);
 
       const append = (row) => {
         setMessages((prev) => (prev.some((x) => x.id === row.id) ? prev : [...prev, row]));
@@ -102,7 +113,8 @@ export default function StaffTeamChat({ isActive, onUnreadDelta }) {
       };
 
       const notify = () => {
-        if (!isActive && msg.sender_id !== me) {
+        if (suppressExternalNotify) return;
+        if (!isActive && sender !== meId) {
           onUnreadDelta?.(1);
           toast(`${msg.sender_name || 'Equipo'}`, {
             icon: '💬',
@@ -111,20 +123,19 @@ export default function StaffTeamChat({ isActive, onUnreadDelta }) {
         }
       };
 
-      if (!msg.recipient_id) {
+      if (!recipient) {
         if (mode === 'group') append(msg);
         notify();
         return;
       }
 
-      const inThread =
-        msg.sender_id === me || msg.recipient_id === me;
+      const inThread = sender === meId || recipient === meId;
       if (!inThread) return;
 
-      const peer = msg.sender_id === me ? msg.recipient_id : msg.sender_id;
-      if (mode === 'private' && privateUserId === peer) append(msg);
+      const peer = sender === meId ? recipient : sender;
+      if (mode === 'private' && String(privateUserId) === peer) append(msg);
 
-      if (!isActive && msg.sender_id !== me) {
+      if (!suppressExternalNotify && !isActive && sender !== meId) {
         onUnreadDelta?.(1);
         toast(`${msg.sender_name || 'Privado'}`, {
           icon: '✉️',
@@ -135,7 +146,7 @@ export default function StaffTeamChat({ isActive, onUnreadDelta }) {
 
     s.on('staff-chat-message', onMsg);
     return () => s.off('staff-chat-message', onMsg);
-  }, [user?.id, mode, privateUserId, isActive, onUnreadDelta]);
+  }, [meId, mode, privateUserId, isActive, onUnreadDelta, suppressExternalNotify]);
 
   useEffect(() => {
     scrollToBottom();
@@ -177,7 +188,7 @@ export default function StaffTeamChat({ isActive, onUnreadDelta }) {
           onClick={() => { setMode('group'); setPrivateUserId(''); }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
             mode === 'group'
-              ? 'bg-[var(--ui-accent)] border-[color:var(--ui-accent)] text-white'
+              ? 'bg-[var(--ui-accent)] border-[color:var(--ui-accent)] text-[#fff]'
               : 'bg-[var(--ui-surface-2)] border-[color:var(--ui-border)] text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
           }`}
         >
@@ -188,7 +199,7 @@ export default function StaffTeamChat({ isActive, onUnreadDelta }) {
           onClick={() => setMode('private')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
             mode === 'private'
-              ? 'bg-[var(--ui-accent)] border-[color:var(--ui-accent)] text-white'
+              ? 'bg-[var(--ui-accent)] border-[color:var(--ui-accent)] text-[#fff]'
               : 'bg-[var(--ui-surface-2)] border-[color:var(--ui-border)] text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
           }`}
         >
@@ -223,23 +234,23 @@ export default function StaffTeamChat({ isActive, onUnreadDelta }) {
           </p>
         ) : (
           messages.map((m) => {
-            const mine = m.sender_id === user?.id;
+            const mine = String(m.sender_id || '') === meId;
             return (
               <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
+                  className={`max-w-[85%] rounded-xl px-3 py-2 text-sm text-[var(--ui-body-text)] ${
                     mine
-                      ? 'bg-[var(--ui-accent)]/90 text-white rounded-br-sm'
-                      : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)] rounded-bl-sm'
+                      ? 'rounded-br-sm border border-[color:var(--ui-accent)] bg-[color-mix(in_srgb,var(--ui-accent)_20%,var(--ui-surface))]'
+                      : 'bg-[var(--ui-surface)] border border-[color:var(--ui-border)] rounded-bl-sm'
                   }`}
                 >
                   {!mine && (
-                    <p className="text-[10px] font-semibold text-[var(--ui-accent)] mb-0.5">
+                    <p className="text-[10px] font-semibold text-[var(--ui-accent-muted)] mb-0.5">
                       {m.sender_name || m.sender_username || 'Usuario'}
                     </p>
                   )}
                   <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                  <p className={`text-[10px] mt-1 ${mine ? 'text-blue-100/80' : 'text-[var(--ui-muted)]'}`}>
+                  <p className="text-[10px] mt-1 text-[var(--ui-muted)]">
                     {formatDateTime(m.created_at)}
                   </p>
                 </div>

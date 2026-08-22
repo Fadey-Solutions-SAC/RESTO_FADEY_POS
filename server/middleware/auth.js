@@ -76,7 +76,20 @@ function authenticateToken(req, res, next) {
 
     const lock = getLockState();
     if (lock.locked) {
-      return res.status(423).json({ error: lock.reason || 'Sistema bloqueado por falta de pago' });
+      const role = String(req.user?.role || '').toLowerCase();
+      const path = String(req.originalUrl || req.url || req.path || '');
+      /** Admin puede seguir en Mi empresa / pago / avisos para cargar comprobante y desbloquear. */
+      const allowAdminPagoPaths = role === 'admin' && (
+        /\/api\/auth\/me(?:\?|$)/i.test(path)
+        || /\/api\/restaurant(?:\?|$|\/)/i.test(path)
+        || /\/api\/master-admin\/(admin-notifications|billing-schedule)/i.test(path)
+        || /\/api\/admin-modules\//i.test(path)
+        || /platform-payment|pago.?uso|comprobante/i.test(path)
+        || /\/api\/uploads\//i.test(path)
+      );
+      if (!allowAdminPagoPaths) {
+        return res.status(423).json({ error: lock.reason || 'Sistema bloqueado por falta de pago' });
+      }
     }
     next();
   } catch (err) {

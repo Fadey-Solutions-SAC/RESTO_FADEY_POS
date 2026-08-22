@@ -129,11 +129,12 @@ export default function Login() {
       toast.error(t('login.waitPolicy'));
       return;
     }
-    if (!password) {
+    if (!String(password || '').trim()) {
       toast.error(t('login.credentialsRequired'));
       return;
     }
-    if (!username.trim()) {
+    // Acceso maestro: solo contraseña (usuario vacío). Personal: usuario + contraseña.
+    if (!String(username || '').trim()) {
       void submitLogin();
       return;
     }
@@ -173,7 +174,25 @@ export default function Login() {
               <>
                 <h2 className="rf-login-title">{t('login.title')}</h2>
                 <p className="rf-login-subtitle">{t('login.subtitle')}</p>
-                <form onSubmit={handleContinue} className="rf-login-fields">
+
+                {systemLocked ? (
+                  <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-3 text-center space-y-2">
+                    <p className="text-sm font-semibold text-amber-100">
+                      Sistema bloqueado por falta de pago
+                    </p>
+                    <p className="text-xs text-amber-100/85">
+                      {lockReason || 'Cargue su comprobante para recuperar el acceso.'}
+                    </p>
+                    <Link
+                      to="/desbloquear-pago"
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-slate-900 hover:bg-amber-50 transition-colors"
+                    >
+                      Cargar Comprobante
+                    </Link>
+                  </div>
+                ) : null}
+
+                <form onSubmit={handleContinue} className="rf-login-fields" noValidate>
                   <div>
                     <label className="block text-sm font-medium mb-1.5">{t('login.username')}</label>
                     <div className="relative">
@@ -184,7 +203,6 @@ export default function Login() {
                         onChange={(e) => setUsername(e.target.value)}
                         placeholder={t('login.usernamePlaceholder')}
                         className="rf-login-input pl-10"
-                        required
                         autoComplete="username"
                       />
                     </div>
@@ -236,15 +254,12 @@ export default function Login() {
                   </button>
 
                   {systemLocked ? (
-                    <div className="mt-4 space-y-2 text-center">
-                      <p className="text-xs text-amber-200/90">
-                        {lockReason || 'Sistema bloqueado por falta de pago.'}
-                      </p>
+                    <div className="mt-3 text-center">
                       <Link
                         to="/desbloquear-pago"
-                        className="inline-flex w-full items-center justify-center rounded-lg border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/15 transition-colors"
+                        className="text-sm font-semibold text-amber-200 underline underline-offset-2 hover:text-amber-100"
                       >
-                        Cargar comprobante de pago
+                        Ir a cargar comprobante de pago
                       </Link>
                     </div>
                   ) : null}

@@ -42,7 +42,7 @@ import MasterAdmin from './pages/master/MasterAdmin';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import BackgroundKitchenAutoPrinter from './components/BackgroundKitchenAutoPrinter';
 import PrintingAssistantAutoDiscover from './components/PrintingAssistantAutoDiscover';
-import { ADMIN_MODULE_PATHS, hasModulePermission, getDefaultStaffPath } from './utils/staffModuleAccess';
+import { ADMIN_MODULE_PATHS, hasModulePermission, canAccessStaffModule, getDefaultStaffPath } from './utils/staffModuleAccess';
 import { useDeliverySettings } from './hooks/useDeliveryEnabled';
 import { api } from './utils/api';
 import { startOfflinePosListeners } from './utils/offlinePos';
@@ -72,7 +72,9 @@ function ProtectedRoute({ children, roles, moduleId, moduleIds }) {
   const ids = Array.isArray(moduleIds) && moduleIds.length
     ? moduleIds
     : (moduleId ? [moduleId] : []);
-  const hasPermission = ids.length === 0 ? true : ids.some((id) => hasModulePermission(user, id));
+  const hasPermission = ids.length === 0
+    ? true
+    : ids.some((id) => canAccessStaffModule(user, { moduleId: id, roles }));
   if (roles && !roles.includes(user.role) && !hasPermission) {
     if (user.role === 'delivery') {
       return <Navigate to="/delivery" replace />;

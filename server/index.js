@@ -343,6 +343,9 @@ io.on('connection', (socket) => {
       const decoded = jwt.verify(token, JWT_SECRET);
       if (decoded.type === 'customer' || decoded.role === 'master_admin') return;
       if (!decoded.id) return;
+      const role = String(decoded.role || '').toLowerCase();
+      const staffRoles = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
+      if (role && !staffRoles.has(role)) return;
       socket.join(`staff-${decoded.id}`);
       socket.join('staff-broadcast');
     } catch (_) {
