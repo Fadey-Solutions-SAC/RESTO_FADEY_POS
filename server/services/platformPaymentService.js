@@ -31,6 +31,7 @@ const PAYMENT_APPROVAL_NOTICE_MINUTES = Math.max(
 );
 
 const POLL_MS = Math.max(15000, Number(process.env.PLATFORM_PAYMENT_POLL_MS || 60000));
+const POLL_MS_FAST = Math.max(5000, Number(process.env.PLATFORM_PAYMENT_POLL_FAST_MS || 10000));
 const RETRY_DELAYS_MS = [800, 2000, 5000];
 
 let pollTimer = null;
@@ -465,11 +466,17 @@ function applyPaymentApproved({ centralPaymentId, resolvedAt, expirationDate } =
   const renewed = renewLicenseOnPaymentApproved(pago, expirationDate);
   writePagoUso(renewed);
 
-  if (url) {
-    releaseAutoLockIfComprobantePresent(url, {
-      legacySuccessMessage: false,
-      clearUploadAviso: false,
-    });
+  try {
+    const {
+      releaseLockOnPaymentApproved,
+      releasePaymentBlockOnComprobanteSubmit,
+      evaluateAutomaticBillingRules,
+    } = require('../masterAdminService');
+    releasePaymentBlockOnComprobanteSubmit();
+    releaseLockOnPaymentApproved();
+    evaluateAutomaticBillingRules();
+  } catch (_) {
+    /* opcional */
   }
   notifyPaymentApproved();
 
@@ -665,42 +672,79 @@ function syncExpiredPaymentApprovalNotices() {
   clearNotificationsByTitle(LEGACY_SUCCESS_NOTIFICATION_TITLE);
 }
 
+function pickRemoteEstadoFromPayload(data) {
+  if (!data || typeof data !== 'object') return null;
+  return normalizePaymentEstado(
+    data.estado
+    || data.paymentStatus
+    || data.status
+    || data.payment?.estado
+    || data.payment?.paymentStatus
+    || data.payment?.status,
+  );
+}
+
 async function pollAndApplyPaymentStatus() {
   if (pollInFlight) return;
   syncExpiredPaymentApprovalNotices();
   if (!isCentralSyncConfigured()) return;
 
+  const { getLockState } = require('../masterAdminService');
+  const lock = getLockState();
   const pago = readPagoUso();
   const pp = pago.platform_payment || {};
   const estado = normalizePaymentEstado(pp.estado);
   const localRef = String(pp.referencia || '').trim();
-  if (!localRef || estado !== PAYMENT_STATUSES.PENDING) return;
+  const hasPendingLocal = localRef && estado === PAYMENT_STATUSES.PENDING;
 
   pollInFlight = true;
   try {
-    const result = await fetchCentralStatus(localRef);
-    if (!result.ok || !result.data) return;
+    if (hasPendingLocal) {
+      const result = await fetchCentralStatus(localRef);
+      if (result?.ok && result.data) {
+        const remoteRef = String(
+          result.data.payment?.referencia || result.data.referencia || '',
+        ).trim();
+        if (!remoteRef || remoteRef === localRef) {
+          const remoteEstado = pickRemoteEstadoFromPayload(result.data);
+          if (remoteEstado === PAYMENT_STATUSES.APPROVED) {
+            applyPaymentApproved({
+              centralPaymentId: result.data.payment?.id || result.data.paymentId,
+              resolvedAt: result.data.payment?.updated_at,
+              expirationDate: result.data.expirationDate,
+            });
+            return;
+          }
+          if (remoteEstado === PAYMENT_STATUSES.REJECTED) {
+            applyPaymentRejected({
+              motivo: result.data.payment?.rechazo_motivo || result.data.motivo,
+              resolvedAt: result.data.payment?.updated_at,
+            });
+            return;
+          }
+        }
+      }
+    }
 
-    const remoteRef = String(
-      result.data.payment?.referencia || result.data.referencia || '',
-    ).trim();
-    if (!remoteRef || remoteRef !== localRef) return;
-
-    const remoteEstado = normalizePaymentEstado(
-      result.data.estado || result.data.payment?.estado,
-    );
-    if (!remoteEstado) return;
-
-    if (remoteEstado === PAYMENT_STATUSES.APPROVED) {
-      applyPaymentApproved({
-        centralPaymentId: result.data.payment?.id || result.data.paymentId,
-        resolvedAt: result.data.payment?.updated_at,
-      });
-    } else if (remoteEstado === PAYMENT_STATUSES.REJECTED) {
-      applyPaymentRejected({
-        motivo: result.data.payment?.rechazo_motivo || result.data.motivo,
-        resolvedAt: result.data.payment?.updated_at,
-      });
+    if (lock.locked) {
+      const { fetchCentralLicenseStatus } = require('./centralSyncService');
+      const licenseRes = await fetchCentralLicenseStatus();
+      if (licenseRes?.ok && licenseRes.data) {
+        const d = unwrapCentralApiBody(licenseRes.data);
+        const remoteEstado = pickRemoteEstadoFromPayload(d);
+        if (remoteEstado === PAYMENT_STATUSES.APPROVED) {
+          applyPaymentApproved({
+            centralPaymentId: d.payment?.id,
+            resolvedAt: d.payment?.updated_at,
+            expirationDate: d.expirationDate,
+          });
+        } else if (remoteEstado === PAYMENT_STATUSES.REJECTED) {
+          applyPaymentRejected({
+            motivo: d.payment?.rechazo_motivo || d.motivo,
+            resolvedAt: d.payment?.updated_at,
+          });
+        }
+      }
     }
   } finally {
     pollInFlight = false;
@@ -886,19 +930,37 @@ async function submitComprobanteToPanel({ comprobanteUrl, monto = null } = {}) {
   };
 }
 
+function schedulePlatformPaymentPoll(delayMs) {
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = setTimeout(() => {
+    pollAndApplyPaymentStatus()
+      .catch((err) => {
+        console.warn('[platform-payment] poll:', err.message || err);
+      })
+      .finally(() => {
+        pollTimer = null;
+        if (!isCentralSyncConfigured()) return;
+        const { getLockState } = require('../masterAdminService');
+        const lock = getLockState();
+        const pago = readPagoUso();
+        const pp = pago.platform_payment || {};
+        const estado = normalizePaymentEstado(pp.estado);
+        const pending = estado === PAYMENT_STATUSES.PENDING
+          && Boolean(String(pp.referencia || '').trim());
+        const nextMs = (lock.locked || pending) ? POLL_MS_FAST : POLL_MS;
+        schedulePlatformPaymentPoll(nextMs);
+      });
+  }, delayMs);
+}
+
 function startPlatformPaymentPoller() {
   if (pollTimer) return;
   if (!isCentralSyncConfigured()) {
     console.log('[platform-payment] polling desactivado (central no configurada)');
     return;
   }
-  pollAndApplyPaymentStatus().catch(() => {});
-  pollTimer = setInterval(() => {
-    pollAndApplyPaymentStatus().catch((err) => {
-      console.warn('[platform-payment] poll:', err.message || err);
-    });
-  }, POLL_MS);
-  console.log(`[platform-payment] polling cada ${POLL_MS}ms`);
+  console.log(`[platform-payment] polling adaptativo (${POLL_MS_FAST}ms bloqueado/pendiente, ${POLL_MS}ms normal)`);
+  schedulePlatformPaymentPoll(0);
 }
 
 module.exports = {

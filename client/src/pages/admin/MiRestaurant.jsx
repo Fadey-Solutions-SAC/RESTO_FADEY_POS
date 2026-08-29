@@ -193,11 +193,22 @@ export default function MiRestaurant() {
   useEffect(() => {
     if (activeView !== 'pago_uso_sistema' || !canReadBillingConfig) return undefined;
     refreshPagoUsoComprobanteSchedule();
+    const fast = Boolean(
+      pagoUsoComprobanteUi?.platform_payment?.show_pending_banner
+      || pagoUsoComprobanteUi?.upload_comprobante_allowed,
+    );
+    const ms = fast ? 10000 : 60000;
     const timer = setInterval(() => {
       refreshPagoUsoComprobanteSchedule();
-    }, 60000);
+    }, ms);
     return () => clearInterval(timer);
-  }, [activeView, canReadBillingConfig, refreshPagoUsoComprobanteSchedule]);
+  }, [
+    activeView,
+    canReadBillingConfig,
+    refreshPagoUsoComprobanteSchedule,
+    pagoUsoComprobanteUi?.platform_payment?.show_pending_banner,
+    pagoUsoComprobanteUi?.upload_comprobante_allowed,
+  ]);
 
   const resyncCentralPayment = useCallback(async () => {
     if (!canReadBillingConfig) return;
@@ -365,6 +376,15 @@ export default function MiRestaurant() {
 
   useSocket('staff-data-update', (p) => {
     if (p?.domain === 'app_config') void loadInitialData();
+    if (p?.kind === 'system-lock' && (p?.paymentApproved || !p?.locked)) {
+      void refreshPagoUsoComprobanteSchedule();
+    }
+  });
+
+  useSocket('system-lock-update', (p) => {
+    if (p?.paymentApproved || !p?.locked) {
+      void refreshPagoUsoComprobanteSchedule();
+    }
   });
 
   useEffect(() => {

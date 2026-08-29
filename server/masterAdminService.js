@@ -863,6 +863,38 @@ function getLockState() {
   };
 }
 
+/** Desbloqueo inmediato cuando la central confirma pago aprobado. */
+function releaseLockOnPaymentApproved() {
+  const control = { ...getControlConfig() };
+  if (Number(control.global_lock_enabled || 0) !== 1) return false;
+  const reason = String(control.global_lock_reason || '').trim();
+  const isPaymentLock =
+    Number(control.pago_uso_comprobante_lock_auto || 0) === 1
+    || reason === DEFAULT_MORA_LOCK_REASON
+    || reason === REASON_PAGO_USO_SIN_COMPROBANTE
+    || /falta de pago|comprobante|pago por uso|mora/i.test(reason);
+  if (!isPaymentLock) return false;
+  clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
+  control.global_lock_enabled = 0;
+  control.pago_uso_comprobante_lock_auto = 0;
+  control.global_lock_reason = '';
+  control.lock_enabled_at = new Date().toISOString();
+  control.lock_enabled_by = 'Plataforma central';
+  upsertSetting(MASTER_SETTING_KEY, control);
+  try {
+    const { emitSystemLockUpdate } = require('./socketBroadcast');
+    emitSystemLockUpdate({
+      locked: false,
+      reason: '',
+      paymentApproved: true,
+      source: 'payment_approved',
+    });
+  } catch (_) {
+    /* opcional */
+  }
+  return true;
+}
+
 module.exports = {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   BILLING_DUE_NOTIFICATION_TITLE,
@@ -892,4 +924,5 @@ module.exports = {
   assertComprobantePagoUsoChangeAllowed,
   releaseAutoLockIfComprobantePresent,
   releasePaymentBlockOnComprobanteSubmit,
+  releaseLockOnPaymentApproved,
 };

@@ -31,6 +31,22 @@ function emitBillingDocumentUpdate(payload) {
   }
 }
 
+/** Bloqueo global del sistema (login / sesiones staff). */
+function emitSystemLockUpdate(payload = {}) {
+  if (ioRef) {
+    try {
+      const p = payload && typeof payload === 'object' ? payload : {};
+      ioRef.emit('system-lock-update', p);
+      ioRef.emit('staff-data-update', {
+        kind: 'system-lock',
+        ...p,
+      });
+    } catch (_) {
+      /* noop */
+    }
+  }
+}
+
 /** Datos de módulos staff (reservas, clientes, créditos, catálogos) para sincronizar pestañas abiertas. */
 function emitStaffDataUpdate(payload = {}) {
   if (ioRef) {
@@ -49,4 +65,5 @@ module.exports = {
   emitInventoryUpdate,
   emitBillingDocumentUpdate,
   emitStaffDataUpdate,
+  emitSystemLockUpdate,
 };

@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { MdArrowBack, MdUpload } from 'react-icons/md';
 import { api } from '../utils/api';
+import { useSocket } from '../hooks/useSocket';
+
+const PAYMENT_APPROVED_LOGIN_MSG = 'Su pago fue aprobado. Puede iniciar sesión.';
 
 export default function LoginComprobanteUnlock() {
   const navigate = useNavigate();
@@ -28,7 +31,7 @@ export default function LoginComprobanteUnlock() {
         if (name) setRestaurantName(name);
         setLockInfo(lock);
         if (!lock?.locked) {
-          toast.success('El sistema no está bloqueado. Puede iniciar sesión.');
+          toast.success(PAYMENT_APPROVED_LOGIN_MSG);
           navigate('/', { replace: true });
         }
       } catch (err) {
@@ -39,6 +42,29 @@ export default function LoginComprobanteUnlock() {
     })();
     return () => { cancelled = true; };
   }, [navigate]);
+
+  useSocket('system-lock-update', (payload) => {
+    if (!payload?.locked) {
+      toast.success(PAYMENT_APPROVED_LOGIN_MSG);
+      navigate('/', { replace: true });
+    }
+  });
+
+  useEffect(() => {
+    if (!lockInfo?.locked) return undefined;
+    const timer = setInterval(() => {
+      api
+        .getSystemLockStatus()
+        .then((lock) => {
+          if (!lock?.locked) {
+            toast.success(PAYMENT_APPROVED_LOGIN_MSG);
+            navigate('/', { replace: true });
+          }
+        })
+        .catch(() => {});
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [lockInfo?.locked, navigate]);
 
   const onPickFile = (file) => {
     if (!file) return;

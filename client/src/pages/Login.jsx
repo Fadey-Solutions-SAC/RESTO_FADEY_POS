@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api, resolveMediaUrl } from '../utils/api';
+import { useSocket } from '../hooks/useSocket';
 import toast from 'react-hot-toast';
 import { MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt } from 'react-icons/md';
 import AttendancePhotoCapture from '../components/AttendancePhotoCapture';
@@ -11,6 +12,9 @@ import { getDefaultStaffPath } from '../utils/staffModuleAccess';
 
 /** Si en Mi empresa no hay nombre guardado, se muestra este texto en el login. */
 const FALLBACK_RESTAURANT_NAME = 'Resto Fadey App';
+
+/** Si el pago fue aprobado en la central mientras el usuario está en login. */
+const PAYMENT_APPROVED_LOGIN_MSG = 'Su pago fue aprobado. Puede iniciar sesión.';
 
 export default function Login() {
   const { t } = useTranslation('auth');
@@ -28,6 +32,7 @@ export default function Login() {
   const [restaurantName, setRestaurantName] = useState(FALLBACK_RESTAURANT_NAME);
   const [systemLocked, setSystemLocked] = useState(false);
   const [lockReason, setLockReason] = useState('');
+  const [paymentApprovedNotice, setPaymentApprovedNotice] = useState(false);
 
   const photosRequired = attendancePolicy.loginRequired;
   const policyReady = !attendancePolicy.loading;
@@ -57,6 +62,39 @@ export default function Login() {
       })
       .catch(() => {});
   }, []);
+
+  useSocket('system-lock-update', (payload) => {
+    if (!payload?.locked) {
+      setSystemLocked(false);
+      setLockReason('');
+      if (payload?.paymentApproved) {
+        setPaymentApprovedNotice(true);
+        toast.success(PAYMENT_APPROVED_LOGIN_MSG);
+      }
+    }
+  });
+
+  useEffect(() => {
+    if (!systemLocked) return undefined;
+    const timer = setInterval(() => {
+      api
+        .getSystemLockStatus()
+        .then((lock) => {
+          const stillLocked = !!lock?.locked;
+          if (!stillLocked) {
+            setSystemLocked(false);
+            setLockReason('');
+            setPaymentApprovedNotice(true);
+            toast.success(PAYMENT_APPROVED_LOGIN_MSG);
+          } else {
+            setSystemLocked(true);
+            setLockReason(String(lock?.reason || '').trim());
+          }
+        })
+        .catch(() => {});
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [systemLocked]);
 
   useEffect(() => {
     api
@@ -174,6 +212,14 @@ export default function Login() {
               <>
                 <h2 className="rf-login-title">{t('login.title')}</h2>
                 <p className="rf-login-subtitle">{t('login.subtitle')}</p>
+
+                {paymentApprovedNotice && !systemLocked ? (
+                  <div className="mb-4 rounded-xl border border-emerald-400/45 bg-emerald-500/20 px-3 py-3 text-center">
+                    <p className="text-sm font-semibold text-emerald-50">
+                      {PAYMENT_APPROVED_LOGIN_MSG}
+                    </p>
+                  </div>
+                ) : null}
 
                 {systemLocked ? (
                   <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-3 text-center space-y-2">

@@ -198,8 +198,14 @@ function buildPublicRestaurantDiscoveryPayload() {
     String(restaurant?.legal_name || '').trim()
     || String(admin?.full_name || '').trim();
 
+  const ownerName =
+    String(admin?.full_name || '').trim().split(/\s+/)[0]
+    || String(restaurant?.legal_name || '').trim().split(/\s+/)[0]
+    || '';
+
   return {
     name: String(restaurant?.name || '').trim() || 'Mi Restaurante',
+    ownerName: ownerName || undefined,
     legalName,
     email: String(restaurant?.email || admin?.email || '').trim(),
     phone: String(restaurant?.phone || '').trim(),
@@ -268,12 +274,15 @@ function getSystemHealthPayload() {
 
 function assertClientIdMatches(bodyClientId) {
   const expected = getEffectiveClientId();
+  const licenseKey = String(process.env.LICENSE_KEY || '').trim();
   const incoming = String(bodyClientId || '').trim();
-  if (!incoming || !expected) return { ok: true };
-  if (incoming !== expected) {
-    return { ok: false, status: 403, error: 'clientId no coincide con este POS' };
-  }
-  return { ok: true };
+  if (!incoming) return { ok: true };
+  if (!expected && !licenseKey) return { ok: true };
+  if (incoming === expected) return { ok: true };
+  if (licenseKey && incoming === licenseKey) return { ok: true };
+  const store = readIdentityStore();
+  if (incoming === String(store.clientId || '').trim()) return { ok: true };
+  return { ok: false, status: 403, error: 'clientId no coincide con este POS' };
 }
 
 function initPosSaasIdentity() {
