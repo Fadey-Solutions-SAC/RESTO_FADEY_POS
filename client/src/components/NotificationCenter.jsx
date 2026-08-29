@@ -5,7 +5,6 @@ import { api, resolveMediaUrl, formatDateTime } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { getSocket } from '../hooks/useSocket';
 import StaffTeamChat from './StaffTeamChat';
-import Modal from './Modal';
 import toast from 'react-hot-toast';
 import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload } from 'react-icons/md';
 import {
@@ -162,7 +161,9 @@ export default function NotificationCenter({ className = '' }) {
     };
 
     const onKeyDown = (event) => {
-      if (event.key === 'Escape' && !avisoToDismiss) setOpen(false);
+      if (event.key !== 'Escape') return;
+      if (avisoToDismiss) setAvisoToDismiss(null);
+      else setOpen(false);
     };
 
     document.addEventListener('pointerdown', onPointerDown, true);
@@ -203,7 +204,7 @@ export default function NotificationCenter({ className = '' }) {
             />
             <div
               ref={panelRef}
-              className="fixed z-[60] top-14 right-3 sm:right-6 w-[min(100vw-1.5rem,420px)] h-[min(72vh,580px)] flex flex-col rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-2xl overflow-hidden text-[var(--ui-body-text)]"
+              className="fixed z-[60] top-14 right-3 sm:right-6 w-[min(100vw-1.5rem,420px)] h-[min(72vh,580px)] flex flex-col rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-2xl overflow-hidden text-[var(--ui-body-text)] relative"
               role="dialog"
               aria-label={panelTitle}
             >
@@ -291,6 +292,40 @@ export default function NotificationCenter({ className = '' }) {
                   </p>
                 ) : null}
               </div>
+
+              {avisoToDismiss ? (
+                <div
+                  className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/35"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Confirmar borrar aviso"
+                >
+                  <div
+                    className="w-full max-w-[260px] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg p-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <p className="text-sm text-center text-[var(--ui-body-text)] leading-snug">
+                      Al borrar se perderá para siempre, ¿seguro?
+                    </p>
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        type="button"
+                        className="btn-secondary flex-1 text-sm py-2"
+                        onClick={() => setAvisoToDismiss(null)}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        className="flex-1 text-sm py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700"
+                        onClick={confirmDismissAviso}
+                      >
+                        Borrar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </>,
           document.body,
@@ -341,38 +376,6 @@ export default function NotificationCenter({ className = '' }) {
       ) : null}
 
       {panel}
-
-      <Modal
-        isOpen={!!avisoToDismiss}
-        onClose={() => setAvisoToDismiss(null)}
-        title="Quitar aviso"
-        size="sm"
-      >
-        <div className="space-y-4">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-            <strong className="font-semibold">Aviso:</strong> asegúrese de haber comprendido el mensaje antes de quitarlo.{' '}
-            <strong>No podrá recuperarlo</strong> en esta lista en este navegador (solo deja de mostrarse aquí; el historial completo lo gestiona el administrador maestro).
-          </div>
-          {avisoToDismiss ? (
-            <p className="text-sm text-[var(--ui-body-text)]">
-              ¿Quitar «<span className="font-semibold">{avisoToDismiss.title}</span>» de sus avisos?
-            </p>
-          ) : null}
-          <div className="flex flex-wrap justify-end gap-2 pt-1">
-            <button type="button" className="btn-secondary" onClick={() => setAvisoToDismiss(null)}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700"
-              onClick={confirmDismissAviso}
-            >
-              <MdDelete className="text-lg" />
-              Sí, quitar
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }
