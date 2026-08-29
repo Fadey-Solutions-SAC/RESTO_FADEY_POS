@@ -140,6 +140,14 @@ async function buildMinimalPaymentPayload({ comprobanteUrl, reference = '', amou
   const resolvedAmount = resolveComprobanteAmount(amount, ctx.pagoUso || {});
   return {
     clientId: identity.clientId,
+    licenseKey: identity.licenseKey || identity.clientId,
+    webServiceId: identity.webServiceId || identity.clientId,
+    sourceWebServiceUrl: identity.publicApiUrl || String(
+      process.env.RENDER_PUBLIC_URL
+      || process.env.PUBLIC_API_BASE_URL
+      || process.env.NEXT_PUBLIC_API_URL
+      || '',
+    ).replace(/\/$/, ''),
     restaurantName: String(ctx.restaurant?.name || '').trim(),
     adminName: admin.adminName,
     adminEmail: admin.adminEmail,
