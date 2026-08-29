@@ -92,7 +92,18 @@ function readAppSettingsForClient() {
     ...out,
     regional,
     settings: { ...settings, regional },
+    contrato: enrichContratoForClient(out.contrato),
   };
+}
+
+function enrichContratoForClient(raw) {
+  try {
+    const { publicContratoView } = require('../services/contractSignature/contractSignatureService');
+    // Siempre desde store (texto base, firmas, text_locked). No altera otras keys de config.
+    return publicContratoView();
+  } catch (_) {
+    return raw && typeof raw === 'object' ? raw : {};
+  }
 }
 
 function persistRegionalFromSettings(settingsRegional) {
@@ -484,6 +495,10 @@ router.put('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
 
   if (payload.contrato !== undefined && !isMaster) {
     return res.status(403).json({ error: 'Solo el administrador maestro puede modificar el contrato del servicio.' });
+  }
+  if (payload.contrato !== undefined && isMaster) {
+    const { mergeContratoForConfigPut, readContrato } = require('../services/contratoStore');
+    payload.contrato = mergeContratoForConfigPut(readContrato(), payload.contrato);
   }
 
   const billingBotUnlocked =

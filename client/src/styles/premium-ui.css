@@ -475,9 +475,8 @@ h1, h2, h3, h4 {
     position: fixed;
     inset: 0;
     z-index: 200;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: grid;
+    place-items: center;
     background: #000000;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     pointer-events: none;
@@ -489,12 +488,13 @@ h1, h2, h3, h4 {
 
   .rf-entry-splash__stage {
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: grid;
+    place-items: center;
     width: 100%;
     height: 100%;
+    min-height: 100%;
     padding: 1.25rem;
+    box-sizing: border-box;
   }
 
   .rf-entry-splash__stack {
@@ -504,8 +504,9 @@ h1, h2, h3, h4 {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: clamp(1rem, 3.5vw, 1.75rem);
-    animation: rf-entry-logo-in 1s cubic-bezier(0.22, 1, 0.36, 1) both;
+    text-align: center;
+    margin: 0 auto;
+    gap: clamp(0.75rem, 2.5vw, 1.25rem);
   }
 
   .rf-entry-splash__stack--out {
@@ -517,35 +518,40 @@ h1, h2, h3, h4 {
     display: flex;
     align-items: center;
     justify-content: center;
+    margin-inline: auto;
+    animation: rf-entry-logo-pop 1.15s cubic-bezier(0.22, 1.15, 0.36, 1) both;
   }
 
   .rf-entry-splash__glow {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: min(68vw, 400px);
-    height: min(68vw, 400px);
-    margin-top: calc(min(68vw, 400px) / -2);
-    margin-left: calc(min(68vw, 400px) / -2);
+    width: min(48vw, 280px);
+    height: min(48vw, 280px);
+    margin-top: calc(min(48vw, 280px) / -2);
+    margin-left: calc(min(48vw, 280px) / -2);
     border-radius: 50%;
     background: radial-gradient(circle, rgba(212, 175, 55, 0.28) 0%, rgba(192, 192, 192, 0.08) 45%, transparent 72%);
-    animation: rf-entry-glow 2s ease-in-out infinite;
+    animation:
+      rf-entry-glow-in 0.9s ease-out both,
+      rf-entry-glow 2s ease-in-out 0.9s infinite;
     pointer-events: none;
   }
 
   .rf-entry-splash__logo-ring {
     position: relative;
     z-index: 1;
-    width: min(58vw, 340px);
-    height: min(58vw, 340px);
+    width: min(42vw, 240px);
+    height: min(42vw, 240px);
     aspect-ratio: 1;
     border-radius: 50% !important;
     overflow: hidden !important;
     flex-shrink: 0;
     background: #000000;
     box-shadow:
-      0 0 36px rgba(212, 175, 55, 0.35),
-      0 0 72px rgba(192, 192, 192, 0.12);
+      0 0 28px rgba(212, 175, 55, 0.32),
+      0 0 56px rgba(192, 192, 192, 0.1);
+    animation: rf-entry-ring-pulse 1.15s cubic-bezier(0.22, 1.15, 0.36, 1) both;
   }
 
   .rf-entry-splash__logo-img {
@@ -558,15 +564,47 @@ h1, h2, h3, h4 {
     background: #000000;
   }
 
+  /* Brillo que atraviesa el logo (efecto “nuevo / metal pulido”). */
+  .rf-entry-splash__shine {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: 50%;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .rf-entry-splash__shine::before {
+    content: '';
+    position: absolute;
+    top: -20%;
+    left: -60%;
+    width: 45%;
+    height: 140%;
+    background: linear-gradient(
+      105deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0) 35%,
+      rgba(255, 255, 255, 0.55) 50%,
+      rgba(255, 248, 220, 0.35) 58%,
+      rgba(255, 255, 255, 0) 70%,
+      transparent 100%
+    );
+    transform: skewX(-18deg);
+    animation: rf-entry-shine-sweep 2.2s cubic-bezier(0.4, 0, 0.2, 1) 0.55s both;
+  }
+
   .rf-entry-splash__brand {
     text-align: center;
-    max-width: min(92vw, 520px);
+    max-width: min(92vw, 440px);
+    margin-inline: auto;
+    animation: rf-entry-brand-in 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both;
   }
 
   .rf-entry-splash__title {
     margin: 0;
     font-family: 'Clash Display', 'Inter', system-ui, sans-serif;
-    font-size: clamp(1.35rem, 5.2vw, 2.15rem);
+    font-size: clamp(1.15rem, 4.2vw, 1.75rem);
     font-weight: 600;
     letter-spacing: 0.28em;
     line-height: 1.2;
@@ -583,9 +621,9 @@ h1, h2, h3, h4 {
   }
 
   .rf-entry-splash__tagline {
-    margin: 0.65rem 0 0;
+    margin: 0.55rem 0 0;
     font-family: 'Inter', system-ui, sans-serif;
-    font-size: clamp(0.72rem, 2.8vw, 0.95rem);
+    font-size: clamp(0.68rem, 2.4vw, 0.88rem);
     font-weight: 400;
     letter-spacing: 0.06em;
     color: rgba(232, 244, 252, 0.72);
@@ -597,26 +635,42 @@ h1, h2, h3, h4 {
     bottom: max(1rem, env(safe-area-inset-bottom));
     z-index: 2;
     margin: 0;
-    max-width: min(90vw, 28rem);
-    font-family: 'Inter', system-ui, sans-serif;
-    font-size: clamp(0.62rem, 2.2vw, 0.78rem);
+    max-width: min(90vw, 16rem);
+    font-family: 'Playfair Display', 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+    font-size: clamp(0.68rem, 2.1vw, 0.8rem);
     font-weight: 600;
-    letter-spacing: 0.08em;
-    line-height: 1.35;
-    text-transform: uppercase;
-    color: rgba(232, 244, 252, 0.78);
+    letter-spacing: 0.03em;
+    line-height: 1.2;
+    color: #d4af37;
+    animation: rf-entry-credit-in 0.7s ease-out 0.75s both;
   }
 
   @media (min-width: 900px) {
     .rf-entry-splash__logo-ring {
-      width: min(32vw, 360px);
-      height: min(32vw, 360px);
+      width: min(22vw, 260px);
+      height: min(22vw, 260px);
     }
     .rf-entry-splash__glow {
-      width: min(32vw, 380px);
-      height: min(32vw, 380px);
-      margin-top: calc(min(32vw, 380px) / -2);
-      margin-left: calc(min(32vw, 380px) / -2);
+      width: min(24vw, 280px);
+      height: min(24vw, 280px);
+      margin-top: calc(min(24vw, 280px) / -2);
+      margin-left: calc(min(24vw, 280px) / -2);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rf-entry-splash__shine::before {
+      animation: none;
+      opacity: 0;
+    }
+    .rf-entry-splash__logo-wrap,
+    .rf-entry-splash__logo-ring,
+    .rf-entry-splash__brand,
+    .rf-entry-splash__credit,
+    .rf-entry-splash__glow {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
     }
   }
 
@@ -1394,6 +1448,78 @@ h1, h2, h3, h4 {
     }
   }
 
+  @keyframes rf-entry-logo-pop {
+    0% {
+      opacity: 0;
+      transform: scale(0.45) translateY(18px);
+      filter: blur(8px);
+    }
+    55% {
+      opacity: 1;
+      transform: scale(1.08) translateY(-4px);
+      filter: blur(0);
+    }
+    75% {
+      transform: scale(0.97) translateY(1px);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes rf-entry-ring-pulse {
+    0% {
+      box-shadow:
+        0 0 0 rgba(212, 175, 55, 0),
+        0 0 0 rgba(192, 192, 192, 0);
+    }
+    60% {
+      box-shadow:
+        0 0 40px rgba(212, 175, 55, 0.55),
+        0 0 80px rgba(192, 192, 192, 0.22);
+    }
+    100% {
+      box-shadow:
+        0 0 28px rgba(212, 175, 55, 0.32),
+        0 0 56px rgba(192, 192, 192, 0.1);
+    }
+  }
+
+  @keyframes rf-entry-glow-in {
+    from {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    to {
+      opacity: 0.85;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes rf-entry-brand-in {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes rf-entry-credit-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   @keyframes rf-entry-logo-out {
     from {
       opacity: 1;
@@ -1423,6 +1549,20 @@ h1, h2, h3, h4 {
     50% {
       opacity: 1;
       transform: scale(1.06);
+    }
+  }
+
+  @keyframes rf-entry-shine-sweep {
+    0% {
+      left: -70%;
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    100% {
+      left: 130%;
+      opacity: 0.85;
     }
   }
 

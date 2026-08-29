@@ -3,7 +3,7 @@ import { useSocket } from '../../hooks/useSocket';
 import toast from 'react-hot-toast';
 import { api, resolveMediaUrl } from '../../utils/api';
 import { proximaFechaFromControlAnchor } from '../../utils/nextBillingFromAnchor';
-import { normalizeContratoFromApi } from '../RestaurantServiceContractForm';
+import { normalizeContratoFromApi } from '../../utils/contratoNormalize';
 import BillingSunatManualForm from '../billing/BillingSunatManualForm';
 import { defaultBillingPanel, defaultBillingPanelPresence } from '../../data/sunat47Catalog';
 import { MdReceipt, MdPayment, MdSave, MdUpload } from 'react-icons/md';

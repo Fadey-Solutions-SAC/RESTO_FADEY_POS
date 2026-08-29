@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSocket } from '../../hooks/useSocket';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import RestaurantServiceContractForm, { normalizeContratoFromApi } from '../../components/RestaurantServiceContractForm';
+import RestaurantServiceContractForm from '../../components/RestaurantServiceContractForm';
+import { normalizeContratoFromApi } from '../../utils/contratoNormalize';
 import { api, resolveMediaUrl } from '../../utils/api';
 import { proximaFechaFromControlAnchor } from '../../utils/nextBillingFromAnchor';
 import toast from 'react-hot-toast';
@@ -38,7 +39,7 @@ const MI_RESTAURANT_VIEWS = [
   { id: 'mi_empresa', label: 'Mi empresa' },
   { id: 'facturacion_electronica', label: 'Facturación electrónica' },
   { id: 'pagos_sistema', label: 'Pagos de créditos' },
-  { id: 'contrato', label: 'Contrato del servicio' },
+  { id: 'contrato', label: 'Contrato digital del servicio' },
   { id: 'pago_uso_sistema', label: 'Pago de plan' },
   { id: 'informacion', label: 'Información' },
 ];
@@ -843,7 +844,11 @@ export default function MiRestaurant() {
   const activeViewLabel = miRestaurantViewsForPlan.find(option => option.id === activeView)?.label || 'Mi empresa';
   const showSaveButton =
     activeView !== 'mi_empresa'
-    && (activeView !== 'contrato' || canEditContrato)
+    && (activeView !== 'contrato' || (
+      canEditContrato
+      && !appConfig?.contrato?.text_locked
+      && appConfig?.contrato?.estado_firma !== 'firmado'
+    ))
     && (activeView !== 'facturacion_electronica' || canEditBillingMaster)
     && (activeView !== 'pago_uso_sistema' || canEditBillingMaster);
 
@@ -1181,11 +1186,19 @@ export default function MiRestaurant() {
               </div>
             </div>
           ) : activeView === 'contrato' ? (
-            <RestaurantServiceContractForm
-              contrato={appConfig.contrato}
-              canEdit={canEditContrato}
-              onChange={(next) => setAppConfig((prev) => ({ ...prev, contrato: next }))}
-            />
+            <div className="-mt-1 sm:-mt-3">
+              <RestaurantServiceContractForm
+                contrato={appConfig.contrato}
+                canEdit={
+                  Boolean(canEditContrato)
+                  && !appConfig?.contrato?.text_locked
+                  && appConfig?.contrato?.estado_firma !== 'firmado'
+                  && appConfig?.contrato?.firma_comprador?.status !== 'firmado'
+                  && appConfig?.contrato?.firma_vendedor?.status !== 'firmado'
+                }
+                onChange={(next) => setAppConfig((prev) => ({ ...prev, contrato: next }))}
+              />
+            </div>
           ) : activeView === 'pago_uso_sistema' ? (
             <div className="relative card space-y-5">
               <div className="flex items-center gap-2">

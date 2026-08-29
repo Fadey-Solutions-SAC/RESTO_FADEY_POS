@@ -7,8 +7,8 @@ import {
 
 const LOGO_SRC = `/branding/resto-fadey-splash-logo.png?v=fy2026`;
 const SPLASH_BG = '#000000';
-/** Entrada + visible: ~2 s; salida: ~0,45 s (total ~2,45 s). */
-const SPLASH_HOLD_MS = 2000;
+/** Entrada + visible: ~2,6 s; salida: ~0,45 s. */
+const SPLASH_HOLD_MS = 2600;
 const SPLASH_EXIT_MS = 450;
 
 /** Evita reiniciar animación si React remonta el componente (StrictMode). */
@@ -78,6 +78,7 @@ export default function RestoFadeyEntrySplash({ onComplete }) {
                 decoding="async"
                 fetchPriority="high"
               />
+              <span className="rf-entry-splash__shine" aria-hidden />
             </div>
           </div>
           <div className="rf-entry-splash__brand">
@@ -89,7 +90,7 @@ export default function RestoFadeyEntrySplash({ onComplete }) {
           </div>
         </div>
       </div>
-      <p className="rf-entry-splash__credit">DESARROLLADO POR FADEY SOLUTIONS SAC</p>
+      <p className="rf-entry-splash__credit">Fadey Solutions SAC</p>
     </div>
   );
 }

@@ -8,6 +8,7 @@ const DONE_KEY = 'resto_fadey_pwa_install_done';
 /** Rutas de cliente/público: no mostrar instalar app (p. ej. QR de encuesta). */
 const PUBLIC_NO_INSTALL_PREFIXES = [
   '/encuesta',
+  '/firmar-contrato',
   '/auto-pedido-cliente',
   '/desbloquear-pago',
   '/customer',

@@ -28,6 +28,7 @@ import Reports from './pages/admin/Reports';
 import Indicadores from './pages/admin/Indicadores';
 import Fidelizacion from './pages/admin/Fidelizacion';
 import EncuestaPublica from './pages/public/EncuestaPublica';
+import FirmarContratoMovil from './pages/public/FirmarContratoMovil';
 import MiRestaurant from './pages/admin/MiRestaurant';
 import Settings from './pages/admin/Settings';
 import WorkTime from './pages/admin/WorkTime';
@@ -140,6 +141,7 @@ export default function App() {
     const path = String(location.pathname || '').toLowerCase();
     return [
       '/encuesta',
+      '/firmar-contrato',
       '/auto-pedido-cliente',
       '/desbloquear-pago',
       '/customer',
@@ -191,6 +193,7 @@ function AppRoutes({ user }) {
     <>
       <Routes>
       <Route path="/encuesta" element={<EncuestaPublica />} />
+      <Route path="/firmar-contrato" element={<FirmarContratoMovil />} />
       <Route path="/auto-pedido-cliente" element={<SelfOrderCliente />} />
       <Route path="/desbloquear-pago" element={<LoginComprobanteUnlock />} />
       <Route path="/" element={user && user.type === 'staff' ? <Navigate to={

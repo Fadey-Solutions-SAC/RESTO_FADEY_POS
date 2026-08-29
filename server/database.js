@@ -2572,6 +2572,14 @@ async function initDatabase() {
     db.run('CREATE INDEX IF NOT EXISTS idx_app_settings_history_created_at ON app_settings_history(created_at)');
     db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-02-professionalization-indexes-audit']);
 
+    try {
+      const { ensureSignatureTables } = require('./services/contractSignature/contractSignatureService');
+      ensureSignatureTables();
+      db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-08-contract-signature-v1']);
+    } catch (e) {
+      console.warn('[migration] contract_signature:', e.message || e);
+    }
+
     db.run('INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)', ['regional', JSON.stringify({ country: 'Peru', timezone: 'America/Lima', language: 'es', date_format: 'DD/MM/YYYY' })]);
     db.run(
       'INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)',

@@ -55,7 +55,7 @@ const MI_RESTAURANT_SUBS = [
   { id: 'mi_empresa', label: 'Mi empresa' },
   { id: 'facturacion_electronica', label: 'Facturación electrónica (SUNAT)' },
   { id: 'pagos_sistema', label: 'Pagos de créditos' },
-  { id: 'contrato', label: 'Contrato del servicio' },
+  { id: 'contrato', label: 'Contrato digital del servicio' },
   { id: 'pago_uso_sistema', label: 'Pago de plan' },
   { id: 'informacion', label: 'Información (respaldo)' },
 ];

@@ -249,6 +249,17 @@ app.use('/api/auth/customer/login', authLimiter);
 
 app.use('/api/public/self-order', require('./routes/publicSelfOrder'));
 app.use('/api/public/loyalty', require('./routes/publicLoyalty'));
+app.use('/api/fadey', require('./routes/publicFadey'));
+app.use('/fadey', require('./routes/publicFadey'));
+app.get('/api/local', (req, res) => {
+  try {
+    const { buildPublicRestaurantDiscoveryPayload, touchSaasLastActivity } = require('./services/posSaasIdentityService');
+    touchSaasLastActivity();
+    return res.json(buildPublicRestaurantDiscoveryPayload());
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'No se pudo obtener el perfil del restaurante' });
+  }
+});
 app.use('/api/loyalty', require('./routes/loyalty'));
 app.use('/api/system', require('./routes/system'));
 app.use('/api/license', require('./routes/license'));
@@ -267,6 +278,7 @@ app.use('/api/pos', require('./routes/pos'));
 app.use('/api/delivery', require('./routes/delivery'));
 app.use('/api/tables', require('./routes/tables'));
 app.use('/api/admin-modules', require('./routes/adminModules'));
+app.use('/api/contrato', require('./routes/contractSignature'));
 app.use('/api/business-config', require('./routes/businessConfig'));
 const { getPrinters } = require('./printing/printerDetector');
 app.get('/printers', (req, res) => {

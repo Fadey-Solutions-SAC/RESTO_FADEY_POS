@@ -64,6 +64,9 @@ Cada restaurante mantiene su **web service independiente** y base de datos aisla
 
 ### POS expone (panel SaaS consulta el Render del cliente)
 
+- `GET /api/fadey/restaurant` — perfil público para vincular (`name`, `legalName`, `email`, `phone`, `ruc`, `address`; sin login)
+- `GET /fadey/restaurant` — alias del anterior
+- `GET /api/local` — alias del anterior
 - `GET /api/restaurant/info` — registro automático (`Bearer API_SECRET_KEY`)
 - `GET /api/system/health` — disponibilidad
 - `POST /api/license/confirm` — push de aprobación/rechazo desde el panel

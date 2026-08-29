@@ -1,452 +1,522 @@
-import { useRef, useState, useEffect, useMemo } from 'react';
-import mammoth from 'mammoth';
-import { MdUploadFile, MdDownload, MdDescription } from 'react-icons/md';
+import { useState, useRef, useEffect } from 'react';
+import { MdNfc, MdRestore, MdDraw, MdCheckCircle, MdLock, MdPictureAsPdf, MdContentCopy } from 'react-icons/md';
 import { api, resolveMediaUrl } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { DEFAULT_SERVICE_CONTRACT_TEXT } from '../data/defaultServiceContract';
+import { normalizeContratoFromApi } from '../utils/contratoNormalize';
+import { applySignaturesIntoContractText, CONTRACT_PROVIDER } from '../utils/contractSignatureDisplay';
+import Modal from './Modal';
 import toast from 'react-hot-toast';
 
-const EMPTY_CONTRATO = {
-  texto_contrato: '',
-  documento_word_url: '',
-  documento_word_nombre: '',
-  firma_comprador_url: '',
-  firma_vendedor_url: '',
-};
+function partyLabel(party) {
+  if (party === 'vendedor') return 'Proveedor';
+  return 'Cliente';
+}
 
-const MAMMOTH_HOIST_TAGS = new Set(['DIV', 'SECTION', 'ARTICLE', 'MAIN', 'CENTER']);
-
-/** Mammoth suele devolver todo dentro de un único <div>; lo aplanamos para ver hermanos reales. */
-function flattenSingleContainerWrappers(root) {
-  let guard = 0;
-  while (root.children.length === 1 && guard < 64) {
-    guard += 1;
-    const only = root.firstElementChild;
-    if (!only || !MAMMOTH_HOIST_TAGS.has(only.tagName)) break;
-    while (only.firstChild) {
-      root.insertBefore(only.firstChild, only);
-    }
-    root.removeChild(only);
+function formatLocalDate() {
+  try {
+    return new Date().toLocaleDateString('es-PE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  } catch {
+    return new Date().toISOString().slice(0, 10);
   }
 }
 
-/** Bloque vacío al inicio (Word/mammoth suelen dejar <p><br></p>). */
-function isEmptyLeadingBlock(el) {
-  if (!el || el.nodeType !== 1 || !['P', 'DIV'].includes(el.tagName)) return false;
-  if (el.querySelector('img')) return false;
-  const text = el.textContent.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
-  return text.length === 0;
+function formatDateTime(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('es-PE');
+  } catch {
+    return String(iso);
+  }
 }
 
-/** Texto visible del nodo sin contar <img> (evita alt ni texto mezclado mal detectado). */
-function textWithoutImages(el) {
-  const c = el.cloneNode(true);
-  c.querySelectorAll('img').forEach((img) => img.remove());
-  return c.textContent.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-/** Párrafo solo con imagen (aunque venga en <span>), <img> suelto, <figure> con img, o <div> solo imagen. */
-function isCoverImageBlock(el) {
-  if (!el || el.nodeType !== 1) return false;
-  const tag = el.tagName;
-  if (tag === 'IMG') return true;
-  if (tag === 'FIGURE' && el.querySelector('img')) {
-    return textWithoutImages(el).length === 0;
-  }
-  if (tag === 'P') {
-    const imgs = el.querySelectorAll('img');
-    if (imgs.length !== 1) return false;
-    return textWithoutImages(el).length === 0;
-  }
-  if (tag === 'DIV') {
-    const imgs = el.querySelectorAll('img');
-    if (imgs.length !== 1) return false;
-    return textWithoutImages(el).length === 0;
-  }
-  return false;
-}
-
-function scoreCoverCandidate(el) {
-  const img = el.tagName === 'IMG' ? el : el.querySelector('img');
-  if (!img) return 0;
-  const w = parseInt(img.getAttribute('width'), 10) || 0;
-  const h = parseInt(img.getAttribute('height'), 10) || 0;
-  if (w > 0 && h > 0) return w * h;
-  return 0;
+function qrImageUrl(data) {
+  const q = encodeURIComponent(String(data || ''));
+  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${q}`;
 }
 
 /**
- * Word a veces exporta la imagen de fondo al final del HTML o con párrafos vacíos delante.
- * Elegimos la imagen "principal" (mayor área declarada; si empate, la más abajo en el doc)
- * y la colocamos al inicio con data-contract-cover para el layout tipo Word.
- */
-function normalizeMammothContractHtml(html) {
-  const raw = String(html || '').trim();
-  if (!raw || typeof document === 'undefined') return raw;
-
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = raw;
-
-  flattenSingleContainerWrappers(wrapper);
-
-  while (wrapper.firstElementChild && isEmptyLeadingBlock(wrapper.firstElementChild)) {
-    wrapper.removeChild(wrapper.firstElementChild);
-  }
-
-  wrapper.querySelectorAll('[data-contract-cover]').forEach((n) => n.removeAttribute('data-contract-cover'));
-
-  const children = Array.from(wrapper.children);
-  const candidates = [];
-  for (let i = 0; i < children.length; i += 1) {
-    if (isCoverImageBlock(children[i])) candidates.push({ index: i, el: children[i], score: scoreCoverCandidate(children[i]) });
-  }
-  if (candidates.length === 0) return wrapper.innerHTML;
-
-  candidates.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return b.index - a.index;
-  });
-
-  const best = candidates[0];
-  let coverEl = best.el;
-  if (best.index > 0) {
-    coverEl = wrapper.removeChild(coverEl);
-    wrapper.insertBefore(coverEl, wrapper.firstChild);
-  }
-
-  coverEl.setAttribute('data-contract-cover', '');
-
-  const img = coverEl.tagName === 'IMG' ? coverEl : coverEl.querySelector('img');
-  if (img) {
-    img.removeAttribute('width');
-    img.removeAttribute('height');
-    img.style.removeProperty('width');
-    img.style.removeProperty('height');
-    img.style.removeProperty('max-width');
-  }
-
-  return wrapper.innerHTML;
-}
-
-function htmlHasContractCoverLayer(html) {
-  return String(html || '').includes('data-contract-cover');
-}
-
-function wordFileKind(url, nombre) {
-  const n = String(nombre || '').toLowerCase();
-  const u = String(url || '').toLowerCase();
-  if (n.endsWith('.docx') || /\.docx(\?|#|$)/.test(u)) return 'docx';
-  if ((n.endsWith('.doc') && !n.endsWith('.docx')) || /\.doc(\?|#|$)/.test(u)) return 'doc';
-  return '';
-}
-
-export function normalizeContratoFromApi(raw) {
-  if (!raw || typeof raw !== 'object') return { ...EMPTY_CONTRATO };
-  return {
-    texto_contrato: String(raw.texto_contrato ?? raw.observations ?? '').trim(),
-    documento_word_url: String(raw.documento_word_url || '').trim(),
-    documento_word_nombre: String(raw.documento_word_nombre || '').trim(),
-    firma_comprador_url: String(raw.firma_comprador_url || '').trim(),
-    firma_vendedor_url: String(raw.firma_vendedor_url || '').trim(),
-  };
-}
-
-/**
- * Contrato: documento Word con vista previa (.docx) + firmas.
+ * Contrato: ver + firmar (PDF + canal NFC).
+ * Admin del negocio: solo ver y firmar una vez (comprador). Luego solo ver.
+ * Maestro: editar texto (si no hay firmas) y firmar como vendedor.
  */
 export default function RestaurantServiceContractForm({
   contrato,
   canEdit,
   onChange,
-  cardClassName = 'rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-6 space-y-5',
+  cardClassName = 'rf-contrato-panel rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] flex flex-col min-h-0 h-[calc(100dvh-6.5rem)] max-h-[calc(100dvh-6.5rem)] overflow-hidden p-3 sm:p-4 gap-2',
 }) {
-  const merged = { ...EMPTY_CONTRATO, ...contrato };
-  const firmaCompradorInputRef = useRef(null);
-  const firmaVendedorInputRef = useRef(null);
-  const wordInputRef = useRef(null);
+  const { user } = useAuth();
+  const isMaster = user?.role === 'master_admin';
+  const isBusinessAdmin = user?.role === 'admin';
+  const merged = normalizeContratoFromApi(contrato);
+  const text = String(merged.texto_contrato || '').trim()
+    ? String(merged.texto_contrato)
+    : DEFAULT_SERVICE_CONTRACT_TEXT;
 
-  const [previewHtml, setPreviewHtml] = useState('');
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewNote, setPreviewNote] = useState('');
+  const textLocked = Boolean(
+    merged.text_locked
+    || merged.estado_firma === 'firmado'
+    || merged.estado_firma === 'firmando'
+    || merged.firma_comprador?.status === 'firmado'
+    || merged.firma_vendedor?.status === 'firmado',
+  );
+  const fullySigned = merged.estado_firma === 'firmado'
+    || (merged.firma_comprador?.status === 'firmado' && merged.firma_vendedor?.status === 'firmado');
 
-  const imageUnderTextLayout = useMemo(() => htmlHasContractCoverLayer(previewHtml), [previewHtml]);
+  // Defensa: el admin del negocio nunca edita texto, aunque el padre pase canEdit.
+  const effectiveCanEdit = Boolean(canEdit && isMaster && !textLocked);
 
-  const patch = (partial) => onChange({ ...merged, ...partial });
+  const myParty = isMaster ? 'vendedor' : (isBusinessAdmin ? 'comprador' : '');
+  const mySlot = myParty === 'vendedor' ? merged.firma_vendedor : merged.firma_comprador;
+  const iAlreadySigned = mySlot?.status === 'firmado';
+  // Una sola firma por parte: tras firmar, solo puede ver.
+  const canSignMine = Boolean(myParty) && !iAlreadySigned && !fullySigned;
 
-  useEffect(() => {
-    let cancelled = false;
-    const url = String(merged.documento_word_url || '').trim();
-    const nombre = merged.documento_word_nombre || '';
-    if (!url) {
-      setPreviewHtml('');
-      setPreviewNote('');
-      setPreviewLoading(false);
-      return undefined;
+  const [signOpen, setSignOpen] = useState(false);
+  const [ack, setAck] = useState(false);
+  const [docNumber, setDocNumber] = useState('');
+  const [signerName, setSignerName] = useState('');
+  const [signLocalDate, setSignLocalDate] = useState(() => formatLocalDate());
+  const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState('confirm'); // confirm | preparing | nfc | done
+  const [signFullyDone, setSignFullyDone] = useState(false);
+  const [session, setSession] = useState(null);
+  const pollRef = useRef(null);
+
+  const patch = (partial) => {
+    const next = { ...merged, ...partial };
+    if (!effectiveCanEdit) {
+      next.texto_contrato = merged.texto_contrato;
     }
+    onChange(next);
+  };
 
-    const kind = wordFileKind(url, nombre);
-    if (kind === 'doc') {
-      setPreviewHtml('');
-      setPreviewNote(
-        'La vista previa integrada solo admite .docx. Descargue el archivo para abrirlo en Word.'
-      );
-      setPreviewLoading(false);
-      return undefined;
+  const stopPoll = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
-    if (kind !== 'docx') {
-      setPreviewHtml('');
-      setPreviewNote(
-        'No se detectó un .docx. Guarde el contrato como .docx o use Descargar para abrirlo.'
-      );
-      setPreviewLoading(false);
-      return undefined;
+  };
+
+  useEffect(() => () => stopPoll(), []);
+
+  const restoreDefaultText = () => {
+    if (!effectiveCanEdit) return;
+    if (!window.confirm('¿Restaurar el texto base del contrato desde el código?')) return;
+    patch({ texto_contrato: DEFAULT_SERVICE_CONTRACT_TEXT });
+    toast.success('Texto base restaurado. Pulse Guardar cambios para guardarlo.');
+  };
+
+  const openSign = () => {
+    if (!canSignMine) {
+      toast.error(iAlreadySigned
+        ? 'Ya firmó este contrato. Solo puede consultarlo.'
+        : 'No puede firmar en este momento.');
+      return;
     }
+    stopPoll();
+    setAck(false);
+    if (isBusinessAdmin) {
+      setDocNumber('');
+      setSignerName('');
+    } else {
+      setDocNumber(CONTRACT_PROVIDER.documento);
+      setSignerName(CONTRACT_PROVIDER.gerente);
+    }
+    setSignLocalDate(formatLocalDate());
+    setStep('confirm');
+    setSignFullyDone(false);
+    setSession(null);
+    setSignOpen(true);
+  };
 
-    const fullUrl = resolveMediaUrl(url);
-    setPreviewLoading(true);
-    setPreviewNote('');
+  const closeSign = () => {
+    if (busy) return;
+    stopPoll();
+    setSignOpen(false);
+  };
 
-    (async () => {
+  const onSignedOk = (done) => {
+    if (done?.contrato) onChange(normalizeContratoFromApi(done.contrato));
+    setSignFullyDone(Boolean(done?.fully_signed));
+    setStep('done');
+    stopPoll();
+    toast.success(
+      done?.fully_signed
+        ? 'Contrato firmado por ambas partes'
+        : 'Su firma quedó registrada en el contrato',
+    );
+  };
+
+  const startPoll = (requestId) => {
+    stopPoll();
+    pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(fullUrl, { credentials: 'omit' });
-        if (!res.ok) throw new Error(`No se pudo obtener el documento (${res.status})`);
-        const buf = await res.arrayBuffer();
-        const { value: html } = await mammoth.convertToHtml({ arrayBuffer: buf });
-        if (!cancelled) {
-          const base = html || '<p>(Documento sin texto reconocible)</p>';
-          setPreviewHtml(normalizeMammothContractHtml(base));
+        const st = await api.get(`/contrato/sign/status/${requestId}`);
+        if (st?.contrato) onChange(normalizeContratoFromApi(st.contrato));
+        if (st?.completed || st?.party_signed) {
+          onSignedOk({
+            fully_signed: st.fully_signed,
+            contrato: st.contrato,
+          });
         }
-      } catch (e) {
-        if (!cancelled) {
-          setPreviewHtml('');
-          setPreviewNote(e.message || 'No se pudo generar la vista previa. Use Descargar para abrir el archivo.');
-        }
-      } finally {
-        if (!cancelled) setPreviewLoading(false);
+      } catch (_) {
+        /* seguir intentando hasta expirar */
       }
-    })();
+    }, 2500);
+  };
 
-    return () => {
-      cancelled = true;
-    };
-  }, [merged.documento_word_url, merged.documento_word_nombre]);
-
-  const uploadWordDoc = async (file) => {
-    if (!file) return;
-    if (!canEdit) {
-      toast.error('No tienes permiso para subir el contrato.');
+  const beginSign = async () => {
+    if (!ack) {
+      toast.error('Confirme que revisó el contrato y desea firmarlo.');
       return;
     }
-    const name = String(file.name || '');
-    const lower = name.toLowerCase();
-    if (!lower.endsWith('.doc') && !lower.endsWith('.docx')) {
-      toast.error('Use un archivo Word (.doc o .docx)');
+    if (isBusinessAdmin && !signerName.trim()) {
+      toast.error('Indique el nombre del firmante.');
       return;
     }
+    if (isBusinessAdmin && !docNumber.trim()) {
+      toast.error('Indique el número de documento (DNIe / DNI).');
+      return;
+    }
+    setBusy(true);
+    setStep('preparing');
     try {
-      const uploaded = await api.upload(file);
-      const url = uploaded?.url || '';
-      patch({
-        documento_word_url: url,
-        documento_word_nombre: name || 'contrato.docx',
+      const prep = await api.post('/contrato/sign', {
+        party: myParty,
+        document_number: docNumber.trim(),
+        signer_name: signerName.trim(),
       });
-      toast.success('Documento cargado. Pulse Guardar cambios para conservarlo.');
+      if (prep?.contrato) onChange(normalizeContratoFromApi(prep.contrato));
+      setSession(prep);
+      setStep('nfc');
+      if (prep?.request_id) startPoll(prep.request_id);
     } catch (err) {
-      toast.error(err.message || 'No se pudo subir el documento');
+      setStep('confirm');
+      toast.error(err.message || 'No se pudo preparar la firma');
     } finally {
-      if (wordInputRef.current) wordInputRef.current.value = '';
+      setBusy(false);
     }
   };
 
-  const uploadFirma = async (file, field) => {
-    if (!file) return;
-    if (!canEdit) {
-      toast.error('No tienes permiso para subir firmas.');
+  const completeWithMock = async () => {
+    if (!session?.request_id || !session?.temporary_token) return;
+    if (!session.mock_allowed && session.provider !== 'mock') {
+      toast.error('MOCK no permitido en este despliegue.');
       return;
     }
+    setBusy(true);
     try {
-      const uploaded = await api.upload(file);
-      const url = uploaded?.url || '';
-      patch({ [field]: url });
-      toast.success('Firma cargada. Pulsa Guardar cambios para conservarla.');
+      const done = await api.post('/contrato/sign/complete', {
+        request_id: session.request_id,
+        temporary_token: session.temporary_token,
+        ack_reviewed: true,
+        document_number: docNumber.trim(),
+        signer_name: signerName.trim(),
+        use_mock: true,
+      });
+      onSignedOk(done);
     } catch (err) {
-      toast.error(err.message || 'No se pudo subir la imagen');
+      if (err.message && /Espere la firma|AWAITING_MOBILE/i.test(err.message)) {
+        toast('Espere la firma desde el teléfono…');
+      } else {
+        toast.error(err.message || 'No se pudo completar con MOCK');
+      }
     } finally {
-      if (field === 'firma_comprador_url' && firmaCompradorInputRef.current) firmaCompradorInputRef.current.value = '';
-      if (field === 'firma_vendedor_url' && firmaVendedorInputRef.current) firmaVendedorInputRef.current.value = '';
+      setBusy(false);
     }
   };
+
+  const copyText = async (value, label) => {
+    try {
+      await navigator.clipboard.writeText(String(value || ''));
+      toast.success(`${label} copiado`);
+    } catch {
+      toast.error('No se pudo copiar');
+    }
+  };
+
+  const pdfUrl = merged.pdf_firmado_url || merged.pdf_original_url;
+  const deepLink = session?.mobile?.deep_link || '';
+  const sessionUrl = session?.mobile?.session_url || '';
+  const webSignUrl = session?.mobile?.web_sign_url
+    || (session?.temporary_token
+      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/firmar-contrato?token=${encodeURIComponent(session.temporary_token)}`
+      : '');
+  const qrTarget = webSignUrl || deepLink || sessionUrl;
+
+  const displayText = applySignaturesIntoContractText(text, merged);
+  const showTechMeta = isMaster;
 
   return (
     <div className={cardClassName}>
-      <h3 className="font-bold text-[var(--ui-body-text)] text-lg">Contrato del servicio</h3>
-
-      <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-[color:var(--ui-border)]">
-          <div className="flex items-center gap-2 min-w-0">
-            <MdDescription className="text-xl text-[var(--ui-accent-muted)] shrink-0" />
-            <p className="font-bold text-[var(--ui-body-text)] tracking-wide">CONTRATO</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {merged.documento_word_url ? (
-              <>
-                <span
-                  className="text-xs text-[var(--ui-muted)] truncate max-w-[200px] sm:max-w-xs"
-                  title={merged.documento_word_nombre}
-                >
-                  {merged.documento_word_nombre || 'documento'}
+      <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="min-w-0">
+          <h3 className="font-bold text-[var(--ui-body-text)] text-base sm:text-lg leading-tight">
+            Contrato digital del servicio
+          </h3>
+          {showTechMeta ? (
+            <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
+              <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)]">
+                Estado: <strong>{merged.estado_firma || 'borrador'}</strong>
+              </span>
+              <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)]">
+                Versión: <strong>{merged.version || 1}</strong>
+              </span>
+              {merged.document_hash ? (
+                <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] font-mono truncate max-w-[14rem]" title={merged.document_hash}>
+                  Hash: {merged.document_hash.slice(0, 12)}…
                 </span>
-                <a
-                  href={resolveMediaUrl(merged.documento_word_url)}
-                  download
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs px-2 py-1.5 inline-flex items-center gap-1 text-[var(--ui-accent-muted)] hover:underline"
-                >
-                  <MdDownload className="text-base" /> Descargar
-                </a>
-                {canEdit ? (
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          {pdfUrl ? (
+            <a
+              className="btn-secondary text-xs py-1.5 px-2 inline-flex items-center gap-1"
+              href={resolveMediaUrl(pdfUrl)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <MdPictureAsPdf className="text-base" /> Ver PDF
+            </a>
+          ) : null}
+          {effectiveCanEdit ? (
+            <button
+              type="button"
+              className="btn-secondary text-xs py-1.5 px-2 inline-flex items-center gap-1"
+              onClick={restoreDefaultText}
+            >
+              <MdRestore className="text-base" /> Restaurar texto base
+            </button>
+          ) : null}
+          {canSignMine ? (
+            <button
+              type="button"
+              className="btn-primary text-sm py-2 px-3 inline-flex items-center gap-1.5"
+              onClick={openSign}
+            >
+              <MdDraw className="text-lg" /> Firmar digitalmente
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {showTechMeta && fullySigned ? (
+        <div className="shrink-0 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 flex items-start gap-2">
+          <MdCheckCircle className="text-lg shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">Contrato firmado digitalmente</p>
+            <p className="text-[10px] mt-0.5">Fecha: {formatDateTime(merged.firmado_en)}</p>
+          </div>
+        </div>
+      ) : null}
+      {showTechMeta && !fullySigned && textLocked ? (
+        <div className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-950 inline-flex items-center gap-1.5">
+          <MdLock /> Texto bloqueado: hay firma en curso o registrada.
+        </div>
+      ) : null}
+
+      <div className="flex-1 min-h-0 rounded-xl border border-[color:var(--ui-border)] bg-[#fbf8f2] overflow-hidden flex flex-col">
+        {effectiveCanEdit ? (
+          <textarea
+            className="contract-body-text flex-1 min-h-0 w-full h-full resize-none bg-[#fbf8f2] text-[#3d2a1c] px-4 py-3 text-sm leading-relaxed border-0 focus:outline-none focus:ring-0 overflow-y-auto"
+            value={text}
+            onChange={(e) => patch({ texto_contrato: e.target.value })}
+            spellCheck
+          />
+        ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+            <pre className="contract-body-text whitespace-pre-wrap break-words px-4 py-3 text-sm leading-relaxed text-[#3d2a1c] m-0">
+              {displayText}
+            </pre>
+          </div>
+        )}
+      </div>
+
+      <Modal
+        isOpen={signOpen}
+        onClose={closeSign}
+        title="Firma digital"
+        size="md"
+        variant="light"
+      >
+        {step === 'done' ? (
+          <div className="space-y-4 text-sm">
+            <p className="font-semibold text-emerald-700 flex items-center gap-2">
+              <MdCheckCircle className="text-xl" /> Firma registrada
+            </p>
+            <p className="ui-text-muted">
+              Quedó asociada a este contrato (versión {merged.version}).
+              {signFullyDone || fullySigned
+                ? ' Ambas partes ya firmaron; el contrato queda cerrado.'
+                : ' Falta la firma de la otra parte.'}
+            </p>
+            <button type="button" className="btn-primary w-full" onClick={closeSign}>
+              Cerrar
+            </button>
+          </div>
+        ) : step === 'preparing' ? (
+          <p className="text-center ui-text-muted py-8 text-sm">Preparando documento PDF y hash…</p>
+        ) : step === 'nfc' ? (
+          <div className="space-y-4 text-sm text-[var(--ui-body-text)]">
+            <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 text-center space-y-2">
+              <MdNfc className="text-4xl mx-auto text-[var(--ui-accent)]" />
+              <p className="font-semibold">Acerca tu DNI electrónico a la parte posterior del teléfono</p>
+              <p className="text-xs ui-text-muted">
+                Ingresa el PIN solo en el dispositivo. El PIN nunca llega a Resto Fadey.
+              </p>
+            </div>
+
+            {session?.document_hash ? (
+              <p className="text-[11px] font-mono break-all ui-text-muted">
+                Hash PDF: {session.document_hash}
+              </p>
+            ) : null}
+
+            {session?.pdf_original_url ? (
+              <a
+                className="btn-secondary w-full inline-flex justify-center items-center gap-1 text-sm"
+                href={resolveMediaUrl(session.pdf_original_url)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <MdPictureAsPdf /> Abrir PDF definitivo
+              </a>
+            ) : null}
+
+            {(qrTarget) ? (
+              <div className="flex flex-col items-center gap-2">
+                <img
+                  src={qrImageUrl(qrTarget)}
+                  alt="QR firma"
+                  width={160}
+                  height={160}
+                  className="rounded border border-[color:var(--ui-border)] bg-white p-1"
+                />
+                <p className="text-[11px] ui-text-muted text-center">
+                  Escanee con el teléfono para abrir la página de firma / app Android.
+                </p>
+                {webSignUrl ? (
+                  <a
+                    href={webSignUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[var(--ui-accent)] hover:underline"
+                  >
+                    Abrir página de firma
+                  </a>
+                ) : null}
+                {deepLink ? (
                   <button
                     type="button"
-                    className="text-xs text-red-500 hover:underline"
-                    onClick={() => patch({ documento_word_url: '', documento_word_nombre: '' })}
+                    className="text-xs inline-flex items-center gap-1 ui-text-muted hover:underline"
+                    onClick={() => void copyText(deepLink, 'Enlace profundo')}
                   >
-                    Quitar archivo
+                    <MdContentCopy /> Copiar deep link
                   </button>
                 ) : null}
-              </>
-            ) : null}
-            {canEdit ? (
-              <>
-                <button
-                  type="button"
-                  className="btn-secondary text-xs py-1.5 px-2 inline-flex items-center gap-1"
-                  onClick={() => wordInputRef.current?.click()}
-                >
-                  <MdUploadFile className="text-base" /> Cargar Word
-                </button>
-                <input
-                  ref={wordInputRef}
-                  type="file"
-                  accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  className="hidden"
-                  onChange={(e) => uploadWordDoc(e.target.files?.[0])}
-                />
-              </>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="contract-page-scroll border-t border-[color:var(--ui-border)]">
-          {!merged.documento_word_url ? (
-            <div className="flex flex-col items-center justify-center min-h-[240px] text-center text-[var(--ui-muted)] text-sm gap-2 px-4 py-8">
-              <p>No hay documento cargado.</p>
-              {canEdit ? (
-                <p className="text-xs">Use <strong className="text-[var(--ui-body-text)]">Cargar Word</strong> arriba (.doc / .docx, hasta 15 MB).</p>
-              ) : null}
-            </div>
-          ) : previewLoading ? (
-            <div className="flex justify-center py-16 text-[var(--ui-muted)] text-sm">Generando vista previa…</div>
-          ) : previewNote && !previewHtml ? (
-            <p className="text-sm text-[var(--ui-muted)] leading-relaxed px-4 py-6">{previewNote}</p>
-          ) : (
-            <>
-              {previewNote ? (
-                <p className="text-xs text-amber-500/90 px-4 pt-3 max-w-[210mm] mx-auto">{previewNote}</p>
-              ) : null}
-              <div className="contract-page-canvas">
-                <div
-                  className={`contract-mammoth-preview contract-mammoth-preview--page ${imageUnderTextLayout ? 'contract-mammoth-preview--image-under-text' : ''}`}
-                  dangerouslySetInnerHTML={{ __html: previewHtml }}
-                />
+                {sessionUrl ? (
+                  <button
+                    type="button"
+                    className="text-xs inline-flex items-center gap-1 ui-text-muted hover:underline"
+                    onClick={() => void copyText(sessionUrl, 'URL de sesión')}
+                  >
+                    <MdContentCopy /> Copiar URL API móvil
+                  </button>
+                ) : null}
               </div>
-            </>
-          )}
-        </div>
-      </div>
+            ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 border-t border-[color:var(--ui-border)]">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-[var(--ui-body-text)]">Firma del comprador</p>
-          <div className="rounded-lg border-2 border-dashed border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] min-h-[120px] flex items-center justify-center overflow-hidden">
-            {merged.firma_comprador_url ? (
-              <img
-                src={resolveMediaUrl(merged.firma_comprador_url)}
-                alt="Firma comprador"
-                className="max-h-32 max-w-full object-contain p-2"
-              />
-            ) : (
-              <span className="text-xs text-[var(--ui-muted)] px-4 text-center">Sin imagen</span>
-            )}
-          </div>
-          {canEdit ? (
-            <div className="flex flex-wrap gap-2">
+            <p className="text-center text-xs ui-text-muted animate-pulse">
+              Esperando firma desde el teléfono…
+            </p>
+
+            {(session?.mock_allowed || session?.provider === 'mock') ? (
               <button
                 type="button"
-                className="btn-secondary text-sm py-2"
-                onClick={() => firmaCompradorInputRef.current?.click()}
+                className="btn-secondary w-full disabled:opacity-50"
+                disabled={busy}
+                onClick={() => void completeWithMock()}
               >
-                Cargar imagen
+                Continuar con firma de prueba (MOCK)
               </button>
-              <input
-                ref={firmaCompradorInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                onChange={(e) => uploadFirma(e.target.files?.[0], 'firma_comprador_url')}
-              />
-              {merged.firma_comprador_url ? (
-                <button
-                  type="button"
-                  className="text-sm text-red-600 hover:underline"
-                  onClick={() => patch({ firma_comprador_url: '' })}
-                >
-                  Quitar
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-[var(--ui-body-text)]">Firma del vendedor</p>
-          <div className="rounded-lg border-2 border-dashed border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] min-h-[120px] flex items-center justify-center overflow-hidden">
-            {merged.firma_vendedor_url ? (
-              <img
-                src={resolveMediaUrl(merged.firma_vendedor_url)}
-                alt="Firma vendedor"
-                className="max-h-32 max-w-full object-contain p-2"
-              />
-            ) : (
-              <span className="text-xs text-[var(--ui-muted)] px-4 text-center">Sin imagen</span>
-            )}
+            ) : null}
           </div>
-          {canEdit ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="btn-secondary text-sm py-2"
-                onClick={() => firmaVendedorInputRef.current?.click()}
-              >
-                Cargar imagen
-              </button>
-              <input
-                ref={firmaVendedorInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                onChange={(e) => uploadFirma(e.target.files?.[0], 'firma_vendedor_url')}
-              />
-              {merged.firma_vendedor_url ? (
-                <button
-                  type="button"
-                  className="text-sm text-red-600 hover:underline"
-                  onClick={() => patch({ firma_vendedor_url: '' })}
-                >
-                  Quitar
-                </button>
-              ) : null}
+        ) : (
+          <div className="space-y-4 text-sm text-[var(--ui-body-text)]">
+            <div className="rounded-lg bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] p-3 space-y-3">
+              {isBusinessAdmin ? (
+                <>
+                  <label className="block">
+                    <span className="text-xs font-medium ui-text-muted">Nombre</span>
+                    <input
+                      className="input-field mt-1"
+                      value={signerName}
+                      onChange={(e) => setSignerName(e.target.value)}
+                      placeholder=""
+                      autoComplete="name"
+                      disabled={busy}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium ui-text-muted">N° documento (DNIe / DNI)</span>
+                    <input
+                      className="input-field mt-1"
+                      value={docNumber}
+                      onChange={(e) => setDocNumber(e.target.value)}
+                      placeholder=""
+                      inputMode="numeric"
+                      disabled={busy}
+                    />
+                  </label>
+                  <p>
+                    <span className="ui-text-muted">Parte:</span> Cliente
+                  </p>
+                  <p>
+                    <span className="ui-text-muted">Fecha:</span> {signLocalDate}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    <span className="ui-text-muted">Nombre:</span> {CONTRACT_PROVIDER.gerente}
+                  </p>
+                  <p>
+                    <span className="ui-text-muted">N° documento (DNIe / DNI):</span>{' '}
+                    {CONTRACT_PROVIDER.documento}
+                  </p>
+                  <p><span className="ui-text-muted">Parte:</span> {partyLabel(myParty)}</p>
+                  <p><span className="ui-text-muted">Fecha:</span> {signLocalDate}</p>
+                </>
+              )}
             </div>
-          ) : null}
-        </div>
-      </div>
+
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input type="checkbox" className="mt-1" checked={ack} onChange={(e) => setAck(e.target.checked)} disabled={busy} />
+              <span>He revisado el contrato y deseo firmarlo digitalmente.</span>
+            </label>
+
+            <button
+              type="button"
+              className="btn-primary w-full disabled:opacity-50"
+              disabled={busy || !ack}
+              onClick={() => void beginSign()}
+            >
+              Continuar con firma
+            </button>
+            <p className="text-[11px] ui-text-muted">
+              Se generará el PDF definitivo. Luego podrá firmar con NFC en el teléfono (PIN solo en el dispositivo).
+            </p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

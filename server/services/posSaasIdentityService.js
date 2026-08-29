@@ -183,6 +183,32 @@ function derivePaymentStatusForInfo() {
   return 'none';
 }
 
+/** Perfil público para vincular web service (sin login). */
+function buildPublicRestaurantDiscoveryPayload() {
+  const restaurant = queryOne(
+    'SELECT name, legal_name, company_ruc, phone, email, address FROM restaurants LIMIT 1',
+  );
+  const admin = queryOne(
+    `SELECT full_name, email FROM users
+     WHERE lower(role) IN ('admin','master_admin') AND is_active = 1
+     ORDER BY CASE WHEN lower(role) = 'admin' THEN 0 ELSE 1 END, created_at ASC
+     LIMIT 1`,
+  );
+  const legalName =
+    String(restaurant?.legal_name || '').trim()
+    || String(admin?.full_name || '').trim();
+
+  return {
+    name: String(restaurant?.name || '').trim() || 'Mi Restaurante',
+    legalName,
+    email: String(restaurant?.email || admin?.email || '').trim(),
+    phone: String(restaurant?.phone || '').trim(),
+    ruc: String(restaurant?.company_ruc || '').trim(),
+    address: String(restaurant?.address || '').trim(),
+    product: 'resto-fadey',
+  };
+}
+
 function buildRestaurantInfoResponse() {
   const store = touchSaasLastActivity();
   const identity = readClientIdentity();
@@ -280,6 +306,7 @@ module.exports = {
   ensureSaasPosIdentity,
   touchSaasLastActivity,
   buildRestaurantInfoResponse,
+  buildPublicRestaurantDiscoveryPayload,
   getSystemHealthPayload,
   assertClientIdMatches,
   getEffectiveClientId,

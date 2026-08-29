@@ -4,7 +4,8 @@ import toast from 'react-hot-toast';
 import { api, resolveMediaUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import Modal from '../../components/Modal';
-import RestaurantServiceContractForm, { normalizeContratoFromApi } from '../../components/RestaurantServiceContractForm';
+import RestaurantServiceContractForm from '../../components/RestaurantServiceContractForm';
+import { normalizeContratoFromApi } from '../../utils/contratoNormalize';
 import MasterRestaurantBackupPanel from '../../components/master/MasterRestaurantBackupPanel';
 import {
   MdAdminPanelSettings,
@@ -32,7 +33,7 @@ import MasterRestaurantBillingWorkspace from '../../components/master/MasterRest
 const TABS = [
   { id: 'usuarios', label: 'Usuario administrador', icon: MdAdminPanelSettings },
   { id: 'plan', label: 'Plan comercial', icon: MdLayers },
-  { id: 'contrato', label: 'Contrato del servicio', icon: MdReceiptLong },
+  { id: 'contrato', label: 'Contrato digital del servicio', icon: MdReceiptLong },
   { id: 'sunat_bot', label: 'Bot facturación SUNAT', icon: MdReceipt },
   { id: 'pago_uso_sistema', label: 'Pago de plan', icon: MdPayment },
   { id: 'facturacion', label: 'Fecha de facturación', icon: MdEventAvailable },
@@ -602,7 +603,7 @@ export default function MasterAdmin() {
         )}
 
         {tab === 'contrato' && (
-          <div className="space-y-3">
+          <div className="flex flex-col gap-2 min-h-0 h-[calc(100dvh-7.5rem)]">
             {serviceContratoLoading ? (
               <div className="card py-12 flex justify-center">
                 <div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" />
@@ -611,19 +612,22 @@ export default function MasterAdmin() {
               <>
                 <RestaurantServiceContractForm
                   contrato={serviceContrato}
-                  canEdit
+                  canEdit={!serviceContrato?.text_locked && serviceContrato?.estado_firma !== 'firmado'}
                   onChange={setServiceContrato}
+                  cardClassName="rf-contrato-panel rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] flex flex-col min-h-0 flex-1 overflow-hidden p-3 sm:p-4 gap-2"
                 />
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    className="btn-primary flex items-center gap-2"
-                    disabled={serviceContratoSaving}
-                    onClick={saveServiceContrato}
-                  >
-                    <MdSave /> {serviceContratoSaving ? 'Guardando…' : 'Guardar cambios'}
-                  </button>
-                </div>
+                {!serviceContrato?.text_locked && serviceContrato?.estado_firma !== 'firmado' ? (
+                  <div className="flex justify-end shrink-0">
+                    <button
+                      type="button"
+                      className="btn-primary flex items-center gap-2"
+                      disabled={serviceContratoSaving}
+                      onClick={saveServiceContrato}
+                    >
+                      <MdSave /> {serviceContratoSaving ? 'Guardando…' : 'Guardar cambios'}
+                    </button>
+                  </div>
+                ) : null}
               </>
             )}
           </div>

@@ -7,7 +7,7 @@ import { getSocket } from '../hooks/useSocket';
 import StaffTeamChat from './StaffTeamChat';
 import Modal from './Modal';
 import toast from 'react-hot-toast';
-import { MdNotificationsNone, MdClose, MdChat, MdCampaign, MdDelete, MdUpload } from 'react-icons/md';
+import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload } from 'react-icons/md';
 import {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   PAGO_PLAN_MODULE_PATH,
@@ -16,6 +16,7 @@ import {
 
 const DISMISSED_AVISOS_STORAGE_KEY = 'admin_avisos_descartados_v1';
 const STAFF_CHAT_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
+const MESSAGE_TOAST_MS = 5000;
 
 function loadDismissedAvisoIds() {
   try {
@@ -31,18 +32,36 @@ function saveDismissedAvisoIds(ids) {
   localStorage.setItem(DISMISSED_AVISOS_STORAGE_KEY, JSON.stringify([...new Set(ids.map(String))]));
 }
 
-function defaultTabForUser(hasAvisosTab) {
-  return hasAvisosTab ? 'avisos' : 'chat';
+function showIncomingMessageToast(msg) {
+  const name = String(msg.sender_name || (msg.recipient_id ? 'Mensaje privado' : 'Equipo')).trim() || 'Mensaje';
+  const body = String(msg.body || '').trim() || '(sin texto)';
+  toast.custom(
+    () => (
+      <div
+        className="max-w-sm w-[min(100vw-2rem,22rem)] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg px-4 py-3 text-[var(--ui-body-text)]"
+        role="status"
+      >
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          <MdChat className="text-[var(--ui-accent)] shrink-0" />
+          {name}
+        </p>
+        <p className="text-xs mt-1.5 text-[var(--ui-body-text)] whitespace-pre-wrap break-words line-clamp-4">
+          {body}
+        </p>
+      </div>
+    ),
+    { duration: MESSAGE_TOAST_MS, id: `staff-chat-${msg.id || Date.now()}` },
+  );
 }
 
 /**
- * Campana de notificaciones: avisos del maestro y chat del equipo.
- * Las alertas operativas viven solo en Escritorio → Monitoreo en vivo.
+ * Dos botones independientes: Avisos (sistema) y Mensajes (chat del equipo).
+ * Al llegar un mensaje se muestra notificación con nombre y texto durante 5 s.
  */
 export default function NotificationCenter({ className = '' }) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const showAvisosTab = Boolean(user);
+  const showAvisosBtn = Boolean(user);
   const canUseStaffChat = Boolean(user?.id)
     && user?.role !== 'master_admin'
     && user?.type !== 'customer'
@@ -51,7 +70,7 @@ export default function NotificationCenter({ className = '' }) {
   const seesPagoUsoAviso = user?.role === 'admin' || user?.role === 'master_admin';
 
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState(() => defaultTabForUser(showAvisosTab));
+  const [tab, setTab] = useState(showAvisosBtn ? 'avisos' : 'chat');
   const [unreadChat, setUnreadChat] = useState(0);
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [dismissedAvisoIds, setDismissedAvisoIds] = useState(loadDismissedAvisoIds);
@@ -73,11 +92,11 @@ export default function NotificationCenter({ className = '' }) {
   chatActiveRef.current = isChatActive;
 
   useEffect(() => {
-    if (!showAvisosTab) setTab('chat');
-  }, [showAvisosTab]);
+    if (!showAvisosBtn && tab === 'avisos') setTab('chat');
+  }, [showAvisosBtn, tab]);
 
   useEffect(() => {
-    if (!showAvisosTab) return;
+    if (!showAvisosBtn) return;
     const load = () => {
       api.get('/master-admin/admin-notifications')
         .then((data) => setAdminNotifications(Array.isArray(data) ? data : []))
@@ -86,13 +105,12 @@ export default function NotificationCenter({ className = '' }) {
     load();
     const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
-  }, [showAvisosTab]);
+  }, [showAvisosBtn]);
 
   const onUnreadDelta = useCallback((n) => {
     setUnreadChat((u) => u + n);
   }, []);
 
-  /** Escucha chat aunque el panel esté cerrado (antes el listener solo vivía con Mensajes abierto). */
   useEffect(() => {
     if (!canUseStaffChat) return undefined;
     const s = getSocket();
@@ -117,10 +135,7 @@ export default function NotificationCenter({ className = '' }) {
       }
       if (chatActiveRef.current) return;
       setUnreadChat((u) => u + 1);
-      toast(msg.recipient_id ? (msg.sender_name || 'Privado') : (msg.sender_name || 'Equipo'), {
-        icon: msg.recipient_id ? '✉️' : '💬',
-        description: String(msg.body || '').slice(0, 140),
-      });
+      showIncomingMessageToast(msg);
     };
 
     s.on('staff-chat-message', onMsg);
@@ -131,12 +146,9 @@ export default function NotificationCenter({ className = '' }) {
   }, [canUseStaffChat, user?.id]);
 
   useEffect(() => {
-    if (isChatActive) {
-      setUnreadChat(0);
-    }
+    if (isChatActive) setUnreadChat(0);
   }, [isChatActive]);
 
-  /** Cerrar al clic fuera del panel y de la campana (cubre toda la página). */
   useEffect(() => {
     if (!open) return undefined;
 
@@ -170,14 +182,15 @@ export default function NotificationCenter({ className = '' }) {
     setAvisoToDismiss(null);
   };
 
-  const totalBadge = unreadChat + (showAvisosTab ? visibleAdminNotifications.length : 0);
-
-  const openPanel = () => {
+  const openWithTab = (nextTab) => {
     setOpen((prev) => {
-      if (!prev) setTab(defaultTabForUser(showAvisosTab));
-      return !prev;
+      if (prev && tab === nextTab) return false;
+      setTab(nextTab);
+      return true;
     });
   };
+
+  const panelTitle = tab === 'avisos' ? 'Avisos' : 'Mensajes';
 
   const panel =
     open && typeof document !== 'undefined'
@@ -192,41 +205,17 @@ export default function NotificationCenter({ className = '' }) {
               ref={panelRef}
               className="fixed z-[60] top-14 right-3 sm:right-6 w-[min(100vw-1.5rem,420px)] h-[min(72vh,580px)] flex flex-col rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-2xl overflow-hidden text-[var(--ui-body-text)]"
               role="dialog"
-              aria-label="Centro de mensajes"
+              aria-label={panelTitle}
             >
-              <div className="flex items-center justify-between px-3 py-2 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                {showAvisosTab ? (
-                  <div className="flex flex-wrap rounded-lg bg-[var(--ui-body-bg)] p-0.5 gap-0.5 border border-[color:var(--ui-border)] max-w-[min(100%,340px)]">
-                    <button
-                      type="button"
-                      onClick={() => setTab('avisos')}
-                      className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium ${
-                        tab === 'avisos' ? 'bg-[var(--ui-accent)] text-[#fff]' : 'text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
-                      }`}
-                    >
-                      <MdCampaign className="text-base shrink-0" /> Avisos
-                      {visibleAdminNotifications.length > 0 && (
-                        <span className="bg-red-500 text-[#fff] text-[10px] px-1.5 rounded-full">{visibleAdminNotifications.length}</span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTab('chat')}
-                      className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium ${
-                        tab === 'chat' ? 'bg-[var(--ui-accent)] text-[#fff]' : 'text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
-                      }`}
-                    >
-                      <MdChat className="text-base shrink-0" /> Mensajes
-                      {unreadChat > 0 && (
-                        <span className="bg-red-500 text-[#fff] text-[10px] px-1.5 rounded-full">{unreadChat > 99 ? '99+' : unreadChat}</span>
-                      )}
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
-                    <MdChat className="text-lg text-[var(--ui-accent)]" /> Mensajes del equipo
-                  </p>
-                )}
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
+                <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
+                  {tab === 'avisos' ? (
+                    <MdCampaign className="text-lg text-[var(--ui-accent)]" />
+                  ) : (
+                    <MdChat className="text-lg text-[var(--ui-accent)]" />
+                  )}
+                  {panelTitle}
+                </p>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
@@ -238,7 +227,7 @@ export default function NotificationCenter({ className = '' }) {
               </div>
 
               <div className="flex-1 min-h-0 overflow-hidden flex flex-col p-3">
-                {tab === 'avisos' && showAvisosTab && (
+                {tab === 'avisos' && showAvisosBtn && (
                   <div className="h-full overflow-y-auto space-y-2">
                     {visibleAdminNotifications.length === 0 ? (
                       <p className="text-sm text-[var(--ui-muted)] text-center py-8">Sin avisos del sistema.</p>
@@ -308,22 +297,48 @@ export default function NotificationCenter({ className = '' }) {
         )
       : null;
 
+  const btnClass = (active) =>
+    `p-2 rounded-lg transition-colors relative ${
+      active ? 'bg-[var(--ui-sidebar-hover)]' : 'hover:bg-[var(--ui-sidebar-hover)]'
+    }`;
+
   return (
-    <div ref={rootRef} className={`relative ${className}`}>
-      <button
-        type="button"
-        onClick={openPanel}
-        className="p-2 hover:bg-[var(--ui-sidebar-hover)] rounded-lg transition-colors relative"
-        title="Mensajes y notificaciones"
-        aria-expanded={open}
-      >
-        <MdNotificationsNone className="text-xl text-[var(--ui-body-text)]" />
-        {totalBadge > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
-            {totalBadge > 99 ? '99+' : totalBadge}
-          </span>
-        )}
-      </button>
+    <div ref={rootRef} className={`relative flex items-center gap-0.5 ${className}`}>
+      {showAvisosBtn ? (
+        <button
+          type="button"
+          onClick={() => openWithTab('avisos')}
+          className={btnClass(open && tab === 'avisos')}
+          title="Avisos"
+          aria-expanded={open && tab === 'avisos'}
+          aria-label="Avisos"
+        >
+          <MdCampaign className="text-xl text-[var(--ui-body-text)]" />
+          {visibleAdminNotifications.length > 0 ? (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
+              {visibleAdminNotifications.length > 99 ? '99+' : visibleAdminNotifications.length}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
+
+      {canUseStaffChat ? (
+        <button
+          type="button"
+          onClick={() => openWithTab('chat')}
+          className={btnClass(open && tab === 'chat')}
+          title="Mensajes"
+          aria-expanded={open && tab === 'chat'}
+          aria-label="Mensajes"
+        >
+          <MdChat className="text-xl text-[var(--ui-body-text)]" />
+          {unreadChat > 0 ? (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
+              {unreadChat > 99 ? '99+' : unreadChat}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
 
       {panel}
 

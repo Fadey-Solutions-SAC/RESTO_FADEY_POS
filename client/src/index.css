@@ -1011,6 +1011,23 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
   }
 
   /* Vista previa contrato Word: lienzo tamaño A4 (como página Word) + scroll */
+  /* Contrato: letras en serif; solo dígitos 0-9 en Arial (unicode-range). */
+  @font-face {
+    font-family: 'ContractDigitsArial';
+    src: local('Arial'), local('Arial MT'), local('Helvetica Neue'), local('Helvetica');
+    unicode-range: U+0030-0039;
+  }
+
+  .contract-body-text {
+    font-family:
+      'ContractDigitsArial',
+      'Playfair Display',
+      'Cormorant Garamond',
+      Georgia,
+      'Times New Roman',
+      serif;
+  }
+
   .contract-page-scroll {
     max-height: min(88vh, 1200px);
     overflow-y: auto;
