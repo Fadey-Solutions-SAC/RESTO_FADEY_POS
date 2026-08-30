@@ -49,7 +49,7 @@ function createCentralSyncClient(options = {}) {
     }
   }
 
-  async function postJson(path, body, extraHeaders = {}) {
+  async function postJson(path, body, extraHeaders = {}, options = {}) {
     if (!isCentralSyncConfigured(identity)) {
       return { skipped: true, reason: 'central_not_configured' };
     }
@@ -72,7 +72,10 @@ function createCentralSyncClient(options = {}) {
         data = { raw: text };
       }
       if (!res.ok) {
-        log.warn('[central-sync] HTTP', res.status, path, data?.error || text?.slice(0, 200));
+        const silent404 = options.silent404 === true && res.status === 404;
+        if (!silent404) {
+          log.warn('[central-sync] HTTP', res.status, path, data?.error || text?.slice(0, 200));
+        }
         return { ok: false, status: res.status, data };
       }
       return { ok: true, status: res.status, data };
@@ -109,7 +112,28 @@ function createCentralSyncClient(options = {}) {
     },
     /** Perfil del POS hacia el panel (plan, URL Render, contacto). */
     async syncClientProfile(profile) {
-      return postJson('/api/clients/profile', profile);
+      const res = await postJson('/api/clients/profile', profile, {}, { silent404: true });
+      if (res.ok) return res;
+      if (res.status === 404 || res.status === 405) {
+        const renderUrl = String(profile?.renderUrl || '').trim();
+        return postJson('/api/sync/events', {
+          ...basePayload(),
+          eventType: SYNC_EVENT_TYPES.CLIENT_PROFILE,
+          sourceWebServiceUrl: renderUrl || basePayload().sourceWebServiceUrl,
+          payload: {
+            ...profile,
+            restaurantName: profile?.restaurantName || '',
+            renderUrl,
+            plan: profile?.plan || '',
+            licenseStatus: profile?.licenseStatus || '',
+            expirationDate: profile?.expirationDate || '',
+            locked:
+              profile?.licenseStatus === 'suspendido'
+              || profile?.licenseStatus === 'suspended',
+          },
+        });
+      }
+      return res;
     },
     async syncPayment(payment) {
       return postJson('/api/payments', {

@@ -238,8 +238,11 @@ function syncSaasClientProfile() {
       lastActivity: info.lastActivity,
     };
     const res = await c.syncClientProfile(profile);
-    if (!res?.ok) {
-      console.warn('[central-sync] perfil SaaS:', res?.data?.error || res?.error || res?.status);
+    if (!res?.ok && !res?.skipped) {
+      console.warn(
+        '[central-sync] perfil SaaS:',
+        res?.data?.error || res?.error || res?.status || 'sin respuesta',
+      );
     }
   });
 }

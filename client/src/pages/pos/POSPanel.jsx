@@ -1456,7 +1456,7 @@ export default function POSPanel() {
           observations: closingNotes,
         },
         ...posRegisterBody(),
-      });
+      }, { skipOffline: true });
       toast.success('Caja cerrada — Informe guardado');
       setShowCloseModal(false);
       setClosingAtPreview(null);

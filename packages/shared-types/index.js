@@ -7,6 +7,7 @@ const SYNC_EVENT_TYPES = Object.freeze({
   LICENSE_ACTIVITY: 'license_activity',
   USER_LOGIN: 'user_login',
   USER_ACTIVE: 'user_active',
+  CLIENT_PROFILE: 'client_profile',
 });
 
 const PAYMENT_STATUSES = Object.freeze({

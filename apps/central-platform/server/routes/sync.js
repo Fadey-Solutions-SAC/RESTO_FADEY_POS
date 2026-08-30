@@ -27,7 +27,8 @@ router.post('/events', (req, res) => {
     restaurantId: restaurantId || clientId,
     webServiceId,
     licenseKey,
-    sourceWebServiceUrl,
+    sourceWebServiceUrl: sourceWebServiceUrl || payload?.renderUrl || '',
+    restaurantName: payload?.restaurantName || payload?.restaurante || '',
     plan: payload?.plan,
   });
   const id = uuidv4();
@@ -52,6 +53,43 @@ router.post('/events', (req, res) => {
          updated_at = datetime('now')`,
       [clientId, licenseKey || '', plan, payload?.locked ? 'suspended' : 'active']
     );
+  }
+  if (eventType === 'client_profile') {
+    const plan = String(payload?.plan || '').trim();
+    const status = String(payload?.licenseStatus || '').toLowerCase();
+    const licenseStatus =
+      status === 'suspendido' || status === 'suspended' || payload?.locked
+        ? 'suspended'
+        : 'active';
+    if (plan) {
+      runSql(
+        `UPDATE clients SET plan = ?, license_status = ?, updated_at = datetime('now') WHERE client_id = ?`,
+        [plan, licenseStatus, clientId],
+      );
+    } else {
+      runSql(
+        `UPDATE clients SET license_status = ?, updated_at = datetime('now') WHERE client_id = ?`,
+        [licenseStatus, clientId],
+      );
+    }
+    if (payload?.expirationDate) {
+      runSql(
+        `INSERT INTO licenses (client_id, license_key, plan, status, expires_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(client_id) DO UPDATE SET
+           plan = COALESCE(excluded.plan, licenses.plan),
+           status = excluded.status,
+           expires_at = COALESCE(excluded.expires_at, licenses.expires_at),
+           updated_at = datetime('now')`,
+        [
+          clientId,
+          licenseKey || clientId,
+          plan || 'plan premium',
+          licenseStatus,
+          String(payload.expirationDate).slice(0, 10),
+        ],
+      );
+    }
   }
   if (eventType === 'license_activity') {
     runSql(

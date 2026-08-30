@@ -317,6 +317,13 @@ async function request(endpoint, options = {}) {
     if (/failed to fetch|networkerror|load failed|network|abort/i.test(msg) || err?.name === 'AbortError') {
       const origin = getApiOrigin() || url;
       const frontOrigin = typeof window !== 'undefined' ? window.location.origin : 'su dominio Vercel';
+      if (err?.name === 'AbortError') {
+        throw new Error(
+          `El servidor tardó demasiado en responder (${origin}). ` +
+            'Reintente el cierre; si acaba de despertar Render puede tardar unos segundos. ' +
+            'Si el error se repite, revise que el servicio en Render esté en verde.',
+        );
+      }
       throw new Error(
         `No se pudo conectar al API (${origin}). ` +
           `Caja puede seguir en modo local si ya cargó mesas y productos. ` +
@@ -915,7 +922,8 @@ export { printingUnreachableMessage };
 export const api = {
   /** `options` se fusiona con fetch (p. ej. `{ cache: 'no-store' }`). */
   get: (endpoint, options = {}) => request(endpoint, { method: 'GET', cache: 'no-store', ...options }),
-  post: (endpoint, body) => request(endpoint, { method: 'POST', body: JSON.stringify(body) }),
+  post: (endpoint, body, options = {}) =>
+    request(endpoint, { method: 'POST', body: JSON.stringify(body), ...options }),
   put: (endpoint, body) => request(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
   patch: (endpoint, body) => request(endpoint, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: (endpoint, body) =>

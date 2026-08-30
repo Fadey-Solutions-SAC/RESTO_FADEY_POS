@@ -570,31 +570,24 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
   });
 
   const closedRegister = queryOne('SELECT * FROM cash_registers WHERE id = ?', [register.id]);
-  let notifyResult = null;
-  try {
-    notifyResult = await sendCashCloseNotification({
-      register: closedRegister || register,
-      sales,
-      movements,
-      expectedCash,
-      countedCash,
-      difference: diff,
-      notes: closingNotesText || '',
-      closedByName: req.user.full_name || req.user.username || '',
-    });
-  } catch (notifyErr) {
-    console.error('[close-register] aviso externo fallido:', notifyErr.message);
-  }
 
   const io = req.app.get('io');
   if (io) io.emit('register-update', { action: 'close', registerId: register.id });
 
-  if (closedRegister && notifyResult && !notifyResult.skipped) {
-    closedRegister.notify_email = notifyResult.to;
-    closedRegister.notify_channel = notifyResult.channel;
-    if (notifyResult.warning) closedRegister.notify_warning = notifyResult.warning;
-  }
   res.json(closedRegister);
+
+  sendCashCloseNotification({
+    register: closedRegister || register,
+    sales,
+    movements,
+    expectedCash,
+    countedCash,
+    difference: diff,
+    notes: closingNotesText || '',
+    closedByName: req.user.full_name || req.user.username || '',
+  }).catch((notifyErr) => {
+    console.error('[close-register] aviso externo fallido:', notifyErr.message);
+  });
 });
 
 router.post('/send-close-email', authenticateToken, requireRole('admin', 'cajero'), async (req, res) => {
