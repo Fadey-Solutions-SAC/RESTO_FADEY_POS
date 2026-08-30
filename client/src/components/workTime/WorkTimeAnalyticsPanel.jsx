@@ -223,12 +223,6 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
       .sort((a, b) => b.average - a.average || b.count - a.count)[0];
     return (
       <div className="space-y-4">
-        <p className="text-xs text-[var(--ui-muted)] card py-2 px-3">
-          Ventas y cuentas se atribuyen al <strong>mesero que abrió la cuenta</strong> (primer pedido del cobro),
-          igual que en Informes → Ventas. Quien cobra en caja no suma ventas salvo que haya creado el pedido.
-          <strong className="block mt-2">Atención más rápida:</strong> tiempo desde que se abre la cuenta hasta que
-          cocina/bar marca el pedido listo para servir en mesa (no incluye el cobro en caja).
-        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {items.map((r) => (
             <div key={r.label} className="card border-gold-500/20 bg-gradient-to-br from-[var(--ui-surface)] to-gold-500/5">

@@ -25,14 +25,6 @@ export default function WorkTimeReportTab({
 }) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-[var(--ui-muted)]">
-        El rol <strong>Administrador</strong> no entra en revisión de asistencia: su tiempo cuenta con la jornada cerrada.
-        Para el resto, mientras quede en <strong>Pendiente</strong>, el tiempo computable es <strong>0</strong>.
-        Clasifique cada jornada cerrada como <strong>Asistente</strong>, <strong>Justificado</strong> o <strong>Ausente</strong>.
-        Si el mismo usuario entra desde varios dispositivos (PC + teléfono), el reporte usa la <strong>primera entrada</strong> y la{' '}
-        <strong>última salida real</strong> del día; los accesos extra de monitoreo no acortan la jornada.
-      </p>
-
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
