@@ -1,5 +1,5 @@
 import { MdDashboard, MdNotificationsActive, MdPsychology, MdStars } from 'react-icons/md';
-import { formatMinutes, formatMoney, severityBadge, ROLE_LABEL } from './workTimeUtils';
+import { formatMinutes, formatMoney, formatRankingValue, severityBadge, ROLE_LABEL } from './workTimeUtils';
 
 function StatCard({ label, value, sub, accent = 'gold' }) {
   const ring = accent === 'emerald' ? 'border-emerald-500/30' : accent === 'amber' ? 'border-amber-500/30' : 'border-gold-500/30';
@@ -203,7 +203,7 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
         <AreaBlock title="Mesas" metrics={[
           ['Pedidos mesa', areas?.mesas?.table_orders],
           ['Mesas atendidas', areas?.mesas?.tables_touched],
-          ['Tiempo atención', `${areas?.mesas?.avg_table_minutes ?? 0} min`],
+          ['Tiempo entrega mesa', `${areas?.mesas?.avg_table_minutes ?? 0} min`],
         ]} />
       </div>
     );
@@ -223,13 +223,19 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
       .sort((a, b) => b.average - a.average || b.count - a.count)[0];
     return (
       <div className="space-y-4">
+        <p className="text-xs text-[var(--ui-muted)] card py-2 px-3">
+          Ventas y cuentas se atribuyen al <strong>mesero que abrió la cuenta</strong> (primer pedido del cobro),
+          igual que en Informes → Ventas. Quien cobra en caja no suma ventas salvo que haya creado el pedido.
+          <strong className="block mt-2">Atención más rápida:</strong> tiempo desde que se abre la cuenta hasta que
+          cocina/bar marca el pedido listo para servir en mesa (no incluye el cobro en caja).
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {items.map((r) => (
             <div key={r.label} className="card border-gold-500/20 bg-gradient-to-br from-[var(--ui-surface)] to-gold-500/5">
               <p className="text-xs text-[var(--ui-muted)]">{r.label}</p>
               <p className="text-lg font-bold text-[var(--ui-body-text)] mt-1">{r.full_name}</p>
               <p className="text-sm text-gold-600 font-medium mt-1">
-                {typeof r.value === 'number' && r.label?.includes('ventas') ? formatMoney(r.value) : r.value}
+                {formatRankingValue(r)}
               </p>
             </div>
           ))}

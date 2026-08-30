@@ -275,7 +275,7 @@ import StaffModifierPromptModal from '../../components/StaffModifierPromptModal'
 import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
 import { canPosDeleteOrReleaseTable, canAjusteBarAutoDismiss } from '../../utils/posPermissions';
 import { buildTablesBySalon } from '../../utils/salonesUtils';
-import { getOfflinePosStatus, subscribeOfflinePos } from '../../utils/offlinePos';
+import { getOfflinePosStatus, subscribeOfflinePos, readGetCache } from '../../utils/offlinePos';
 import {
   MdPointOfSale, MdTableRestaurant, MdReceipt,
   MdCheckCircle, MdAttachMoney, MdPeople, MdClose,
@@ -315,6 +315,28 @@ function persistAdminRegisterId(registerId) {
   } catch {
     /* noop */
   }
+}
+
+const PRIMARY_POS_CAJA_ID = 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001';
+
+function scopeTablesAndSalonesForCaja(tablesData, salonesRaw, scopedCaja, posRole) {
+  let scopedTables =
+    posRole === 'admin' && !scopedCaja ? [] : (Array.isArray(tablesData) ? tablesData : []);
+  let scopedSalones =
+    posRole === 'admin' && !scopedCaja
+      ? []
+      : (Array.isArray(salonesRaw) ? salonesRaw : []);
+  if (!scopedCaja) return { tables: scopedTables, salones: scopedSalones };
+  const salonCaja = (s) => String(s?.caja_station_id || '').trim() || PRIMARY_POS_CAJA_ID;
+  scopedSalones = scopedSalones.filter((s) => salonCaja(s) === scopedCaja);
+  const salonByZone = new Map(scopedSalones.map((s) => [String(s.id), s]));
+  scopedTables = scopedTables.filter((t) => {
+    const direct = String(t?.caja_station_id || '').trim();
+    if (direct) return direct === scopedCaja;
+    const salon = salonByZone.get(String(t?.zone || 'principal'));
+    return salonCaja(salon) === scopedCaja;
+  });
+  return { tables: scopedTables, salones: scopedSalones };
 }
 
 const CLIENT_CHECKOUT_TABLE_PREFIX = 'client-checkout:';
@@ -778,6 +800,25 @@ export default function POSPanel() {
     [cajaOptionsForRole, setSearchParams]
   );
 
+  const prefetchTablesForCaja = useCallback(async (cajaStationId, posRole) => {
+    const scopedCaja = String(cajaStationId || '').trim();
+    if (!scopedCaja) return;
+    const qs = `?caja_station_id=${encodeURIComponent(scopedCaja)}`;
+    try {
+      const [tablesData, salonesRes] = await Promise.all([
+        api.get(`/tables${qs}`),
+        api.get(`/tables/salones${qs}`).catch(() => ({ salones: [] })),
+      ]);
+      const salonesList = Array.isArray(salonesRes?.salones) ? salonesRes.salones : [];
+      const scoped = scopeTablesAndSalonesForCaja(tablesData, salonesList, scopedCaja, posRole);
+      setTables(scoped.tables);
+      setSalonesConfig(scoped.salones);
+      setLoading(false);
+    } catch (_) {
+      /* loadData completa el refresco */
+    }
+  }, []);
+
   const loadData = async (opts = {}) => {
     try {
       const posRole = String(posUserRef.current?.role || '').toLowerCase();
@@ -785,10 +826,40 @@ export default function POSPanel() {
         opts.adminRegisterOverride !== undefined
           ? String(opts.adminRegisterOverride || '').trim()
           : String(adminRegisterIdRef.current || '').trim();
-      const stationsResEarly = await api.get('/pos/caja-stations').catch(() => null);
+      const staffCajaId =
+        posRole === 'cajero' || posRole === 'mozo'
+          ? String(posUserRef.current?.caja_station_id || '').trim()
+          : '';
+      const currentRegPath =
+        posRole === 'admin'
+          ? (adminRid
+            ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`
+            : null)
+          : '/pos/current-register';
+      const staffTablesQs = staffCajaId
+        ? `?caja_station_id=${encodeURIComponent(staffCajaId)}`
+        : '';
+
+      const [
+        stationsResEarly,
+        regPreview,
+        tablesStaff,
+        salonesStaff,
+        status,
+        ordersData,
+      ] = await Promise.all([
+        api.get('/pos/caja-stations').catch(() => null),
+        currentRegPath ? api.get(currentRegPath).catch(() => null) : Promise.resolve(null),
+        staffCajaId ? api.get(`/tables${staffTablesQs}`) : Promise.resolve(null),
+        staffCajaId
+          ? api.get(`/tables/salones${staffTablesQs}`).catch(() => ({ salones: [] }))
+          : Promise.resolve(null),
+        api.get('/pos/register-status'),
+        api.get('/orders?limit=600').catch(() => []),
+      ]);
+
       const stationsList = Array.isArray(stationsResEarly?.stations) ? stationsResEarly.stations : [];
       setCajaStations((prev) => (stationsList.length ? stationsList : prev));
-      /** Una sola caja activa: adjuntar automáticamente el turno abierto (sin botón Cambiar caja). */
       if (posRole === 'admin' && !adminRid && stationsList.length === 1) {
         const onlyOpenId = String(stationsList[0]?.open_register?.id || '').trim();
         if (onlyOpenId) {
@@ -797,40 +868,37 @@ export default function POSPanel() {
           setAdminRegisterId(onlyOpenId);
         }
       }
-      const currentRegPath =
-        posRole === 'admin'
-          ? (adminRid
-            ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}`
-            : null)
-          : '/pos/current-register';
-      const regPreview = currentRegPath ? await api.get(currentRegPath).catch(() => null) : null;
+
       let previewCajaId = String(regPreview?.caja_station_id || '').trim();
       if (!previewCajaId && posRole === 'admin' && adminRid) {
         const st = stationsList.find((s) => String(s.open_register?.id || '') === adminRid);
         previewCajaId = String(st?.id || '').trim();
       }
-      if (!previewCajaId && (posRole === 'cajero' || posRole === 'mozo')) {
-        previewCajaId = String(posUserRef.current?.caja_station_id || '').trim();
+      if (!previewCajaId && staffCajaId) previewCajaId = staffCajaId;
+
+      let tablesData = tablesStaff;
+      let salonesList = Array.isArray(salonesStaff?.salones) ? salonesStaff.salones : [];
+      if (!tablesData) {
+        const tablesQs = previewCajaId
+          ? `?caja_station_id=${encodeURIComponent(previewCajaId)}`
+          : '';
+        const [t, s] = await Promise.all([
+          api.get(`/tables${tablesQs}`),
+          api.get(`/tables/salones${tablesQs}`).catch(() => ({ salones: [] })),
+        ]);
+        tablesData = t;
+        salonesList = Array.isArray(s?.salones) ? s.salones : [];
+      } else if (previewCajaId && previewCajaId !== staffCajaId) {
+        const tablesQs = `?caja_station_id=${encodeURIComponent(previewCajaId)}`;
+        const [t, s] = await Promise.all([
+          api.get(`/tables${tablesQs}`),
+          api.get(`/tables/salones${tablesQs}`).catch(() => ({ salones: [] })),
+        ]);
+        tablesData = t;
+        salonesList = Array.isArray(s?.salones) ? s.salones : [];
       }
-      const tablesQs = previewCajaId ? `?caja_station_id=${encodeURIComponent(previewCajaId)}` : '';
-      const [tablesData, salonesRes, regRaw, status, prods, cats, modifiersData, combosData, cfg, paymentMethodsRes, daily, reservationsData, ordersData, restaurantRes] = await Promise.all([
-        api.get(`/tables${tablesQs}`),
-        api.get(`/tables/salones${tablesQs}`).catch(() => ({ salones: [] })),
-        Promise.resolve(regPreview),
-        api.get('/pos/register-status'),
-        api.get('/products?active_only=true&available_now=true'),
-        api.get('/categories/active'),
-        api.get('/admin-modules/modifiers').catch(() => []),
-        api.get('/admin-modules/combos').catch(() => []),
-        api.get('/admin-modules/config/app').catch(() => null),
-        api.get('/pos/payment-methods').catch(() => null),
-        api.get('/reports/daily').catch(() => null),
-        api.get('/admin-modules/reservations').catch(() => []),
-        api.get('/orders?limit=600').catch(() => []),
-        api.get('/restaurant').catch(() => null),
-      ]);
-      const stationsRes = stationsResEarly;
-      let regResolved = regRaw;
+
+      let regResolved = regPreview;
       let adminRegisterStillOpen = false;
       if (posRole === 'admin' && adminRid && !regResolved) {
         adminRegisterStillOpen = stationsList.some((s) => String(s.open_register?.id || '') === adminRid);
@@ -847,7 +915,7 @@ export default function POSPanel() {
             };
           }
         }
-        if (!regResolved && stationsRes != null && !adminRegisterStillOpen) {
+        if (!regResolved && stationsResEarly != null && !adminRegisterStillOpen) {
           persistAdminRegisterId('');
           setAdminRegisterId('');
         }
@@ -855,6 +923,49 @@ export default function POSPanel() {
       if (posRole === 'admin' && !adminRid) {
         regResolved = null;
       }
+
+      const scopedCaja = String(regResolved?.caja_station_id || previewCajaId || '').trim();
+      const { tables: scopedTables, salones: scopedSalones } = scopeTablesAndSalonesForCaja(
+        tablesData,
+        salonesList,
+        scopedCaja,
+        posRole,
+      );
+
+      setTables(scopedTables);
+      setSalonesConfig(scopedSalones);
+      setAllOrders(ordersData || []);
+      setRegisterStatus(status);
+      setRegister((prev) => {
+        if (regResolved) return regResolved;
+        if (prev) return prev;
+        if (posRole === 'admin' && adminRid && adminRegisterStillOpen && prev) return prev;
+        return regResolved;
+      });
+      setLoading(false);
+
+      const [
+        prods,
+        cats,
+        modifiersData,
+        combosData,
+        cfg,
+        paymentMethodsRes,
+        daily,
+        reservationsData,
+        restaurantRes,
+      ] = await Promise.all([
+        api.get('/products?active_only=true&available_now=true'),
+        api.get('/categories/active'),
+        api.get('/admin-modules/modifiers').catch(() => []),
+        api.get('/admin-modules/combos').catch(() => []),
+        api.get('/admin-modules/config/app').catch(() => null),
+        api.get('/pos/payment-methods').catch(() => null),
+        api.get('/reports/daily').catch(() => null),
+        api.get('/admin-modules/reservations').catch(() => []),
+        api.get('/restaurant').catch(() => null),
+      ]);
+
       setPrintRestaurantInfo({
         name: String(restaurantRes?.name || '').trim(),
         logo: resolveMediaUrl(restaurantRes?.logo || ''),
@@ -870,43 +981,10 @@ export default function POSPanel() {
             ? restaurantRes.profile
             : undefined,
       });
-      const visibleCategories = cats.filter(c => !WAREHOUSE_CATEGORY_NAMES.has((c.name || '').toUpperCase()));
+      const visibleCategories = cats.filter((c) => !WAREHOUSE_CATEGORY_NAMES.has((c.name || '').toUpperCase()));
       const mergedCatalog = mergeOrderingCatalog(prods, visibleCategories, combosData || []);
-      const visibleCategoryIds = new Set(mergedCatalog.categories.map(c => c.id));
+      const visibleCategoryIds = new Set(mergedCatalog.categories.map((c) => c.id));
       const visibleProducts = filterVisibleOrderingProducts(mergedCatalog.products, visibleCategoryIds);
-      const scopedCaja =
-        String(regResolved?.caja_station_id || previewCajaId || '').trim();
-      let scopedTables =
-        posRole === 'admin' && !scopedCaja
-          ? []
-          : (Array.isArray(tablesData) ? tablesData : []);
-      let scopedSalones =
-        posRole === 'admin' && !scopedCaja
-          ? []
-          : (Array.isArray(salonesRes?.salones) ? salonesRes.salones : []);
-      if (scopedCaja) {
-        const PRIMARY_CAJA = 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001';
-        const salonCaja = (s) => String(s?.caja_station_id || '').trim() || PRIMARY_CAJA;
-        scopedSalones = scopedSalones.filter((s) => salonCaja(s) === scopedCaja);
-        const salonByZone = new Map(scopedSalones.map((s) => [String(s.id), s]));
-        scopedTables = scopedTables.filter((t) => {
-          const direct = String(t?.caja_station_id || '').trim();
-          if (direct) return direct === scopedCaja;
-          const salon = salonByZone.get(String(t?.zone || 'principal'));
-          return salonCaja(salon) === scopedCaja;
-        });
-      }
-      setTables(scopedTables);
-      setSalonesConfig(scopedSalones);
-      setReservations(reservationsData || []);
-      setAllOrders(ordersData || []);
-      setRegister((prev) => {
-        if (regResolved) return regResolved;
-        if (prev) return prev;
-        if (posRole === 'admin' && adminRid && adminRegisterStillOpen && prev) return prev;
-        return regResolved;
-      });
-      setRegisterStatus(status);
       setProducts(visibleProducts);
       setModifiers(Array.isArray(modifiersData) ? modifiersData : []);
       setCategories(mergedCatalog.categories);
@@ -920,6 +998,8 @@ export default function POSPanel() {
           ? null
           : Number(daily.sales.total_sales || 0)
       );
+      setReservations(reservationsData || []);
+
       if (selectedTableIdRef.current) {
         const selId = selectedTableIdRef.current;
         if (isClientCheckoutTable({ id: selId })) {
@@ -946,7 +1026,7 @@ export default function POSPanel() {
             return null;
           });
         } else {
-          const updated = tablesData.find((t) => t.id === selId);
+          const updated = scopedTables.find((t) => t.id === selId);
           setSelectedTable((prev) => {
             if (!prev || prev.id !== selId) return prev;
             if (updated) {
@@ -964,7 +1044,7 @@ export default function POSPanel() {
           const next = slots.find((s) => s.id === detailId);
           setTableDetail((prev) => (prev && prev.id === detailId ? (next || null) : prev));
         } else {
-          const updatedDetail = tablesData.find((t) => t.id === detailId);
+          const updatedDetail = scopedTables.find((t) => t.id === detailId);
           setTableDetail((prev) => {
             if (!prev || prev.id !== detailId) return prev;
             if (updatedDetail) {
@@ -1028,6 +1108,25 @@ export default function POSPanel() {
   useEffect(() => {
     selectedTableIdRef.current = selectedTable?.id ?? null;
   }, [selectedTable?.id]);
+
+  useEffect(() => {
+    const posRole = String(user?.role || '').toLowerCase();
+    if (posRole !== 'cajero' && posRole !== 'mozo') return;
+    const cajaId = String(user?.caja_station_id || '').trim();
+    if (!cajaId) return;
+    const qs = `?caja_station_id=${encodeURIComponent(cajaId)}`;
+    const cachedTables = readGetCache(`/tables${qs}`) ?? readGetCache('/tables');
+    const cachedSalones = readGetCache(`/tables/salones${qs}`) ?? readGetCache('/tables/salones');
+    if (!Array.isArray(cachedTables) || !cachedTables.length) return;
+    const salonesList = Array.isArray(cachedSalones?.salones)
+      ? cachedSalones.salones
+      : (Array.isArray(cachedSalones) ? cachedSalones : []);
+    const scoped = scopeTablesAndSalonesForCaja(cachedTables, salonesList, cajaId, posRole);
+    if (!scoped.tables.length) return;
+    setTables(scoped.tables);
+    setSalonesConfig(scoped.salones);
+    setLoading(false);
+  }, [user?.id, user?.caja_station_id, user?.role]);
 
   useEffect(() => {
     tableDetailIdRef.current = tableDetail?.id ?? null;
@@ -1379,6 +1478,7 @@ export default function POSPanel() {
         opened_at: op.opened_at,
       }));
     }
+    void prefetchTablesForCaja(station?.id, String(user?.role || '').toLowerCase());
     await loadData({ adminRegisterOverride: rid });
   };
 
@@ -3168,7 +3268,13 @@ export default function POSPanel() {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>;
+  if (loading && tables.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   const printTableOrder = async (table) => {
     if (!table) return;

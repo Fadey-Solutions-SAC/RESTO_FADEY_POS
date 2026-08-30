@@ -55,6 +55,55 @@ function orderDateWhere(from, to, params) {
   return parts.length ? parts.join(' AND ') : '1=1';
 }
 
+/** Filtro por fecha de apertura del pedido/cuenta (no por cobro). */
+function orderCreatedDateWhere(from, to, params) {
+  const parts = [];
+  if (from) {
+    parts.push("date(datetime(o.created_at, 'localtime')) >= date(?)");
+    params.push(from);
+  }
+  if (to) {
+    parts.push("date(datetime(o.created_at, 'localtime')) <= date(?)");
+    params.push(to);
+  }
+  return parts.length ? parts.join(' AND ') : '1=1';
+}
+
+/** Momento en que cocina/bar marcó el pedido listo (última estación que termina). */
+const ORDER_SERVICE_READY_AT_SQL = `
+  COALESCE(
+    CASE
+      WHEN trim(coalesce(o.station_cocina_ready_at, '')) != ''
+        AND trim(coalesce(o.station_bar_ready_at, '')) != ''
+        AND datetime(o.station_cocina_ready_at) >= datetime(o.station_bar_ready_at)
+        THEN o.station_cocina_ready_at
+      WHEN trim(coalesce(o.station_cocina_ready_at, '')) != ''
+        AND trim(coalesce(o.station_bar_ready_at, '')) != ''
+        THEN o.station_bar_ready_at
+      ELSE NULL
+    END,
+    CASE WHEN trim(coalesce(o.station_cocina_ready_at, '')) != '' THEN o.station_cocina_ready_at END,
+    CASE WHEN trim(coalesce(o.station_bar_ready_at, '')) != '' THEN o.station_bar_ready_at END,
+    (SELECT MAX(oss.ready_at) FROM order_station_state oss
+      WHERE oss.order_id = o.id AND trim(coalesce(oss.ready_at, '')) != ''),
+    (SELECT MAX(oi.station_cocina_ready_at) FROM order_items oi
+      WHERE oi.order_id = o.id AND trim(coalesce(oi.station_cocina_ready_at, '')) != ''),
+    (SELECT MAX(oi.station_bar_ready_at) FROM order_items oi
+      WHERE oi.order_id = o.id AND trim(coalesce(oi.station_bar_ready_at, '')) != '')
+  )
+`;
+
+const ORDER_SERVICE_MINUTES_SQL = `
+  (julianday(${ORDER_SERVICE_READY_AT_SQL}) - julianday(o.created_at)) * 24 * 60
+`;
+
+const ORDER_SERVICE_ELIGIBLE_SQL = `
+  o.status IN ('ready', 'delivered')
+  AND IFNULL(o.type, 'dine_in') IN ('dine_in', 'pickup')
+  AND trim(coalesce(${ORDER_SERVICE_READY_AT_SQL}, '')) != ''
+  AND datetime(${ORDER_SERVICE_READY_AT_SQL}) >= datetime(o.created_at)
+`;
+
 function idleMinutesExpr(alias = 's') {
   return `CASE
     WHEN ${alias}.logout_at IS NOT NULL THEN 0
@@ -180,6 +229,35 @@ function buildPaidAccountsByUser(from, to, userId) {
   return map;
 }
 
+/**
+ * Ventas por usuario que abrió la cuenta (primer pedido de la cuenta = mesero en Ventas).
+ * El cobro en caja no cambia la atribución.
+ */
+function buildSalesTotalByUser(from, to, userId) {
+  const ps = getPaidSalesEventSql();
+  const params = [];
+  const parts = [];
+  if (from) {
+    parts.push(`${ps.ORDER_DATE} >= date(?)`);
+    params.push(from);
+  }
+  if (to) {
+    parts.push(`${ps.ORDER_DATE} <= date(?)`);
+    params.push(to);
+  }
+  const paidOrders = queryPaidSalesOrders(parts.length ? parts.join(' AND ') : '1=1', params);
+  const map = new Map();
+  for (const group of groupPaidOrdersBySalesAccount(paidOrders)) {
+    const sorted = [...group].sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    const uid = String(sorted[0]?.created_by_user_id || '').trim();
+    if (!uid) continue;
+    if (userId && userId !== 'all' && uid !== userId) continue;
+    const accountTotal = group.reduce((sum, o) => sum + Number(o.total || 0), 0);
+    map.set(uid, (map.get(uid) || 0) + accountTotal);
+  }
+  return map;
+}
+
 function buildProductivityByUser(from, to, userId) {
   const params = [];
   const sw = sessionDateWhere('s', from, to, params);
@@ -210,7 +288,7 @@ function buildProductivityByUser(from, to, userId) {
   );
 
   const opParams = [];
-  const od = orderDateWhere(from, to, opParams);
+  const od = orderCreatedDateWhere(from, to, opParams);
   const opUser = userId && userId !== 'all' ? ' AND o.created_by_user_id = ?' : '';
   if (userId && userId !== 'all') opParams.push(userId);
 
@@ -218,9 +296,7 @@ function buildProductivityByUser(from, to, userId) {
     `SELECT
       o.created_by_user_id AS user_id,
       COUNT(*) AS orders_created,
-      SUM(CASE WHEN ${FIN} THEN 1 ELSE 0 END) AS orders_paid,
-      COALESCE(SUM(CASE WHEN ${FIN} THEN o.total ELSE 0 END), 0) AS sales_total,
-      AVG(CASE WHEN ${FIN} THEN (julianday(COALESCE(o.updated_at, o.created_at)) - julianday(o.created_at)) * 24 * 60 END) AS avg_order_minutes
+      AVG(CASE WHEN ${ORDER_SERVICE_ELIGIBLE_SQL} THEN ${ORDER_SERVICE_MINUTES_SQL} END) AS avg_order_minutes
      FROM orders o
      WHERE trim(coalesce(o.created_by_user_id, '')) != '' AND ${od}${opUser}
      GROUP BY o.created_by_user_id`,
@@ -228,6 +304,7 @@ function buildProductivityByUser(from, to, userId) {
   );
   const orderMap = Object.fromEntries((orderStats || []).map((r) => [r.user_id, r]));
   const paidAccountsByUser = buildPaidAccountsByUser(from, to, userId);
+  const salesTotalByUser = buildSalesTotalByUser(from, to, userId);
 
   const delParams = [];
   const delDate = [];
@@ -267,7 +344,7 @@ function buildProductivityByUser(from, to, userId) {
       ...r,
       orders_created: Number(op.orders_created || 0),
       orders_paid: Number(paidAccountsByUser.get(r.user_id) || 0),
-      sales_total: Number(op.sales_total || 0),
+      sales_total: Number(salesTotalByUser.get(r.user_id) || 0),
       avg_order_minutes: Math.round(Number(op.avg_order_minutes || 0)),
       deliveries: Number(del.deliveries || 0),
       avg_delivery_minutes: Math.round(Number(del.avg_delivery_minutes || 0)),
@@ -345,13 +422,16 @@ function buildAreaMetrics(from, to) {
     [...delP, DELIVERY_SLOW_MIN]
   );
 
+  const mesaParams = [];
+  const mesaOd = orderCreatedDateWhere(from, to, mesaParams);
+
   const mesas = queryOne(
     `SELECT
       COUNT(DISTINCT CASE WHEN trim(o.table_number) != '' THEN o.id END) AS table_orders,
       COUNT(DISTINCT trim(o.table_number)) AS tables_touched,
-      AVG(CASE WHEN trim(o.table_number) != '' AND ${FIN} THEN (julianday(COALESCE(o.updated_at, o.created_at)) - julianday(o.created_at)) * 24 * 60 END) AS avg_table_minutes
-     FROM orders o WHERE IFNULL(o.type,'dine_in') IN ('dine_in','pickup') AND ${od}`,
-    op
+      AVG(CASE WHEN trim(o.table_number) != '' AND ${ORDER_SERVICE_ELIGIBLE_SQL} THEN ${ORDER_SERVICE_MINUTES_SQL} END) AS avg_table_minutes
+     FROM orders o WHERE IFNULL(o.type,'dine_in') IN ('dine_in','pickup') AND ${mesaOd}`,
+    mesaParams
   );
 
   return {
@@ -394,10 +474,10 @@ function buildRankings(from, to) {
   };
 
   return {
-    best_seller: pickTop(productivity, 'sales_total', 'Mejor ventas (S/)'),
-    most_orders: pickTop(productivity, 'orders_paid', 'Más cuentas cobradas'),
-    most_productive: pickTop(productivity, 'productivity_per_hour', 'Mayor productividad/hora'),
-    fastest_service: pickMin(productivity, 'avg_order_minutes', 'Atención más rápida', (x) => ['cajero', 'mozo', 'admin'].includes(x.role)),
+    best_seller: pickTop(productivity, 'sales_total', 'Mejor ventas atendidas (S/)'),
+    most_orders: pickTop(productivity, 'orders_paid', 'Más cuentas atendidas'),
+    most_productive: pickTop(productivity, 'productivity_per_hour', 'Mayor productividad (pts/h)'),
+    fastest_service: pickMin(productivity, 'avg_order_minutes', 'Atención más rápida (min)', (x) => ['mozo', 'admin'].includes(x.role)),
     best_delivery: pickMin(
       productivity.filter((x) => x.role === 'delivery'),
       'avg_delivery_minutes',
@@ -407,7 +487,7 @@ function buildRankings(from, to) {
     kitchen_role: pickTop(
       productivity.filter((x) => ['cocina', 'bar'].includes(x.role)),
       'worked_minutes',
-      'Mayor tiempo operativo cocina/bar'
+      'Mayor tiempo operativo cocina/bar (horas)'
     ),
   };
 }
@@ -513,7 +593,7 @@ function buildInsights(from, to) {
   if (rankings.fastest_service?.full_name) {
     insights.push({
       priority: 'info',
-      message: `${rankings.fastest_service.full_name} tiene el mejor tiempo de atención (~${rankings.fastest_service.value} min por pedido).`,
+      message: `${rankings.fastest_service.full_name} tiene la atención más rápida en mesa (~${rankings.fastest_service.value} min desde apertura de cuenta hasta platos listos).`,
     });
   }
 

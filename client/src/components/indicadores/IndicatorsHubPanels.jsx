@@ -29,7 +29,50 @@ import { formatCurrency, formatDateTime } from '../../utils/api';
 import IndicatorStatCard from './IndicatorStatCard';
 import Modal from '../Modal';
 
-const COLORS = ['#de3024', '#f04438', '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b'];
+const CHART_PALETTE = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#e11d48'];
+
+const FINANCIAL_BAR_COLORS = {
+  Ventas: '#10b981',
+  Inversión: '#8b5cf6',
+  Gastos: '#f59e0b',
+  Utilidad: '#2563eb',
+};
+
+const PAYMENT_METHOD_COLORS = {
+  efectivo: '#10b981',
+  cash: '#10b981',
+  yape: '#7c3aed',
+  plin: '#06b6d4',
+  tarjeta: '#2563eb',
+  card: '#2563eb',
+  online: '#f59e0b',
+  transferencia: '#0ea5e9',
+};
+
+const CHANNEL_COLORS = {
+  dine_in: '#2563eb',
+  salón: '#2563eb',
+  salon: '#2563eb',
+  delivery: '#f59e0b',
+  pickup: '#10b981',
+  llevar: '#10b981',
+};
+
+function chartColorAt(index) {
+  return CHART_PALETTE[index % CHART_PALETTE.length];
+}
+
+function colorForPaymentMethod(method, index) {
+  const key = String(method || '').trim().toLowerCase();
+  if (PAYMENT_METHOD_COLORS[key]) return PAYMENT_METHOD_COLORS[key];
+  return chartColorAt(index);
+}
+
+function colorForChannel(name, index) {
+  const key = String(name || '').trim().toLowerCase();
+  if (CHANNEL_COLORS[key]) return CHANNEL_COLORS[key];
+  return chartColorAt(index);
+}
 
 function ChartCard({ title, hint, children }) {
   return (
@@ -74,6 +117,12 @@ export function IndicatorsGeneralPanel({ data }) {
 export function IndicatorsFinancialPanel({ data }) {
   const f = data?.financial || {};
   const pm = f.payment_methods || [];
+  const financialBars = [
+    { name: 'Ventas', monto: f.total_sales },
+    { name: 'Inversión', monto: f.investment_total },
+    { name: 'Gastos', monto: f.operating_expenses },
+    { name: 'Utilidad', monto: Math.max(0, f.net_profit_approx) },
+  ];
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -118,17 +167,19 @@ export function IndicatorsFinancialPanel({ data }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChartCard title="Utilidad vs gastos (período)">
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={[
-              { name: 'Ventas', monto: f.total_sales },
-              { name: 'Inversión', monto: f.investment_total },
-              { name: 'Gastos', monto: f.operating_expenses },
-              { name: 'Utilidad', monto: Math.max(0, f.net_profit_approx) },
-            ]}>
+            <BarChart data={financialBars}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--ui-border)" />
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip formatter={(v) => formatCurrency(v)} />
-              <Bar dataKey="monto" fill="#de3024" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="monto" radius={[4, 4, 0, 0]}>
+                {financialBars.map((entry) => (
+                  <Cell
+                    key={entry.name}
+                    fill={FINANCIAL_BAR_COLORS[entry.name] || chartColorAt(0)}
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -136,7 +187,9 @@ export function IndicatorsFinancialPanel({ data }) {
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={pm.map((p) => ({ name: p.payment_method, value: p.total }))} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} label>
-                {pm.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                {pm.map((p, i) => (
+                  <Cell key={p.payment_method || i} fill={colorForPaymentMethod(p.payment_method, i)} />
+                ))}
               </Pie>
               <Tooltip formatter={(v) => formatCurrency(v)} />
             </PieChart>
@@ -509,7 +562,9 @@ export function IndicatorsChartsPanel({ data }) {
         <ResponsiveContainer width="100%" height={220}>
           <PieChart>
             <Pie data={ch.sales_by_channel || []} dataKey="value" nameKey="name" outerRadius={80} label>
-              {(ch.sales_by_channel || []).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              {(ch.sales_by_channel || []).map((entry, i) => (
+                <Cell key={entry.name || i} fill={colorForChannel(entry.name, i)} />
+              ))}
             </Pie>
             <Tooltip />
           </PieChart>
