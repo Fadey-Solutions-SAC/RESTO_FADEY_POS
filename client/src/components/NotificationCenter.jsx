@@ -186,9 +186,9 @@ export default function NotificationCenter({ className = '' }) {
   const openWithTab = (nextTab) => {
     setOpen((prev) => {
       if (prev && tab === nextTab) return false;
-      setTab(nextTab);
       return true;
     });
+    setTab(nextTab);
   };
 
   const panelTitle = tab === 'avisos' ? 'Avisos' : 'Mensajes';
@@ -198,17 +198,20 @@ export default function NotificationCenter({ className = '' }) {
       ? createPortal(
           <>
             <div
-              className="fixed inset-0 z-[55] bg-black/20"
-              onClick={() => setOpen(false)}
+              className="fixed inset-0 z-[90] bg-black/20"
+              onClick={() => {
+                if (avisoToDismiss) setAvisoToDismiss(null);
+                else setOpen(false);
+              }}
               aria-hidden
             />
             <div
               ref={panelRef}
-              className="fixed z-[60] top-14 right-3 sm:right-6 w-[min(100vw-1.5rem,420px)] h-[min(72vh,580px)] flex flex-col rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-2xl overflow-hidden text-[var(--ui-body-text)] relative"
+              className="fixed z-[100] top-[var(--ui-shell-header-h,3.5rem)] right-3 sm:right-6 w-[min(100vw-1.5rem,420px)] h-[min(72vh,580px)] flex flex-col rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-2xl overflow-hidden text-[var(--ui-body-text)]"
               role="dialog"
               aria-label={panelTitle}
             >
-              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] shrink-0">
                 <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
                   {tab === 'avisos' ? (
                     <MdCampaign className="text-lg text-[var(--ui-accent)]" />
@@ -227,7 +230,8 @@ export default function NotificationCenter({ className = '' }) {
                 </button>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-hidden flex flex-col p-3">
+              <div className="relative flex-1 min-h-0 flex flex-col">
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col p-3">
                 {tab === 'avisos' && showAvisosBtn && (
                   <div className="h-full overflow-y-auto space-y-2">
                     {visibleAdminNotifications.length === 0 ? (
@@ -291,41 +295,42 @@ export default function NotificationCenter({ className = '' }) {
                     El chat interno es solo para personal del restaurante.
                   </p>
                 ) : null}
-              </div>
+                </div>
 
-              {avisoToDismiss ? (
-                <div
-                  className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/35"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label="Confirmar borrar aviso"
-                >
+                {avisoToDismiss ? (
                   <div
-                    className="w-full max-w-[260px] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg p-4"
-                    onClick={(e) => e.stopPropagation()}
+                    className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/35"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Confirmar borrar aviso"
                   >
-                    <p className="text-sm text-center text-[var(--ui-body-text)] leading-snug">
-                      Al borrar se perderá para siempre, ¿seguro?
-                    </p>
-                    <div className="mt-4 flex gap-2">
-                      <button
-                        type="button"
-                        className="btn-secondary flex-1 text-sm py-2"
-                        onClick={() => setAvisoToDismiss(null)}
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        className="flex-1 text-sm py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700"
-                        onClick={confirmDismissAviso}
-                      >
-                        Borrar
-                      </button>
+                    <div
+                      className="w-full max-w-[260px] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg p-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <p className="text-sm text-center text-[var(--ui-body-text)] leading-snug">
+                        Al borrar se perderá para siempre, ¿seguro?
+                      </p>
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          className="btn-secondary flex-1 text-sm py-2"
+                          onClick={() => setAvisoToDismiss(null)}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          className="flex-1 text-sm py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700"
+                          onClick={confirmDismissAviso}
+                        >
+                          Borrar
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           </>,
           document.body,
@@ -333,7 +338,7 @@ export default function NotificationCenter({ className = '' }) {
       : null;
 
   const btnClass = (active) =>
-    `p-2 rounded-lg transition-colors relative ${
+    `relative p-2 rounded-lg transition-colors ${
       active ? 'bg-[var(--ui-sidebar-hover)]' : 'hover:bg-[var(--ui-sidebar-hover)]'
     }`;
 
