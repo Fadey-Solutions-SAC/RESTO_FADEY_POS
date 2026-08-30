@@ -8,6 +8,7 @@ const { getBusinessTodayDateKey } = require('./utils/appDateTime');
 const PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE = 'Pago por uso — subir comprobante';
 /** Aviso de calendario (evaluateAutomaticBillingRules), distinto del de «subir comprobante». */
 const BILLING_DUE_NOTIFICATION_TITLE = 'Vencimiento de facturación cercano';
+const AUTO_SYSTEM_LOCK_NOTIFICATION_TITLE = 'Sistema bloqueado automáticamente';
 
 const REASON_PAGO_USO_SIN_COMPROBANTE =
   'Bloqueo automático: sin comprobante de pago por uso tras el plazo de gracia.';
@@ -224,6 +225,7 @@ function isNotificationActive(notification, nowDate = new Date()) {
 }
 
 function getActiveNotifications() {
+  pruneDuplicateAutoLockNotifications();
   const now = new Date();
   return getNotifications().filter((n) => isNotificationActive(n, now));
 }
@@ -275,6 +277,39 @@ function clearNotificationsByTitle(title) {
   const removed = notifications.length - next.length;
   if (removed > 0) saveNotifications(next);
   return removed;
+}
+
+/** Un solo aviso de bloqueo automático, visible 24 h (reemplaza duplicados legacy). */
+function notifyAutoSystemLocked(message) {
+  clearNotificationsByTitle(AUTO_SYSTEM_LOCK_NOTIFICATION_TITLE);
+  clearNotificationsByTitle('Sistema bloqueado');
+  return addNotification({
+    title: AUTO_SYSTEM_LOCK_NOTIFICATION_TITLE,
+    message: String(message || '').trim(),
+    created_by: 'Sistema automático',
+    level: 'danger',
+    duration_hours: 24,
+  });
+}
+
+function clearAutoSystemLockNotification() {
+  clearNotificationsByTitle(AUTO_SYSTEM_LOCK_NOTIFICATION_TITLE);
+  clearNotificationsByTitle('Sistema bloqueado');
+}
+
+function pruneDuplicateAutoLockNotifications() {
+  const notifications = getNotifications();
+  const isAutoLockTitle = (n) => {
+    const t = String(n?.title || '').trim();
+    return t === AUTO_SYSTEM_LOCK_NOTIFICATION_TITLE || t === 'Sistema bloqueado';
+  };
+  const related = notifications.filter(isAutoLockTitle);
+  if (related.length <= 1) return;
+  const keepId = related
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+    .id;
+  const next = notifications.filter((n) => !isAutoLockTitle(n) || n.id === keepId);
+  saveNotifications(next);
 }
 
 /** Avisos de «debe pagar / subir comprobante» del ciclo actual (no incluye pendiente ni aprobado). */
@@ -449,10 +484,12 @@ function tryReleaseAutomaticMoraLock(current, dueDateKey, today) {
   current.global_lock_reason = '';
   current.lock_enabled_at = new Date().toISOString();
   current.lock_enabled_by = 'Sistema automático';
+  clearAutoSystemLockNotification();
   return true;
 }
 
 function evaluateAutomaticBillingRules() {
+  pruneDuplicateAutoLockNotifications();
   const current = getControlConfig();
   const today = isoDateKeyNow();
   const dueDateKey = resolveBillingDueDateKey(current);
@@ -491,14 +528,11 @@ function evaluateAutomaticBillingRules() {
       current.global_lock_reason = current.global_lock_reason || DEFAULT_MORA_LOCK_REASON;
       current.lock_enabled_by = 'Sistema automático';
       current.lock_enabled_at = new Date().toISOString();
-      addNotification({
-        title: 'Sistema bloqueado automáticamente',
-        message: lockDeadline
+      notifyAutoSystemLocked(
+        lockDeadline
           ? `Se activó bloqueo por falta de pago. Plazo de gracia finalizado el ${lockDeadline}.`
           : `Se activó bloqueo por falta de pago. Vencimiento del período: ${dueDateKey}.`,
-        created_by: 'Sistema automático',
-        level: 'danger',
-      });
+      );
       changed = true;
     } else if (tryReleaseAutomaticMoraLock(current, dueDateKey, today)) {
       changed = true;
@@ -537,6 +571,7 @@ function evaluatePagoUsoComprobanteWindow() {
       control.global_lock_reason = '';
       control.lock_enabled_at = new Date().toISOString();
       control.lock_enabled_by = 'Sistema automático';
+      clearAutoSystemLockNotification();
       controlChanged = true;
     }
     if (controlChanged) upsertSetting(MASTER_SETTING_KEY, control);
@@ -578,12 +613,7 @@ function evaluatePagoUsoComprobanteWindow() {
       control.pago_uso_comprobante_lock_auto = 1;
       control.lock_enabled_at = new Date().toISOString();
       control.lock_enabled_by = 'Sistema automático (pago por uso)';
-      addNotification({
-        title: 'Sistema bloqueado',
-        message: `No se registró comprobante de pago por uso antes del ${deadline}.`,
-        created_by: 'Sistema automático',
-        level: 'danger',
-      });
+      notifyAutoSystemLocked(`No se registró comprobante de pago por uso antes del ${deadline}.`);
       controlChanged = true;
     }
   } else if (
@@ -598,6 +628,7 @@ function evaluatePagoUsoComprobanteWindow() {
     control.global_lock_reason = '';
     control.lock_enabled_at = new Date().toISOString();
     control.lock_enabled_by = 'Sistema automático';
+    clearAutoSystemLockNotification();
     controlChanged = true;
   }
 
@@ -615,6 +646,7 @@ function evaluatePagoUsoComprobanteWindow() {
       control.global_lock_reason = '';
       control.lock_enabled_at = new Date().toISOString();
       control.lock_enabled_by = 'Sistema automático';
+      clearAutoSystemLockNotification();
       controlChanged = true;
     }
   }
@@ -875,6 +907,7 @@ function releaseLockOnPaymentApproved() {
     || /falta de pago|comprobante|pago por uso|mora/i.test(reason);
   if (!isPaymentLock) return false;
   clearNotificationsByTitle(PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
+  clearAutoSystemLockNotification();
   control.global_lock_enabled = 0;
   control.pago_uso_comprobante_lock_auto = 0;
   control.global_lock_reason = '';
@@ -898,6 +931,7 @@ function releaseLockOnPaymentApproved() {
 module.exports = {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   BILLING_DUE_NOTIFICATION_TITLE,
+  AUTO_SYSTEM_LOCK_NOTIFICATION_TITLE,
   clearPaymentCycleReminderNotifications,
   shouldSuppressBillingDueNotification,
   MASTER_SETTING_KEY,

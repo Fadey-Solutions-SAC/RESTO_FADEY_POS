@@ -5,6 +5,8 @@ const { authenticateToken } = require('../middleware/auth');
 const {
   advanceStaffChatCycleIfDue,
   getCurrentCycleId,
+  getChatState,
+  CHAT_RETENTION_HOURS,
 } = require('../staffChatService');
 
 const router = express.Router();
@@ -25,15 +27,7 @@ router.use(authenticateToken);
 router.use(staffOnly);
 
 router.get('/state', (req, res) => {
-  advanceStaffChatCycleIfDue();
-  const row = queryOne(
-    'SELECT cycle_id, cycle_started_at, all_staff_offline_at FROM internal_chat_state WHERE id = 1'
-  );
-  res.json({
-    cycle_id: Number(row?.cycle_id || 1),
-    cycle_started_at: row?.cycle_started_at || null,
-    all_staff_offline_at: row?.all_staff_offline_at || null,
-  });
+  res.json(getChatState());
 });
 
 router.get('/recipients', (req, res) => {
@@ -61,6 +55,7 @@ router.get('/messages', (req, res) => {
        FROM staff_internal_messages m
        LEFT JOIN users u ON u.id = m.sender_id
        WHERE m.cycle_id = ? AND m.recipient_id IS NULL
+         AND datetime(m.created_at) >= datetime('now', '-${CHAT_RETENTION_HOURS} hours')
        ORDER BY datetime(m.created_at) ASC
        LIMIT 500`,
       [cycleId]
@@ -79,6 +74,7 @@ router.get('/messages', (req, res) => {
      LEFT JOIN users u ON u.id = m.sender_id
      WHERE m.cycle_id = ?
        AND m.recipient_id IS NOT NULL
+       AND datetime(m.created_at) >= datetime('now', '-${CHAT_RETENTION_HOURS} hours')
        AND (
          (m.sender_id = ? AND m.recipient_id = ?)
          OR (m.sender_id = ? AND m.recipient_id = ?)

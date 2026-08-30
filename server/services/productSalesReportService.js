@@ -1,7 +1,8 @@
 const { queryAll, queryOne, ensureOrdersPaidAtColumns } = require('../database');
 const { getOpenRegistersOnActiveStations, listCajasWithIds } = require('../cajaSettings');
 const { getMovementTotals, getCashNoteTotals } = require('./registerSessionSales');
-const { sqlBusinessTimestamp, getBusinessTodayDateKey } = require('../utils/appDateTime');
+const { getBusinessTodayDateKey } = require('../utils/appDateTime');
+const { sqlCoalesceRegisterBusinessDate } = require('../utils/registerBusinessDate');
 const { paidAtSql } = require('../utils/salesAccountGrouping');
 
 const PAID_SALES_WHERE = `o.status != 'cancelled'
@@ -131,14 +132,14 @@ function loadRegisterMeta(registerId) {
 }
 
 function loadClosedRegistersInDateRange(from, to) {
-  const closedLocal = sqlBusinessTimestamp('cr.closed_at', queryOne);
+  const registerBizDate = sqlCoalesceRegisterBusinessDate('cr.business_date', 'cr.opened_at', 'cr.closed_at', queryOne);
   return queryAll(
     `SELECT cr.*, u.full_name as user_name
      FROM cash_registers cr
      LEFT JOIN users u ON u.id = cr.user_id
      WHERE cr.closed_at IS NOT NULL
-       AND DATE(${closedLocal}) >= date(?)
-       AND DATE(${closedLocal}) <= date(?)
+       AND ${registerBizDate} >= date(?)
+       AND ${registerBizDate} <= date(?)
      ORDER BY cr.closed_at DESC`,
     [from, to],
   );

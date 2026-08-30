@@ -501,6 +501,18 @@ async function start() {
   } catch (err) {
     console.warn('[bar-auto-dismiss] no iniciado:', err.message || err);
   }
+  try {
+    const { advanceStaffChatCycleIfDue } = require('./staffChatService');
+    setInterval(() => {
+      try {
+        advanceStaffChatCycleIfDue();
+      } catch (err) {
+        console.warn('[staff-chat] reinicio 24h:', err.message || err);
+      }
+    }, 15 * 60 * 1000);
+  } catch (err) {
+    console.warn('[staff-chat] intervalo no iniciado:', err.message || err);
+  }
   setInterval(() => {
     try {
       createSafetyBackup();

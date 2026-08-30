@@ -1484,6 +1484,18 @@ async function initDatabase() {
     if (!cashColumns.some(col => col.name === 'caja_station_id')) {
       db.run("ALTER TABLE cash_registers ADD COLUMN caja_station_id TEXT DEFAULT ''");
     }
+    if (!cashColumns.some(col => col.name === 'business_date')) {
+      db.run("ALTER TABLE cash_registers ADD COLUMN business_date TEXT DEFAULT ''");
+    }
+    try {
+      const { backfillCashRegisterBusinessDates } = require('./utils/registerBusinessDate');
+      backfillCashRegisterBusinessDates(queryOne, (sql, params = []) => {
+        if (params.length) db.run(sql, params);
+        else db.run(sql);
+      });
+    } catch (err) {
+      console.warn('[cash_registers] business_date backfill omitido:', err.message || err);
+    }
     try {
       db.run(`UPDATE cash_registers SET caja_station_id = (
         SELECT trim(coalesce(u.caja_station_id, '')) FROM users u WHERE u.id = cash_registers.user_id

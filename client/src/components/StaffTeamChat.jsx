@@ -48,16 +48,27 @@ export default function StaffTeamChat({ isActive, onUnreadDelta, suppressExterna
 
   const loadMessages = useCallback(async () => {
     try {
+      let data;
       if (mode === 'group') {
-        const data = await api.get('/staff-chat/messages?mode=group');
-        setMessages(data.messages || []);
+        data = await api.get('/staff-chat/messages?mode=group');
       } else if (privateUserId) {
-        const data = await api.get(
+        data = await api.get(
           `/staff-chat/messages?mode=private&with_user=${encodeURIComponent(privateUserId)}`
         );
-        setMessages(data.messages || []);
       } else {
         setMessages([]);
+        return;
+      }
+      const rows = data.messages || [];
+      setMessages(rows);
+      if (data.cycle_id != null) {
+        setChatMeta((prev) => {
+          const next = { ...prev, cycle_id: data.cycle_id };
+          if (prev?.cycle_id != null && Number(prev.cycle_id) !== Number(data.cycle_id)) {
+            toast('El chat se reinició (cada 24 horas).', { icon: '🔄', duration: 4000 });
+          }
+          return next;
+        });
       }
     } catch (err) {
       console.error('staff-chat loadMessages', err);
@@ -225,12 +236,27 @@ export default function StaffTeamChat({ isActive, onUnreadDelta, suppressExterna
         </div>
       )}
 
+      <div
+        className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-800 dark:text-amber-200"
+        role="status"
+      >
+        <strong className="font-semibold">Chat temporal (24 horas).</strong>
+        {' '}
+        Los mensajes no se guardan para siempre: el historial se borra automáticamente cada 24 horas.
+        {chatMeta?.cycle_ends_at && (
+          <>
+            {' '}
+            Próximo reinicio: {formatDateTime(chatMeta.cycle_ends_at)}.
+          </>
+        )}
+      </div>
+
       <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 space-y-2 mb-3">
         {messages.length === 0 ? (
           <p className="text-sm text-[var(--ui-muted)] text-center py-8">
             {mode === 'private' && !privateUserId
               ? 'Seleccione un compañero para ver el historial.'
-              : 'Sin mensajes en este ciclo. Escriba el primero.'}
+              : 'Sin mensajes en este período de 24 horas. Escriba el primero.'}
           </p>
         ) : (
           messages.map((m) => {
@@ -281,7 +307,7 @@ export default function StaffTeamChat({ isActive, onUnreadDelta, suppressExterna
 
       {chatMeta && (
         <p className="text-[10px] text-[var(--ui-muted)] mt-2 leading-snug">
-          Ciclo #{chatMeta.cycle_id}. El historial se renueva cuando nadie tiene sesión abierta y han pasado 24 h desde ese momento (al iniciar sesión se aplica el cambio).
+          Período #{chatMeta.cycle_id}. Reinicio automático cada 24 horas; no hay historial permanente.
         </p>
       )}
     </div>

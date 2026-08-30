@@ -521,6 +521,8 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
   const countedCash = roundMoneySoles(Number(closing_amount));
   const diff = roundMoneySoles(countedCash - expectedCash);
   const closedAtIso = new Date().toISOString();
+  const { computeRegisterBusinessDateKey } = require('../utils/registerBusinessDate');
+  const businessDate = computeRegisterBusinessDateKey(register.opened_at, closedAtIso, queryOne);
   const denominationSummary = arqueo?.denominations || {};
   const arqueoData = JSON.stringify({
     register_id: register.id,
@@ -554,8 +556,8 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
     closed_at: closedAtIso,
   });
 
-  runSql("UPDATE cash_registers SET closed_at = datetime('now'), closing_amount = ?, total_sales = ?, total_cash = ?, total_yape = ?, total_plin = ?, total_card = ?, notes = ?, arqueo_data = ? WHERE id = ?",
-    [countedCash, sales.total_sales, sales.total_cash, sales.total_yape, sales.total_plin, sales.total_card, closingNotesText || '', arqueoData, register.id]);
+  runSql("UPDATE cash_registers SET closed_at = datetime('now'), closing_amount = ?, total_sales = ?, total_cash = ?, total_yape = ?, total_plin = ?, total_card = ?, notes = ?, arqueo_data = ?, business_date = ? WHERE id = ?",
+    [countedCash, sales.total_sales, sales.total_cash, sales.total_yape, sales.total_plin, sales.total_card, closingNotesText || '', arqueoData, businessDate, register.id]);
   /** Cierre de caja: reinicio de numeración para el próximo turno / apertura. */
   runSql('UPDATE order_sequence SET current_number = 0 WHERE id = 1');
   logAudit({

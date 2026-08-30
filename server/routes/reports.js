@@ -904,7 +904,9 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
   try {
   const ps = getPaidSalesEventSql();
   const { getBusinessMonthKey } = require('../utils/appDateTime');
+  const { sqlCoalesceRegisterBusinessDate } = require('../utils/registerBusinessDate');
   const monthKey = parseReportMonth(req.query.month) || getBusinessMonthKey(queryOne);
+  const registerBizDate = sqlCoalesceRegisterBusinessDate('cr.business_date', 'cr.opened_at', 'cr.closed_at', queryOne);
   const { querySoldProductsBetween } = require('../services/productSalesReportService');
   const { startKey, endKey } = monthRangeEndingAt(monthKey, 12);
 
@@ -913,7 +915,7 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
      FROM cash_registers cr
      LEFT JOIN users u ON u.id = cr.user_id
      WHERE cr.closed_at IS NOT NULL
-       AND strftime('%Y-%m', datetime(cr.closed_at, 'localtime')) = ?
+       AND strftime('%Y-%m', ${registerBizDate}) = ?
      ORDER BY cr.closed_at DESC`,
     [monthKey],
   );
@@ -956,7 +958,7 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
   const closedRegistersMonth = queryOne(
     `SELECT COUNT(*) as count FROM cash_registers
      WHERE closed_at IS NOT NULL
-       AND strftime('%Y-%m', datetime(closed_at, 'localtime')) = ?`,
+       AND strftime('%Y-%m', ${registerBizDate}) = ?`,
     [monthKey],
   );
 
@@ -985,6 +987,8 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
 router.get('/closed-registers', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
   try {
     const { querySoldProductsBetween } = require('../services/productSalesReportService');
+    const { sqlCoalesceRegisterBusinessDate } = require('../utils/registerBusinessDate');
+    const registerBizDate = sqlCoalesceRegisterBusinessDate('cr.business_date', 'cr.opened_at', 'cr.closed_at', queryOne);
     const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
     const month = parseReportMonth(req.query.month);
     let sql = `
@@ -995,7 +999,7 @@ router.get('/closed-registers', authenticateToken, requireRole('admin', 'cajero'
     `;
     const params = [];
     if (month) {
-      sql += ` AND strftime('%Y-%m', datetime(cr.closed_at, 'localtime')) = ?`;
+      sql += ` AND strftime('%Y-%m', ${registerBizDate}) = ?`;
       params.push(month);
     }
     sql += ` ORDER BY cr.closed_at DESC LIMIT ${limit}`;

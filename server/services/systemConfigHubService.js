@@ -7,6 +7,8 @@ const { FINANCIAL_FILTER_SQL } = require('../businessRules');
 const { mergeRegional, buildPreview } = require('./regionalFormatService');
 const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold');
 const { getPaidSalesEventSql, metricsFromPaidOrdersWhere } = require('../utils/salesAccountGrouping');
+const { getBusinessTodayDateKey } = require('../utils/appDateTime');
+const { sqlCoalesceRegisterBusinessDate } = require('../utils/registerBusinessDate');
 
 const FIN = FINANCIAL_FILTER_SQL;
 const DAY_KEYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
@@ -64,8 +66,12 @@ function buildSectionInsights(settings, restaurant) {
   const todayMetrics = metricsFromPaidOrdersWhere(`${ps.ORDER_DATE} = date('now', 'localtime')`);
   const activeOrders = queryOne("SELECT COUNT(*) AS c FROM orders WHERE status IN ('pending','preparing','ready')");
   const openRegister = queryOne('SELECT id, user_id FROM cash_registers WHERE closed_at IS NULL LIMIT 1');
+  const registerBizDate = sqlCoalesceRegisterBusinessDate('business_date', 'opened_at', 'closed_at', queryOne);
+  const businessToday = getBusinessTodayDateKey(queryOne);
   const closedRegistersToday = queryOne(
-    `SELECT COUNT(*) AS c FROM cash_registers WHERE date(datetime(closed_at, 'localtime')) = date('now', 'localtime')`
+    `SELECT COUNT(*) AS c FROM cash_registers
+     WHERE closed_at IS NOT NULL AND ${registerBizDate} = ?`,
+    [businessToday]
   );
   const openSessions = queryOne('SELECT COUNT(*) AS c FROM user_work_sessions WHERE logout_at IS NULL');
   const usersActive = queryOne('SELECT COUNT(*) AS c FROM users WHERE is_active = 1');
