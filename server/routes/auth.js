@@ -155,7 +155,7 @@ router.post('/heartbeat', authenticateToken, (req, res) => {
   res.json({ ok: true, idle_logout_minutes: STAFF_IDLE_LOGOUT_MINUTES });
 });
 
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   if (!password) return res.status(400).json({ error: 'La contraseña es requerida' });
 
@@ -183,9 +183,20 @@ router.post('/login', (req, res) => {
 
   if (!username) return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
 
+  try {
+    const { syncCentralPolicySuspension } = require('../services/platformPaymentService');
+    await syncCentralPolicySuspension();
+  } catch (_) {
+    /* sync opcional */
+  }
+
   const lock = getLockState();
   if (lock.locked) {
-    return res.status(423).json({ error: lock.reason || 'Sistema bloqueado por falta de pago' });
+    const code = lock.policySuspended ? 'POLICY_SUSPENDED' : 'SYSTEM_LOCKED';
+    return res.status(lock.policySuspended ? 403 : 423).json({
+      error: lock.reason || 'Sistema bloqueado por falta de pago',
+      code,
+    });
   }
 
   const user = queryOne(
@@ -373,7 +384,7 @@ router.post('/customer/login', (req, res) => {
   });
 });
 
-router.get('/me', authenticateToken, (req, res) => {
+router.get('/me', authenticateToken, async (req, res) => {
   if (req.user.role === 'master_admin') {
     const master = getMasterCredentialsPublic();
     return res.json({
@@ -389,6 +400,21 @@ router.get('/me', authenticateToken, (req, res) => {
     const customer = queryOne('SELECT id, name, email, phone, address FROM customers WHERE id = ?', [req.user.id]);
     return res.json({ ...customer, type: 'customer', ...readUiAppearanceFromStoredSettings() });
   }
+
+  try {
+    const { syncCentralPolicySuspension } = require('../services/platformPaymentService');
+    await syncCentralPolicySuspension();
+  } catch (_) {
+    /* sync opcional */
+  }
+  const activeLock = getLockState();
+  if (activeLock.policySuspended) {
+    return res.status(403).json({
+      error: activeLock.reason,
+      code: 'POLICY_SUSPENDED',
+    });
+  }
+
   ensureOpenWorkSession(req.user);
   const user = queryOne(
     `SELECT id, username, email, full_name, role, avatar, phone, caja_station_id,
@@ -432,15 +458,22 @@ router.get('/me', authenticateToken, (req, res) => {
 });
 
 /** Estado público del bloqueo (login sin sesión). */
-router.get('/system-lock', (req, res) => {
+router.get('/system-lock', async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  try {
+    const { syncCentralPolicySuspension } = require('../services/platformPaymentService');
+    await syncCentralPolicySuspension();
+  } catch (_) {
+    /* sync opcional */
+  }
   const lock = getLockState();
   const pago = readPagoUso();
   const schedule = buildPagoUsoComprobanteUiState();
   return res.json({
     locked: lock.locked,
     reason: lock.reason,
-    unlock_available: lock.locked,
+    policySuspended: !!lock.policySuspended,
+    unlock_available: lock.locked && !lock.policySuspended,
     pago_uso: {
       numero_cuenta: String(pago.numero_cuenta || '').trim(),
       nombre_empresa_cobro: String(pago.nombre_empresa_cobro || '').trim(),

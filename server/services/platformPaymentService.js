@@ -684,13 +684,42 @@ function pickRemoteEstadoFromPayload(data) {
   );
 }
 
+async function syncCentralPolicySuspension() {
+  if (!isCentralSyncConfigured()) return { blocked: false, skipped: true };
+  const { fetchCentralLicenseStatus } = require('./centralSyncService');
+  const {
+    applyCentralPolicySuspensionLock,
+    releaseCentralPolicySuspensionLock,
+    FADEY_POLICY_SUSPENSION_MESSAGE,
+  } = require('../masterAdminService');
+
+  const licenseRes = await fetchCentralLicenseStatus();
+  if (!licenseRes?.ok || !licenseRes.data) {
+    return { blocked: false, skipped: true };
+  }
+
+  const body = unwrapCentralApiBody(licenseRes.data);
+  if (body?.policySuspended === true) {
+    const msg = String(body.suspensionMessage || FADEY_POLICY_SUSPENSION_MESSAGE).trim()
+      || FADEY_POLICY_SUSPENSION_MESSAGE;
+    applyCentralPolicySuspensionLock(msg);
+    return { blocked: true, message: msg };
+  }
+
+  releaseCentralPolicySuspensionLock();
+  return { blocked: false };
+}
+
 async function pollAndApplyPaymentStatus() {
   if (pollInFlight) return;
   syncExpiredPaymentApprovalNotices();
   if (!isCentralSyncConfigured()) return;
 
+  await syncCentralPolicySuspension();
+
   const { getLockState } = require('../masterAdminService');
   const lock = getLockState();
+  if (lock.policySuspended) return;
   const pago = readPagoUso();
   const pp = pago.platform_payment || {};
   const estado = normalizePaymentEstado(pp.estado);
@@ -947,7 +976,7 @@ function schedulePlatformPaymentPoll(delayMs) {
         const estado = normalizePaymentEstado(pp.estado);
         const pending = estado === PAYMENT_STATUSES.PENDING
           && Boolean(String(pp.referencia || '').trim());
-        const nextMs = (lock.locked || pending) ? POLL_MS_FAST : POLL_MS;
+        const nextMs = (lock.locked || pending || lock.policySuspended) ? POLL_MS_FAST : POLL_MS;
         schedulePlatformPaymentPoll(nextMs);
       });
   }, delayMs);
@@ -981,4 +1010,5 @@ module.exports = {
   confirmLicenseFromSaas,
   readPagoUso,
   writePagoUso,
+  syncCentralPolicySuspension,
 };

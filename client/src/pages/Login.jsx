@@ -16,6 +16,9 @@ const FALLBACK_RESTAURANT_NAME = 'Resto Fadey App';
 /** Si el pago fue aprobado en la central mientras el usuario está en login. */
 const PAYMENT_APPROVED_LOGIN_MSG = 'Su pago fue aprobado. Puede iniciar sesión.';
 
+const POLICY_SUSPENSION_RE =
+  /SISTEMA SUSPENDIDO POR INFRACCION DE LAS POLITICAS DE FADEY SOLUTIONS SAC/i;
+
 export default function Login() {
   const { t } = useTranslation('auth');
   const [username, setUsername] = useState('');
@@ -36,6 +39,8 @@ export default function Login() {
 
   const photosRequired = attendancePolicy.loginRequired;
   const policyReady = !attendancePolicy.loading;
+  const isPolicySuspended =
+    systemLocked && POLICY_SUSPENSION_RE.test(String(lockReason || ''));
 
   useEffect(() => {
     const stored = getStoredAppLocale();
@@ -141,7 +146,10 @@ export default function Login() {
       navigate(getDefaultStaffPath(user), { replace: true });
     } catch (err) {
       const msg = String(err?.message || '');
-      if (/bloqueado|423|falta de pago/i.test(msg)) {
+      if (POLICY_SUSPENSION_RE.test(msg) || err?.code === 'POLICY_SUSPENDED') {
+        setSystemLocked(true);
+        setLockReason(msg);
+      } else if (/bloqueado|423|falta de pago/i.test(msg)) {
         setSystemLocked(true);
         setLockReason(msg);
       }
@@ -222,19 +230,35 @@ export default function Login() {
                 ) : null}
 
                 {systemLocked ? (
-                  <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-3 text-center space-y-2">
-                    <p className="text-sm font-semibold text-amber-100">
-                      Sistema bloqueado por falta de pago
-                    </p>
-                    <p className="text-xs text-amber-100/85">
-                      {lockReason || 'Cargue su comprobante para recuperar el acceso.'}
-                    </p>
-                    <Link
-                      to="/desbloquear-pago"
-                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-slate-900 hover:bg-amber-50 transition-colors"
+                  <div
+                    className={`mb-4 rounded-xl border px-3 py-3 text-center space-y-2 ${
+                      isPolicySuspended
+                        ? 'border-red-400/45 bg-red-950/35'
+                        : 'border-amber-400/40 bg-amber-500/15'
+                    }`}
+                  >
+                    <p
+                      className={`text-sm font-semibold ${
+                        isPolicySuspended ? 'text-red-100 uppercase tracking-wide' : 'text-amber-100'
+                      }`}
                     >
-                      Cargar Comprobante
-                    </Link>
+                      {isPolicySuspended
+                        ? lockReason
+                        : 'Sistema bloqueado por falta de pago'}
+                    </p>
+                    {!isPolicySuspended ? (
+                      <>
+                        <p className="text-xs text-amber-100/85">
+                          {lockReason || 'Cargue su comprobante para recuperar el acceso.'}
+                        </p>
+                        <Link
+                          to="/desbloquear-pago"
+                          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-slate-900 hover:bg-amber-50 transition-colors"
+                        >
+                          Cargar Comprobante
+                        </Link>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
 

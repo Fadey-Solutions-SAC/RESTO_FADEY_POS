@@ -13,6 +13,9 @@ const AUTO_SYSTEM_LOCK_NOTIFICATION_TITLE = 'Sistema bloqueado automáticamente'
 const REASON_PAGO_USO_SIN_COMPROBANTE =
   'Bloqueo automático: sin comprobante de pago por uso tras el plazo de gracia.';
 
+const FADEY_POLICY_SUSPENSION_MESSAGE =
+  'SISTEMA SUSPENDIDO POR INFRACCION DE LAS POLITICAS DE FADEY SOLUTIONS SAC';
+
 const PAGO_USO_APP_KEY = 'pago_uso_sistema';
 
 const MASTER_SETTING_KEY = 'master_admin_control';
@@ -46,6 +49,8 @@ const DEFAULT_CONTROL = {
   billing_alert_sent_for: '',
   /** 1 si el bloqueo global lo puso la regla del comprobante de pago por uso */
   pago_uso_comprobante_lock_auto: 0,
+  /** 1 si el bloqueo lo impuso la central (usuario desactivado en panel Fadey) */
+  central_policy_lock_auto: 0,
   /** basico | intermedio | profesional — limita módulos para admin y personal */
   service_plan: 'profesional',
   /** { "caja": false, "caja:cobrar": true } — solo claves válidas para el plan; ausente = habilitado por defecto */
@@ -891,8 +896,64 @@ function getLockState() {
   return {
     locked: Number(control.global_lock_enabled || 0) === 1,
     reason: String(control.global_lock_reason || 'Bloqueo por falta de pago'),
+    policySuspended: Number(control.central_policy_lock_auto || 0) === 1,
     control,
   };
+}
+
+function applyCentralPolicySuspensionLock(
+  reason = FADEY_POLICY_SUSPENSION_MESSAGE,
+) {
+  const control = { ...getControlConfig() };
+  const msg = String(reason || FADEY_POLICY_SUSPENSION_MESSAGE).trim()
+    || FADEY_POLICY_SUSPENSION_MESSAGE;
+  if (
+    Number(control.global_lock_enabled || 0) === 1
+    && Number(control.central_policy_lock_auto || 0) === 1
+    && String(control.global_lock_reason || '').trim() === msg
+  ) {
+    return control;
+  }
+  control.global_lock_enabled = 1;
+  control.global_lock_reason = msg;
+  control.central_policy_lock_auto = 1;
+  control.pago_uso_comprobante_lock_auto = 0;
+  control.lock_enabled_at = new Date().toISOString();
+  control.lock_enabled_by = 'Plataforma central (políticas Fadey)';
+  upsertSetting(MASTER_SETTING_KEY, control);
+  try {
+    const { emitSystemLockUpdate } = require('./socketBroadcast');
+    emitSystemLockUpdate({
+      locked: true,
+      reason: msg,
+      policySuspended: true,
+    });
+  } catch (_) {
+    /* opcional */
+  }
+  return control;
+}
+
+function releaseCentralPolicySuspensionLock() {
+  const control = { ...getControlConfig() };
+  if (Number(control.central_policy_lock_auto || 0) !== 1) return false;
+  control.global_lock_enabled = 0;
+  control.global_lock_reason = '';
+  control.central_policy_lock_auto = 0;
+  control.lock_enabled_at = new Date().toISOString();
+  control.lock_enabled_by = 'Plataforma central';
+  upsertSetting(MASTER_SETTING_KEY, control);
+  try {
+    const { emitSystemLockUpdate } = require('./socketBroadcast');
+    emitSystemLockUpdate({
+      locked: false,
+      reason: '',
+      policySuspended: false,
+    });
+  } catch (_) {
+    /* opcional */
+  }
+  return true;
 }
 
 /** Desbloqueo inmediato cuando la central confirma pago aprobado. */
@@ -951,6 +1012,9 @@ module.exports = {
   deleteNotification,
   evaluateAutomaticBillingRules,
   getLockState,
+  applyCentralPolicySuspensionLock,
+  releaseCentralPolicySuspensionLock,
+  FADEY_POLICY_SUSPENSION_MESSAGE,
   getMasterCredentialsPublic,
   verifyMasterCredentials,
   updateMasterCredentials,
