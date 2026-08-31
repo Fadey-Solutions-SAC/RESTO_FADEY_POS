@@ -484,14 +484,40 @@ function applyPaymentApproved({ centralPaymentId, resolvedAt, expirationDate } =
 }
 
 /** Confirmación push desde panel SaaS (POST /api/license/confirm). */
-function confirmLicenseFromSaas({ clientId, status, expirationDate } = {}) {
+function confirmLicenseFromSaas({ clientId, status, expirationDate, message } = {}) {
   const { assertClientIdMatches } = require('./posSaasIdentityService');
+  const {
+    applyCentralPolicySuspensionLock,
+    releaseCentralPolicySuspensionLock,
+    FADEY_POLICY_SUSPENSION_MESSAGE,
+  } = require('../masterAdminService');
   const access = assertClientIdMatches(clientId);
   if (!access.ok) {
     return { ok: false, status: access.status, error: access.error };
   }
 
   const normalized = String(status || '').trim().toLowerCase();
+  if (
+    normalized === 'suspended'
+    || normalized === 'suspendido'
+    || normalized === 'inactive'
+    || normalized === 'inactivo'
+  ) {
+    const reason = String(message || FADEY_POLICY_SUSPENSION_MESSAGE).trim()
+      || FADEY_POLICY_SUSPENSION_MESSAGE;
+    applyCentralPolicySuspensionLock(reason);
+    return {
+      ok: true,
+      message: reason,
+    };
+  }
+  if (normalized === 'active' || normalized === 'activo') {
+    releaseCentralPolicySuspensionLock();
+    return {
+      ok: true,
+      message: 'Acceso restaurado desde la plataforma central',
+    };
+  }
   if (normalized === 'approved' || normalized === 'aprobado') {
     const payment = applyPaymentApproved({
       resolvedAt: new Date().toISOString(),

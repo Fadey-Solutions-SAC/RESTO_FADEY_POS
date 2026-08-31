@@ -15,6 +15,7 @@ router.post('/confirm', requirePosServiceAuth, (req, res) => {
       clientId: req.body?.clientId,
       status: req.body?.status,
       expirationDate: req.body?.expirationDate,
+      message: req.body?.message,
     });
     if (!result.ok) {
       return res.status(result.status || 400).json({
