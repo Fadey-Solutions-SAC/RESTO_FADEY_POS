@@ -274,6 +274,8 @@ export default function StaffDineInOrderUI({
   showOrderObservation = true,
 }) {
   const panelLayout = fillParentHeight || (!embedded && !stackedSelfOrder);
+  const cartScrollMinClass = fillParentHeight ? 'min-h-[min(38vh,280px)]' : 'min-h-[8rem]';
+  const observationRows = fillParentHeight ? 2 : 3;
 
   const rootClass = embedded
     ? 'h-[min(50vh,460px)] max-h-[min(70vh,560px)] w-full min-h-0'
@@ -436,7 +438,11 @@ export default function StaffDineInOrderUI({
   );
 
   const cartAsideInner = (
-    <div className={`flex min-h-0 flex-col overflow-hidden ${panelLayout ? 'h-full flex-1' : 'lg:max-h-[min(calc(100dvh-12rem),85vh)]'}`}>
+    <div
+      className={`flex min-h-0 flex-col overflow-hidden ${
+        panelLayout ? `h-full flex-1 ${fillParentHeight ? 'min-h-[min(58vh,480px)]' : ''}` : 'lg:max-h-[min(calc(100dvh-12rem),85vh)]'
+      }`}
+    >
       <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 className="text-base font-bold text-[var(--ui-body-text)]">{cartTitle}</h3>
@@ -453,7 +459,7 @@ export default function StaffDineInOrderUI({
       </div>
       {sidebarTop ? <div className="mb-3 shrink-0 space-y-2">{sidebarTop}</div> : null}
       <div
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
+        className={`min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y ${cartScrollMinClass}`}
         style={{ touchAction: 'pan-y' }}
         onWheel={(e) => e.stopPropagation()}
       >
@@ -482,8 +488,8 @@ export default function StaffDineInOrderUI({
             value={orderObservation}
             onChange={(e) => onOrderObservationChange(e.target.value)}
             placeholder={orderObservationPlaceholder}
-            rows={3}
-            className="w-full resize-y rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] py-2.5 pl-9 pr-3 text-sm text-[var(--ui-body-text)] placeholder:text-[var(--ui-muted)] focus:border-[color:var(--ui-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-focus-ring)]"
+            rows={observationRows}
+            className="w-full max-h-[5.5rem] resize-y rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] py-2.5 pl-9 pr-3 text-sm text-[var(--ui-body-text)] placeholder:text-[var(--ui-muted)] focus:border-[color:var(--ui-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-focus-ring)]"
           />
         </div>
       ) : null}
@@ -538,7 +544,7 @@ export default function StaffDineInOrderUI({
         <div {...scrollAreaProps}>{productGrid}</div>
       </div>
 
-      <div className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-4 lg:min-h-0 lg:w-[min(100%,22rem)] lg:max-w-[22rem] lg:border lg:shadow-[0_4px_24px_rgba(15,23,42,0.08)]">
+      <div className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-4 lg:min-h-0 lg:h-full lg:w-[min(100%,24rem)] lg:max-w-[24rem] lg:border lg:shadow-[0_4px_24px_rgba(15,23,42,0.08)]">
         {cartAsideInner}
       </div>
     </div>

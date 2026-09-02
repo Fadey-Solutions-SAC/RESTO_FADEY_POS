@@ -398,11 +398,15 @@ function persistAutoPedidoCartas(cartas) {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
     ['settings', JSON.stringify(settingsObj)]
   );
+  const { saveDb } = require('../database');
+  saveDb();
 }
 
 router.get('/auto-pedido/cartas', (req, res) => {
+  const settingsObj = parseJsonSafe(queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings'])?.value, {});
   let cartas = readAutoPedidoCartasFromDb();
-  if (!cartas.length) {
+  const rawCartas = settingsObj.auto_pedido_cartas;
+  if (!cartas.length && rawCartas === undefined) {
     const recovered = tryRecoverAutoPedidoCartasFromHistory();
     if (recovered.length) {
       persistAutoPedidoCartas(recovered);

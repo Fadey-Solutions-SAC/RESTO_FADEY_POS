@@ -101,8 +101,15 @@ export default function AutoPedidoAdmin() {
   const [generatingImages, setGeneratingImages] = useState(false);
   const [imageGenWarnings, setImageGenWarnings] = useState([]);
   const [showImageGenWarnings, setShowImageGenWarnings] = useState(false);
+  const cartasDirtyRef = useRef(false);
+  const loadSeqRef = useRef(0);
+
+  const markCartasEdited = () => {
+    cartasDirtyRef.current = true;
+  };
 
   const load = useCallback(() => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     Promise.all([
       api.get('/admin-modules/auto-pedido/cartas'),
@@ -111,13 +118,20 @@ export default function AutoPedidoAdmin() {
       api.get('/categories'),
     ])
       .then(([cData, tData, pData, catData]) => {
-        setCartas(Array.isArray(cData.cartas) ? cData.cartas : []);
+        if (seq !== loadSeqRef.current) return;
+        if (!cartasDirtyRef.current) {
+          setCartas(Array.isArray(cData.cartas) ? cData.cartas : []);
+        }
         setTables(Array.isArray(tData) ? tData : []);
         setProducts(Array.isArray(pData) ? pData : []);
         setCategories(Array.isArray(catData) ? catData : []);
       })
-      .catch((e) => toast.error(e.message))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (seq === loadSeqRef.current) toast.error(e.message);
+      })
+      .finally(() => {
+        if (seq === loadSeqRef.current) setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -149,6 +163,7 @@ export default function AutoPedidoAdmin() {
   }, [genOpenIndex, genText, genTitle, genColors]);
 
   const addRow = () => {
+    markCartasEdited();
     setCartas((prev) => [
       ...prev,
       { id: `tmp-${Date.now()}`, name: `Carta ${prev.length + 1}`, url: '', sort: prev.length },
@@ -156,10 +171,12 @@ export default function AutoPedidoAdmin() {
   };
 
   const updateRow = (index, field, value) => {
+    markCartasEdited();
     setCartas((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
   };
 
   const removeRow = (index) => {
+    markCartasEdited();
     setCartas((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -191,6 +208,7 @@ export default function AutoPedidoAdmin() {
       });
       const file = new File([blob], `carta-${Date.now()}.svg`, { type: 'image/svg+xml' });
       const { url } = await api.upload(file);
+      markCartasEdited();
       updateRow(genOpenIndex, 'url', url || '');
       toast.success('Carta generada aplicada. Pulsa Guardar para persistir.', { id: tid });
       closeGenerator();
@@ -220,6 +238,7 @@ export default function AutoPedidoAdmin() {
           urls.push(url || '');
         }
         const baseName = cartas[index]?.name;
+        markCartasEdited();
         setCartas((prev) => buildCartasFromPdfPages(prev, index, urls, baseName));
         toast.success(
           `${urls.length} cartas creadas desde el PDF. Pulsa Guardar para persistir.`,
@@ -229,6 +248,7 @@ export default function AutoPedidoAdmin() {
       }
 
       const { url } = await api.upload(file);
+      markCartasEdited();
       updateRow(index, 'url', url || '');
       toast.success('Archivo aplicado a la carta', { id: tid });
     } catch (err) {
@@ -252,6 +272,8 @@ export default function AutoPedidoAdmin() {
         return;
       }
       const data = await api.put('/admin-modules/auto-pedido/cartas', { cartas: normalized });
+      loadSeqRef.current += 1;
+      cartasDirtyRef.current = false;
       setCartas(data.cartas || normalized);
       toast.success('Cartas guardadas', { id: tid });
     } catch (e) {

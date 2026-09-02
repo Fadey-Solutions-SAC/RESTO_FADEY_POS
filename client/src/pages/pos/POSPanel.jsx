@@ -4189,8 +4189,8 @@ export default function POSPanel() {
           }
           return `Agregar Pedido — ${getMesaLock()?.name || selectedTable?.name || ''}`;
         })()}
-        size="xl"
-        maxHeightClass="max-h-[min(92vh,920px)]"
+        size="full"
+        maxHeightClass="max-h-[min(96vh,980px)]"
         bodyClassName="!overflow-hidden flex min-h-0 flex-1 flex-col !p-4 sm:!p-6"
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
