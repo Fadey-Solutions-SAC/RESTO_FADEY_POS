@@ -3333,15 +3333,15 @@ export default function POSPanel() {
   };
 
   const mesaMapMoveTableBtnClass =
-    'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-lg text-[11px] sm:text-sm font-bold border border-sky-700 bg-sky-600 text-white shadow-sm hover:bg-sky-700 transition-colors inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
+    'w-full min-h-[44px] px-2 py-2 rounded-lg text-xs sm:text-sm font-bold border border-sky-700 bg-sky-600 text-white shadow-sm hover:bg-sky-700 transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
   const mesaMapMoveOrdersBtnClass =
-    'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-lg text-[11px] sm:text-sm font-bold border border-amber-700 bg-amber-600 text-white shadow-sm hover:bg-amber-700 transition-colors inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400';
+    'w-full min-h-[44px] px-2 py-2 rounded-lg text-xs sm:text-sm font-bold border border-amber-700 bg-amber-600 text-white shadow-sm hover:bg-amber-700 transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400';
   /** Botones de acciones del detalle de mesa (tema app, sin fondos fijos claros). */
   const mesaMapActionBtnClass =
-    'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-lg text-[11px] sm:text-sm font-semibold border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] shadow-sm hover:bg-[var(--ui-sidebar-hover)] transition-colors inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
+    'w-full min-h-[44px] px-2 py-2 rounded-lg text-xs sm:text-sm font-semibold border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] shadow-sm hover:bg-[var(--ui-sidebar-hover)] transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
   /** Cobrar: acento del tema activo (misma idea que .btn-primary). */
   const mesaMapCobrarBtnClass =
-    'flex-1 min-w-0 basis-0 min-h-[44px] shrink-0 px-1 sm:px-2 py-2 rounded-xl text-[11px] sm:text-sm font-bold border border-[color:color-mix(in_srgb,var(--ui-accent-muted)_45%,transparent)] uppercase tracking-wide text-white bg-[var(--ui-accent)] shadow-md hover:bg-[var(--ui-accent-hover)] inline-flex items-center justify-center gap-1 text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
+    'w-full min-h-[44px] px-2 py-2 rounded-xl text-xs sm:text-sm font-bold border border-[color:color-mix(in_srgb,var(--ui-accent-muted)_45%,transparent)] uppercase tracking-wide text-white bg-[var(--ui-accent)] shadow-md hover:bg-[var(--ui-accent-hover)] inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
 
   const cajaRequiresRegisterNotice = (
     <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-4">
@@ -3768,15 +3768,16 @@ export default function POSPanel() {
                 })()}
               </div>
 
-              <div className="flex flex-nowrap gap-2 shrink-0 min-h-[48px] overflow-x-auto pb-1 pt-1">
+              <div className="grid grid-cols-3 gap-2 shrink-0 pt-1 pb-1">
                 {!isDeliveryCheckoutTable(tableDetail) && (
                   <button
                     type="button"
                     onClick={() => openMenuForTable(tableDetail)}
                     className={mesaMapActionBtnClass}
+                    title="Tomar pedido"
                   >
                     <MdRestaurantMenu className="shrink-0 text-lg" />
-                    <span className="truncate">Tomar pedido</span>
+                    <span>Pedir</span>
                   </button>
                 )}
                 <button
@@ -3791,7 +3792,7 @@ export default function POSPanel() {
                   className={mesaMapActionBtnClass}
                 >
                   <MdEdit className="shrink-0 text-lg" />
-                  <span className="truncate">Modificar pedido</span>
+                  <span>Modificar</span>
                 </button>
                 {!isDeliveryCheckoutTable(tableDetail) && (
                   <button
@@ -3802,7 +3803,7 @@ export default function POSPanel() {
                     title="Mover toda la cuenta a otra mesa"
                   >
                     <MdOpenWith className="shrink-0 text-lg" />
-                    <span className="truncate">Mover mesa</span>
+                    <span>Mover mesa</span>
                   </button>
                 )}
                 {!isDeliveryCheckoutTable(tableDetail) && (
@@ -3814,7 +3815,7 @@ export default function POSPanel() {
                     title="Mover pedidos seleccionados a otra mesa"
                   >
                     <MdSwapHoriz className="shrink-0 text-lg" />
-                    <span className="truncate">Mover pedidos</span>
+                    <span>Mover ped.</span>
                   </button>
                 )}
                 <button
@@ -3826,9 +3827,10 @@ export default function POSPanel() {
                   }}
                   disabled={!tableDetail.orders?.length}
                   className={mesaMapActionBtnClass}
+                  title="Imprimir precuenta"
                 >
                   <MdPrint className="shrink-0 text-lg" />
-                  <span className="truncate">Pre cuenta</span>
+                  <span>Precuenta</span>
                 </button>
                 <button
                   type="button"
@@ -3850,9 +3852,10 @@ export default function POSPanel() {
                   }}
                   disabled={!tableDetail.orders?.length}
                   className={mesaMapCobrarBtnClass}
+                  title={isDeliveryCheckoutTable(tableDetail) ? 'Cobrar delivery' : 'Cobrar mesa'}
                 >
                   <MdAttachMoney className="shrink-0 text-lg" />
-                  <span className="truncate">{isDeliveryCheckoutTable(tableDetail) ? 'Cobrar delivery' : 'Cobrar'}</span>
+                  <span>Cobrar</span>
                 </button>
               </div>
             </div>

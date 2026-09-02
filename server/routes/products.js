@@ -15,6 +15,7 @@ const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 const { parseProductMinStock } = require('../utils/productStockThreshold');
 const { resolveProductProductionAreaId } = require('../services/productionAreasService');
 const { attachKardexInsumos, buildKardexPersistFromRequest } = require('../utils/productKardexInsumos');
+const { batchGenerateProductMenuImages, generateProductMenuImage } = require('../services/productImageGenerateService');
 
 const router = express.Router();
 
@@ -176,6 +177,39 @@ router.get('/', (req, res) => {
   res.json(products);
 });
 
+router.post('/generate-menu-images', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const { product_ids: productIds, only_missing: onlyMissing, category_id: categoryId } = req.body || {};
+    const data = await batchGenerateProductMenuImages({
+      productIds: Array.isArray(productIds) ? productIds : undefined,
+      onlyMissing: onlyMissing !== false,
+      categoryId,
+    });
+    emitStaffDataUpdate({ domain: 'catalog' });
+    res.json(data);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Error al generar imágenes' });
+  }
+});
+
+router.post('/:id/generate-menu-image', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const product = queryOne(
+      'SELECT p.*, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?',
+      [req.params.id],
+    );
+    if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+    const onlyMissing = req.body?.only_missing !== false;
+    const result = await generateProductMenuImage(product, { onlyMissing });
+    if (result.status === 'ok') {
+      emitStaffDataUpdate({ domain: 'catalog' });
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Error al generar imagen' });
+  }
+});
+
 router.get('/:id', (req, res) => {
   const product = queryOne('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?', [req.params.id]);
   if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
@@ -326,6 +360,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     available_days,
     schedule_type,
     min_stock,
+    image_source,
   } = req.body;
   const current = queryOne('SELECT * FROM products WHERE id = ?', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Producto no encontrado' });
@@ -386,6 +421,17 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
   const safeDescription = description === undefined ? null : description;
   const safePrice = price === undefined ? null : price;
   const safeImage = image === undefined ? null : image;
+  let nextImageSource = null;
+  if (image_source !== undefined) {
+    const src = String(image_source || '').trim().toLowerCase();
+    if (src === 'manual' || src === 'auto') nextImageSource = src;
+    else if (!src) nextImageSource = '';
+  } else if (image !== undefined && safeImage !== null) {
+    const imageChanged = String(safeImage || '') !== String(current.image || '');
+    if (imageChanged && String(safeImage || '').trim()) {
+      nextImageSource = 'manual';
+    }
+  }
   let safeCategoryId = null;
   if (category_id !== undefined) {
     const catPut = assertProductCategory(category_id);
@@ -405,6 +451,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       description = COALESCE(?, description),
       price = COALESCE(?, price),
       image = COALESCE(?, image),
+      image_source = COALESCE(?, image_source),
       category_id = COALESCE(?, category_id),
       stock = COALESCE(?, stock),
       is_active = COALESCE(?, is_active),
@@ -434,6 +481,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       safeDescription,
       safePrice,
       safeImage,
+      nextImageSource,
       safeCategoryId,
       nextStock,
       safeIsActive,

@@ -1450,29 +1450,26 @@ export default function Settings() {
     <div className="flex gap-6 -mt-2">
       {/* Sidebar Menu */}
       <div className="w-72 flex-shrink-0">
-        <div className="bg-[var(--ui-surface)] rounded-xl overflow-hidden shadow-lg border border-[color:var(--ui-border)]">
-          <div className="px-4 py-3 bg-[var(--ui-accent)]">
-            <h2 className="text-white font-bold text-sm flex items-center gap-2">
+        <div className="rf-settings-hub">
+          <div className="rf-settings-hub__header">
+            <h2 className="rf-settings-hub__header-title">
               <MdSettings className="text-lg" /> Opciones sistema
             </h2>
           </div>
-          <nav className="py-1">
+          <nav className="rf-settings-hub__nav">
             {MENU_ITEMS.map(item => {
               const Icon = item.icon;
               const isActive = activeSection === item.id;
               return (
                 <button
                   key={item.id}
+                  type="button"
                   onClick={() => setActiveSection(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                    isActive
-                      ? 'bg-[var(--ui-accent-hover)] text-white font-medium'
-                      : 'text-[var(--ui-muted)] hover:bg-[var(--ui-sidebar-hover)] hover:text-[var(--ui-body-text)]'
-                  }`}
+                  className={`rf-settings-hub__item ${isActive ? 'rf-settings-hub__item--active' : ''}`}
                 >
                   <Icon className="text-lg flex-shrink-0" />
                   <span className="flex-1 text-left">{item.label}</span>
-                  <MdChevronRight className={`text-lg flex-shrink-0 ${isActive ? 'text-white' : 'text-[var(--ui-accent-muted)]'}`} />
+                  <MdChevronRight className={`text-lg flex-shrink-0 rf-settings-hub__item-chevron`} />
                 </button>
               );
             })}

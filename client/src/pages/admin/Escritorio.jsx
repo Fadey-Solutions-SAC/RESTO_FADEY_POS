@@ -1274,7 +1274,7 @@ export default function Escritorio() {
           {[
             { label: 'Ventas en efectivo', amount: salesByPayment.efectivo, currency: true },
             { label: 'Ventas con tarjeta', amount: salesByPayment.tarjeta, currency: true },
-            { label: 'Ventas por Yape/Plin', amount: (salesByPayment.yape || 0) + (salesByPayment.plin || 0), currency: true },
+            { label: 'Yape/Plin', amount: (salesByPayment.yape || 0) + (salesByPayment.plin || 0), currency: true },
             { label: 'Total de ventas', amount: totalSales, currency: true },
             { label: 'Egresos de caja', amount: totalCashExpenses, currency: true },
             { label: 'Total de descuentos', amount: totalDiscounts, currency: true },

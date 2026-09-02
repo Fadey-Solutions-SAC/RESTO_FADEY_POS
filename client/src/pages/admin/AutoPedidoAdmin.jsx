@@ -3,7 +3,7 @@ import { api, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
-import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff } from 'react-icons/md';
+import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdAutoAwesome, MdWarning } from 'react-icons/md';
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import {
@@ -13,6 +13,7 @@ import {
   normalizeHex,
 } from '../../utils/generateMenuCartaSvg';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
+import { isLikelyAmbiguousProductImageName } from '../../utils/productImageAmbiguous';
 
 /** Editor con resaltado: líneas que empiezan (tras espacios) con # usan color de sección. */
 function MenuCartaSyntaxEditor({ value, onChange, bgColor, textColor, sectionColor }) {
@@ -92,6 +93,9 @@ export default function AutoPedidoAdmin() {
   const [genPreviewUrl, setGenPreviewUrl] = useState('');
   const [genColors, setGenColors] = useState(() => ({ ...DEFAULT_MENU_CARTA_COLORS }));
   const [showProductCatalog, setShowProductCatalog] = useState(false);
+  const [generatingImages, setGeneratingImages] = useState(false);
+  const [imageGenWarnings, setImageGenWarnings] = useState([]);
+  const [showImageGenWarnings, setShowImageGenWarnings] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -278,11 +282,80 @@ export default function AutoPedidoAdmin() {
     const tid = toast.loading('Subiendo imagen…');
     try {
       const { url } = await api.upload(file);
-      await api.put(`/products/${productId}`, { image: url || '' });
-      toast.success('Imagen actualizada', { id: tid });
+      await api.put(`/products/${productId}`, { image: url || '', image_source: 'manual' });
+      toast.success('Imagen actualizada (manual tiene prioridad)', { id: tid });
       load();
     } catch (err) {
       toast.error(err.message || 'No se pudo actualizar imagen', { id: tid });
+    }
+  };
+
+  const showImageGenerationSummary = (data) => {
+    const { summary, results } = data || {};
+    const ambiguous = (results || []).filter((r) => r.status === 'ambiguous');
+    if (summary?.generated) {
+      toast.success(`${summary.generated} imagen(es) generada(s) automáticamente`);
+    } else if (!ambiguous.length && !summary?.errors) {
+      toast('No había productos pendientes de imagen en esta selección');
+    }
+    if (summary?.errors) {
+      toast.error(`${summary.errors} producto(s) con error al generar`);
+    }
+    if (ambiguous.length) {
+      setImageGenWarnings(ambiguous);
+      setShowImageGenWarnings(true);
+      toast(
+        `${ambiguous.length} producto(s): el sistema no asimila el nombre. Revise el aviso.`,
+        { icon: '⚠️', duration: 6000 },
+      );
+    }
+    load();
+  };
+
+  const generateMissingImages = async () => {
+    if (!canSave || generatingImages) return;
+    const missingCount = filteredProducts.filter((p) => !String(p.image || '').trim() && p.image_source !== 'manual').length;
+    if (!missingCount) {
+      toast('Todos los productos visibles ya tienen imagen o imagen manual');
+      return;
+    }
+    if (!confirm(`¿Generar imágenes automáticas para hasta ${missingCount} producto(s) sin imagen?`)) return;
+    setGeneratingImages(true);
+    const tid = toast.loading('Generando imágenes… puede tardar varios minutos');
+    try {
+      const data = await api.post('/products/generate-menu-images', {
+        only_missing: true,
+        category_id: selectedCategory !== 'all' ? selectedCategory : undefined,
+      });
+      showImageGenerationSummary(data);
+    } catch (err) {
+      toast.error(err.message || 'No se pudieron generar imágenes', { id: tid });
+    } finally {
+      setGeneratingImages(false);
+      toast.dismiss(tid);
+    }
+  };
+
+  const generateProductImage = async (productId) => {
+    if (!canSave || generatingImages) return;
+    setGeneratingImages(true);
+    const tid = toast.loading('Generando imagen…');
+    try {
+      const result = await api.post(`/products/${productId}/generate-menu-image`, { only_missing: true });
+      if (result.status === 'ok') {
+        toast.success('Imagen generada', { id: tid });
+        load();
+      } else if (result.status === 'ambiguous') {
+        toast.error(result.message || 'El sistema no asimila el nombre. Agregue la imagen manualmente.', { id: tid });
+      } else if (result.status === 'skipped') {
+        toast(result.message || 'No se generó imagen', { id: tid });
+      } else {
+        toast.error(result.message || 'No se pudo generar', { id: tid });
+      }
+    } catch (err) {
+      toast.error(err.message || 'No se pudo generar imagen', { id: tid });
+    } finally {
+      setGeneratingImages(false);
     }
   };
 
@@ -299,15 +372,31 @@ export default function AutoPedidoAdmin() {
       <div className="card mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-[color:var(--ui-accent)]/35 bg-[var(--ui-surface)]">
         <div className="min-w-0">
           <p className="font-semibold text-[var(--ui-body-text)]">Productos e imágenes del menú</p>
+          <p className="text-xs text-[var(--ui-muted)] mt-1">
+            Las imágenes subidas manualmente tienen prioridad sobre las generadas automáticamente.
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowProductCatalog((v) => !v)}
-          className="btn-primary text-sm inline-flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto px-5 py-2.5"
-        >
-          {showProductCatalog ? <MdVisibilityOff className="text-lg" /> : <MdVisibility className="text-lg" />}
-          {showProductCatalog ? 'Ocultar productos' : 'Mostrar productos'}
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+          {canSave ? (
+            <button
+              type="button"
+              onClick={generateMissingImages}
+              disabled={generatingImages}
+              className="btn-secondary text-sm inline-flex items-center justify-center gap-2 px-4 py-2.5"
+            >
+              <MdAutoAwesome className="text-lg" />
+              {generatingImages ? 'Generando…' : 'Generar imágenes faltantes'}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setShowProductCatalog((v) => !v)}
+            className="btn-primary text-sm inline-flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto px-5 py-2.5"
+          >
+            {showProductCatalog ? <MdVisibilityOff className="text-lg" /> : <MdVisibility className="text-lg" />}
+            {showProductCatalog ? 'Ocultar productos' : 'Mostrar productos'}
+          </button>
+        </div>
       </div>
 
       {showProductCatalog ? (
@@ -346,7 +435,18 @@ export default function AutoPedidoAdmin() {
                 )}
               </div>
               <p className="text-sm font-semibold text-[var(--ui-body-text)] truncate">{p.name}</p>
+              {isLikelyAmbiguousProductImageName(p.name, p.description) && !p.image ? (
+                <p className="text-[11px] text-amber-600 flex items-center gap-1 mt-0.5">
+                  <MdWarning className="shrink-0" />
+                  Nombre poco claro para imagen automática
+                </p>
+              ) : null}
               <p className="text-sm text-[var(--ui-accent)]">S/ {Number(p.price || 0).toFixed(2)}</p>
+              {p.image_source === 'auto' ? (
+                <p className="text-[10px] text-[var(--ui-muted)] mt-0.5">Imagen automática</p>
+              ) : p.image_source === 'manual' ? (
+                <p className="text-[10px] text-emerald-600 mt-0.5">Imagen manual</p>
+              ) : null}
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <input
                   type="file"
@@ -360,17 +460,38 @@ export default function AutoPedidoAdmin() {
                   htmlFor={`product-image-${p.id}`}
                   className={`text-xs py-1.5 rounded-lg text-center border ${canSave ? 'border-[color:var(--ui-border)] text-[var(--ui-accent)] cursor-pointer hover:bg-[var(--ui-sidebar-hover)]' : 'border-slate-500/40 ui-text-muted'}`}
                 >
-                  Agregar imagen
+                  Subir imagen
                 </label>
+                {canSave && !p.image && p.image_source !== 'manual' ? (
+                  <button
+                    type="button"
+                    onClick={() => generateProductImage(p.id)}
+                    disabled={generatingImages}
+                    className="text-xs py-1.5 rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center justify-center gap-1"
+                  >
+                    <MdAutoAwesome className="text-sm" />
+                    Generar
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openEditProduct(p)}
+                    className="text-xs py-1.5 rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center justify-center gap-1"
+                    disabled={!canSave}
+                  >
+                    <MdEdit /> Editar
+                  </button>
+                )}
+              </div>
+              {canSave && (p.image || p.image_source === 'manual') ? (
                 <button
                   type="button"
                   onClick={() => openEditProduct(p)}
-                  className="text-xs py-1.5 rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center justify-center gap-1"
-                  disabled={!canSave}
+                  className="mt-2 w-full text-xs py-1.5 rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center justify-center gap-1"
                 >
-                  <MdEdit /> Editar
+                  <MdEdit /> Editar producto
                 </button>
-              </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -498,6 +619,32 @@ export default function AutoPedidoAdmin() {
         </div>
         {tables.length === 0 && <p className="ui-text-muted text-sm">No hay mesas configuradas. Créalas en Configuración → Salones y Mesas.</p>}
       </div>
+
+      <Modal
+        isOpen={showImageGenWarnings}
+        onClose={() => setShowImageGenWarnings(false)}
+        title="Imágenes no generadas"
+        size="md"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--ui-muted)]">
+            El sistema no asimila estos nombres. Agregue la imagen manualmente o complete la descripción del producto y vuelva a generar.
+          </p>
+          <ul className="text-sm space-y-2 max-h-64 overflow-y-auto">
+            {imageGenWarnings.map((w) => (
+              <li key={w.product_id} className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-amber-900">
+                <p className="font-semibold">{w.product_name}</p>
+                <p className="text-xs mt-0.5">{w.message}</p>
+              </li>
+            ))}
+          </ul>
+          <div className="flex justify-end">
+            <button type="button" className="btn-primary text-sm" onClick={() => setShowImageGenWarnings(false)}>
+              Entendido
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={Boolean(editingProduct)}

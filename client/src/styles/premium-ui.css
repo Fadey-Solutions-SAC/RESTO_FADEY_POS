@@ -259,6 +259,75 @@ h1, h2, h3, h4 {
     font-weight: 600;
   }
 
+  /* —— Configuración: panel de módulos con tinte del tema activo —— */
+  .rf-settings-hub {
+    background: color-mix(in srgb, var(--ui-accent-muted) 14%, var(--ui-surface));
+    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 24%, var(--ui-border));
+    border-radius: var(--ui-radius-xl);
+    overflow: hidden;
+    box-shadow: var(--ui-shadow-md);
+    transition: background 0.25s ease, border-color 0.25s ease;
+  }
+
+  .rf-settings-hub__header {
+    padding: 0.75rem 1rem;
+    background: linear-gradient(
+      125deg,
+      color-mix(in srgb, var(--ui-logo-from) 42%, var(--ui-surface)),
+      color-mix(in srgb, var(--ui-logo-to) 36%, var(--ui-surface))
+    );
+    border-bottom: 1px solid color-mix(in srgb, var(--ui-accent-muted) 18%, transparent);
+  }
+
+  .rf-settings-hub__header-title {
+    color: color-mix(in srgb, var(--ui-accent-hover) 88%, var(--ui-body-text));
+    font-weight: 700;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  html[data-ui-color-scheme='dark'] .rf-settings-hub__header-title {
+    color: color-mix(in srgb, var(--ui-accent-muted) 70%, var(--ui-body-text));
+  }
+
+  .rf-settings-hub__nav {
+    padding: 0.25rem 0;
+    background: transparent;
+  }
+
+  .rf-settings-hub__item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    text-align: left;
+    transition: background 0.15s ease, color 0.15s ease;
+    color: var(--ui-muted);
+  }
+
+  .rf-settings-hub__item:hover {
+    background: color-mix(in srgb, var(--ui-accent-muted) 10%, var(--ui-surface));
+    color: var(--ui-body-text);
+  }
+
+  .rf-settings-hub__item--active {
+    background: color-mix(in srgb, var(--ui-accent-muted) 22%, var(--ui-surface));
+    color: color-mix(in srgb, var(--ui-accent-hover) 85%, var(--ui-body-text));
+    font-weight: 600;
+  }
+
+  .rf-settings-hub__item-chevron {
+    color: color-mix(in srgb, var(--ui-accent-muted) 75%, var(--ui-muted));
+  }
+
+  .rf-settings-hub__item--active .rf-settings-hub__item-chevron {
+    color: color-mix(in srgb, var(--ui-accent-hover) 80%, var(--ui-body-text));
+  }
+
   /* —— Cards —— */
   .card {
     border-radius: var(--ui-radius-xl) !important;

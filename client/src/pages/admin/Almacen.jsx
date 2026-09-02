@@ -271,6 +271,12 @@ const ALMACEN_VIEWS = [
   { id: 'ir_modulo_gastos', label: 'Gastos' },
 ];
 
+const ALL_WAREHOUSES_VIEW = 'all';
+
+function isAllWarehousesView(view) {
+  return !view || view === ALL_WAREHOUSES_VIEW;
+}
+
 function MovimientoInternoStatCard({ label, value, valueClassName = '', valueStyle }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-center min-w-0">
@@ -331,7 +337,7 @@ export default function Almacen() {
   const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState(searchParams.get('view') || 'movimiento_interno');
-  const [selectedWarehouseView, setSelectedWarehouseView] = useState('');
+  const [selectedWarehouseView, setSelectedWarehouseView] = useState(ALL_WAREHOUSES_VIEW);
   const [search, setSearch] = useState('');
   const [stockModal, setStockModal] = useState(null);
   const [stockChange, setStockChange] = useState('');
@@ -464,7 +470,11 @@ export default function Almacen() {
 
   const isReceptionRowSelected = (key) => receptionSelectedKeys.includes(key);
   const getDefaultCreateWarehouseId = () => {
-    if (selectedWarehouseView && warehouses.some(w => sameWarehouseId(w.id, selectedWarehouseView))) {
+    if (
+      selectedWarehouseView
+      && !isAllWarehousesView(selectedWarehouseView)
+      && warehouses.some(w => sameWarehouseId(w.id, selectedWarehouseView))
+    ) {
       return String(selectedWarehouseView);
     }
     if (stockWarehouse && warehouses.some(w => sameWarehouseId(w.id, stockWarehouse))) {
@@ -681,11 +691,11 @@ export default function Almacen() {
     return filteredProducts;
   }, [requirementScope, requirementCategoryId, lowStockGlobal, lowFromWarehouse, nonTransformedProducts]);
 
-  const productsForSelectedWarehouse = selectedWarehouseView
-    ? scopedProducts.filter(p =>
+  const productsForSelectedWarehouse = isAllWarehousesView(selectedWarehouseView)
+    ? scopedProducts
+    : scopedProducts.filter(p =>
       (p.warehouse_stocks || []).some(ws => sameWarehouseId(ws.warehouse_id, selectedWarehouseView))
-    )
-    : [];
+    );
 
   const warehouseUsageMap = products.reduce((acc, product) => {
     (product.warehouse_stocks || []).forEach(ws => {
@@ -735,10 +745,14 @@ export default function Almacen() {
   const insumosTotalUnits = insumosPorVista.reduce((s, i) => s + insumoStockEnUnidades(i), 0);
   const totalValue = selectedIsInsumosWarehouse
     ? insumosTotalValue
-    : productsForSelectedWarehouse.reduce((s, p) => s + (p.price * p.stock), 0);
+    : isAllWarehousesView(selectedWarehouseView)
+      ? products.reduce((s, p) => s + (p.price * p.stock), 0)
+      : productsForSelectedWarehouse.reduce((s, p) => s + (p.price * p.stock), 0);
   const totalInventoryInvestment = selectedIsInsumosWarehouse
     ? insumosTotalValue
-    : productsForSelectedWarehouse.reduce((s, p) => s + productInventoryInvestment(p), 0);
+    : isAllWarehousesView(selectedWarehouseView)
+      ? products.reduce((s, p) => s + productInventoryInvestment(p), 0)
+      : productsForSelectedWarehouse.reduce((s, p) => s + productInventoryInvestment(p), 0);
   const expenseGroups = Object.values(
     (expenseHistory || []).reduce((acc, expense) => {
       const key = expense.requirement_id || expense.id;
@@ -2039,6 +2053,30 @@ export default function Almacen() {
   return (
     <div>
       <div className="flex flex-wrap items-stretch gap-3 mb-5">
+        <div
+          onClick={() => setSelectedWarehouseView(ALL_WAREHOUSES_VIEW)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setSelectedWarehouseView(ALL_WAREHOUSES_VIEW);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          className={`bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
+            isAllWarehousesView(selectedWarehouseView)
+              ? 'border-gold-500 ring-2 ring-gold-200'
+              : 'border-slate-200 hover:border-gold-300'
+          }`}
+        >
+          <p className="font-semibold text-[var(--ui-body-text)]">Todos</p>
+          <p className="text-xs text-[var(--ui-body-text)] mt-1">Vista consolidada de todos los almacenes</p>
+          <p className="text-xs text-[var(--ui-body-text)] mt-2">
+            Productos: <strong>{products.length}</strong>
+            {' · '}
+            Insumos: <strong>{insumosActivos.length}</strong>
+          </p>
+        </div>
         {warehouses.map(w => {
           const linkedProducts = isInsumosWarehouse(w)
             ? insumosActivos.length
@@ -2124,7 +2162,13 @@ export default function Almacen() {
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3 mb-5">
         <MovimientoInternoStatCard
           label="Total ítems"
-          value={selectedIsInsumosWarehouse ? insumosPorVista.length : productsForSelectedWarehouse.length}
+          value={
+            selectedIsInsumosWarehouse
+              ? insumosPorVista.length
+              : isAllWarehousesView(selectedWarehouseView)
+                ? scopedProducts.length + insumosActivos.length
+                : productsForSelectedWarehouse.length
+          }
         />
         <MovimientoInternoStatCard label="Valor del inventario" value={formatCurrency(totalValue)} valueClassName="ui-text-success" />
         <MovimientoInternoStatCard label="Valor de insumos" value={formatCurrency(insumosTotalValueAll)} valueClassName="ui-text-success" />
@@ -2135,12 +2179,24 @@ export default function Almacen() {
         />
         <MovimientoInternoStatCard
           label="Stock bajo"
-          value={selectedIsInsumosWarehouse ? insumosLowCount : lowStock.length}
+          value={
+            selectedIsInsumosWarehouse
+              ? insumosLowCount
+              : isAllWarehousesView(selectedWarehouseView)
+                ? lowFromWarehouse.length + insumosActivos.filter((i) => insumoEstaBajoMinimo(i)).length
+                : lowStock.length
+          }
           valueClassName="ui-text-danger"
         />
         <MovimientoInternoStatCard
           label="Unidades totales"
-          value={selectedIsInsumosWarehouse ? insumosTotalUnits : productsForSelectedWarehouse.reduce((s, p) => s + p.stock, 0)}
+          value={
+            selectedIsInsumosWarehouse
+              ? insumosTotalUnits
+              : isAllWarehousesView(selectedWarehouseView)
+                ? products.reduce((s, p) => s + p.stock, 0) + insumosActivos.reduce((s, i) => s + insumoStockEnUnidades(i), 0)
+                : productsForSelectedWarehouse.reduce((s, p) => s + p.stock, 0)
+          }
         />
       </div>
       {lowStock.length > 0 && (
@@ -2339,7 +2395,9 @@ export default function Almacen() {
                               : ''
                           );
                           setStockWarehouse(
-                            selectedWarehouseView || principalWarehouse?.id || ''
+                            isAllWarehousesView(selectedWarehouseView)
+                              ? (principalWarehouse?.id || '')
+                              : (selectedWarehouseView || principalWarehouse?.id || '')
                           );
                           setShowDeleteFlow(false);
                           setDeleteReason('');
@@ -2367,9 +2425,9 @@ export default function Almacen() {
                     colSpan={selectedIsPrincipalWarehouse ? 9 : 10}
                     className="py-10 text-center text-[var(--ui-muted)]"
                   >
-                    {selectedWarehouseView
-                      ? 'No hay productos en este almacén'
-                      : 'Selecciona un almacén para ver sus productos'}
+                    {isAllWarehousesView(selectedWarehouseView)
+                      ? 'No hay productos registrados'
+                      : 'No hay productos en este almacén'}
                   </td>
                 </tr>
               )}
