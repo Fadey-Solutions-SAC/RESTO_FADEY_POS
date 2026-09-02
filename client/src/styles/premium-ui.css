@@ -714,15 +714,15 @@ h1, h2, h3, h4 {
   /* —— Mapa de mesas (caja): mesa cuadrada + sillas —— */
   .rf-mesa-map-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(4.75rem, 1fr));
-    gap: 0.625rem;
+    grid-template-columns: repeat(auto-fill, minmax(7.125rem, 1fr));
+    gap: 0.9375rem;
     justify-items: center;
   }
 
   @media (min-width: 640px) {
     .rf-mesa-map-grid {
-      grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
-      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+      gap: 1.125rem;
     }
   }
 
@@ -754,8 +754,8 @@ h1, h2, h3, h4 {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.125rem;
-    padding: 0.25rem;
+    gap: 0.1875rem;
+    padding: 0.375rem;
     border: none;
     background: transparent;
     cursor: pointer;
@@ -787,15 +787,15 @@ h1, h2, h3, h4 {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.2rem;
+    gap: 0.3rem;
   }
 
   .rf-mesa-map-tile__chairs-row {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.15rem;
-    min-height: 0.35rem;
+    gap: 0.225rem;
+    min-height: 0.525rem;
   }
 
   .rf-mesa-map-tile__chairs-col {
@@ -803,28 +803,28 @@ h1, h2, h3, h4 {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.12rem;
-    min-width: 0.35rem;
+    gap: 0.18rem;
+    min-width: 0.525rem;
   }
 
   .rf-mesa-map-chair {
     display: block;
-    width: 0.42rem;
-    height: 0.55rem;
-    border-radius: 0.15rem;
+    width: 0.63rem;
+    height: 0.825rem;
+    border-radius: 0.225rem;
     background: #374151;
     box-shadow: 0 1px 0 rgb(0 0 0 / 0.15);
   }
 
   .rf-mesa-map-tile__table {
-    width: 3.25rem;
-    height: 3.25rem;
-    border-radius: 0.45rem;
+    width: 4.875rem;
+    height: 4.875rem;
+    border-radius: 0.675rem;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.05rem;
+    gap: 0.075rem;
     box-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
     position: relative;
     flex-shrink: 0;
@@ -832,13 +832,13 @@ h1, h2, h3, h4 {
 
   @media (min-width: 640px) {
     .rf-mesa-map-tile__table {
-      width: 3.5rem;
-      height: 3.5rem;
+      width: 5.25rem;
+      height: 5.25rem;
     }
   }
 
   .rf-mesa-map-tile__number {
-    font-size: 0.95rem;
+    font-size: 1.425rem;
     font-weight: 800;
     line-height: 1;
     color: #fff;
@@ -846,7 +846,7 @@ h1, h2, h3, h4 {
   }
 
   .rf-mesa-map-tile__capacity {
-    font-size: 0.5625rem;
+    font-size: 0.84375rem;
     font-weight: 600;
     line-height: 1;
     color: rgb(255 255 255 / 0.92);
@@ -854,9 +854,9 @@ h1, h2, h3, h4 {
 
   .rf-mesa-map-tile__union-icon {
     position: absolute;
-    top: 0.15rem;
-    right: 0.15rem;
-    font-size: 0.65rem;
+    top: 0.225rem;
+    right: 0.225rem;
+    font-size: 0.975rem;
     color: rgb(255 255 255 / 0.9);
   }
 
