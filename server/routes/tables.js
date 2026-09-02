@@ -5,6 +5,16 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { getOrderWithItems } = require('../orderCreateService');
 const { ensureSalonesConfig, saveSalonesConfig, normalizeSalonesList } = require('../services/salonesConfigService');
 const { loadActiveTableOrders, loadAllActiveTableOrdersWithItems, attachActiveOrdersToTables, deriveTableStatus } = require('../services/tableOrdersQueryService');
+const {
+  applyTableUnionsToList,
+  createUnion,
+  dissolveUnion,
+  enrichTableWithUnion,
+  getUnionContainingTable,
+  loadAllUnions,
+  parseMemberIds,
+  resolveTableForDetail,
+} = require('../services/tableUnionService');
 const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
 const { DEFAULT_PRIMARY_CAJA_ID } = require('../cajaSettings');
 
@@ -106,7 +116,7 @@ router.get('/', (req, res) => {
     tables = filterTablesByCaja(tables, salones, cajaId);
     const activeOrders = loadAllActiveTableOrdersWithItems();
     attachActiveOrdersToTables(tables, activeOrders);
-    res.json(tables);
+    res.json(applyTableUnionsToList(tables));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -114,10 +124,25 @@ router.get('/', (req, res) => {
 
 router.get('/:id', (req, res) => {
   try {
-    const table = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
+    const base = resolveTableForDetail(req.params.id);
+    if (!base) return res.status(404).json({ error: 'Mesa no encontrada' });
+    const table = queryOne('SELECT * FROM tables WHERE id = ?', [base.id]);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
     if (!assertTableAccessForUser(req, table)) {
       return res.status(403).json({ error: 'Esta mesa pertenece a otra caja' });
+    }
+    const union = getUnionContainingTable(table.id);
+    if (union) {
+      const memberIds = parseMemberIds(union);
+      const memberTables = memberIds.map((tid) => {
+        const t = queryOne('SELECT * FROM tables WHERE id = ?', [tid]);
+        if (!t) return null;
+        const orders = loadActiveTableOrders(t);
+        return { ...t, orders };
+      }).filter(Boolean);
+      const enriched = enrichTableWithUnion(table, memberTables, union);
+      res.json(enriched);
+      return;
     }
     const orders = loadActiveTableOrders(table);
     table.orders = orders;
@@ -348,6 +373,53 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
     res.json({ success: true, moved: selected.length, source_table: source.number, target_table: target.number });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/unite', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
+  try {
+    const tableIds = Array.isArray(req.body?.table_ids) ? req.body.table_ids : [];
+    for (const tid of tableIds) {
+      const table = queryOne('SELECT * FROM tables WHERE id = ?', [tid]);
+      if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
+      if (!assertTableAccessForUser(req, table)) {
+        return res.status(403).json({ error: 'Solo puede unir mesas de su caja asignada' });
+      }
+    }
+    const union = createUnion(tableIds, req.user?.id);
+    logAudit({
+      actorUserId: req.user.id,
+      actorName: req.user.full_name || req.user.username || '',
+      action: 'table.unite',
+      resourceType: 'table_union',
+      resourceId: union.id,
+      details: { member_table_ids: union.member_table_ids, primary_table_id: union.primary_table_id },
+    });
+    const io = req.app.get('io');
+    if (io) io.emit('table-update', { union_id: union.id });
+    res.status(201).json({ success: true, union });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/unite/:unionId', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
+  try {
+    const target = loadAllUnions().find((u) => u.id === String(req.params.unionId || '').trim());
+    if (!target) return res.status(404).json({ error: 'Unión de mesas no encontrada' });
+    const memberIds = parseMemberIds(target);
+    for (const tid of memberIds) {
+      const table = queryOne('SELECT * FROM tables WHERE id = ?', [tid]);
+      if (table && !assertTableAccessForUser(req, table)) {
+        return res.status(403).json({ error: 'No puede separar mesas de otra caja' });
+      }
+    }
+    dissolveUnion(target.id);
+    const io = req.app.get('io');
+    if (io) io.emit('table-update', { dissolved_union_id: target.id });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

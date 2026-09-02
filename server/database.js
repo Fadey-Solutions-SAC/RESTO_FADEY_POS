@@ -2586,6 +2586,13 @@ async function initDatabase() {
     db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-02-professionalization-indexes-audit']);
 
     try {
+      const { ensureTableUnionsSchema } = require('../services/tableUnionService');
+      ensureTableUnionsSchema();
+    } catch (e) {
+      console.warn('[migration] table_unions:', e.message || e);
+    }
+
+    try {
       const { ensureSignatureTables } = require('./services/contractSignature/contractSignatureService');
       ensureSignatureTables();
       db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-08-contract-signature-v1']);

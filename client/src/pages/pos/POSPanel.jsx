@@ -269,11 +269,17 @@ import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import MesaTransferModal from '../../components/MesaTransferModal';
+import MesaMapTableTile from '../../components/MesaMapTableTile';
 import StaffDineInOrderUI, { StaffDineInOrderCartPanel, VIEWPORT_CART_MAX_CLASS } from '../../components/StaffDineInOrderUI';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
 import { canPosDeleteOrReleaseTable, canAjusteBarAutoDismiss } from '../../utils/posPermissions';
 import { buildTablesBySalon } from '../../utils/salonesUtils';
+import {
+  buildReservationByTableIdForToday,
+  getMesaMapChairCount,
+  getMesaMapVisualState,
+} from '../../utils/mesaMapTableVisual';
 import { getOfflinePosStatus, subscribeOfflinePos, readGetCache } from '../../utils/offlinePos';
 import {
   MdPointOfSale, MdTableRestaurant, MdReceipt,
@@ -283,7 +289,7 @@ import {
   MdAccessTime, MdPersonAdd, MdSearch,
   MdDeliveryDining,
   MdEdit, MdDelete, MdPrint, MdSave,
-  MdSwapHoriz, MdOpenWith,
+  MdSwapHoriz, MdOpenWith, MdCallMerge,
 } from 'react-icons/md';
 
 /** Mesa sintética al cobrar cuenta desde Clientes (no existe fila en `tables`). */
@@ -610,6 +616,16 @@ export default function POSPanel() {
   const [mesaDetailModalOpen, setMesaDetailModalOpen] = useState(false);
   /** Modal mover mesa / mover pedidos. */
   const [mesaTransfer, setMesaTransfer] = useState(null);
+  /** Modo selección múltiple para unir mesas en el mapa. */
+  const [mesaUniteMode, setMesaUniteMode] = useState(false);
+  const [mesaUniteSelection, setMesaUniteSelection] = useState([]);
+  const [mesaUniteBusy, setMesaUniteBusy] = useState(false);
+  /** Pregunta «¿Desunir mesa?» al cobrar una mesa unida. */
+  const [mesaUnionCheckoutPrompt, setMesaUnionCheckoutPrompt] = useState(null);
+  const [dissolveUnionAfterCheckout, setDissolveUnionAfterCheckout] = useState(false);
+  const [mesaDesunirBusy, setMesaDesunirBusy] = useState(false);
+  /** Mesas con precuenta impresa (estado morado en el mapa). */
+  const [precuentaTableIds, setPrecuentaTableIds] = useState(() => new Set());
   /** Zona/salón activo en mapa de mesas (pestañas tipo categoría). */
   const [selectedPosSalon, setSelectedPosSalon] = useState('');
   const [showBill, setShowBill] = useState(false);
@@ -2113,10 +2129,36 @@ export default function POSPanel() {
       }
 
       if (!isClientCheckoutTable(selectedTable) && !isDeliveryCheckoutTable(selectedTable)) {
-        const updatedTable = await api.get(`/tables/${selectedTable.id}`);
-        if (!updatedTable.orders || updatedTable.orders.length === 0) {
-          await api.patch(`/tables/${selectedTable.id}/status`, { status: 'available' });
+        const memberIds = Array.isArray(selectedTable.union_member_ids) && selectedTable.union_member_ids.length
+          ? selectedTable.union_member_ids
+          : [selectedTable.id];
+        for (const tid of memberIds) {
+          try {
+            const updatedTable = await api.get(`/tables/${tid}`);
+            if (!updatedTable.orders || updatedTable.orders.length === 0) {
+              await api.patch(`/tables/${tid}/status`, { status: 'available' });
+            }
+          } catch (_) {
+            /* siguiente mesa */
+          }
         }
+      }
+
+      if (dissolveUnionAfterCheckout && selectedTable.union_id) {
+        try {
+          await api.delete(`/tables/unite/${selectedTable.union_id}`);
+        } catch (unionErr) {
+          toast.error(unionErr.message || 'Cobro realizado, pero no se pudieron separar las mesas');
+        }
+      }
+      setDissolveUnionAfterCheckout(false);
+      if (selectedTable?.id) {
+        setPrecuentaTableIds((prev) => {
+          if (!prev.has(selectedTable.id)) return prev;
+          const next = new Set(prev);
+          next.delete(selectedTable.id);
+          return next;
+        });
       }
 
       const ordersForPrint = postPaidOrders.length > 0 ? postPaidOrders : payableOrders;
@@ -2340,14 +2382,107 @@ export default function POSPanel() {
     setDiscountConfig((prev) => ({ ...prev, target: 'whole', targetOrderItemId: '' }));
   };
 
-  const openMesaTableAction = (mode) => {
-    if (!tableDetail || isDeliveryCheckoutTable(tableDetail)) return;
-    if (!(tableDetail.orders?.length)) {
-      toast.error('La mesa no tiene pedidos activos para mover');
+  const openMesaMapTransfer = (mode) => {
+    setMesaUniteMode(false);
+    setMesaUniteSelection([]);
+    setMesaTransfer({
+      mode,
+      sourceId: '',
+      pickSourceAndTarget: true,
+    });
+  };
+
+  const toggleMesaUniteMode = () => {
+    setMesaTransfer(null);
+    setMesaUniteMode((prev) => {
+      if (prev) setMesaUniteSelection([]);
+      return !prev;
+    });
+  };
+
+  const toggleMesaUniteTable = (tableId) => {
+    setMesaUniteSelection((prev) =>
+      prev.includes(tableId) ? prev.filter((id) => id !== tableId) : [...prev, tableId],
+    );
+  };
+
+  const confirmMesaUnite = async () => {
+    if (mesaUniteSelection.length < 2) {
+      toast.error('Seleccione al menos 2 mesas para unir');
       return;
     }
+    setMesaUniteBusy(true);
+    try {
+      await api.post('/tables/unite', { table_ids: mesaUniteSelection });
+      toast.success('Mesas unidas correctamente');
+      setMesaUniteMode(false);
+      setMesaUniteSelection([]);
+      await loadData();
+    } catch (err) {
+      toast.error(err.message || 'No se pudieron unir las mesas');
+    } finally {
+      setMesaUniteBusy(false);
+    }
+  };
+
+  const openBillForTable = (table) => {
+    if (!register) {
+      toast.error('Abra la caja antes de cobrar');
+      return;
+    }
+    if (!table?.orders?.length) return;
+    if (!table.union_id) setDissolveUnionAfterCheckout(false);
+    releasePendingOrderMenu();
     setMesaDetailModalOpen(false);
-    setMesaTransfer({ mode, sourceId: tableDetail.id });
+    setSelectedTable(table);
+    setShowBill(true);
+    setPaymentMethod('efectivo');
+    setAmountReceived('');
+    setSplitMode(false);
+    setSelectedOrderItemIds(collectAllOrderItemIds(table.orders));
+    setSelectedOrderItemQtys({});
+    setDiscountConfig({ ...EMPTY_DISCOUNT_CONFIG });
+  };
+
+  const beginCobrarMesa = (table) => {
+    if (!register) {
+      toast.error('Abra la caja antes de cobrar');
+      return;
+    }
+    if (!table?.orders?.length) return;
+    if (table.union_id) {
+      setMesaUnionCheckoutPrompt(table);
+      return;
+    }
+    openBillForTable(table);
+  };
+
+  const answerMesaUnionCheckoutPrompt = (dissolve) => {
+    const table = mesaUnionCheckoutPrompt;
+    setMesaUnionCheckoutPrompt(null);
+    if (!table) return;
+    setDissolveUnionAfterCheckout(Boolean(dissolve));
+    openBillForTable(table);
+  };
+
+  const desunirMesaUnida = async (table = tableDetail) => {
+    const unionId = String(table?.union_id || '').trim();
+    if (!unionId) return;
+    setMesaDesunirBusy(true);
+    try {
+      await api.delete(`/tables/unite/${unionId}`);
+      toast.success('Mesas separadas correctamente');
+      setMesaDetailModalOpen(false);
+      if (tableDetail?.id === table?.id) {
+        setTableDetail(null);
+        setSelectedTable(null);
+      }
+      await loadData();
+    } catch (err) {
+      toast.error(err.message || 'No se pudieron separar las mesas');
+    } finally {
+      setMesaDesunirBusy(false);
+    }
   };
 
   const openMenuForTable = (table) => {
@@ -2878,6 +3013,21 @@ export default function POSPanel() {
     () => (tables || []).filter((t) => !isDeliveryCheckoutTable(t) && !isClientCheckoutTable(t)),
     [tables]
   );
+  const reservationByTableId = useMemo(
+    () => buildReservationByTableIdForToday(reservations),
+    [reservations]
+  );
+  useEffect(() => {
+    setPrecuentaTableIds((prev) => {
+      if (!prev.size) return prev;
+      const next = new Set();
+      for (const id of prev) {
+        const t = mesaPhysicalTables.find((x) => x.id === id);
+        if (t?.orders?.length) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [mesaPhysicalTables]);
   const occupiedTables = useMemo(
     () => mesaPhysicalTables.filter((t) => t.orders && t.orders.length > 0),
     [mesaPhysicalTables]
@@ -3271,6 +3421,14 @@ export default function POSPanel() {
     });
     if (r.ok) {
       toast.success(`Precuenta impresa · ${getThermalPrintRevision()}`);
+      const tid = String(table.id || '').trim();
+      if (tid) {
+        setPrecuentaTableIds((prev) => {
+          const next = new Set(prev);
+          next.add(tid);
+          return next;
+        });
+      }
     } else toast.error(r.error || 'No se pudo imprimir precuenta');
   };
 
@@ -3385,8 +3543,52 @@ export default function POSPanel() {
     }
   };
 
-  const mesaMapMoveTableBtnClass = 'btn-mesa-grid btn-mesa-move-table';
-  const mesaMapMoveOrdersBtnClass = 'btn-mesa-grid btn-mesa-move-orders';
+  const mesaMapToolbarMoveTableClass = 'btn-mesa-map-toolbar btn-mesa-move-table';
+  const mesaMapToolbarMoveOrdersClass = 'btn-mesa-map-toolbar btn-mesa-move-orders';
+  const mesaMapToolbarUniteClass = 'btn-mesa-map-toolbar btn-mesa-unite';
+
+  const mesaMapToolbarButtons = (
+    <>
+      <button
+        type="button"
+        onClick={() => openMesaMapTransfer('move_table')}
+        className={mesaMapToolbarMoveTableClass}
+        title="Mover toda la cuenta a otra mesa"
+      >
+        <MdOpenWith className="shrink-0 text-base" />
+        <span>Mover mesa</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => openMesaMapTransfer('move_orders')}
+        className={mesaMapToolbarMoveOrdersClass}
+        title="Mover pedidos seleccionados a otra mesa"
+      >
+        <MdSwapHoriz className="shrink-0 text-base" />
+        <span>Mover ped.</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (mesaUniteMode && mesaUniteSelection.length >= 2) {
+            void confirmMesaUnite();
+          } else {
+            toggleMesaUniteMode();
+          }
+        }}
+        disabled={mesaUniteBusy}
+        className={`${mesaMapToolbarUniteClass}${mesaUniteMode ? ' ring-2 ring-violet-300 ring-offset-1' : ''}`}
+        title="Unir varias mesas en una sola cuenta"
+      >
+        <MdCallMerge className="shrink-0 text-base" />
+        <span>
+          {mesaUniteMode && mesaUniteSelection.length >= 2
+            ? `Unir (${mesaUniteSelection.length})`
+            : 'Unir mesas'}
+        </span>
+      </button>
+    </>
+  );
 
   const cajaRequiresRegisterNotice = (
     <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-4">
@@ -3549,6 +3751,8 @@ export default function POSPanel() {
         <>
       <div className="flex flex-wrap items-center justify-between gap-2 shrink-0 mb-2">
         <h2 className="font-semibold text-slate-700 flex items-center gap-2 text-base sm:text-lg min-w-0">
+          <MdTableRestaurant className="shrink-0" />
+          <span>Caja - Mapa de Mesas</span>
           <span
             className={`inline-flex items-center justify-center w-7 h-7 rounded-full border shrink-0 ${
               internetOnline
@@ -3562,8 +3766,6 @@ export default function POSPanel() {
               ? <MdCheckCircle className="text-lg" />
               : <MdClose className="text-lg" />}
           </span>
-          <MdTableRestaurant className="shrink-0" />
-          <span>Mapa de mesas</span>
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           {showDeliveryUi ? (
@@ -3582,6 +3784,7 @@ export default function POSPanel() {
               Delivery
             </button>
           ) : null}
+          {!canSwitchCaja ? mesaMapToolbarButtons : null}
           {canSwitchCaja ? (
             <button
               type="button"
@@ -3603,7 +3806,8 @@ export default function POSPanel() {
       </div>
 
       {tablesBySalon.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2 shrink-0">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="flex flex-wrap gap-2 min-w-0">
           {tablesBySalon.map(({ zone, label, tables: salonTables }) => {
             const active = selectedPosSalon === zone;
             return (
@@ -3624,23 +3828,71 @@ export default function POSPanel() {
               </button>
             );
           })}
+          </div>
+          {canSwitchCaja ? (
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {mesaMapToolbarButtons}
+            </div>
+          ) : null}
         </div>
       )}
 
+      {mesaUniteMode ? (
+        <p className="mb-2 shrink-0 text-xs sm:text-sm text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+          Seleccione 2 o más mesas en el mapa y pulse <strong>Unir ({mesaUniteSelection.length})</strong>.
+          <button
+            type="button"
+            onClick={toggleMesaUniteMode}
+            className="ml-2 underline font-medium hover:text-violet-900"
+          >
+            Cancelar
+          </button>
+        </p>
+      ) : null}
+
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain scrollbar-hide space-y-6 pb-2">
         {selectedSalonTables.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+          <>
+            <div className="rf-mesa-map-legend shrink-0">
+              <span className="rf-mesa-map-legend__item">
+                <span className="rf-mesa-map-legend__dot" style={{ background: '#22c55e' }} />
+                Libre
+              </span>
+              <span className="rf-mesa-map-legend__item">
+                <span className="rf-mesa-map-legend__dot" style={{ background: '#f97316' }} />
+                Ocupada
+              </span>
+              <span className="rf-mesa-map-legend__item">
+                <span className="rf-mesa-map-legend__dot" style={{ background: '#9333ea' }} />
+                Pre-cuenta
+              </span>
+              <span className="rf-mesa-map-legend__item">
+                <span className="rf-mesa-map-legend__dot" style={{ background: '#9ca3af' }} />
+                Reservada
+              </span>
+            </div>
+            <div className="rf-mesa-map-grid">
             {selectedSalonTables.map((table) => {
-              const isOccupied = Boolean(table.orders && table.orders.length > 0);
               const mesaLock = getMesaLock();
               const isSelected =
                 tableDetail?.id === table.id
                 || (showMenu && !quickSaleMode && mesaLock?.id === table.id);
+              const isUnitePicked = mesaUniteSelection.includes(table.id);
+              const visualState = getMesaMapVisualState(table, reservationByTableId, precuentaTableIds);
+              const chairCount = getMesaMapChairCount(table, reservationByTableId, mesaPhysicalTables);
               return (
-                <button
+                <MesaMapTableTile
                   key={table.id}
-                  type="button"
+                  table={table}
+                  visualState={visualState}
+                  chairCount={chairCount}
+                  selected={isSelected}
+                  unitePicked={isUnitePicked}
                   onClick={() => {
+                    if (mesaUniteMode) {
+                      toggleMesaUniteTable(table.id);
+                      return;
+                    }
                     const lock = getMesaLock();
                     if (showMenu && !quickSaleMode && lock && String(lock.id) !== String(table.id)) {
                       releasePendingOrderMenu();
@@ -3648,32 +3900,11 @@ export default function POSPanel() {
                     setTableDetail(table);
                     setMesaDetailModalOpen(true);
                   }}
-                  className={`card text-left transition-all border-l-4 hover:shadow-lg h-full min-h-[7.25rem] ${
-                    isOccupied ? 'border-l-red-500' : 'border-l-lime-500'
-                  } ${isSelected ? 'ring-2 ring-gold-400' : ''}`}
-                >
-                  <div className="flex items-center gap-3 mb-2">
-                    <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                        isOccupied ? 'bg-red-100' : 'bg-emerald-100'
-                      }`}
-                    >
-                      <MdTableRestaurant className={`${isOccupied ? 'text-red-600' : 'text-emerald-600'} text-xl`} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold rf-section-title truncate">{table.name}</p>
-                      <p className="text-xs ui-text-muted">
-                        {isOccupied ? `${table.orders.length} pedido(s)` : 'Sin pedidos activos'}
-                      </p>
-                    </div>
-                  </div>
-                  <p className={`text-xs font-semibold ${isOccupied ? 'text-red-700' : 'text-emerald-700'}`}>
-                    {isOccupied ? 'Ocupada' : 'Libre'}
-                  </p>
-                </button>
+                />
               );
             })}
-          </div>
+            </div>
+          </>
         ) : tablesBySalon.length === 0 ? (
           <p className="text-sm text-center text-[var(--ui-muted)] py-8">No hay mesas configuradas</p>
         ) : (
@@ -3825,6 +4056,18 @@ export default function POSPanel() {
                     <span>Pedir</span>
                   </button>
                 )}
+                {!isDeliveryCheckoutTable(tableDetail) && tableDetail.union_id ? (
+                  <button
+                    type="button"
+                    onClick={() => void desunirMesaUnida(tableDetail)}
+                    disabled={mesaDesunirBusy}
+                    className="btn-mesa-grid btn-mesa-desunir"
+                    title="Separar las mesas unidas"
+                  >
+                    <MdCallMerge className="shrink-0 text-lg" />
+                    <span>Desunir mesa</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   title="Modificar pedido"
@@ -3839,30 +4082,6 @@ export default function POSPanel() {
                   <MdEdit className="shrink-0 text-lg" />
                   <span>Modificar</span>
                 </button>
-                {!isDeliveryCheckoutTable(tableDetail) && (
-                  <button
-                    type="button"
-                    onClick={() => openMesaTableAction('move_table')}
-                    disabled={!tableDetail.orders?.length}
-                    className={mesaMapMoveTableBtnClass}
-                    title="Mover toda la cuenta a otra mesa"
-                  >
-                    <MdOpenWith className="shrink-0 text-lg" />
-                    <span>Mover mesa</span>
-                  </button>
-                )}
-                {!isDeliveryCheckoutTable(tableDetail) && (
-                  <button
-                    type="button"
-                    onClick={() => openMesaTableAction('move_orders')}
-                    disabled={!tableDetail.orders?.length}
-                    className={mesaMapMoveOrdersBtnClass}
-                    title="Mover pedidos seleccionados a otra mesa"
-                  >
-                    <MdSwapHoriz className="shrink-0 text-lg" />
-                    <span>Mover ped.</span>
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -3879,22 +4098,7 @@ export default function POSPanel() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!register) {
-                      toast.error('Abra la caja antes de cobrar');
-                      return;
-                    }
-                    releasePendingOrderMenu();
-                    setMesaDetailModalOpen(false);
-                    setSelectedTable(tableDetail);
-                    setShowBill(true);
-                    setPaymentMethod('efectivo');
-                    setAmountReceived('');
-                    setSplitMode(false);
-                    setSelectedOrderItemIds(collectAllOrderItemIds(tableDetail.orders));
-                    setSelectedOrderItemQtys({});
-                    setDiscountConfig({ ...EMPTY_DISCOUNT_CONFIG });
-                  }}
+                  onClick={() => beginCobrarMesa(tableDetail)}
                   disabled={!tableDetail.orders?.length}
                   className="btn-cobrar btn-mesa-grid"
                   title={isDeliveryCheckoutTable(tableDetail) ? 'Cobrar delivery' : 'Cobrar mesa'}
@@ -4595,8 +4799,49 @@ export default function POSPanel() {
         mode={mesaTransfer?.mode}
         tables={mesaPhysicalTables}
         initialSourceId={mesaTransfer?.sourceId || ''}
+        pickSourceAndTarget={Boolean(mesaTransfer?.pickSourceAndTarget)}
         onComplete={() => void loadData()}
       />
+
+      <Modal
+        isOpen={Boolean(mesaUnionCheckoutPrompt)}
+        onClose={() => {
+          setDissolveUnionAfterCheckout(false);
+          setMesaUnionCheckoutPrompt(null);
+        }}
+        title="Mesa unida"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--ui-body-text)]">
+            ¿Desunir mesa después del cobro?
+          </p>
+          {mesaUnionCheckoutPrompt?.union_member_labels?.length > 1 ? (
+            <p className="text-xs text-[var(--ui-muted)]">
+              Mesas: {mesaUnionCheckoutPrompt.union_member_labels.join(' + ')}
+            </p>
+          ) : null}
+          <p className="text-xs text-[var(--ui-muted)]">
+            Si elige <strong>No</strong>, la cuenta seguirá unida para seguir pidiendo. Puede separarlas después con «Desunir mesa».
+          </p>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => answerMesaUnionCheckoutPrompt(false)}
+              className="btn-secondary flex-1"
+            >
+              No
+            </button>
+            <button
+              type="button"
+              onClick={() => answerMesaUnionCheckoutPrompt(true)}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-white bg-violet-600 hover:bg-violet-700"
+            >
+              Sí, desunir
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={Boolean(viewOrdersModal?.table)}
@@ -4664,6 +4909,7 @@ export default function POSPanel() {
         onClose={() => {
           if (checkoutBusy) return;
           clientCheckoutOpenedKeyRef.current = '';
+          setDissolveUnionAfterCheckout(false);
           setShowBill(false);
           setAmountReceived('');
           setSplitMode(false);
