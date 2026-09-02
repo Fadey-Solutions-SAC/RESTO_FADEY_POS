@@ -293,7 +293,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
         )}
       </div>
 
-      <nav className="flex-1 px-1.5 py-2 space-y-0.5 overflow-y-auto scrollbar-thin">
+      <nav className="rf-sidebar__nav flex-1 px-1.5 py-2 space-y-0.5 overflow-y-auto scrollbar-thin">
         {visibleLinks.map(link => (
           <div key={link.to}>
             <NavLink
@@ -432,7 +432,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
         ))}
       </nav>
 
-      <div className="p-2 border-t border-[color:var(--ui-sidebar-border)]">
+      <div className="rf-sidebar__footer p-2 border-t border-[color:var(--ui-sidebar-border)]">
         <button type="button" onClick={() => void handleFinalizarJornadaClick()} className="flex items-center gap-3 px-3 py-2 rounded-lg text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] w-full transition-colors text-sm" title={tc('layout.endShift')}>
           <MdLogout className="text-lg flex-shrink-0" />
           {!isCollapsed && <span>{tc('layout.endShift')}</span>}

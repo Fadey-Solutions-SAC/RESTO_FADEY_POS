@@ -708,6 +708,13 @@ export default function Productos() {
         if (created?.schedule_warnings?.length) {
           created.schedule_warnings.forEach((w) => toast(w, { icon: '⚠️' }));
         }
+        if (created?.image_generation?.status === 'ok') {
+          toast.success('Imagen del menú generada automáticamente');
+        } else if (created?.image_generation?.status === 'ambiguous') {
+          toast(created.image_generation.message || 'Nombre poco claro para generar imagen', { icon: '⚠️', duration: 6000 });
+        } else if (created?.image_generation?.status === 'error') {
+          toast.error(created.image_generation.message || 'No se pudo generar la imagen');
+        }
         toast.success(t('toast.productCreated'));
       }
       setShowProductModal(false);

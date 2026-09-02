@@ -436,6 +436,29 @@ function parseOrderItemNotes(notesStr, product) {
   return { itemNote: s, modifierId: modId, modifierOption: '' };
 }
 
+function buildMesaOrderNotes(paraLlevar, observation) {
+  const parts = [];
+  if (paraLlevar) parts.push(KITCHEN_TAKEOUT_NOTE);
+  const obs = String(observation || '').trim();
+  if (obs) parts.push(obs);
+  return parts.join('\n');
+}
+
+function parseMesaOrderObservation(notes) {
+  return String(notes || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && l.toUpperCase() !== KITCHEN_TAKEOUT_NOTE)
+    .join('\n')
+    .trim();
+}
+
+function formatOrderBadge(orderNumber) {
+  const n = Number(orderNumber);
+  if (!Number.isFinite(n)) return '';
+  return `# ${String(n).padStart(7, '0')}`;
+}
+
 function canEditOrderLines(order) {
   return (
     order &&
@@ -656,6 +679,7 @@ export default function POSPanel() {
   const [mesaRemovalSubmitting, setMesaRemovalSubmitting] = useState(false);
   /** Comanda cocina/bar: «PARA LLEVAR» en mayúsculas (orders.notes). Solo mesa/salón, no venta rápida. */
   const [paraLlevarMesa, setParaLlevarMesa] = useState(false);
+  const [mesaOrderObservation, setMesaOrderObservation] = useState('');
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerForm, setCustomerForm] = useState(EMPTY_CUSTOMER_FORM);
   const [savingCustomer, setSavingCustomer] = useState(false);
@@ -1225,6 +1249,7 @@ export default function POSPanel() {
     setEditingOrderId('');
     setEditingSessionOrderIds([]);
     setParaLlevarMesa(false);
+    setMesaOrderObservation('');
     resetCart();
     clearMesaLock();
   }, [resetCart, clearMesaLock]);
@@ -2333,6 +2358,7 @@ export default function POSPanel() {
     setEditingOrderId('');
     setEditingSessionOrderIds([]);
     setParaLlevarMesa(false);
+    setMesaOrderObservation('');
     setSelectedTable(table);
     lockMesa(table);
     setShowMenu(true);
@@ -2370,6 +2396,7 @@ export default function POSPanel() {
     setEditingOrderId(primary.id);
     setParaLlevarMesa(editable.some((o) => orderHasTakeoutNote(o)));
     editSessionInitialParaLlevarRef.current = editable.some((o) => orderHasTakeoutNote(o));
+    setMesaOrderObservation(parseMesaOrderObservation(primary.notes));
     setSelectedTable(tableDetail);
     lockMesa(tableDetail);
     setSearch('');
@@ -2536,6 +2563,7 @@ export default function POSPanel() {
     setEditingOrderId('');
     setEditingSessionOrderIds([]);
     setParaLlevarMesa(false);
+    setMesaOrderObservation('');
     setSelectedTable(null);
     clearMesaLock();
     setPaymentMethod('efectivo');
@@ -2560,6 +2588,12 @@ export default function POSPanel() {
     selectedTable &&
     !isClientCheckoutTable(selectedTable) &&
     !isDeliveryCheckoutTable(selectedTable);
+
+  const mesaOrderBadge = useMemo(() => {
+    if (!editingOrderId || !selectedTable) return '';
+    const o = (selectedTable.orders || []).find((x) => x.id === editingOrderId);
+    return o?.order_number != null ? formatOrderBadge(o.order_number) : '';
+  }, [editingOrderId, selectedTable]);
 
   const paraLlevarToggleButton = showParaLlevarToggle ? (
     <button
@@ -2631,7 +2665,7 @@ export default function POSPanel() {
           toast.error(mesaErr, { id: tid });
           return;
         }
-        const noteOrder = paraLlevarMesa ? KITCHEN_TAKEOUT_NOTE : '';
+        const noteOrder = buildMesaOrderNotes(paraLlevarMesa, mesaOrderObservation);
         const sessionIds =
           editingSessionOrderIds.length > 0 ? editingSessionOrderIds : [editingOrderId];
         const byOrder = new Map();
@@ -2698,7 +2732,7 @@ export default function POSPanel() {
             const body = {
               items: linesPayload(lines),
             };
-            if (paraLlevarMesa || editSessionInitialParaLlevarRef.current) {
+            if (paraLlevarMesa || editSessionInitialParaLlevarRef.current || mesaOrderObservation.trim()) {
               body.notes = noteOrder;
             }
             if (hasRemovals) body.removal_reason = removalReason;
@@ -2730,7 +2764,7 @@ export default function POSPanel() {
         cartItems: buildOrderItemsPayload(cart),
         extra: {
           payment_method: quickSaleMode ? quickPayMethod : paymentMethod,
-          notes: !quickSaleMode && paraLlevarMesa ? KITCHEN_TAKEOUT_NOTE : '',
+          notes: !quickSaleMode ? buildMesaOrderNotes(paraLlevarMesa, mesaOrderObservation) : '',
           ...(quickSaleMode ? { type: 'pickup', table_number: '', table_id: '', target_order_id: '', customer_name: 'VENTA RAPIDA' } : {}),
         },
       }));
@@ -3332,16 +3366,8 @@ export default function POSPanel() {
     }
   };
 
-  const mesaMapMoveTableBtnClass =
-    'w-full min-h-[44px] px-2 py-2 rounded-lg text-xs sm:text-sm font-bold border border-sky-700 bg-sky-600 text-white shadow-sm hover:bg-sky-700 transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
-  const mesaMapMoveOrdersBtnClass =
-    'w-full min-h-[44px] px-2 py-2 rounded-lg text-xs sm:text-sm font-bold border border-amber-700 bg-amber-600 text-white shadow-sm hover:bg-amber-700 transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400';
-  /** Botones de acciones del detalle de mesa (tema app, sin fondos fijos claros). */
-  const mesaMapActionBtnClass =
-    'w-full min-h-[44px] px-2 py-2 rounded-lg text-xs sm:text-sm font-semibold border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] shadow-sm hover:bg-[var(--ui-sidebar-hover)] transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
-  /** Cobrar: acento del tema activo (misma idea que .btn-primary). */
-  const mesaMapCobrarBtnClass =
-    'w-full min-h-[44px] px-2 py-2 rounded-xl text-xs sm:text-sm font-bold border border-[color:color-mix(in_srgb,var(--ui-accent-muted)_45%,transparent)] uppercase tracking-wide text-white bg-[var(--ui-accent)] shadow-md hover:bg-[var(--ui-accent-hover)] inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-center leading-tight disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--ui-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ui-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)]';
+  const mesaMapMoveTableBtnClass = 'btn-mesa-grid btn-mesa-move-table';
+  const mesaMapMoveOrdersBtnClass = 'btn-mesa-grid btn-mesa-move-orders';
 
   const cajaRequiresRegisterNotice = (
     <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-4">
@@ -3773,7 +3799,7 @@ export default function POSPanel() {
                   <button
                     type="button"
                     onClick={() => openMenuForTable(tableDetail)}
-                    className={mesaMapActionBtnClass}
+                    className="btn-mesa-grid btn-mesa-pedir"
                     title="Tomar pedido"
                   >
                     <MdRestaurantMenu className="shrink-0 text-lg" />
@@ -3789,7 +3815,7 @@ export default function POSPanel() {
                     isClientCheckoutTable(tableDetail) ||
                     !(tableDetail.orders || []).some((o) => canEditOrderLines(o))
                   }
-                  className={mesaMapActionBtnClass}
+                  className="btn-mesa-grid btn-mesa-modificar"
                 >
                   <MdEdit className="shrink-0 text-lg" />
                   <span>Modificar</span>
@@ -3826,7 +3852,7 @@ export default function POSPanel() {
                     void printPrecuenta(tableDetail);
                   }}
                   disabled={!tableDetail.orders?.length}
-                  className={mesaMapActionBtnClass}
+                  className="btn-mesa-grid btn-mesa-precuenta"
                   title="Imprimir precuenta"
                 >
                   <MdPrint className="shrink-0 text-lg" />
@@ -3851,7 +3877,7 @@ export default function POSPanel() {
                     setDiscountConfig({ ...EMPTY_DISCOUNT_CONFIG });
                   }}
                   disabled={!tableDetail.orders?.length}
-                  className={mesaMapCobrarBtnClass}
+                  className="btn-cobrar btn-mesa-grid"
                   title={isDeliveryCheckoutTable(tableDetail) ? 'Cobrar delivery' : 'Cobrar mesa'}
                 >
                   <MdAttachMoney className="shrink-0 text-lg" />
@@ -3964,7 +3990,7 @@ export default function POSPanel() {
                     <button
                       onClick={() => chargeReservation(entry)}
                       disabled={!register || !entry.linkedOrders.length}
-                      className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="btn-cobrar disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {entry.linkedOrders.length ? 'Cobrar reserva' : 'Sin pedido para cobrar'}
                     </button>
@@ -4135,6 +4161,7 @@ export default function POSPanel() {
           setEditingOrderId('');
           setEditingSessionOrderIds([]);
           setParaLlevarMesa(false);
+          setMesaOrderObservation('');
           setAmountReceived('');
           setMultiPayEnabled(false);
           setMultiPayAmounts(emptyMultiPaymentAmounts());
@@ -4186,6 +4213,7 @@ export default function POSPanel() {
           cartTotal={cartTotal}
           formatCurrency={formatCurrency}
           className="min-h-0 flex-1"
+          showOrderObservation={false}
           sidebarTop={(
               <div className="space-y-2">
                 <div>
@@ -4420,7 +4448,13 @@ export default function POSPanel() {
                     Emitir Comprobante
                   </label>
                 )}
-                <button type="button" onClick={submitOrder} className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-base">
+                <button
+                  type="button"
+                  onClick={submitOrder}
+                  className={`w-full py-3 flex items-center justify-center gap-2 text-base ${
+                    quickSaleMode ? 'btn-cobrar' : 'btn-primary'
+                  }`}
+                >
                   <MdReceipt /> {quickSaleMode ? 'Cobrar venta rápida' : editingOrderId ? 'Guardar cambios' : 'Enviar Pedido'}
                 </button>
               </>
@@ -4452,6 +4486,9 @@ export default function POSPanel() {
               cartTotal={cartTotal}
               formatCurrency={formatCurrency}
               className="min-h-0 flex-1"
+              orderBadge={mesaOrderBadge}
+              orderObservation={mesaOrderObservation}
+              onOrderObservationChange={setMesaOrderObservation}
               showLineDeleteLabel={Boolean(editingOrderId && posCanDeleteRelease)}
               canDeleteLine={!editingOrderId || posCanDeleteRelease}
               footer={
@@ -4514,6 +4551,8 @@ export default function POSPanel() {
             cartTotal={cartTotal}
             formatCurrency={formatCurrency}
             className="min-h-0 flex-1"
+            orderObservation={mesaOrderObservation}
+            onOrderObservationChange={setMesaOrderObservation}
             footer={
               cart.length > 0 ? (
                 <div className="space-y-2">
@@ -5246,10 +5285,10 @@ export default function POSPanel() {
                   type="button"
                   onClick={cobrarMesa}
                   disabled={checkoutBusy}
-                  className={`w-full py-3 rounded-xl text-white font-bold text-lg sm:text-xl shadow-lg uppercase tracking-wide disabled:opacity-80 disabled:cursor-wait ${
+                  className={`btn-cobrar w-full py-3 text-lg sm:text-xl disabled:opacity-80 disabled:cursor-wait ${
                     addToAccountEnabled
-                      ? 'bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-600 shadow-sky-700/25'
-                      : 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] shadow-[#1D4ED8]/25'
+                      ? '!bg-gradient-to-r !from-sky-600 !to-sky-700 hover:!from-sky-500 hover:!to-sky-600 !border-sky-700 !shadow-sky-700/25'
+                      : ''
                   }`}
                 >
                   {checkoutBusy

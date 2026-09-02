@@ -1449,8 +1449,8 @@ export default function Settings() {
   return (
     <div className="flex gap-6 -mt-2">
       {/* Sidebar Menu */}
-      <div className="w-72 flex-shrink-0">
-        <div className="rf-settings-hub">
+      <div className="w-72 flex-shrink-0 self-start">
+        <div className="rf-settings-hub sticky top-2">
           <div className="rf-settings-hub__header">
             <h2 className="rf-settings-hub__header-title">
               <MdSettings className="text-lg" /> Opciones sistema

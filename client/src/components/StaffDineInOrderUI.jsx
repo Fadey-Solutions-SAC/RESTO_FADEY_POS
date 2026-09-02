@@ -10,6 +10,39 @@ import {
 import { showStockInOrderingUI } from '../utils/productStockDisplay';
 import { resolveMediaUrl } from '../utils/api';
 
+function lineSubtitle(item) {
+  if (item.modifier_option) return String(item.modifier_option);
+  if (item.modifier_name) return String(item.modifier_name);
+  return '';
+}
+
+function QtyStepper({ quantity, onDecrease, onIncrease, decreaseDisabled }) {
+  return (
+    <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm">
+      <button
+        type="button"
+        onClick={onDecrease}
+        disabled={decreaseDisabled}
+        className="flex h-8 w-8 items-center justify-center border-r border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+        aria-label="Disminuir cantidad"
+      >
+        <MdRemove className="text-base" />
+      </button>
+      <span className="flex min-w-[2rem] items-center justify-center px-1 font-semibold tabular-nums text-[var(--ui-body-text)]">
+        {quantity}
+      </span>
+      <button
+        type="button"
+        onClick={onIncrease}
+        className="flex h-8 w-8 items-center justify-center border-l border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+        aria-label="Aumentar cantidad"
+      >
+        <MdAdd className="text-base" />
+      </button>
+    </div>
+  );
+}
+
 function CartLineItems({
   cart,
   cartLayout,
@@ -25,90 +58,100 @@ function CartLineItems({
   canDeleteLine = true,
 }) {
   if (cart.length === 0) {
-    return <p className="py-4 text-center text-sm text-[var(--ui-accent)]">Selecciona productos arriba</p>;
+    return <p className="py-6 text-center text-sm text-[var(--ui-muted)]">Selecciona productos arriba</p>;
   }
   if (cartLayout === 'lines') {
-    return cart.map((item) => {
-      const lineTotal = Number(item.price || 0) * Number(item.quantity || 0);
-      return (
-        <div key={item.line_key} className="border-b border-[color:var(--ui-border)] py-2">
-          <p className="mb-2 w-full text-sm font-medium leading-snug text-[var(--ui-body-text)] break-words">
-            {item.name}
-          </p>
-          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-sm">
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setNoteEditorLineKey((prev) => (prev === item.line_key ? '' : item.line_key))}
-                className={`flex h-7 w-7 items-center justify-center rounded border ${
-                  item.notes?.trim()
-                    ? 'border-amber-300 bg-amber-100 text-amber-700'
-                    : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-                }`}
-                title="Agregar nota"
-              >
-                <MdEditNote className="text-sm" />
-              </button>
-              <button
-                type="button"
-                onClick={() => updateQty(item.line_key, -1)}
-                disabled={!canDeleteLine && Number(item.quantity || 0) <= 1}
-                className="flex h-6 w-6 items-center justify-center rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <MdRemove className="text-xs" />
-              </button>
-              <span className="w-7 text-center font-bold tabular-nums text-[var(--ui-body-text)]">{item.quantity}</span>
-              <button
-                type="button"
-                onClick={() => updateQty(item.line_key, 1)}
-                className="flex h-6 w-6 items-center justify-center rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
-              >
-                <MdAdd className="text-xs" />
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="min-w-[4.5rem] shrink-0 text-right font-semibold tabular-nums text-[var(--ui-body-text)]">
-                {formatCurrency(lineTotal)}
-              </span>
-              {canDeleteLine ? (
-                <button
-                  type="button"
-                  onClick={() => removeFromCart(item.line_key)}
-                  className={
-                    showLineDeleteLabel
-                      ? 'shrink-0 inline-flex items-center gap-1 rounded-md border border-red-500/45 bg-red-950/40 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-900/55'
-                      : 'shrink-0 p-0.5 text-[var(--ui-accent)] hover:text-[var(--ui-body-text)]'
-                  }
-                  aria-label={showLineDeleteLabel ? 'Eliminar producto' : 'Quitar'}
-                >
-                  <MdDelete className="text-sm" />
-                  {showLineDeleteLabel ? <span>Eliminar</span> : null}
-                </button>
-              ) : null}
-            </div>
-          </div>
-          {Number(item.note_required || 0) === 1 && (
-            <p className="mt-0.5 text-[11px] font-semibold text-[#FCA5A5]">Nota obligatoria</p>
-          )}
-          {item.modifier_name && item.modifier_option && (
-            <p className="mt-0.5 break-words text-[11px] leading-snug text-[var(--ui-accent)]">
-              {item.modifier_name}: {item.modifier_option}
-            </p>
-          )}
-          {(noteEditorLineKey === item.line_key || item.notes?.trim()) && (
-            <div className="mt-2">
-              <textarea
-                value={item.notes || ''}
-                onChange={(e) => updateItemNote(item.line_key, e.target.value)}
-                placeholder="Escribe una nota para cocina..."
-                className="w-full rounded border border-[color:var(--ui-accent)] bg-[var(--ui-surface-2)] px-2 py-1.5 text-xs text-[var(--ui-body-text)] placeholder:text-[var(--ui-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-focus-ring)]"
-                rows={2}
-              />
-            </div>
-          )}
+    return (
+      <div className="min-w-0">
+        <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-x-2 border-b border-[color:var(--ui-border)] pb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--ui-muted)]">
+          <span>Producto</span>
+          <span className="w-[5.5rem] text-center">Cant.</span>
+          <span className="w-[4.25rem] text-right">Precio</span>
+          <span className="w-[4.25rem] text-right">Total</span>
+          <span className="w-7" aria-hidden />
         </div>
-      );
-    });
+        <div className="divide-y divide-[color:var(--ui-border)]">
+          {cart.map((item) => {
+            const lineTotal = Number(item.price || 0) * Number(item.quantity || 0);
+            const subtitle = lineSubtitle(item);
+            const showNoteEditor = noteEditorLineKey === item.line_key || item.notes?.trim();
+            return (
+              <div key={item.line_key} className="py-3">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-x-2 gap-y-2">
+                  <div className="min-w-0">
+                    <div className="flex items-start gap-1">
+                      <p className="min-w-0 flex-1 text-sm font-semibold leading-snug text-[var(--ui-body-text)] break-words">
+                        {item.name}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setNoteEditorLineKey((prev) => (prev === item.line_key ? '' : item.line_key))}
+                        className={`mt-0.5 shrink-0 rounded p-0.5 ${
+                          item.notes?.trim()
+                            ? 'text-amber-600'
+                            : 'text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
+                        }`}
+                        title="Nota para cocina"
+                      >
+                        <MdEditNote className="text-base" />
+                      </button>
+                    </div>
+                    {subtitle ? (
+                      <p className="mt-0.5 text-xs text-[var(--ui-muted)] break-words">{subtitle}</p>
+                    ) : null}
+                    {Number(item.note_required || 0) === 1 && (
+                      <p className="mt-0.5 text-[11px] font-semibold text-red-400">Nota obligatoria</p>
+                    )}
+                  </div>
+                  <div className="flex w-[5.5rem] justify-center">
+                    <QtyStepper
+                      quantity={item.quantity}
+                      onDecrease={() => updateQty(item.line_key, -1)}
+                      onIncrease={() => updateQty(item.line_key, 1)}
+                      decreaseDisabled={!canDeleteLine && Number(item.quantity || 0) <= 1}
+                    />
+                  </div>
+                  <p className="w-[4.25rem] text-right text-sm tabular-nums text-[var(--ui-body-text)]">
+                    {formatCurrency(item.price)}
+                  </p>
+                  <p className="w-[4.25rem] text-right text-sm font-semibold tabular-nums text-[var(--ui-body-text)]">
+                    {formatCurrency(lineTotal)}
+                  </p>
+                  {canDeleteLine ? (
+                    <button
+                      type="button"
+                      onClick={() => removeFromCart(item.line_key)}
+                      className={
+                        showLineDeleteLabel
+                          ? 'inline-flex w-auto shrink-0 items-center gap-1 rounded-md border border-red-500/45 bg-red-950/40 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-900/55'
+                          : 'flex h-7 w-7 shrink-0 items-center justify-center text-red-500 hover:text-red-600'
+                      }
+                      aria-label={showLineDeleteLabel ? 'Eliminar producto' : 'Quitar'}
+                    >
+                      <MdDelete className={showLineDeleteLabel ? 'text-sm' : 'text-lg'} />
+                      {showLineDeleteLabel ? <span>Eliminar</span> : null}
+                    </button>
+                  ) : (
+                    <span className="w-7" aria-hidden />
+                  )}
+                </div>
+                {showNoteEditor ? (
+                  <div className="mt-2 pl-0">
+                    <textarea
+                      value={item.notes || ''}
+                      onChange={(e) => updateItemNote(item.line_key, e.target.value)}
+                      placeholder="Escribe una nota para cocina..."
+                      className="w-full resize-y rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-xs text-[var(--ui-body-text)] placeholder:text-[var(--ui-muted)] focus:border-[color:var(--ui-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-focus-ring)]"
+                      rows={2}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
   return cart.map((item) => (
     <div key={item.line_key} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-2">
@@ -223,6 +266,12 @@ export default function StaffDineInOrderUI({
   canDeleteLine = true,
   /** Panel con altura del contenedor padre (modal Mesas / Caja). */
   fillParentHeight = false,
+  cartTitle = 'Detalle del pedido',
+  orderBadge = '',
+  orderObservation = '',
+  onOrderObservationChange = null,
+  orderObservationPlaceholder = 'Observaciones del pedido...',
+  showOrderObservation = true,
 }) {
   const panelLayout = fillParentHeight || (!embedded && !stackedSelfOrder);
 
@@ -388,22 +437,30 @@ export default function StaffDineInOrderUI({
 
   const cartAsideInner = (
     <div className={`flex min-h-0 flex-col overflow-hidden ${panelLayout ? 'h-full flex-1' : 'lg:max-h-[min(calc(100dvh-12rem),85vh)]'}`}>
-      <h3 className="mb-3 flex shrink-0 items-center gap-2 font-bold text-[var(--ui-body-text)]">
-        <MdShoppingCart /> Pedido
-        {cart.length > 0 && (
-          <span className="rounded-full bg-[var(--ui-accent)] px-2 py-0.5 text-xs text-white">{cart.length}</span>
-        )}
-      </h3>
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3 className="text-base font-bold text-[var(--ui-body-text)]">{cartTitle}</h3>
+          {orderBadge ? (
+            <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_18%,transparent)] px-2.5 py-0.5 text-xs font-semibold text-[var(--ui-accent)]">
+              {orderBadge}
+            </span>
+          ) : cart.length > 0 ? (
+            <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_18%,transparent)] px-2 py-0.5 text-xs font-semibold text-[var(--ui-accent)]">
+              {cart.length}
+            </span>
+          ) : null}
+        </div>
+      </div>
       {sidebarTop ? <div className="mb-3 shrink-0 space-y-2">{sidebarTop}</div> : null}
       <div
-        className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
         style={{ touchAction: 'pan-y' }}
         onWheel={(e) => e.stopPropagation()}
       >
         {sidebarPreCart}
         {sidebarPreCart ? <div className="mt-1 border-t border-[color:var(--ui-border)] pt-3" /> : null}
         {sidebarPreCart ? (
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ui-accent)]">Agregar al pedido</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)]">Agregar al pedido</p>
         ) : null}
         <CartLineItems
           cart={cart}
@@ -418,8 +475,20 @@ export default function StaffDineInOrderUI({
           canDeleteLine={canDeleteLine}
         />
       </div>
+      {showOrderObservation && onOrderObservationChange ? (
+        <div className="relative mt-3 shrink-0">
+          <MdEditNote className="pointer-events-none absolute left-3 top-3 text-base text-[var(--ui-muted)]" />
+          <textarea
+            value={orderObservation}
+            onChange={(e) => onOrderObservationChange(e.target.value)}
+            placeholder={orderObservationPlaceholder}
+            rows={3}
+            className="w-full resize-y rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] py-2.5 pl-9 pr-3 text-sm text-[var(--ui-body-text)] placeholder:text-[var(--ui-muted)] focus:border-[color:var(--ui-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-focus-ring)]"
+          />
+        </div>
+      ) : null}
       {footer ? (
-        <div className="mt-3 shrink-0 space-y-2 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] pt-3 lg:shadow-[0_-8px_24px_rgba(15,23,42,0.45)]">
+        <div className="mt-3 shrink-0 space-y-2 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] pt-3 lg:shadow-[0_-8px_24px_rgba(15,23,42,0.12)]">
           {footer}
         </div>
       ) : null}
@@ -469,7 +538,7 @@ export default function StaffDineInOrderUI({
         <div {...scrollAreaProps}>{productGrid}</div>
       </div>
 
-      <div className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] pt-4 lg:min-h-0 lg:w-72 lg:max-w-[18rem] lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0 lg:shadow-[-6px_0_20px_rgba(0,0,0,0.12)]">
+      <div className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-4 lg:min-h-0 lg:w-[min(100%,22rem)] lg:max-w-[22rem] lg:border lg:shadow-[0_4px_24px_rgba(15,23,42,0.08)]">
         {cartAsideInner}
       </div>
     </div>

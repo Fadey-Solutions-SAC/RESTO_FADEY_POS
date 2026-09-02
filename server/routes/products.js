@@ -218,7 +218,7 @@ router.get('/:id', (req, res) => {
   res.json(product);
 });
 
-router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
+router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
   const {
     name,
     description,
@@ -326,10 +326,28 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     variants.forEach(v => runSql('INSERT INTO product_variants (id, product_id, name, price_modifier) VALUES (?, ?, ?, ?)', [uuidv4(), id, v.name, v.price_modifier || 0]));
   }
 
-  const product = queryOne('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?', [id]);
+  let product = queryOne('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?', [id]);
   product.variants = queryAll('SELECT * FROM product_variants WHERE product_id = ?', [id]);
   normalizeProductForClient(product);
-  const payload = { ...product, schedule_warnings: scheduleValidation.warnings || [] };
+
+  let imageGeneration = null;
+  const wantsAutoImage = req.body.auto_generate_image !== false;
+  const hasManualImage = Boolean(String(image || '').trim());
+  const hasOpenAiKey = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
+  if (wantsAutoImage && !hasManualImage && catPost.id && hasOpenAiKey) {
+    imageGeneration = await generateProductMenuImage(product, { onlyMissing: true });
+    if (imageGeneration.status === 'ok') {
+      product = queryOne('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?', [id]);
+      product.variants = queryAll('SELECT * FROM product_variants WHERE product_id = ?', [id]);
+      normalizeProductForClient(product);
+    }
+  }
+
+  const payload = {
+    ...product,
+    schedule_warnings: scheduleValidation.warnings || [],
+    image_generation: imageGeneration,
+  };
   if (safeProcessType === 'non_transformed') {
     emitInventoryUpdate({ productId: id });
   }

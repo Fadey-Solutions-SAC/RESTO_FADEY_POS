@@ -11,7 +11,6 @@ const GENERIC_NAME_TOKENS = new Set([
 ]);
 
 const SIZE_ONLY_RE = /^(?:\d+(?:[.,]\d+)?\s*)?(?:ml|l|lt|litro|litros|kg|g|gr|oz|und|u)?$/i;
-const CODE_ONLY_RE = /^[a-z0-9\-_.]{1,5}$/i;
 
 function normalizeToken(text) {
   return String(text || '')
@@ -19,6 +18,15 @@ function normalizeToken(text) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
+}
+
+/** Códigos internos (P01, A-12), no nombres cortos como «café» → cafe. */
+function looksLikeSkuCode(norm) {
+  if (!norm || norm.length > 10) return false;
+  if (/[0-9]/.test(norm)) return true;
+  if (/[-_.]/.test(norm)) return true;
+  if (norm.length <= 5 && norm === norm.toUpperCase() && /^[A-Z]+$/.test(norm)) return true;
+  return false;
 }
 
 function assessProductImageName(product) {
@@ -53,7 +61,7 @@ function assessProductImageName(product) {
     };
   }
 
-  if (name.length < 4 || SIZE_ONLY_RE.test(norm) || CODE_ONLY_RE.test(norm)) {
+  if (norm.length < 3 || SIZE_ONLY_RE.test(norm) || looksLikeSkuCode(norm)) {
     if (desc.length >= 10) {
       return { ambiguous: false, subject: `${desc} (${category || 'comida'})`, message: '' };
     }
