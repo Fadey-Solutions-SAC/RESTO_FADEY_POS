@@ -16,6 +16,14 @@ function lineSubtitle(item) {
   return '';
 }
 
+const VIEWPORT_CART_MAX_CLASS = 'max-h-[min(calc(92vh-7.5rem),calc(100dvh-8rem))]';
+/** En móvil (productos arriba + pedido abajo): no tapar el catálogo. */
+const MOBILE_STACKED_CART_MAX_CLASS = 'max-h-[min(42vh,340px)]';
+const SCROLL_INVISIBLE_CLASS =
+  '[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:h-0';
+
+export { VIEWPORT_CART_MAX_CLASS, MOBILE_STACKED_CART_MAX_CLASS };
+
 function QtyStepper({ quantity, onDecrease, onIncrease, decreaseDisabled, compact = false }) {
   const btnClass = compact
     ? 'flex h-7 w-6 items-center justify-center border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:cursor-not-allowed disabled:opacity-40'
@@ -277,27 +285,32 @@ export function StaffDineInOrderCartPanel({
   orderObservationPlaceholder = 'Observaciones del pedido...',
   footer = null,
   className = '',
+  /** Catálogo arriba y pedido abajo en pantallas pequeñas. */
+  stackedMobile = false,
 }) {
-  const observationRows = fillParentHeight || elevatedAside ? 2 : 3;
-  const pinFooter = fillParentHeight || elevatedAside;
+  const observationRows = fillParentHeight || elevatedAside || stackedMobile ? 2 : 3;
+  const pinFooter = true;
+  const shellMaxClass = elevatedAside
+    ? VIEWPORT_CART_MAX_CLASS
+    : stackedMobile
+      ? MOBILE_STACKED_CART_MAX_CLASS
+      : fillParentHeight
+        ? VIEWPORT_CART_MAX_CLASS
+        : '';
 
   return (
     <div
       className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] lg:border lg:shadow-[0_4px_24px_rgba(15,23,42,0.08)] ${
         elevatedAside
-          ? 'h-full max-h-full min-h-0 w-full self-stretch p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
-          : fillParentHeight
-            ? 'w-full max-h-[min(calc(92vh-8rem),620px)] min-h-0 self-start p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
-            : 'p-4 lg:min-h-0 lg:h-full lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
+          ? `h-full min-h-0 w-full self-start p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem] ${shellMaxClass}`
+          : stackedMobile
+            ? `w-full min-h-0 shrink-0 p-3 ${shellMaxClass}`
+            : fillParentHeight
+              ? `w-full min-h-0 self-start p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem] ${shellMaxClass}`
+              : 'p-4 lg:min-h-0 lg:h-full lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
       } ${className}`.trim()}
     >
-      <div
-        className={
-          pinFooter
-            ? 'grid h-full max-h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden'
-            : 'flex h-full min-h-0 flex-col overflow-hidden'
-        }
-      >
+      <div className="grid h-full max-h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
         <div className="min-h-0 shrink-0">
           <div className={`flex items-center justify-between gap-2 ${fillParentHeight ? 'mb-2' : 'mb-3'}`}>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -318,7 +331,7 @@ export function StaffDineInOrderCartPanel({
           {sidebarTop ? <div className="mb-2 space-y-2">{sidebarTop}</div> : null}
         </div>
         <div
-          className="min-h-0 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
+          className={`min-h-0 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y ${SCROLL_INVISIBLE_CLASS}`}
           style={{ touchAction: 'pan-y' }}
           onWheel={(e) => e.stopPropagation()}
         >
@@ -341,7 +354,7 @@ export function StaffDineInOrderCartPanel({
           />
         </div>
         <div
-          className={`min-h-0 shrink-0 space-y-2 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] ${
+          className={`shrink-0 space-y-2 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] ${
             pinFooter ? 'pt-2 shadow-[0_-6px_16px_rgba(15,23,42,0.12)]' : 'mt-3 pt-3 lg:shadow-[0_-8px_24px_rgba(15,23,42,0.12)]'
           }`}
         >
@@ -437,8 +450,7 @@ export default function StaffDineInOrderUI({
   );
 
   const scrollAreaProps = {
-    className:
-      'min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y',
+    className: `min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y ${SCROLL_INVISIBLE_CLASS}`,
     style: { touchAction: 'pan-y' },
     onWheel: (e) => e.stopPropagation(),
   };
@@ -634,7 +646,7 @@ export default function StaffDineInOrderUI({
 
   return (
     <div
-      className={`flex min-h-0 flex-col overflow-hidden ${fillParentHeight ? 'gap-2' : 'gap-4'} ${externalCartAside ? '' : 'lg:flex-row'} ${externalCartAside ? '' : fillParentHeight ? 'lg:items-start' : 'lg:items-stretch'} ${rootClass} ${className}`}
+      className={`flex min-h-0 flex-col overflow-hidden ${fillParentHeight ? 'gap-2' : 'gap-4'} ${externalCartAside ? 'flex-1' : ''} ${externalCartAside ? '' : 'lg:flex-row'} ${externalCartAside ? '' : fillParentHeight ? 'lg:items-start' : 'lg:items-stretch'} ${rootClass} ${className}`}
     >
       <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${fillParentHeight ? 'gap-2' : ''}`}>
         <div className="shrink-0">{searchBlock}</div>
@@ -643,8 +655,12 @@ export default function StaffDineInOrderUI({
       </div>
 
       {externalCartAside ? (
-        <div className="shrink-0 lg:hidden">
-          <StaffDineInOrderCartPanel {...cartPanelProps} />
+        <div className={`flex min-h-0 shrink-0 flex-col overflow-hidden lg:hidden ${MOBILE_STACKED_CART_MAX_CLASS}`}>
+          <StaffDineInOrderCartPanel
+            {...cartPanelProps}
+            stackedMobile
+            className="h-full min-h-0 max-h-full"
+          />
         </div>
       ) : (
         <StaffDineInOrderCartPanel {...cartPanelProps} />

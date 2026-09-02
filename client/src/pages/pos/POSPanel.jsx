@@ -269,7 +269,7 @@ import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import MesaTransferModal from '../../components/MesaTransferModal';
-import StaffDineInOrderUI, { StaffDineInOrderCartPanel } from '../../components/StaffDineInOrderUI';
+import StaffDineInOrderUI, { StaffDineInOrderCartPanel, VIEWPORT_CART_MAX_CLASS } from '../../components/StaffDineInOrderUI';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
 import { canPosDeleteOrReleaseTable, canAjusteBarAutoDismiss } from '../../utils/posPermissions';
@@ -4481,7 +4481,7 @@ export default function POSPanel() {
           }
         />
         ) : selectedTable ? (
-          <div className="flex min-h-0 flex-1 gap-2 overflow-hidden lg:flex-row lg:items-stretch">
+          <div className="flex min-h-0 flex-1 gap-2 overflow-hidden lg:flex-row lg:items-start">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <StaffDineInOrderUI
                 externalCartAside
@@ -4529,7 +4529,7 @@ export default function POSPanel() {
             <StaffDineInOrderCartPanel
               elevatedAside
               fillParentHeight
-              className="hidden min-h-0 shrink-0 overflow-hidden lg:flex lg:h-full lg:max-h-full lg:flex-col lg:self-stretch"
+              className={`hidden min-h-0 shrink-0 overflow-hidden lg:flex lg:flex-col lg:self-start ${VIEWPORT_CART_MAX_CLASS}`}
               cart={cart}
               cartLayout="lines"
               formatCurrency={formatCurrency}

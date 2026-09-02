@@ -1447,16 +1447,17 @@ export default function Settings() {
   };
 
   return (
-    <div className="flex gap-6 -mt-2">
-      {/* Sidebar Menu */}
-      <div className="w-72 flex-shrink-0 self-start">
-        <div className="rf-settings-hub sticky top-2">
-          <div className="rf-settings-hub__header">
+    <div className="flex flex-1 min-h-0 flex-col overflow-hidden -mt-2">
+      <div className="flex flex-1 min-h-0 gap-4 overflow-hidden">
+      {/* Sidebar Menu — scroll propio, fijo al tope del área */}
+      <aside className="flex w-72 shrink-0 flex-col min-h-0 self-stretch">
+        <div className="rf-settings-hub rf-settings-hub--split flex min-h-0 max-h-full flex-col overflow-hidden">
+          <div className="rf-settings-hub__header shrink-0">
             <h2 className="rf-settings-hub__header-title">
               <MdSettings className="text-lg" /> Opciones sistema
             </h2>
           </div>
-          <nav className="rf-settings-hub__nav">
+          <nav className="rf-settings-hub__nav rf-settings-hub__nav--scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
             {MENU_ITEMS.map(item => {
               const Icon = item.icon;
               const isActive = activeSection === item.id;
@@ -1475,10 +1476,10 @@ export default function Settings() {
             })}
           </nav>
         </div>
-      </div>
+      </aside>
 
-      {/* Content Area */}
-      <div className="flex-1 min-w-0">
+      {/* Content Area — scroll independiente */}
+      <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-y-contain scrollbar-hide pr-1">
         {(activeSection === 'regional' || (activeSection && PARTIAL_SECTIONS.has(activeSection))) ? (
         <div className="flex items-center gap-3 mb-3">
           {activeSection === 'regional' && (
@@ -2714,6 +2715,7 @@ export default function Settings() {
             </div>
           )}
         </Modal>
+      </div>
       </div>
     </div>
   );

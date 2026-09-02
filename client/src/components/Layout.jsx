@@ -88,6 +88,8 @@ export default function Layout() {
   const isMozoBlocked = user?.role === 'mozo' && cajaOpen === false && !checkingCaja;
   const shellTitle = getShellModuleTitle(location.pathname, location.search, td);
   const isCajaPage = location.pathname === '/admin/caja' || location.pathname.startsWith('/admin/caja/');
+  const isSettingsPage = location.pathname === '/admin/configuracion' || location.pathname.startsWith('/admin/configuracion/');
+  const isShellLockedScroll = isCajaPage || isSettingsPage;
 
   return (
     <div className="min-h-screen bg-[var(--ui-body-bg)]">
@@ -101,7 +103,7 @@ export default function Layout() {
         onClose={() => setMobileMenuOpen(false)}
         onToggleMenu={() => (isMobile ? setMobileMenuOpen((prev) => !prev) : setCollapsed((prev) => !prev))}
       />
-      <div className={`transition-all duration-300 ${isCajaPage ? 'flex flex-col h-dvh overflow-hidden' : ''} ${isMobile ? 'ml-0' : (collapsed ? 'ml-[var(--ui-sidebar-width-collapsed)]' : 'ml-[var(--ui-sidebar-width)]')}`}>
+      <div className={`transition-all duration-300 ${isShellLockedScroll ? 'flex flex-col h-dvh overflow-hidden' : ''} ${isMobile ? 'ml-0' : (collapsed ? 'ml-[var(--ui-sidebar-width-collapsed)]' : 'ml-[var(--ui-sidebar-width)]')}`}>
         <header className="rf-shell-header h-[var(--ui-shell-header-h)] shrink-0 flex items-center justify-between px-3 sm:px-6 sticky top-0 z-30 border-b border-[color:var(--ui-sidebar-border)]">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             {isMobile ? (
@@ -155,8 +157,8 @@ export default function Layout() {
           <OfflineCajaBanner />
         </div>
         <main className={`rf-main-content p-3 sm:p-6 bg-[var(--ui-body-bg)] ${
-          isCajaPage
-            ? 'flex-1 min-h-0 overflow-y-auto scrollbar-hide flex flex-col'
+          isShellLockedScroll
+            ? 'flex-1 min-h-0 overflow-hidden flex flex-col'
             : 'min-h-[calc(100vh-var(--ui-shell-header-h))]'
         }`}>
           {isMozoBlocked ? (

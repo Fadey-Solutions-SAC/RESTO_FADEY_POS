@@ -12,23 +12,23 @@ const LIVE_DEFAULTS = {
 
 /** Fondos sólidos del menú lateral (sin transparencias). */
 const SIDEBAR_PANEL_BY_SCHEME = {
-  light: { bg: '#93c5fd', top: '#60a5fa', active: '#ffffff', hover: '#bfdbfe', fg: '#000000' },
-  dark: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff' },
+  light: { bg: '#93c5fd', top: '#60a5fa', active: '#bfdbfe', hover: '#bfdbfe', fg: '#000000', activeBorder: '#3b82f6' },
+  dark: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff', activeBorder: '#0f172a' },
 };
 
 const SIDEBAR_PANEL_BY_THEME = {
-  corporate_blue: { bg: '#93c5fd', top: '#60a5fa', active: '#ffffff', hover: '#bfdbfe', fg: '#000000' },
-  minimal_white: { bg: '#7dd3fc', top: '#38bdf8', active: '#ffffff', hover: '#bae6fd', fg: '#000000' },
-  emerald_business: { bg: '#34d399', top: '#10b981', active: '#ffffff', hover: '#6ee7b7', fg: '#000000' },
-  dark_elegance: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff' },
-  gold_premium: { bg: '#78350f', top: '#92400e', active: '#b45309', hover: '#a16207', fg: '#ffffff' },
-  sunset_modern: { bg: '#ea580c', top: '#f97316', active: '#ffffff', hover: '#fb923c', fg: '#000000' },
-  blue: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff' },
-  light: { bg: '#93c5fd', top: '#60a5fa', active: '#ffffff', hover: '#bfdbfe', fg: '#000000' },
-  dark: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff' },
-  gray: { bg: '#52525b', top: '#3f3f46', active: '#71717a', hover: '#52525b', fg: '#ffffff' },
-  purple: { bg: '#6d28d9', top: '#7c3aed', active: '#8b5cf6', hover: '#6d28d9', fg: '#ffffff' },
-  green: { bg: '#34d399', top: '#10b981', active: '#ffffff', hover: '#6ee7b7', fg: '#000000' },
+  corporate_blue: { bg: '#93c5fd', top: '#60a5fa', active: '#bfdbfe', hover: '#bfdbfe', fg: '#000000', activeBorder: '#3b82f6' },
+  minimal_white: { bg: '#7dd3fc', top: '#38bdf8', active: '#bae6fd', hover: '#bae6fd', fg: '#000000', activeBorder: '#0284c7' },
+  emerald_business: { bg: '#34d399', top: '#10b981', active: '#6ee7b7', hover: '#6ee7b7', fg: '#000000', activeBorder: '#047857' },
+  dark_elegance: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff', activeBorder: '#0f172a' },
+  gold_premium: { bg: '#78350f', top: '#92400e', active: '#b45309', hover: '#a16207', fg: '#ffffff', activeBorder: '#451a03' },
+  sunset_modern: { bg: '#ea580c', top: '#f97316', active: '#fb923c', hover: '#fb923c', fg: '#000000', activeBorder: '#c2410c' },
+  blue: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff', activeBorder: '#0f172a' },
+  light: { bg: '#93c5fd', top: '#60a5fa', active: '#bfdbfe', hover: '#bfdbfe', fg: '#000000', activeBorder: '#3b82f6' },
+  dark: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff', activeBorder: '#0f172a' },
+  gray: { bg: '#52525b', top: '#3f3f46', active: '#71717a', hover: '#52525b', fg: '#ffffff', activeBorder: '#27272a' },
+  purple: { bg: '#6d28d9', top: '#7c3aed', active: '#8b5cf6', hover: '#6d28d9', fg: '#ffffff', activeBorder: '#4c1d95' },
+  green: { bg: '#34d399', top: '#10b981', active: '#6ee7b7', hover: '#6ee7b7', fg: '#000000', activeBorder: '#047857' },
 };
 
 function preset(id, label, description, tags, vars, chartColors, colorScheme = 'dark') {
@@ -40,6 +40,7 @@ function preset(id, label, description, tags, vars, chartColors, colorScheme = '
     '--ui-sidebar-panel-active': sidebarPanel.active,
     '--ui-sidebar-panel-hover': sidebarPanel.hover,
     '--ui-sidebar-nav-fg': sidebarPanel.fg,
+    '--ui-sidebar-panel-active-border': sidebarPanel.activeBorder || sidebarPanel.top,
   };
   return {
     id,
