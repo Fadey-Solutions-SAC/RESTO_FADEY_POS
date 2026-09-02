@@ -14,6 +14,11 @@ import {
 } from '../../utils/generateMenuCartaSvg';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import { isLikelyAmbiguousProductImageName } from '../../utils/productImageAmbiguous';
+import {
+  extractPdfPageImages,
+  buildCartasFromPdfPages,
+  isPdfFile,
+} from '../../utils/splitPdfCartaPages';
 
 /** Editor con resaltado: líneas que empiezan (tras espacios) con # usan color de sección. */
 function MenuCartaSyntaxEditor({ value, onChange, bgColor, textColor, sectionColor }) {
@@ -198,8 +203,31 @@ export default function AutoPedidoAdmin() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !canSave) return;
-    const tid = toast.loading('Subiendo…');
+
+    const tid = toast.loading(isPdfFile(file) ? 'Procesando PDF…' : 'Subiendo…');
     try {
+      const pageBlobs = await extractPdfPageImages(file);
+      if (pageBlobs && pageBlobs.length > 1) {
+        toast.loading(`Subiendo ${pageBlobs.length} cartas…`, { id: tid });
+        const urls = [];
+        for (let p = 0; p < pageBlobs.length; p++) {
+          const uploadFile = new File(
+            [pageBlobs[p]],
+            `carta-pag-${p + 1}-${Date.now()}.jpg`,
+            { type: 'image/jpeg' },
+          );
+          const { url } = await api.upload(uploadFile);
+          urls.push(url || '');
+        }
+        const baseName = cartas[index]?.name;
+        setCartas((prev) => buildCartasFromPdfPages(prev, index, urls, baseName));
+        toast.success(
+          `${urls.length} cartas creadas desde el PDF. Pulsa Guardar para persistir.`,
+          { id: tid },
+        );
+        return;
+      }
+
       const { url } = await api.upload(file);
       updateRow(index, 'url', url || '');
       toast.success('Archivo aplicado a la carta', { id: tid });

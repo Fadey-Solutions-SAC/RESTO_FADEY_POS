@@ -257,7 +257,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
           <button
             type="button"
             onClick={onToggleMenu}
-            className="h-full w-full flex flex-row items-center justify-center gap-1 transition-colors text-[var(--ui-body-text)]"
+            className="h-full w-full flex flex-row items-center justify-center gap-1 transition-colors"
             aria-label={tc('layout.menu', { defaultValue: 'Menú' })}
           >
             <div className="rf-sidebar-brand w-6 h-6 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
@@ -274,13 +274,13 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
             <div className="rf-sidebar-brand w-8 h-8 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
               <MdStorefront className="text-white text-base" />
             </div>
-            <span className="rf-sidebar-logo-name rf-font-display text-[var(--ui-body-text)]">
+            <span className="rf-sidebar-logo-name rf-font-display">
               {tc('layout.brandName')}
             </span>
             <button
               type="button"
               onClick={onToggleMenu}
-              className="rf-sidebar-menu-btn transition-colors text-[var(--ui-body-text)]"
+              className="rf-sidebar-menu-btn transition-colors"
               aria-label={tc('layout.menu', { defaultValue: 'Menú' })}
             >
               <span className="rf-sidebar-burger" aria-hidden="true">
