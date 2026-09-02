@@ -163,17 +163,23 @@ h1, h2, h3, h4 {
   }
 
   .rf-sidebar {
-    --rf-sidebar-tint: color-mix(in srgb, var(--ui-accent-muted) 24%, var(--ui-surface));
-    --rf-sidebar-tint-top: color-mix(in srgb, var(--ui-logo-from) 32%, var(--ui-surface));
+    --rf-sidebar-tint: color-mix(in srgb, var(--ui-accent-muted) 38%, var(--ui-surface));
+    --rf-sidebar-tint-top: color-mix(in srgb, var(--ui-logo-from) 48%, var(--ui-surface));
     background: linear-gradient(
       180deg,
       var(--rf-sidebar-tint-top) 0%,
-      var(--rf-sidebar-tint) 14%,
+      var(--rf-sidebar-tint) 12%,
       var(--rf-sidebar-tint) 100%
     ) !important;
-    border-right-color: color-mix(in srgb, var(--ui-accent-muted) 28%, var(--ui-border)) !important;
-    box-shadow: 4px 0 24px color-mix(in srgb, var(--ui-accent-muted) 14%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--ui-accent-muted) 42%, var(--ui-border)) !important;
+    box-shadow: 4px 0 28px color-mix(in srgb, var(--ui-accent-muted) 22%, transparent);
     transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  html[data-ui-color-scheme='light'] .rf-sidebar {
+    --rf-sidebar-tint: color-mix(in srgb, var(--ui-accent-muted) 52%, var(--ui-surface));
+    --rf-sidebar-tint-top: color-mix(in srgb, var(--ui-logo-from) 62%, var(--ui-surface));
+    box-shadow: 4px 0 32px color-mix(in srgb, var(--ui-accent-muted) 28%, transparent);
   }
 
   .rf-sidebar-logo-bar {
@@ -228,24 +234,37 @@ h1, h2, h3, h4 {
 
   .rf-nav-link {
     @apply flex items-center gap-2 px-2 py-2 rounded-xl text-sm font-medium;
-    color: var(--ui-muted);
+    color: color-mix(in srgb, var(--ui-accent-hover) 55%, var(--ui-body-text));
     transition: background var(--ui-transition), color var(--ui-transition), transform var(--ui-transition),
       box-shadow var(--ui-transition);
   }
 
+  .rf-nav-link svg {
+    color: color-mix(in srgb, var(--ui-accent) 78%, var(--ui-muted));
+    flex-shrink: 0;
+  }
+
   .rf-nav-link:hover {
-    background: color-mix(in srgb, var(--ui-accent-muted) 14%, transparent);
+    background: color-mix(in srgb, var(--ui-accent-muted) 24%, transparent);
     color: var(--ui-body-text);
     transform: translateX(2px);
   }
 
+  .rf-nav-link:hover svg {
+    color: var(--ui-accent);
+  }
+
   .rf-nav-link--active {
-    background: color-mix(in srgb, var(--ui-accent-muted) 30%, transparent) !important;
-    color: color-mix(in srgb, var(--ui-accent-hover) 88%, var(--ui-body-text)) !important;
+    background: color-mix(in srgb, var(--ui-accent-muted) 44%, transparent) !important;
+    color: color-mix(in srgb, var(--ui-accent-hover) 92%, var(--ui-body-text)) !important;
     font-weight: 600;
-    box-shadow: none;
-    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 38%, var(--ui-border));
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 52%, var(--ui-border));
     padding-left: calc(0.5rem - 1px);
+  }
+
+  .rf-nav-link--active svg {
+    color: var(--ui-accent) !important;
   }
 
   .rf-nav-sublink {
@@ -255,15 +274,15 @@ h1, h2, h3, h4 {
   }
 
   .rf-nav-sublink:hover {
-    background: color-mix(in srgb, var(--ui-accent-muted) 12%, transparent);
+    background: color-mix(in srgb, var(--ui-accent-muted) 20%, transparent);
     color: var(--ui-body-text);
   }
 
   .rf-nav-sublink--active {
-    background: color-mix(in srgb, var(--ui-accent-muted) 26%, transparent);
-    color: color-mix(in srgb, var(--ui-accent-hover) 88%, var(--ui-body-text));
+    background: color-mix(in srgb, var(--ui-accent-muted) 38%, transparent);
+    color: color-mix(in srgb, var(--ui-accent-hover) 92%, var(--ui-body-text));
     font-weight: 600;
-    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 32%, var(--ui-border));
+    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 45%, var(--ui-border));
   }
 
   .rf-sidebar__nav {
@@ -286,32 +305,45 @@ h1, h2, h3, h4 {
   }
 
   .rf-sidebar__footer-btn:hover {
-    background: color-mix(in srgb, var(--ui-accent-muted) 12%, transparent);
+    background: color-mix(in srgb, var(--ui-accent-muted) 22%, transparent);
   }
 
   .rf-sidebar-menu-btn:hover,
   .rf-sidebar-logo-bar button:hover {
-    background: color-mix(in srgb, var(--ui-accent-muted) 12%, transparent) !important;
+    background: color-mix(in srgb, var(--ui-accent-muted) 22%, transparent) !important;
   }
 
   /* —— Configuración: panel de módulos con tinte del tema activo —— */
   .rf-settings-hub {
-    background: color-mix(in srgb, var(--ui-accent-muted) 14%, var(--ui-surface));
-    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 24%, var(--ui-border));
+    background: color-mix(in srgb, var(--ui-accent-muted) 36%, var(--ui-surface));
+    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 42%, var(--ui-border));
     border-radius: var(--ui-radius-xl);
     overflow: hidden;
-    box-shadow: var(--ui-shadow-md);
+    box-shadow: var(--ui-shadow-md), 0 8px 28px color-mix(in srgb, var(--ui-accent-muted) 16%, transparent);
     transition: background 0.25s ease, border-color 0.25s ease;
+  }
+
+  html[data-ui-color-scheme='light'] .rf-settings-hub {
+    background: color-mix(in srgb, var(--ui-accent-muted) 48%, var(--ui-surface));
+    border-color: color-mix(in srgb, var(--ui-accent-muted) 50%, var(--ui-border));
   }
 
   .rf-settings-hub__header {
     padding: 0.75rem 1rem;
     background: linear-gradient(
       125deg,
-      color-mix(in srgb, var(--ui-logo-from) 42%, var(--ui-surface)),
-      color-mix(in srgb, var(--ui-logo-to) 36%, var(--ui-surface))
+      color-mix(in srgb, var(--ui-logo-from) 58%, var(--ui-surface)),
+      color-mix(in srgb, var(--ui-logo-to) 50%, var(--ui-surface))
     );
-    border-bottom: 1px solid color-mix(in srgb, var(--ui-accent-muted) 18%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--ui-accent-muted) 32%, transparent);
+  }
+
+  html[data-ui-color-scheme='light'] .rf-settings-hub__header {
+    background: linear-gradient(
+      125deg,
+      color-mix(in srgb, var(--ui-logo-from) 68%, var(--ui-surface)),
+      color-mix(in srgb, var(--ui-logo-to) 58%, var(--ui-surface))
+    );
   }
 
   .rf-settings-hub__header-title {
@@ -329,7 +361,11 @@ h1, h2, h3, h4 {
 
   .rf-settings-hub__nav {
     padding: 0.35rem 0.25rem 0.5rem;
-    background: color-mix(in srgb, var(--ui-accent-muted) 8%, transparent);
+    background: color-mix(in srgb, var(--ui-accent-muted) 16%, transparent);
+  }
+
+  html[data-ui-color-scheme='light'] .rf-settings-hub__nav {
+    background: color-mix(in srgb, var(--ui-accent-muted) 22%, transparent);
   }
 
   .rf-settings-hub__item {
@@ -343,20 +379,38 @@ h1, h2, h3, h4 {
     text-align: left;
     border-radius: var(--ui-radius-lg);
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-    color: var(--ui-muted);
+    color: color-mix(in srgb, var(--ui-accent-hover) 50%, var(--ui-body-text));
     border: 1px solid transparent;
   }
 
+  .rf-settings-hub__item svg {
+    color: color-mix(in srgb, var(--ui-accent) 75%, var(--ui-muted));
+    flex-shrink: 0;
+  }
+
   .rf-settings-hub__item:hover {
-    background: color-mix(in srgb, var(--ui-accent-muted) 10%, var(--ui-surface));
+    background: color-mix(in srgb, var(--ui-accent-muted) 22%, var(--ui-surface));
     color: var(--ui-body-text);
   }
 
+  .rf-settings-hub__item:hover svg {
+    color: var(--ui-accent);
+  }
+
   .rf-settings-hub__item--active {
-    background: color-mix(in srgb, var(--ui-accent-muted) 22%, var(--ui-surface));
-    color: color-mix(in srgb, var(--ui-accent-hover) 85%, var(--ui-body-text));
+    background: color-mix(in srgb, var(--ui-accent-muted) 38%, var(--ui-surface));
+    color: color-mix(in srgb, var(--ui-accent-hover) 92%, var(--ui-body-text));
     font-weight: 600;
-    border-color: color-mix(in srgb, var(--ui-accent-muted) 28%, var(--ui-border));
+    border-color: color-mix(in srgb, var(--ui-accent-muted) 48%, var(--ui-border));
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent);
+  }
+
+  html[data-ui-color-scheme='light'] .rf-settings-hub__item--active {
+    background: color-mix(in srgb, var(--ui-accent-muted) 46%, var(--ui-surface));
+  }
+
+  .rf-settings-hub__item--active svg {
+    color: var(--ui-accent);
   }
 
   .rf-settings-hub__item-chevron {

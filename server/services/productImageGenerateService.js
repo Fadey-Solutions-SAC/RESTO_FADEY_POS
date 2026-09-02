@@ -80,31 +80,41 @@ function assessProductImageName(product) {
   return { ambiguous: false, subject: subjectParts.join(', '), message: '' };
 }
 
-function isGptImageModel(model) {
-  const m = String(model || '').toLowerCase();
-  return m.includes('gpt-image');
+function isDallE2Model(model) {
+  return String(model || '').trim().toLowerCase() === 'dall-e-2';
 }
 
-function buildImageGenerationBody(model, prompt) {
+function isDallE3Model(model) {
+  return String(model || '').trim().toLowerCase() === 'dall-e-3';
+}
+
+function buildImageGenerationBody(model, prompt, { omitResponseFormat = false } = {}) {
   const m = String(model || 'dall-e-2').trim();
   const body = { model: m, prompt, n: 1 };
 
-  if (isGptImageModel(m)) {
+  if (isDallE3Model(m)) {
     body.size = '1024x1024';
-    body.quality = 'medium';
-    body.output_format = 'png';
+    if (!omitResponseFormat) body.response_format = 'b64_json';
     return body;
   }
 
-  if (m === 'dall-e-3') {
-    body.size = '1024x1024';
-    body.response_format = 'b64_json';
+  if (isDallE2Model(m)) {
+    body.size = '512x512';
+    if (!omitResponseFormat) body.response_format = 'b64_json';
     return body;
   }
 
-  body.size = '512x512';
-  body.response_format = 'b64_json';
+  // gpt-image-*, despliegues Azure u otros modelos nuevos
+  body.size = '1024x1024';
+  body.quality = 'medium';
+  body.output_format = 'png';
   return body;
+}
+
+function shouldRetryWithoutResponseFormat(status, errText) {
+  if (status !== 400) return false;
+  const t = String(errText || '').toLowerCase();
+  return t.includes('response_format') || t.includes("'response_format'");
 }
 
 async function downloadImageBuffer(url) {
@@ -149,27 +159,41 @@ async function generateImageWithOpenAI(subject) {
   ].join(' ');
 
   const model = String(process.env.OPENAI_IMAGE_MODEL || 'dall-e-2').trim();
-  const requestBody = buildImageGenerationBody(model, prompt);
+  let requestBody = buildImageGenerationBody(model, prompt);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90000);
 
-  try {
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
+  const postImageGeneration = async (body) =>
+    fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
 
+  try {
+    let response = await postImageGeneration(requestBody);
+
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      const err = new Error(parseOpenAiImageError(response.status, errText));
-      err.status = 502;
-      throw err;
+      if (shouldRetryWithoutResponseFormat(response.status, errText) && requestBody.response_format) {
+        requestBody = buildImageGenerationBody(model, prompt, { omitResponseFormat: true });
+        response = await postImageGeneration(requestBody);
+        if (!response.ok) {
+          const retryText = await response.text().catch(() => '');
+          const err = new Error(parseOpenAiImageError(response.status, retryText));
+          err.status = 502;
+          throw err;
+        }
+      } else {
+        const err = new Error(parseOpenAiImageError(response.status, errText));
+        err.status = 502;
+        throw err;
+      }
     }
 
     const data = await response.json();
