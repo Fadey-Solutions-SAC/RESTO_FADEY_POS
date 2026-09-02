@@ -251,6 +251,115 @@ function CartLineItems({
 }
 
 /**
+ * Panel lateral «Detalle del pedido» (usable fuera del grid de productos).
+ */
+export function StaffDineInOrderCartPanel({
+  fillParentHeight = false,
+  /** Alineado al tope del modal (columna derecha completa). */
+  elevatedAside = false,
+  cartTitle = 'Detalle del pedido',
+  orderBadge = '',
+  cart = [],
+  sidebarTop = null,
+  sidebarPreCart = null,
+  cartLayout = 'lines',
+  formatCurrency,
+  noteEditorLineKey,
+  setNoteEditorLineKey,
+  updateQty,
+  removeFromCart,
+  updateItemNote,
+  showLineDeleteLabel = false,
+  canDeleteLine = true,
+  showOrderObservation = true,
+  orderObservation = '',
+  onOrderObservationChange = null,
+  orderObservationPlaceholder = 'Observaciones del pedido...',
+  footer = null,
+  className = '',
+}) {
+  const observationRows = fillParentHeight ? 2 : 3;
+
+  return (
+    <div
+      className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] lg:border lg:shadow-[0_4px_24px_rgba(15,23,42,0.08)] ${
+        elevatedAside
+          ? 'h-full min-h-0 w-full self-stretch p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
+          : fillParentHeight
+            ? 'w-full self-start max-h-[min(calc(92vh-11rem),620px)] p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
+            : 'p-4 lg:min-h-0 lg:h-full lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
+      } ${className}`.trim()}
+    >
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div className={`flex shrink-0 items-center justify-between gap-2 ${fillParentHeight ? 'mb-2' : 'mb-3'}`}>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h3 className={`font-bold text-[var(--ui-body-text)] ${fillParentHeight ? 'text-sm' : 'text-base'}`}>
+              {cartTitle}
+            </h3>
+            {orderBadge ? (
+              <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_18%,transparent)] px-2.5 py-0.5 text-xs font-semibold text-[var(--ui-accent)]">
+                {orderBadge}
+              </span>
+            ) : cart.length > 0 ? (
+              <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_18%,transparent)] px-2 py-0.5 text-xs font-semibold text-[var(--ui-accent)]">
+                {cart.length}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        {sidebarTop ? <div className="mb-2 shrink-0 space-y-2">{sidebarTop}</div> : null}
+        <div
+          className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
+          style={{ touchAction: 'pan-y' }}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          {sidebarPreCart}
+          {sidebarPreCart ? <div className="mt-1 border-t border-[color:var(--ui-border)] pt-3" /> : null}
+          {sidebarPreCart ? (
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)]">Agregar al pedido</p>
+          ) : null}
+          <CartLineItems
+            cart={cart}
+            cartLayout={cartLayout}
+            formatCurrency={formatCurrency}
+            noteEditorLineKey={noteEditorLineKey}
+            setNoteEditorLineKey={setNoteEditorLineKey}
+            updateQty={updateQty}
+            removeFromCart={removeFromCart}
+            updateItemNote={updateItemNote}
+            showLineDeleteLabel={showLineDeleteLabel}
+            canDeleteLine={canDeleteLine}
+          />
+        </div>
+        <div
+          className={`shrink-0 space-y-2 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] ${
+            fillParentHeight || elevatedAside
+              ? 'sticky bottom-0 z-10 pt-2 shadow-[0_-6px_16px_rgba(15,23,42,0.1)]'
+              : 'mt-3 pt-3 lg:shadow-[0_-8px_24px_rgba(15,23,42,0.12)]'
+          }`}
+        >
+          {showOrderObservation && onOrderObservationChange ? (
+            <div className="relative">
+              <MdEditNote className="pointer-events-none absolute left-2.5 top-2.5 text-sm text-[var(--ui-muted)]" />
+              <textarea
+                value={orderObservation}
+                onChange={(e) => onOrderObservationChange(e.target.value)}
+                placeholder={orderObservationPlaceholder}
+                rows={observationRows}
+                className={`w-full resize-none rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] py-2 pl-8 pr-2 text-sm text-[var(--ui-body-text)] placeholder:text-[var(--ui-muted)] focus:border-[color:var(--ui-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-focus-ring)] ${
+                  fillParentHeight || elevatedAside ? 'max-h-[4.25rem]' : 'max-h-[5.5rem]'
+                }`}
+              />
+            </div>
+          ) : null}
+          {footer ? <div className="space-y-2">{footer}</div> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * UI unificada “Tomar pedido” (Mesas / Caja / Reservas / Delivery / auto-pedido): buscador, categorías, grilla y carrito.
  * `stackedSelfOrder`: columna única — solo la grilla hace scroll; resumen + total + pie fijos (QR cliente).
  */
@@ -293,9 +402,10 @@ export default function StaffDineInOrderUI({
   onOrderObservationChange = null,
   orderObservationPlaceholder = 'Observaciones del pedido...',
   showOrderObservation = true,
+  /** En lg+: el carrito se renderiza fuera (columna derecha del modal). */
+  externalCartAside = false,
 }) {
   const panelLayout = fillParentHeight || (!embedded && !stackedSelfOrder);
-  const observationRows = fillParentHeight ? 2 : 3;
 
   const rootClass = embedded
     ? 'h-[min(50vh,460px)] max-h-[min(70vh,560px)] w-full min-h-0'
@@ -457,71 +567,28 @@ export default function StaffDineInOrderUI({
     </>
   );
 
-  const cartAsideInner = (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className={`flex shrink-0 items-center justify-between gap-2 ${fillParentHeight ? 'mb-2' : 'mb-3'}`}>
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h3 className={`font-bold text-[var(--ui-body-text)] ${fillParentHeight ? 'text-sm' : 'text-base'}`}>
-            {cartTitle}
-          </h3>
-          {orderBadge ? (
-            <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_18%,transparent)] px-2.5 py-0.5 text-xs font-semibold text-[var(--ui-accent)]">
-              {orderBadge}
-            </span>
-          ) : cart.length > 0 ? (
-            <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_18%,transparent)] px-2 py-0.5 text-xs font-semibold text-[var(--ui-accent)]">
-              {cart.length}
-            </span>
-          ) : null}
-        </div>
-      </div>
-      {sidebarTop ? <div className="mb-2 shrink-0 space-y-2">{sidebarTop}</div> : null}
-      <div
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
-        style={{ touchAction: 'pan-y' }}
-        onWheel={(e) => e.stopPropagation()}
-      >
-        {sidebarPreCart}
-        {sidebarPreCart ? <div className="mt-1 border-t border-[color:var(--ui-border)] pt-3" /> : null}
-        {sidebarPreCart ? (
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)]">Agregar al pedido</p>
-        ) : null}
-        <CartLineItems
-          cart={cart}
-          cartLayout={cartLayout}
-          formatCurrency={formatCurrency}
-          noteEditorLineKey={noteEditorLineKey}
-          setNoteEditorLineKey={setNoteEditorLineKey}
-          updateQty={updateQty}
-          removeFromCart={removeFromCart}
-          updateItemNote={updateItemNote}
-          showLineDeleteLabel={showLineDeleteLabel}
-          canDeleteLine={canDeleteLine}
-        />
-      </div>
-      <div
-        className={`shrink-0 space-y-2 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] ${
-          fillParentHeight ? 'sticky bottom-0 z-10 pt-2 shadow-[0_-6px_16px_rgba(15,23,42,0.1)]' : 'mt-3 pt-3 lg:shadow-[0_-8px_24px_rgba(15,23,42,0.12)]'
-        }`}
-      >
-        {showOrderObservation && onOrderObservationChange ? (
-          <div className="relative">
-            <MdEditNote className="pointer-events-none absolute left-2.5 top-2.5 text-sm text-[var(--ui-muted)]" />
-            <textarea
-              value={orderObservation}
-              onChange={(e) => onOrderObservationChange(e.target.value)}
-              placeholder={orderObservationPlaceholder}
-              rows={observationRows}
-              className={`w-full resize-none rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] py-2 pl-8 pr-2 text-sm text-[var(--ui-body-text)] placeholder:text-[var(--ui-muted)] focus:border-[color:var(--ui-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-focus-ring)] ${
-                fillParentHeight ? 'max-h-[4.25rem]' : 'max-h-[5.5rem]'
-              }`}
-            />
-          </div>
-        ) : null}
-        {footer ? <div className="space-y-2">{footer}</div> : null}
-      </div>
-    </div>
-  );
+  const cartPanelProps = {
+    fillParentHeight,
+    cartTitle,
+    orderBadge,
+    cart,
+    sidebarTop,
+    sidebarPreCart,
+    cartLayout,
+    formatCurrency,
+    noteEditorLineKey,
+    setNoteEditorLineKey,
+    updateQty,
+    removeFromCart,
+    updateItemNote,
+    showLineDeleteLabel,
+    canDeleteLine,
+    showOrderObservation,
+    orderObservation,
+    onOrderObservationChange,
+    orderObservationPlaceholder,
+    footer,
+  };
 
   if (stackedSelfOrder) {
     return (
@@ -559,22 +626,22 @@ export default function StaffDineInOrderUI({
   }
 
   return (
-    <div className={`flex min-h-0 flex-col gap-4 overflow-hidden lg:flex-row ${fillParentHeight ? 'lg:items-start' : 'lg:items-stretch'} ${rootClass} ${className}`}>
+    <div
+      className={`flex min-h-0 flex-col gap-4 overflow-hidden ${externalCartAside ? '' : 'lg:flex-row'} ${externalCartAside ? '' : fillParentHeight ? 'lg:items-start' : 'lg:items-stretch'} ${rootClass} ${className}`}
+    >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="shrink-0">{searchBlock}</div>
         {categoriesBlock}
         <div {...scrollAreaProps}>{productGrid}</div>
       </div>
 
-      <div
-        className={`flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] lg:w-[min(100%,22rem)] lg:max-w-[22rem] lg:border lg:shadow-[0_4px_24px_rgba(15,23,42,0.08)] ${
-          fillParentHeight
-            ? 'self-start max-h-[min(calc(92vh-11rem),620px)] p-3'
-            : 'p-4 lg:min-h-0 lg:h-full'
-        }`}
-      >
-        {cartAsideInner}
-      </div>
+      {externalCartAside ? (
+        <div className="shrink-0 lg:hidden">
+          <StaffDineInOrderCartPanel {...cartPanelProps} />
+        </div>
+      ) : (
+        <StaffDineInOrderCartPanel {...cartPanelProps} />
+      )}
     </div>
   );
 }

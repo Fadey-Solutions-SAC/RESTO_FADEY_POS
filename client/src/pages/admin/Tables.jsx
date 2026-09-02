@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import Modal from '../../components/Modal';
 import MesaTransferModal from '../../components/MesaTransferModal';
-import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
+import StaffDineInOrderUI, { StaffDineInOrderCartPanel } from '../../components/StaffDineInOrderUI';
 import StaffMesaPedidoTabs from '../../components/StaffMesaPedidoTabs';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import toast from 'react-hot-toast';
@@ -361,64 +361,110 @@ export default function Tables() {
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ui-body-bg)] p-3 sm:p-4">
-            <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3 sm:p-4">
-              <StaffMesaPedidoTabs
-                orders={activeOrdersForTable}
-                formatCurrency={formatCurrency}
-                resetKey={selectedTable?.id}
-                className="min-h-0 flex-1 overflow-hidden"
-              >
-                <StaffDineInOrderUI
-                  fillParentHeight
-                  search={search}
-                  onSearchChange={setSearch}
-                  selectedCat={selectedCat}
-                  onSelectedCatChange={setSelectedCat}
-                  categories={categories}
-                  filteredProducts={filteredProducts}
-                  onProductPick={addToCart}
-                  cart={cart}
-                  noteEditorLineKey={noteEditorLineKey}
-                  setNoteEditorLineKey={setNoteEditorLineKey}
-                  updateQty={updateQty}
-                  removeFromCart={removeFromCart}
-                  updateItemNote={updateItemNote}
-                  cartTotal={cartTotal}
+            <div className="flex h-full min-h-0 w-full gap-2 overflow-hidden lg:flex-row lg:items-stretch">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3 sm:p-4">
+                <StaffMesaPedidoTabs
+                  orders={activeOrdersForTable}
                   formatCurrency={formatCurrency}
-                  className="min-h-0 flex-1"
-                  cartLayout="lines"
-                  footer={
-                    cart.length > 0 ? (
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-base font-bold text-[var(--ui-body-text)]">
-                          <span>Total</span>
-                          <span className="text-[var(--ui-accent-muted)]">{formatCurrency(cartTotal)}</span>
+                  resetKey={selectedTable?.id}
+                  className="min-h-0 flex-1 overflow-hidden"
+                >
+                  <StaffDineInOrderUI
+                    externalCartAside
+                    fillParentHeight
+                    search={search}
+                    onSearchChange={setSearch}
+                    selectedCat={selectedCat}
+                    onSelectedCatChange={setSelectedCat}
+                    categories={categories}
+                    filteredProducts={filteredProducts}
+                    onProductPick={addToCart}
+                    cart={cart}
+                    noteEditorLineKey={noteEditorLineKey}
+                    setNoteEditorLineKey={setNoteEditorLineKey}
+                    updateQty={updateQty}
+                    removeFromCart={removeFromCart}
+                    updateItemNote={updateItemNote}
+                    cartTotal={cartTotal}
+                    formatCurrency={formatCurrency}
+                    className="min-h-0 flex-1"
+                    cartLayout="lines"
+                    footer={
+                      cart.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-base font-bold text-[var(--ui-body-text)]">
+                            <span>Total</span>
+                            <span className="text-[var(--ui-accent-muted)]">{formatCurrency(cartTotal)}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setParaLlevarMesa((v) => !v)}
+                              className={`min-w-0 flex-1 rounded-lg border py-2.5 px-2 text-xs font-semibold uppercase tracking-wide transition-colors flex items-center justify-center ${
+                                paraLlevarMesa
+                                  ? 'border-transparent bg-[var(--ui-accent)] text-white shadow-sm'
+                                  : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                              }`}
+                            >
+                              PARA LLEVAR
+                            </button>
+                            <button
+                              type="button"
+                              onClick={submitOrder}
+                              className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold shadow-lg"
+                            >
+                              <MdReceipt /> Enviar Pedido
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setParaLlevarMesa((v) => !v)}
-                            className={`min-w-0 flex-1 rounded-lg border py-2.5 px-2 text-xs font-semibold uppercase tracking-wide transition-colors flex items-center justify-center ${
-                              paraLlevarMesa
-                                ? 'border-transparent bg-[var(--ui-accent)] text-white shadow-sm'
-                                : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-                            }`}
-                          >
-                            PARA LLEVAR
-                          </button>
-                          <button
-                            type="button"
-                            onClick={submitOrder}
-                            className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold shadow-lg"
-                          >
-                            <MdReceipt /> Enviar Pedido
-                          </button>
-                        </div>
+                      ) : null
+                    }
+                  />
+                </StaffMesaPedidoTabs>
+              </div>
+              <StaffDineInOrderCartPanel
+                elevatedAside
+                fillParentHeight
+                className="hidden min-h-0 shrink-0 lg:flex"
+                cart={cart}
+                cartLayout="lines"
+                formatCurrency={formatCurrency}
+                noteEditorLineKey={noteEditorLineKey}
+                setNoteEditorLineKey={setNoteEditorLineKey}
+                updateQty={updateQty}
+                removeFromCart={removeFromCart}
+                updateItemNote={updateItemNote}
+                footer={
+                  cart.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-base font-bold text-[var(--ui-body-text)]">
+                        <span>Total</span>
+                        <span className="text-[var(--ui-accent-muted)]">{formatCurrency(cartTotal)}</span>
                       </div>
-                    ) : null
-                  }
-                />
-              </StaffMesaPedidoTabs>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setParaLlevarMesa((v) => !v)}
+                          className={`min-w-0 flex-1 rounded-lg border py-2.5 px-2 text-xs font-semibold uppercase tracking-wide transition-colors flex items-center justify-center ${
+                            paraLlevarMesa
+                              ? 'border-transparent bg-[var(--ui-accent)] text-white shadow-sm'
+                              : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                          }`}
+                        >
+                          PARA LLEVAR
+                        </button>
+                        <button
+                          type="button"
+                          onClick={submitOrder}
+                          className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold shadow-lg"
+                        >
+                          <MdReceipt /> Enviar Pedido
+                        </button>
+                      </div>
+                    </div>
+                  ) : null
+                }
+              />
             </div>
           </div>
           </aside>

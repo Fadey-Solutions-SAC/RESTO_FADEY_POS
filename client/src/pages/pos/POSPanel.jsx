@@ -269,7 +269,7 @@ import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import MesaTransferModal from '../../components/MesaTransferModal';
-import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
+import StaffDineInOrderUI, { StaffDineInOrderCartPanel } from '../../components/StaffDineInOrderUI';
 import StaffMesaPedidoTabs from '../../components/StaffMesaPedidoTabs';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
@@ -4211,7 +4211,7 @@ export default function POSPanel() {
         })()}
         size="xl"
         maxHeightClass="max-h-[min(92vh,920px)]"
-        bodyClassName="!overflow-hidden flex min-h-0 flex-1 flex-col !p-4 sm:!p-6"
+        bodyClassName="!overflow-hidden flex min-h-0 flex-1 flex-col !px-4 !pb-4 !pt-2 sm:!px-6 sm:!pb-6"
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {quickSaleMode ? (
@@ -4482,30 +4482,70 @@ export default function POSPanel() {
           }
         />
         ) : selectedTable ? (
-          <StaffMesaPedidoTabs
-            orders={selectedTable.orders || []}
-            formatCurrency={formatCurrency}
-            resetKey={selectedTable.id}
-            className="min-h-0 flex-1 overflow-hidden"
-          >
-            <StaffDineInOrderUI
+          <div className="flex min-h-0 flex-1 gap-2 overflow-hidden lg:flex-row lg:items-stretch">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <StaffMesaPedidoTabs
+                orders={selectedTable.orders || []}
+                formatCurrency={formatCurrency}
+                resetKey={selectedTable.id}
+                className="min-h-0 flex-1 overflow-hidden"
+              >
+                <StaffDineInOrderUI
+                  externalCartAside
+                  fillParentHeight
+                  search={search}
+                  onSearchChange={setSearch}
+                  selectedCat={selectedCat}
+                  onSelectedCatChange={setSelectedCat}
+                  categories={categories}
+                  filteredProducts={filteredProducts}
+                  onProductPick={addToCart}
+                  cart={cart}
+                  noteEditorLineKey={noteEditorLineKey}
+                  setNoteEditorLineKey={setNoteEditorLineKey}
+                  updateQty={editingOrderId ? guardedUpdateQty : updateQty}
+                  removeFromCart={editingOrderId ? guardedRemoveFromCart : removeFromCart}
+                  updateItemNote={updateItemNote}
+                  cartTotal={cartTotal}
+                  formatCurrency={formatCurrency}
+                  className="min-h-0 flex-1"
+                  orderBadge={mesaOrderBadge}
+                  orderObservation={mesaOrderObservation}
+                  onOrderObservationChange={setMesaOrderObservation}
+                  showLineDeleteLabel={Boolean(editingOrderId && posCanDeleteRelease)}
+                  canDeleteLine={!editingOrderId || posCanDeleteRelease}
+                  footer={
+                    editingOrderId ? (
+                      cart.length > 0 ? (
+                        mesaOrderSubmitFooter('Guardar cambios')
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void liberarMesaDesdeEdicionPedidoVacio()}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-400/60 bg-amber-950/50 py-3 text-base font-semibold text-amber-100 hover:bg-amber-900/60"
+                        >
+                          <MdTableRestaurant /> Liberar mesa
+                        </button>
+                      )
+                    ) : cart.length > 0 ? (
+                      mesaOrderSubmitFooter('Enviar Pedido')
+                    ) : null
+                  }
+                />
+              </StaffMesaPedidoTabs>
+            </div>
+            <StaffDineInOrderCartPanel
+              elevatedAside
               fillParentHeight
-              search={search}
-              onSearchChange={setSearch}
-              selectedCat={selectedCat}
-              onSelectedCatChange={setSelectedCat}
-              categories={categories}
-              filteredProducts={filteredProducts}
-              onProductPick={addToCart}
+              className="hidden min-h-0 shrink-0 lg:flex"
               cart={cart}
+              cartLayout="lines"
+              formatCurrency={formatCurrency}
               noteEditorLineKey={noteEditorLineKey}
               setNoteEditorLineKey={setNoteEditorLineKey}
               updateQty={editingOrderId ? guardedUpdateQty : updateQty}
               removeFromCart={editingOrderId ? guardedRemoveFromCart : removeFromCart}
               updateItemNote={updateItemNote}
-              cartTotal={cartTotal}
-              formatCurrency={formatCurrency}
-              className="min-h-0 flex-1"
               orderBadge={mesaOrderBadge}
               orderObservation={mesaOrderObservation}
               onOrderObservationChange={setMesaOrderObservation}
@@ -4529,7 +4569,7 @@ export default function POSPanel() {
                 ) : null
               }
             />
-          </StaffMesaPedidoTabs>
+          </div>
         ) : (
           <StaffDineInOrderUI
             fillParentHeight
