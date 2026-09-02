@@ -533,7 +533,19 @@ h1, h2, h3, h4 {
     cursor: not-allowed;
   }
 
-  /** Botones del detalle de mesa (grilla 3 columnas). */
+  /** Botones del detalle de mesa (una fila). */
+  .btn-mesa-grid-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+
+  .btn-mesa-grid-row .btn-mesa-grid {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+  }
+
   .btn-mesa-grid {
     width: 100%;
     min-height: 44px;

@@ -25,6 +25,7 @@
   },
   "cajaSub": {
     "cobrar": "Checkout",
+    "mapa_mesas": "Table map",
     "apertura_cierre": "Open & close",
     "cierres_caja": "Register closings",
     "ingresos": "Income",

@@ -280,7 +280,7 @@ import {
   getMesaMapChairCount,
   getMesaMapVisualState,
 } from '../../utils/mesaMapTableVisual';
-import { getOfflinePosStatus, subscribeOfflinePos, readGetCache } from '../../utils/offlinePos';
+import { readGetCache } from '../../utils/offlinePos';
 import {
   MdPointOfSale, MdTableRestaurant, MdReceipt,
   MdCheckCircle, MdAttachMoney, MdPeople, MdClose,
@@ -740,7 +740,6 @@ export default function POSPanel() {
     pending_documents: 0,
     checked_at: '',
   });
-  const [internetOnline, setInternetOnline] = useState(() => getOfflinePosStatus().online);
   const [incomes, setIncomes] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [creditNotes, setCreditNotes] = useState([]);
@@ -1388,8 +1387,6 @@ export default function POSPanel() {
       openAcceptedSunatPdf(payload);
     }
   });
-
-  useEffect(() => subscribeOfflinePos((st) => setInternetOnline(Boolean(st?.online))), []);
 
   useEffect(() => {
     loadBillingStatus();
@@ -3749,93 +3746,67 @@ export default function POSPanel() {
       {activeCajaOption === 'cobrar' && (
         posRegisterReady ? (
         <>
-      <div className="flex flex-wrap items-center justify-between gap-2 shrink-0 mb-2">
-        <h2 className="font-semibold text-slate-700 flex items-center gap-2 text-base sm:text-lg min-w-0">
-          <MdTableRestaurant className="shrink-0" />
-          <span>Caja - Mapa de Mesas</span>
-          <span
-            className={`inline-flex items-center justify-center w-7 h-7 rounded-full border shrink-0 ${
-              internetOnline
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
-                : 'bg-red-50 border-red-200 text-red-600'
-            }`}
-            title={internetOnline ? 'Con internet' : 'Sin internet'}
-            aria-label={internetOnline ? 'Con internet' : 'Sin internet'}
-          >
-            {internetOnline
-              ? <MdCheckCircle className="text-lg" />
-              : <MdClose className="text-lg" />}
-          </span>
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          {showDeliveryUi ? (
-            <button
-              type="button"
-              onClick={() => {
-                const el = document.getElementById('pos-delivery-caja');
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                if (!deliveryCajaSlots.length) {
-                  toast.error('No hay pedidos delivery pendientes de cobro');
-                }
-              }}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5"
-            >
-              <MdDeliveryDining className="text-base shrink-0" />
-              Delivery
-            </button>
-          ) : null}
-          {!canSwitchCaja ? mesaMapToolbarButtons : null}
-          {canSwitchCaja ? (
-            <button
-              type="button"
-              onClick={() => void clearAdminRegisterContext()}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              title="Volver a elegir caja / turno"
-            >
-              Cambiar caja
-            </button>
-          ) : null}
+      <div className="mb-2 flex flex-wrap items-center gap-2 shrink-0">
+        {tablesBySalon.length > 0 ? (
+          <>
+            {tablesBySalon.map(({ zone, label, tables: salonTables }) => {
+              const active = selectedPosSalon === zone;
+              return (
+                <button
+                  key={zone}
+                  type="button"
+                  onClick={() => setSelectedPosSalon(zone)}
+                  className={`rounded-lg px-3 py-2 text-xs sm:text-sm font-medium border transition-colors ${
+                    active
+                      ? 'border-[color:var(--ui-border)] bg-[var(--ui-accent)] text-white shadow-sm'
+                      : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                  }`}
+                >
+                  {label}
+                  <span className={`ml-1.5 tabular-nums ${active ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
+                    ({salonTables.length})
+                  </span>
+                </button>
+              );
+            })}
+            <div className="hidden sm:block h-6 w-px bg-[color:var(--ui-border)] shrink-0" aria-hidden="true" />
+          </>
+        ) : null}
+        {mesaMapToolbarButtons}
+        {canSwitchCaja ? (
           <button
             type="button"
-            onClick={openQuickSaleMenu}
-            className="px-4 py-2 rounded-lg bg-[#2563EB] text-white hover:bg-[#1D4ED8] font-medium text-sm inline-flex items-center gap-2"
+            onClick={() => void clearAdminRegisterContext()}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shrink-0"
+            title="Volver a elegir caja / turno"
           >
-            <MdPointOfSale className="text-base" /> Venta rápida
+            Cambiar caja
           </button>
-        </div>
+        ) : null}
+        {showDeliveryUi ? (
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('pos-delivery-caja');
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              if (!deliveryCajaSlots.length) {
+                toast.error('No hay pedidos delivery pendientes de cobro');
+              }
+            }}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5 shrink-0"
+          >
+            <MdDeliveryDining className="text-base shrink-0" />
+            Delivery
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={openQuickSaleMenu}
+          className="px-4 py-2 rounded-lg bg-[#2563EB] text-white hover:bg-[#1D4ED8] font-medium text-sm inline-flex items-center gap-2 shrink-0 ml-auto sm:ml-0"
+        >
+          <MdPointOfSale className="text-base" /> Venta rápida
+        </button>
       </div>
-
-      {tablesBySalon.length > 0 && (
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div className="flex flex-wrap gap-2 min-w-0">
-          {tablesBySalon.map(({ zone, label, tables: salonTables }) => {
-            const active = selectedPosSalon === zone;
-            return (
-              <button
-                key={zone}
-                type="button"
-                onClick={() => setSelectedPosSalon(zone)}
-                className={`rounded-lg px-3 py-2 text-xs sm:text-sm font-medium border transition-colors ${
-                  active
-                    ? 'border-[color:var(--ui-border)] bg-[var(--ui-accent)] text-white shadow-sm'
-                    : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-                }`}
-              >
-                {label}
-                <span className={`ml-1.5 tabular-nums ${active ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
-                  ({salonTables.length})
-                </span>
-              </button>
-            );
-          })}
-          </div>
-          {canSwitchCaja ? (
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {mesaMapToolbarButtons}
-            </div>
-          ) : null}
-        </div>
-      )}
 
       {mesaUniteMode ? (
         <p className="mb-2 shrink-0 text-xs sm:text-sm text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
@@ -4044,7 +4015,7 @@ export default function POSPanel() {
                 })()}
               </div>
 
-              <div className="grid grid-cols-3 gap-2 shrink-0 pt-1 pb-1">
+              <div className="btn-mesa-grid-row shrink-0 pt-1 pb-1">
                 {!isDeliveryCheckoutTable(tableDetail) && (
                   <button
                     type="button"

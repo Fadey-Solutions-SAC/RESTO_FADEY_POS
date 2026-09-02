@@ -79,5 +79,17 @@ export function getShellModuleTitle(pathname, search, t) {
     const sub = t(`almacenSub.${section}`);
     return sub ? `${base} - ${sub}` : base;
   }
+  if (path.startsWith('/admin/caja')) {
+    const params = typeof search === 'string'
+      ? new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+      : (search || new URLSearchParams());
+    const view = String(params.get('view') || 'cobrar').trim();
+    if (view === 'cobrar') {
+      const sub = t('cajaSub.mapa_mesas', { defaultValue: 'Mapa de Mesas' });
+      return sub ? `${base} - ${sub}` : base;
+    }
+    const sub = t(`cajaSub.${view}`, { defaultValue: '' });
+    return sub && sub !== `cajaSub.${view}` ? `${base} - ${sub}` : base;
+  }
   return base;
 }

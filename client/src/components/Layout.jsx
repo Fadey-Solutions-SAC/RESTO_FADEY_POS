@@ -6,12 +6,13 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { isBrowserOffline, isNetworkFailure } from '../utils/offlinePos';
 import { useSocket } from '../hooks/useSocket';
-import { MdPointOfSale, MdLock, MdAdminPanelSettings } from 'react-icons/md';
+import { MdPointOfSale, MdLock, MdAdminPanelSettings, MdCheckCircle, MdClose } from 'react-icons/md';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppLocaleBootstrap } from '../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../hooks/useStaffSessionHeartbeat';
 import { getShellModuleTitle } from '../utils/shellModuleTitle';
+import { getOfflinePosStatus, subscribeOfflinePos } from '../utils/offlinePos';
 import OfflineCajaBanner from './OfflineCajaBanner';
 
 export default function Layout() {
@@ -90,6 +91,25 @@ export default function Layout() {
   const isCajaPage = location.pathname === '/admin/caja' || location.pathname.startsWith('/admin/caja/');
   const isSettingsPage = location.pathname === '/admin/configuracion' || location.pathname.startsWith('/admin/configuracion/');
   const isShellLockedScroll = isCajaPage || isSettingsPage;
+  const isCajaMapView = isCajaPage && (() => {
+    const view = new URLSearchParams(location.search).get('view') || 'cobrar';
+    return view === 'cobrar';
+  })();
+  const [internetOnline, setInternetOnline] = useState(() => getOfflinePosStatus().online);
+
+  useEffect(() => {
+    if (!isCajaMapView) return undefined;
+    const sync = () => setInternetOnline(Boolean(getOfflinePosStatus().online));
+    sync();
+    const unsub = subscribeOfflinePos((st) => setInternetOnline(Boolean(st?.online)));
+    window.addEventListener('online', sync);
+    window.addEventListener('offline', sync);
+    return () => {
+      unsub?.();
+      window.removeEventListener('online', sync);
+      window.removeEventListener('offline', sync);
+    };
+  }, [isCajaMapView]);
 
   return (
     <div className="min-h-screen bg-[var(--ui-body-bg)]">
@@ -121,9 +141,26 @@ export default function Layout() {
               </button>
             ) : null}
             {shellTitle ? (
-              <h1 className="text-lg sm:text-2xl font-bold text-[var(--ui-body-text)] truncate leading-tight rf-page-title min-w-0">
-                {shellTitle}
-              </h1>
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <h1 className="text-lg sm:text-2xl font-bold text-[var(--ui-body-text)] truncate leading-tight rf-page-title min-w-0">
+                  {shellTitle}
+                </h1>
+                {isCajaMapView ? (
+                  <span
+                    className={`inline-flex items-center justify-center w-7 h-7 rounded-full border shrink-0 ${
+                      internetOnline
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                        : 'bg-red-50 border-red-200 text-red-600'
+                    }`}
+                    title={internetOnline ? 'Con internet' : 'Sin internet'}
+                    aria-label={internetOnline ? 'Con internet' : 'Sin internet'}
+                  >
+                    {internetOnline
+                      ? <MdCheckCircle className="text-lg" />
+                      : <MdClose className="text-lg" />}
+                  </span>
+                ) : null}
+              </div>
             ) : null}
           </div>
           <div className="flex items-center gap-3">
