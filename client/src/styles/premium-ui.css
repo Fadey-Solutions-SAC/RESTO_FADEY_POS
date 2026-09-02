@@ -163,21 +163,24 @@ h1, h2, h3, h4 {
   }
 
   .rf-sidebar {
-    background: color-mix(in srgb, var(--ui-accent-muted) 14%, var(--ui-surface)) !important;
-    border-right-color: color-mix(in srgb, var(--ui-accent-muted) 24%, var(--ui-border)) !important;
-    box-shadow: 4px 0 24px color-mix(in srgb, var(--ui-accent-muted) 12%, transparent);
+    --rf-sidebar-tint: color-mix(in srgb, var(--ui-accent-muted) 24%, var(--ui-surface));
+    --rf-sidebar-tint-top: color-mix(in srgb, var(--ui-logo-from) 32%, var(--ui-surface));
+    background: linear-gradient(
+      180deg,
+      var(--rf-sidebar-tint-top) 0%,
+      var(--rf-sidebar-tint) 14%,
+      var(--rf-sidebar-tint) 100%
+    ) !important;
+    border-right-color: color-mix(in srgb, var(--ui-accent-muted) 28%, var(--ui-border)) !important;
+    box-shadow: 4px 0 24px color-mix(in srgb, var(--ui-accent-muted) 14%, transparent);
     transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
   }
 
   .rf-sidebar-logo-bar {
-    background: linear-gradient(
-      125deg,
-      color-mix(in srgb, var(--ui-logo-from) 42%, var(--ui-surface)),
-      color-mix(in srgb, var(--ui-logo-to) 36%, var(--ui-surface))
-    ) !important;
-    border-bottom-color: color-mix(in srgb, var(--ui-accent-muted) 18%, transparent) !important;
-    backdrop-filter: blur(8px) saturate(1.15);
-    -webkit-backdrop-filter: blur(8px) saturate(1.15);
+    background: transparent !important;
+    border-bottom-color: color-mix(in srgb, var(--ui-accent-muted) 22%, var(--ui-border)) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .rf-sidebar-brand {
@@ -231,17 +234,17 @@ h1, h2, h3, h4 {
   }
 
   .rf-nav-link:hover {
-    background: color-mix(in srgb, var(--ui-accent-muted) 10%, var(--ui-surface));
+    background: color-mix(in srgb, var(--ui-accent-muted) 14%, transparent);
     color: var(--ui-body-text);
     transform: translateX(2px);
   }
 
   .rf-nav-link--active {
-    background: color-mix(in srgb, var(--ui-accent-muted) 22%, var(--ui-surface)) !important;
-    color: color-mix(in srgb, var(--ui-accent-hover) 85%, var(--ui-body-text)) !important;
+    background: color-mix(in srgb, var(--ui-accent-muted) 30%, transparent) !important;
+    color: color-mix(in srgb, var(--ui-accent-hover) 88%, var(--ui-body-text)) !important;
     font-weight: 600;
     box-shadow: none;
-    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 28%, var(--ui-border));
+    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 38%, var(--ui-border));
     padding-left: calc(0.5rem - 1px);
   }
 
@@ -252,24 +255,43 @@ h1, h2, h3, h4 {
   }
 
   .rf-nav-sublink:hover {
-    background: color-mix(in srgb, var(--ui-accent-muted) 10%, var(--ui-surface));
+    background: color-mix(in srgb, var(--ui-accent-muted) 12%, transparent);
     color: var(--ui-body-text);
   }
 
   .rf-nav-sublink--active {
-    background: color-mix(in srgb, var(--ui-accent-muted) 20%, var(--ui-surface));
-    color: color-mix(in srgb, var(--ui-accent-hover) 85%, var(--ui-body-text));
+    background: color-mix(in srgb, var(--ui-accent-muted) 26%, transparent);
+    color: color-mix(in srgb, var(--ui-accent-hover) 88%, var(--ui-body-text));
     font-weight: 600;
-    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 24%, var(--ui-border));
+    border: 1px solid color-mix(in srgb, var(--ui-accent-muted) 32%, var(--ui-border));
   }
 
   .rf-sidebar__nav {
+    flex: 1 1 auto;
+    min-height: 0;
     background: transparent;
+    scrollbar-color: color-mix(in srgb, var(--ui-accent-muted) 45%, transparent) transparent;
   }
 
   .rf-sidebar__footer {
-    border-top-color: color-mix(in srgb, var(--ui-accent-muted) 18%, var(--ui-border)) !important;
-    background: color-mix(in srgb, var(--ui-accent-muted) 8%, var(--ui-surface));
+    flex-shrink: 0;
+    border-top-color: color-mix(in srgb, var(--ui-accent-muted) 22%, var(--ui-border)) !important;
+    background: transparent;
+  }
+
+  .rf-sidebar__footer-btn {
+    color: var(--ui-body-text);
+    border-radius: var(--ui-radius-lg);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .rf-sidebar__footer-btn:hover {
+    background: color-mix(in srgb, var(--ui-accent-muted) 12%, transparent);
+  }
+
+  .rf-sidebar-menu-btn:hover,
+  .rf-sidebar-logo-bar button:hover {
+    background: color-mix(in srgb, var(--ui-accent-muted) 12%, transparent) !important;
   }
 
   /* —— Configuración: panel de módulos con tinte del tema activo —— */

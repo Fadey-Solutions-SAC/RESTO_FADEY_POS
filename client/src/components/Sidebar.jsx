@@ -257,7 +257,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
           <button
             type="button"
             onClick={onToggleMenu}
-            className="h-full w-full flex flex-row items-center justify-center gap-1 hover:bg-[var(--ui-sidebar-hover)] transition-colors text-[var(--ui-body-text)]"
+            className="h-full w-full flex flex-row items-center justify-center gap-1 transition-colors text-[var(--ui-body-text)]"
             aria-label={tc('layout.menu', { defaultValue: 'Menú' })}
           >
             <div className="rf-sidebar-brand w-6 h-6 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
@@ -280,7 +280,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
             <button
               type="button"
               onClick={onToggleMenu}
-              className="rf-sidebar-menu-btn hover:bg-[var(--ui-sidebar-hover)] transition-colors text-[var(--ui-body-text)]"
+              className="rf-sidebar-menu-btn transition-colors text-[var(--ui-body-text)]"
               aria-label={tc('layout.menu', { defaultValue: 'Menú' })}
             >
               <span className="rf-sidebar-burger" aria-hidden="true">
@@ -433,7 +433,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
       </nav>
 
       <div className="rf-sidebar__footer p-2 border-t border-[color:var(--ui-sidebar-border)]">
-        <button type="button" onClick={() => void handleFinalizarJornadaClick()} className="flex items-center gap-3 px-3 py-2 rounded-lg text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] w-full transition-colors text-sm" title={tc('layout.endShift')}>
+        <button type="button" onClick={() => void handleFinalizarJornadaClick()} className="rf-sidebar__footer-btn flex items-center gap-3 px-3 py-2 w-full transition-colors text-sm" title={tc('layout.endShift')}>
           <MdLogout className="text-lg flex-shrink-0" />
           {!isCollapsed && <span>{tc('layout.endShift')}</span>}
         </button>

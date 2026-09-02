@@ -80,6 +80,60 @@ function assessProductImageName(product) {
   return { ambiguous: false, subject: subjectParts.join(', '), message: '' };
 }
 
+function isGptImageModel(model) {
+  const m = String(model || '').toLowerCase();
+  return m.includes('gpt-image');
+}
+
+function buildImageGenerationBody(model, prompt) {
+  const m = String(model || 'dall-e-2').trim();
+  const body = { model: m, prompt, n: 1 };
+
+  if (isGptImageModel(m)) {
+    body.size = '1024x1024';
+    body.quality = 'medium';
+    body.output_format = 'png';
+    return body;
+  }
+
+  if (m === 'dall-e-3') {
+    body.size = '1024x1024';
+    body.response_format = 'b64_json';
+    return body;
+  }
+
+  body.size = '512x512';
+  body.response_format = 'b64_json';
+  return body;
+}
+
+async function downloadImageBuffer(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) {
+      const err = new Error('No se pudo descargar la imagen generada.');
+      err.status = 502;
+      throw err;
+    }
+    return Buffer.from(await res.arrayBuffer());
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseOpenAiImageError(status, errText) {
+  try {
+    const parsed = JSON.parse(errText);
+    const msg = parsed?.error?.message;
+    if (msg) return `No se pudo generar la imagen (${status}): ${msg}`;
+  } catch {
+    /* ignore */
+  }
+  return `No se pudo generar la imagen (${status}). ${String(errText || '').slice(0, 200)}`;
+}
+
 async function generateImageWithOpenAI(subject) {
   const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
   if (!apiKey) {
@@ -95,7 +149,7 @@ async function generateImageWithOpenAI(subject) {
   ].join(' ');
 
   const model = String(process.env.OPENAI_IMAGE_MODEL || 'dall-e-2').trim();
-  const size = model === 'dall-e-3' ? '1024x1024' : '512x512';
+  const requestBody = buildImageGenerationBody(model, prompt);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90000);
@@ -107,31 +161,31 @@ async function generateImageWithOpenAI(subject) {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model,
-        prompt,
-        n: 1,
-        size,
-        response_format: 'b64_json',
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      const err = new Error(`No se pudo generar la imagen (${response.status}). ${errText.slice(0, 200)}`);
+      const err = new Error(parseOpenAiImageError(response.status, errText));
       err.status = 502;
       throw err;
     }
 
     const data = await response.json();
-    const b64 = data?.data?.[0]?.b64_json;
-    if (!b64) {
-      const err = new Error('La API no devolvió imagen.');
-      err.status = 502;
-      throw err;
+    const item = data?.data?.[0];
+    const b64 = item?.b64_json;
+    if (b64) {
+      return Buffer.from(b64, 'base64');
     }
-    return Buffer.from(b64, 'base64');
+    const url = item?.url;
+    if (url) {
+      return await downloadImageBuffer(url);
+    }
+
+    const err = new Error('La API no devolvió imagen.');
+    err.status = 502;
+    throw err;
   } finally {
     clearTimeout(timeout);
   }
