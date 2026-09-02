@@ -425,7 +425,7 @@ export default function Tables() {
               <StaffDineInOrderCartPanel
                 elevatedAside
                 fillParentHeight
-                className="hidden min-h-0 shrink-0 lg:flex"
+                className="hidden min-h-0 shrink-0 overflow-hidden lg:flex lg:h-full lg:max-h-full lg:flex-col lg:self-stretch"
                 cart={cart}
                 cartLayout="lines"
                 formatCurrency={formatCurrency}

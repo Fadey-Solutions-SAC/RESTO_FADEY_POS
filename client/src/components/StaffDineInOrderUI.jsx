@@ -278,38 +278,47 @@ export function StaffDineInOrderCartPanel({
   footer = null,
   className = '',
 }) {
-  const observationRows = fillParentHeight ? 2 : 3;
+  const observationRows = fillParentHeight || elevatedAside ? 2 : 3;
+  const pinFooter = fillParentHeight || elevatedAside;
 
   return (
     <div
       className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] lg:border lg:shadow-[0_4px_24px_rgba(15,23,42,0.08)] ${
         elevatedAside
-          ? 'h-full min-h-0 w-full self-stretch p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
+          ? 'h-full max-h-full min-h-0 w-full self-stretch p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
           : fillParentHeight
-            ? 'w-full self-start max-h-[min(calc(92vh-11rem),620px)] p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
+            ? 'w-full max-h-[min(calc(92vh-8rem),620px)] min-h-0 self-start p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
             : 'p-4 lg:min-h-0 lg:h-full lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
       } ${className}`.trim()}
     >
-      <div className="flex h-full min-h-0 flex-col overflow-hidden">
-        <div className={`flex shrink-0 items-center justify-between gap-2 ${fillParentHeight ? 'mb-2' : 'mb-3'}`}>
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h3 className={`font-bold text-[var(--ui-body-text)] ${fillParentHeight ? 'text-sm' : 'text-base'}`}>
-              {cartTitle}
-            </h3>
-            {orderBadge ? (
-              <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_18%,transparent)] px-2.5 py-0.5 text-xs font-semibold text-[var(--ui-accent)]">
-                {orderBadge}
-              </span>
-            ) : cart.length > 0 ? (
-              <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_18%,transparent)] px-2 py-0.5 text-xs font-semibold text-[var(--ui-accent)]">
-                {cart.length}
-              </span>
-            ) : null}
+      <div
+        className={
+          pinFooter
+            ? 'grid h-full max-h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden'
+            : 'flex h-full min-h-0 flex-col overflow-hidden'
+        }
+      >
+        <div className="min-h-0 shrink-0">
+          <div className={`flex items-center justify-between gap-2 ${fillParentHeight ? 'mb-2' : 'mb-3'}`}>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h3 className={`font-bold text-[var(--ui-body-text)] ${fillParentHeight ? 'text-sm' : 'text-base'}`}>
+                {cartTitle}
+              </h3>
+              {orderBadge ? (
+                <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_18%,transparent)] px-2.5 py-0.5 text-xs font-semibold text-[var(--ui-accent)]">
+                  {orderBadge}
+                </span>
+              ) : cart.length > 0 ? (
+                <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_18%,transparent)] px-2 py-0.5 text-xs font-semibold text-[var(--ui-accent)]">
+                  {cart.length}
+                </span>
+              ) : null}
+            </div>
           </div>
+          {sidebarTop ? <div className="mb-2 space-y-2">{sidebarTop}</div> : null}
         </div>
-        {sidebarTop ? <div className="mb-2 shrink-0 space-y-2">{sidebarTop}</div> : null}
         <div
-          className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
+          className="min-h-0 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
           style={{ touchAction: 'pan-y' }}
           onWheel={(e) => e.stopPropagation()}
         >
@@ -332,10 +341,8 @@ export function StaffDineInOrderCartPanel({
           />
         </div>
         <div
-          className={`shrink-0 space-y-2 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] ${
-            fillParentHeight || elevatedAside
-              ? 'sticky bottom-0 z-10 pt-2 shadow-[0_-6px_16px_rgba(15,23,42,0.1)]'
-              : 'mt-3 pt-3 lg:shadow-[0_-8px_24px_rgba(15,23,42,0.12)]'
+          className={`min-h-0 shrink-0 space-y-2 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] ${
+            pinFooter ? 'pt-2 shadow-[0_-6px_16px_rgba(15,23,42,0.12)]' : 'mt-3 pt-3 lg:shadow-[0_-8px_24px_rgba(15,23,42,0.12)]'
           }`}
         >
           {showOrderObservation && onOrderObservationChange ? (
@@ -347,7 +354,7 @@ export function StaffDineInOrderCartPanel({
                 placeholder={orderObservationPlaceholder}
                 rows={observationRows}
                 className={`w-full resize-none rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] py-2 pl-8 pr-2 text-sm text-[var(--ui-body-text)] placeholder:text-[var(--ui-muted)] focus:border-[color:var(--ui-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-focus-ring)] ${
-                  fillParentHeight || elevatedAside ? 'max-h-[4.25rem]' : 'max-h-[5.5rem]'
+                  pinFooter ? 'h-[3.25rem] max-h-[3.25rem]' : 'max-h-[5.5rem]'
                 }`}
               />
             </div>
@@ -424,7 +431,7 @@ export default function StaffDineInOrderUI({
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         placeholder="Buscar producto..."
-        className="input-field py-2.5 pl-10 pr-3 placeholder:text-[var(--ui-muted)]"
+        className={`input-field pl-10 pr-3 placeholder:text-[var(--ui-muted)] ${fillParentHeight ? 'py-2' : 'py-2.5'}`}
       />
     </div>
   );
@@ -438,7 +445,7 @@ export default function StaffDineInOrderUI({
 
   const categoriesBlock = (
     <div
-      className="mb-3 flex shrink-0 flex-nowrap gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-x"
+      className={`flex shrink-0 flex-nowrap gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-x ${fillParentHeight ? 'mb-2' : 'mb-3'}`}
       style={{ touchAction: 'pan-x' }}
       onWheel={(e) => e.stopPropagation()}
     >
@@ -627,9 +634,9 @@ export default function StaffDineInOrderUI({
 
   return (
     <div
-      className={`flex min-h-0 flex-col gap-4 overflow-hidden ${externalCartAside ? '' : 'lg:flex-row'} ${externalCartAside ? '' : fillParentHeight ? 'lg:items-start' : 'lg:items-stretch'} ${rootClass} ${className}`}
+      className={`flex min-h-0 flex-col overflow-hidden ${fillParentHeight ? 'gap-2' : 'gap-4'} ${externalCartAside ? '' : 'lg:flex-row'} ${externalCartAside ? '' : fillParentHeight ? 'lg:items-start' : 'lg:items-stretch'} ${rootClass} ${className}`}
     >
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${fillParentHeight ? 'gap-2' : ''}`}>
         <div className="shrink-0">{searchBlock}</div>
         {categoriesBlock}
         <div {...scrollAreaProps}>{productGrid}</div>

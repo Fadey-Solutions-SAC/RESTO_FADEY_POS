@@ -270,7 +270,6 @@ import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import MesaTransferModal from '../../components/MesaTransferModal';
 import StaffDineInOrderUI, { StaffDineInOrderCartPanel } from '../../components/StaffDineInOrderUI';
-import StaffMesaPedidoTabs from '../../components/StaffMesaPedidoTabs';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
 import { canPosDeleteOrReleaseTable, canAjusteBarAutoDismiss } from '../../utils/posPermissions';
@@ -4484,60 +4483,53 @@ export default function POSPanel() {
         ) : selectedTable ? (
           <div className="flex min-h-0 flex-1 gap-2 overflow-hidden lg:flex-row lg:items-stretch">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <StaffMesaPedidoTabs
-                orders={selectedTable.orders || []}
+              <StaffDineInOrderUI
+                externalCartAside
+                fillParentHeight
+                search={search}
+                onSearchChange={setSearch}
+                selectedCat={selectedCat}
+                onSelectedCatChange={setSelectedCat}
+                categories={categories}
+                filteredProducts={filteredProducts}
+                onProductPick={addToCart}
+                cart={cart}
+                noteEditorLineKey={noteEditorLineKey}
+                setNoteEditorLineKey={setNoteEditorLineKey}
+                updateQty={editingOrderId ? guardedUpdateQty : updateQty}
+                removeFromCart={editingOrderId ? guardedRemoveFromCart : removeFromCart}
+                updateItemNote={updateItemNote}
+                cartTotal={cartTotal}
                 formatCurrency={formatCurrency}
-                resetKey={selectedTable.id}
-                className="min-h-0 flex-1 overflow-hidden"
-              >
-                <StaffDineInOrderUI
-                  externalCartAside
-                  fillParentHeight
-                  search={search}
-                  onSearchChange={setSearch}
-                  selectedCat={selectedCat}
-                  onSelectedCatChange={setSelectedCat}
-                  categories={categories}
-                  filteredProducts={filteredProducts}
-                  onProductPick={addToCart}
-                  cart={cart}
-                  noteEditorLineKey={noteEditorLineKey}
-                  setNoteEditorLineKey={setNoteEditorLineKey}
-                  updateQty={editingOrderId ? guardedUpdateQty : updateQty}
-                  removeFromCart={editingOrderId ? guardedRemoveFromCart : removeFromCart}
-                  updateItemNote={updateItemNote}
-                  cartTotal={cartTotal}
-                  formatCurrency={formatCurrency}
-                  className="min-h-0 flex-1"
-                  orderBadge={mesaOrderBadge}
-                  orderObservation={mesaOrderObservation}
-                  onOrderObservationChange={setMesaOrderObservation}
-                  showLineDeleteLabel={Boolean(editingOrderId && posCanDeleteRelease)}
-                  canDeleteLine={!editingOrderId || posCanDeleteRelease}
-                  footer={
-                    editingOrderId ? (
-                      cart.length > 0 ? (
-                        mesaOrderSubmitFooter('Guardar cambios')
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void liberarMesaDesdeEdicionPedidoVacio()}
-                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-400/60 bg-amber-950/50 py-3 text-base font-semibold text-amber-100 hover:bg-amber-900/60"
-                        >
-                          <MdTableRestaurant /> Liberar mesa
-                        </button>
-                      )
-                    ) : cart.length > 0 ? (
-                      mesaOrderSubmitFooter('Enviar Pedido')
-                    ) : null
-                  }
-                />
-              </StaffMesaPedidoTabs>
+                className="min-h-0 flex-1"
+                orderBadge={mesaOrderBadge}
+                orderObservation={mesaOrderObservation}
+                onOrderObservationChange={setMesaOrderObservation}
+                showLineDeleteLabel={Boolean(editingOrderId && posCanDeleteRelease)}
+                canDeleteLine={!editingOrderId || posCanDeleteRelease}
+                footer={
+                  editingOrderId ? (
+                    cart.length > 0 ? (
+                      mesaOrderSubmitFooter('Guardar cambios')
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void liberarMesaDesdeEdicionPedidoVacio()}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-400/60 bg-amber-950/50 py-3 text-base font-semibold text-amber-100 hover:bg-amber-900/60"
+                      >
+                        <MdTableRestaurant /> Liberar mesa
+                      </button>
+                    )
+                  ) : cart.length > 0 ? (
+                    mesaOrderSubmitFooter('Enviar Pedido')
+                  ) : null
+                }
+              />
             </div>
             <StaffDineInOrderCartPanel
               elevatedAside
               fillParentHeight
-              className="hidden min-h-0 shrink-0 lg:flex"
+              className="hidden min-h-0 shrink-0 overflow-hidden lg:flex lg:h-full lg:max-h-full lg:flex-col lg:self-stretch"
               cart={cart}
               cartLayout="lines"
               formatCurrency={formatCurrency}
