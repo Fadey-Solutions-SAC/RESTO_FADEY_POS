@@ -3552,7 +3552,7 @@ export default function POSPanel() {
         className={mesaMapToolbarMoveTableClass}
         title="Mover toda la cuenta a otra mesa"
       >
-        <MdOpenWith className="shrink-0 text-base" />
+        <MdOpenWith className="shrink-0 text-sm" />
         <span>Mover mesa</span>
       </button>
       <button
@@ -3561,7 +3561,7 @@ export default function POSPanel() {
         className={mesaMapToolbarMoveOrdersClass}
         title="Mover pedidos seleccionados a otra mesa"
       >
-        <MdSwapHoriz className="shrink-0 text-base" />
+        <MdSwapHoriz className="shrink-0 text-sm" />
         <span>Mover ped.</span>
       </button>
       <button
@@ -3577,7 +3577,7 @@ export default function POSPanel() {
         className={`${mesaMapToolbarUniteClass}${mesaUniteMode ? ' ring-2 ring-violet-300 ring-offset-1' : ''}`}
         title="Unir varias mesas en una sola cuenta"
       >
-        <MdCallMerge className="shrink-0 text-base" />
+        <MdCallMerge className="shrink-0 text-sm" />
         <span>
           {mesaUniteMode && mesaUniteSelection.length >= 2
             ? `Unir (${mesaUniteSelection.length})`
@@ -3746,9 +3746,9 @@ export default function POSPanel() {
       {activeCajaOption === 'cobrar' && (
         posRegisterReady ? (
         <>
-      <div className="mb-2 flex flex-wrap items-center gap-2 shrink-0">
+      <div className="rf-mesa-map-toolbar mb-2 shrink-0">
         {tablesBySalon.length > 0 ? (
-          <>
+          <div className="rf-mesa-map-toolbar__zones scrollbar-hide">
             {tablesBySalon.map(({ zone, label, tables: salonTables }) => {
               const active = selectedPosSalon === zone;
               return (
@@ -3756,56 +3756,60 @@ export default function POSPanel() {
                   key={zone}
                   type="button"
                   onClick={() => setSelectedPosSalon(zone)}
-                  className={`rounded-lg px-3 py-2 text-xs sm:text-sm font-medium border transition-colors ${
+                  className={`rf-mesa-map-toolbar__zone-btn ${
                     active
                       ? 'border-[color:var(--ui-border)] bg-[var(--ui-accent)] text-white shadow-sm'
                       : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
                   }`}
                 >
                   {label}
-                  <span className={`ml-1.5 tabular-nums ${active ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
+                  <span className={`ml-1 tabular-nums ${active ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
                     ({salonTables.length})
                   </span>
                 </button>
               );
             })}
-            <div className="hidden sm:block h-6 w-px bg-[color:var(--ui-border)] shrink-0" aria-hidden="true" />
-          </>
+          </div>
         ) : null}
-        {mesaMapToolbarButtons}
-        {canSwitchCaja ? (
+        <div className="rf-mesa-map-toolbar__actions">
+          {tablesBySalon.length > 0 ? (
+            <div className="rf-mesa-map-toolbar__divider hidden sm:block" aria-hidden="true" />
+          ) : null}
+          {mesaMapToolbarButtons}
+          {canSwitchCaja ? (
+            <button
+              type="button"
+              onClick={() => void clearAdminRegisterContext()}
+              className="btn-mesa-map-toolbar-secondary"
+              title="Volver a elegir caja / turno"
+            >
+              Cambiar caja
+            </button>
+          ) : null}
+          {showDeliveryUi ? (
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('pos-delivery-caja');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if (!deliveryCajaSlots.length) {
+                  toast.error('No hay pedidos delivery pendientes de cobro');
+                }
+              }}
+              className="btn-mesa-map-toolbar-secondary"
+            >
+              <MdDeliveryDining className="text-sm shrink-0" />
+              Delivery
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={() => void clearAdminRegisterContext()}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shrink-0"
-            title="Volver a elegir caja / turno"
+            onClick={openQuickSaleMenu}
+            className="btn-mesa-map-toolbar-primary"
           >
-            Cambiar caja
+            <MdPointOfSale className="text-sm shrink-0" /> Venta rápida
           </button>
-        ) : null}
-        {showDeliveryUi ? (
-          <button
-            type="button"
-            onClick={() => {
-              const el = document.getElementById('pos-delivery-caja');
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              if (!deliveryCajaSlots.length) {
-                toast.error('No hay pedidos delivery pendientes de cobro');
-              }
-            }}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5 shrink-0"
-          >
-            <MdDeliveryDining className="text-base shrink-0" />
-            Delivery
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={openQuickSaleMenu}
-          className="px-4 py-2 rounded-lg bg-[#2563EB] text-white hover:bg-[#1D4ED8] font-medium text-sm inline-flex items-center gap-2 shrink-0 ml-auto sm:ml-0"
-        >
-          <MdPointOfSale className="text-base" /> Venta rápida
-        </button>
+        </div>
       </div>
 
       {mesaUniteMode ? (
