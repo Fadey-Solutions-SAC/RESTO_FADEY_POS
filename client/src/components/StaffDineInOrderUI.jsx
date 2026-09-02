@@ -16,28 +16,36 @@ function lineSubtitle(item) {
   return '';
 }
 
-function QtyStepper({ quantity, onDecrease, onIncrease, decreaseDisabled }) {
+function QtyStepper({ quantity, onDecrease, onIncrease, decreaseDisabled, compact = false }) {
+  const btnClass = compact
+    ? 'flex h-7 w-6 items-center justify-center border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:cursor-not-allowed disabled:opacity-40'
+    : 'flex h-8 w-8 items-center justify-center border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:cursor-not-allowed disabled:opacity-40';
+  const qtyClass = compact
+    ? 'flex min-w-[1.1rem] items-center justify-center px-0.5 text-xs font-semibold tabular-nums text-[var(--ui-body-text)]'
+    : 'flex min-w-[2rem] items-center justify-center px-1 font-semibold tabular-nums text-[var(--ui-body-text)]';
+  const shellClass = compact
+    ? 'inline-flex items-stretch overflow-hidden rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-xs'
+    : 'inline-flex items-stretch overflow-hidden rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm';
+
   return (
-    <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm">
+    <div className={shellClass}>
       <button
         type="button"
         onClick={onDecrease}
         disabled={decreaseDisabled}
-        className="flex h-8 w-8 items-center justify-center border-r border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+        className={`${btnClass} border-r`}
         aria-label="Disminuir cantidad"
       >
-        <MdRemove className="text-base" />
+        <MdRemove className={compact ? 'text-sm' : 'text-base'} />
       </button>
-      <span className="flex min-w-[2rem] items-center justify-center px-1 font-semibold tabular-nums text-[var(--ui-body-text)]">
-        {quantity}
-      </span>
+      <span className={qtyClass}>{quantity}</span>
       <button
         type="button"
         onClick={onIncrease}
-        className="flex h-8 w-8 items-center justify-center border-l border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+        className={`${btnClass} border-l`}
         aria-label="Aumentar cantidad"
       >
-        <MdAdd className="text-base" />
+        <MdAdd className={compact ? 'text-sm' : 'text-base'} />
       </button>
     </div>
   );
@@ -61,14 +69,20 @@ function CartLineItems({
     return <p className="py-6 text-center text-sm text-[var(--ui-muted)]">Selecciona productos arriba</p>;
   }
   if (cartLayout === 'lines') {
+    const lineHeaderClass =
+      'mb-1.5 flex shrink-0 items-center gap-1 border-b border-[color:var(--ui-border)] pb-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--ui-muted)]';
+    const lineRowClass = 'flex min-w-0 items-center gap-1 py-1.5';
+    const priceColClass = 'w-[3.1rem] shrink-0 truncate text-right text-[11px] tabular-nums text-[var(--ui-body-text)]';
+    const qtyColClass = 'flex w-[4.125rem] shrink-0 justify-center';
+
     return (
       <div className="min-w-0">
-        <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-x-2 border-b border-[color:var(--ui-border)] pb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--ui-muted)]">
-          <span>Producto</span>
-          <span className="w-[5.5rem] text-center">Cant.</span>
-          <span className="w-[4.25rem] text-right">Precio</span>
-          <span className="w-[4.25rem] text-right">Total</span>
-          <span className="w-7" aria-hidden />
+        <div className={lineHeaderClass}>
+          <span className="min-w-0 flex-1 truncate">Producto</span>
+          <span className={`${qtyColClass} text-center`}>Cant.</span>
+          <span className={`${priceColClass} font-medium`}>Prec.</span>
+          <span className={`${priceColClass} font-medium`}>Total</span>
+          <span className="w-6 shrink-0" aria-hidden />
         </div>
         <div className="divide-y divide-[color:var(--ui-border)]">
           {cart.map((item) => {
@@ -76,45 +90,44 @@ function CartLineItems({
             const subtitle = lineSubtitle(item);
             const showNoteEditor = noteEditorLineKey === item.line_key || item.notes?.trim();
             return (
-              <div key={item.line_key} className="py-3">
-                <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-x-2 gap-y-2">
-                  <div className="min-w-0">
-                    <div className="flex items-start gap-1">
-                      <p className="min-w-0 flex-1 text-sm font-semibold leading-snug text-[var(--ui-body-text)] break-words">
-                        {item.name}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setNoteEditorLineKey((prev) => (prev === item.line_key ? '' : item.line_key))}
-                        className={`mt-0.5 shrink-0 rounded p-0.5 ${
-                          item.notes?.trim()
-                            ? 'text-amber-600'
-                            : 'text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
-                        }`}
-                        title="Nota para cocina"
-                      >
-                        <MdEditNote className="text-base" />
-                      </button>
-                    </div>
-                    {subtitle ? (
-                      <p className="mt-0.5 text-xs text-[var(--ui-muted)] break-words">{subtitle}</p>
-                    ) : null}
-                    {Number(item.note_required || 0) === 1 && (
-                      <p className="mt-0.5 text-[11px] font-semibold text-red-400">Nota obligatoria</p>
-                    )}
+              <div key={item.line_key} className="py-1">
+                <div className={lineRowClass}>
+                  <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">
+                    <p
+                      className="min-w-0 truncate text-xs font-semibold text-[var(--ui-body-text)]"
+                      title={item.name}
+                    >
+                      {item.name}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setNoteEditorLineKey((prev) => (prev === item.line_key ? '' : item.line_key))}
+                      className={`shrink-0 rounded p-0.5 ${
+                        item.notes?.trim()
+                          ? 'text-amber-600'
+                          : 'text-[var(--ui-muted)] hover:text-[var(--ui-body-text)]'
+                      }`}
+                      title="Nota para cocina"
+                    >
+                      <MdEditNote className="text-sm" />
+                    </button>
                   </div>
-                  <div className="flex w-[5.5rem] justify-center">
+                  <div className={qtyColClass}>
                     <QtyStepper
+                      compact
                       quantity={item.quantity}
                       onDecrease={() => updateQty(item.line_key, -1)}
                       onIncrease={() => updateQty(item.line_key, 1)}
                       decreaseDisabled={!canDeleteLine && Number(item.quantity || 0) <= 1}
                     />
                   </div>
-                  <p className="w-[4.25rem] text-right text-sm tabular-nums text-[var(--ui-body-text)]">
+                  <p className={`${priceColClass} font-medium`} title={formatCurrency(item.price)}>
                     {formatCurrency(item.price)}
                   </p>
-                  <p className="w-[4.25rem] text-right text-sm font-semibold tabular-nums text-[var(--ui-body-text)]">
+                  <p
+                    className={`${priceColClass} font-semibold`}
+                    title={formatCurrency(lineTotal)}
+                  >
                     {formatCurrency(lineTotal)}
                   </p>
                   {canDeleteLine ? (
@@ -123,25 +136,33 @@ function CartLineItems({
                       onClick={() => removeFromCart(item.line_key)}
                       className={
                         showLineDeleteLabel
-                          ? 'inline-flex w-auto shrink-0 items-center gap-1 rounded-md border border-red-500/45 bg-red-950/40 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-900/55'
-                          : 'flex h-7 w-7 shrink-0 items-center justify-center text-red-500 hover:text-red-600'
+                          ? 'inline-flex shrink-0 items-center gap-1 rounded-md border border-red-500/45 bg-red-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-red-200 hover:bg-red-900/55'
+                          : 'flex h-6 w-6 shrink-0 items-center justify-center text-red-500 hover:text-red-600'
                       }
                       aria-label={showLineDeleteLabel ? 'Eliminar producto' : 'Quitar'}
                     >
-                      <MdDelete className={showLineDeleteLabel ? 'text-sm' : 'text-lg'} />
+                      <MdDelete className={showLineDeleteLabel ? 'text-xs' : 'text-base'} />
                       {showLineDeleteLabel ? <span>Eliminar</span> : null}
                     </button>
                   ) : (
-                    <span className="w-7" aria-hidden />
+                    <span className="w-6 shrink-0" aria-hidden />
                   )}
                 </div>
+                {subtitle ? (
+                  <p className="truncate pl-0 text-[10px] text-[var(--ui-muted)]" title={subtitle}>
+                    {subtitle}
+                  </p>
+                ) : null}
+                {Number(item.note_required || 0) === 1 ? (
+                  <p className="text-[10px] font-semibold text-red-400">Nota obligatoria</p>
+                ) : null}
                 {showNoteEditor ? (
-                  <div className="mt-2 pl-0">
+                  <div className="mt-1.5">
                     <textarea
                       value={item.notes || ''}
                       onChange={(e) => updateItemNote(item.line_key, e.target.value)}
                       placeholder="Escribe una nota para cocina..."
-                      className="w-full resize-y rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-xs text-[var(--ui-body-text)] placeholder:text-[var(--ui-muted)] focus:border-[color:var(--ui-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-focus-ring)]"
+                      className="w-full resize-y rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-2 py-1.5 text-xs text-[var(--ui-body-text)] placeholder:text-[var(--ui-muted)] focus:border-[color:var(--ui-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-focus-ring)]"
                       rows={2}
                     />
                   </div>
@@ -274,7 +295,7 @@ export default function StaffDineInOrderUI({
   showOrderObservation = true,
 }) {
   const panelLayout = fillParentHeight || (!embedded && !stackedSelfOrder);
-  const cartScrollMinClass = fillParentHeight ? 'min-h-[min(38vh,280px)]' : 'min-h-[8rem]';
+  const cartScrollMinClass = fillParentHeight ? 'min-h-[9rem]' : 'min-h-[8rem]';
   const observationRows = fillParentHeight ? 2 : 3;
 
   const rootClass = embedded
@@ -440,7 +461,7 @@ export default function StaffDineInOrderUI({
   const cartAsideInner = (
     <div
       className={`flex min-h-0 flex-col overflow-hidden ${
-        panelLayout ? `h-full flex-1 ${fillParentHeight ? 'min-h-[min(58vh,480px)]' : ''}` : 'lg:max-h-[min(calc(100dvh-12rem),85vh)]'
+        panelLayout ? 'h-full flex-1' : 'lg:max-h-[min(calc(100dvh-12rem),85vh)]'
       }`}
     >
       <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
@@ -544,7 +565,7 @@ export default function StaffDineInOrderUI({
         <div {...scrollAreaProps}>{productGrid}</div>
       </div>
 
-      <div className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-4 lg:min-h-0 lg:h-full lg:w-[min(100%,24rem)] lg:max-w-[24rem] lg:border lg:shadow-[0_4px_24px_rgba(15,23,42,0.08)]">
+      <div className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-4 lg:min-h-0 lg:h-full lg:w-[min(100%,22rem)] lg:max-w-[22rem] lg:border lg:shadow-[0_4px_24px_rgba(15,23,42,0.08)]">
         {cartAsideInner}
       </div>
     </div>
