@@ -2599,7 +2599,7 @@ export default function POSPanel() {
     <button
       type="button"
       onClick={() => setParaLlevarMesa((v) => !v)}
-      className={`w-1/2 mx-auto rounded-lg border py-1 px-2 text-xs font-semibold uppercase tracking-wide transition-colors flex items-center justify-center ${
+      className={`min-w-0 flex-1 rounded-lg border py-2.5 px-2 text-xs font-semibold uppercase tracking-wide transition-colors flex items-center justify-center ${
         paraLlevarMesa
           ? 'bg-[var(--ui-accent)] text-white border-transparent shadow-sm'
           : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[#E5E7EB] hover:bg-[var(--ui-sidebar-hover)]'
@@ -2608,6 +2608,26 @@ export default function POSPanel() {
       PARA LLEVAR
     </button>
   ) : null;
+
+  const mesaOrderSubmitFooter = (submitLabel, submitClass = 'btn-primary') =>
+    cart.length > 0 ? (
+      <div className="space-y-2">
+        <div className="flex justify-between text-base font-bold text-white">
+          <span>Total</span>
+          <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
+        </div>
+        <div className="flex gap-2">
+          {paraLlevarToggleButton}
+          <button
+            type="button"
+            onClick={submitOrder}
+            className={`${submitClass} flex min-w-0 flex-1 items-center justify-center gap-2 py-2.5 text-sm font-semibold`}
+          >
+            <MdReceipt className="shrink-0" /> {submitLabel}
+          </button>
+        </div>
+      </div>
+    ) : null;
 
   const submitOrder = async () => {
     if (cart.length === 0) {
@@ -4494,20 +4514,7 @@ export default function POSPanel() {
               footer={
                 editingOrderId ? (
                   cart.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="flex justify-between font-bold text-lg text-white">
-                        <span>Total</span>
-                        <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
-                      </div>
-                      {paraLlevarToggleButton}
-                      <button
-                        type="button"
-                        onClick={submitOrder}
-                        className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-base"
-                      >
-                        <MdReceipt /> Guardar cambios
-                      </button>
-                    </div>
+                    mesaOrderSubmitFooter('Guardar cambios')
                   ) : (
                     <button
                       type="button"
@@ -4518,16 +4525,7 @@ export default function POSPanel() {
                     </button>
                   )
                 ) : cart.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="flex justify-between font-bold text-lg text-white">
-                      <span>Total</span>
-                      <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
-                    </div>
-                    {paraLlevarToggleButton}
-                    <button type="button" onClick={submitOrder} className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-base">
-                      <MdReceipt /> Enviar Pedido
-                    </button>
-                  </div>
+                  mesaOrderSubmitFooter('Enviar Pedido')
                 ) : null
               }
             />
@@ -4553,20 +4551,7 @@ export default function POSPanel() {
             className="min-h-0 flex-1"
             orderObservation={mesaOrderObservation}
             onOrderObservationChange={setMesaOrderObservation}
-            footer={
-              cart.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="flex justify-between font-bold text-lg text-white">
-                    <span>Total</span>
-                    <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
-                  </div>
-                  {paraLlevarToggleButton}
-                  <button type="button" onClick={submitOrder} className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-base">
-                    <MdReceipt /> Enviar Pedido
-                  </button>
-                </div>
-              ) : null
-            }
+            footer={mesaOrderSubmitFooter('Enviar Pedido')}
           />
         )}
         </div>

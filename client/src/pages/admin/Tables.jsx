@@ -390,28 +390,30 @@ export default function Tables() {
                   footer={
                     cart.length > 0 ? (
                       <div className="space-y-2">
-                        <div className="flex justify-between text-lg font-bold text-[var(--ui-body-text)]">
+                        <div className="flex justify-between text-base font-bold text-[var(--ui-body-text)]">
                           <span>Total</span>
                           <span className="text-[var(--ui-accent-muted)]">{formatCurrency(cartTotal)}</span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setParaLlevarMesa((v) => !v)}
-                          className={`mx-auto flex w-1/2 items-center justify-center rounded-lg border py-1 px-2 text-xs font-semibold uppercase tracking-wide transition-colors ${
-                            paraLlevarMesa
-                              ? 'border-transparent bg-[var(--ui-accent)] text-white shadow-sm'
-                              : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-                          }`}
-                        >
-                          PARA LLEVAR
-                        </button>
-                        <button
-                          type="button"
-                          onClick={submitOrder}
-                          className="btn-primary flex w-full items-center justify-center gap-2 rounded-lg py-3 text-base font-semibold shadow-lg"
-                        >
-                          <MdReceipt /> Enviar Pedido
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setParaLlevarMesa((v) => !v)}
+                            className={`min-w-0 flex-1 rounded-lg border py-2.5 px-2 text-xs font-semibold uppercase tracking-wide transition-colors flex items-center justify-center ${
+                              paraLlevarMesa
+                                ? 'border-transparent bg-[var(--ui-accent)] text-white shadow-sm'
+                                : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                            }`}
+                          >
+                            PARA LLEVAR
+                          </button>
+                          <button
+                            type="button"
+                            onClick={submitOrder}
+                            className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold shadow-lg"
+                          >
+                            <MdReceipt /> Enviar Pedido
+                          </button>
+                        </div>
                       </div>
                     ) : null
                   }
