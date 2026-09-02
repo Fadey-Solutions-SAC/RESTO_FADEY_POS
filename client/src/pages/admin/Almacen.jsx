@@ -271,6 +271,22 @@ const ALMACEN_VIEWS = [
   { id: 'ir_modulo_gastos', label: 'Gastos' },
 ];
 
+function MovimientoInternoStatCard({ label, value, valueClassName = '', valueStyle }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-center min-w-0">
+      <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide text-[var(--ui-muted)] leading-tight whitespace-nowrap">
+        {label}
+      </p>
+      <p
+        className={`text-base sm:text-lg font-bold mt-1 whitespace-nowrap tabular-nums leading-none ${valueClassName}`}
+        style={valueStyle}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function downloadGastoGroup(group, format = 'excel', { usuario } = {}) {
   if (!group?.items?.length) {
     toast.error('No hay líneas para descargar');
@@ -2071,16 +2087,16 @@ export default function Almacen() {
             </div>
           );
         })}
-        <div className="flex flex-col justify-center gap-2 shrink-0">
+        <div className="flex flex-1 min-w-[min(100%,18rem)] flex-row gap-2 items-stretch">
           <button
             type="button"
             onClick={() => {
               setWarehouseForm({ name: '', description: '', linkedInsumos: false });
               setShowWarehouseModal(true);
             }}
-            className="btn-secondary flex items-center justify-center gap-2 text-sm whitespace-nowrap"
+            className="btn-secondary flex-1 flex items-center justify-center gap-2 text-sm px-3 py-3 min-h-28"
           >
-            <MdAdd /> Nuevo almacén
+            <MdAdd className="shrink-0" /> Nuevo almacén
           </button>
           <button
             type="button"
@@ -2098,20 +2114,34 @@ export default function Almacen() {
               }));
               setShowCreateModal(true);
             }}
-            className="btn-primary flex items-center justify-center gap-2 text-sm whitespace-nowrap"
+            className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm px-3 py-3 min-h-28"
           >
-            <MdAdd /> Nuevo producto
+            <MdAdd className="shrink-0" /> Nuevo producto
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-5">
-        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Total Ítems</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{selectedIsInsumosWarehouse ? insumosPorVista.length : productsForSelectedWarehouse.length}</p></div>
-        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Valor del Inventario</p><p className="text-xl font-bold ui-text-success">{formatCurrency(totalValue)}</p></div>
-        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Valor de insumos</p><p className="text-xl font-bold ui-text-success">{formatCurrency(insumosTotalValueAll)}</p></div>
-        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Inversión de inventario</p><p className="text-xl font-bold" style={{ color: 'var(--ui-accent)' }}>{formatCurrency(totalInventoryInvestment)}</p></div>
-        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Stock Bajo</p><p className="text-xl font-bold ui-text-danger">{selectedIsInsumosWarehouse ? insumosLowCount : lowStock.length}</p></div>
-        <div className="card"><p className="text-xs text-[var(--ui-body-text)]">Unidades Totales</p><p className="text-xl font-bold text-[var(--ui-body-text)]">{selectedIsInsumosWarehouse ? insumosTotalUnits : productsForSelectedWarehouse.reduce((s, p) => s + p.stock, 0)}</p></div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3 mb-5">
+        <MovimientoInternoStatCard
+          label="Total ítems"
+          value={selectedIsInsumosWarehouse ? insumosPorVista.length : productsForSelectedWarehouse.length}
+        />
+        <MovimientoInternoStatCard label="Valor del inventario" value={formatCurrency(totalValue)} valueClassName="ui-text-success" />
+        <MovimientoInternoStatCard label="Valor de insumos" value={formatCurrency(insumosTotalValueAll)} valueClassName="ui-text-success" />
+        <MovimientoInternoStatCard
+          label="Inversión de inventario"
+          value={formatCurrency(totalInventoryInvestment)}
+          valueStyle={{ color: 'var(--ui-accent)' }}
+        />
+        <MovimientoInternoStatCard
+          label="Stock bajo"
+          value={selectedIsInsumosWarehouse ? insumosLowCount : lowStock.length}
+          valueClassName="ui-text-danger"
+        />
+        <MovimientoInternoStatCard
+          label="Unidades totales"
+          value={selectedIsInsumosWarehouse ? insumosTotalUnits : productsForSelectedWarehouse.reduce((s, p) => s + p.stock, 0)}
+        />
       </div>
       {lowStock.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">

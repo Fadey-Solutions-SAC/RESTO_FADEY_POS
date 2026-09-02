@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const { queryOne, queryAll, runSql, logAudit } = require('../../database');
-const { broadcastStaffData } = require('../../socketBroadcast');
+const { emitStaffDataUpdate } = require('../../socketBroadcast');
 const {
   SIGNATURE_STATUSES,
   readContrato,
@@ -288,7 +288,7 @@ async function prepareSignature({ user, party: partyIn, documentNumber = '', sig
       pdf_original_url: pdfInfo.publicUrl,
     },
   });
-  broadcastStaffData('app_config');
+  emitStaffDataUpdate({ domain: 'app_config' });
 
   return {
     request_id: id,
@@ -495,7 +495,7 @@ async function persistSignatureResult({ reqRow, user, signed, documentNumber = '
       method: signed.method,
     },
   });
-  broadcastStaffData('app_config');
+  emitStaffDataUpdate({ domain: 'app_config' });
 
   return {
     ok: true,

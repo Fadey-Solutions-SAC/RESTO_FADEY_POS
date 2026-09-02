@@ -3219,7 +3219,7 @@ function SalonMesasSection({ appSettings }) {
     const currentIdx = filteredSalones.findIndex((sal) => sal.id === s.id);
     setEditSalon(s);
     setSalonForm({
-      name: s.name,
+      name: String(s.name || '').toUpperCase(),
       description: s.description || '',
       caja_station_id: salonCajaId(s),
     });
@@ -3230,7 +3230,7 @@ function SalonMesasSection({ appSettings }) {
 
   const handleSalonSubmit = async (e) => {
     e.preventDefault();
-    const name = String(salonForm.name || '').trim();
+    const name = String(salonForm.name || '').trim().toUpperCase();
     if (!name) return toast.error('Ingresa el nombre del salón');
     const cajaId = String(salonForm.caja_station_id || selectedCajaId || PRIMARY_CAJA_ID).trim() || PRIMARY_CAJA_ID;
     try {
@@ -3471,7 +3471,7 @@ function SalonMesasSection({ appSettings }) {
       {/* SALON MODAL */}
       <Modal isOpen={showSalonModal} onClose={() => { setShowSalonModal(false); setSalonOrderEditing(false); }} title={editSalon ? 'Editar Salón' : 'Nuevo Salón'} size="sm">
         <form onSubmit={handleSalonSubmit} className="space-y-4">
-          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre del Salón</label><input value={salonForm.name} onChange={e => setSalonForm({ ...salonForm, name: e.target.value })} className="input-field" required placeholder="Ej: Terraza, Segundo Piso" /></div>
+          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre del Salón</label><input value={salonForm.name} onChange={e => setSalonForm({ ...salonForm, name: e.target.value.toUpperCase() })} className="input-field uppercase" required placeholder="Ej: TERRAZA, SEGUNDO PISO" autoCapitalize="characters" /></div>
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Descripción</label><textarea value={salonForm.description} onChange={e => setSalonForm({ ...salonForm, description: e.target.value })} className="input-field" rows="2" placeholder="Descripción del salón..." /></div>
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Caja</label>
