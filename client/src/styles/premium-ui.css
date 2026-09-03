@@ -795,12 +795,22 @@ h1, h2, h3, h4 {
     gap: 0.3rem;
   }
 
+  .rf-mesa-map-tile {
+    --rf-mesa-side: 4.875rem;
+    --rf-mesa-chair-inset: 0.55rem;
+    --rf-mesa-chair-gap: 0.22rem;
+    --rf-mesa-chair-thickness: 0.38rem;
+  }
+
   .rf-mesa-map-tile__chairs-row {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.225rem;
-    min-height: 0.525rem;
+    box-sizing: border-box;
+    width: var(--rf-mesa-side);
+    padding-inline: var(--rf-mesa-chair-inset);
+    gap: var(--rf-mesa-chair-gap);
+    min-height: var(--rf-mesa-chair-thickness);
   }
 
   .rf-mesa-map-tile__chairs-col {
@@ -808,22 +818,38 @@ h1, h2, h3, h4 {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.18rem;
-    min-width: 0.525rem;
+    box-sizing: border-box;
+    height: var(--rf-mesa-side);
+    padding-block: var(--rf-mesa-chair-inset);
+    gap: var(--rf-mesa-chair-gap);
+    min-width: var(--rf-mesa-chair-thickness);
   }
 
   .rf-mesa-map-chair {
     display: block;
-    width: 0.63rem;
-    height: 0.825rem;
-    border-radius: 0.225rem;
+    border-radius: 0.2rem;
     background: #374151;
     box-shadow: 0 1px 0 rgb(0 0 0 / 0.15);
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* Arriba / abajo: largas a lo ancho, sin pasar esquinas */
+  .rf-mesa-map-tile__chairs-row .rf-mesa-map-chair {
+    width: auto;
+    height: var(--rf-mesa-chair-thickness);
+  }
+
+  /* Izquierda / derecha: largas a lo alto, sin pasar esquinas */
+  .rf-mesa-map-tile__chairs-col .rf-mesa-map-chair {
+    width: var(--rf-mesa-chair-thickness);
+    height: auto;
   }
 
   .rf-mesa-map-tile__table {
-    width: 4.875rem;
-    height: 4.875rem;
+    width: var(--rf-mesa-side);
+    height: var(--rf-mesa-side);
     border-radius: 0.675rem;
     display: flex;
     flex-direction: column;
@@ -836,9 +862,9 @@ h1, h2, h3, h4 {
   }
 
   @media (min-width: 640px) {
-    .rf-mesa-map-tile__table {
-      width: 5.25rem;
-      height: 5.25rem;
+    .rf-mesa-map-tile {
+      --rf-mesa-side: 5.25rem;
+      --rf-mesa-chair-inset: 0.6rem;
     }
   }
 
@@ -2220,13 +2246,21 @@ h1, h2, h3, h4 {
   box-shadow: var(--ui-shadow-md) !important;
 }
 
-/* Panel de módulos (sidebar izquierdo) = #2563EB. Opciones sistema NO usa este azul. */
-html[data-ui-theme='corporate_blue'] .rf-sidebar,
-html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar,
+/* Corporativo azul: menú como la referencia (arriba más oscuro) + activo #2563EB */
+html[data-ui-theme='corporate_blue'] .rf-sidebar {
+  background: #161625 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar {
+  background: #0d0d17 !important;
+  border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+}
+
 html[data-ui-theme='corporate_blue'] .rf-sidebar__nav,
 html[data-ui-theme='corporate_blue'] .rf-sidebar__footer {
-  background: #2563EB !important;
-  border-color: #1D4ED8 !important;
+  background: #161625 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-logo-name,
@@ -2236,7 +2270,7 @@ html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar__footer-btn,
 html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-menu-btn,
 html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-nav-link svg,
 html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-burger span {
-  color: #ffffff !important;
+  color: #E5E7EB !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-nav-link:hover:not(.rf-nav-link--active),
@@ -2244,7 +2278,7 @@ html[data-ui-theme='corporate_blue'] .rf-nav-sublink:hover:not(.rf-nav-sublink--
 html[data-ui-theme='corporate_blue'] .rf-sidebar__footer-btn:hover,
 html[data-ui-theme='corporate_blue'] .rf-sidebar-menu-btn:hover,
 html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar button:hover {
-  background: #1D4ED8 !important;
+  background: #1e1e36 !important;
   color: #ffffff !important;
 }
 
@@ -2254,9 +2288,9 @@ html[data-ui-theme='corporate_blue'] .rf-nav-link:hover:not(.rf-nav-link--active
 
 html[data-ui-theme='corporate_blue'] .rf-nav-link--active,
 html[data-ui-theme='corporate_blue'] .rf-nav-sublink--active {
-  background: #1D4ED8 !important;
+  background: #2563EB !important;
   color: #ffffff !important;
-  border: 1px solid rgba(255, 255, 255, 0.9) !important;
+  border: none !important;
   border-radius: 0.625rem;
   box-shadow: none;
 }
@@ -2267,7 +2301,34 @@ html[data-ui-theme='corporate_blue'] .rf-nav-sublink--active {
 }
 
 html[data-ui-theme='corporate_blue'] .rf-sidebar-brand {
-  background: rgba(255, 255, 255, 0.2) !important;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
+}
+
+/* Misma jerarquía en temas oscuros (cabecera más oscura) */
+html[data-ui-theme='purple'] .rf-sidebar-logo-bar,
+html[data-ui-theme='dark'] .rf-sidebar-logo-bar,
+html[data-ui-theme='dark_elegance'] .rf-sidebar-logo-bar,
+html[data-ui-theme='gold_premium'] .rf-sidebar-logo-bar,
+html[data-ui-theme='blue'] .rf-sidebar-logo-bar {
+  background: #0d0d17 !important;
+}
+
+html[data-ui-theme='purple'] .rf-sidebar,
+html[data-ui-theme='purple'] .rf-sidebar__nav,
+html[data-ui-theme='purple'] .rf-sidebar__footer,
+html[data-ui-theme='dark'] .rf-sidebar,
+html[data-ui-theme='dark'] .rf-sidebar__nav,
+html[data-ui-theme='dark'] .rf-sidebar__footer,
+html[data-ui-theme='dark_elegance'] .rf-sidebar,
+html[data-ui-theme='dark_elegance'] .rf-sidebar__nav,
+html[data-ui-theme='dark_elegance'] .rf-sidebar__footer,
+html[data-ui-theme='gold_premium'] .rf-sidebar,
+html[data-ui-theme='gold_premium'] .rf-sidebar__nav,
+html[data-ui-theme='gold_premium'] .rf-sidebar__footer,
+html[data-ui-theme='blue'] .rf-sidebar,
+html[data-ui-theme='blue'] .rf-sidebar__nav,
+html[data-ui-theme='blue'] .rf-sidebar__footer {
+  background: #161625 !important;
 }
 
 html[data-ui-theme='dark_elegance'] .rf-sidebar,
