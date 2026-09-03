@@ -13,11 +13,11 @@ const LIVE_DEFAULTS = {
 /** Azul corporativo de referencia (muestra + recuadro de módulos). */
 const CORPORATE_BLUE = '#2563EB';
 
-/** Menú oscuro (referencia): cabecera más oscura que el listado de módulos. */
+/** Menú oscuro morado (referencia): cabecera más oscura que el listado. */
 const SIDEBAR_CHROME_DARK = {
-  bg: '#161625',
-  top: '#0d0d17',
-  hover: '#1e1e36',
+  bg: '#17122b',
+  top: '#0c0916',
+  hover: '#241c42',
   fg: '#E5E7EB',
   activeFg: '#ffffff',
 };

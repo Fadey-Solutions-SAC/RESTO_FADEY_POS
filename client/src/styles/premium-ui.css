@@ -2246,20 +2246,20 @@ h1, h2, h3, h4 {
   box-shadow: var(--ui-shadow-md) !important;
 }
 
-/* Corporativo azul: menú como la referencia (arriba más oscuro) + activo #2563EB */
+/* Corporativo azul: menú morado oscuro (arriba más oscuro) + activo #2563EB */
 html[data-ui-theme='corporate_blue'] .rf-sidebar {
-  background: #161625 !important;
+  background: #17122b !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar {
-  background: #0d0d17 !important;
+  background: #0c0916 !important;
   border-bottom-color: rgba(255, 255, 255, 0.06) !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-sidebar__nav,
 html[data-ui-theme='corporate_blue'] .rf-sidebar__footer {
-  background: #161625 !important;
+  background: #17122b !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
@@ -2278,7 +2278,7 @@ html[data-ui-theme='corporate_blue'] .rf-nav-sublink:hover:not(.rf-nav-sublink--
 html[data-ui-theme='corporate_blue'] .rf-sidebar__footer-btn:hover,
 html[data-ui-theme='corporate_blue'] .rf-sidebar-menu-btn:hover,
 html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar button:hover {
-  background: #1e1e36 !important;
+  background: #241c42 !important;
   color: #ffffff !important;
 }
 
@@ -2310,7 +2310,7 @@ html[data-ui-theme='dark'] .rf-sidebar-logo-bar,
 html[data-ui-theme='dark_elegance'] .rf-sidebar-logo-bar,
 html[data-ui-theme='gold_premium'] .rf-sidebar-logo-bar,
 html[data-ui-theme='blue'] .rf-sidebar-logo-bar {
-  background: #0d0d17 !important;
+  background: #0c0916 !important;
 }
 
 html[data-ui-theme='purple'] .rf-sidebar,
@@ -2328,7 +2328,7 @@ html[data-ui-theme='gold_premium'] .rf-sidebar__footer,
 html[data-ui-theme='blue'] .rf-sidebar,
 html[data-ui-theme='blue'] .rf-sidebar__nav,
 html[data-ui-theme='blue'] .rf-sidebar__footer {
-  background: #161625 !important;
+  background: #17122b !important;
 }
 
 html[data-ui-theme='dark_elegance'] .rf-sidebar,
