@@ -4388,10 +4388,10 @@ export default function POSPanel() {
           return `Agregar Pedido — ${getMesaLock()?.name || selectedTable?.name || ''}`;
         })()}
         size="xl"
-        maxHeightClass="max-h-[min(92vh,920px)]"
-        bodyClassName="!overflow-hidden flex min-h-0 flex-1 flex-col !px-4 !pb-4 !pt-2 sm:!px-6 sm:!pb-6"
+        maxHeightClass="h-[min(92vh,920px)] max-h-[min(92vh,920px)]"
+        bodyClassName="!overflow-hidden !flex !min-h-0 !flex-1 !flex-col !px-4 !pb-4 !pt-2 sm:!px-6 sm:!pb-6"
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         {quickSaleMode ? (
         <StaffDineInOrderUI
           fillParentHeight
@@ -4660,8 +4660,8 @@ export default function POSPanel() {
           }
         />
         ) : selectedTable ? (
-          <div className="flex min-h-0 flex-1 gap-2 overflow-hidden lg:flex-row lg:items-start">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex h-full min-h-0 flex-1 gap-2 overflow-hidden lg:flex-row lg:items-stretch">
+            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <StaffDineInOrderUI
                 externalCartAside
                 fillParentHeight
@@ -4680,7 +4680,7 @@ export default function POSPanel() {
                 updateItemNote={updateItemNote}
                 cartTotal={cartTotal}
                 formatCurrency={formatCurrency}
-                className="min-h-0 flex-1"
+                className="h-full min-h-0 flex-1"
                 orderBadge={mesaOrderBadge}
                 orderObservation={mesaOrderObservation}
                 onOrderObservationChange={setMesaOrderObservation}
@@ -4708,7 +4708,7 @@ export default function POSPanel() {
             <StaffDineInOrderCartPanel
               elevatedAside
               fillParentHeight
-              className={`hidden min-h-0 shrink-0 overflow-hidden lg:flex lg:flex-col lg:self-start ${VIEWPORT_CART_MAX_CLASS}`}
+              className={`hidden h-full min-h-0 shrink-0 overflow-hidden lg:flex lg:flex-col ${VIEWPORT_CART_MAX_CLASS}`}
               cart={cart}
               cartLayout="lines"
               formatCurrency={formatCurrency}

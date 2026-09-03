@@ -57,8 +57,8 @@ export default function Modal({
   const closeIconDefault = 'text-[var(--ui-muted)]';
 
   const bodyClass = isLight
-    ? `overflow-y-auto p-6 flex-1 bg-[var(--ui-surface)] text-[var(--ui-body-text)] [&_strong]:text-[var(--ui-body-text)] ${bodyClassName}`.trim()
-    : `overflow-y-auto p-6 flex-1 bg-[var(--ui-surface)] modal-sheet-body ${bodyClassName}`.trim();
+    ? `min-h-0 overflow-y-auto p-6 flex-1 bg-[var(--ui-surface)] text-[var(--ui-body-text)] [&_strong]:text-[var(--ui-body-text)] ${bodyClassName}`.trim()
+    : `min-h-0 overflow-y-auto p-6 flex-1 bg-[var(--ui-surface)] modal-sheet-body ${bodyClassName}`.trim();
 
   return (
     <div

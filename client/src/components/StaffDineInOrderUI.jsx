@@ -450,9 +450,8 @@ export default function StaffDineInOrderUI({
   );
 
   const scrollAreaProps = {
-    className: `min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y ${SCROLL_INVISIBLE_CLASS}`,
-    style: { touchAction: 'pan-y' },
-    onWheel: (e) => e.stopPropagation(),
+    className: `min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-1 [-webkit-overflow-scrolling:touch] touch-pan-y`,
+    style: { touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' },
   };
 
   const categoriesBlock = (
@@ -492,7 +491,7 @@ export default function StaffDineInOrderUI({
   const gridGapClass = singleColumnProductList ? 'gap-3' : 'gap-2';
   const gridColsClass = stackedSelfOrder
     ? (singleColumnProductList ? 'grid-cols-1' : 'grid-cols-2')
-    : 'grid-cols-2';
+    : 'grid-cols-1';
 
   const productGrid = (
     <>
@@ -661,9 +660,9 @@ export default function StaffDineInOrderUI({
 
   return (
     <div
-      className={`flex min-h-0 flex-col overflow-hidden ${fillParentHeight ? 'gap-2' : 'gap-4'} ${externalCartAside ? 'flex-1' : ''} ${externalCartAside ? '' : 'lg:flex-row'} ${externalCartAside ? '' : fillParentHeight ? 'lg:items-start' : 'lg:items-stretch'} ${rootClass} ${className}`}
+      className={`flex h-full min-h-0 flex-col overflow-hidden ${fillParentHeight ? 'gap-2' : 'gap-4'} ${externalCartAside ? 'flex-1' : ''} ${externalCartAside ? '' : 'lg:flex-row'} ${externalCartAside ? '' : 'lg:items-stretch'} ${rootClass} ${className}`}
     >
-      <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${fillParentHeight ? 'gap-2' : ''}`}>
+      <div className={`flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${fillParentHeight ? 'gap-2' : ''}`}>
         <div className="shrink-0">{searchBlock}</div>
         {categoriesBlock}
         <div {...scrollAreaProps}>{productGrid}</div>

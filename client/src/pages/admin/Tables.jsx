@@ -396,18 +396,18 @@ export default function Tables() {
         onClose={closeMenuPanel}
         title={`Agregar Pedido — ${selectedTable?.name || ''}`}
         size="xl"
-        maxHeightClass="max-h-[min(92vh,920px)]"
-        bodyClassName="!overflow-hidden flex min-h-0 flex-1 flex-col !px-4 !pb-4 !pt-2 sm:!px-6 sm:!pb-6"
+        maxHeightClass="h-[min(92vh,920px)] max-h-[min(92vh,920px)]"
+        bodyClassName="!overflow-hidden !flex !min-h-0 !flex-1 !flex-col !px-4 !pb-4 !pt-2 sm:!px-6 sm:!pb-6"
       >
         {selectedTable ? (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex min-h-0 flex-1 gap-2 overflow-hidden lg:flex-row lg:items-start">
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 flex-1 gap-2 overflow-hidden lg:flex-row lg:items-stretch">
+              <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 <StaffMesaPedidoTabs
                   orders={activeOrdersForTable}
                   formatCurrency={formatCurrency}
                   resetKey={selectedTable?.id}
-                  className="min-h-0 flex-1 overflow-hidden"
+                  className="h-full min-h-0 flex-1 overflow-hidden"
                 >
                   <StaffDineInOrderUI
                     externalCartAside
@@ -427,7 +427,7 @@ export default function Tables() {
                     updateItemNote={updateItemNote}
                     cartTotal={cartTotal}
                     formatCurrency={formatCurrency}
-                    className="min-h-0 flex-1"
+                    className="h-full min-h-0 flex-1"
                     orderObservation={mesaOrderObservation}
                     onOrderObservationChange={setMesaOrderObservation}
                     footer={mesaOrderSubmitFooter}
@@ -437,7 +437,7 @@ export default function Tables() {
               <StaffDineInOrderCartPanel
                 elevatedAside
                 fillParentHeight
-                className={`hidden min-h-0 shrink-0 overflow-hidden lg:flex lg:flex-col lg:self-start ${VIEWPORT_CART_MAX_CLASS}`}
+                className={`hidden h-full min-h-0 shrink-0 overflow-hidden lg:flex lg:flex-col ${VIEWPORT_CART_MAX_CLASS}`}
                 cart={cart}
                 cartLayout="lines"
                 formatCurrency={formatCurrency}
