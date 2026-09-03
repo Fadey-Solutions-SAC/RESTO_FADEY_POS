@@ -12,7 +12,7 @@ import {
   MdDashboard, MdAttachMoney, MdPointOfSale, MdEventSeat,
   MdCreditCard, MdPeopleAlt, MdRestaurantMenu, MdLocalOffer,
   MdDiscount, MdWarehouse, MdDeliveryDining, MdAssessment,
-  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdTouchApp, MdStars,
+  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdGroups, MdKitchen, MdLocalBar, MdTouchApp, MdStars,
 } from 'react-icons/md';
 import { getProductionAreaIcon } from '../utils/productionAreaUi';
 
@@ -38,7 +38,7 @@ const SIDEBAR_LINK_META = {
   indicadores: { icon: MdInsights, labelKey: 'nav.indicadores' },
   fidelizacion: { icon: MdStars, labelKey: 'nav.fidelizacion' },
   mi_restaurant: { icon: MdStorefront, labelKey: 'nav.mi_restaurant' },
-  tiempo_trabajado: { icon: MdAccessTime, labelKey: 'nav.tiempo_trabajado' },
+  tiempo_trabajado: { icon: MdGroups, labelKey: 'nav.tiempo_trabajado' },
   configuracion: { icon: MdSettings, labelKey: 'nav.configuracion' },
 };
 
@@ -521,11 +521,10 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                 <NavLink
                   to="/admin/tiempo-trabajado"
                   end
-                  className={({ isActive }) => `rf-nav-sublink flex items-center gap-1.5 ${isActive ? 'rf-nav-sublink--active' : ''}`}
+                  className={({ isActive }) => `rf-nav-sublink ${isActive ? 'rf-nav-sublink--active' : ''}`}
                   onClick={() => { if (isMobile) onClose(); }}
                 >
-                  <MdAccessTime className="text-base flex-shrink-0" aria-hidden="true" />
-                  <span>{t('hrSub.panel', { defaultValue: 'Panel RR. HH.' })}</span>
+                  {t('hrSub.panel', { defaultValue: 'Panel RR. HH.' })}
                 </NavLink>
                 {asistenciaQrActiva ? renderAsistenciaQrSub() : null}
               </div>

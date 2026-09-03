@@ -137,12 +137,17 @@ function attendanceStatus({ lateMinutes, toleranceMinutes, justified = false }) 
   return 'on_time';
 }
 
-function jsNowSql(date = new Date()) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+function jsNowSql(date = new Date(), timeZone = 'America/Lima') {
+  try {
+    const { formatLimaSqlDateTime } = require('../utils/appDateTime');
+    return formatLimaSqlDateTime(date, timeZone || 'America/Lima');
+  } catch (_) {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+  }
 }
 
-function jsTodayDate(date = new Date()) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+function jsTodayDate(date = new Date(), timeZone = 'America/Lima') {
+  return String(jsNowSql(date, timeZone) || '').slice(0, 10);
 }
 
 function weekdayMonday0(dateSql) {

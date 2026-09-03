@@ -14,14 +14,16 @@ function partsFromDate(date, timeZone) {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false,
+    hourCycle: 'h23',
   });
   const map = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]));
+  let hour = map.hour || '00';
+  if (hour === '24') hour = '00';
   return {
     year: map.year,
     month: map.month,
     day: map.day,
-    hour: map.hour,
+    hour,
     minute: map.minute,
     second: map.second,
   };

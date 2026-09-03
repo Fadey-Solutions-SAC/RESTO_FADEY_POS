@@ -45,8 +45,10 @@ run('cambio de horario no recalcula past: scheduled times son snapshot', () => {
   assert.strictEqual(lateNew, 0);
 });
 
-run('zona horaria: strings locales son la fuente de verdad del servidor', () => {
-  const sql = calc.jsNowSql(new Date(2026, 8, 2, 8, 3, 0));
+run('zona horaria: jsNowSql usa America/Lima (no UTC del proceso)', () => {
+  // 13:03 UTC = 08:03 en America/Lima (UTC-5)
+  const d = new Date(Date.UTC(2026, 8, 2, 13, 3, 0));
+  const sql = calc.jsNowSql(d, 'America/Lima');
   assert.strictEqual(sql, '2026-09-02 08:03:00');
 });
 

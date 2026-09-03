@@ -5,12 +5,29 @@ const { getRawUserPermissionsJson } = require('../lib/cajaPermissions');
 const { isPermissionEnabled } = require('../planModuleCatalog');
 const calc = require('./hrAttendanceCalc');
 const { ensureHrSchema } = require('../utils/ensureHrSchema');
+const { resolveRegionalTimezone } = require('../utils/appDateTime');
 
 const EMP_STATUSES = new Set(['active', 'inactive', 'suspended']);
 const LEAVE_TYPES = new Set(['personal', 'medico', 'comision', 'vacaciones', 'descanso', 'otro']);
 const LEAVE_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const DOUBLE_SCAN_SECONDS = 25;
 const HR_SETTINGS_KEY = 'hr_settings';
+
+function hrTimeZone() {
+  try {
+    return resolveRegionalTimezone(queryOne);
+  } catch (_) {
+    return 'America/Lima';
+  }
+}
+
+function hrNowSql() {
+  return calc.jsNowSql(new Date(), hrTimeZone());
+}
+
+function hrTodayDate() {
+  return calc.jsTodayDate(new Date(), hrTimeZone());
+}
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(String(token || ''), 'utf8').digest('hex');
@@ -593,7 +610,7 @@ function scanAttendance({ restaurantId, token, branchId, deviceId, ip }) {
     err.status = 403;
     throw err;
   }
-  const nowSql = calc.jsNowSql();
+  const nowSql = hrNowSql();
   const open = openAttendance(emp.id);
   const lastAt = lastAttendanceInstant(open) || queryOne(
     `SELECT check_out_at, check_in_at, updated_at FROM hr_attendance WHERE employee_id = ? ORDER BY created_at DESC LIMIT 1`,
@@ -781,7 +798,7 @@ function listAttendance(restaurantId, filters = {}) {
 
 function dashboard(restaurantId) {
   syncEmployeesFromUsers(restaurantId);
-  const today = calc.jsTodayDate();
+  const today = hrTodayDate();
   const monthStart = `${today.slice(0, 7)}-01`;
   const registered = queryOne('SELECT COUNT(*) AS c FROM hr_employees WHERE restaurant_id = ? AND status = \'active\'', [restaurantId]);
   const present = queryOne(
@@ -858,7 +875,7 @@ function manualAttendance(restaurantId, body, actor) {
     err.status = 400;
     throw err;
   }
-  const workDate = String(body.work_date || calc.jsTodayDate()).slice(0, 10);
+  const workDate = String(body.work_date || hrTodayDate()).slice(0, 10);
   const checkIn = body.check_in_at ? String(body.check_in_at) : null;
   const checkOut = body.check_out_at ? String(body.check_out_at) : null;
   let row = queryOne(
@@ -1025,7 +1042,7 @@ function setLeaveStatus(restaurantId, leaveId, status, actor) {
 }
 
 function reports(restaurantId, { from, to, kind = 'daily' } = {}) {
-  const start = from || calc.jsTodayDate();
+  const start = from || hrTodayDate();
   const end = to || start;
   const rows = queryAll(
     `SELECT a.*, u.full_name, e.position, e.department
@@ -1067,7 +1084,7 @@ function reports(restaurantId, { from, to, kind = 'daily' } = {}) {
 }
 
 function absences(restaurantId, date) {
-  const day = date || calc.jsTodayDate();
+  const day = date || hrTodayDate();
   const wd = calc.weekdayMonday0(day);
   const emps = queryAll(
     `SELECT e.id, e.schedule_id, e.status, u.full_name, s.work_days
@@ -1104,7 +1121,7 @@ function meToday(restaurantId, userId) {
     err.status = 404;
     throw err;
   }
-  const today = calc.jsTodayDate();
+  const today = hrTodayDate();
   const schedule = scheduleOfEmployee({ ...emp, restaurant_id: restaurantId });
   const open = openAttendance(emp.id);
   const todayRows = queryAll(

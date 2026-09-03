@@ -126,7 +126,7 @@ function buildPdf(report, absences = []) {
       .text(`${h.name}`)
       .text(`Período: ${report.from} — ${report.to}`)
       .text(`Tipo: ${report.kind}`)
-      .text(`Generado: ${calc.jsNowSql()}`);
+      .text(`Generado: ${calc.jsNowSql(new Date(), 'America/Lima')}`);
     doc.moveDown();
 
     doc.fontSize(11).fillColor('#000').text('Resumen por trabajador');
