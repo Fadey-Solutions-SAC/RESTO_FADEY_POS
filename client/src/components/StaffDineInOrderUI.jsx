@@ -492,7 +492,7 @@ export default function StaffDineInOrderUI({
   const gridGapClass = singleColumnProductList ? 'gap-3' : 'gap-2';
   const gridColsClass = stackedSelfOrder
     ? (singleColumnProductList ? 'grid-cols-1' : 'grid-cols-2')
-    : 'grid-cols-2 md:grid-cols-3';
+    : 'grid-cols-2';
 
   const productGrid = (
     <>
@@ -510,9 +510,10 @@ export default function StaffDineInOrderUI({
               return (
                 <div
                   key={p.id}
-                  className="flex flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-left transition-shadow hover:border-[color:var(--ui-accent)] hover:shadow-md"
+                  className="flex flex-col overflow-hidden rounded-md border border-[color:var(--ui-accent)] bg-white text-left transition-shadow hover:shadow-md"
+                  style={{ borderWidth: 1 }}
                 >
-                  <div className="aspect-[4/3] w-full shrink-0 overflow-hidden border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
+                  <div className="aspect-[4/3] w-full shrink-0 overflow-hidden border-b border-[color:var(--ui-accent)] bg-white">
                     {imgUrl ? (
                       <img src={imgUrl} alt="" className="h-full w-full object-cover" />
                     ) : (
@@ -522,21 +523,28 @@ export default function StaffDineInOrderUI({
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col gap-2 p-3">
+                  <div className="flex flex-col gap-2 bg-white p-3">
                     <button
                       type="button"
                       onClick={() => onProductPick(p)}
                       className="w-full text-left"
                     >
-                      <p className="text-sm font-semibold leading-snug text-[var(--ui-body-text)]">{p.name}</p>
-                      <p className="mt-1 text-base font-bold text-[var(--ui-body-text)]">{formatCurrency(p.price)}</p>
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <p className="min-w-0 flex-1 text-sm font-semibold leading-snug text-[var(--ui-body-text)] break-words">
+                          {p.name}
+                        </p>
+                        <p className="shrink-0 text-sm font-bold tabular-nums text-[var(--ui-body-text)]">
+                          {formatCurrency(p.price)}
+                        </p>
+                      </div>
                       {showStock ? <p className="mt-0.5 text-xs text-[var(--ui-accent)]">Stock: {p.stock}</p> : null}
                     </button>
                     {productActionLabel ? (
                       <button
                         type="button"
                         onClick={() => onProductPick(p)}
-                        className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm font-semibold text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+                        className="w-full rounded-md border border-[color:var(--ui-accent)] bg-white px-3 py-2.5 text-sm font-semibold text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+                        style={{ borderWidth: 1 }}
                       >
                         {productActionLabel}
                       </button>
@@ -548,22 +556,29 @@ export default function StaffDineInOrderUI({
             return (
               <div
                 key={p.id}
-                className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 text-left transition-shadow hover:border-[color:var(--ui-accent)] hover:shadow-md"
+                className="rounded-md border border-[color:var(--ui-accent)] bg-white p-3 text-left transition-shadow hover:shadow-md"
+                style={{ borderWidth: 1 }}
               >
                 <button
                   type="button"
                   onClick={() => onProductPick(p)}
                   className="w-full text-left"
                 >
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
                     {p.is_combo ? (
                       <span className="mt-0.5 shrink-0 rounded bg-[var(--ui-accent)]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--ui-accent)]">
                         Combo
                       </span>
                     ) : null}
-                    <p className="truncate text-sm font-medium text-[var(--ui-body-text)]">{p.name}</p>
+                    <div className="flex min-w-0 flex-1 items-baseline gap-2">
+                      <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--ui-body-text)] break-words">
+                        {p.name}
+                      </p>
+                      <p className="shrink-0 text-sm font-bold tabular-nums text-[var(--ui-body-text)]">
+                        {formatCurrency(p.price)}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-1 text-sm font-bold text-[var(--ui-body-text)]">{formatCurrency(p.price)}</p>
                   {p.is_combo && p.description ? (
                     <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--ui-muted)]">{p.description}</p>
                   ) : null}

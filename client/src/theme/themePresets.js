@@ -10,25 +10,25 @@ const LIVE_DEFAULTS = {
   danger: '#fb7185',
 };
 
-/** Fondos sólidos del menú lateral (sin transparencias). */
+/** Fondos sólidos del menú lateral (sin transparencias ni pasteles). */
 const SIDEBAR_PANEL_BY_SCHEME = {
-  light: { bg: '#93c5fd', top: '#60a5fa', active: '#bfdbfe', hover: '#bfdbfe', fg: '#000000', activeBorder: '#3b82f6' },
-  dark: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff', activeBorder: '#0f172a' },
+  light: { bg: '#93c5fd', top: '#2563EB', active: '#2563EB', hover: '#1D4ED8', fg: '#000000', activeFg: '#ffffff', activeBorder: '#1D4ED8' },
+  dark: { bg: '#1e3a8a', top: '#2563EB', active: '#2563EB', hover: '#1D4ED8', fg: '#ffffff', activeFg: '#ffffff', activeBorder: '#1e3a8a' },
 };
 
 const SIDEBAR_PANEL_BY_THEME = {
-  corporate_blue: { bg: '#93c5fd', top: '#60a5fa', active: '#bfdbfe', hover: '#bfdbfe', fg: '#000000', activeBorder: '#3b82f6' },
-  minimal_white: { bg: '#7dd3fc', top: '#38bdf8', active: '#bae6fd', hover: '#bae6fd', fg: '#000000', activeBorder: '#0284c7' },
-  emerald_business: { bg: '#34d399', top: '#10b981', active: '#6ee7b7', hover: '#6ee7b7', fg: '#000000', activeBorder: '#047857' },
-  dark_elegance: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff', activeBorder: '#0f172a' },
-  gold_premium: { bg: '#78350f', top: '#92400e', active: '#b45309', hover: '#a16207', fg: '#ffffff', activeBorder: '#451a03' },
-  sunset_modern: { bg: '#ea580c', top: '#f97316', active: '#fb923c', hover: '#fb923c', fg: '#000000', activeBorder: '#c2410c' },
-  blue: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff', activeBorder: '#0f172a' },
-  light: { bg: '#93c5fd', top: '#60a5fa', active: '#bfdbfe', hover: '#bfdbfe', fg: '#000000', activeBorder: '#3b82f6' },
-  dark: { bg: '#1e3a8a', top: '#1d4ed8', active: '#2563eb', hover: '#1e40af', fg: '#ffffff', activeBorder: '#0f172a' },
-  gray: { bg: '#52525b', top: '#3f3f46', active: '#71717a', hover: '#52525b', fg: '#ffffff', activeBorder: '#27272a' },
-  purple: { bg: '#6d28d9', top: '#7c3aed', active: '#8b5cf6', hover: '#6d28d9', fg: '#ffffff', activeBorder: '#4c1d95' },
-  green: { bg: '#34d399', top: '#10b981', active: '#6ee7b7', hover: '#6ee7b7', fg: '#000000', activeBorder: '#047857' },
+  corporate_blue: { bg: '#93c5fd', top: '#2563EB', active: '#2563EB', hover: '#1D4ED8', fg: '#000000', activeFg: '#ffffff', activeBorder: '#1D4ED8' },
+  minimal_white: { bg: '#7dd3fc', top: '#0EA5E9', active: '#0EA5E9', hover: '#0284C7', fg: '#000000', activeFg: '#ffffff', activeBorder: '#0284C7' },
+  emerald_business: { bg: '#34d399', top: '#059669', active: '#059669', hover: '#047857', fg: '#000000', activeFg: '#ffffff', activeBorder: '#047857' },
+  dark_elegance: { bg: '#1e3a8a', top: '#2563EB', active: '#2563EB', hover: '#1D4ED8', fg: '#ffffff', activeFg: '#ffffff', activeBorder: '#1e3a8a' },
+  gold_premium: { bg: '#78350f', top: '#B45309', active: '#B45309', hover: '#92400E', fg: '#ffffff', activeFg: '#ffffff', activeBorder: '#78350f' },
+  sunset_modern: { bg: '#ea580c', top: '#EA580C', active: '#EA580C', hover: '#C2410C', fg: '#000000', activeFg: '#ffffff', activeBorder: '#C2410C' },
+  blue: { bg: '#1e3a8a', top: '#2563EB', active: '#2563EB', hover: '#1D4ED8', fg: '#ffffff', activeFg: '#ffffff', activeBorder: '#1e3a8a' },
+  light: { bg: '#93c5fd', top: '#2563EB', active: '#2563EB', hover: '#1D4ED8', fg: '#000000', activeFg: '#ffffff', activeBorder: '#1D4ED8' },
+  dark: { bg: '#1e3a8a', top: '#2563EB', active: '#2563EB', hover: '#1D4ED8', fg: '#ffffff', activeFg: '#ffffff', activeBorder: '#1e3a8a' },
+  gray: { bg: '#52525b', top: '#71717A', active: '#71717A', hover: '#52525B', fg: '#ffffff', activeFg: '#ffffff', activeBorder: '#3f3f46' },
+  purple: { bg: '#6d28d9', top: '#5D45E4', active: '#5D45E4', hover: '#4C1D95', fg: '#ffffff', activeFg: '#ffffff', activeBorder: '#4C1D95' },
+  green: { bg: '#34d399', top: '#059669', active: '#059669', hover: '#047857', fg: '#000000', activeFg: '#ffffff', activeBorder: '#047857' },
 };
 
 function preset(id, label, description, tags, vars, chartColors, colorScheme = 'dark') {
@@ -40,6 +40,7 @@ function preset(id, label, description, tags, vars, chartColors, colorScheme = '
     '--ui-sidebar-panel-active': sidebarPanel.active,
     '--ui-sidebar-panel-hover': sidebarPanel.hover,
     '--ui-sidebar-nav-fg': sidebarPanel.fg,
+    '--ui-sidebar-panel-active-fg': sidebarPanel.activeFg || '#ffffff',
     '--ui-sidebar-panel-active-border': sidebarPanel.activeBorder || sidebarPanel.top,
   };
   return {
