@@ -12,7 +12,7 @@ import {
   MdDashboard, MdAttachMoney, MdPointOfSale, MdEventSeat,
   MdCreditCard, MdPeopleAlt, MdRestaurantMenu, MdLocalOffer,
   MdDiscount, MdWarehouse, MdDeliveryDining, MdAssessment,
-  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdTouchApp, MdStars,
+  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdTouchApp, MdStars, MdQrCodeScanner,
 } from 'react-icons/md';
 import { getProductionAreaIcon } from '../utils/productionAreaUi';
 
@@ -160,6 +160,14 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
           moduleId: row.moduleId,
         });
       }
+      links.push({
+        to: '/admin/asistencia',
+        icon: MdQrCodeScanner,
+        label: t('nav.asistencia', { defaultValue: 'Asistencia QR' }),
+        end: true,
+        roles: ['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar'],
+        moduleId: undefined,
+      });
       return links;
     },
     [t, productionAreas, canSeeProduction, user?.role, user?.production_area_id],

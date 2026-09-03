@@ -31,7 +31,8 @@ import EncuestaPublica from './pages/public/EncuestaPublica';
 import FirmarContratoMovil from './pages/public/FirmarContratoMovil';
 import MiRestaurant from './pages/admin/MiRestaurant';
 import Settings from './pages/admin/Settings';
-import WorkTime from './pages/admin/WorkTime';
+import HrModule from './pages/admin/HrModule';
+import HrAttendanceKiosk from './pages/admin/HrAttendanceKiosk';
 import KitchenPanel from './pages/kitchen/KitchenPanel';
 import DeliveryPanel from './pages/delivery/DeliveryPanel';
 import CustomerLayout from './pages/customer/CustomerLayout';
@@ -204,7 +205,8 @@ function AppRoutes({ user }) {
         <Route index element={<DefaultPage />} />
         <Route path="ventas" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="ventas"><Ventas /></ProtectedRoute>} />
         <Route path="caja" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="caja"><POSPanel /></ProtectedRoute>} />
-        <Route path="tiempo-trabajado" element={<ProtectedRoute roles={['admin']} moduleId="tiempo_trabajado"><WorkTime /></ProtectedRoute>} />
+        <Route path="tiempo-trabajado" element={<ProtectedRoute roles={['admin']} moduleId="tiempo_trabajado"><HrModule /></ProtectedRoute>} />
+        <Route path="asistencia" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar']}><HrAttendanceKiosk /></ProtectedRoute>} />
         <Route path="mesas" element={<ProtectedRoute roles={['admin', 'mozo']} moduleId="mesas"><Tables /></ProtectedRoute>} />
         <Route path="reservas" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo']} moduleId="reservas"><Reservas /></ProtectedRoute>} />
         <Route path="auto-pedido" element={<AdminOnlyAutoPedido />} />

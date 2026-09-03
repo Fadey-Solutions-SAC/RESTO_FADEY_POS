@@ -3574,7 +3574,7 @@ export default function POSPanel() {
           }
         }}
         disabled={mesaUniteBusy}
-        className={`${mesaMapToolbarUniteClass}${mesaUniteMode ? ' ring-2 ring-violet-300 ring-offset-1' : ''}`}
+        className={`${mesaMapToolbarUniteClass}${mesaUniteMode ? ' ring-2 ring-blue-300 ring-offset-1' : ''}`}
         title="Unir varias mesas en una sola cuenta"
       >
         <MdCallMerge className="shrink-0 text-sm" />
@@ -3813,12 +3813,12 @@ export default function POSPanel() {
       </div>
 
       {mesaUniteMode ? (
-        <p className="mb-2 shrink-0 text-xs sm:text-sm text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+        <p className="mb-2 shrink-0 text-xs sm:text-sm text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
           Seleccione 2 o más mesas en el mapa y pulse <strong>Unir ({mesaUniteSelection.length})</strong>.
           <button
             type="button"
             onClick={toggleMesaUniteMode}
-            className="ml-2 underline font-medium hover:text-violet-900"
+            className="ml-2 underline font-medium hover:text-blue-900"
           >
             Cancelar
           </button>
@@ -3840,6 +3840,10 @@ export default function POSPanel() {
               <span className="rf-mesa-map-legend__item">
                 <span className="rf-mesa-map-legend__dot" style={{ background: '#9333ea' }} />
                 Pre-cuenta
+              </span>
+              <span className="rf-mesa-map-legend__item">
+                <span className="rf-mesa-map-legend__dot" style={{ background: '#2563eb' }} />
+                Mesa unida
               </span>
               <span className="rf-mesa-map-legend__item">
                 <span className="rf-mesa-map-legend__dot" style={{ background: '#9ca3af' }} />

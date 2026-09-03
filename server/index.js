@@ -271,6 +271,7 @@ app.use('/api/production-areas', require('./routes/productionAreas'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/hr', require('./routes/hr'));
 app.use('/api/staff-chat', require('./routes/staffChat'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/kardex-inventory', require('./routes/kardexInventory'));
@@ -441,6 +442,12 @@ async function start() {
     ensureOrdersSchema();
   } catch (err) {
     console.warn('[db] orders schema (startup):', err.message || err);
+  }
+  try {
+    const { ensureHrSchema } = require('./utils/ensureHrSchema');
+    ensureHrSchema();
+  } catch (err) {
+    console.warn('[db] hr schema (startup):', err.message || err);
   }
   try {
     const { repairKitchenOrdersAtStartup } = require('./services/kitchenOrderRepairService');

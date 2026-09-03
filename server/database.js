@@ -357,6 +357,11 @@ function migrateRestoredDatabase() {
     console.warn('[backup] user_work_sessions tras restaurar:', migErr.message || migErr);
   }
   try {
+    require('./utils/ensureHrSchema').ensureHrSchema();
+  } catch (migErr) {
+    console.warn('[backup] hr schema tras restaurar:', migErr.message || migErr);
+  }
+  try {
     require('./services/saleNumberService').backfillSaleNumbers();
   } catch (migErr) {
     console.warn('[backup] sale_number tras restaurar:', migErr.message || migErr);
@@ -2926,6 +2931,12 @@ async function initDatabase() {
       ensureUserWorkSessionSchema();
     } catch (err) {
       console.warn('[db] user_work_sessions schema check:', err.message || err);
+    }
+    try {
+      const { ensureHrSchema } = require('./utils/ensureHrSchema');
+      ensureHrSchema();
+    } catch (err) {
+      console.warn('[db] hr schema check:', err.message || err);
     }
 
     const usersCount = countTableRows('users');

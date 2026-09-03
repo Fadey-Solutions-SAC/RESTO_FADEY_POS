@@ -699,21 +699,21 @@ h1, h2, h3, h4 {
   }
 
   .btn-mesa-unite {
-    border-color: #6d28d9;
-    background-color: #7c3aed;
+    border-color: #1d4ed8;
+    background-color: #2563eb;
   }
   .btn-mesa-unite:hover:not(:disabled) {
-    background-color: #6d28d9;
+    background-color: #1d4ed8;
   }
 
   .btn-mesa-desunir {
-    border-color: #7c3aed;
-    background-color: #f5f3ff;
-    color: #5b21b6;
+    border-color: #2563eb;
+    background-color: #eff6ff;
+    color: #1e40af;
   }
   .btn-mesa-desunir:hover:not(:disabled) {
-    background-color: #ede9fe;
-    color: #4c1d95;
+    background-color: #dbeafe;
+    color: #1e3a8a;
   }
 
   /* —— Mapa de mesas (caja): mesa cuadrada + sillas —— */
@@ -783,9 +783,9 @@ h1, h2, h3, h4 {
   }
 
   .rf-mesa-map-tile--unite-pick {
-    box-shadow: 0 0 0 2px #8b5cf6;
+    box-shadow: 0 0 0 2px #2563eb;
     border-radius: 0.5rem;
-    background: rgb(139 92 246 / 0.08);
+    background: rgb(37 99 235 / 0.08);
   }
 
   .rf-mesa-map-tile__middle {
@@ -892,8 +892,8 @@ h1, h2, h3, h4 {
   }
 
   .rf-mesa-map-tile--united .rf-mesa-map-tile__table {
-    background: linear-gradient(145deg, #a78bfa 0%, #7c3aed 100%);
-    border: 1px solid #6d28d9;
+    background: linear-gradient(145deg, #3b82f6 0%, #2563eb 100%);
+    border: 1px solid #1d4ed8;
   }
 
   .btn-loading {
