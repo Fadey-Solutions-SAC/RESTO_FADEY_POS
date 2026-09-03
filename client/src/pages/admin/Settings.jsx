@@ -1463,10 +1463,10 @@ export default function Settings() {
   };
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col overflow-hidden -mt-2">
-      <div className="flex flex-1 min-h-0 gap-4 overflow-hidden">
-      {/* Sidebar Menu — scroll propio, fijo al tope del área */}
-      <aside className="flex w-72 shrink-0 flex-col min-h-0 self-stretch">
+    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+      {/* Sidebar Menu — pegado arriba y a la línea vertical derecha */}
+      <aside className="flex w-72 shrink-0 flex-col min-h-0 self-stretch border-r border-[color:var(--ui-border)]">
         <div className="rf-settings-hub rf-settings-hub--split flex min-h-0 max-h-full flex-col overflow-hidden">
           <div className="rf-settings-hub__header shrink-0">
             <h2 className="rf-settings-hub__header-title">
@@ -1495,7 +1495,7 @@ export default function Settings() {
       </aside>
 
       {/* Content Area — scroll independiente */}
-      <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-y-contain scrollbar-hide pr-1">
+      <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-y-contain scrollbar-hide p-3 sm:p-6">
         {(activeSection === 'regional' || (activeSection && PARTIAL_SECTIONS.has(activeSection))) ? (
         <div className="flex items-center gap-3 mb-3">
           {activeSection === 'regional' && (

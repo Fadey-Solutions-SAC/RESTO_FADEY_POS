@@ -193,7 +193,9 @@ export default function Layout() {
         <div className="shrink-0">
           <OfflineCajaBanner />
         </div>
-        <main className={`rf-main-content p-3 sm:p-6 bg-[var(--ui-body-bg)] ${
+        <main className={`rf-main-content bg-[var(--ui-body-bg)] ${
+          isSettingsPage ? 'p-0' : 'p-3 sm:p-6'
+        } ${
           isShellLockedScroll
             ? 'flex-1 min-h-0 overflow-hidden flex flex-col'
             : 'min-h-[calc(100vh-var(--ui-shell-header-h))]'

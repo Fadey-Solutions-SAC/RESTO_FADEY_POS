@@ -318,13 +318,13 @@ h1, h2, h3, h4 {
     background: var(--ui-sidebar-panel-hover, #BFDBFE) !important;
   }
 
-  /* Opciones sistema: mismo estilo que el resto de paneles (no azul sólido) */
+  /* Opciones sistema: panel a ras (sin radio), llega a las líneas del layout */
   .rf-settings-hub {
     background: var(--ui-surface);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius-xl);
+    border: none;
+    border-radius: 0;
     overflow: hidden;
-    box-shadow: var(--ui-shadow-md);
+    box-shadow: none;
     transition: background 0.25s ease, border-color 0.25s ease;
   }
 
