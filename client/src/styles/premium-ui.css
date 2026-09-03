@@ -252,7 +252,7 @@ h1, h2, h3, h4 {
   }
 
   .rf-nav-link--active {
-    background: var(--ui-sidebar-panel-active, #2563EB) !important;
+    background: var(--ui-theme-solid, var(--ui-accent, #2563EB)) !important;
     color: var(--ui-sidebar-panel-active-fg, #ffffff) !important;
     font-weight: 600;
     box-shadow: none;
@@ -277,7 +277,7 @@ h1, h2, h3, h4 {
   }
 
   .rf-nav-sublink--active {
-    background: var(--ui-sidebar-panel-active, #2563EB);
+    background: var(--ui-theme-solid, var(--ui-accent, #2563EB));
     color: var(--ui-sidebar-panel-active-fg, #ffffff);
     font-weight: 600;
     border: none !important;
@@ -313,10 +313,10 @@ h1, h2, h3, h4 {
     background: var(--ui-sidebar-panel-hover, #bfdbfe) !important;
   }
 
-  /* —— Configuración: panel de módulos con tinte del tema activo —— */
+  /* —— Configuración: recuadro de módulos = color sólido del tema —— */
   .rf-settings-hub {
-    background: var(--ui-sidebar-panel-bg, #93c5fd);
-    border: 1px solid var(--ui-sidebar-border);
+    background: var(--ui-theme-solid, var(--ui-accent, #2563EB));
+    border: 1px solid var(--ui-theme-solid, var(--ui-accent, #2563EB));
     border-radius: var(--ui-radius-xl);
     overflow: hidden;
     box-shadow: var(--ui-shadow-md);
@@ -325,12 +325,12 @@ h1, h2, h3, h4 {
 
   .rf-settings-hub__header {
     padding: 0.75rem 1rem;
-    background: var(--ui-sidebar-panel-top, #60a5fa);
-    border-bottom: 1px solid var(--ui-sidebar-border);
+    background: var(--ui-theme-solid, var(--ui-accent, #2563EB));
+    border-bottom: 1px solid rgb(255 255 255 / 0.18);
   }
 
   .rf-settings-hub__header-title {
-    color: var(--ui-sidebar-nav-fg, #000000);
+    color: #ffffff;
     font-weight: 700;
     font-size: 0.875rem;
     display: flex;
@@ -339,12 +339,12 @@ h1, h2, h3, h4 {
   }
 
   html[data-ui-color-scheme='dark'] .rf-settings-hub__header-title {
-    color: var(--ui-sidebar-nav-fg, #ffffff);
+    color: #ffffff;
   }
 
   .rf-settings-hub__nav {
     padding: 0.35rem 0.25rem 0.5rem;
-    background: var(--ui-sidebar-panel-bg, #93c5fd);
+    background: var(--ui-theme-solid, var(--ui-accent, #2563EB));
   }
 
   .rf-settings-hub__item {
@@ -356,46 +356,46 @@ h1, h2, h3, h4 {
     padding: 0.625rem 0.875rem;
     font-size: 0.875rem;
     text-align: left;
-    border-radius: var(--ui-radius-lg);
+    border-radius: 0.625rem;
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-    color: var(--ui-sidebar-nav-fg, #000000);
+    color: #ffffff;
     border: 1px solid transparent;
   }
 
   .rf-settings-hub__item svg {
-    color: var(--ui-sidebar-nav-fg, #000000);
+    color: #ffffff;
     flex-shrink: 0;
   }
 
   .rf-settings-hub__item:hover {
-    background: var(--ui-sidebar-panel-hover, #bfdbfe);
-    color: var(--ui-sidebar-nav-fg, #000000);
+    background: rgb(255 255 255 / 0.12);
+    color: #ffffff;
   }
 
   .rf-settings-hub__item:hover svg {
-    color: var(--ui-sidebar-nav-fg, #000000);
+    color: #ffffff;
   }
 
   .rf-settings-hub__item--active {
-    background: var(--ui-sidebar-panel-active, #2563EB);
-    color: var(--ui-sidebar-panel-active-fg, #ffffff);
+    background: var(--ui-theme-solid, var(--ui-accent, #2563EB));
+    color: #ffffff;
     font-weight: 600;
-    border: none !important;
+    border: 1px solid #ffffff !important;
     border-radius: 0.625rem;
     box-shadow: none;
     padding-left: 0.875rem;
   }
 
   .rf-settings-hub__item--active svg {
-    color: var(--ui-sidebar-panel-active-fg, #ffffff);
+    color: #ffffff;
   }
 
   .rf-settings-hub__item-chevron {
-    color: var(--ui-sidebar-nav-fg, #000000);
+    color: #ffffff;
   }
 
   .rf-settings-hub__item--active .rf-settings-hub__item-chevron {
-    color: var(--ui-sidebar-panel-active-fg, #ffffff);
+    color: #ffffff;
   }
 
   .rf-settings-hub--split {

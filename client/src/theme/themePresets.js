@@ -33,15 +33,22 @@ const SIDEBAR_PANEL_BY_THEME = {
 
 function preset(id, label, description, tags, vars, chartColors, colorScheme = 'dark') {
   const sidebarPanel = SIDEBAR_PANEL_BY_THEME[id] || SIDEBAR_PANEL_BY_SCHEME[colorScheme] || SIDEBAR_PANEL_BY_SCHEME.light;
+  const solid = sidebarPanel.active;
   const varsWithSidebar = {
     ...vars,
+    '--ui-theme-solid': solid,
+    '--ui-accent': solid,
+    '--ui-accent-hover': solid,
+    '--ui-accent-muted': solid,
+    '--ui-focus-ring': solid,
     '--ui-sidebar-panel-bg': sidebarPanel.bg,
     '--ui-sidebar-panel-top': sidebarPanel.top,
-    '--ui-sidebar-panel-active': sidebarPanel.active,
+    '--ui-sidebar-panel-active': solid,
     '--ui-sidebar-panel-hover': sidebarPanel.hover,
     '--ui-sidebar-nav-fg': sidebarPanel.fg,
     '--ui-sidebar-panel-active-fg': sidebarPanel.activeFg || '#ffffff',
-    '--ui-sidebar-panel-active-border': sidebarPanel.activeBorder || sidebarPanel.top,
+    '--ui-sidebar-panel-active-border': solid,
+    '--ui-sidebar-active-bg': solid,
   };
   return {
     id,
