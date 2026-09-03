@@ -143,6 +143,12 @@ export default function Login() {
       if (photoLogin) loginOpts.photo_login = photoLogin;
       const user = await login(username, password, loginOpts);
       toast.success(t('login.welcome', { name: user.full_name }));
+      try {
+        localStorage.setItem(
+          'resto-asistencia-qr-activa',
+          user?.asistencia_qr_activa === false || user?.asistencia_qr_activa === 0 ? '0' : '1',
+        );
+      } catch { /* ignore */ }
       navigate(getDefaultStaffPath(user), { replace: true });
     } catch (err) {
       const msg = String(err?.message || '');

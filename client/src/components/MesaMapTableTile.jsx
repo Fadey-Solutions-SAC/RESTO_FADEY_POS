@@ -1,6 +1,7 @@
 import { MdCallMerge } from 'react-icons/md';
 import {
   formatMesaMapTableNumber,
+  maxChairsOnAnySide,
   splitChairsPerSide,
 } from '../utils/mesaMapTableVisual';
 
@@ -38,7 +39,9 @@ export default function MesaMapTableTile({
   onClick,
   className = '',
 }) {
-  const [top, right, bottom, left] = splitChairsPerSide(chairCount);
+  const sides = splitChairsPerSide(chairCount);
+  const [top, right, bottom, left] = sides;
+  const chairSlots = maxChairsOnAnySide(sides);
   const numberLabel = formatMesaMapTableNumber(table);
   const capacityLabel = String(chairCount);
 
@@ -55,6 +58,7 @@ export default function MesaMapTableTile({
       ]
         .filter(Boolean)
         .join(' ')}
+      style={{ '--rf-mesa-chair-slots': chairSlots }}
       title={table?.name || `Mesa ${numberLabel}`}
     >
       <MesaChairsRow count={top} />

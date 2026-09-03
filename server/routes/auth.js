@@ -293,6 +293,13 @@ router.post('/login', async (req, res) => {
     production_area_ids = [];
   }
   if (!Array.isArray(production_area_ids)) production_area_ids = [];
+  let asistencia_qr_activa = true;
+  try {
+    const hr = require('../services/hrService');
+    asistencia_qr_activa = hr.isAsistenciaQrActiva();
+  } catch (_) {
+    asistencia_qr_activa = true;
+  }
   res.json({
     token,
     user: {
@@ -308,6 +315,7 @@ router.post('/login', async (req, res) => {
       service_plan: plan,
       production_area_id: String(user.production_area_id || '').trim(),
       production_area_ids,
+      asistencia_qr_activa,
       ...readUiAppearanceFromStoredSettings(),
       ...cajaMeta,
     },

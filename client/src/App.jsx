@@ -99,7 +99,18 @@ function ProtectedRoute({ children, roles, moduleId, moduleIds }) {
 
 function KitchenAreaRoute() {
   const { areaId } = useParams();
+  const { user } = useAuth();
   const id = String(areaId || '').trim() || 'cocina';
+  const role = String(user?.role || '').toLowerCase();
+  const own = String(user?.production_area_id || '').trim();
+  if (['produccion', 'cocina', 'bar'].includes(role)) {
+    let allowed = own;
+    if (!allowed && role === 'cocina') allowed = 'cocina';
+    if (!allowed && role === 'bar') allowed = 'bar';
+    if (allowed && id !== allowed) {
+      return <Navigate to={`/admin/produccion/${allowed}`} replace />;
+    }
+  }
   return <KitchenPanel areaId={id} />;
 }
 

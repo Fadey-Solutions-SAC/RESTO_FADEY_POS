@@ -376,11 +376,6 @@ export default function Settings() {
   const [historyPreview, setHistoryPreview] = useState(null);
   const [settingsCrudModal, setSettingsCrudModal] = useState({ isOpen: false, section: '', index: null });
   const [settingsCrudForm, setSettingsCrudForm] = useState({});
-  const [attendanceGalleryUserId, setAttendanceGalleryUserId] = useState('');
-  const [attendanceGallerySessions, setAttendanceGallerySessions] = useState([]);
-  const [attendanceGalleryLoading, setAttendanceGalleryLoading] = useState(false);
-  const [attendanceGalleryDraft, setAttendanceGalleryDraft] = useState({});
-  const [attendanceGallerySaving, setAttendanceGallerySaving] = useState(false);
   const [printingConfig, setPrintingConfig] = useState(DEFAULT_PRINTING_CONFIG);
   const printingModuleEntries = useMemo(
     () => listPrintingUiModules(appSettings?.production_areas),
@@ -819,50 +814,6 @@ export default function Settings() {
     window.addEventListener('production-areas-updated', onAreas);
     return () => window.removeEventListener('production-areas-updated', onAreas);
   }, []);
-
-  useEffect(() => {
-    if (!attendanceGalleryUserId) {
-      setAttendanceGallerySessions([]);
-      return;
-    }
-    setAttendanceGalleryLoading(true);
-    api
-      .get(`/users/attendance-gallery/${encodeURIComponent(attendanceGalleryUserId)}`)
-      .then((data) => setAttendanceGallerySessions(Array.isArray(data?.sessions) ? data.sessions : []))
-      .catch(() => {
-        setAttendanceGallerySessions([]);
-        toast.error('No se pudo cargar las fotos de asistencia');
-      })
-      .finally(() => setAttendanceGalleryLoading(false));
-  }, [attendanceGalleryUserId]);
-
-  useEffect(() => {
-    const d = {};
-    (attendanceGallerySessions || []).forEach((r) => {
-      const st = r.attendance_status || 'pending';
-      d[r.id] = st === 'pending' ? 'asistente' : st;
-    });
-    setAttendanceGalleryDraft(d);
-  }, [attendanceGallerySessions]);
-
-  const saveGalleryAttendance = async () => {
-    if (!attendanceGallerySessions.length) return;
-    setAttendanceGallerySaving(true);
-    try {
-      const items = attendanceGallerySessions.map((r) => ({
-        session_id: r.id,
-        status: attendanceGalleryDraft[r.id] || 'asistente',
-      }));
-      await api.post('/users/attendance-review/apply', { items });
-      toast.success('Estados de asistencia guardados');
-      const data = await api.get(`/users/attendance-gallery/${encodeURIComponent(attendanceGalleryUserId)}`);
-      setAttendanceGallerySessions(Array.isArray(data?.sessions) ? data.sessions : []);
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setAttendanceGallerySaving(false);
-    }
-  };
 
   const loadBusinessConfigEffective = () => {
     setBizLoading(true);
@@ -2220,102 +2171,6 @@ export default function Settings() {
                 <button type="button" onClick={() => void saveAppSettings()} className="btn-primary flex items-center gap-2 text-sm">
                   <MdSave /> Guardar
                 </button>
-              </div>
-
-              <div className="card space-y-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-700">Fotos de inicio y fin de jornada</p>
-                  <p className="text-xs ui-text-muted mt-1">
-                    Solo se muestran las jornadas del día actual (fecha local del servidor). Indique asistencia para que
-                    cuenten en tiempo trabajado.
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Usuario</label>
-                  <select
-                    className="input-field max-w-md"
-                    value={attendanceGalleryUserId}
-                    onChange={(e) => setAttendanceGalleryUserId(e.target.value)}
-                  >
-                    <option value="">Seleccione un usuario</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.full_name || u.username}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {attendanceGalleryLoading ? (
-                  <p className="text-sm ui-text-muted">Cargando…</p>
-                ) : !attendanceGalleryUserId ? (
-                  <p className="text-sm ui-text-muted">Elija un usuario para ver las fotos guardadas.</p>
-                ) : attendanceGallerySessions.length === 0 ? (
-                  <p className="text-sm ui-text-muted">No hay jornadas registradas hoy para este usuario.</p>
-                ) : (
-                  <>
-                    <div className="space-y-4 max-h-[480px] overflow-y-auto pr-1">
-                      {attendanceGallerySessions.map((row) => (
-                        <div key={row.id} className="rounded-lg border border-slate-200 p-3 space-y-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-xs font-medium text-[var(--ui-muted)]">Clasificación (tiempo trabajado)</span>
-                            <select
-                              className="input-field w-48 text-sm"
-                              value={attendanceGalleryDraft[row.id] || 'asistente'}
-                              onChange={(e) =>
-                                setAttendanceGalleryDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
-                              }
-                              disabled={attendanceGallerySaving}
-                            >
-                              <option value="asistente">Asistente</option>
-                              <option value="justificado">Justificado</option>
-                              <option value="ausente">Ausente</option>
-                            </select>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <p className="text-xs font-medium text-[var(--ui-muted)] mb-1">Inicio</p>
-                              <p className="text-xs ui-text-muted mb-2">{row.login_at ? formatDateTime(row.login_at) : '—'}</p>
-                              {row.photo_login ? (
-                                <img
-                                  src={row.photo_login}
-                                  alt="Inicio de jornada"
-                                  loading="lazy"
-                                  className="w-full max-h-48 object-contain rounded-md bg-slate-50 border border-slate-100"
-                                />
-                              ) : (
-                                <p className="text-xs text-[var(--ui-muted)]">Sin foto</p>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-xs font-medium text-[var(--ui-muted)] mb-1">Fin</p>
-                              <p className="text-xs ui-text-muted mb-2">{row.logout_at ? formatDateTime(row.logout_at) : '—'}</p>
-                              {row.photo_logout ? (
-                                <img
-                                  src={row.photo_logout}
-                                  alt="Fin de jornada"
-                                  loading="lazy"
-                                  className="w-full max-h-48 object-contain rounded-md bg-slate-50 border border-slate-100"
-                                />
-                              ) : (
-                                <p className="text-xs text-[var(--ui-muted)]">Sin foto</p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        disabled={attendanceGallerySaving}
-                        onClick={() => void saveGalleryAttendance()}
-                        className="btn-primary flex items-center gap-2 text-sm"
-                      >
-                        <MdSave /> Guardar clasificación del día
-                      </button>
-                    </div>
-                  </>
-                )}
               </div>
             </div>
           );

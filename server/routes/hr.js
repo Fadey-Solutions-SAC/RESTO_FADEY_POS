@@ -46,6 +46,20 @@ router.put('/settings', requireHrAdmin, asyncHandler(async (req, res) => {
   res.json(hr.saveHrSettings(req.body || {}, req.user));
 }));
 
+router.get('/asistencia-qr-mode', asyncHandler(async (req, res) => {
+  res.json({ active: hr.isAsistenciaQrActiva() });
+}));
+
+router.put('/asistencia-qr-mode', requireHrAdmin, asyncHandler(async (req, res) => {
+  const { verifyAdminPassword } = require('../lib/adminPassword');
+  if (!verifyAdminPassword(req.body?.admin_password)) {
+    return res.status(403).json({ error: 'Contraseña de administrador incorrecta' });
+  }
+  const active = Boolean(req.body?.active);
+  hr.setAsistenciaQrActiva(active, req.user);
+  return res.json({ active: hr.isAsistenciaQrActiva() });
+}));
+
 router.get('/dashboard', requireHrAdmin, asyncHandler(async (req, res) => {
   res.json(hr.dashboard(rid(req)));
 }));

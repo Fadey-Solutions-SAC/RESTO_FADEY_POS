@@ -83,11 +83,48 @@ export function clampChairCount(n) {
 /** Distribuye sillas en top, right, bottom, left. */
 export function splitChairsPerSide(total) {
   const n = clampChairCount(total);
-  const sides = [0, 0, 0, 0];
-  for (let i = 0; i < n; i += 1) {
-    sides[i % 4] += 1;
+  // Layouts fijos para lectura clara en el mapa (arriba, derecha, abajo, izquierda).
+  switch (n) {
+    case 1:
+      return [1, 0, 0, 0];
+    case 2:
+      // Extremos: una arriba y una abajo
+      return [1, 0, 1, 0];
+    case 3:
+      // Abajo vacío
+      return [1, 1, 0, 1];
+    case 4:
+      return [1, 1, 1, 1];
+    case 5:
+      // 2 arriba + 1 por costado/abajo (mismo tamaño visual vía CSS)
+      return [2, 1, 1, 1];
+    case 6:
+      // Dos arriba y abajo, una a cada costado
+      return [2, 1, 2, 1];
+    case 7:
+      return [2, 2, 2, 1];
+    case 8:
+      return [2, 2, 2, 2];
+    case 9:
+      return [3, 2, 2, 2];
+    case 10:
+      return [3, 2, 3, 2];
+    case 11:
+      return [3, 3, 3, 2];
+    case 12:
+      return [3, 3, 3, 3];
+    default: {
+      const sides = [0, 0, 0, 0];
+      for (let i = 0; i < n; i += 1) sides[i % 4] += 1;
+      return sides;
+    }
   }
-  return sides;
+}
+
+/** Máximo de sillas en un mismo lado (para tamaño uniforme). */
+export function maxChairsOnAnySide(sides) {
+  const list = Array.isArray(sides) ? sides : [];
+  return Math.max(1, ...list.map((n) => Number(n) || 0), 1);
 }
 
 export function formatMesaMapTableNumber(table) {

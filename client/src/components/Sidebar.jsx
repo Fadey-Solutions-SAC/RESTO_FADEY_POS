@@ -12,7 +12,7 @@ import {
   MdDashboard, MdAttachMoney, MdPointOfSale, MdEventSeat,
   MdCreditCard, MdPeopleAlt, MdRestaurantMenu, MdLocalOffer,
   MdDiscount, MdWarehouse, MdDeliveryDining, MdAssessment,
-  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdTouchApp, MdStars, MdBadge,
+  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdTouchApp, MdStars,
 } from 'react-icons/md';
 import { getProductionAreaIcon } from '../utils/productionAreaUi';
 
@@ -69,7 +69,7 @@ const INFORMES_SUB_IDS = [
 export default function Sidebar({ collapsed, isMobile = false, mobileOpen = false, onClose = () => {}, onToggleMenu = () => {} }) {
   const { t } = useTranslation('dashboard');
   const { t: tc } = useTranslation('common');
-  const { user } = useAuth();
+  const { user, refreshStaffProfile } = useAuth();
   const location = useLocation();
   const showDeliveryUi = useShowDeliveryUi();
   const [productionAreas, setProductionAreas] = useState([]);
@@ -99,7 +99,13 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
 
   useEffect(() => {
     loadProductionAreas();
-    const onAreas = () => loadProductionAreas();
+    const onAreas = () => {
+      loadProductionAreas();
+      // Si vinculan el usuario a un área nueva, refrescar production_area_id sin re-login.
+      if (typeof refreshStaffProfile === 'function') {
+        void refreshStaffProfile();
+      }
+    };
     const onVisible = () => {
       if (document.visibilityState === 'visible') loadProductionAreas();
     };
@@ -109,7 +115,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
       window.removeEventListener('production-areas-updated', onAreas);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [loadProductionAreas, location.pathname]);
+  }, [loadProductionAreas, location.pathname, refreshStaffProfile]);
 
   const canSeeProduction =
     canAccessStaffModule(user, { moduleId: 'produccion', roles: ['admin', 'produccion', 'cocina', 'bar'] })
@@ -126,13 +132,37 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
           productionInserted = true;
           const role = String(user?.role || '').toLowerCase();
           const ownArea = String(user?.production_area_id || '').trim();
-          const areasForNav = (role === 'produccion' && ownArea)
-            ? productionAreas.filter((a) => a.id === ownArea)
-            : (role === 'cocina'
-              ? productionAreas.filter((a) => a.id === 'cocina')
-              : (role === 'bar'
-                ? productionAreas.filter((a) => a.id === 'bar')
-                : productionAreas));
+          let areasForNav = [];
+          if (role === 'produccion') {
+            // Una área vinculada (incluye áreas creadas además de cocina/bar).
+            if (ownArea) {
+              const match = productionAreas.find((a) => a.id === ownArea);
+              areasForNav = match
+                ? [match]
+                : [{ id: ownArea, name: ownArea }];
+            } else {
+              areasForNav = [];
+            }
+          } else if (role === 'cocina') {
+            areasForNav = productionAreas.filter((a) => a.id === 'cocina');
+            if (!areasForNav.length && (!ownArea || ownArea === 'cocina')) {
+              areasForNav = [{ id: 'cocina', name: 'Cocina' }];
+            } else if (ownArea && ownArea !== 'cocina') {
+              const match = productionAreas.find((a) => a.id === ownArea);
+              areasForNav = match ? [match] : [{ id: ownArea, name: ownArea }];
+            }
+          } else if (role === 'bar') {
+            areasForNav = productionAreas.filter((a) => a.id === 'bar');
+            if (!areasForNav.length && (!ownArea || ownArea === 'bar')) {
+              areasForNav = [{ id: 'bar', name: 'Bar' }];
+            } else if (ownArea && ownArea !== 'bar') {
+              const match = productionAreas.find((a) => a.id === ownArea);
+              areasForNav = match ? [match] : [{ id: ownArea, name: ownArea }];
+            }
+          } else {
+            // Admin u otros con permiso: todas las áreas activas.
+            areasForNav = productionAreas;
+          }
           for (const area of areasForNav) {
             const idLc = String(area.id || '').toLowerCase();
             const icon = getProductionAreaIcon(area);
@@ -142,9 +172,9 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
               label: area.name || area.id,
               end: false,
               roles: ['admin', 'produccion', 'cocina', 'bar'],
-              // Permiso amplio: cualquier módulo de producción del plan
               moduleId: idLc === 'cocina' ? 'cocina' : idLc === 'bar' ? 'bar' : 'produccion',
               isProductionArea: true,
+              productionAreaId: String(area.id || '').trim(),
             });
           }
           continue;
@@ -160,25 +190,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
           moduleId: row.moduleId,
         });
       }
-      // Asistencia QR vive dentro de Recursos humanos (no como módulo suelto al final).
-      // Si el personal puede marcar pero no tiene RR. HH., igual mostramos el padre con el submenú.
-      const roleLc = String(user?.role || '').toLowerCase();
-      const canScanAttendance = ['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar'].includes(roleLc);
-      const hasHrLink = links.some((l) => l.moduleId === 'tiempo_trabajado');
-      if (!hasHrLink && canScanAttendance) {
-        const cfgIdx = links.findIndex((l) => l.moduleId === 'configuracion');
-        const hrEntry = {
-          to: '/admin/asistencia',
-          icon: MdAccessTime,
-          label: t('nav.tiempo_trabajado'),
-          end: false,
-          roles: ['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar'],
-          moduleId: undefined,
-          isHrNav: true,
-        };
-        if (cfgIdx >= 0) links.splice(cfgIdx, 0, hrEntry);
-        else links.push(hrEntry);
-      }
+      // Asistencia QR: admin bajo RR. HH.; otros roles bajo su módulo operativo (ver submenús abajo).
       return links;
     },
     [t, productionAreas, canSeeProduction, user?.role, user?.production_area_id],
@@ -206,31 +218,100 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
     }
     setEndShiftOpen(true);
   };
-  const [isCajaExpanded, setIsCajaExpanded] = useState(location.pathname.startsWith('/admin/caja'));
+  const roleLc = String(user?.role || '').toLowerCase();
+  const [asistenciaQrActiva, setAsistenciaQrActiva] = useState(() => {
+    try {
+      const v = localStorage.getItem('resto-asistencia-qr-activa');
+      if (v === '0' || v === 'false') return false;
+      if (v === '1' || v === 'true') return true;
+    } catch { /* ignore */ }
+    return user?.asistencia_qr_activa == null ? true : Boolean(user.asistencia_qr_activa);
+  });
+
+  useEffect(() => {
+    api.get('/hr/asistencia-qr-mode')
+      .then((mode) => {
+        const on = mode?.active !== false;
+        setAsistenciaQrActiva(on);
+        try { localStorage.setItem('resto-asistencia-qr-activa', on ? '1' : '0'); } catch { /* ignore */ }
+      })
+      .catch(() => {});
+  }, [location.pathname]);
+
+  const onAsistenciaPath = location.pathname.startsWith('/admin/asistencia');
+  const [isCajaExpanded, setIsCajaExpanded] = useState(
+    location.pathname.startsWith('/admin/caja') || (roleLc === 'cajero' && onAsistenciaPath),
+  );
   const [isMiRestaurantExpanded, setIsMiRestaurantExpanded] = useState(location.pathname.startsWith('/admin/mi-restaurant'));
   const [isAlmacenExpanded, setIsAlmacenExpanded] = useState(location.pathname.startsWith('/admin/almacen'));
   const [isInformesExpanded, setIsInformesExpanded] = useState(location.pathname.startsWith('/admin/informes'));
   const [isHrExpanded, setIsHrExpanded] = useState(
     location.pathname.startsWith('/admin/tiempo-trabajado')
-    || location.pathname.startsWith('/admin/asistencia'),
+    || (roleLc === 'admin' && onAsistenciaPath),
+  );
+  const [isMesasExpanded, setIsMesasExpanded] = useState(
+    location.pathname.startsWith('/admin/mesas') || (roleLc === 'mozo' && onAsistenciaPath),
+  );
+  const [isProdExpanded, setIsProdExpanded] = useState(
+    location.pathname.startsWith('/admin/produccion')
+    || location.pathname.startsWith('/admin/cocina')
+    || location.pathname.startsWith('/admin/bar')
+    || (['produccion', 'cocina', 'bar'].includes(roleLc) && onAsistenciaPath),
   );
 
   useEffect(() => {
-    if (
-      location.pathname.startsWith('/admin/tiempo-trabajado')
-      || location.pathname.startsWith('/admin/asistencia')
-    ) {
+    if (location.pathname.startsWith('/admin/tiempo-trabajado') || (roleLc === 'admin' && onAsistenciaPath)) {
       setIsHrExpanded(true);
     }
-  }, [location.pathname]);
+    if (location.pathname.startsWith('/admin/mesas') || (roleLc === 'mozo' && onAsistenciaPath)) {
+      setIsMesasExpanded(true);
+    }
+    if (location.pathname.startsWith('/admin/caja') || (roleLc === 'cajero' && onAsistenciaPath)) {
+      setIsCajaExpanded(true);
+    }
+    if (
+      location.pathname.startsWith('/admin/produccion')
+      || location.pathname.startsWith('/admin/cocina')
+      || location.pathname.startsWith('/admin/bar')
+      || (['produccion', 'cocina', 'bar'].includes(roleLc) && onAsistenciaPath)
+    ) {
+      setIsProdExpanded(true);
+    }
+  }, [location.pathname, roleLc, onAsistenciaPath]);
+
   const hasLinkPermission = (link) => {
     if (link?.isProductionArea) {
       return canSeeProduction;
     }
-    if (link?.isHrNav) {
-      return ['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar'].includes(String(user?.role || '').toLowerCase());
-    }
     return canAccessStaffModule(user, { moduleId: link.moduleId, roles: link.roles });
+  };
+
+  /** Asistencia QR cuelga del módulo del rol (admin → RR. HH.; producción → su área vinculada). */
+  const linkHostsAttendanceQr = (link) => {
+    if (!asistenciaQrActiva) return false;
+    if (roleLc === 'admin') return link.moduleId === 'tiempo_trabajado';
+    if (roleLc === 'mozo') return link.moduleId === 'mesas';
+    if (roleLc === 'cajero') return link.moduleId === 'caja';
+    if (roleLc === 'produccion' || roleLc === 'cocina' || roleLc === 'bar') {
+      if (!link.isProductionArea) return false;
+      const own = String(user?.production_area_id || '').trim();
+      const linkArea = String(link.productionAreaId || '').trim();
+      // Solo bajo el área vinculada al usuario (funciona con 1..N áreas en el sistema).
+      if (own) return linkArea === own;
+      // Legado cocina/bar sin production_area_id explícito
+      if (roleLc === 'cocina') return linkArea === 'cocina';
+      if (roleLc === 'bar') return linkArea === 'bar';
+      return false;
+    }
+    return false;
+  };
+
+  const attendanceExpandedFor = (link) => {
+    if (roleLc === 'admin') return isHrExpanded;
+    if (roleLc === 'mozo') return isMesasExpanded;
+    if (roleLc === 'cajero') return isCajaExpanded;
+    if (roleLc === 'produccion' || roleLc === 'cocina' || roleLc === 'bar') return isProdExpanded;
+    return false;
   };
   const filtered = allLinks
     .filter(hasLinkPermission)
@@ -275,13 +356,23 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const linkClass = ({ isActive }) =>
     `rf-nav-link ${isActive ? 'rf-nav-link--active' : ''}`;
 
-  const hrLinkClass = ({ isActive }) => {
-    const onHr = location.pathname.startsWith('/admin/tiempo-trabajado')
-      || location.pathname.startsWith('/admin/asistencia');
-    return `rf-nav-link ${isActive || onHr ? 'rf-nav-link--active' : ''}`;
+  const parentLinkClass = (link) => ({ isActive }) => {
+    const hostsAtt = linkHostsAttendanceQr(link);
+    const active = isActive || (hostsAtt && onAsistenciaPath);
+    return `rf-nav-link ${active ? 'rf-nav-link--active' : ''}`;
   };
 
   const isCollapsed = isMobile ? false : collapsed;
+
+  const renderAsistenciaQrSub = () => (
+    <NavLink
+      to="/admin/asistencia"
+      className={({ isActive }) => `rf-nav-sublink ${isActive ? 'rf-nav-sublink--active' : ''}`}
+      onClick={() => { if (isMobile) onClose(); }}
+    >
+      {t('nav.asistencia', { defaultValue: 'Asistencia QR' })}
+    </NavLink>
+  );
 
   return (
     <aside className={`rf-sidebar fixed left-0 top-0 h-full z-40 transition-all duration-300 flex flex-col border-r border-[color:var(--ui-sidebar-border)] ${
@@ -346,14 +437,14 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                     : link.to
               }
               end={link.end}
-              className={link.moduleId === 'tiempo_trabajado' || link.isHrNav ? hrLinkClass : linkClass}
+              className={linkHostsAttendanceQr(link) ? parentLinkClass(link) : linkClass}
               title={link.label}
               onClick={(e) => {
                 if (isCollapsed) return;
                 if (link.moduleId === 'caja' || link.to === '/admin/caja') {
                   const isInCaja = location.pathname.startsWith('/admin/caja');
                   const cajaView = new URLSearchParams(location.search).get('view') || 'cobrar';
-                  if (isInCaja && cajaView === 'cobrar') {
+                  if (isInCaja && cajaView === 'cobrar' && !onAsistenciaPath) {
                     e.preventDefault();
                     setIsCajaExpanded((prev) => !prev);
                     return;
@@ -390,15 +481,33 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                   }
                   setIsInformesExpanded(true);
                 }
-                if (link.moduleId === 'tiempo_trabajado' || link.isHrNav) {
+                if (link.moduleId === 'tiempo_trabajado') {
                   const isInHr = location.pathname.startsWith('/admin/tiempo-trabajado')
-                    || location.pathname.startsWith('/admin/asistencia');
+                    || (roleLc === 'admin' && onAsistenciaPath);
                   if (isInHr) {
                     e.preventDefault();
                     setIsHrExpanded((prev) => !prev);
                     return;
                   }
                   setIsHrExpanded(true);
+                }
+                if (link.moduleId === 'mesas') {
+                  const isInMesas = location.pathname.startsWith('/admin/mesas');
+                  if (isInMesas) {
+                    e.preventDefault();
+                    setIsMesasExpanded((prev) => !prev);
+                    return;
+                  }
+                  setIsMesasExpanded(true);
+                }
+                if (link.isProductionArea) {
+                  const isInProd = location.pathname.startsWith(link.to);
+                  if (isInProd) {
+                    e.preventDefault();
+                    setIsProdExpanded((prev) => !prev);
+                    return;
+                  }
+                  setIsProdExpanded(true);
                 }
                 if (isMobile) onClose();
               }}
@@ -407,26 +516,24 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
               {!isCollapsed && <span className="whitespace-nowrap leading-snug">{link.label}</span>}
             </NavLink>
 
-            {!isCollapsed && (link.moduleId === 'tiempo_trabajado' || link.isHrNav) && isHrExpanded && (
+            {!isCollapsed && link.moduleId === 'tiempo_trabajado' && isHrExpanded && (
               <div className="mt-1 ml-8 space-y-0.5">
-                {link.moduleId === 'tiempo_trabajado' ? (
-                  <NavLink
-                    to="/admin/tiempo-trabajado"
-                    end
-                    className={({ isActive }) => `rf-nav-sublink ${isActive ? 'rf-nav-sublink--active' : ''}`}
-                    onClick={() => { if (isMobile) onClose(); }}
-                  >
-                    {t('hrSub.panel', { defaultValue: 'Panel RR. HH.' })}
-                  </NavLink>
-                ) : null}
                 <NavLink
-                  to="/admin/asistencia"
+                  to="/admin/tiempo-trabajado"
+                  end
                   className={({ isActive }) => `rf-nav-sublink flex items-center gap-1.5 ${isActive ? 'rf-nav-sublink--active' : ''}`}
                   onClick={() => { if (isMobile) onClose(); }}
                 >
-                  <MdBadge className="text-base flex-shrink-0" aria-hidden="true" />
-                  <span>{t('nav.asistencia', { defaultValue: 'Asistencia QR' })}</span>
+                  <MdAccessTime className="text-base flex-shrink-0" aria-hidden="true" />
+                  <span>{t('hrSub.panel', { defaultValue: 'Panel RR. HH.' })}</span>
                 </NavLink>
+                {asistenciaQrActiva ? renderAsistenciaQrSub() : null}
+              </div>
+            )}
+
+            {!isCollapsed && linkHostsAttendanceQr(link) && link.moduleId !== 'tiempo_trabajado' && link.moduleId !== 'caja' && attendanceExpandedFor(link) && (
+              <div className="mt-1 ml-8 space-y-0.5">
+                {renderAsistenciaQrSub()}
               </div>
             )}
 
@@ -444,6 +551,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                     {option.label}
                   </NavLink>
                 ))}
+                {roleLc === 'cajero' && asistenciaQrActiva ? renderAsistenciaQrSub() : null}
               </div>
             )}
 

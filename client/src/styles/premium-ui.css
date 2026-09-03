@@ -800,6 +800,7 @@ h1, h2, h3, h4 {
     --rf-mesa-chair-inset: 0.55rem;
     --rf-mesa-chair-gap: 0.22rem;
     --rf-mesa-chair-thickness: 0.38rem;
+    --rf-mesa-chair-slots: 1;
   }
 
   .rf-mesa-map-tile__chairs-row {
@@ -830,21 +831,26 @@ h1, h2, h3, h4 {
     border-radius: 0.2rem;
     background: #374151;
     box-shadow: 0 1px 0 rgb(0 0 0 / 0.15);
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 0;
+    flex: 0 0 auto;
+    /* Mismo tamaño en todos los lados (según el lado más cargado) */
+    --rf-mesa-chair-len: calc(
+      (100% - (var(--rf-mesa-chair-slots) - 1) * var(--rf-mesa-chair-gap))
+      / var(--rf-mesa-chair-slots)
+    );
   }
 
   /* Arriba / abajo: largas a lo ancho, sin pasar esquinas */
   .rf-mesa-map-tile__chairs-row .rf-mesa-map-chair {
-    width: auto;
+    width: var(--rf-mesa-chair-len);
+    max-width: 100%;
     height: var(--rf-mesa-chair-thickness);
   }
 
   /* Izquierda / derecha: largas a lo alto, sin pasar esquinas */
   .rf-mesa-map-tile__chairs-col .rf-mesa-map-chair {
     width: var(--rf-mesa-chair-thickness);
-    height: auto;
+    height: var(--rf-mesa-chair-len);
+    max-height: 100%;
   }
 
   .rf-mesa-map-tile__table {

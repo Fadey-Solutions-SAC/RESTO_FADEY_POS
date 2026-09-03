@@ -69,7 +69,24 @@ function defaultHrSettings() {
     geofence_enabled: false,
     allow_attendance_without_gps: true,
     geofence_radius_m: 250,
+    /** 1 = jornada por QR (hr_attendance); 0 = cuenta login→logout (user_work_sessions). */
+    asistencia_qr_activa: 1,
   };
+}
+
+function isFlagOn(value) {
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+/** Si la clave no existe aún, se considera activa (comportamiento actual). */
+function isAsistenciaQrActiva() {
+  const s = getHrSettings();
+  if (!Object.prototype.hasOwnProperty.call(s, 'asistencia_qr_activa')) return true;
+  return isFlagOn(s.asistencia_qr_activa);
+}
+
+function setAsistenciaQrActiva(active, actor) {
+  return saveHrSettings({ asistencia_qr_activa: active ? 1 : 0 }, actor);
 }
 
 function getHrSettings() {
@@ -546,6 +563,11 @@ function lastAttendanceInstant(row) {
 }
 
 function scanAttendance({ restaurantId, token, branchId, deviceId, ip }) {
+  if (!isAsistenciaQrActiva()) {
+    const err = new Error('La marcación por QR está desactivada. La jornada se cuenta por inicio y fin de sesión.');
+    err.status = 403;
+    throw err;
+  }
   const settings = getHrSettings();
   const cred = findEmployeeByToken(token, restaurantId);
   if (!cred) {
@@ -1127,6 +1149,8 @@ module.exports = {
   clientIp,
   getHrSettings,
   saveHrSettings,
+  isAsistenciaQrActiva,
+  setAsistenciaQrActiva,
   listEmployees,
   getEmployee,
   employeeByUser,
