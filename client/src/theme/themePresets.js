@@ -21,9 +21,9 @@ const SIDEBAR_CHROME_DARK = {
   activeFg: '#ffffff',
 };
 
-/** Fondo del menú vs color sólido del recuadro de módulos / ítem activo. */
+/** Corporativo azul: panel de módulos = #2563EB sólido (la muestra del tema). */
 const SIDEBAR_BY_THEME = {
-  corporate_blue: { bg: '#DBEAFE', top: '#DBEAFE', hover: '#BFDBFE', fg: '#0f172a', activeFg: '#ffffff', solid: CORPORATE_BLUE },
+  corporate_blue: { bg: CORPORATE_BLUE, top: CORPORATE_BLUE, hover: '#1D4ED8', fg: '#ffffff', activeFg: '#ffffff', solid: '#1D4ED8' },
   minimal_white: { bg: '#E0F2FE', top: '#E0F2FE', hover: '#BAE6FD', fg: '#0f172a', activeFg: '#ffffff', solid: '#0EA5E9' },
   emerald_business: { bg: '#D1FAE5', top: '#D1FAE5', hover: '#A7F3D0', fg: '#064e3b', activeFg: '#ffffff', solid: '#059669' },
   dark_elegance: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
@@ -92,11 +92,11 @@ export const THEME_PRESETS = {
       '--ui-input-bg': '#ffffff',
       '--ui-input-border': 'rgba(15, 23, 42, 0.18)',
       '--ui-focus-ring': '#2563EB',
-      '--ui-sidebar-active-bg': 'rgba(37, 99, 235, 0.12)',
-      '--ui-sidebar-hover': 'rgba(15, 23, 42, 0.06)',
-      '--ui-sidebar-border': 'rgba(15, 23, 42, 0.1)',
-      '--ui-logo-from': '#2563EB',
-      '--ui-logo-to': '#2563EB',
+      '--ui-sidebar-active-bg': 'rgba(255, 255, 255, 0.18)',
+      '--ui-sidebar-hover': 'rgba(255, 255, 255, 0.14)',
+      '--ui-sidebar-border': 'rgba(255, 255, 255, 0.22)',
+      '--ui-logo-from': '#ffffff',
+      '--ui-logo-to': '#ffffff',
       '--ui-btn-secondary-hover': 'rgba(15, 23, 42, 0.06)',
       '--ui-glass': 'rgba(255, 255, 255, 0.88)',
     },

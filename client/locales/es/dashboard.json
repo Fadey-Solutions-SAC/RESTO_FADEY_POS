@@ -24,6 +24,10 @@
     "asistencia": "Asistencia QR",
     "configuracion": "Configuración"
   },
+  "hrSub": {
+    "panel": "Panel RR. HH.",
+    "asistencia": "Asistencia QR"
+  },
   "cajaSub": {
     "cobrar": "Cobrar",
     "mapa_mesas": "Mapa de Mesas",

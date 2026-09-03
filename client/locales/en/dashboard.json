@@ -24,6 +24,10 @@
     "asistencia": "QR attendance",
     "configuracion": "Settings"
   },
+  "hrSub": {
+    "panel": "HR panel",
+    "asistencia": "QR attendance"
+  },
   "cajaSub": {
     "cobrar": "Checkout",
     "mapa_mesas": "Table map",

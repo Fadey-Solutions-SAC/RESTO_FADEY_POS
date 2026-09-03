@@ -12,7 +12,7 @@ import {
   MdDashboard, MdAttachMoney, MdPointOfSale, MdEventSeat,
   MdCreditCard, MdPeopleAlt, MdRestaurantMenu, MdLocalOffer,
   MdDiscount, MdWarehouse, MdDeliveryDining, MdAssessment,
-  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdTouchApp, MdStars, MdQrCodeScanner,
+  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdAccessTime, MdKitchen, MdLocalBar, MdTouchApp, MdStars, MdBadge,
 } from 'react-icons/md';
 import { getProductionAreaIcon } from '../utils/productionAreaUi';
 
@@ -160,14 +160,25 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
           moduleId: row.moduleId,
         });
       }
-      links.push({
-        to: '/admin/asistencia',
-        icon: MdQrCodeScanner,
-        label: t('nav.asistencia', { defaultValue: 'Asistencia QR' }),
-        end: true,
-        roles: ['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar'],
-        moduleId: undefined,
-      });
+      // Asistencia QR vive dentro de Recursos humanos (no como módulo suelto al final).
+      // Si el personal puede marcar pero no tiene RR. HH., igual mostramos el padre con el submenú.
+      const roleLc = String(user?.role || '').toLowerCase();
+      const canScanAttendance = ['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar'].includes(roleLc);
+      const hasHrLink = links.some((l) => l.moduleId === 'tiempo_trabajado');
+      if (!hasHrLink && canScanAttendance) {
+        const cfgIdx = links.findIndex((l) => l.moduleId === 'configuracion');
+        const hrEntry = {
+          to: '/admin/asistencia',
+          icon: MdAccessTime,
+          label: t('nav.tiempo_trabajado'),
+          end: false,
+          roles: ['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar'],
+          moduleId: undefined,
+          isHrNav: true,
+        };
+        if (cfgIdx >= 0) links.splice(cfgIdx, 0, hrEntry);
+        else links.push(hrEntry);
+      }
       return links;
     },
     [t, productionAreas, canSeeProduction, user?.role, user?.production_area_id],
@@ -199,9 +210,25 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const [isMiRestaurantExpanded, setIsMiRestaurantExpanded] = useState(location.pathname.startsWith('/admin/mi-restaurant'));
   const [isAlmacenExpanded, setIsAlmacenExpanded] = useState(location.pathname.startsWith('/admin/almacen'));
   const [isInformesExpanded, setIsInformesExpanded] = useState(location.pathname.startsWith('/admin/informes'));
+  const [isHrExpanded, setIsHrExpanded] = useState(
+    location.pathname.startsWith('/admin/tiempo-trabajado')
+    || location.pathname.startsWith('/admin/asistencia'),
+  );
+
+  useEffect(() => {
+    if (
+      location.pathname.startsWith('/admin/tiempo-trabajado')
+      || location.pathname.startsWith('/admin/asistencia')
+    ) {
+      setIsHrExpanded(true);
+    }
+  }, [location.pathname]);
   const hasLinkPermission = (link) => {
     if (link?.isProductionArea) {
       return canSeeProduction;
+    }
+    if (link?.isHrNav) {
+      return ['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar'].includes(String(user?.role || '').toLowerCase());
     }
     return canAccessStaffModule(user, { moduleId: link.moduleId, roles: link.roles });
   };
@@ -247,6 +274,12 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
 
   const linkClass = ({ isActive }) =>
     `rf-nav-link ${isActive ? 'rf-nav-link--active' : ''}`;
+
+  const hrLinkClass = ({ isActive }) => {
+    const onHr = location.pathname.startsWith('/admin/tiempo-trabajado')
+      || location.pathname.startsWith('/admin/asistencia');
+    return `rf-nav-link ${isActive || onHr ? 'rf-nav-link--active' : ''}`;
+  };
 
   const isCollapsed = isMobile ? false : collapsed;
 
@@ -313,7 +346,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                     : link.to
               }
               end={link.end}
-              className={linkClass}
+              className={link.moduleId === 'tiempo_trabajado' || link.isHrNav ? hrLinkClass : linkClass}
               title={link.label}
               onClick={(e) => {
                 if (isCollapsed) return;
@@ -357,12 +390,45 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                   }
                   setIsInformesExpanded(true);
                 }
+                if (link.moduleId === 'tiempo_trabajado' || link.isHrNav) {
+                  const isInHr = location.pathname.startsWith('/admin/tiempo-trabajado')
+                    || location.pathname.startsWith('/admin/asistencia');
+                  if (isInHr) {
+                    e.preventDefault();
+                    setIsHrExpanded((prev) => !prev);
+                    return;
+                  }
+                  setIsHrExpanded(true);
+                }
                 if (isMobile) onClose();
               }}
             >
               <link.icon className="text-lg flex-shrink-0" />
               {!isCollapsed && <span className="whitespace-nowrap leading-snug">{link.label}</span>}
             </NavLink>
+
+            {!isCollapsed && (link.moduleId === 'tiempo_trabajado' || link.isHrNav) && isHrExpanded && (
+              <div className="mt-1 ml-8 space-y-0.5">
+                {link.moduleId === 'tiempo_trabajado' ? (
+                  <NavLink
+                    to="/admin/tiempo-trabajado"
+                    end
+                    className={({ isActive }) => `rf-nav-sublink ${isActive ? 'rf-nav-sublink--active' : ''}`}
+                    onClick={() => { if (isMobile) onClose(); }}
+                  >
+                    {t('hrSub.panel', { defaultValue: 'Panel RR. HH.' })}
+                  </NavLink>
+                ) : null}
+                <NavLink
+                  to="/admin/asistencia"
+                  className={({ isActive }) => `rf-nav-sublink flex items-center gap-1.5 ${isActive ? 'rf-nav-sublink--active' : ''}`}
+                  onClick={() => { if (isMobile) onClose(); }}
+                >
+                  <MdBadge className="text-base flex-shrink-0" aria-hidden="true" />
+                  <span>{t('nav.asistencia', { defaultValue: 'Asistencia QR' })}</span>
+                </NavLink>
+              </div>
+            )}
 
             {!isCollapsed && link.to === '/admin/caja' && isCajaExpanded && (
               <div className="mt-1 ml-8 space-y-0.5">

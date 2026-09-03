@@ -318,10 +318,10 @@ h1, h2, h3, h4 {
     background: var(--ui-sidebar-panel-hover, #BFDBFE) !important;
   }
 
-  /* Recuadro de módulos = azul corporativo #2563EB (o el sólido del tema) */
+  /* Opciones sistema: mismo estilo que el resto de paneles (no azul sólido) */
   .rf-settings-hub {
-    background: var(--ui-theme-solid, #2563EB);
-    border: 1px solid var(--ui-theme-solid, #2563EB);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
     border-radius: var(--ui-radius-xl);
     overflow: hidden;
     box-shadow: var(--ui-shadow-md);
@@ -330,12 +330,12 @@ h1, h2, h3, h4 {
 
   .rf-settings-hub__header {
     padding: 0.75rem 1rem;
-    background: var(--ui-theme-solid, #2563EB);
-    border-bottom: 1px solid rgb(255 255 255 / 0.18);
+    background: var(--ui-surface-2);
+    border-bottom: 1px solid var(--ui-border);
   }
 
   .rf-settings-hub__header-title {
-    color: #ffffff;
+    color: var(--ui-body-text);
     font-weight: 700;
     font-size: 0.875rem;
     display: flex;
@@ -344,12 +344,12 @@ h1, h2, h3, h4 {
   }
 
   html[data-ui-color-scheme='dark'] .rf-settings-hub__header-title {
-    color: #ffffff;
+    color: var(--ui-body-text);
   }
 
   .rf-settings-hub__nav {
     padding: 0.35rem 0.25rem 0.5rem;
-    background: var(--ui-theme-solid, #2563EB);
+    background: var(--ui-surface);
   }
 
   .rf-settings-hub__item {
@@ -363,44 +363,44 @@ h1, h2, h3, h4 {
     text-align: left;
     border-radius: 0.625rem;
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-    color: #ffffff;
+    color: var(--ui-body-text);
     border: 1px solid transparent;
   }
 
   .rf-settings-hub__item svg {
-    color: #ffffff;
+    color: var(--ui-muted);
     flex-shrink: 0;
   }
 
   .rf-settings-hub__item:hover {
-    background: rgb(255 255 255 / 0.12);
-    color: #ffffff;
+    background: var(--ui-sidebar-hover, rgba(15, 23, 42, 0.06));
+    color: var(--ui-body-text);
   }
 
   .rf-settings-hub__item:hover svg {
-    color: #ffffff;
+    color: var(--ui-body-text);
   }
 
   .rf-settings-hub__item--active {
-    background: transparent;
-    color: #ffffff;
+    background: color-mix(in srgb, var(--ui-accent) 12%, var(--ui-surface));
+    color: var(--ui-body-text);
     font-weight: 600;
-    border: 1px solid #ffffff !important;
+    border: 1px solid color-mix(in srgb, var(--ui-accent) 45%, var(--ui-border)) !important;
     border-radius: 0.625rem;
     box-shadow: none;
     padding-left: 0.875rem;
   }
 
   .rf-settings-hub__item--active svg {
-    color: #ffffff;
+    color: var(--ui-accent);
   }
 
   .rf-settings-hub__item-chevron {
-    color: #ffffff;
+    color: var(--ui-muted);
   }
 
   .rf-settings-hub__item--active .rf-settings-hub__item-chevron {
-    color: #ffffff;
+    color: var(--ui-accent);
   }
 
   .rf-settings-hub--split {
@@ -2220,24 +2220,54 @@ h1, h2, h3, h4 {
   box-shadow: var(--ui-shadow-md) !important;
 }
 
+/* Panel de módulos (sidebar izquierdo) = #2563EB. Opciones sistema NO usa este azul. */
 html[data-ui-theme='corporate_blue'] .rf-sidebar,
 html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar,
 html[data-ui-theme='corporate_blue'] .rf-sidebar__nav,
 html[data-ui-theme='corporate_blue'] .rf-sidebar__footer {
-  background: #DBEAFE !important;
+  background: #2563EB !important;
+  border-color: #1D4ED8 !important;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-logo-name,
+html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-nav-link,
+html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-nav-sublink,
+html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar__footer-btn,
+html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-menu-btn,
+html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-nav-link svg,
+html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-burger span {
+  color: #ffffff !important;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-nav-link:hover:not(.rf-nav-link--active),
+html[data-ui-theme='corporate_blue'] .rf-nav-sublink:hover:not(.rf-nav-sublink--active),
+html[data-ui-theme='corporate_blue'] .rf-sidebar__footer-btn:hover,
+html[data-ui-theme='corporate_blue'] .rf-sidebar-menu-btn:hover,
+html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar button:hover {
+  background: #1D4ED8 !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-nav-link:hover:not(.rf-nav-link--active) svg {
+  color: #ffffff !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-nav-link--active,
 html[data-ui-theme='corporate_blue'] .rf-nav-sublink--active {
-  background: #2563EB !important;
+  background: #1D4ED8 !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.9) !important;
+  border-radius: 0.625rem;
+  box-shadow: none;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-nav-link--active svg,
+html[data-ui-theme='corporate_blue'] .rf-nav-sublink--active {
   color: #ffffff !important;
 }
 
-html[data-ui-theme='corporate_blue'] .rf-settings-hub,
-html[data-ui-theme='corporate_blue'] .rf-settings-hub__header,
-html[data-ui-theme='corporate_blue'] .rf-settings-hub__nav {
-  background: #2563EB !important;
-  border-color: #2563EB;
+html[data-ui-theme='corporate_blue'] .rf-sidebar-brand {
+  background: rgba(255, 255, 255, 0.2) !important;
 }
 
 html[data-ui-theme='dark_elegance'] .rf-sidebar,

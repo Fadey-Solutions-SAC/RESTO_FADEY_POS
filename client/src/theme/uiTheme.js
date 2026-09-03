@@ -141,8 +141,21 @@ export function applyUiTheme(id, opts = {}) {
   }
 
   const mergedVars = { ...preset.vars, ...custom };
+  // El chrome del panel de módulos siempre sale del preset (evita que un custom viejo deje el menú pálido).
+  const chromeKeys = [
+    '--ui-theme-solid',
+    '--ui-sidebar-panel-bg',
+    '--ui-sidebar-panel-top',
+    '--ui-sidebar-panel-active',
+    '--ui-sidebar-panel-hover',
+    '--ui-sidebar-nav-fg',
+    '--ui-sidebar-panel-active-fg',
+    '--ui-sidebar-panel-active-border',
+  ];
+  for (const key of chromeKeys) {
+    if (preset.vars[key] != null) mergedVars[key] = preset.vars[key];
+  }
   if (custom['--ui-accent'] && !custom['--ui-theme-solid']) {
-    mergedVars['--ui-theme-solid'] = custom['--ui-accent'];
     mergedVars['--ui-sidebar-panel-active'] = custom['--ui-accent'];
   }
 
