@@ -3,6 +3,26 @@
  * @param {Array<{id:string,name:string,description?:string,sort_order?:number}>} salones
  * @param {Array<{id:string,zone?:string,number?:number}>} tables
  */
+export function tableZoneId(table) {
+  return String(table?.zone || 'principal').trim() || 'principal';
+}
+
+/**
+ * Mesas de un salón. Si una mesa tiene zona huérfana (no está en los salones de esa caja),
+ * se muestra en el primer salón de la caja para que el listado quede completo.
+ */
+export function tablesForSalon(salon, tables, salonesForCaja) {
+  const sid = String(salon?.id || '').trim();
+  const known = new Set((salonesForCaja || []).map((s) => String(s?.id || '').trim()).filter(Boolean));
+  const firstId = String(salonesForCaja?.[0]?.id || '').trim();
+  return (tables || []).filter((t) => {
+    const z = tableZoneId(t);
+    if (z === sid) return true;
+    if (!known.has(z) && firstId && firstId === sid) return true;
+    return false;
+  }).sort((a, b) => Number(a.number || 0) - Number(b.number || 0));
+}
+
 export function buildTablesBySalon(salones, tables) {
   const configured = Array.isArray(salones) ? [...salones] : [];
   configured.sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
@@ -11,7 +31,7 @@ export function buildTablesBySalon(salones, tables) {
   const merged = [...configured];
 
   for (const table of tables || []) {
-    const zone = String(table?.zone || 'principal').trim() || 'principal';
+    const zone = tableZoneId(table);
     if (!byId.has(zone)) {
       const entry = {
         id: zone,
@@ -28,9 +48,7 @@ export function buildTablesBySalon(salones, tables) {
 
   return merged.map((salon) => {
     const zone = String(salon.id || '').trim();
-    const salonTables = (tables || [])
-      .filter((t) => (String(t.zone || 'principal').trim() || 'principal') === zone)
-      .sort((a, b) => Number(a.number || 0) - Number(b.number || 0));
+    const salonTables = tablesForSalon(salon, tables, merged);
     return {
       zone,
       label: String(salon.name ?? zone),

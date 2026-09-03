@@ -20,8 +20,8 @@ function ThemePreviewCard({ opt, selected, onSelect }) {
       onClick={onSelect}
       className={`rounded-xl border p-3 text-left transition-all hover:shadow-md ${
         selected
-          ? 'border-[var(--ui-theme-solid,var(--ui-accent))] ring-2 ring-[var(--ui-theme-solid,var(--ui-accent))]/40 shadow-rf'
-          : 'border-[color:var(--ui-border)] hover:border-[var(--ui-theme-solid,var(--ui-accent))]'
+          ? 'border-[var(--ui-accent)] ring-2 ring-[var(--ui-accent)]/40 shadow-rf'
+          : 'border-[color:var(--ui-border)] hover:border-[var(--ui-accent)]'
       }`}
     >
       <div

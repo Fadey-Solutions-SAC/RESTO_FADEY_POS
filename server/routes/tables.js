@@ -111,6 +111,7 @@ router.get('/', (req, res) => {
   try {
     let tables = queryAll('SELECT * FROM tables ORDER BY number ASC');
     const salones = ensureSalonesConfig(tables);
+    tables = queryAll('SELECT * FROM tables ORDER BY number ASC');
     const { cajaId, forceEmpty } = resolveScopedCajaStationId(req);
     if (forceEmpty) return res.json([]);
     tables = filterTablesByCaja(tables, salones, cajaId);

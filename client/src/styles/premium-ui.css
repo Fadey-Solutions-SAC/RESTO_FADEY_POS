@@ -163,14 +163,14 @@ h1, h2, h3, h4 {
   }
 
   .rf-sidebar {
-    background: var(--ui-sidebar-panel-bg, #93c5fd) !important;
+    background: var(--ui-sidebar-panel-bg, #DBEAFE) !important;
     border-right: 1px solid var(--ui-sidebar-border) !important;
     box-shadow: 4px 0 16px rgba(0, 0, 0, 0.08);
     transition: background 0.25s ease, border-color 0.25s ease;
   }
 
   .rf-sidebar-logo-bar {
-    background: var(--ui-sidebar-panel-top, var(--ui-sidebar-panel-bg, #60a5fa)) !important;
+    background: var(--ui-sidebar-panel-top, var(--ui-sidebar-panel-bg, #DBEAFE)) !important;
     border-bottom: 1px solid var(--ui-sidebar-border) !important;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -183,7 +183,13 @@ h1, h2, h3, h4 {
   .rf-sidebar .rf-sidebar-menu-btn,
   .rf-sidebar .rf-nav-link svg,
   .rf-sidebar .rf-sidebar-burger span {
-    color: var(--ui-sidebar-nav-fg, #000000) !important;
+    color: var(--ui-sidebar-nav-fg, #0f172a) !important;
+  }
+
+  .rf-sidebar .rf-nav-link--active,
+  .rf-sidebar .rf-nav-link--active svg,
+  .rf-sidebar .rf-nav-sublink--active {
+    color: var(--ui-sidebar-panel-active-fg, #ffffff) !important;
   }
 
   .rf-sidebar-brand {
@@ -231,24 +237,23 @@ h1, h2, h3, h4 {
 
   .rf-nav-link {
     @apply flex items-center gap-2 px-2 py-2 rounded-xl text-sm font-medium;
-    color: var(--ui-sidebar-nav-fg, #000000);
+    color: var(--ui-sidebar-nav-fg, #0f172a);
     transition: background var(--ui-transition), color var(--ui-transition), transform var(--ui-transition),
       box-shadow var(--ui-transition);
   }
 
   .rf-nav-link svg {
-    color: var(--ui-sidebar-nav-fg, #000000);
+    color: var(--ui-sidebar-nav-fg, #0f172a);
     flex-shrink: 0;
   }
 
-  .rf-nav-link:hover {
-    background: var(--ui-sidebar-panel-hover, #bfdbfe);
-    color: var(--ui-sidebar-nav-fg, #000000);
-    transform: translateX(2px);
+  .rf-nav-link:hover:not(.rf-nav-link--active) {
+    background: var(--ui-sidebar-panel-hover, #BFDBFE);
+    color: var(--ui-sidebar-nav-fg, #0f172a);
   }
 
-  .rf-nav-link:hover svg {
-    color: var(--ui-sidebar-nav-fg, #000000);
+  .rf-nav-link:hover:not(.rf-nav-link--active) svg {
+    color: var(--ui-sidebar-nav-fg, #0f172a);
   }
 
   .rf-nav-link--active {
@@ -267,13 +272,13 @@ h1, h2, h3, h4 {
 
   .rf-nav-sublink {
     @apply block px-2 py-1.5 rounded-lg text-sm whitespace-nowrap;
-    color: var(--ui-sidebar-nav-fg, #000000);
+    color: var(--ui-sidebar-nav-fg, #0f172a);
     transition: background var(--ui-transition), color var(--ui-transition);
   }
 
-  .rf-nav-sublink:hover {
-    background: var(--ui-sidebar-panel-hover, #bfdbfe);
-    color: var(--ui-sidebar-nav-fg, #000000);
+  .rf-nav-sublink:hover:not(.rf-nav-sublink--active) {
+    background: var(--ui-sidebar-panel-hover, #BFDBFE);
+    color: var(--ui-sidebar-nav-fg, #0f172a);
   }
 
   .rf-nav-sublink--active {
@@ -288,35 +293,35 @@ h1, h2, h3, h4 {
   .rf-sidebar__nav {
     flex: 1 1 auto;
     min-height: 0;
-    background: var(--ui-sidebar-panel-bg, #93c5fd);
-    scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
+    background: var(--ui-sidebar-panel-bg, #DBEAFE);
+    scrollbar-color: rgba(15, 23, 42, 0.25) transparent;
   }
 
   .rf-sidebar__footer {
     flex-shrink: 0;
     border-top: 1px solid var(--ui-sidebar-border) !important;
-    background: var(--ui-sidebar-panel-bg, #93c5fd);
+    background: var(--ui-sidebar-panel-bg, #DBEAFE);
   }
 
   .rf-sidebar__footer-btn {
-    color: var(--ui-sidebar-nav-fg, #000000);
+    color: var(--ui-sidebar-nav-fg, #0f172a);
     border-radius: var(--ui-radius-lg);
     transition: background 0.15s ease, color 0.15s ease;
   }
 
   .rf-sidebar__footer-btn:hover {
-    background: var(--ui-sidebar-panel-hover, #bfdbfe);
+    background: var(--ui-sidebar-panel-hover, #BFDBFE);
   }
 
   .rf-sidebar-menu-btn:hover,
   .rf-sidebar-logo-bar button:hover {
-    background: var(--ui-sidebar-panel-hover, #bfdbfe) !important;
+    background: var(--ui-sidebar-panel-hover, #BFDBFE) !important;
   }
 
-  /* —— Configuración: recuadro de módulos = color sólido del tema —— */
+  /* Recuadro de módulos = azul corporativo #2563EB (o el sólido del tema) */
   .rf-settings-hub {
-    background: var(--ui-theme-solid, var(--ui-accent, #2563EB));
-    border: 1px solid var(--ui-theme-solid, var(--ui-accent, #2563EB));
+    background: var(--ui-theme-solid, #2563EB);
+    border: 1px solid var(--ui-theme-solid, #2563EB);
     border-radius: var(--ui-radius-xl);
     overflow: hidden;
     box-shadow: var(--ui-shadow-md);
@@ -325,7 +330,7 @@ h1, h2, h3, h4 {
 
   .rf-settings-hub__header {
     padding: 0.75rem 1rem;
-    background: var(--ui-theme-solid, var(--ui-accent, #2563EB));
+    background: var(--ui-theme-solid, #2563EB);
     border-bottom: 1px solid rgb(255 255 255 / 0.18);
   }
 
@@ -344,7 +349,7 @@ h1, h2, h3, h4 {
 
   .rf-settings-hub__nav {
     padding: 0.35rem 0.25rem 0.5rem;
-    background: var(--ui-theme-solid, var(--ui-accent, #2563EB));
+    background: var(--ui-theme-solid, #2563EB);
   }
 
   .rf-settings-hub__item {
@@ -377,7 +382,7 @@ h1, h2, h3, h4 {
   }
 
   .rf-settings-hub__item--active {
-    background: var(--ui-theme-solid, var(--ui-accent, #2563EB));
+    background: transparent;
     color: #ffffff;
     font-weight: 600;
     border: 1px solid #ffffff !important;
@@ -2213,6 +2218,26 @@ h1, h2, h3, h4 {
   border-radius: var(--ui-radius-md) !important;
   color: var(--ui-body-text) !important;
   box-shadow: var(--ui-shadow-md) !important;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-sidebar,
+html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar,
+html[data-ui-theme='corporate_blue'] .rf-sidebar__nav,
+html[data-ui-theme='corporate_blue'] .rf-sidebar__footer {
+  background: #DBEAFE !important;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-nav-link--active,
+html[data-ui-theme='corporate_blue'] .rf-nav-sublink--active {
+  background: #2563EB !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-settings-hub,
+html[data-ui-theme='corporate_blue'] .rf-settings-hub__header,
+html[data-ui-theme='corporate_blue'] .rf-settings-hub__nav {
+  background: #2563EB !important;
+  border-color: #2563EB;
 }
 
 html[data-ui-theme='dark_elegance'] .rf-sidebar,

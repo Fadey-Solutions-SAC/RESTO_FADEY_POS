@@ -10,45 +10,48 @@ const LIVE_DEFAULTS = {
   danger: '#fb7185',
 };
 
-/** Fondos sólidos del menú lateral (sin transparencias ni pasteles). */
-const SIDEBAR_PANEL_BY_SCHEME = {
-  light: { bg: '#93c5fd', top: '#93c5fd', active: '#2563EB', hover: '#60a5fa', fg: '#0f172a', activeFg: '#ffffff', activeBorder: '#2563EB' },
-  dark: { bg: '#121226', top: '#121226', active: '#5A4EEF', hover: '#1e1e36', fg: '#E5E7EB', activeFg: '#ffffff', activeBorder: '#5A4EEF' },
+/** Azul corporativo de referencia (muestra + recuadro de módulos). */
+const CORPORATE_BLUE = '#2563EB';
+
+const SIDEBAR_CHROME_DARK = {
+  bg: '#121226',
+  top: '#121226',
+  hover: '#1e1e36',
+  fg: '#E5E7EB',
+  activeFg: '#ffffff',
 };
 
-const SIDEBAR_PANEL_BY_THEME = {
-  corporate_blue: { bg: '#93c5fd', top: '#93c5fd', active: '#2563EB', hover: '#60a5fa', fg: '#0f172a', activeFg: '#ffffff', activeBorder: '#2563EB' },
-  minimal_white: { bg: '#7dd3fc', top: '#7dd3fc', active: '#0EA5E9', hover: '#38bdf8', fg: '#0f172a', activeFg: '#ffffff', activeBorder: '#0EA5E9' },
-  emerald_business: { bg: '#6ee7b7', top: '#6ee7b7', active: '#059669', hover: '#34d399', fg: '#064e3b', activeFg: '#ffffff', activeBorder: '#059669' },
-  dark_elegance: { bg: '#121226', top: '#121226', active: '#2563EB', hover: '#1e1e36', fg: '#E5E7EB', activeFg: '#ffffff', activeBorder: '#2563EB' },
-  gold_premium: { bg: '#451a03', top: '#451a03', active: '#B45309', hover: '#78350f', fg: '#ffffff', activeFg: '#ffffff', activeBorder: '#B45309' },
-  sunset_modern: { bg: '#ffedd5', top: '#ffedd5', active: '#EA580C', hover: '#fdba74', fg: '#7c2d12', activeFg: '#ffffff', activeBorder: '#EA580C' },
-  blue: { bg: '#121226', top: '#121226', active: '#2563EB', hover: '#1e1e36', fg: '#E5E7EB', activeFg: '#ffffff', activeBorder: '#2563EB' },
-  light: { bg: '#93c5fd', top: '#93c5fd', active: '#2563EB', hover: '#60a5fa', fg: '#0f172a', activeFg: '#ffffff', activeBorder: '#2563EB' },
-  dark: { bg: '#121226', top: '#121226', active: '#2563EB', hover: '#1e1e36', fg: '#E5E7EB', activeFg: '#ffffff', activeBorder: '#2563EB' },
-  gray: { bg: '#18181b', top: '#18181b', active: '#71717A', hover: '#27272a', fg: '#E5E7EB', activeFg: '#ffffff', activeBorder: '#71717A' },
-  purple: { bg: '#121226', top: '#121226', active: '#5A4EEF', hover: '#1e1e36', fg: '#E5E7EB', activeFg: '#ffffff', activeBorder: '#5A4EEF' },
-  green: { bg: '#ecfdf5', top: '#ecfdf5', active: '#059669', hover: '#6ee7b7', fg: '#064e3b', activeFg: '#ffffff', activeBorder: '#059669' },
+/** Fondo del menú vs color sólido del recuadro de módulos / ítem activo. */
+const SIDEBAR_BY_THEME = {
+  corporate_blue: { bg: '#DBEAFE', top: '#DBEAFE', hover: '#BFDBFE', fg: '#0f172a', activeFg: '#ffffff', solid: CORPORATE_BLUE },
+  minimal_white: { bg: '#E0F2FE', top: '#E0F2FE', hover: '#BAE6FD', fg: '#0f172a', activeFg: '#ffffff', solid: '#0EA5E9' },
+  emerald_business: { bg: '#D1FAE5', top: '#D1FAE5', hover: '#A7F3D0', fg: '#064e3b', activeFg: '#ffffff', solid: '#059669' },
+  dark_elegance: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
+  gold_premium: { ...SIDEBAR_CHROME_DARK, solid: '#C9A227' },
+  sunset_modern: { ...SIDEBAR_CHROME_DARK, solid: '#EA580C' },
+  blue: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
+  light: { bg: '#DBEAFE', top: '#DBEAFE', hover: '#BFDBFE', fg: '#0f172a', activeFg: '#ffffff', solid: CORPORATE_BLUE },
+  dark: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
+  gray: { bg: '#18181b', top: '#18181b', hover: '#27272a', fg: '#E5E7EB', activeFg: '#ffffff', solid: '#71717A' },
+  purple: { ...SIDEBAR_CHROME_DARK, solid: '#5A4EEF' },
+  green: { bg: '#D1FAE5', top: '#D1FAE5', hover: '#A7F3D0', fg: '#064e3b', activeFg: '#ffffff', solid: '#059669' },
 };
 
 function preset(id, label, description, tags, vars, chartColors, colorScheme = 'dark') {
-  const sidebarPanel = SIDEBAR_PANEL_BY_THEME[id] || SIDEBAR_PANEL_BY_SCHEME[colorScheme] || SIDEBAR_PANEL_BY_SCHEME.light;
-  const solid = sidebarPanel.active;
+  const chrome = SIDEBAR_BY_THEME[id] || (colorScheme === 'light'
+    ? SIDEBAR_BY_THEME.corporate_blue
+    : { ...SIDEBAR_CHROME_DARK, solid: vars['--ui-accent'] || CORPORATE_BLUE });
+  const solid = chrome.solid;
   const varsWithSidebar = {
     ...vars,
     '--ui-theme-solid': solid,
-    '--ui-accent': solid,
-    '--ui-accent-hover': solid,
-    '--ui-accent-muted': solid,
-    '--ui-focus-ring': solid,
-    '--ui-sidebar-panel-bg': sidebarPanel.bg,
-    '--ui-sidebar-panel-top': sidebarPanel.top,
+    '--ui-sidebar-panel-bg': chrome.bg,
+    '--ui-sidebar-panel-top': chrome.top,
     '--ui-sidebar-panel-active': solid,
-    '--ui-sidebar-panel-hover': sidebarPanel.hover,
-    '--ui-sidebar-nav-fg': sidebarPanel.fg,
-    '--ui-sidebar-panel-active-fg': sidebarPanel.activeFg || '#ffffff',
+    '--ui-sidebar-panel-hover': chrome.hover,
+    '--ui-sidebar-nav-fg': chrome.fg,
+    '--ui-sidebar-panel-active-fg': chrome.activeFg,
     '--ui-sidebar-panel-active-border': solid,
-    '--ui-sidebar-active-bg': solid,
   };
   return {
     id,
@@ -89,7 +92,7 @@ export const THEME_PRESETS = {
       '--ui-input-bg': '#ffffff',
       '--ui-input-border': 'rgba(15, 23, 42, 0.18)',
       '--ui-focus-ring': '#2563EB',
-      '--ui-sidebar-active-bg': '#2563EB',
+      '--ui-sidebar-active-bg': 'rgba(37, 99, 235, 0.12)',
       '--ui-sidebar-hover': 'rgba(15, 23, 42, 0.06)',
       '--ui-sidebar-border': 'rgba(15, 23, 42, 0.1)',
       '--ui-logo-from': '#2563EB',
@@ -390,7 +393,7 @@ export const THEME_PRESETS = {
       '--ui-input-bg': '#17182A',
       '--ui-input-border': 'rgba(90, 78, 239, 0.4)',
       '--ui-focus-ring': '#5A4EEF',
-      '--ui-sidebar-active-bg': '#5A4EEF',
+      '--ui-sidebar-active-bg': 'rgba(90, 78, 239, 0.22)',
       '--ui-sidebar-hover': 'rgba(255, 255, 255, 0.06)',
       '--ui-sidebar-border': 'rgba(255, 255, 255, 0.08)',
       '--ui-logo-from': '#5A4EEF',

@@ -73,11 +73,59 @@ function saveSalonesConfig(salones) {
   return normalized;
 }
 
+function knownCajaIds() {
+  const { DEFAULT_PRIMARY_CAJA_ID } = require('../cajaSettings');
+  const settings = parseSettingsBlob();
+  const ids = (Array.isArray(settings.cajas) ? settings.cajas : [])
+    .map((c) => String(c?.id || '').trim())
+    .filter(Boolean);
+  return { ids: new Set(ids), fallback: ids[0] || DEFAULT_PRIMARY_CAJA_ID };
+}
+
+/**
+ * Mesas cuyo zone no pertenece a un salón de su misma caja vuelven al salón de esa caja.
+ * Así no “desaparecen” de Salones y Mesas si el catálogo se reseteó.
+ */
+function reconcileOrphanTableZones(tables, salones) {
+  const list = Array.isArray(tables) ? tables : [];
+  const salonList = Array.isArray(salones) ? salones : [];
+  if (!list.length || !salonList.length) return 0;
+  const { DEFAULT_PRIMARY_CAJA_ID } = require('../cajaSettings');
+  const { ids: cajaIds, fallback } = knownCajaIds();
+  const byId = new Map(salonList.map((s) => [String(s.id || '').trim(), s]));
+  const salonCaja = (s) => String(s?.caja_station_id || '').trim() || DEFAULT_PRIMARY_CAJA_ID;
+  let moved = 0;
+  for (const t of list) {
+    if (!t?.id) continue;
+    let caja = String(t.caja_station_id || '').trim();
+    if (!caja) {
+      caja = cajaIds.has(DEFAULT_PRIMARY_CAJA_ID) ? DEFAULT_PRIMARY_CAJA_ID : fallback;
+      runSql('UPDATE tables SET caja_station_id = ? WHERE id = ?', [caja, t.id]);
+    }
+    const zone = String(t.zone || 'principal').trim() || 'principal';
+    const zoneSalon = byId.get(zone);
+    if (zoneSalon && salonCaja(zoneSalon) === caja) continue;
+    const target = salonList.find((s) => salonCaja(s) === caja);
+    if (!target || String(target.id) === zone) continue;
+    runSql('UPDATE tables SET zone = ? WHERE id = ?', [String(target.id), t.id]);
+    moved += 1;
+  }
+  return moved;
+}
+
 function ensureSalonesConfig(tables) {
+  try {
+    const { recoverCajasAndSalonesIfResetToDefaults } = require('./settingsCatalogRecover');
+    recoverCajasAndSalonesIfResetToDefaults();
+  } catch (_) {
+    /* historial opcional */
+  }
   let salones = readSalonesConfig();
-  if (salones.length) return salones;
-  salones = inferSalonesFromTables(tables);
-  return saveSalonesConfig(salones);
+  if (!salones.length) {
+    salones = saveSalonesConfig(inferSalonesFromTables(tables));
+  }
+  reconcileOrphanTableZones(tables || [], salones);
+  return readSalonesConfig();
 }
 
 module.exports = {
@@ -87,4 +135,5 @@ module.exports = {
   readSalonesConfig,
   saveSalonesConfig,
   ensureSalonesConfig,
+  reconcileOrphanTableZones,
 };

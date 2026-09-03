@@ -44,8 +44,13 @@ export function normalizeConfigFromApi(payload) {
   };
 }
 
-/** Tras guardar, conserva lo enviado si la respuesta del API llegó incompleta. */
-export function mergeSavedAppSettings(normalized, source) {
+/**
+ * Tras guardar, conserva lo enviado si la respuesta del API llegó incompleta.
+ * @param {object} normalized
+ * @param {object} source
+ * @param {{ skipArrayKeys?: string[] }} [opts]
+ */
+export function mergeSavedAppSettings(normalized, source, opts = {}) {
   if (!source || typeof source !== 'object' || !normalized) return normalized;
   const next = { ...normalized };
   if (source.regional && typeof source.regional === 'object') {
@@ -56,7 +61,9 @@ export function mergeSavedAppSettings(normalized, source) {
     'monedas', 'cuentas_transferencia', 'marcas', 'imagenes_self', 'categoria_anular', 'formas_pago',
     'production_areas',
   ];
+  const skipKeys = new Set(opts.skipArrayKeys || []);
   arrayKeys.forEach((key) => {
+    if (skipKeys.has(key)) return;
     if (Array.isArray(source[key])) next[key] = source[key];
   });
   if (source.impuestos && typeof source.impuestos === 'object') {

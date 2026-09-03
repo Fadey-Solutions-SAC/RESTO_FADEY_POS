@@ -510,7 +510,7 @@ export default function StaffDineInOrderUI({
                 <div
                   key={p.id}
                   className="flex flex-col overflow-hidden rounded-md bg-white text-left transition-shadow hover:shadow-md"
-                  style={{ border: '1px solid var(--ui-theme-solid, var(--ui-accent))' }}
+                  style={{ border: '1px solid var(--ui-border)' }}
                 >
                   <div className="aspect-[4/3] w-full shrink-0 overflow-hidden border-b border-[color:var(--ui-accent)] bg-white">
                     {imgUrl ? (
@@ -556,7 +556,7 @@ export default function StaffDineInOrderUI({
               <div
                 key={p.id}
                 className="rounded-md bg-white p-3 text-left transition-shadow hover:shadow-md"
-                style={{ border: '1px solid var(--ui-theme-solid, var(--ui-accent))' }}
+                style={{ border: '1px solid var(--ui-border)' }}
               >
                 <button
                   type="button"

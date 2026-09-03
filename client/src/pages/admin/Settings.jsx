@@ -52,7 +52,7 @@ import {
 } from '../../utils/printingConfig';
 import { syncLocaleFromRegional, setAppLocale } from '../../i18n';
 import { normalizeConfigFromApi, mergeSavedAppSettings } from '../../utils/appSettingsNormalize';
-import { salonSlugFromName, reorderSalonList } from '../../utils/salonesUtils';
+import { salonSlugFromName, reorderSalonList, tablesForSalon } from '../../utils/salonesUtils';
 import SettingsAppearancePanel from '../../components/settings/SettingsAppearancePanel';
 import ProductionAreasSection from '../../components/settings/ProductionAreasSection';
 import { useSocket } from '../../hooks/useSocket';
@@ -431,6 +431,7 @@ export default function Settings() {
   const autoSaveTimerRef = useRef(null);
   const appearanceSaveTimerRef = useRef(null);
   const pendingAppSettingsSaveRef = useRef(null);
+  const appSettingsReadyRef = useRef(false);
   const historySearchTimerRef = useRef(null);
   const appSettingsRef = useRef(appSettings);
   const skipConfigReloadUntilRef = useRef(0);
@@ -486,6 +487,7 @@ export default function Settings() {
     api.get('/admin-modules/config/app')
       .then(cfg => {
         const normalized = normalizeConfigPayload(cfg);
+        appSettingsReadyRef.current = true;
         setAppSettings(normalized);
         setAppSettingsSnapshot(serializeAppSettings(normalized));
         setRegionalDraft(normalized.regional || DEFAULT_APP_SETTINGS.regional);
@@ -494,6 +496,7 @@ export default function Settings() {
         void syncLocaleFromRegional(normalized?.regional?.language);
       })
       .catch(() => {
+        appSettingsReadyRef.current = false;
         setAppSettings(DEFAULT_APP_SETTINGS);
         setAppSettingsSnapshot(serializeAppSettings(DEFAULT_APP_SETTINGS));
         applyUiThemeFromAppSettings(DEFAULT_APP_SETTINGS, currentUser?.id);
@@ -1130,8 +1133,9 @@ export default function Settings() {
   };
 
   const saveAppSettings = async ({ silent = false, nextSettings = null } = {}) => {
+    if (!appSettingsReadyRef.current) return;
     if (isSavingAppSettings) {
-      pendingAppSettingsSaveRef.current = { silent, nextSettings };
+      pendingAppSettingsSaveRef.current = { kind: 'settings', silent, nextSettings };
       return;
     }
     const snap = JSON.parse(appSettingsSnapshot || '{}');
@@ -1171,8 +1175,13 @@ export default function Settings() {
       setIsSavingAppSettings(false);
       const pending = pendingAppSettingsSaveRef.current;
       pendingAppSettingsSaveRef.current = null;
-      if (pending) {
-        void saveAppSettings(pending);
+      if (pending?.kind === 'appearance') {
+        void saveRestaurantAppearance(pending.nextSettings || appSettingsRef.current);
+      } else if (pending) {
+        void saveAppSettings({
+          silent: pending.silent,
+          nextSettings: pending.nextSettings || appSettingsRef.current,
+        });
       }
     }
   };
@@ -1180,7 +1189,7 @@ export default function Settings() {
   const saveRestaurantAppearance = async (nextSettings, { debounceMs = 0 } = {}) => {
     const run = async () => {
       if (isSavingAppSettings) {
-        pendingAppSettingsSaveRef.current = { silent: true, nextSettings };
+        pendingAppSettingsSaveRef.current = { kind: 'appearance', silent: true, nextSettings };
         return;
       }
       const snap = JSON.parse(appSettingsSnapshot || '{}');
@@ -1194,7 +1203,9 @@ export default function Settings() {
         setIsSavingAppSettings(true);
         skipConfigReloadUntilRef.current = Date.now() + 4000;
         const saved = await api.put('/admin-modules/config/appearance', patch);
-        const normalized = mergeSavedAppSettings(normalizeConfigPayload(saved), source);
+        const normalized = mergeSavedAppSettings(normalizeConfigPayload(saved), source, {
+          skipArrayKeys: ['cajas', 'salones', 'locales', 'almacenes', 'comprobantes', 'impresoras'],
+        });
         setAppSettings(normalized);
         setAppSettingsSnapshot(serializeAppSettings(normalized));
         applyUiThemeFromAppSettings(normalized, currentUser?.id);
@@ -1204,8 +1215,13 @@ export default function Settings() {
         setIsSavingAppSettings(false);
         const pending = pendingAppSettingsSaveRef.current;
         pendingAppSettingsSaveRef.current = null;
-        if (pending) {
-          void saveAppSettings(pending);
+        if (pending?.kind === 'appearance') {
+          void saveRestaurantAppearance(pending.nextSettings || appSettingsRef.current);
+        } else if (pending) {
+          void saveAppSettings({
+            silent: pending.silent,
+            nextSettings: pending.nextSettings || appSettingsRef.current,
+          });
         }
       }
     };
@@ -3268,7 +3284,7 @@ function SalonMesasSection({ appSettings }) {
   };
 
   const deleteSalon = async (s) => {
-    const mesasEnSalon = filteredTables.filter(t => (t.zone || 'principal') === s.id);
+    const mesasEnSalon = tablesForSalon(s, filteredTables, filteredSalones);
     if (mesasEnSalon.length > 0) return toast.error('Elimina primero las mesas de este salón');
     if (!confirm(`¿Eliminar salón "${s.name}"?`)) return;
     try {
@@ -3378,7 +3394,7 @@ function SalonMesasSection({ appSettings }) {
       </div>
 
       {filteredSalones.map(salon => {
-        const mesasSalon = filteredTables.filter(t => (t.zone || 'principal') === salon.id);
+        const mesasSalon = tablesForSalon(salon, filteredTables, filteredSalones);
         return (
           <div key={salon.id} className="card">
             <div className="flex items-center justify-between mb-4">

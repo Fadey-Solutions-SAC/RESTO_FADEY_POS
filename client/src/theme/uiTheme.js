@@ -141,6 +141,10 @@ export function applyUiTheme(id, opts = {}) {
   }
 
   const mergedVars = { ...preset.vars, ...custom };
+  if (custom['--ui-accent'] && !custom['--ui-theme-solid']) {
+    mergedVars['--ui-theme-solid'] = custom['--ui-accent'];
+    mergedVars['--ui-sidebar-panel-active'] = custom['--ui-accent'];
+  }
 
   if (typeof document !== 'undefined') {
     document.documentElement.setAttribute('data-ui-theme', themeId);

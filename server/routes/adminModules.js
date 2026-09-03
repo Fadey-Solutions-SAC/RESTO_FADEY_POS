@@ -127,6 +127,17 @@ function mergeSettingsBlob(prevParsed, incoming) {
   if (!Object.prototype.hasOwnProperty.call(next, 'auto_pedido_cartas') && Array.isArray(prev.auto_pedido_cartas)) {
     merged.auto_pedido_cartas = prev.auto_pedido_cartas;
   }
+  try {
+    const { shouldKeepPreviousCatalog } = require('../services/settingsCatalogRecover');
+    if (shouldKeepPreviousCatalog(prev.cajas, next.cajas, 'cajas')) {
+      merged.cajas = prev.cajas;
+    }
+    if (shouldKeepPreviousCatalog(prev.salones, next.salones, 'salones')) {
+      merged.salones = prev.salones;
+    }
+  } catch (_) {
+    /* recover opcional */
+  }
   return merged;
 }
 
@@ -158,6 +169,12 @@ function hasReservationConflict({ tableId, date, time, excludeId = '' }) {
 }
 
 router.get('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
+  try {
+    const { recoverCajasAndSalonesIfResetToDefaults } = require('../services/settingsCatalogRecover');
+    recoverCajasAndSalonesIfResetToDefaults();
+  } catch (_) {
+    /* historial opcional */
+  }
   res.json(readAppSettingsForClient());
 });
 
