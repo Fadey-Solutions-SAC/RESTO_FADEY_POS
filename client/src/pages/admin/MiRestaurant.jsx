@@ -20,9 +20,9 @@ const PAGO_USO_WHATSAPP_SUPPORT = '934029719';
 const PAGO_USO_WHATSAPP_URL = `https://wa.me/51${PAGO_USO_WHATSAPP_SUPPORT}?text=${encodeURIComponent('Hola, necesito soporte sobre el pago por uso del sistema.')}`;
 
 const PLAN_PAYMENT_QRS = [
-  { id: 'yape', label: 'Yape', color: '#7c3aed', src: '/payment-qr/yape-full.png', srcCrop: '/payment-qr/yape.png' },
-  { id: 'plin', label: 'Plin', color: '#06b6d4', src: '/payment-qr/plin-full.png', srcCrop: '/payment-qr/plin.png' },
-  { id: 'dale', label: 'Dale', color: '#2563eb', src: '/payment-qr/dale-full.png', srcCrop: '/payment-qr/dale.png' },
+  { id: 'yape', label: 'Yape', color: '#7c3aed', src: '/payment-qr/yape.png' },
+  { id: 'plin', label: 'Plin', color: '#06b6d4', src: '/payment-qr/plin.png' },
+  { id: 'dale', label: 'Dale', color: '#2563eb', src: '/payment-qr/dale.png' },
 ];
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
@@ -1558,9 +1558,7 @@ export default function MiRestaurant() {
                 </strong>
                 .
               </>
-            ) : (
-              <> Luego cargue el comprobante con el monto pagado.</>
-            )}
+            ) : null}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {PLAN_PAYMENT_QRS.map((qr) => (
@@ -1572,16 +1570,11 @@ export default function MiRestaurant() {
                 <img
                   src={qr.src}
                   alt={`QR ${qr.label}`}
-                  className="w-full max-w-[220px] rounded-lg bg-white object-contain"
+                  className="w-full max-w-[200px] aspect-square rounded-lg bg-white object-contain p-1"
                 />
-                <p className="text-[11px] text-[var(--ui-muted)] text-center">Deyvi Renan Romero</p>
               </div>
             ))}
           </div>
-          <p className="text-xs text-[var(--ui-muted)]">
-            Estos QR son fijos (sin monto embebido). El precio del plan se configura en Plan comercial / Precio del plan
-            y se usa al cargar el comprobante.
-          </p>
           <div className="flex justify-end">
             <button type="button" className="btn-secondary text-sm" onClick={() => setShowPagarQrModal(false)}>
               Cerrar
