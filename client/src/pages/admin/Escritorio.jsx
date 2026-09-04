@@ -44,6 +44,73 @@ function dominantPaymentMethod(account) {
   return entries[0][0];
 }
 
+/** Eje X temporal: ventana de 20 min (o más si hace falta) y ticks cada 5 min. */
+function buildPaymentTimeAxis(paymentRows) {
+  const STEP = 5;
+  const WINDOW = 20;
+  const DAY = 24 * 60;
+  const floorStep = (m) => Math.floor(Number(m) / STEP) * STEP;
+  const ceilStep = (m) => Math.ceil(Number(m) / STEP) * STEP;
+
+  if (!paymentRows?.length) {
+    const ticks = [];
+    for (let t = 0; t <= WINDOW; t += STEP) ticks.push(t);
+    return { domain: [0, WINDOW], ticks };
+  }
+
+  const mins = paymentRows.map((r) => Number(r.minuteOfDay) || 0);
+  const dataLo = Math.min(...mins);
+  const dataHi = Math.max(...mins);
+  const dataSpan = Math.max(0, dataHi - dataLo);
+
+  let lo;
+  let hi;
+  if (dataSpan <= WINDOW) {
+    // Centrar los cobros en una ventana de exactamente 20 minutos.
+    const mid = (dataLo + dataHi) / 2;
+    lo = floorStep(mid - WINDOW / 2);
+    hi = lo + WINDOW;
+    if (lo < 0) {
+      lo = 0;
+      hi = WINDOW;
+    }
+    if (hi > DAY) {
+      hi = DAY;
+      lo = Math.max(0, DAY - WINDOW);
+    }
+  } else {
+    // Día con cobros más largos: cubrir el rango y redondear a múltiplos de 5.
+    lo = Math.max(0, floorStep(dataLo) - STEP);
+    hi = Math.min(DAY, ceilStep(dataHi) + STEP);
+    if (hi - lo < WINDOW) hi = Math.min(DAY, lo + WINDOW);
+  }
+
+  // Asegurar extremos en la grilla de 5 minutos.
+  lo = floorStep(lo);
+  hi = ceilStep(hi);
+  if (hi <= lo) hi = lo + WINDOW;
+
+  // Ventana corta: ticks cada 5 min. Rangos largos: espaciar para no saturar.
+  const span = hi - lo;
+  const tickStep = span <= 20 ? 5 : span <= 60 ? 10 : span <= 180 ? 15 : 30;
+  const ticks = [];
+  for (let t = lo; t <= hi + 0.001; t += tickStep) {
+    ticks.push(Math.round(t));
+  }
+  if (ticks[ticks.length - 1] !== Math.round(hi)) ticks.push(Math.round(hi));
+
+  return { domain: [lo, hi], ticks };
+}
+
+function formatMinuteOfDayLabel(value) {
+  const DAY = 24 * 60;
+  const total = Math.round(Number(value) || 0);
+  const normalized = ((total % DAY) + DAY) % DAY;
+  const h = Math.floor(normalized / 60);
+  const m = normalized % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 /** Una barra por cada cuenta cobrada; eje X = minutos del día (espacio proporcional a la hora). */
 function buildPaymentTimelineRows(accounts, scheduleCheck) {
   return (accounts || [])
@@ -562,14 +629,10 @@ export default function Escritorio() {
   const hourlyHistoryEntry = hourlySalesHistory[hourlyHistoryIndex] || null;
   const hourlySales = hourlyHistoryEntry?.hourly || buildHourlySalesRows([], scheduleSaleCheck);
   const paymentSales = hourlyHistoryEntry?.payments || [];
-  const paymentTimeDomain = useMemo(() => {
-    if (!paymentSales.length) return [0, 60];
-    const mins = paymentSales.map((r) => Number(r.minuteOfDay) || 0);
-    const lo = Math.min(...mins);
-    const hi = Math.max(...mins);
-    const pad = Math.max(8, (hi - lo) * 0.08 || 15);
-    return [Math.max(0, lo - pad), Math.min(24 * 60, hi + pad)];
-  }, [paymentSales]);
+  const paymentTimeAxis = useMemo(
+    () => buildPaymentTimeAxis(paymentSales),
+    [paymentSales],
+  );
   const themeAccent = (() => {
     if (typeof document !== 'undefined') {
       const accent = getComputedStyle(document.documentElement).getPropertyValue('--ui-accent').trim();
@@ -1329,15 +1392,13 @@ export default function Escritorio() {
                     <XAxis
                       type="number"
                       dataKey="minuteOfDay"
-                      domain={paymentTimeDomain}
+                      domain={paymentTimeAxis.domain}
+                      ticks={paymentTimeAxis.ticks}
+                      tickCount={paymentTimeAxis.ticks.length}
+                      interval={0}
                       tick={{ fontSize: 10, fill: 'var(--ui-muted)' }}
-                      tickFormatter={(value) => {
-                        const total = Math.round(Number(value) || 0);
-                        const h = Math.floor(total / 60) % 24;
-                        const m = total % 60;
-                        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                      }}
-                      minTickGap={36}
+                      tickFormatter={formatMinuteOfDayLabel}
+                      allowDecimals={false}
                     />
                     <YAxis
                       tick={{ fontSize: 11, fill: 'var(--ui-muted)' }}
