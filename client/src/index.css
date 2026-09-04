@@ -12,7 +12,7 @@ html {
   --ui-live-info-text: #7dd3fc;
   --ui-live-danger-text: #fda4af;
   --ui-live-alert-warning-bg: rgba(239, 68, 68, 0.16);
-  --ui-live-alert-warning-text: #fecaca;
+  --ui-live-alert-warning-text: #f87171;
   --ui-live-alert-warning-border: rgba(248, 113, 113, 0.45);
   --ui-live-alert-info-bg: rgba(56, 189, 248, 0.12);
   --ui-live-alert-info-text: #e0f2fe;
@@ -56,9 +56,11 @@ html[data-ui-color-scheme='light'] {
   --ui-live-warning-text: #92400e;
   --ui-live-info-text: #0369a1;
   --ui-live-danger-text: #be123c;
-  --ui-live-alert-warning-bg: rgba(239, 68, 68, 0.1);
-  --ui-live-alert-warning-text: #b91c1c;
-  --ui-live-alert-warning-border: rgba(220, 38, 38, 0.4);
+  --ui-danger: #b91c1c;
+  --ui-danger-hover: #991b1b;
+  --ui-live-alert-warning-bg: rgba(254, 226, 226, 0.95);
+  --ui-live-alert-warning-text: #991b1b;
+  --ui-live-alert-warning-border: rgba(185, 28, 28, 0.45);
   --ui-live-alert-info-bg: rgba(14, 165, 233, 0.1);
   --ui-live-alert-info-text: #0c4a6e;
   --ui-live-alert-info-border: rgba(14, 165, 233, 0.28);
@@ -96,7 +98,7 @@ html[data-ui-theme='dark'] {
   --ui-live-info-text: #38bdf8;
   --ui-live-danger-text: #fb7185;
   --ui-live-alert-warning-bg: rgba(239, 68, 68, 0.16);
-  --ui-live-alert-warning-text: #fecaca;
+  --ui-live-alert-warning-text: #f87171;
   --ui-live-alert-warning-border: rgba(248, 113, 113, 0.45);
   --ui-live-alert-info-bg: rgba(56, 189, 248, 0.14);
   --ui-live-alert-info-text: #e0f2fe;
@@ -202,6 +204,13 @@ html[data-ui-theme='green'] {
   --ui-shell-sidebar-bg: color-mix(in srgb, var(--ui-accent-muted) 10%, var(--ui-surface));
   --ui-shell-header-bg: color-mix(in srgb, var(--ui-accent-muted) 9%, var(--ui-surface));
   color-scheme: dark;
+}
+
+/* Alertas: en modo claro el texto debe ser rojo oscuro (gana sobre temas legacy) */
+html[data-ui-color-scheme='light'] {
+  --ui-live-alert-warning-bg: #fee2e2;
+  --ui-live-alert-warning-text: #991b1b;
+  --ui-live-alert-warning-border: #fca5a5;
 }
 
 @layer base {
@@ -409,6 +418,44 @@ html[data-ui-color-scheme='light'] #root [class*='text-rose-300'],
 html[data-ui-color-scheme='light'] #root [class*='text-rose-400'] {
   color: var(--ui-live-danger-text) !important;
 }
+
+/* Alertas escritorio: forzar rojo oscuro legible (evita rosa claro sobre rosa) */
+#root .ui-live-alert-warning,
+#root a.ui-live-alert-warning,
+#root a.ui-live-alert-warning:link,
+#root a.ui-live-alert-warning:visited {
+  color: #991b1b !important;
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+}
+#root .ui-live-alert-warning .ui-live-alert-icon {
+  color: #991b1b !important;
+}
+#root .ui-live-alert-warning .ui-live-alert-link {
+  color: var(--ui-accent-muted) !important;
+}
+#root .ui-live-pill-stale {
+  color: #991b1b !important;
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+}
+html[data-ui-color-scheme='dark'] #root .ui-live-alert-warning,
+html[data-ui-color-scheme='dark'] #root a.ui-live-alert-warning,
+html[data-ui-color-scheme='dark'] #root a.ui-live-alert-warning:link,
+html[data-ui-color-scheme='dark'] #root a.ui-live-alert-warning:visited {
+  color: #fca5a5 !important;
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: rgba(248, 113, 113, 0.5) !important;
+}
+html[data-ui-color-scheme='dark'] #root .ui-live-alert-warning .ui-live-alert-icon {
+  color: #fca5a5 !important;
+}
+html[data-ui-color-scheme='dark'] #root .ui-live-pill-stale {
+  color: #fca5a5 !important;
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: rgba(248, 113, 113, 0.5) !important;
+}
+
 html[data-ui-color-scheme='light'] #root .bg-red-950\/30,
 html[data-ui-color-scheme='light'] #root .bg-red-950\/40,
 html[data-ui-color-scheme='light'] #root .bg-red-950\/20 {
@@ -608,7 +655,7 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     background-color: var(--ui-btn-secondary-hover);
   }
 
-  /* Panel en vivo / alertas operativas — texto rojo (contraste claro/oscuro) */
+  /* Panel en vivo / alertas operativas — rojo legible sobre fondo rosa */
   .ui-live-alert-warning,
   a.ui-live-alert-warning,
   a.ui-live-alert-warning:link,

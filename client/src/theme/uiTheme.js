@@ -8,6 +8,7 @@ import {
   getChartColorsForTheme,
   THEME_PRESETS,
   CUSTOM_THEME_VAR_KEYS,
+  LIGHT_THEME_IDS,
 } from './themePresets';
 
 export {
@@ -16,6 +17,7 @@ export {
   getChartColorsForTheme,
   THEME_PRESETS,
   CUSTOM_THEME_VAR_KEYS,
+  LIGHT_THEME_IDS,
 };
 
 export const UI_THEME_OPTIONS = UI_THEME_PRESET_LIST.map((p) => ({
@@ -122,7 +124,12 @@ export function applyUiTheme(id, opts = {}) {
   const validMode = UI_THEME_MODE_IDS.includes(mode) ? mode : 'light';
 
   let colorScheme = preset.colorScheme;
-  if (validMode === 'auto') {
+  // Temas claros (azul corporativo, minimal white, emerald, legacy light):
+  // siempre contraste claro — evita texto blanco sobre fondos mint/blancos.
+  if (LIGHT_THEME_IDS.includes(themeId) || preset.colorScheme === 'light') {
+    teardownAutoListener();
+    colorScheme = 'light';
+  } else if (validMode === 'auto') {
     colorScheme = resolveAutoColorScheme();
     teardownAutoListener();
     if (typeof window !== 'undefined' && window.matchMedia) {

@@ -2733,7 +2733,7 @@ export default function POSPanel() {
       className={`min-w-0 flex-1 rounded-lg border py-2.5 px-2 text-xs font-semibold uppercase tracking-wide transition-colors flex items-center justify-center ${
         paraLlevarMesa
           ? 'bg-[var(--ui-accent)] text-white border-transparent shadow-sm'
-          : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[#E5E7EB] hover:bg-[var(--ui-sidebar-hover)]'
+          : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
       }`}
     >
       PARA LLEVAR
@@ -2743,9 +2743,9 @@ export default function POSPanel() {
   const mesaOrderSubmitFooter = (submitLabel, submitClass = 'btn-primary') =>
     cart.length > 0 ? (
       <div className="space-y-2">
-        <div className="flex justify-between text-base font-bold text-white">
+        <div className="flex justify-between text-base font-bold text-[var(--ui-body-text)]">
           <span>Total</span>
-          <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
+          <span className="text-[var(--ui-accent-muted)]">{formatCurrency(cartTotal)}</span>
         </div>
         <div className="flex gap-2">
           {paraLlevarToggleButton}
@@ -4419,7 +4419,7 @@ export default function POSPanel() {
           sidebarTop={(
               <div className="space-y-2">
                 <div>
-                  <label className="flex items-center gap-2 text-xs font-medium text-[#E5E7EB] mb-1 cursor-pointer">
+                  <label className="flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-1 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={multiPayEnabled}
@@ -4440,7 +4440,7 @@ export default function POSPanel() {
                     <div className="space-y-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
                       {multiPaymentOptions.map((opt) => (
                         <div key={opt.value} className="flex items-center gap-2">
-                          <span className="text-xs text-[#E5E7EB] w-[80px] shrink-0">{opt.label}</span>
+                          <span className="text-xs text-[var(--ui-body-text)] w-[80px] shrink-0">{opt.label}</span>
                           <input
                             type="number"
                             min="0"
@@ -4461,7 +4461,7 @@ export default function POSPanel() {
                   )}
                 </div>
                 <div>
-                  <label className="flex items-center gap-2 text-xs font-medium text-[#E5E7EB] mb-1 cursor-pointer">
+                  <label className="flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-1 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tipPayEnabled}
@@ -4476,7 +4476,7 @@ export default function POSPanel() {
                   </label>
                   {tipPayEnabled && (
                     <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
-                      <label className="block text-xs font-medium text-[#E5E7EB] mb-1">Monto propina</label>
+                      <label className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">Monto propina</label>
                       <input
                         type="number"
                         min="0"
@@ -4492,7 +4492,7 @@ export default function POSPanel() {
                 {!multiPayEnabled && paymentMethod === 'efectivo' && (
                   <>
                     <div>
-                      <label className="block text-xs font-medium text-[#E5E7EB] mb-1">Paga con</label>
+                      <label className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">Paga con</label>
                       <input
                         type="number"
                         min="0"
@@ -4521,7 +4521,7 @@ export default function POSPanel() {
                         <button
                           type="button"
                           onClick={openCustomerModal}
-                          className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[#BFDBFE] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1"
+                          className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[var(--ui-accent-muted)] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1"
                         >
                           <MdPersonAdd className="text-sm" />
                           Agregar cliente
@@ -4549,7 +4549,7 @@ export default function POSPanel() {
                         </select>
                       </div>
                       <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/60 p-2 space-y-1.5">
-                        <p className="text-[11px] font-medium text-[#E5E7EB]">Detalle en el comprobante</p>
+                        <p className="text-[11px] font-medium text-[var(--ui-body-text)]">Detalle en el comprobante</p>
                         <div className="flex flex-wrap gap-3 text-xs text-[#D1D5DB]">
                           <label className="flex items-center gap-1.5 cursor-pointer">
                             <input
@@ -4590,7 +4590,7 @@ export default function POSPanel() {
                             title={`Consultar nombre o razón social en padrón (requiere PERU_CONSULTAS_TOKEN en el servidor). ${padronQuotaUi.label || ''}`.trim()}
                             onClick={() => void handleConsultaPadron()}
                             disabled={consultaPadronLoading || padronQuotaUi.exhausted}
-                            className="shrink-0 px-2.5 py-2 rounded-lg border border-[color:var(--ui-accent)] text-[#BFDBFE] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center justify-center gap-1 disabled:opacity-50"
+                            className="shrink-0 px-2.5 py-2 rounded-lg border border-[color:var(--ui-accent)] text-[var(--ui-accent-muted)] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center justify-center gap-1 disabled:opacity-50"
                           >
                             <MdSearch className="text-lg shrink-0" />
                             <span className="hidden sm:inline">Padrón</span>
@@ -4615,7 +4615,7 @@ export default function POSPanel() {
                         value={billingForm.customer_phone}
                         onChange={(e) => setBillingForm((prev) => ({ ...prev, customer_phone: e.target.value }))}
                       />
-                      {searchingCustomer && <p className="text-[11px] text-[#9CA3AF]">Buscando cliente en el registro local...</p>}
+                      {searchingCustomer && <p className="text-[11px] text-[var(--ui-muted)]">Buscando cliente en el registro local...</p>}
                       {matchedCustomer && (
                         <p className="text-[11px] text-emerald-400">Cliente encontrado: {matchedCustomer.name}</p>
                       )}
@@ -4627,12 +4627,12 @@ export default function POSPanel() {
           footer={
             cart.length > 0 ? (
               <>
-                <div className="flex justify-between font-bold text-lg text-white">
+                <div className="flex justify-between font-bold text-lg text-[var(--ui-body-text)]">
                   <span>Total</span>
-                  <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
+                  <span className="text-[var(--ui-accent-muted)]">{formatCurrency(cartTotal)}</span>
                 </div>
                 {quickSaleMode && (
-                  <label className="flex items-center gap-2 text-xs font-medium text-[#F9FAFB] mb-1">
+                  <label className="flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-1">
                     <input
                       type="checkbox"
                       checked={billingForm.enabled}
@@ -4838,24 +4838,24 @@ export default function POSPanel() {
           const lines = mergedProductsOnTable(tbl, productsById);
           const totalMesa = (tbl.orders || []).reduce((s, o) => s + getOrderChargeTotal(o), 0);
           return (
-            <div className="max-h-[min(70vh,480px)] overflow-y-auto space-y-3 pr-1 text-[#E5E7EB]">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#9CA3AF]">Productos en la mesa</p>
+            <div className="max-h-[min(70vh,480px)] overflow-y-auto space-y-3 pr-1 text-[var(--ui-body-text)]">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)]">Productos en la mesa</p>
               {lines.length === 0 ? (
-                <p className="text-center text-[#9CA3AF] py-6">No hay productos para mostrar.</p>
+                <p className="text-center text-[var(--ui-muted)] py-6">No hay productos para mostrar.</p>
               ) : (
-                <ul className="space-y-1.5 text-sm text-[#D1D5DB]">
+                <ul className="space-y-1.5 text-sm text-[var(--ui-muted)]">
                   {lines.map((row) => (
                     <li
                       key={row.key}
-                      className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 items-baseline border-b border-[#374151]/80 pb-1.5 last:border-0 last:pb-0"
+                      className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 items-baseline border-b border-[color:var(--ui-border)] pb-1.5 last:border-0 last:pb-0"
                     >
-                      <span className="tabular-nums font-semibold text-white text-right">
+                      <span className="tabular-nums font-semibold text-[var(--ui-body-text)] text-right">
                         {row.qty}
                       </span>
-                      <span className="min-w-0 font-medium text-white break-words">
+                      <span className="min-w-0 font-medium text-[var(--ui-body-text)] break-words">
                         {row.name}
                       </span>
-                      <span className="shrink-0 tabular-nums font-medium text-[#BFDBFE]">
+                      <span className="shrink-0 tabular-nums font-medium text-[var(--ui-accent-muted)]">
                         {formatCurrency(row.subtotal)}
                       </span>
                     </li>
@@ -4863,9 +4863,9 @@ export default function POSPanel() {
                 </ul>
               )}
               {lines.length > 0 && (
-                <div className="flex justify-between border-t border-[color:var(--ui-border)] pt-3 text-base font-bold text-white">
+                <div className="flex justify-between border-t border-[color:var(--ui-border)] pt-3 text-base font-bold text-[var(--ui-body-text)]">
                   <span>Total</span>
-                  <span className="text-[#BFDBFE]">{formatCurrency(totalMesa)}</span>
+                  <span className="text-[var(--ui-accent-muted)]">{formatCurrency(totalMesa)}</span>
                 </div>
               )}
             </div>
@@ -4910,9 +4910,9 @@ export default function POSPanel() {
         maxHeightClass="max-h-[min(90vh,860px)]"
         bodyClassName="!overflow-hidden !flex !flex-col !min-h-0 !pb-4"
         headerClassName="bg-[var(--ui-surface-2)] border-b border-[color:var(--ui-border)]"
-        titleClassName="text-[#F9FAFB] font-extrabold tracking-wide uppercase"
-        closeButtonClassName="hover:bg-[#1E3A8A]/50"
-        closeIconClassName="text-[#BFDBFE]"
+        titleClassName="text-[var(--ui-body-text)] font-extrabold tracking-wide uppercase"
+        closeButtonClassName="hover:bg-[var(--ui-sidebar-hover)]"
+        closeIconClassName="text-[var(--ui-muted)]"
       >
         {selectedTable && (
           <div className="flex flex-col flex-1 min-h-0 h-full overflow-hidden">
@@ -4922,15 +4922,15 @@ export default function POSPanel() {
                   <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/70 backdrop-blur-md shadow-lg shadow-black/20 p-3 sm:p-4 flex flex-col gap-2">
                       {!billingForm.enabled ? (
                         <>
-                          <h3 className="text-base font-bold text-[#F9FAFB] shrink-0">Productos</h3>
+                          <h3 className="text-base font-bold text-[var(--ui-body-text)] shrink-0">Productos</h3>
                           {splitMode ? (
                             <>
                               <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/50 px-2 py-1.5 shrink-0">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]">
                                   Incluir en cobro (cada línea de producto)
                                 </p>
                               </div>
-                              <div className="grid grid-cols-[1.75rem_2rem_minmax(0,1fr)_5.75rem_3.75rem_3.75rem] gap-1.5 text-[10px] sm:text-xs font-semibold text-[#9CA3AF] border-b border-[color:var(--ui-border)] pb-2 shrink-0 items-center">
+                              <div className="grid grid-cols-[1.75rem_2rem_minmax(0,1fr)_5.75rem_3.75rem_3.75rem] gap-1.5 text-[10px] sm:text-xs font-semibold text-[var(--ui-muted)] border-b border-[color:var(--ui-border)] pb-2 shrink-0 items-center">
                                 <span className="sr-only">Incluir</span>
                                 <span className="text-center">Ped.</span>
                                 <span>Producto</span>
@@ -4940,7 +4940,7 @@ export default function POSPanel() {
                               </div>
                               <div className="space-y-0.5">
                                 {splitBillLines.length === 0 ? (
-                                  <p className="text-sm text-[#9CA3AF] text-center py-6">Sin ítems</p>
+                                  <p className="text-sm text-[var(--ui-muted)] text-center py-6">Sin ítems</p>
                                 ) : (
                                   splitBillLines.map((line) => {
                                     const sel = selectedOrderItemIds.includes(line.id);
@@ -4988,7 +4988,7 @@ export default function POSPanel() {
                                             className="rounded border-[color:var(--ui-accent)]"
                                           />
                                         </div>
-                                        <span className="text-center text-[10px] font-bold text-[#BFDBFE] tabular-nums">
+                                        <span className="text-center text-[10px] font-bold text-[var(--ui-accent-muted)] tabular-nums">
                                           #{line.orderNumber}
                                         </span>
                                         <span className="min-w-0 break-words leading-snug">{line.name}</span>
@@ -5002,11 +5002,11 @@ export default function POSPanel() {
                                               aria-label="Disminuir cantidad"
                                               disabled={chargeQty <= 1}
                                               onClick={() => setSplitChargeQty(line.id, chargeQty - 1, maxQ)}
-                                              className="h-5 w-5 shrink-0 rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[11px] leading-none font-bold text-[#F9FAFB] disabled:opacity-40 hover:bg-[var(--ui-sidebar-hover)]"
+                                              className="h-5 w-5 shrink-0 rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[11px] leading-none font-bold text-[var(--ui-body-text)] disabled:opacity-40 hover:bg-[var(--ui-sidebar-hover)]"
                                             >
                                               −
                                             </button>
-                                            <span className="min-w-[1.25rem] text-center tabular-nums text-xs font-semibold text-[#F9FAFB]">
+                                            <span className="min-w-[1.25rem] text-center tabular-nums text-xs font-semibold text-[var(--ui-body-text)]">
                                               {chargeQty}
                                             </span>
                                             <button
@@ -5014,22 +5014,22 @@ export default function POSPanel() {
                                               aria-label="Aumentar cantidad"
                                               disabled={chargeQty >= maxQ}
                                               onClick={() => setSplitChargeQty(line.id, chargeQty + 1, maxQ)}
-                                              className="h-5 w-5 shrink-0 rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[11px] leading-none font-bold text-[#F9FAFB] disabled:opacity-40 hover:bg-[var(--ui-sidebar-hover)]"
+                                              className="h-5 w-5 shrink-0 rounded border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[11px] leading-none font-bold text-[var(--ui-body-text)] disabled:opacity-40 hover:bg-[var(--ui-sidebar-hover)]"
                                             >
                                               +
                                             </button>
                                           </div>
                                         ) : (
-                                          <span className="text-center tabular-nums text-[#F9FAFB]">{line.qty}</span>
+                                          <span className="text-center tabular-nums text-[var(--ui-body-text)]">{line.qty}</span>
                                         )}
                                         <span className="text-right tabular-nums text-[#D1D5DB]">{formatCurrency(line.unit)}</span>
-                                        <span className="text-right tabular-nums font-medium text-[#F9FAFB]">{formatCurrency(lineTotal)}</span>
+                                        <span className="text-right tabular-nums font-medium text-[var(--ui-body-text)]">{formatCurrency(lineTotal)}</span>
                                       </div>
                                     );
                                   })
                                 )}
                               </div>
-                              <p className="text-[11px] text-[#9CA3AF] shrink-0">
+                              <p className="text-[11px] text-[var(--ui-muted)] shrink-0">
                                 Desmarca las líneas que no vas a cobrar en esta operación.
                               </p>
                               {discountConfig.applied && (
@@ -5040,7 +5040,7 @@ export default function POSPanel() {
                             </>
                           ) : (
                             <>
-                              <div className="grid grid-cols-[minmax(0,1fr)_2.75rem_4.25rem_4.25rem] gap-2 text-[10px] sm:text-xs font-semibold text-[#9CA3AF] border-b border-[color:var(--ui-border)] pb-2 shrink-0">
+                              <div className="grid grid-cols-[minmax(0,1fr)_2.75rem_4.25rem_4.25rem] gap-2 text-[10px] sm:text-xs font-semibold text-[var(--ui-muted)] border-b border-[color:var(--ui-border)] pb-2 shrink-0">
                                 <span>Producto</span>
                                 <span className="text-center tabular-nums">Cant.</span>
                                 <span className="text-right tabular-nums">P. unit.</span>
@@ -5048,7 +5048,7 @@ export default function POSPanel() {
                               </div>
                               <div className="space-y-2">
                                 {billLineItemsGrouped.length === 0 ? (
-                                  <p className="text-sm text-[#9CA3AF] text-center py-6">Sin ítems</p>
+                                  <p className="text-sm text-[var(--ui-muted)] text-center py-6">Sin ítems</p>
                                 ) : (
                                   billLineItemsGrouped.map((row) => (
                                     <div
@@ -5056,9 +5056,9 @@ export default function POSPanel() {
                                       className="grid grid-cols-[minmax(0,1fr)_2.75rem_4.25rem_4.25rem] gap-2 text-sm text-[#D1D5DB] py-1.5 border-b border-[#3B82F6]/10 last:border-0"
                                     >
                                       <span className="min-w-0 break-words leading-snug">{row.name}</span>
-                                      <span className="text-center tabular-nums text-[#F9FAFB]">{row.qty}</span>
+                                      <span className="text-center tabular-nums text-[var(--ui-body-text)]">{row.qty}</span>
                                       <span className="text-right tabular-nums text-[#D1D5DB]">{formatCurrency(row.unitPrice)}</span>
-                                      <span className="text-right tabular-nums font-medium text-[#F9FAFB]">{formatCurrency(row.subtotal)}</span>
+                                      <span className="text-right tabular-nums font-medium text-[var(--ui-body-text)]">{formatCurrency(row.subtotal)}</span>
                                     </div>
                                   ))
                                 )}
@@ -5073,12 +5073,12 @@ export default function POSPanel() {
                         </>
                       ) : (
                         <div className="flex flex-col gap-3">
-                          <h3 className="text-base font-bold text-[#F9FAFB] shrink-0">Datos del comprobante</h3>
+                          <h3 className="text-base font-bold text-[var(--ui-body-text)] shrink-0">Datos del comprobante</h3>
                           <div className="flex items-center justify-end gap-2 shrink-0 flex-wrap">
                             <button
                               type="button"
                               onClick={() => setShowCustomerPickerModal(true)}
-                              className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[#BFDBFE] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1 shrink-0"
+                              className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[var(--ui-accent-muted)] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1 shrink-0"
                             >
                               <MdPeople className="text-sm" />
                               Mis clientes
@@ -5086,7 +5086,7 @@ export default function POSPanel() {
                             <button
                               type="button"
                               onClick={openCustomerModal}
-                              className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[#BFDBFE] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1 shrink-0"
+                              className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[var(--ui-accent-muted)] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1 shrink-0"
                             >
                               <MdPersonAdd className="text-sm" />
                               Agregar cliente
@@ -5113,7 +5113,7 @@ export default function POSPanel() {
                               <option value="0">Sin documento</option>
                             </select>
                             <div className="sm:col-span-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/60 p-2 space-y-1.5">
-                              <p className="text-xs font-medium text-[#E5E7EB]">Detalle en el comprobante</p>
+                              <p className="text-xs font-medium text-[var(--ui-body-text)]">Detalle en el comprobante</p>
                               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-4 text-xs text-[#D1D5DB]">
                                 <label className="flex items-center gap-1.5 cursor-pointer">
                                   <input
@@ -5154,7 +5154,7 @@ export default function POSPanel() {
                                   title={`Consultar nombre o razón social en padrón (requiere PERU_CONSULTAS_TOKEN en el servidor). ${padronQuotaUi.label || ''}`.trim()}
                                   onClick={() => void handleConsultaPadron()}
                                   disabled={consultaPadronLoading || padronQuotaUi.exhausted}
-                                  className="shrink-0 px-2.5 py-2 rounded-lg border border-[color:var(--ui-accent)] text-[#BFDBFE] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center justify-center gap-1 disabled:opacity-50"
+                                  className="shrink-0 px-2.5 py-2 rounded-lg border border-[color:var(--ui-accent)] text-[var(--ui-accent-muted)] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center justify-center gap-1 disabled:opacity-50"
                                 >
                                   <MdSearch className="text-lg shrink-0" />
                                   <span className="hidden sm:inline">Padrón</span>
@@ -5186,7 +5186,7 @@ export default function POSPanel() {
                               onChange={(e) => setBillingForm((prev) => ({ ...prev, customer_address: e.target.value }))}
                             />
                             <div className="sm:col-span-2">
-                              <label className="block text-xs font-medium text-[#E5E7EB] mb-1">Celular del cliente</label>
+                              <label className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">Celular del cliente</label>
                               <input
                                 className="input-field text-sm w-full"
                                 placeholder=""
@@ -5195,7 +5195,7 @@ export default function POSPanel() {
                               />
                             </div>
                             <div className="sm:col-span-2">
-                              {searchingCustomer && <p className="text-xs text-[#9CA3AF]">Buscando cliente en el registro local...</p>}
+                              {searchingCustomer && <p className="text-xs text-[var(--ui-muted)]">Buscando cliente en el registro local...</p>}
                               {matchedCustomer && (
                                 <p className="text-xs text-emerald-400">Cliente encontrado: {matchedCustomer.name}</p>
                               )}
@@ -5287,8 +5287,8 @@ export default function POSPanel() {
                 <div className="flex flex-col min-h-0 min-w-0 overflow-y-auto overscroll-contain scrollbar-thin pr-1 lg:border-l lg:border-[color:var(--ui-border)] lg:pl-4">
                   <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/70 backdrop-blur-md p-3 sm:p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-base font-bold text-[#F9FAFB] shrink-0">Cobro</h3>
-                      <p className="text-base sm:text-lg font-extrabold text-[#F9FAFB] tracking-wide text-right leading-tight">
+                      <h3 className="text-base font-bold text-[var(--ui-body-text)] shrink-0">Cobro</h3>
+                      <p className="text-base sm:text-lg font-extrabold text-[var(--ui-body-text)] tracking-wide text-right leading-tight">
                         {selectedTable?.name?.trim()
                           || (selectedTable?.number != null && selectedTable?.number !== ''
                             ? `Mesa ${selectedTable.number}`
@@ -5296,11 +5296,11 @@ export default function POSPanel() {
                       </p>
                     </div>
                     <div className="text-right border-b border-[color:var(--ui-border)] pb-3">
-                      <p className="text-2xl sm:text-3xl font-bold text-[#BFDBFE] tabular-nums">{formatCurrency(payableTotal)}</p>
-                      <p className="text-xs text-[#9CA3AF] mt-0.5">Total a pagar</p>
+                      <p className="text-2xl sm:text-3xl font-bold text-[var(--ui-accent-muted)] tabular-nums">{formatCurrency(payableTotal)}</p>
+                      <p className="text-xs text-[var(--ui-muted)] mt-0.5">Total a pagar</p>
                     </div>
                     <div className={addToAccountEnabled ? 'opacity-50 pointer-events-none' : ''}>
-                      <label className="flex items-center gap-2 text-xs font-medium text-[#E5E7EB] mb-2 cursor-pointer">
+                      <label className="flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-2 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={multiPayEnabled}
@@ -5326,7 +5326,7 @@ export default function POSPanel() {
                         <div className="space-y-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
                           {multiPaymentOptions.map((opt) => (
                             <div key={opt.value} className="flex items-center gap-2">
-                              <span className="text-xs text-[#E5E7EB] w-[88px] shrink-0">{opt.label}</span>
+                              <span className="text-xs text-[var(--ui-body-text)] w-[88px] shrink-0">{opt.label}</span>
                               <input
                                 type="number"
                                 min="0"
@@ -5348,7 +5348,7 @@ export default function POSPanel() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className={`flex items-center gap-2 text-xs font-medium text-[#E5E7EB] mb-2 ${addToAccountEnabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                        <label className={`flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-2 ${addToAccountEnabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
                           <input
                             type="checkbox"
                             checked={tipPayEnabled}
@@ -5364,7 +5364,7 @@ export default function POSPanel() {
                         </label>
                         {tipPayEnabled && !addToAccountEnabled && (
                           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
-                            <label className="block text-xs font-medium text-[#E5E7EB] mb-1">Monto propina</label>
+                            <label className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">Monto propina</label>
                             <input
                               type="number"
                               min="0"
@@ -5378,7 +5378,7 @@ export default function POSPanel() {
                         )}
                       </div>
                       <div>
-                        <label className="flex items-center gap-2 text-xs font-medium text-[#E5E7EB] mb-2 cursor-pointer">
+                        <label className="flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-2 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={addToAccountEnabled}
@@ -5404,11 +5404,11 @@ export default function POSPanel() {
                     {addToAccountEnabled && (
                       <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2 space-y-2">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-medium text-[#E5E7EB]">Cliente</p>
+                          <p className="text-xs font-medium text-[var(--ui-body-text)]">Cliente</p>
                           <button
                             type="button"
                             onClick={() => setShowCustomerPickerModal(true)}
-                            className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[#BFDBFE] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1 shrink-0"
+                            className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[var(--ui-accent-muted)] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1 shrink-0"
                           >
                             <MdPeople className="text-sm" />
                             Mis clientes
@@ -5436,7 +5436,7 @@ export default function POSPanel() {
                     )}
                     <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${addToAccountEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
                       <div>
-                        <label className="block text-xs font-medium text-[#E5E7EB] mb-1">Paga con</label>
+                        <label className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">Paga con</label>
                         <input
                           type="number"
                           min="0"
@@ -5456,7 +5456,7 @@ export default function POSPanel() {
                             : formatCurrency(0)}
                         </p>
                         {!multiPayEnabled && paymentMethod === 'efectivo' && receivedAmount < payableTotal && (
-                          <p className="text-xs font-extrabold text-[color:var(--ui-danger)]">Falta: {formatCurrency(payableTotal - receivedAmount)}</p>
+                          <p className="text-sm font-extrabold text-[color:var(--ui-danger)]">Falta: {formatCurrency(payableTotal - receivedAmount)}</p>
                         )}
                       </div>
                     </div>
@@ -5478,7 +5478,7 @@ export default function POSPanel() {
                       </div>
                     )}
 
-                    <label className={`flex items-start gap-2 text-sm font-medium text-[#F9FAFB] pt-1 border-t border-[color:var(--ui-border)] ${addToAccountEnabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                    <label className={`flex items-start gap-2 text-sm font-medium text-[var(--ui-body-text)] pt-1 border-t border-[color:var(--ui-border)] ${addToAccountEnabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
                       <input
                         type="checkbox"
                         checked={billingForm.enabled}

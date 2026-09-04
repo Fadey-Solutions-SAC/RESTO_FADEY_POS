@@ -16,7 +16,72 @@ import {
 } from '../../utils/productionArea';
 import { isCourtesyOrder, isDiscountOrder, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
 
-const PAYMENT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#06b6d4', '#a855f7'];
+const PAYMENT_METHOD_COLORS = {
+  efectivo: '#10b981',
+  yape: '#7c3aed',
+  plin: '#06b6d4',
+  tarjeta: '#2563eb',
+  online: '#f59e0b',
+  transferencia: '#0ea5e9',
+};
+
+function colorForPaymentMethod(method, fallback = '#64748b') {
+  const key = String(method || '').trim().toLowerCase();
+  return PAYMENT_METHOD_COLORS[key] || fallback;
+}
+
+function dominantPaymentMethod(account) {
+  const buckets = {};
+  (account?.orders || []).forEach((order) => {
+    const key = String(order?.payment_method || 'efectivo').trim().toLowerCase() || 'efectivo';
+    buckets[key] = (buckets[key] || 0) + Number(order?.total || 0);
+  });
+  const entries = Object.entries(buckets);
+  if (!entries.length) {
+    return String(account?.primary?.payment_method || 'efectivo').trim().toLowerCase() || 'efectivo';
+  }
+  entries.sort((a, b) => b[1] - a[1]);
+  return entries[0][0];
+}
+
+/** Una barra por cada cuenta cobrada; eje X = minutos del día (espacio proporcional a la hora). */
+function buildPaymentTimelineRows(accounts, scheduleCheck) {
+  return (accounts || [])
+    .slice()
+    .sort((a, b) => {
+      const ta = parseApiDate(a.paidAt)?.getTime() || 0;
+      const tb = parseApiDate(b.paidAt)?.getTime() || 0;
+      return ta - tb;
+    })
+    .map((account, index) => {
+      const parsed = parseApiDate(account.paidAt);
+      if (!parsed) return null;
+      if (scheduleCheck && !scheduleCheck({
+        paid_at: account.paidAt,
+        updated_at: account.paidAt,
+        created_at: account.paidAt,
+      })) return null;
+      const hh = String(parsed.getHours()).padStart(2, '0');
+      const mm = String(parsed.getMinutes()).padStart(2, '0');
+      const amount = Number(Number(account.total || 0).toFixed(2));
+      const table = String(account.table || '').trim();
+      const paymentMethod = dominantPaymentMethod(account);
+      const minuteOfDay = parsed.getHours() * 60 + parsed.getMinutes() + parsed.getSeconds() / 60;
+      return {
+        id: `pay-${index}-${account.paidAt || ''}-${amount}`,
+        label: `${hh}:${mm}`,
+        minuteOfDay,
+        amount,
+        table,
+        mesaLabel: table ? `Mesa ${table}` : 'Cuenta cobrada',
+        paymentMethod,
+        paymentLabel: PAYMENT_METHODS[paymentMethod] || paymentMethod,
+        fill: colorForPaymentMethod(paymentMethod),
+      };
+    })
+    .filter(Boolean);
+}
+
 const toInputDate = (date) => {
   const d = new Date(date);
   const y = d.getFullYear();
@@ -85,38 +150,6 @@ function buildHourlySalesRows(accounts, scheduleCheck) {
     hour: `${hour}:00`,
     sales: Number(Number(total).toFixed(2)),
   }));
-}
-
-/** Una barra por cada cuenta cobrada (ordenado por hora de pago). */
-function buildPaymentTimelineRows(accounts, scheduleCheck) {
-  return (accounts || [])
-    .slice()
-    .sort((a, b) => {
-      const ta = parseApiDate(a.paidAt)?.getTime() || 0;
-      const tb = parseApiDate(b.paidAt)?.getTime() || 0;
-      return ta - tb;
-    })
-    .map((account, index) => {
-      const parsed = parseApiDate(account.paidAt);
-      if (!parsed) return null;
-      if (scheduleCheck && !scheduleCheck({
-        paid_at: account.paidAt,
-        updated_at: account.paidAt,
-        created_at: account.paidAt,
-      })) return null;
-      const hh = String(parsed.getHours()).padStart(2, '0');
-      const mm = String(parsed.getMinutes()).padStart(2, '0');
-      const amount = Number(Number(account.total || 0).toFixed(2));
-      const table = String(account.table || '').trim();
-      return {
-        id: `pay-${index}-${account.paidAt || ''}-${amount}`,
-        label: `${hh}:${mm}`,
-        amount,
-        table,
-        mesaLabel: table ? `Mesa ${table}` : 'Cuenta cobrada',
-      };
-    })
-    .filter(Boolean);
 }
 
 function pickPeakAndLowHour(hourlyRows) {
@@ -529,6 +562,14 @@ export default function Escritorio() {
   const hourlyHistoryEntry = hourlySalesHistory[hourlyHistoryIndex] || null;
   const hourlySales = hourlyHistoryEntry?.hourly || buildHourlySalesRows([], scheduleSaleCheck);
   const paymentSales = hourlyHistoryEntry?.payments || [];
+  const paymentTimeDomain = useMemo(() => {
+    if (!paymentSales.length) return [0, 60];
+    const mins = paymentSales.map((r) => Number(r.minuteOfDay) || 0);
+    const lo = Math.min(...mins);
+    const hi = Math.max(...mins);
+    const pad = Math.max(8, (hi - lo) * 0.08 || 15);
+    return [Math.max(0, lo - pad), Math.min(24 * 60, hi + pad)];
+  }, [paymentSales]);
   const themeAccent = (() => {
     if (typeof document !== 'undefined') {
       const accent = getComputedStyle(document.documentElement).getPropertyValue('--ui-accent').trim();
@@ -1282,15 +1323,21 @@ export default function Escritorio() {
                 <ResponsiveContainer width="100%" height={190}>
                   <ComposedChart
                     data={paymentSales}
-                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                    barCategoryGap="12%"
+                    margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--ui-border)" strokeOpacity={0.55} />
                     <XAxis
-                      dataKey="label"
+                      type="number"
+                      dataKey="minuteOfDay"
+                      domain={paymentTimeDomain}
                       tick={{ fontSize: 10, fill: 'var(--ui-muted)' }}
-                      interval="preserveStartEnd"
-                      minTickGap={28}
+                      tickFormatter={(value) => {
+                        const total = Math.round(Number(value) || 0);
+                        const h = Math.floor(total / 60) % 24;
+                        const m = total % 60;
+                        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                      }}
+                      minTickGap={36}
                     />
                     <YAxis
                       tick={{ fontSize: 11, fill: 'var(--ui-muted)' }}
@@ -1298,12 +1345,13 @@ export default function Escritorio() {
                       tickFormatter={(v) => formatChartYAxisTick(v)}
                     />
                     <Tooltip
-                      cursor={{ fill: 'color-mix(in srgb, var(--ui-accent-muted) 12%, transparent)' }}
-                      content={({ active, payload, label }) => {
+                      cursor={{ stroke: 'var(--ui-border)', strokeWidth: 1 }}
+                      content={({ active, payload }) => {
                         if (!active || !payload?.length) return null;
                         const row = payload.find((p) => p?.dataKey === 'amount')?.payload
                           || payload[0]?.payload;
                         if (!row) return null;
+                        const barColor = row.fill || colorForPaymentMethod(row.paymentMethod, themeAccent);
                         return (
                           <div
                             className="rounded-lg border px-3 py-2 text-xs shadow-sm"
@@ -1314,10 +1362,11 @@ export default function Escritorio() {
                             }}
                           >
                             <p className="font-semibold tabular-nums">
-                              {hourlyHistoryEntry?.dateLabel || ''} · {label || row.label}
+                              {hourlyHistoryEntry?.dateLabel || ''} · {row.label}
                             </p>
                             <p className="text-[var(--ui-muted)] mt-0.5">{row.mesaLabel}</p>
-                            <p className="mt-1 font-bold tabular-nums" style={{ color: themeAccent }}>
+                            <p className="text-[var(--ui-muted)]">{row.paymentLabel}</p>
+                            <p className="mt-1 font-bold tabular-nums" style={{ color: barColor }}>
                               {formatCurrency(row.amount)}
                             </p>
                           </div>
@@ -1326,18 +1375,23 @@ export default function Escritorio() {
                     />
                     <Bar
                       dataKey="amount"
-                      fill={themeAccent}
-                      radius={[4, 4, 0, 0]}
-                      maxBarSize={36}
+                      barSize={8}
+                      maxBarSize={10}
+                      radius={[3, 3, 0, 0]}
                       name="Cobro"
-                    />
+                      isAnimationActive={false}
+                    >
+                      {paymentSales.map((row) => (
+                        <Cell key={row.id} fill={row.fill || colorForPaymentMethod(row.paymentMethod, themeAccent)} />
+                      ))}
+                    </Bar>
                     <Line
                       type="monotone"
                       dataKey="amount"
                       stroke={themeAccent}
-                      strokeWidth={2.5}
-                      dot={{ r: 3, fill: themeAccent, strokeWidth: 0 }}
-                      activeDot={{ r: 5 }}
+                      strokeWidth={2}
+                      dot={{ r: 2.5, fill: themeAccent, strokeWidth: 0 }}
+                      activeDot={{ r: 4 }}
                       name="Tendencia"
                       legendType="none"
                       isAnimationActive={false}
@@ -1504,8 +1558,8 @@ export default function Escritorio() {
                     paddingAngle={2}
                     label={false}
                   >
-                    {paymentPieData.map((row, i) => (
-                      <Cell key={row.key} fill={PAYMENT_COLORS[i % PAYMENT_COLORS.length]} stroke="var(--ui-border)" />
+                    {paymentPieData.map((row) => (
+                      <Cell key={row.key} fill={colorForPaymentMethod(row.key)} stroke="var(--ui-border)" />
                     ))}
                   </Pie>
                   <Tooltip

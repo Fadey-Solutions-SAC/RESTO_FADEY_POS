@@ -3,6 +3,7 @@ import { MdDarkMode, MdLightMode, MdSettingsBrightness, MdPerson, MdStore } from
 import {
   UI_THEME_OPTIONS,
   PREMIUM_THEME_IDS,
+  LIGHT_THEME_IDS,
   applyUiTheme,
   applyUiThemeFromAppSettings,
   getValidUiThemeId,
@@ -110,8 +111,19 @@ export default function SettingsAppearancePanel({
   };
 
   const selectTheme = (themeId) => {
-    if (personalEnabled) applyPersonalPatch({ theme: themeId });
-    else applyRestaurantPatch({ ui_theme: themeId });
+    const nextId = getValidUiThemeId(themeId);
+    const forceLight = LIGHT_THEME_IDS.includes(nextId);
+    if (personalEnabled) {
+      applyPersonalPatch({
+        theme: nextId,
+        ...(forceLight ? { mode: 'light' } : {}),
+      });
+    } else {
+      applyRestaurantPatch({
+        ui_theme: nextId,
+        ...(forceLight ? { ui_theme_mode: 'light' } : {}),
+      });
+    }
   };
 
   const setMode = (nextMode) => {

@@ -446,6 +446,14 @@ export const PREMIUM_THEME_IDS = [
   'sunset_modern',
 ];
 
+/** Temas con superficies claras: siempre usan contraste de modo claro. */
+export const LIGHT_THEME_IDS = [
+  'corporate_blue',
+  'minimal_white',
+  'emerald_business',
+  'light',
+];
+
 export const LEGACY_THEME_IDS = ['blue', 'light', 'dark', 'gray', 'purple', 'green'];
 
 export const ALL_THEME_IDS = [...PREMIUM_THEME_IDS, ...LEGACY_THEME_IDS];
