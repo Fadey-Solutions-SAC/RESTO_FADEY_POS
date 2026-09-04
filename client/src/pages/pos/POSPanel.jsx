@@ -361,8 +361,6 @@ const CAJA_OPTIONS_CAJERO_IDS = new Set([
   'cobrar',
   'ingresos',
   'egresos',
-  'notas_credito',
-  'notas_debito',
   'impresora',
 ]);
 const CAJA_OPTIONS = [
@@ -372,8 +370,6 @@ const CAJA_OPTIONS = [
   { id: 'cierres_caja', label: 'Cierres de caja' },
   { id: 'ingresos', label: 'Ingresos' },
   { id: 'egresos', label: 'Egresos' },
-  { id: 'notas_credito', label: 'Notas de credito' },
-  { id: 'notas_debito', label: 'Notas de debito' },
   { id: 'impresora', label: 'Impresora' },
 ];
 const BAR_AUTO_DISMISS_MINUTE_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
@@ -4271,36 +4267,6 @@ export default function POSPanel() {
           <button onClick={() => registerMovement('expense')} disabled={!register} className="btn-primary mb-4 disabled:opacity-50 disabled:cursor-not-allowed">Registrar egreso</button>
           <div className="space-y-2">
             {expenses.map(m => <div key={m.id} className="text-sm flex justify-between border-b border-slate-100 pb-1"><span>{m.concept || 'Sin concepto'}</span><strong>{formatCurrency(m.amount)}</strong></div>)}
-          </div>
-        </div>
-      )}
-
-      {activeCajaOption === 'notas_credito' && (
-        <div className="card">
-          <h3 className="font-bold rf-section-title mb-4">Notas de credito</h3>
-          {!register ? cajaRequiresRegisterNotice : null}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <input className="input-field" type="number" min="0" step="0.01" placeholder="Monto" value={noteForm.amount} onChange={e => setNoteForm({ ...noteForm, amount: e.target.value })} disabled={!register} />
-            <input className="input-field md:col-span-2" placeholder="Motivo" value={noteForm.reason} onChange={e => setNoteForm({ ...noteForm, reason: e.target.value })} disabled={!register} />
-          </div>
-          <button onClick={() => registerNote('credit')} disabled={!register} className="btn-primary mb-4 disabled:opacity-50 disabled:cursor-not-allowed">Registrar nota de crédito</button>
-          <div className="space-y-2">
-            {creditNotes.map(n => <div key={n.id} className="text-sm flex justify-between border-b border-slate-100 pb-1"><span>{n.reason || 'Sin motivo'}</span><strong>{formatCurrency(n.amount)}</strong></div>)}
-          </div>
-        </div>
-      )}
-
-      {activeCajaOption === 'notas_debito' && (
-        <div className="card">
-          <h3 className="font-bold rf-section-title mb-4">Notas de debito</h3>
-          {!register ? cajaRequiresRegisterNotice : null}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <input className="input-field" type="number" min="0" step="0.01" placeholder="Monto" value={noteForm.amount} onChange={e => setNoteForm({ ...noteForm, amount: e.target.value })} disabled={!register} />
-            <input className="input-field md:col-span-2" placeholder="Motivo" value={noteForm.reason} onChange={e => setNoteForm({ ...noteForm, reason: e.target.value })} disabled={!register} />
-          </div>
-          <button onClick={() => registerNote('debit')} disabled={!register} className="btn-primary mb-4 disabled:opacity-50 disabled:cursor-not-allowed">Registrar nota de débito</button>
-          <div className="space-y-2">
-            {debitNotes.map(n => <div key={n.id} className="text-sm flex justify-between border-b border-slate-100 pb-1"><span>{n.reason || 'Sin motivo'}</span><strong>{formatCurrency(n.amount)}</strong></div>)}
           </div>
         </div>
       )}

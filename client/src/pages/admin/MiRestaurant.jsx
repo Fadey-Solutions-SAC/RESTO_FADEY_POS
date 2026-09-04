@@ -14,10 +14,16 @@ import { defaultBillingPanel, defaultBillingPanelPresence } from '../../data/sun
 import { defaultMiRestaurantProfile, mergeMiRestaurantProfile } from '../../data/miRestaurantProfileDefaults';
 import MiRestaurantEmpresaHub from '../../components/miRestaurant/MiRestaurantEmpresaHub';
 import { isDeliveryEnabledValue, notifyDeliveryEnabledChanged } from '../../hooks/useDeliveryEnabled';
-import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory, MdDelete, MdSupportAgent } from 'react-icons/md';
+import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory, MdDelete, MdSupportAgent, MdQrCode2 } from 'react-icons/md';
 
 const PAGO_USO_WHATSAPP_SUPPORT = '934029719';
 const PAGO_USO_WHATSAPP_URL = `https://wa.me/51${PAGO_USO_WHATSAPP_SUPPORT}?text=${encodeURIComponent('Hola, necesito soporte sobre el pago por uso del sistema.')}`;
+
+const PLAN_PAYMENT_QRS = [
+  { id: 'yape', label: 'Yape', color: '#7c3aed', src: '/payment-qr/yape-full.png', srcCrop: '/payment-qr/yape.png' },
+  { id: 'plin', label: 'Plin', color: '#06b6d4', src: '/payment-qr/plin-full.png', srcCrop: '/payment-qr/plin.png' },
+  { id: 'dale', label: 'Dale', color: '#2563eb', src: '/payment-qr/dale-full.png', srcCrop: '/payment-qr/dale.png' },
+];
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
 const DAY_NAMES = { lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles', jueves: 'Jueves', viernes: 'Viernes', sabado: 'Sábado', domingo: 'Domingo' };
@@ -142,6 +148,7 @@ export default function MiRestaurant() {
   const [centralResyncBusy, setCentralResyncBusy] = useState(false);
   const [enviarComprobanteBusy, setEnviarComprobanteBusy] = useState(false);
   const [comprobanteUploadBusy, setComprobanteUploadBusy] = useState(false);
+  const [showPagarQrModal, setShowPagarQrModal] = useState(false);
   const [cargarComprobanteModal, setCargarComprobanteModal] = useState(null);
   const [cargarMontoDraft, setCargarMontoDraft] = useState('');
   const [eliminarHistorialBusy, setEliminarHistorialBusy] = useState('');
@@ -1400,6 +1407,19 @@ export default function MiRestaurant() {
                     <MdUpload />
                     {comprobanteUploadBusy || enviarComprobanteBusy ? 'Procesando…' : 'Cargar comprobante'}
                   </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center gap-2 text-sm px-4 py-3 rounded-lg font-semibold border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+                    onClick={() => setShowPagarQrModal(true)}
+                  >
+                    <MdQrCode2 className="text-lg text-[#7c3aed]" />
+                    Pagar a QR
+                  </button>
+                  {Number(appConfig.pago_uso_sistema?.precio_plan) > 0 ? (
+                    <p className="text-[11px] text-center text-[var(--ui-muted)] tabular-nums">
+                      Monto del plan: S/ {Number(appConfig.pago_uso_sistema.precio_plan).toFixed(2)}
+                    </p>
+                  ) : null}
                   {String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim() ? (
                     <a
                       href={resolveMediaUrl(appConfig.pago_uso_sistema.comprobante_pago_url)}
@@ -1519,6 +1539,56 @@ export default function MiRestaurant() {
           )}
         </>
       )}
+
+      <Modal
+        variant="light"
+        isOpen={showPagarQrModal}
+        onClose={() => setShowPagarQrModal(false)}
+        title="Pagar a QR"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--ui-muted)]">
+            Escanee uno de estos códigos con Yape, Plin o Dale.
+            {Number(appConfig.pago_uso_sistema?.precio_plan) > 0 ? (
+              <>
+                {' '}Ingrese el monto del plan:{' '}
+                <strong className="text-[var(--ui-body-text)] tabular-nums">
+                  S/ {Number(appConfig.pago_uso_sistema.precio_plan).toFixed(2)}
+                </strong>
+                .
+              </>
+            ) : (
+              <> Luego cargue el comprobante con el monto pagado.</>
+            )}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {PLAN_PAYMENT_QRS.map((qr) => (
+              <div
+                key={qr.id}
+                className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 flex flex-col items-center gap-2"
+              >
+                <p className="text-sm font-bold" style={{ color: qr.color }}>{qr.label}</p>
+                <img
+                  src={qr.src}
+                  alt={`QR ${qr.label}`}
+                  className="w-full max-w-[220px] rounded-lg bg-white object-contain"
+                />
+                <p className="text-[11px] text-[var(--ui-muted)] text-center">Deyvi Renan Romero</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-[var(--ui-muted)]">
+            Estos QR son fijos (sin monto embebido). El precio del plan se configura en Plan comercial / Precio del plan
+            y se usa al cargar el comprobante.
+          </p>
+          <div className="flex justify-end">
+            <button type="button" className="btn-secondary text-sm" onClick={() => setShowPagarQrModal(false)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         variant="light"

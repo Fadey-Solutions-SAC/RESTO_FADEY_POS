@@ -54,7 +54,7 @@ if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
 
 const CAJA_SUB_IDS = [
   'apertura_cierre', 'cierres_caja', 'ingresos', 'egresos',
-  'notas_credito', 'notas_debito', 'impresora',
+  'impresora',
 ];
 const MI_RESTAURANT_SUB_IDS = [
   'mi_empresa', 'facturacion_electronica', 'pagos_sistema', 'contrato', 'pago_uso_sistema', 'informacion',

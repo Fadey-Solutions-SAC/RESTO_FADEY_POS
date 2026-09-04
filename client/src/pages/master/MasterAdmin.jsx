@@ -74,6 +74,8 @@ export default function MasterAdmin() {
   const [serviceContratoSaving, setServiceContratoSaving] = useState(false);
   /** Overrides de módulos / submódulos (false = deshabilitado). Se guardan con el plan. */
   const [planModuleDraft, setPlanModuleDraft] = useState({});
+  const [planPrecioDraft, setPlanPrecioDraft] = useState('');
+  const [planPrecioSaving, setPlanPrecioSaving] = useState(false);
 
   const loadDashboard = async () => {
     try {
@@ -88,6 +90,26 @@ export default function MasterAdmin() {
   };
 
   useEffect(() => { loadDashboard(); }, []);
+
+  useEffect(() => {
+    if (tab !== 'plan') return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const appCfg = await api.get('/admin-modules/config/app');
+        if (cancelled) return;
+        const precio = appCfg?.pago_uso_sistema?.precio_plan;
+        setPlanPrecioDraft(
+          precio === null || precio === undefined || precio === ''
+            ? ''
+            : String(precio),
+        );
+      } catch (_) {
+        /* ignore */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tab]);
 
   useEffect(() => {
     if (tab !== 'contrato') return;
@@ -506,6 +528,21 @@ export default function MasterAdmin() {
                     <option value="profesional">plan premium</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Precio del plan (S/)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="input-field tabular-nums"
+                    placeholder="Ej. 99.00"
+                    value={planPrecioDraft}
+                    onChange={(e) => setPlanPrecioDraft(e.target.value)}
+                  />
+                  <p className="text-xs text-[var(--ui-muted)] mt-1">
+                    Este monto se sugiere al cargar el comprobante de pago del plan.
+                  </p>
+                </div>
                 <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-[var(--ui-muted)]">
                   Desactivar un módulo oculta su entrada en el menú. Desactivar un submódulo (p. ej. una vista de Caja) oculta solo esa opción si el módulo
                   padre sigue activo.
@@ -514,17 +551,34 @@ export default function MasterAdmin() {
                   <button
                     type="button"
                     className="btn-primary flex items-center gap-2"
-                    onClick={() =>
-                      updateControl(
-                        {
-                          service_plan: control.service_plan || 'profesional',
-                          service_plan_module_overrides: planModuleDraft,
-                        },
-                        'Plan comercial actualizado'
-                      )
-                    }
+                    disabled={planPrecioSaving}
+                    onClick={async () => {
+                      try {
+                        setPlanPrecioSaving(true);
+                        await updateControl(
+                          {
+                            service_plan: control.service_plan || 'profesional',
+                            service_plan_module_overrides: planModuleDraft,
+                          },
+                          null,
+                        );
+                        const precioNum = Number(planPrecioDraft);
+                        const precioPayload = Number.isFinite(precioNum) && precioNum >= 0
+                          ? Math.round(precioNum * 100) / 100
+                          : '';
+                        await api.put('/admin-modules/config/app', {
+                          pago_uso_sistema: { precio_plan: precioPayload },
+                        });
+                        setPlanPrecioDraft(precioPayload === '' ? '' : String(precioPayload));
+                        toast.success('Plan comercial actualizado');
+                      } catch (err) {
+                        toast.error(err.message || 'No se pudo guardar el plan');
+                      } finally {
+                        setPlanPrecioSaving(false);
+                      }
+                    }}
                   >
-                    <MdSave /> Guardar plan y módulos
+                    <MdSave /> {planPrecioSaving ? 'Guardando…' : 'Guardar plan y módulos'}
                   </button>
                 </div>
               </div>
