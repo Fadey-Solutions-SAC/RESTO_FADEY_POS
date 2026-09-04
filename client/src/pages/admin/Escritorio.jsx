@@ -5,7 +5,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useDeliverySettings } from '../../hooks/useDeliveryEnabled';
 import { useNavigate, Link } from 'react-router-dom';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
+import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, ComposedChart } from 'recharts';
 import { MdDateRange, MdKeyboardArrowDown, MdChevronLeft, MdChevronRight, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning, MdNotificationsActive } from 'react-icons/md';
 
 import { useChartTheme } from '../../theme/useChartTheme';
@@ -85,6 +85,38 @@ function buildHourlySalesRows(accounts, scheduleCheck) {
     hour: `${hour}:00`,
     sales: Number(Number(total).toFixed(2)),
   }));
+}
+
+/** Una barra por cada cuenta cobrada (ordenado por hora de pago). */
+function buildPaymentTimelineRows(accounts, scheduleCheck) {
+  return (accounts || [])
+    .slice()
+    .sort((a, b) => {
+      const ta = parseApiDate(a.paidAt)?.getTime() || 0;
+      const tb = parseApiDate(b.paidAt)?.getTime() || 0;
+      return ta - tb;
+    })
+    .map((account, index) => {
+      const parsed = parseApiDate(account.paidAt);
+      if (!parsed) return null;
+      if (scheduleCheck && !scheduleCheck({
+        paid_at: account.paidAt,
+        updated_at: account.paidAt,
+        created_at: account.paidAt,
+      })) return null;
+      const hh = String(parsed.getHours()).padStart(2, '0');
+      const mm = String(parsed.getMinutes()).padStart(2, '0');
+      const amount = Number(Number(account.total || 0).toFixed(2));
+      const table = String(account.table || '').trim();
+      return {
+        id: `pay-${index}-${account.paidAt || ''}-${amount}`,
+        label: `${hh}:${mm}`,
+        amount,
+        table,
+        mesaLabel: table ? `Mesa ${table}` : 'Cuenta cobrada',
+      };
+    })
+    .filter(Boolean);
 }
 
 function pickPeakAndLowHour(hourlyRows) {
@@ -480,6 +512,7 @@ export default function Escritorio() {
           dateKey,
           dateLabel: formatDateForLabel(dateKey),
           hourly: buildHourlySalesRows(dayAccounts, scheduleSaleCheck),
+          payments: buildPaymentTimelineRows(dayAccounts, scheduleSaleCheck),
           total: dayAccounts.reduce((sum, account) => sum + Number(account.total || 0), 0),
           accountCount: dayAccounts.length,
         };
@@ -495,6 +528,14 @@ export default function Escritorio() {
 
   const hourlyHistoryEntry = hourlySalesHistory[hourlyHistoryIndex] || null;
   const hourlySales = hourlyHistoryEntry?.hourly || buildHourlySalesRows([], scheduleSaleCheck);
+  const paymentSales = hourlyHistoryEntry?.payments || [];
+  const themeAccent = (() => {
+    if (typeof document !== 'undefined') {
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--ui-accent').trim();
+      if (accent) return accent;
+    }
+    return CHART_COLORS?.[0] || '#2563eb';
+  })();
   const { peak: peakHour, low: lowHour } = useMemo(
     () => pickPeakAndLowHour(hourlySales),
     [hourlySales],
@@ -1205,7 +1246,7 @@ export default function Escritorio() {
               </button>
               <div className="text-center min-w-[12rem]">
                 <h3 className="text-[var(--ui-body-text)] font-medium">
-                  Gráfico por cantidad de ventas / Dinero por ventas
+                  Cobros del día · barras y tendencia
                 </h3>
                 <p className="text-xs text-[var(--ui-muted)] tabular-nums">
                   {hourlyHistoryEntry
@@ -1237,33 +1278,77 @@ export default function Escritorio() {
               onTouchStart={onHourlyChartTouchStart}
               onTouchEnd={onHourlyChartTouchEnd}
             >
-              <ResponsiveContainer width="100%" height={170}>
-                <LineChart data={hourlySales}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--ui-border)" strokeOpacity={0.55} />
-                  <XAxis dataKey="hour" tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} />
-                  <YAxis tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} />
-                  <Tooltip
-                    formatter={(v) => formatCurrency(v)}
-                    labelFormatter={(label) => `${hourlyHistoryEntry?.dateLabel || ''} ${label}`.trim()}
-                    contentStyle={{
-                      background: 'var(--ui-surface-2)',
-                      border: '1px solid var(--ui-border)',
-                      borderRadius: '8px',
-                      color: 'var(--ui-body-text)',
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="sales"
-                    stroke="#f59e0b"
-                    strokeWidth={3}
-                    fill="#fcd34d"
-                    dot={{ r: 2 }}
-                    activeDot={{ r: 4 }}
-                    name="Ventas del día"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {paymentSales.length > 0 ? (
+                <ResponsiveContainer width="100%" height={190}>
+                  <ComposedChart
+                    data={paymentSales}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    barCategoryGap="12%"
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--ui-border)" strokeOpacity={0.55} />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 10, fill: 'var(--ui-muted)' }}
+                      interval="preserveStartEnd"
+                      minTickGap={28}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: 'var(--ui-muted)' }}
+                      width={48}
+                      tickFormatter={(v) => formatChartYAxisTick(v)}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'color-mix(in srgb, var(--ui-accent-muted) 12%, transparent)' }}
+                      content={({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null;
+                        const row = payload.find((p) => p?.dataKey === 'amount')?.payload
+                          || payload[0]?.payload;
+                        if (!row) return null;
+                        return (
+                          <div
+                            className="rounded-lg border px-3 py-2 text-xs shadow-sm"
+                            style={{
+                              background: 'var(--ui-surface-2)',
+                              borderColor: 'var(--ui-border)',
+                              color: 'var(--ui-body-text)',
+                            }}
+                          >
+                            <p className="font-semibold tabular-nums">
+                              {hourlyHistoryEntry?.dateLabel || ''} · {label || row.label}
+                            </p>
+                            <p className="text-[var(--ui-muted)] mt-0.5">{row.mesaLabel}</p>
+                            <p className="mt-1 font-bold tabular-nums" style={{ color: themeAccent }}>
+                              {formatCurrency(row.amount)}
+                            </p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar
+                      dataKey="amount"
+                      fill={themeAccent}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={36}
+                      name="Cobro"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="amount"
+                      stroke={themeAccent}
+                      strokeWidth={2.5}
+                      dot={{ r: 3, fill: themeAccent, strokeWidth: 0 }}
+                      activeDot={{ r: 5 }}
+                      name="Tendencia"
+                      legendType="none"
+                      isAnimationActive={false}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[190px] flex items-center justify-center text-sm text-[var(--ui-muted)]">
+                  Sin cobros en este día
+                </div>
+              )}
             </div>
           </div>
         </div>

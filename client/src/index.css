@@ -11,9 +11,9 @@ html {
   --ui-live-warning-text: #fcd34d;
   --ui-live-info-text: #7dd3fc;
   --ui-live-danger-text: #fda4af;
-  --ui-live-alert-warning-bg: rgba(245, 158, 11, 0.14);
-  --ui-live-alert-warning-text: #fde68a;
-  --ui-live-alert-warning-border: rgba(251, 191, 36, 0.4);
+  --ui-live-alert-warning-bg: rgba(239, 68, 68, 0.16);
+  --ui-live-alert-warning-text: #fecaca;
+  --ui-live-alert-warning-border: rgba(248, 113, 113, 0.45);
   --ui-live-alert-info-bg: rgba(56, 189, 248, 0.12);
   --ui-live-alert-info-text: #e0f2fe;
   --ui-live-alert-info-border: rgba(56, 189, 248, 0.35);
@@ -56,9 +56,9 @@ html[data-ui-color-scheme='light'] {
   --ui-live-warning-text: #92400e;
   --ui-live-info-text: #0369a1;
   --ui-live-danger-text: #be123c;
-  --ui-live-alert-warning-bg: rgba(245, 158, 11, 0.12);
-  --ui-live-alert-warning-text: #78350f;
-  --ui-live-alert-warning-border: rgba(245, 158, 11, 0.35);
+  --ui-live-alert-warning-bg: rgba(239, 68, 68, 0.1);
+  --ui-live-alert-warning-text: #b91c1c;
+  --ui-live-alert-warning-border: rgba(220, 38, 38, 0.4);
   --ui-live-alert-info-bg: rgba(14, 165, 233, 0.1);
   --ui-live-alert-info-text: #0c4a6e;
   --ui-live-alert-info-border: rgba(14, 165, 233, 0.28);
@@ -95,9 +95,9 @@ html[data-ui-theme='dark'] {
   --ui-live-warning-text: #fbbf24;
   --ui-live-info-text: #38bdf8;
   --ui-live-danger-text: #fb7185;
-  --ui-live-alert-warning-bg: rgba(251, 191, 36, 0.14);
-  --ui-live-alert-warning-text: #fef3c7;
-  --ui-live-alert-warning-border: rgba(251, 191, 36, 0.38);
+  --ui-live-alert-warning-bg: rgba(239, 68, 68, 0.16);
+  --ui-live-alert-warning-text: #fecaca;
+  --ui-live-alert-warning-border: rgba(248, 113, 113, 0.45);
   --ui-live-alert-info-bg: rgba(56, 189, 248, 0.14);
   --ui-live-alert-info-text: #e0f2fe;
   --ui-live-alert-info-border: rgba(56, 189, 248, 0.38);
@@ -608,14 +608,17 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     background-color: var(--ui-btn-secondary-hover);
   }
 
-  /* Panel en vivo / alertas operativas — contraste en tema claro y oscuro */
-  .ui-live-alert-warning {
+  /* Panel en vivo / alertas operativas — texto rojo (contraste claro/oscuro) */
+  .ui-live-alert-warning,
+  a.ui-live-alert-warning,
+  a.ui-live-alert-warning:link,
+  a.ui-live-alert-warning:visited {
     background: var(--ui-live-alert-warning-bg);
     color: var(--ui-live-alert-warning-text);
     border: 1px solid var(--ui-live-alert-warning-border);
   }
   .ui-live-alert-warning .ui-live-alert-icon {
-    color: var(--ui-live-warning-text);
+    color: var(--ui-live-alert-warning-text);
   }
   .ui-live-alert-info {
     background: var(--ui-live-alert-info-bg);

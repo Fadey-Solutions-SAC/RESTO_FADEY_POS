@@ -570,9 +570,15 @@ function fillAttendanceHours(row, schedule) {
     breakMinutes: Number(schedule.break_minutes || 0),
     maxHours: Number(schedule.max_hours || 8),
     overtimeAfterMinutes: schedule.overtime_after_minutes,
+    timeZone: hrTimeZone(),
   });
   const early = calc.computeEarlyLeaveMinutes(row.check_out_at, schedule.end_time, overnight);
-  return { ...row, ...hours, early_leave_minutes: early };
+  return {
+    ...row,
+    ...hours,
+    check_in_at: hours.check_in_at || row.check_in_at,
+    early_leave_minutes: early,
+  };
 }
 
 function lastAttendanceInstant(row) {
@@ -642,7 +648,9 @@ function scanAttendance({ restaurantId, token, branchId, deviceId, ip }) {
       breakMinutes: Number(schedule.break_minutes || 0),
       maxHours: Number(schedule.max_hours || 8),
       overtimeAfterMinutes: schedule.overtime_after_minutes,
+      timeZone: hrTimeZone(),
     });
+    const checkInSql = hours.check_in_at || open.check_in_at;
     const early = calc.computeEarlyLeaveMinutes(nowSql, schedule.end_time, overnight);
     let status = open.status === 'late' || open.status === 'late_justified' ? open.status : 'on_time';
     if (open.status === 'open') {
@@ -653,10 +661,11 @@ function scanAttendance({ restaurantId, token, branchId, deviceId, ip }) {
       });
     }
     runSql(
-      `UPDATE hr_attendance SET check_out_at=?, worked_minutes=?, break_minutes=?, overtime_minutes=?,
+      `UPDATE hr_attendance SET check_in_at=?, check_out_at=?, worked_minutes=?, break_minutes=?, overtime_minutes=?,
         early_leave_minutes=?, status=?, device_id=?, ip_address=?, updated_at=datetime('now')
        WHERE id=?`,
       [
+        checkInSql,
         nowSql,
         hours.worked_minutes,
         hours.break_minutes,
@@ -675,7 +684,7 @@ function scanAttendance({ restaurantId, token, branchId, deviceId, ip }) {
       employee: emp,
       attendance: saved,
       display: {
-        check_in: open.check_in_at,
+        check_in: checkInSql,
         check_out: nowSql,
         worked: calc.minutesToHm(hours.worked_minutes),
         overtime: calc.minutesToHm(hours.overtime_minutes),
@@ -779,7 +788,7 @@ function listAttendance(restaurantId, filters = {}) {
     params
   );
   const rows = queryAll(
-    `SELECT a.*, u.full_name, u.username, e.position, e.department, e.branch_id AS emp_branch
+    `SELECT a.*, u.full_name, u.username, e.position, e.department, e.branch_id AS emp_branch, e.id AS emp_id
      FROM hr_attendance a
      JOIN hr_employees e ON e.id = a.employee_id
      JOIN users u ON u.id = e.user_id
@@ -788,8 +797,58 @@ function listAttendance(restaurantId, filters = {}) {
      LIMIT ? OFFSET ?`,
     [...params, limit, offset]
   );
+  const tz = hrTimeZone();
+  const items = (rows || []).map((row) => {
+    if (!row.check_in_at || !row.check_out_at) return row;
+    const emp = getEmployee(restaurantId, row.employee_id);
+    const sch = (emp
+      ? scheduleOfEmployee({ ...emp, restaurant_id: restaurantId })
+      : null) || {
+      start_time: '08:00',
+      end_time: '17:00',
+      break_minutes: 60,
+      max_hours: 8,
+    };
+    const hours = calc.computeWorkedAndOvertime({
+      checkInSql: row.check_in_at,
+      checkOutSql: row.check_out_at,
+      breakMinutes: Number(sch.break_minutes || 0),
+      maxHours: Number(sch.max_hours || 8),
+      overtimeAfterMinutes: sch.overtime_after_minutes,
+      timeZone: tz,
+    });
+    const stored = Number(row.worked_minutes || 0);
+    if (hours.worked_minutes <= 0 && stored <= 0 && !hours.check_in_fixed) return row;
+    if (
+      hours.check_in_fixed
+      || stored !== hours.worked_minutes
+      || Number(row.overtime_minutes || 0) !== hours.overtime_minutes
+    ) {
+      try {
+        runSql(
+          `UPDATE hr_attendance SET check_in_at=?, worked_minutes=?, overtime_minutes=?, break_minutes=?, updated_at=datetime('now') WHERE id=?`,
+          [
+            hours.check_in_at || row.check_in_at,
+            hours.worked_minutes,
+            hours.overtime_minutes,
+            hours.break_minutes,
+            row.id,
+          ]
+        );
+      } catch (_) {
+        /* noop */
+      }
+    }
+    return {
+      ...row,
+      check_in_at: hours.check_in_at || row.check_in_at,
+      worked_minutes: hours.worked_minutes,
+      overtime_minutes: hours.overtime_minutes,
+      break_minutes: hours.break_minutes,
+    };
+  });
   return {
-    items: rows || [],
+    items,
     total: Number(total?.c || 0),
     page,
     limit,
@@ -906,6 +965,7 @@ function manualAttendance(restaurantId, body, actor) {
       breakMinutes: Number(schedule.break_minutes || 0),
       maxHours: Number(schedule.max_hours || 8),
       overtimeAfterMinutes: schedule.overtime_after_minutes,
+      timeZone: hrTimeZone(),
     })
     : { worked_minutes: 0, overtime_minutes: 0, break_minutes: Number(schedule.break_minutes || 0) };
   const status = calc.attendanceStatus({
@@ -918,7 +978,7 @@ function manualAttendance(restaurantId, body, actor) {
       late_minutes=?, late_justified=?, late_justification=?, status=?, source='manual', updated_at=datetime('now')
      WHERE id=?`,
     [
-      nextIn, nextOut, hours.worked_minutes, hours.overtime_minutes, hours.break_minutes,
+      hours.check_in_at || nextIn, nextOut, hours.worked_minutes, hours.overtime_minutes, hours.break_minutes,
       late, body.late_justified ? 1 : 0, String(body.late_justification || ''),
       nextOut ? status : (status === 'on_time' ? 'open' : status),
       row.id,

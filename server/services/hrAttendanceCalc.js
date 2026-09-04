@@ -103,15 +103,52 @@ function computeEarlyLeaveMinutes(checkOutSql, endTime, overnight) {
   return Math.max(0, end - out);
 }
 
+function utcNaiveSqlToZonedSql(sql, timeZone = 'America/Lima') {
+  const p = parseSqlDateTime(sql);
+  if (!p) return String(sql || '');
+  try {
+    const { formatLimaSqlDateTime } = require('../utils/appDateTime');
+    const asUtc = new Date(Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s));
+    return formatLimaSqlDateTime(asUtc, timeZone || 'America/Lima');
+  } catch (_) {
+    return String(sql || '');
+  }
+}
+
+/**
+ * Si salida < ingreso (p. ej. ingreso guardado en UTC), intenta normalizar el par.
+ * @returns {{ checkInSql: string, checkOutSql: string, rawMinutes: number, checkInFixed: boolean }}
+ */
+function resolveAttendanceInterval(checkInSql, checkOutSql, timeZone = 'America/Lima') {
+  let inSql = String(checkInSql || '');
+  const outSql = String(checkOutSql || '');
+  let raw = diffMinutesSql(inSql, outSql);
+  let checkInFixed = false;
+  if (raw <= 0 && inSql && outSql && diffMsSql(inSql, outSql) < 0) {
+    const converted = utcNaiveSqlToZonedSql(inSql, timeZone);
+    const raw2 = diffMinutesSql(converted, outSql);
+    if (raw2 > 0) {
+      inSql = converted;
+      raw = raw2;
+      checkInFixed = true;
+    }
+  }
+  return { checkInSql: inSql, checkOutSql: outSql, rawMinutes: raw, checkInFixed };
+}
+
 function computeWorkedAndOvertime({
   checkInSql,
   checkOutSql,
   breakMinutes = 0,
   maxHours = 8,
   overtimeAfterMinutes = null,
+  timeZone = 'America/Lima',
 }) {
-  const raw = diffMinutesSql(checkInSql, checkOutSql);
-  const brk = Math.max(0, Number(breakMinutes) || 0);
+  const resolved = resolveAttendanceInterval(checkInSql, checkOutSql, timeZone);
+  const raw = resolved.rawMinutes;
+  const brkConfigured = Math.max(0, Number(breakMinutes) || 0);
+  // No restar refrigerio completo en turnos más cortos que el break (evita 0h 00m).
+  const brk = raw > brkConfigured ? brkConfigured : 0;
   const worked = Math.max(0, raw - brk);
   const cap = overtimeAfterMinutes != null && Number.isFinite(Number(overtimeAfterMinutes))
     ? Number(overtimeAfterMinutes)
@@ -126,6 +163,8 @@ function computeWorkedAndOvertime({
     overtime_minutes: overtime,
     missing_minutes: missing,
     break_minutes: brk,
+    check_in_at: resolved.checkInSql,
+    check_in_fixed: resolved.checkInFixed,
   };
 }
 
@@ -172,6 +211,8 @@ module.exports = {
   computeEarlyLeaveMinutes,
   computeWorkedAndOvertime,
   attendanceStatus,
+  utcNaiveSqlToZonedSql,
+  resolveAttendanceInterval,
   jsNowSql,
   jsTodayDate,
   weekdayMonday0,

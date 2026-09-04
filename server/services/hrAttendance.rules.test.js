@@ -52,4 +52,40 @@ run('zona horaria: jsNowSql usa America/Lima (no UTC del proceso)', () => {
   assert.strictEqual(sql, '2026-09-02 08:03:00');
 });
 
+run('turno corto: no restar refrigerio completo (evita 0h)', () => {
+  const r = calc.computeWorkedAndOvertime({
+    checkInSql: '2026-09-02 23:00:00',
+    checkOutSql: '2026-09-02 23:07:00',
+    breakMinutes: 60,
+    maxHours: 8,
+  });
+  assert.strictEqual(r.worked_minutes, 7);
+  assert.strictEqual(r.break_minutes, 0);
+});
+
+run('ingreso UTC naive se normaliza a Lima para contar horas', () => {
+  // 04:00 UTC = 23:00 Lima día anterior
+  const r = calc.computeWorkedAndOvertime({
+    checkInSql: '2026-09-03 04:00:00',
+    checkOutSql: '2026-09-02 23:07:00',
+    breakMinutes: 60,
+    maxHours: 8,
+    timeZone: 'America/Lima',
+  });
+  assert.ok(r.check_in_fixed);
+  assert.strictEqual(r.worked_minutes, 7);
+});
+
+run('jornada normal sí descuenta refrigerio', () => {
+  const r = calc.computeWorkedAndOvertime({
+    checkInSql: '2026-09-02 08:00:00',
+    checkOutSql: '2026-09-02 17:00:00',
+    breakMinutes: 60,
+    maxHours: 8,
+  });
+  assert.strictEqual(r.raw_minutes, 540);
+  assert.strictEqual(r.worked_minutes, 480);
+  assert.strictEqual(r.break_minutes, 60);
+});
+
 console.log('hrAttendance.rules: OK');
