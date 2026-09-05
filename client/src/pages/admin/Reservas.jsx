@@ -197,7 +197,7 @@ export default function Reservas() {
       if (hadOrderLines) {
         toast.success(
           orderCreated
-            ? 'Reserva creada. El pedido se enviará a cocina 45 min antes de la hora reservada'
+            ? 'Reserva creada. El pedido se enviará a cocina 30 min antes de la hora reservada'
             : 'Reserva creada'
         );
       } else {
@@ -519,7 +519,7 @@ export default function Reservas() {
                           <span>Total</span>
                           <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
                         </div>
-                        <p className="text-xs text-[#9CA3AF]">Se programará para cocina 45 min antes de la hora reservada.</p>
+                        <p className="text-xs text-[#9CA3AF]">Se programará para cocina 30 min antes de la hora reservada.</p>
                       </>
                     ) : null
                   }

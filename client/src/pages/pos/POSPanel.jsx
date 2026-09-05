@@ -1117,11 +1117,25 @@ export default function POSPanel() {
         if (!nextIds.has(id)) toast.dismiss(id);
       }
       for (const alert of alerts) {
-        toast(`${alert.title}: ${alert.message}`, {
-          id: alert.id,
-          duration: Infinity,
-          icon: '📅',
-        });
+        toast.custom(
+          (t) => (
+            <div
+              className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-[min(100vw-2rem,26rem)] rounded-xl border border-amber-500/50 bg-amber-50 text-amber-950 shadow-lg px-4 py-3`}
+              role="status"
+            >
+              <p className="text-sm font-bold">📅 {alert.title}</p>
+              <p className="text-xs mt-1.5 leading-snug whitespace-pre-wrap break-words">{alert.message}</p>
+              <button
+                type="button"
+                className="mt-2 text-xs font-semibold text-amber-800 underline underline-offset-2"
+                onClick={() => toast.dismiss(t.id)}
+              >
+                Cerrar aviso
+              </button>
+            </div>
+          ),
+          { id: alert.id, duration: Infinity }
+        );
       }
       reservationAlertToastIdsRef.current = nextIds;
     } catch (_) {
@@ -1209,8 +1223,34 @@ export default function POSPanel() {
     if (['modifiers', 'reservations', 'customers', 'app_config', 'catalog', 'combos'].includes(d)) void loadData();
     if (d === 'reservations') void syncReservationAlertToasts();
   });
-  useSocket('reservation-reminder', () => {
+  useSocket('reservation-reminder', (payload) => {
     void loadData();
+    const r = payload?.reservation;
+    if (r?.id) {
+      const toastId = `reserva_caja_${r.id}`;
+      const tableLabel = r.table_label || 'Sin mesa asignada';
+      const msg = `${r.client_name || 'Cliente'} · ${r.date || ''} ${r.time || ''} · ${Number(r.guests || 0)} persona(s). ${tableLabel}: verifique preparativos de la mesa.`;
+      toast.custom(
+        (t) => (
+          <div
+            className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-[min(100vw-2rem,26rem)] rounded-xl border border-amber-500/50 bg-amber-50 text-amber-950 shadow-lg px-4 py-3`}
+            role="status"
+          >
+            <p className="text-sm font-bold">📅 Reserva próxima — verificar preparativos</p>
+            <p className="text-xs mt-1.5 leading-snug whitespace-pre-wrap break-words">{msg}</p>
+            <button
+              type="button"
+              className="mt-2 text-xs font-semibold text-amber-800 underline underline-offset-2"
+              onClick={() => toast.dismiss(t.id)}
+            >
+              Cerrar aviso
+            </button>
+          </div>
+        ),
+        { id: toastId, duration: Infinity }
+      );
+      reservationAlertToastIdsRef.current.add(toastId);
+    }
     void syncReservationAlertToasts();
   });
   useEffect(() => {

@@ -60,24 +60,28 @@ function isOrderOutOfKitchen(order) {
   return status === 'ready' || status === 'delivered';
 }
 
+function markCajaVerifySent(reservationId) {
+  runSql(
+    "UPDATE reservations SET caja_verify_sent_at = datetime('now', 'localtime'), updated_at = datetime('now') WHERE id = ?",
+    [reservationId]
+  );
+}
+
 /**
- * El aviso a caja permanece hasta: pedido fuera de cocina (si hay pedido) o T+2 h.
- * La mesa ya asignada no omite el aviso: caja debe verificar mesa, zona, decoración, etc.
+ * Aviso a caja activo en ventana [T−20 min, T+2 h].
+ * No se cancela por pedido listo: caja debe verificar mesa, zona, decoración, etc.
  */
-function isReservationCajaAlertActive(reservation) {
+function isReservationCajaAlertActive(reservation, now = new Date()) {
   if (!reservation) return false;
   if (!['confirmed', 'pending'].includes(String(reservation.status || ''))) return false;
-  if (!String(reservation.caja_verify_sent_at || '').trim()) return false;
 
   const resAt = parseReservationLocalDateTime(reservation.date, reservation.time);
   if (!resAt) return false;
 
+  const windowStart = new Date(resAt.getTime() - RESERVATION_CAJA_VERIFY_MINUTES * 60_000);
   const maxUntil = new Date(resAt.getTime() + RESERVATION_CAJA_ALERT_MAX_HOURS_AFTER * 60 * 60 * 1000);
-  if (new Date() >= maxUntil) return false;
-
-  const linked = findAllLinkedOrders(reservation.id);
-  if (linked.length > 0 && linked.every(isOrderOutOfKitchen)) return false;
-
+  if (now < windowStart) return false;
+  if (now >= maxUntil) return false;
   return true;
 }
 
@@ -85,7 +89,7 @@ function releaseReservationKitchenOrders(reservation) {
   const linked = findLinkedOrders(reservation.id).filter((o) => String(o.kitchen_release_at || '').trim());
   if (linked.length === 0) {
     runSql(
-      "UPDATE reservations SET kitchen_prep_sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND kitchen_prep_sent_at IS NULL",
+      "UPDATE reservations SET kitchen_prep_sent_at = datetime('now', 'localtime'), updated_at = datetime('now') WHERE id = ? AND kitchen_prep_sent_at IS NULL",
       [reservation.id]
     );
     return { released: 0 };
@@ -110,7 +114,7 @@ function releaseReservationKitchenOrders(reservation) {
   }
 
   runSql(
-    "UPDATE reservations SET kitchen_prep_sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+    "UPDATE reservations SET kitchen_prep_sent_at = datetime('now', 'localtime'), updated_at = datetime('now') WHERE id = ?",
     [reservation.id]
   );
   emitStaffDataUpdate({ domain: 'reservations', action: 'kitchen_released', reservation_id: reservation.id });
@@ -118,15 +122,6 @@ function releaseReservationKitchenOrders(reservation) {
 }
 
 function sendCajaReservationReminder(reservation) {
-  const linkedAll = findAllLinkedOrders(reservation.id);
-  if (linkedAll.length > 0 && linkedAll.every(isOrderOutOfKitchen)) {
-    runSql(
-      "UPDATE reservations SET caja_verify_sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
-      [reservation.id]
-    );
-    return null;
-  }
-
   const linked = findLinkedOrders(reservation.id);
   const hasOrder = linked.length > 0;
   const tableLabel = getReservationTableLabel(reservation);
@@ -146,10 +141,7 @@ function sendCajaReservationReminder(reservation) {
     },
   };
 
-  runSql(
-    "UPDATE reservations SET caja_verify_sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
-    [reservation.id]
-  );
+  markCajaVerifySent(reservation.id);
 
   const io = getSocketIo();
   if (io) io.emit('reservation-reminder', payload);
@@ -220,23 +212,53 @@ function buildReservationCajaAlert(reservation) {
 }
 
 /**
- * Alertas operativas para caja: persisten hasta pedido listo (si hay) o T+2 h.
+ * Alertas operativas para caja: ventana [T−20 min, T+2 h].
+ * Si el scheduler no marcó aún, se incluye igual y se marca el envío.
  */
 function getReservationCajaOperationalAlerts() {
   const resExpr = reservationLocalSqlExpr('r');
+  const verifyMins = RESERVATION_CAJA_VERIFY_MINUTES;
   const maxAfterHours = RESERVATION_CAJA_ALERT_MAX_HOURS_AFTER;
   const rows = queryAll(
     `SELECT r.* FROM reservations r
      WHERE r.status IN ('confirmed','pending')
-       AND r.caja_verify_sent_at IS NOT NULL
-       AND trim(r.caja_verify_sent_at) != ''
-       AND ${resExpr} <= datetime('now', 'localtime', '+${maxAfterHours} hours')
-       AND datetime(r.caja_verify_sent_at) >= datetime('now', 'localtime', '-${maxAfterHours + 2} hours')
+       AND ${resExpr} <= datetime('now', 'localtime', '+${verifyMins} minutes')
+       AND ${resExpr} > datetime('now', 'localtime', '-${maxAfterHours} hours')
      ORDER BY r.date ASC, r.time ASC
      LIMIT 30`
   );
 
-  return rows.filter(isReservationCajaAlertActive).map(buildReservationCajaAlert);
+  const now = new Date();
+  const active = [];
+  for (const reservation of rows) {
+    if (!isReservationCajaAlertActive(reservation, now)) continue;
+    if (!String(reservation.caja_verify_sent_at || '').trim()) {
+      markCajaVerifySent(reservation.id);
+      reservation.caja_verify_sent_at = new Date().toISOString();
+      const linkedPending = findLinkedOrders(reservation.id);
+      const io = getSocketIo();
+      if (io) {
+        io.emit('reservation-reminder', {
+          type: 'caja_verify',
+          reservation: {
+            id: reservation.id,
+            client_name: reservation.client_name,
+            phone: reservation.phone || '',
+            date: reservation.date,
+            time: String(reservation.time || '').slice(0, 5),
+            guests: Number(reservation.guests || 0),
+            table_label: getReservationTableLabel(reservation),
+            has_order: linkedPending.length > 0,
+            order_count: linkedPending.length,
+            notes: reservation.notes || '',
+          },
+        });
+      }
+      emitStaffDataUpdate({ domain: 'reservations', action: 'caja_reminder', reservation_id: reservation.id });
+    }
+    active.push(buildReservationCajaAlert(reservation));
+  }
+  return active;
 }
 
 function startReservationScheduler() {

@@ -1,34 +1,9 @@
-import { MdCallMerge } from 'react-icons/md';
-import {
-  formatMesaMapTableNumber,
-  maxChairsOnAnySide,
-  splitChairsPerSide,
-} from '../utils/mesaMapTableVisual';
-
-function MesaChairsRow({ count }) {
-  if (!count) return null;
-  return (
-    <div className="rf-mesa-map-tile__chairs-row" aria-hidden="true">
-      {Array.from({ length: count }, (_, i) => (
-        <span key={i} className="rf-mesa-map-chair" />
-      ))}
-    </div>
-  );
-}
-
-function MesaChairsCol({ count }) {
-  if (!count) return null;
-  return (
-    <div className="rf-mesa-map-tile__chairs-col" aria-hidden="true">
-      {Array.from({ length: count }, (_, i) => (
-        <span key={i} className="rf-mesa-map-chair" />
-      ))}
-    </div>
-  );
-}
+import { MdCallMerge, MdPerson } from 'react-icons/md';
+import { formatMesaMapTableNumber } from '../utils/mesaMapTableVisual';
 
 /**
- * Mesa cuadrada con sillas alrededor para el mapa de caja.
+ * Mesa cuadrada para el mapa de caja (sin sillas).
+ * La capacidad se muestra con un ícono de persona.
  */
 export default function MesaMapTableTile({
   table,
@@ -39,9 +14,6 @@ export default function MesaMapTableTile({
   onClick,
   className = '',
 }) {
-  const sides = splitChairsPerSide(chairCount);
-  const [top, right, bottom, left] = sides;
-  const chairSlots = maxChairsOnAnySide(sides);
   const numberLabel = formatMesaMapTableNumber(table);
   const capacityLabel = String(chairCount);
 
@@ -58,22 +30,18 @@ export default function MesaMapTableTile({
       ]
         .filter(Boolean)
         .join(' ')}
-      style={{ '--rf-mesa-chair-slots': chairSlots }}
       title={table?.name || `Mesa ${numberLabel}`}
     >
-      <MesaChairsRow count={top} />
-      <div className="rf-mesa-map-tile__middle">
-        <MesaChairsCol count={left} />
-        <div className="rf-mesa-map-tile__table">
-          {visualState === 'united' ? (
-            <MdCallMerge className="rf-mesa-map-tile__union-icon" aria-hidden="true" />
-          ) : null}
-          <span className="rf-mesa-map-tile__number">{numberLabel}</span>
-          <span className="rf-mesa-map-tile__capacity">{capacityLabel}</span>
-        </div>
-        <MesaChairsCol count={right} />
+      <div className="rf-mesa-map-tile__table">
+        {visualState === 'united' ? (
+          <MdCallMerge className="rf-mesa-map-tile__union-icon" aria-hidden="true" />
+        ) : null}
+        <span className="rf-mesa-map-tile__number">{numberLabel}</span>
+        <span className="rf-mesa-map-tile__capacity">
+          <MdPerson className="rf-mesa-map-tile__capacity-icon" aria-hidden="true" />
+          {capacityLabel}
+        </span>
       </div>
-      <MesaChairsRow count={bottom} />
     </button>
   );
 }

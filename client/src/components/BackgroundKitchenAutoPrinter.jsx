@@ -16,7 +16,7 @@ export default function BackgroundKitchenAutoPrinter() {
 
     const orderId = incomingOrder?.id;
     if (!orderId) return;
-    /** Liberación T−45 min: el servidor ya imprime en cocina/bar si autoPrint está activo. */
+    /** Liberación T−30 min: el servidor ya imprime en cocina/bar si autoPrint está activo. */
     if (incomingOrder?._reservation_release) return;
     if (incomingOrder?._from_lines_update) {
       const scopedIds = Array.isArray(incomingOrder?.new_item_ids) ? incomingOrder.new_item_ids : [];

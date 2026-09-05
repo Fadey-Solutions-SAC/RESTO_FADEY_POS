@@ -956,8 +956,8 @@ router.get('/monthly', authenticateToken, requireRole('admin', 'cajero'), (req, 
     comanda_count: totalMonthMetrics.comandas,
   };
   const closedRegistersMonth = queryOne(
-    `SELECT COUNT(*) as count FROM cash_registers
-     WHERE closed_at IS NOT NULL
+    `SELECT COUNT(*) as count FROM cash_registers cr
+     WHERE cr.closed_at IS NOT NULL
        AND strftime('%Y-%m', ${registerBizDate}) = ?`,
     [monthKey],
   );

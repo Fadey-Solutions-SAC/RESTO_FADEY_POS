@@ -5,6 +5,8 @@
  */
 const { resolveRegionalTimezone, sqlBusinessTimestamp, partsFromDate } = require('./appDateTime');
 
+let _cashRegistersHasBusinessDate = null;
+
 function parseSqliteTimestamp(ts) {
   const s = String(ts || '').trim();
   if (!s) return null;
@@ -44,13 +46,31 @@ function sqlRegisterBusinessDateExpr(openedCol, closedCol, queryOneFn) {
   END`;
 }
 
-/** Columna persistida o cálculo en caliente para registros antiguos. */
+function cashRegistersHasBusinessDateColumn() {
+  if (_cashRegistersHasBusinessDate != null) return _cashRegistersHasBusinessDate;
+  try {
+    const { queryAll } = require('../database');
+    const cols = queryAll('PRAGMA table_info(cash_registers)');
+    _cashRegistersHasBusinessDate = (cols || []).some((c) => String(c?.name || '') === 'business_date');
+  } catch (_) {
+    _cashRegistersHasBusinessDate = false;
+  }
+  return _cashRegistersHasBusinessDate;
+}
+
+/** Columna persistida o cálculo en caliente para registros antiguos / backups. */
 function sqlCoalesceRegisterBusinessDate(columnExpr, openedCol, closedCol, queryOneFn) {
   const computed = sqlRegisterBusinessDateExpr(openedCol, closedCol, queryOneFn);
+  const col = String(columnExpr || '').trim();
+  const bare = col.includes('.') ? col.split('.').pop() : col;
+  if (bare === 'business_date' && !cashRegistersHasBusinessDateColumn()) {
+    return computed;
+  }
   return `COALESCE(NULLIF(trim(${columnExpr}), ''), ${computed})`;
 }
 
 function backfillCashRegisterBusinessDates(queryOneFn, runSqlFn) {
+  if (!cashRegistersHasBusinessDateColumn()) return;
   const computed = sqlRegisterBusinessDateExpr('opened_at', 'closed_at', queryOneFn);
   runSqlFn(
     `UPDATE cash_registers

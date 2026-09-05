@@ -2,7 +2,7 @@
  * Tiempos de automatización de reservas.
  * Futuro: leer desde app_settings (p. ej. settings.reservations.kitchen_prep_minutes).
  */
-const RESERVATION_KITCHEN_PREP_MINUTES = 45;
+const RESERVATION_KITCHEN_PREP_MINUTES = 30;
 const RESERVATION_CAJA_VERIFY_MINUTES = 20;
 
 /** Tras la hora de la reserva, el aviso a caja deja de mostrarse como máximo a las 2 h. */
