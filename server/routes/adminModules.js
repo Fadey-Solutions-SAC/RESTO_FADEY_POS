@@ -910,13 +910,15 @@ router.post('/reservations', (req, res) => {
   if (!['confirmed', 'pending', 'cancelled', 'completed'].includes(String(status))) {
     return res.status(400).json({ error: 'Estado de reserva inválido' });
   }
-  if (table_id && hasReservationConflict({ tableId: table_id, date, time })) {
+  const { normalizeReservationTime } = require('../services/reservationDateTime');
+  const timeNorm = normalizeReservationTime(time) || String(time).trim().slice(0, 5);
+  if (table_id && hasReservationConflict({ tableId: table_id, date, time: timeNorm })) {
     return res.status(400).json({ error: 'La mesa seleccionada ya tiene una reserva cercana en ese horario' });
   }
   const id = uuidv4();
   runSql(
     'INSERT INTO reservations (id, client_name, phone, date, time, guests, table_id, notes, status, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, client_name, phone, date, time, Number(guests || 2), table_id, notes, status, req.user.id]
+    [id, client_name, phone, date, timeNorm, Number(guests || 2), table_id, notes, status, req.user.id]
   );
   logAudit({ actorUserId: req.user.id, actorName: req.user.full_name || req.user.username || '', action: 'reservation.create', resourceType: 'reservation', resourceId: id });
   broadcastStaffData('reservations');
@@ -927,8 +929,11 @@ router.put('/reservations/:id', (req, res) => {
   const existing = queryOne('SELECT * FROM reservations WHERE id = ?', [req.params.id]);
   if (!existing) return res.status(404).json({ error: 'Reserva no encontrada' });
   const { client_name, phone, date, time, guests, table_id, notes, status } = req.body || {};
+  const { normalizeReservationTime } = require('../services/reservationDateTime');
   const nextDate = date || existing.date;
-  const nextTime = time || existing.time;
+  const nextTime = time !== undefined && time !== null
+    ? (normalizeReservationTime(time) || String(time).trim().slice(0, 5))
+    : existing.time;
   const nextTableId = table_id === undefined ? existing.table_id : table_id;
   const nextStatus = status || existing.status;
   if (!['confirmed', 'pending', 'cancelled', 'completed'].includes(String(nextStatus))) {
@@ -961,7 +966,7 @@ router.put('/reservations/:id', (req, res) => {
       safeValue(client_name),
       safeValue(phone),
       safeValue(date),
-      safeValue(time),
+      time !== undefined && time !== null ? nextTime : null,
       safeGuests,
       safeValue(table_id),
       safeValue(notes),
@@ -974,14 +979,9 @@ router.put('/reservations/:id', (req, res) => {
 
   if (resetScheduleFlags) {
     const marker = `RESERVA_ID:${req.params.id}`;
+    const { computeKitchenReleaseAtForReservation, isKitchenReleaseDue } = require('../services/reservationKitchenHold');
     let kitchenReleaseAt = computeKitchenReleaseAtForReservation(nextDate, nextTime);
-    if (kitchenReleaseAt) {
-      const dueRow = queryOne(
-        "SELECT CASE WHEN datetime(?) <= datetime('now', 'localtime') THEN 1 ELSE 0 END AS due",
-        [kitchenReleaseAt]
-      );
-      if (Number(dueRow?.due) === 1) kitchenReleaseAt = null;
-    }
+    if (kitchenReleaseAt && isKitchenReleaseDue(kitchenReleaseAt)) kitchenReleaseAt = null;
     const linkedHeld = queryAll(
       "SELECT id FROM orders WHERE notes LIKE ? AND status IN ('pending','preparing') AND kitchen_release_at IS NOT NULL",
       [`%${marker}%`]

@@ -10,6 +10,7 @@ const {
 const {
   parseReservationLocalDateTime,
   reservationLocalSqlExpr,
+  reservationKitchenReleaseSqlExpr,
 } = require('./reservationDateTime');
 const { scheduleKitchenBarAutoPrint } = require('./kitchenBarAutoPrintService');
 
@@ -87,14 +88,12 @@ function isReservationCajaAlertActive(reservation, now = new Date()) {
 
 function releaseReservationKitchenOrders(reservation) {
   const linkedPending = findLinkedOrders(reservation.id);
-  const held = linkedPending.filter((o) => String(o.kitchen_release_at || '').trim());
-
-  // Sin pedidos aún: no marcar enviado (el pedido puede crearse justo después).
   if (linkedPending.length === 0) {
     return { released: 0 };
   }
 
-  // Pedidos ya visibles en cocina (sin hold): solo marcar bandera.
+  // Al vencer T−30: liberar todo hold, aunque el timestamp guardado diga lo contrario.
+  const held = linkedPending.filter((o) => String(o.kitchen_release_at || '').trim());
   if (held.length === 0) {
     runSql(
       "UPDATE reservations SET kitchen_prep_sent_at = datetime('now', 'localtime'), updated_at = datetime('now') WHERE id = ? AND kitchen_prep_sent_at IS NULL",
@@ -126,6 +125,83 @@ function releaseReservationKitchenOrders(reservation) {
     [reservation.id]
   );
   emitStaffDataUpdate({ domain: 'reservations', action: 'kitchen_released', reservation_id: reservation.id });
+  return { released };
+}
+
+/**
+ * Libera holds cuyo kitchen_release_at ya venció (seguridad aunque el scheduler falle).
+ */
+function releaseAllDueKitchenHolds() {
+  const due = queryAll(
+    `SELECT * FROM orders
+     WHERE status IN ('pending','preparing')
+       AND kitchen_release_at IS NOT NULL
+       AND trim(kitchen_release_at) != ''
+       AND datetime(kitchen_release_at) <= datetime('now', 'localtime')
+     ORDER BY created_at ASC
+     LIMIT 80`
+  );
+  return emitReleasedOrders(due, 'kitchen_released_due');
+}
+
+/**
+ * Liberación autoritativa por T−N de la reserva (SQL), aunque kitchen_release_at
+ * esté mal calculado o en el futuro. Es lo que debe disparar al llegar a −30 min.
+ */
+function releaseHoldsByReservationSchedule() {
+  const releaseExpr = reservationKitchenReleaseSqlExpr('r', RESERVATION_KITCHEN_PREP_MINUTES);
+  const due = queryAll(
+    `SELECT o.*
+     FROM orders o
+     INNER JOIN reservations r ON o.notes LIKE ('%' || 'RESERVA_ID:' || r.id || '%')
+     WHERE r.status IN ('confirmed','pending')
+       AND o.status IN ('pending','preparing')
+       AND o.kitchen_release_at IS NOT NULL
+       AND trim(o.kitchen_release_at) != ''
+       AND ${releaseExpr} <= datetime('now', 'localtime')
+     ORDER BY o.created_at ASC
+     LIMIT 80`
+  );
+  return emitReleasedOrders(due, 'kitchen_released_schedule');
+}
+
+function emitReleasedOrders(rows, action) {
+  if (!rows?.length) return { released: 0 };
+  const io = getSocketIo();
+  let released = 0;
+  const seen = new Set();
+  for (const row of rows) {
+    if (!row?.id || seen.has(row.id)) continue;
+    seen.add(row.id);
+    runSql(
+      "UPDATE orders SET kitchen_release_at = NULL, updated_at = datetime('now') WHERE id = ?",
+      [row.id]
+    );
+    const order = getOrderWithItems(row.id);
+    if (order) {
+      try {
+        scheduleKitchenBarAutoPrint(order);
+      } catch (_) {
+        /* noop */
+      }
+      if (io) {
+        io.emit('new-order', { ...order, _reservation_release: true });
+        io.emit('order-update', order);
+      }
+    }
+    const m = String(row.notes || '').match(/RESERVA_ID:([0-9a-fA-F-]{8,})/i);
+    if (m?.[1]) {
+      runSql(
+        "UPDATE reservations SET kitchen_prep_sent_at = datetime('now', 'localtime'), updated_at = datetime('now') WHERE id = ?",
+        [m[1]]
+      );
+    }
+    released += 1;
+  }
+  if (released > 0) {
+    emitStaffDataUpdate({ domain: 'reservations', action });
+    console.log(`[reservation-scheduler] ${action}: ${released} pedido(s) a cocina`);
+  }
   return { released };
 }
 
@@ -161,6 +237,11 @@ function runReservationSchedulerTick() {
   if (tickInFlight) return;
   tickInFlight = true;
   try {
+    // 1) Holds vencidos por su propio kitchen_release_at
+    releaseAllDueKitchenHolds();
+    // 2) Holds de reserva cuyo T−30 ya llegó (aunque el timestamp del hold esté mal)
+    releaseHoldsByReservationSchedule();
+
     const resExpr = reservationLocalSqlExpr('r');
     const reservations = queryAll(
       `SELECT * FROM reservations r
@@ -171,23 +252,32 @@ function runReservationSchedulerTick() {
     );
 
     const now = new Date();
+    const releaseExpr = reservationKitchenReleaseSqlExpr('r', RESERVATION_KITCHEN_PREP_MINUTES);
+
     for (const reservation of reservations) {
       const resAt = parseReservationLocalDateTime(reservation.date, reservation.time);
       if (!resAt) continue;
 
-      const kitchenReleaseAt = new Date(resAt.getTime() - RESERVATION_KITCHEN_PREP_MINUTES * 60_000);
-      const cajaReminderAt = new Date(resAt.getTime() - RESERVATION_CAJA_VERIFY_MINUTES * 60_000);
+      const dueRow = queryOne(
+        `SELECT CASE WHEN ${releaseExpr} <= datetime('now', 'localtime') THEN 1 ELSE 0 END AS due
+         FROM reservations r WHERE r.id = ?`,
+        [reservation.id]
+      );
+      const dueKitchen = Number(dueRow?.due) === 1;
 
-      if (now >= kitchenReleaseAt) {
+      if (dueKitchen) {
         const heldLeft = findLinkedOrders(reservation.id).filter((o) =>
           String(o.kitchen_release_at || '').trim()
         );
-        if (heldLeft.length > 0 || !String(reservation.kitchen_prep_sent_at || '').trim()) {
+        if (heldLeft.length > 0) {
           releaseReservationKitchenOrders(reservation);
-          reservation.kitchen_prep_sent_at =
-            reservation.kitchen_prep_sent_at || 'pending-refresh';
+        } else if (!String(reservation.kitchen_prep_sent_at || '').trim()) {
+          // Pedidos ya visibles o sin hold: marcar bandera
+          releaseReservationKitchenOrders(reservation);
         }
       }
+
+      const cajaReminderAt = new Date(resAt.getTime() - RESERVATION_CAJA_VERIFY_MINUTES * 60_000);
       if (!String(reservation.caja_verify_sent_at || '').trim() && now >= cajaReminderAt) {
         sendCajaReservationReminder(reservation);
       }
@@ -233,6 +323,13 @@ function buildReservationCajaAlert(reservation) {
  * más reservas con pedido activo sin mesa asignada.
  */
 function getReservationCajaOperationalAlerts() {
+  try {
+    releaseAllDueKitchenHolds();
+    releaseHoldsByReservationSchedule();
+  } catch (err) {
+    console.warn('[reservation-caja-alerts] release:', err.message || err);
+  }
+
   const resExpr = reservationLocalSqlExpr('r');
   const verifyMins = RESERVATION_CAJA_VERIFY_MINUTES;
   const maxAfterHours = RESERVATION_CAJA_ALERT_MAX_HOURS_AFTER;
@@ -305,16 +402,24 @@ function getReservationCajaOperationalAlerts() {
 function startReservationScheduler() {
   if (schedulerTimer) return;
   runReservationSchedulerTick();
-  schedulerTimer = setInterval(runReservationSchedulerTick, RESERVATION_SCHEDULER_INTERVAL_MS);
-  if (typeof schedulerTimer.unref === 'function') schedulerTimer.unref();
+  // No usar unref(): el job de reservas debe seguir vivo mientras el servidor corra.
+  schedulerTimer = setInterval(() => {
+    try {
+      runReservationSchedulerTick();
+    } catch (err) {
+      console.warn('[reservation-scheduler] interval error:', err.message || err);
+    }
+  }, RESERVATION_SCHEDULER_INTERVAL_MS);
   console.log(
-    `[reservation-scheduler] activo (cocina −${RESERVATION_KITCHEN_PREP_MINUTES} min, caja −${RESERVATION_CAJA_VERIFY_MINUTES} min, aviso caja hasta +${RESERVATION_CAJA_ALERT_MAX_HOURS_AFTER} h)`
+    `[reservation-scheduler] activo cada ${RESERVATION_SCHEDULER_INTERVAL_MS / 1000}s (cocina −${RESERVATION_KITCHEN_PREP_MINUTES} min, caja −${RESERVATION_CAJA_VERIFY_MINUTES} min)`
   );
 }
 
 module.exports = {
   startReservationScheduler,
   runReservationSchedulerTick,
+  releaseAllDueKitchenHolds,
+  releaseHoldsByReservationSchedule,
   getReservationCajaOperationalAlerts,
   isReservationCajaAlertActive,
   releaseReservationKitchenOrders,

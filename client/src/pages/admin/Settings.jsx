@@ -32,7 +32,7 @@ import {
   MdReceipt, MdPercent, MdCreditCard,
   MdAccessTime, MdMonetizationOn, MdAccountBalanceWallet,
   MdBrandingWatermark, MdImage, MdBlockFlipped, MdPayment,
-  MdChevronRight, MdArrowBack, MdInventory, MdSwapHoriz,
+  MdChevronRight, MdExpandMore, MdArrowBack, MdInventory, MdSwapHoriz,
   MdLabel, MdDoNotDisturb, MdCategory, MdHistory,
   MdSecurity, MdDashboard, MdEventSeat, MdDeliveryDining, MdPhotoCamera,
   MdAssessment, MdInsights, MdLocalOffer, MdDiscount,
@@ -348,6 +348,8 @@ const WHATSAPP_PROVEEDOR_LOCALES =
 
 export default function Settings() {
   const [activeSection, setActiveSection] = useState(null);
+  /** En teléfono: lista de opciones abierta/cerrada. En escritorio se ignora (siempre visible). */
+  const [settingsNavOpen, setSettingsNavOpen] = useState(true);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -1413,18 +1415,64 @@ export default function Settings() {
     });
   };
 
+  const activeMenuLabel = useMemo(
+    () => MENU_ITEMS.find((item) => item.id === activeSection)?.label || '',
+    [activeSection]
+  );
+
+  const selectSettingsSection = (sectionId) => {
+    setActiveSection(sectionId);
+    setSettingsNavOpen(false);
+  };
+
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-      {/* Sidebar Menu — pegado arriba y a la línea vertical derecha */}
-      <aside className="flex w-72 shrink-0 flex-col min-h-0 self-stretch border-r border-[color:var(--ui-border)]">
+      <div className="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row">
+      {/* Sidebar Menu — en móvil se retrae al elegir opción */}
+      <aside
+        className={[
+          'flex shrink-0 flex-col min-h-0 self-stretch border-[color:var(--ui-border)]',
+          'w-full border-b md:w-72 md:border-b-0 md:border-r',
+          settingsNavOpen ? 'max-h-[min(60vh,28rem)] md:max-h-none' : '',
+        ].join(' ')}
+      >
         <div className="rf-settings-hub rf-settings-hub--split flex min-h-0 max-h-full flex-col overflow-hidden">
           <div className="rf-settings-hub__header shrink-0">
-            <h2 className="rf-settings-hub__header-title">
-              <MdSettings className="text-lg" /> Opciones sistema
-            </h2>
+            <button
+              type="button"
+              className="rf-settings-hub__header-toggle w-full flex items-center justify-between gap-2 text-left md:cursor-default"
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) return;
+                setSettingsNavOpen((open) => !open);
+              }}
+              aria-expanded={settingsNavOpen}
+              aria-controls="rf-settings-hub-nav"
+            >
+              <h2 className="rf-settings-hub__header-title min-w-0">
+                <MdSettings className="text-lg shrink-0" />
+                <span className="truncate">
+                  Opciones sistema
+                  {activeMenuLabel && !settingsNavOpen ? (
+                    <span className="md:hidden font-medium text-[var(--ui-muted)]"> · {activeMenuLabel}</span>
+                  ) : null}
+                </span>
+              </h2>
+              <MdExpandMore
+                className={`md:hidden text-2xl shrink-0 text-[var(--ui-muted)] transition-transform duration-200 ${
+                  settingsNavOpen ? 'rotate-180' : ''
+                }`}
+                aria-hidden
+              />
+            </button>
           </div>
-          <nav className="rf-settings-hub__nav rf-settings-hub__nav--scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+          <nav
+            id="rf-settings-hub-nav"
+            className={[
+              'rf-settings-hub__nav rf-settings-hub__nav--scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain',
+              settingsNavOpen ? 'block' : 'hidden',
+              'md:block',
+            ].join(' ')}
+          >
             {MENU_ITEMS.map(item => {
               const Icon = item.icon;
               const isActive = activeSection === item.id;
@@ -1432,7 +1480,7 @@ export default function Settings() {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setActiveSection(item.id)}
+                  onClick={() => selectSettingsSection(item.id)}
                   className={`rf-settings-hub__item ${isActive ? 'rf-settings-hub__item--active' : ''}`}
                 >
                   <Icon className="text-lg flex-shrink-0" />

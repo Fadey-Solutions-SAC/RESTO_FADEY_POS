@@ -6,7 +6,7 @@ const {
   assertProductAvailableForOrder,
   parseRestaurantSchedule,
 } = require('./services/productScheduleService');
-const { computeKitchenReleaseAtForReservation } = require('./services/reservationKitchenHold');
+const { computeKitchenReleaseAtForReservation, isKitchenReleaseDue } = require('./services/reservationKitchenHold');
 const {
   findMergeableTableOrderTx,
   resolveExplicitMergeTargetTx,
@@ -601,14 +601,8 @@ function createOrderInTransaction(tx, orderId, body, actor) {
   if (hold_kitchen_for_reservation && reservation_date && reservation_time) {
     kitchenReleaseAt = computeKitchenReleaseAtForReservation(reservation_date, reservation_time);
     // Si faltan ≤30 min (o ya pasó el T−30), enviar a cocina de inmediato.
-    if (kitchenReleaseAt) {
-      const dueRow = tx.queryOne(
-        "SELECT CASE WHEN datetime(?) <= datetime('now', 'localtime') THEN 1 ELSE 0 END AS due",
-        [kitchenReleaseAt]
-      );
-      if (Number(dueRow?.due) === 1) {
-        kitchenReleaseAt = null;
-      }
+    if (kitchenReleaseAt && isKitchenReleaseDue(kitchenReleaseAt)) {
+      kitchenReleaseAt = null;
     }
   }
 

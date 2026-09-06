@@ -370,7 +370,12 @@ export default function Tables() {
         <div className="rf-mesa-map-grid">
           {tablesToShow.map((table) => {
             const isActive = showMenu && selectedTable?.id === table.id;
-            const visualState = getMesaMapVisualState(table, reservationByTableId, precuentaTableIds);
+            const visualState = getMesaMapVisualState(
+              table,
+              reservationByTableId,
+              precuentaTableIds,
+              reservations
+            );
             const chairCount = getMesaMapChairCount(table, reservationByTableId, tables);
             return (
               <MesaMapTableTile

@@ -17,7 +17,7 @@ function localTodayKey() {
 }
 
 function parseReservationLocalMs(dateStr, timeStr) {
-  const date = String(dateStr || '').trim();
+  const date = String(dateStr || '').trim().slice(0, 10);
   const time = String(timeStr || '').trim().slice(0, 5);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{1,2}:\d{2}$/.test(time)) return null;
   const [y, m, d] = date.split('-').map(Number);
@@ -29,7 +29,7 @@ function parseReservationLocalMs(dateStr, timeStr) {
 
 /**
  * Antes de la hora de la reserva la mesa se muestra en gris (reservada),
- * aunque ya exista un pedido retenido para cocina.
+ * aunque ya exista un pedido (retenido o liberado a cocina).
  */
 function isBeforeReservationTime(reservation) {
   if (!reservation) return false;
@@ -38,46 +38,108 @@ function isBeforeReservationTime(reservation) {
   return Date.now() < ms;
 }
 
+function isActiveReservationStatus(status) {
+  return !ACTIVE_RESERVATION_SKIP.has(String(status || '').toLowerCase());
+}
+
+function findReservationForTable(tableId, reservationByTableId, reservationsList, orders) {
+  const tid = String(tableId || '').trim();
+  if (tid && reservationByTableId?.get?.(tid)) {
+    return reservationByTableId.get(tid);
+  }
+
+  const list = Array.isArray(reservationsList) ? reservationsList : [];
+  const today = localTodayKey();
+
+  if (tid) {
+    const byTable = list.find((r) => {
+      if (!isActiveReservationStatus(r?.status)) return false;
+      if (String(r?.table_id || '').trim() !== tid) return false;
+      const rDate = String(r?.date || '').trim().slice(0, 10);
+      if (rDate === today) return true;
+      const ms = parseReservationLocalMs(r.date, r.time);
+      return ms != null && ms > Date.now();
+    });
+    if (byTable) return byTable;
+  }
+
+  for (const o of orders || []) {
+    const m = String(o?.notes || '').match(/RESERVA_ID:([0-9a-fA-F-]{8,})/i);
+    if (!m) continue;
+    const found = list.find((r) => String(r?.id || '') === String(m[1]));
+    if (found && isActiveReservationStatus(found.status)) return found;
+  }
+
+  return null;
+}
+
 /**
  * @param {object} table
  * @param {Map<string, object>} reservationByTableId
  * @param {Set<string>} precuentaTableIds
+ * @param {Array<object>} [reservationsList]
  */
-export function getMesaMapVisualState(table, reservationByTableId, precuentaTableIds) {
+export function getMesaMapVisualState(
+  table,
+  reservationByTableId,
+  precuentaTableIds,
+  reservationsList
+) {
   if (!table) return 'available';
   const tid = String(table.id || '').trim();
-  const hasOrders = Boolean(table.orders?.length);
+  const orders = Array.isArray(table.orders) ? table.orders : [];
+  const hasOrders = orders.length > 0;
+
   if (table.union_id) {
     if (precuentaTableIds?.has?.(tid) && hasOrders) return 'precuenta';
     return 'united';
   }
-  const dbStatus = String(table.status || 'available').toLowerCase();
-  const reservation = reservationByTableId?.get?.(tid);
-  const hasReservation = Boolean(reservation) || dbStatus === 'reserved';
 
-  // Gris hasta la hora de la reserva; luego ocupada si hay pedido / estado.
-  if (hasReservation && isBeforeReservationTime(reservation)) {
+  const dbStatus = String(table.status || 'available').toLowerCase();
+  const reservation = findReservationForTable(
+    tid,
+    reservationByTableId,
+    reservationsList,
+    orders
+  );
+
+  // Gris hasta la hora de la reserva (aunque el pedido ya esté en cocina).
+  if (reservation && isBeforeReservationTime(reservation)) {
     return 'reserved';
   }
 
   if (precuentaTableIds?.has?.(tid) && hasOrders) return 'precuenta';
   if (hasOrders || dbStatus === 'occupied') return 'occupied';
-  if (hasReservation) return 'reserved';
+  if (reservation || dbStatus === 'reserved') return 'reserved';
   return 'available';
 }
 
 /**
- * @param {Array<{ id?: string, date?: string, table_id?: string, status?: string }>} reservations
+ * @param {Array<{ id?: string, date?: string, table_id?: string, status?: string, time?: string }>} reservations
  */
 export function buildReservationByTableIdForToday(reservations) {
   const today = localTodayKey();
   const map = new Map();
+  const now = Date.now();
   for (const r of reservations || []) {
-    const st = String(r?.status || '').toLowerCase();
-    if (ACTIVE_RESERVATION_SKIP.has(st)) continue;
+    if (!isActiveReservationStatus(r?.status)) continue;
     const tid = String(r?.table_id || '').trim();
-    if (!tid || String(r?.date || '') !== today) continue;
-    map.set(tid, r);
+    if (!tid) continue;
+    const rDate = String(r?.date || '').trim().slice(0, 10);
+    const resMs = parseReservationLocalMs(r.date, r.time);
+    const isToday = rDate === today;
+    const upcoming = resMs != null && resMs > now;
+    if (!isToday && !upcoming) continue;
+    const prev = map.get(tid);
+    if (!prev) {
+      map.set(tid, r);
+      continue;
+    }
+    // Si hay varias, priorizar la más próxima aún no cumplida.
+    const prevMs = parseReservationLocalMs(prev.date, prev.time);
+    if (resMs != null && (prevMs == null || (resMs >= now && (prevMs < now || resMs < prevMs)))) {
+      map.set(tid, r);
+    }
   }
   return map;
 }

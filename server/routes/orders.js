@@ -176,6 +176,18 @@ router.get('/kitchen', authenticateToken, (req, res) => {
     processBarAutoDismiss({ io: req.app.get('io') });
   }
   const { type } = req.query;
+  try {
+    const {
+      runReservationSchedulerTick,
+      releaseAllDueKitchenHolds,
+      releaseHoldsByReservationSchedule,
+    } = require('../services/reservationSchedulerService');
+    releaseAllDueKitchenHolds();
+    releaseHoldsByReservationSchedule();
+    runReservationSchedulerTick();
+  } catch (err) {
+    console.warn('[orders/kitchen] reservation release:', err.message || err);
+  }
   let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing', 'ready')
     AND IFNULL(TRIM(payment_status), 'pending') != 'paid'
     AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= datetime('now', 'localtime'))`;
@@ -582,11 +594,13 @@ router.post('/', authenticateToken, (req, res) => {
       return res.status(500).json({ error: 'El pedido se creó pero no se pudo recuperar. Recargue la pantalla.' });
     }
     const io = req.app.get('io');
-    const kitchenHeld = String(order.kitchen_release_at || '').trim()
-      && queryOne(
-        "SELECT CASE WHEN datetime(?) > datetime('now', 'localtime') THEN 1 ELSE 0 END AS held",
-        [String(order.kitchen_release_at).trim()]
-      )?.held === 1;
+    const kitchenHeld = Boolean(String(order.kitchen_release_at || '').trim())
+      && Number(
+        queryOne(
+          "SELECT CASE WHEN datetime(?) > datetime('now', 'localtime') THEN 1 ELSE 0 END AS held",
+          [String(order.kitchen_release_at).trim()]
+        )?.held
+      ) === 1;
     if (io) {
       if (result.merged) {
         if (!kitchenHeld) {

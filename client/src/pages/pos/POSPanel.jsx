@@ -3899,7 +3899,12 @@ export default function POSPanel() {
                 tableDetail?.id === table.id
                 || (showMenu && !quickSaleMode && mesaLock?.id === table.id);
               const isUnitePicked = mesaUniteSelection.includes(table.id);
-              const visualState = getMesaMapVisualState(table, reservationByTableId, precuentaTableIds);
+              const visualState = getMesaMapVisualState(
+                table,
+                reservationByTableId,
+                precuentaTableIds,
+                reservations
+              );
               const chairCount = getMesaMapChairCount(table, reservationByTableId, mesaPhysicalTables);
               return (
                 <MesaMapTableTile

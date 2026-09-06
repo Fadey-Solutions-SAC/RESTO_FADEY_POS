@@ -655,45 +655,45 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
 
   return (
     <div className="min-h-screen bg-[var(--ui-body-bg)] text-[var(--ui-body-text)]">
-      <header className="bg-[var(--ui-surface)] backdrop-blur-xl border-b border-[color:var(--ui-border)] px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <StationIcon className="text-3xl text-[var(--ui-body-text)]" />
-          <div>
+      <header className="bg-[var(--ui-surface)] backdrop-blur-xl border-b border-[color:var(--ui-border)] px-3 py-2 sm:px-6 sm:py-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+          <StationIcon className="text-2xl sm:text-3xl text-[var(--ui-body-text)] shrink-0" />
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold">{panelTitle}</h1>
+              <h1 className="text-base sm:text-xl font-bold truncate">{panelTitle}</h1>
               {canEditBarSettings && (
                 <button
                   type="button"
                   onClick={() => setBarSettingsOpen(true)}
-                  className="p-1.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)]"
+                  className="p-1 sm:p-1.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)]"
                   title={t('barSettings.gearTitle')}
                   aria-label={t('barSettings.gearTitle')}
                 >
-                  <MdSettings className="text-lg" />
+                  <MdSettings className="text-base sm:text-lg" />
                 </button>
               )}
             </div>
-            <p className="text-[var(--ui-muted)] text-sm">
+            <p className="text-[var(--ui-muted)] text-[11px] sm:text-sm leading-tight">
               {t('panel.activeOrders', { count: visibleOrders.length })}
               {isBar && barAutoDismiss ? (
-                <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-400/90">
+                <span className="ml-1.5 sm:ml-2 text-[9px] sm:text-[10px] uppercase tracking-wide text-amber-400/90">
                   · {t('barSettings.badgeActive', { minutes: barAutoDismissMinutes })}
                 </span>
               ) : null}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 w-full sm:w-auto overflow-x-auto scrollbar-hide pb-0.5 sm:pb-0 sm:flex-wrap">
           <button
             type="button"
             onClick={() => setHistoryOpen(true)}
-            className="px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
+            className="shrink-0 px-2 py-1 sm:px-3 sm:py-2 rounded-md sm:rounded-lg text-[11px] sm:text-sm font-medium inline-flex items-center gap-1 sm:gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
             title={t('history.button')}
           >
-            <MdHistory className="text-lg" />
+            <MdHistory className="text-sm sm:text-lg" />
             {t('history.button')}
           </button>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {[
               { v: 'all', l: t('panel.filterAll') },
               { v: 'dine_in', l: t('panel.filterTables') },
@@ -703,9 +703,9 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
                 key={f.v}
                 type="button"
                 onClick={() => setFilter(f.v)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 ${filter === f.v ? 'bg-[var(--ui-accent)] text-white' : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] border border-[color:var(--ui-border)]'}`}
+                className={`shrink-0 px-2 py-1 sm:px-4 sm:py-2 rounded-md sm:rounded-lg text-[11px] sm:text-sm font-medium transition-colors inline-flex items-center justify-center gap-1 sm:gap-1.5 ${filter === f.v ? 'bg-[var(--ui-accent)] text-white' : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] border border-[color:var(--ui-border)]'}`}
               >
-                {f.v === 'delivery' ? <MdDeliveryDining className="text-base shrink-0" /> : null}
+                {f.v === 'delivery' ? <MdDeliveryDining className="text-sm sm:text-base shrink-0" /> : null}
                 {f.l}
               </button>
             ))}
@@ -713,20 +713,28 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           <button
             type="button"
             onClick={() => setPrinterModalOpen(true)}
-            className="px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
+            className="shrink-0 px-2 py-1 sm:px-3 sm:py-2 rounded-md sm:rounded-lg text-[11px] sm:text-sm font-medium inline-flex items-center gap-1 sm:gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
             title={t('panel.printerSettings')}
             aria-label={t('panel.printerSettings')}
           >
-            <MdSettings className="text-lg" />
-            {t('panel.printer')}
+            <MdSettings className="text-sm sm:text-lg" />
+            <span className="sm:inline">{t('panel.printer')}</span>
           </button>
           {canReturnToAdmin && (
-            <button onClick={() => navigate('/admin')} className="px-3 py-2 bg-[var(--ui-accent)] hover:bg-[var(--ui-accent-hover)] rounded-lg text-white border border-[color:var(--ui-border)] text-sm font-medium">
+            <button
+              onClick={() => navigate('/admin')}
+              className="shrink-0 px-2 py-1 sm:px-3 sm:py-2 bg-[var(--ui-accent)] hover:bg-[var(--ui-accent-hover)] rounded-md sm:rounded-lg text-white border border-[color:var(--ui-border)] text-[11px] sm:text-sm font-medium"
+            >
               {t('panel.backToOps')}
             </button>
           )}
-          <button type="button" onClick={() => setEndShiftOpen(true)} className="px-3 py-2 hover:bg-[var(--ui-sidebar-hover)] rounded-lg text-[var(--ui-muted)] hover:text-[var(--ui-body-text)] border border-[color:var(--ui-border)] text-sm font-medium inline-flex items-center gap-2">
-            <MdLogout className="text-lg" /> {t('common:layout.endShift')}
+          <button
+            type="button"
+            onClick={() => setEndShiftOpen(true)}
+            className="shrink-0 px-2 py-1 sm:px-3 sm:py-2 hover:bg-[var(--ui-sidebar-hover)] rounded-md sm:rounded-lg text-[var(--ui-muted)] hover:text-[var(--ui-body-text)] border border-[color:var(--ui-border)] text-[11px] sm:text-sm font-medium inline-flex items-center gap-1 sm:gap-2"
+          >
+            <MdLogout className="text-sm sm:text-lg" />
+            <span className="whitespace-nowrap">{t('common:layout.endShift')}</span>
           </button>
         </div>
       </header>
