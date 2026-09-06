@@ -1234,7 +1234,7 @@ export default function POSPanel() {
         ? 'Reserva — asigne mesa y preparativos'
         : 'Reserva próxima — verificar preparativos';
       const msg = needsTable
-        ? `${r.client_name || 'Cliente'} · ${r.date || ''} ${r.time || ''}. Pedido en cocina sin mesa: asigne mesa y verifique preparativos.`
+        ? `${r.client_name || 'Cliente'} · ${r.date || ''} ${r.time || ''}. Pedido de reserva sin mesa: asigne mesa y verifique preparativos (cocina 30 min antes).`
         : `${r.client_name || 'Cliente'} · ${r.date || ''} ${r.time || ''} · ${Number(r.guests || 0)} persona(s). ${tableLabel}: verifique preparativos de la mesa.`;
       toast.custom(
         (t) => (

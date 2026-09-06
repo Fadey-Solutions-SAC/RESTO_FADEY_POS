@@ -1200,7 +1200,15 @@ export function formatPeDateTimeLine(value) {
 }
 
 export const toLocalDateKey = (value) => {
-  const d = parseApiDate(value);
+  let d = null;
+  if (value instanceof Date) {
+    d = Number.isNaN(value.getTime()) ? null : value;
+  } else if (typeof value === 'number' && Number.isFinite(value)) {
+    d = new Date(value);
+    if (Number.isNaN(d.getTime())) d = null;
+  } else {
+    d = parseApiDate(value);
+  }
   if (!d) return '';
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: APP_DISPLAY_TIMEZONE,

@@ -2193,11 +2193,11 @@ h1, h2, h3, h4 {
 
 .scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--ui-muted) 55%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ui-muted) 70%, transparent) color-mix(in srgb, var(--ui-border) 40%, transparent);
 }
 .scrollbar-thin::-webkit-scrollbar {
-  width: 3px;
-  height: 3px;
+  width: 8px;
+  height: 8px;
 }
 .scrollbar-thin::-webkit-scrollbar-track {
   background: transparent;

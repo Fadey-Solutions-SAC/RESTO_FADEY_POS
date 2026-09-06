@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { api, formatCurrency } from '../../utils/api';
+import { api, formatCurrency, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
@@ -8,12 +8,16 @@ import StaffModifierPromptModal from '../../components/StaffModifierPromptModal'
 import { UI_BADGE } from '../../utils/uiBadges';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import { mergeOrderingCatalog, filterVisibleOrderingProducts, buildOrderItemsPayload, filterOrderingProducts } from '../../utils/orderingCatalog';
+import {
+  getReservationKitchenReleaseInfo,
+  reservationNotesHaveOrder,
+} from '../../utils/reservationKitchenTiming';
 import { MdAdd, MdExpandMore, MdEventSeat, MdPerson, MdPhone, MdCalendarToday, MdAccessTime } from 'react-icons/md';
 
 const WAREHOUSE_CATEGORY_NAMES = new Set(['PRODUCTOS ALMACEN', 'INSUMOS']);
 
 export default function Reservas() {
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = toLocalDateKey(new Date());
   const [reservas, setReservas] = useState([]);
   const [tables, setTables] = useState([]);
   const [products, setProducts] = useState([]);
@@ -197,11 +201,19 @@ export default function Reservas() {
       resetForm();
       if (hadOrderLines) {
         const noTable = !String(form.table_id || '').trim();
+        const releaseInfo = getReservationKitchenReleaseInfo(
+          createdReservation?.date || form.date,
+          createdReservation?.time || form.time
+        );
         toast.success(
           orderCreated
             ? noTable
-              ? 'Reserva creada. Pedido a cocina; asigne mesa desde Caja o Reservas'
-              : 'Reserva creada. El pedido va a cocina 30 min antes (o ya, si faltan ≤30 min)'
+              ? releaseInfo.due
+                ? 'Reserva creada. Pedido a cocina; asigne mesa desde Caja o Reservas'
+                : `Reserva creada. Pedido retenido hasta cocina (${releaseInfo.label}). Asigne mesa desde Caja o Reservas`
+              : releaseInfo.due
+                ? 'Reserva creada. Pedido enviado a cocina'
+                : `Reserva creada. ${releaseInfo.label}`
             : 'Reserva creada'
         );
       } else {
@@ -245,7 +257,7 @@ export default function Reservas() {
     }
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayKey;
   const visibleReservas = reservas.filter((r) => !['cancelled', 'cancelada'].includes(String(r.status || '').toLowerCase()));
   const todayReservas = visibleReservas.filter((r) => r.date === today);
   const statusColors = {
@@ -340,6 +352,11 @@ export default function Reservas() {
                         Nota: {r.notes}
                       </p>
                     )}
+                    {reservationNotesHaveOrder(r.notes) ? (
+                      <p className="text-xs mt-1 font-medium text-[var(--ui-accent)]">
+                        {getReservationKitchenReleaseInfo(r.date, r.time).label}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex flex-col xs:flex-row sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
@@ -384,6 +401,8 @@ export default function Reservas() {
         }}
         title="Nueva Reserva"
         size="xl"
+        maxHeightClass="h-[min(92vh,920px)] max-h-[min(92vh,920px)]"
+        bodyClassName="!overflow-y-auto !overflow-x-hidden"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="relative">
@@ -528,7 +547,10 @@ export default function Reservas() {
                           <span>Total</span>
                           <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
                         </div>
-                        <p className="text-xs text-[#9CA3AF]">Se envía a cocina 30 min antes; si faltan ≤30 min, se envía al crear. Sin mesa también va a cocina y avisa a caja.</p>
+                        <p className="text-xs text-[#9CA3AF]">
+                          Cocina recibe el pedido 30 min antes de la hora (o al crear si ya faltan ≤30 min). Sin mesa
+                          también se programa igual y Caja recibe aviso para asignar mesa.
+                        </p>
                       </>
                     ) : null
                   }
