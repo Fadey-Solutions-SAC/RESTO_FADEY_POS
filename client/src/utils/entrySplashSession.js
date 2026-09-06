@@ -38,7 +38,7 @@ export function shouldSkipEntrySplash() {
     const v = sessionStorage.getItem(SPLASH_KEY);
     if (v === 'started') {
       const t = Number(sessionStorage.getItem(SPLASH_STARTED_AT) || 0);
-      if (Number.isFinite(t) && Date.now() - t < 4500) {
+      if (Number.isFinite(t) && Date.now() - t < 7000) {
         return true;
       }
     }

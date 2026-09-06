@@ -1233,6 +1233,68 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     animation: rf-entry-credit-in 0.7s ease-out 0.75s both;
   }
 
+  /* Circuitos: dibujo / borrado segmento a segmento (sin scale deslizante) */
+  .rf-entry-splash__circuits {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  .rf-entry-splash__circuits-tl,
+  .rf-entry-splash__circuits-br {
+    filter: drop-shadow(0 0 0.4px rgba(201, 162, 39, 0.3));
+  }
+
+  .rf-entry-splash__seg-node {
+    fill: none;
+    stroke: #c9a227;
+    stroke-width: 0.18;
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  .rf-entry-splash__seg-node--filled {
+    fill: #c9a227;
+    stroke: none;
+  }
+
+  .rf-entry-splash__seg-wire {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    opacity: 1;
+  }
+
+  /* TL: dibuja esquina→logo, luego borra esquina→logo (desaparece hacia el logo) */
+  .rf-entry-splash__seg--tl .rf-entry-splash__seg-wire {
+    animation:
+      rf-entry-circuit-draw 0.11s linear calc(0.04s + (var(--seg) * 0.02s)) both,
+      rf-entry-circuit-undraw 0.11s linear calc(2.15s + (var(--seg) * 0.02s)) forwards;
+  }
+
+  .rf-entry-splash__seg--tl .rf-entry-splash__seg-node {
+    animation:
+      rf-entry-circuit-node-pop 0.1s cubic-bezier(0.22, 1.2, 0.36, 1) calc(0.04s + (var(--seg) * 0.02s) + 0.08s) both,
+      rf-entry-circuit-node-out 0.1s ease-in calc(2.15s + (var(--seg) * 0.02s)) forwards;
+  }
+
+  /* BR: dibuja logo→esquina, luego borra logo→esquina (se retrae a la esquina) */
+  .rf-entry-splash__seg--br .rf-entry-splash__seg-wire {
+    animation:
+      rf-entry-circuit-draw 0.11s linear calc(2.85s + (var(--seg) * 0.018s)) both,
+      rf-entry-circuit-undraw 0.11s linear calc(4.55s + (var(--seg) * 0.018s)) forwards;
+  }
+
+  .rf-entry-splash__seg--br .rf-entry-splash__seg-node {
+    animation:
+      rf-entry-circuit-node-pop 0.1s cubic-bezier(0.22, 1.2, 0.36, 1) calc(2.85s + (var(--seg) * 0.018s) + 0.08s) both,
+      rf-entry-circuit-node-out 0.1s ease-in calc(4.55s + (var(--seg) * 0.018s)) forwards;
+  }
+
   @media (min-width: 900px) {
     .rf-entry-splash__logo-ring {
       width: min(22vw, 260px);
@@ -1259,6 +1321,14 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
       animation: none !important;
       opacity: 1 !important;
       transform: none !important;
+    }
+    .rf-entry-splash__circuits,
+    .rf-entry-splash__circuits-tl,
+    .rf-entry-splash__circuits-br,
+    .rf-entry-splash__seg-wire,
+    .rf-entry-splash__seg-node {
+      animation: none !important;
+      opacity: 0 !important;
     }
   }
 
@@ -2105,6 +2175,50 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  @keyframes rf-entry-circuit-draw {
+    from {
+      stroke-dashoffset: 100;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes rf-entry-circuit-undraw {
+    from {
+      stroke-dashoffset: 0;
+    }
+    to {
+      stroke-dashoffset: 100;
+    }
+  }
+
+  @keyframes rf-entry-circuit-node-pop {
+    0% {
+      opacity: 0;
+      transform: scale(0.25);
+    }
+    70% {
+      opacity: 1;
+      transform: scale(1.2);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes rf-entry-circuit-node-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.2);
     }
   }
 
