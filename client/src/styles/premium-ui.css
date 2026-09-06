@@ -2251,20 +2251,20 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
   box-shadow: var(--ui-shadow-md) !important;
 }
 
-/* Corporativo azul: menú morado oscuro (arriba más oscuro) + activo #2563EB */
+/* Corporativo azul: menú morado #240046 (arriba más oscuro) + activo #2563EB */
 html[data-ui-theme='corporate_blue'] .rf-sidebar {
-  background: #17122b !important;
+  background: #240046 !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar {
-  background: #0c0916 !important;
+  background: #16002E !important;
   border-bottom-color: rgba(255, 255, 255, 0.06) !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-sidebar__nav,
 html[data-ui-theme='corporate_blue'] .rf-sidebar__footer {
-  background: #17122b !important;
+  background: #240046 !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
@@ -2283,7 +2283,7 @@ html[data-ui-theme='corporate_blue'] .rf-nav-sublink:hover:not(.rf-nav-sublink--
 html[data-ui-theme='corporate_blue'] .rf-sidebar__footer-btn:hover,
 html[data-ui-theme='corporate_blue'] .rf-sidebar-menu-btn:hover,
 html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar button:hover {
-  background: #241c42 !important;
+  background: #3A0A6E !important;
   color: #ffffff !important;
 }
 
@@ -2315,7 +2315,7 @@ html[data-ui-theme='dark'] .rf-sidebar-logo-bar,
 html[data-ui-theme='dark_elegance'] .rf-sidebar-logo-bar,
 html[data-ui-theme='gold_premium'] .rf-sidebar-logo-bar,
 html[data-ui-theme='blue'] .rf-sidebar-logo-bar {
-  background: #0c0916 !important;
+  background: #16002E !important;
 }
 
 html[data-ui-theme='purple'] .rf-sidebar,
@@ -2333,7 +2333,7 @@ html[data-ui-theme='gold_premium'] .rf-sidebar__footer,
 html[data-ui-theme='blue'] .rf-sidebar,
 html[data-ui-theme='blue'] .rf-sidebar__nav,
 html[data-ui-theme='blue'] .rf-sidebar__footer {
-  background: #17122b !important;
+  background: #240046 !important;
 }
 
 html[data-ui-theme='dark_elegance'] .rf-sidebar,
