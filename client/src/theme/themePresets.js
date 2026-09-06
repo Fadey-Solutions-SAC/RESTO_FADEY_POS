@@ -10,8 +10,12 @@ const LIVE_DEFAULTS = {
   danger: '#fb7185',
 };
 
-/** Azul corporativo de referencia (muestra + recuadro de módulos). */
-const CORPORATE_BLUE = '#2563EB';
+/** Morado corporativo del menú (muestra del cliente). */
+const CORPORATE_PURPLE = '#240046';
+/** Acento / ítem activo sobre el menú morado. */
+const CORPORATE_PURPLE_ACCENT = '#7C3AED';
+/** Variante clara del morado para la cabecera superior. */
+const CORPORATE_PURPLE_HEADER = '#EDE4F7';
 
 /** Menú oscuro morado (referencia): cabecera más oscura que el listado. */
 const SIDEBAR_CHROME_DARK = {
@@ -22,17 +26,24 @@ const SIDEBAR_CHROME_DARK = {
   activeFg: '#ffffff',
 };
 
-/** Corporativo azul = mismo esquema oscuro de la referencia + píldora #2563EB. */
+/** Corporativo morado = menú #240046 + acento #7C3AED + cabecera #EDE4F7. */
 const SIDEBAR_BY_THEME = {
-  corporate_blue: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
+  corporate_blue: {
+    bg: CORPORATE_PURPLE,
+    top: '#1A0033',
+    hover: '#3D0A6B',
+    fg: '#F3E8FF',
+    activeFg: '#ffffff',
+    solid: CORPORATE_PURPLE_ACCENT,
+  },
   minimal_white: { bg: '#2563EB', top: '#1D4ED8', hover: '#1E40AF', fg: '#ffffff', activeFg: '#ffffff', solid: '#1E3A8A' },
   emerald_business: { bg: '#064e3b', top: '#022c22', hover: '#065f46', fg: '#ECFDF5', activeFg: '#ffffff', solid: '#047857' },
-  dark_elegance: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
+  dark_elegance: { ...SIDEBAR_CHROME_DARK, solid: '#2563EB' },
   gold_premium: { ...SIDEBAR_CHROME_DARK, solid: '#C9A227' },
   sunset_modern: { ...SIDEBAR_CHROME_DARK, solid: '#EA580C' },
-  blue: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
-  light: { bg: '#DBEAFE', top: '#DBEAFE', hover: '#BFDBFE', fg: '#0f172a', activeFg: '#ffffff', solid: CORPORATE_BLUE },
-  dark: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
+  blue: { ...SIDEBAR_CHROME_DARK, solid: '#2563EB' },
+  light: { bg: '#DBEAFE', top: '#DBEAFE', hover: '#BFDBFE', fg: '#0f172a', activeFg: '#ffffff', solid: '#2563EB' },
+  dark: { ...SIDEBAR_CHROME_DARK, solid: '#2563EB' },
   gray: { bg: '#18181b', top: '#0f0f12', hover: '#27272a', fg: '#E5E7EB', activeFg: '#ffffff', solid: '#71717A' },
   purple: { ...SIDEBAR_CHROME_DARK, solid: '#5A4EEF' },
   green: { bg: '#D1FAE5', top: '#D1FAE5', hover: '#A7F3D0', fg: '#064e3b', activeFg: '#ffffff', solid: '#059669' },
@@ -41,7 +52,7 @@ const SIDEBAR_BY_THEME = {
 function preset(id, label, description, tags, vars, chartColors, colorScheme = 'dark') {
   const chrome = SIDEBAR_BY_THEME[id] || (colorScheme === 'light'
     ? SIDEBAR_BY_THEME.corporate_blue
-    : { ...SIDEBAR_CHROME_DARK, solid: vars['--ui-accent'] || CORPORATE_BLUE });
+    : { ...SIDEBAR_CHROME_DARK, solid: vars['--ui-accent'] || CORPORATE_PURPLE_ACCENT });
   const solid = chrome.solid;
   const varsWithSidebar = {
     ...vars,
@@ -77,32 +88,32 @@ function preset(id, label, description, tags, vars, chartColors, colorScheme = '
 export const THEME_PRESETS = {
   corporate_blue: preset(
     'corporate_blue',
-    'Corporativo azul',
+    'Corporativo morado',
     'Elegante, empresarial y moderno',
     ['empresarial', 'restaurante moderno'],
     {
-      '--ui-body-bg': '#f0f4fa',
+      '--ui-body-bg': '#f7f4fb',
       '--ui-body-text': '#0f172a',
-      '--ui-muted': '#475569',
+      '--ui-muted': '#5b5670',
       '--ui-surface': '#ffffff',
-      '--ui-surface-2': '#f1f5f9',
-      '--ui-border': 'rgba(15, 23, 42, 0.12)',
-      '--ui-accent': '#2563EB',
-      '--ui-accent-hover': '#1D4ED8',
-      '--ui-accent-muted': '#3B82F6',
+      '--ui-surface-2': '#f3eff8',
+      '--ui-border': 'rgba(36, 0, 70, 0.14)',
+      '--ui-accent': CORPORATE_PURPLE_ACCENT,
+      '--ui-accent-hover': '#6D28D9',
+      '--ui-accent-muted': '#A78BFA',
       '--ui-input-bg': '#ffffff',
-      '--ui-input-border': 'rgba(15, 23, 42, 0.18)',
-      '--ui-focus-ring': '#2563EB',
-      '--ui-sidebar-active-bg': 'rgba(37, 99, 235, 0.22)',
-      '--ui-sidebar-hover': 'rgba(255, 255, 255, 0.06)',
-      '--ui-sidebar-border': 'rgba(255, 255, 255, 0.08)',
-      '--ui-logo-from': '#2563EB',
-      '--ui-logo-to': '#1D4ED8',
-      '--ui-btn-secondary-hover': 'rgba(15, 23, 42, 0.06)',
+      '--ui-input-border': 'rgba(36, 0, 70, 0.2)',
+      '--ui-focus-ring': CORPORATE_PURPLE_ACCENT,
+      '--ui-sidebar-active-bg': 'rgba(124, 58, 237, 0.28)',
+      '--ui-sidebar-hover': 'rgba(255, 255, 255, 0.08)',
+      '--ui-sidebar-border': 'rgba(255, 255, 255, 0.1)',
+      '--ui-logo-from': '#A78BFA',
+      '--ui-logo-to': CORPORATE_PURPLE_ACCENT,
+      '--ui-btn-secondary-hover': 'rgba(36, 0, 70, 0.06)',
       '--ui-glass': 'rgba(255, 255, 255, 0.88)',
-      '--ui-shell-header-bg': '#DBEAFE',
+      '--ui-shell-header-bg': CORPORATE_PURPLE_HEADER,
     },
-    ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
+    ['#7c3aed', '#a78bfa', '#240046', '#c4b5fd', '#8b5cf6', '#5b21b6'],
     'light'
   ),
 
@@ -191,7 +202,7 @@ export const THEME_PRESETS = {
       '--ui-logo-to': '#2563EB',
       '--ui-btn-secondary-hover': 'rgba(0, 0, 0, 0.05)',
       '--ui-glass': 'rgba(255, 255, 255, 0.92)',
-      '--ui-shell-header-bg': '#DBEAFE',
+      '--ui-shell-header-bg': '#BFDBFE',
     },
     ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'],
     'light'
@@ -222,7 +233,7 @@ export const THEME_PRESETS = {
       '--ui-logo-to': '#064e3b',
       '--ui-btn-secondary-hover': 'rgba(6, 78, 59, 0.08)',
       '--ui-glass': 'rgba(255, 255, 255, 0.9)',
-      '--ui-shell-header-bg': '#D1FAE5',
+      '--ui-shell-header-bg': '#A7F3D0',
     },
     ['#064e3b', '#2563eb', '#f59e0b', '#ef4444', '#047857', '#8b5cf6'],
     'light'

@@ -152,65 +152,65 @@ h1, h2, h3, h4 {
 /* —— Premium components —— */
 /* —— Shell —— */
 .rf-shell-header {
-    background: color-mix(in srgb, var(--ui-accent-muted) 12%, var(--ui-glass, var(--ui-shell-header-bg))) !important;
-    backdrop-filter: blur(12px) saturate(1.2);
-    -webkit-backdrop-filter: blur(12px) saturate(1.2);
-    box-shadow: var(--ui-shadow-sm);
-  }
+  background: color-mix(in srgb, var(--ui-accent-muted) 12%, var(--ui-glass, var(--ui-shell-header-bg))) !important;
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  box-shadow: var(--ui-shadow-sm);
+}
 
-  /* Cabecera: tonalidad clara del tema (no Dark Elegance) */
-  html[data-ui-theme='corporate_blue'] .rf-shell-header {
-    background: var(--ui-shell-header-bg, #DBEAFE) !important;
-    border-bottom-color: color-mix(in srgb, #1e3a8a 18%, transparent) !important;
-  }
+/* Cabecera: tonalidad clara del tema (no Dark Elegance) — color sólido bien visible */
+html[data-ui-theme='corporate_blue'] .rf-shell-header {
+  background: var(--ui-shell-header-bg, #EDE4F7) !important;
+  border-bottom-color: color-mix(in srgb, #240046 18%, transparent) !important;
+}
 
-  html[data-ui-theme='minimal_white'] .rf-shell-header {
-    background: var(--ui-shell-header-bg, #DBEAFE) !important;
-    border-bottom-color: color-mix(in srgb, #2563EB 20%, transparent) !important;
-  }
+html[data-ui-theme='minimal_white'] .rf-shell-header {
+  background: var(--ui-shell-header-bg, #BFDBFE) !important;
+  border-bottom-color: color-mix(in srgb, #2563EB 24%, transparent) !important;
+}
 
-  html[data-ui-theme='emerald_business'] .rf-shell-header {
-    background: var(--ui-shell-header-bg, #D1FAE5) !important;
-    border-bottom-color: color-mix(in srgb, #064e3b 18%, transparent) !important;
-  }
+html[data-ui-theme='emerald_business'] .rf-shell-header {
+  background: var(--ui-shell-header-bg, #A7F3D0) !important;
+  border-bottom-color: color-mix(in srgb, #064e3b 22%, transparent) !important;
+}
 
-  .rf-main-content {
-    animation: rf-page-in 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  }
+.rf-main-content {
+  animation: rf-page-in 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-  .rf-sidebar {
-    background: var(--ui-sidebar-panel-bg, #DBEAFE) !important;
-    border-right: 1px solid var(--ui-sidebar-border) !important;
-    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.08);
-    transition: background 0.25s ease, border-color 0.25s ease;
-  }
+.rf-sidebar {
+  background: var(--ui-sidebar-panel-bg, #DBEAFE) !important;
+  border-right: 1px solid var(--ui-sidebar-border) !important;
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.08);
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
 
-  .rf-sidebar-logo-bar {
-    background: var(--ui-sidebar-panel-top, var(--ui-sidebar-panel-bg, #DBEAFE)) !important;
-    border-bottom: 1px solid var(--ui-sidebar-border) !important;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
+.rf-sidebar-logo-bar {
+  background: var(--ui-sidebar-panel-top, var(--ui-sidebar-panel-bg, #DBEAFE)) !important;
+  border-bottom: 1px solid var(--ui-sidebar-border) !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 
-  .rf-sidebar .rf-sidebar-logo-name,
-  .rf-sidebar .rf-nav-link,
-  .rf-sidebar .rf-nav-sublink,
-  .rf-sidebar .rf-sidebar__footer-btn,
-  .rf-sidebar .rf-sidebar-menu-btn,
-  .rf-sidebar .rf-nav-link svg,
-  .rf-sidebar .rf-sidebar-burger span {
-    color: var(--ui-sidebar-nav-fg, #0f172a) !important;
-  }
+.rf-sidebar .rf-sidebar-logo-name,
+.rf-sidebar .rf-nav-link,
+.rf-sidebar .rf-nav-sublink,
+.rf-sidebar .rf-sidebar__footer-btn,
+.rf-sidebar .rf-sidebar-menu-btn,
+.rf-sidebar .rf-nav-link svg,
+.rf-sidebar .rf-sidebar-burger span {
+  color: var(--ui-sidebar-nav-fg, #0f172a) !important;
+}
 
-  .rf-sidebar .rf-nav-link--active,
-  .rf-sidebar .rf-nav-link--active svg,
-  .rf-sidebar .rf-nav-sublink--active {
-    color: var(--ui-sidebar-panel-active-fg, #ffffff) !important;
-  }
+.rf-sidebar .rf-nav-link--active,
+.rf-sidebar .rf-nav-link--active svg,
+.rf-sidebar .rf-nav-sublink--active {
+  color: var(--ui-sidebar-panel-active-fg, #ffffff) !important;
+}
 
-  .rf-sidebar-brand {
-    box-shadow: var(--ui-shadow-md);
-  }
+.rf-sidebar-brand {
+  box-shadow: var(--ui-shadow-md);
+}
 
   .rf-sidebar-logo-name {
     font-size: 1.22rem;
@@ -2251,21 +2251,21 @@ h1, h2, h3, h4 {
   box-shadow: var(--ui-shadow-md) !important;
 }
 
-/* Corporativo azul: menú morado oscuro (arriba más oscuro) + activo #2563EB */
+/* Corporativo morado: menú #240046 + activo #7C3AED + cabecera #EDE4F7 */
 html[data-ui-theme='corporate_blue'] .rf-sidebar {
-  background: #17122b !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: #240046 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar {
-  background: #0c0916 !important;
-  border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+  background: #1A0033 !important;
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-sidebar__nav,
 html[data-ui-theme='corporate_blue'] .rf-sidebar__footer {
-  background: #17122b !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: #240046 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-logo-name,
@@ -2275,7 +2275,7 @@ html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar__footer-btn,
 html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-menu-btn,
 html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-nav-link svg,
 html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-burger span {
-  color: #E5E7EB !important;
+  color: #F3E8FF !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-nav-link:hover:not(.rf-nav-link--active),
@@ -2283,17 +2283,17 @@ html[data-ui-theme='corporate_blue'] .rf-nav-sublink:hover:not(.rf-nav-sublink--
 html[data-ui-theme='corporate_blue'] .rf-sidebar__footer-btn:hover,
 html[data-ui-theme='corporate_blue'] .rf-sidebar-menu-btn:hover,
 html[data-ui-theme='corporate_blue'] .rf-sidebar-logo-bar button:hover {
-  background: #241c42 !important;
+  background: #3D0A6B !important;
   color: #ffffff !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-nav-link:hover:not(.rf-nav-link--active) svg {
-  color: #ffffff !important;
+  color: #EDE4F7 !important;
 }
 
 html[data-ui-theme='corporate_blue'] .rf-nav-link--active,
 html[data-ui-theme='corporate_blue'] .rf-nav-sublink--active {
-  background: #2563EB !important;
+  background: #7C3AED !important;
   color: #ffffff !important;
   border: none !important;
   border-radius: 0.625rem;
@@ -2306,7 +2306,12 @@ html[data-ui-theme='corporate_blue'] .rf-nav-sublink--active {
 }
 
 html[data-ui-theme='corporate_blue'] .rf-sidebar-brand {
-  background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
+  background: linear-gradient(135deg, #7C3AED, #240046) !important;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-shell-header {
+  background: var(--ui-shell-header-bg, #EDE4F7) !important;
+  border-bottom-color: color-mix(in srgb, #240046 18%, transparent) !important;
 }
 
 /* Misma jerarquía en temas oscuros (cabecera más oscura) */
