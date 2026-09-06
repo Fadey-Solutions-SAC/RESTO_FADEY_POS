@@ -3,6 +3,7 @@ import { api, formatCurrency, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
+import CompactSelect from '../../components/CompactSelect';
 import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import { UI_BADGE } from '../../utils/uiBadges';
@@ -13,6 +14,10 @@ import {
   reservationNotesHaveOrder,
 } from '../../utils/reservationKitchenTiming';
 import { filterTablesForReservationSelect } from '../../utils/reservationTableAvailability';
+import {
+  dismissReservationCajaToast,
+  reservationCajaToastId,
+} from '../../utils/reservationCajaAvisosSession';
 import { MdAdd, MdExpandMore, MdEventSeat, MdPerson, MdPhone, MdCalendarToday, MdAccessTime } from 'react-icons/md';
 
 const WAREHOUSE_CATEGORY_NAMES = new Set(['PRODUCTOS ALMACEN', 'INSUMOS']);
@@ -252,6 +257,11 @@ export default function Reservas() {
     try {
       await api.put(`/admin-modules/reservations/${reservationId}`, { table_id: tableId || '' });
       toast.success(tableId ? 'Mesa asignada a la reserva' : 'Mesa quitada de la reserva');
+      if (tableId) {
+        const toastId = reservationCajaToastId(reservationId);
+        dismissReservationCajaToast(toastId);
+        toast.dismiss(toastId);
+      }
       load();
     } catch (err) {
       toast.error(err.message);
@@ -373,26 +383,27 @@ export default function Reservas() {
                   </div>
                 </div>
                 <div className="flex flex-col xs:flex-row sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
-                    <select
+                  <CompactSelect
                     value={r.table_id || ''}
-                    onChange={(e) => assignTable(r.id, e.target.value)}
-                    className="input-field text-xs py-1.5 w-full sm:min-w-[140px] sm:max-w-[200px]"
+                    onChange={(v) => assignTable(r.id, v)}
                     title="Asignar o cambiar mesa"
-                  >
-                    <option value="">Sin mesa</option>
-                    {filterTablesForReservationSelect({
-                      tables,
-                      reservations: visibleReservas,
-                      date: r.date,
-                      time: r.time,
-                      excludeReservationId: r.id,
-                      includeTableId: r.table_id,
-                    }).map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name || `Mesa ${t.number}`} (Cap. {t.capacity})
-                      </option>
-                    ))}
-                  </select>
+                    className="w-full sm:min-w-[140px] sm:max-w-[200px]"
+                    placeholder="Sin mesa"
+                    options={[
+                      { value: '', label: 'Sin mesa' },
+                      ...filterTablesForReservationSelect({
+                        tables,
+                        reservations: visibleReservas,
+                        date: r.date,
+                        time: r.time,
+                        excludeReservationId: r.id,
+                        includeTableId: r.table_id,
+                      }).map((t) => ({
+                        value: t.id,
+                        label: `${t.name || `Mesa ${String(t.number).padStart(2, '0')}`} (Cap. ${t.capacity})`,
+                      })),
+                    ]}
+                  />
                   <div className="flex items-center gap-2 justify-between sm:justify-start">
                     <span className={statusColors[r.status] || UI_BADGE.slate}>
                       {statusNames[r.status]}
@@ -507,14 +518,24 @@ export default function Reservas() {
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Mesa</label>
-            <select value={form.table_id} onChange={(e) => setForm({ ...form, table_id: e.target.value })} className="input-field">
-              <option value="">Sin asignar</option>
-              {formSelectableTables.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name || `Mesa ${t.number}`} (Cap. {t.capacity})
-                </option>
-              ))}
-            </select>
+            <CompactSelect
+              value={form.table_id}
+              onChange={(v) => setForm({ ...form, table_id: v })}
+              placeholder="Sin asignar"
+              emptyHint="No hay mesas libres: las ocupadas o con reserva hoy no aparecen."
+              options={[
+                { value: '', label: 'Sin asignar' },
+                ...formSelectableTables.map((t) => ({
+                  value: t.id,
+                  label: `${t.name || `Mesa ${String(t.number).padStart(2, '0')}`} (Cap. ${t.capacity})`,
+                })),
+              ]}
+            />
+            {formSelectableTables.length === 0 ? (
+              <p className="text-[11px] text-[var(--ui-muted)] mt-1">
+                No hay mesas libres: las ocupadas o con reserva hoy no aparecen.
+              </p>
+            ) : null}
           </div>
 
           <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] overflow-hidden">

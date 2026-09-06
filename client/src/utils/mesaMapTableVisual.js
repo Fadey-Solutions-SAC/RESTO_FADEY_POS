@@ -27,10 +27,7 @@ function parseReservationLocalMs(dateStr, timeStr) {
   return Number.isNaN(dt.getTime()) ? null : dt.getTime();
 }
 
-/**
- * Antes de la hora de la reserva la mesa se muestra en gris (reservada),
- * aunque ya exista un pedido (retenido o liberado a cocina).
- */
+/** true si aún no llegó la hora de la reserva. */
 function isBeforeReservationTime(reservation) {
   if (!reservation) return false;
   const ms = parseReservationLocalMs(reservation.date, reservation.time);
@@ -88,7 +85,7 @@ export function getMesaMapVisualState(
   if (!table) return 'available';
   const tid = String(table.id || '').trim();
   const orders = Array.isArray(table.orders) ? table.orders : [];
-  const hasOrders = orders.length > 0;
+  const hasOrders = orders.length > 0 || Number(table.order_count || 0) > 0;
 
   if (table.union_id) {
     if (precuentaTableIds?.has?.(tid) && hasOrders) return 'precuenta';
@@ -103,15 +100,13 @@ export function getMesaMapVisualState(
     orders
   );
 
-  // Gris hasta la hora de la reserva (aunque el pedido ya esté en cocina).
-  if (reservation && isBeforeReservationTime(reservation)) {
-    return 'reserved';
+  // Reserva: gris hasta la hora exacta; al llegar → naranja. Nada más cambia ese color.
+  if (reservation) {
+    return isBeforeReservationTime(reservation) ? 'reserved' : 'occupied';
   }
 
   if (precuentaTableIds?.has?.(tid) && hasOrders) return 'precuenta';
   if (hasOrders || dbStatus === 'occupied') return 'occupied';
-  // Llegó la hora de la reserva → ocupada (ya no gris).
-  if (reservation) return 'occupied';
   if (dbStatus === 'reserved') return 'reserved';
   return 'available';
 }

@@ -2759,13 +2759,17 @@ function UsersSection({
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <table className="w-full text-sm">
+        <div
+          className="overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] scrollbar-thin"
+          style={{ touchAction: 'pan-x pan-y' }}
+        >
+        <table className="w-full min-w-[42rem] text-sm">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="text-left p-3 font-semibold text-[var(--ui-muted)]">Usuario</th>
-              <th className="text-left p-3 font-semibold text-[var(--ui-muted)]">Rol</th>
-              <th className="text-center p-3 font-semibold text-[var(--ui-muted)]">Estado</th>
-              <th className="text-center p-3 font-semibold text-[var(--ui-muted)]">Acciones</th>
+              <th className="text-left p-3 font-semibold text-[var(--ui-muted)] whitespace-nowrap">Usuario</th>
+              <th className="text-left p-3 font-semibold text-[var(--ui-muted)] whitespace-nowrap">Rol</th>
+              <th className="text-center p-3 font-semibold text-[var(--ui-muted)] whitespace-nowrap">Estado</th>
+              <th className="text-center p-3 font-semibold text-[var(--ui-muted)] whitespace-nowrap">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -2779,13 +2783,13 @@ function UsersSection({
                       <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center flex-shrink-0">
                         <span className="text-sm font-bold text-[var(--ui-muted)]">{(u.full_name || u.username || '?').charAt(0)}</span>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className="font-bold rf-section-title">{u.full_name}</p>
                         <p className="text-xs text-[var(--ui-muted)]">@{u.username}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="p-3">
+                  <td className="p-3 whitespace-nowrap">
                     <span className={`${roleInfo.color} px-3 py-1 inline-flex items-center gap-1`}>
                       <RoleIcon className="text-sm" /> {roleInfo.label}
                     </span>
@@ -2804,12 +2808,12 @@ function UsersSection({
                       </p>
                     )}
                   </td>
-                  <td className="p-3 text-center">
+                  <td className="p-3 text-center whitespace-nowrap">
                     <button onClick={() => toggleActive(u)} className={`px-3 py-1 text-xs font-bold ${u.is_active ? UI_BADGE.emerald : UI_BADGE.slate}`}>
                       {u.is_active ? 'ACTIVO' : 'INACTIVO'}
                     </button>
                   </td>
-                  <td className="p-3">
+                  <td className="p-3 whitespace-nowrap">
                     <div className="flex items-center justify-center gap-2">
                       <button onClick={() => openEditUser(u)} className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 text-sky-600 rounded-lg hover:bg-sky-100 text-xs font-medium border border-sky-200">
                         <MdEdit className="text-sm" /> Editar
@@ -2829,6 +2833,7 @@ function UsersSection({
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal Editar Usuario */}

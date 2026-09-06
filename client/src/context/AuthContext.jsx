@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import { api, getApiOrigin } from '../utils/api';
 import { applyUiThemeFromAppSettings } from '../theme/uiTheme';
 import { isBrowserOffline, readGetCache, saveGetCache } from '../utils/offlinePos';
+import { clearReservationCajaAvisosSession } from '../utils/reservationCajaAvisosSession';
 
 const STAFF_USER_KEY = 'rf_offline_staff_user';
 
@@ -137,6 +138,7 @@ export function AuthProvider({ children }) {
         if (shouldClearAuthToken(err)) {
           localStorage.removeItem('token');
           try { localStorage.removeItem(STAFF_USER_KEY); } catch { /* ignore */ }
+          clearReservationCajaAvisosSession();
           setUser(null);
         }
         /* Fallo de red / API lenta: se conserva el token para el próximo intento */
@@ -187,6 +189,7 @@ export function AuthProvider({ children }) {
     }
     localStorage.removeItem('token');
     try { localStorage.removeItem(STAFF_USER_KEY); } catch { /* ignore */ }
+    clearReservationCajaAvisosSession();
     setUser(null);
     window.location.href = '/';
   };
@@ -207,6 +210,7 @@ export function AuthProvider({ children }) {
       if (shouldClearAuthToken(err)) {
         localStorage.removeItem('token');
         try { localStorage.removeItem(STAFF_USER_KEY); } catch { /* ignore */ }
+        clearReservationCajaAvisosSession();
         setUser(null);
       }
       return null;

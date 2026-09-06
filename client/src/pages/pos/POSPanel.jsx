@@ -267,6 +267,13 @@ import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import { useMesaOrderLock } from '../../hooks/useMesaOrderLock';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import toast from 'react-hot-toast';
+import {
+  archiveReservationCajaAviso,
+  dismissReservationCajaToast,
+  isReservationCajaToastDismissed,
+  reservationCajaToastId,
+} from '../../utils/reservationCajaAvisosSession';
+import { ReservaCajaToastBody } from '../../components/ReservaCajaToast';
 import Modal from '../../components/Modal';
 import MesaTransferModal from '../../components/MesaTransferModal';
 import MesaMapTableTile from '../../components/MesaMapTableTile';
@@ -1112,30 +1119,43 @@ export default function POSPanel() {
     try {
       const data = await api.get('/reports/reservation-caja-alerts');
       const alerts = (data?.alerts || []).filter((a) => String(a?.id || '').startsWith('reserva_caja_'));
-      const nextIds = new Set(alerts.map((a) => a.id));
-      for (const id of reservationAlertToastIdsRef.current) {
-        if (!nextIds.has(id)) toast.dismiss(id);
-      }
+      const nextIds = new Set();
+
       for (const alert of alerts) {
+        const id = reservationCajaToastId(alert.id);
+        if (!id) continue;
+        archiveReservationCajaAviso({
+          id,
+          title: alert.title,
+          message: alert.message,
+        });
+        if (isReservationCajaToastDismissed(id)) {
+          toast.dismiss(id);
+          continue;
+        }
+        nextIds.add(id);
         toast.custom(
           (t) => (
-            <div
-              className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-[min(100vw-2rem,26rem)] rounded-xl border border-amber-500/50 bg-amber-50 text-amber-950 shadow-lg px-4 py-3`}
-              role="status"
-            >
-              <p className="text-sm font-bold">📅 {alert.title}</p>
-              <p className="text-xs mt-1.5 leading-snug whitespace-pre-wrap break-words">{alert.message}</p>
-              <button
-                type="button"
-                className="mt-2 text-xs font-semibold text-amber-800 underline underline-offset-2"
-                onClick={() => toast.dismiss(t.id)}
-              >
-                Cerrar aviso
-              </button>
-            </div>
+            <ReservaCajaToastBody
+              visible={t.visible}
+              title={alert.title}
+              message={alert.message}
+              onClose={() => {
+                dismissReservationCajaToast(t.id);
+                toast.dismiss(t.id);
+              }}
+            />
           ),
-          { id: alert.id, duration: Infinity }
+          { id, duration: Infinity }
         );
+      }
+
+      for (const id of reservationAlertToastIdsRef.current) {
+        if (!nextIds.has(id)) {
+          // Ya no aplica (p. ej. mesa asignada / ventana cerrada): quitar toast flotante.
+          dismissReservationCajaToast(id);
+          toast.dismiss(id);
+        }
       }
       reservationAlertToastIdsRef.current = nextIds;
     } catch (_) {
@@ -1227,7 +1247,7 @@ export default function POSPanel() {
     void loadData();
     const r = payload?.reservation;
     if (r?.id) {
-      const toastId = `reserva_caja_${r.id}`;
+      const toastId = reservationCajaToastId(r.id);
       const needsTable = Boolean(r.needs_table) || /sin mesa/i.test(String(r.table_label || ''));
       const tableLabel = r.table_label || 'Sin mesa asignada';
       const title = needsTable
@@ -1236,26 +1256,26 @@ export default function POSPanel() {
       const msg = needsTable
         ? `${r.client_name || 'Cliente'} · ${r.date || ''} ${r.time || ''}. Pedido de reserva sin mesa: asigne mesa y verifique preparativos (cocina 30 min antes).`
         : `${r.client_name || 'Cliente'} · ${r.date || ''} ${r.time || ''} · ${Number(r.guests || 0)} persona(s). ${tableLabel}: verifique preparativos de la mesa.`;
-      toast.custom(
-        (t) => (
-          <div
-            className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-[min(100vw-2rem,26rem)] rounded-xl border border-amber-500/50 bg-amber-50 text-amber-950 shadow-lg px-4 py-3`}
-            role="status"
-          >
-            <p className="text-sm font-bold">📅 {title}</p>
-            <p className="text-xs mt-1.5 leading-snug whitespace-pre-wrap break-words">{msg}</p>
-            <button
-              type="button"
-              className="mt-2 text-xs font-semibold text-amber-800 underline underline-offset-2"
-              onClick={() => toast.dismiss(t.id)}
-            >
-              Cerrar aviso
-            </button>
-          </div>
-        ),
-        { id: toastId, duration: Infinity }
-      );
-      reservationAlertToastIdsRef.current.add(toastId);
+      archiveReservationCajaAviso({ id: toastId, title, message: msg });
+      if (!isReservationCajaToastDismissed(toastId)) {
+        toast.custom(
+          (t) => (
+            <ReservaCajaToastBody
+              visible={t.visible}
+              title={title}
+              message={msg}
+              onClose={() => {
+                dismissReservationCajaToast(t.id);
+                toast.dismiss(t.id);
+              }}
+            />
+          ),
+          { id: toastId, duration: Infinity }
+        );
+        reservationAlertToastIdsRef.current.add(toastId);
+      } else {
+        toast.dismiss(toastId);
+      }
     }
     void syncReservationAlertToasts();
   });

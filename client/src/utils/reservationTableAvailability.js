@@ -1,5 +1,5 @@
 /**
- * Mesas disponibles para asignar a una reserva (excluye ocupadas y otras reservas cercanas).
+ * Mesas disponibles para asignar a una reserva (excluye ocupadas y reservadas del día).
  */
 
 const ACTIVE_RES_STATUS = new Set(['confirmed', 'pending', 'confirmada', 'pendiente']);
@@ -13,8 +13,23 @@ function parseTimeToMinutes(timeValue) {
 function tableHasActiveOrders(table) {
   const orders = Array.isArray(table?.orders) ? table.orders : [];
   if (orders.length > 0) return true;
+  if (Number(table?.order_count || 0) > 0) return true;
   const st = String(table?.status || '').toLowerCase();
   return st === 'occupied' || st === 'ocupada';
+}
+
+/** Reserva activa en la misma mesa el mismo día (cualquier hora). */
+function tableHasReservationThatDay(tableId, reservations, { date, excludeReservationId = '' }) {
+  const tid = String(tableId || '').trim();
+  const day = String(date || '').trim().slice(0, 10);
+  if (!tid || !day) return false;
+
+  return (reservations || []).some((r) => {
+    if (!ACTIVE_RES_STATUS.has(String(r?.status || '').toLowerCase())) return false;
+    if (excludeReservationId && String(r.id) === String(excludeReservationId)) return false;
+    if (String(r?.table_id || '').trim() !== tid) return false;
+    return String(r?.date || '').trim().slice(0, 10) === day;
+  });
 }
 
 function tableHasConflictingReservation(tableId, reservations, { date, time, excludeReservationId = '' }) {
@@ -58,11 +73,22 @@ export function filterTablesForReservationSelect({
     if (!tid) return false;
     if (keepId && tid === keepId) return true;
     if (tableHasActiveOrders(t)) return false;
+    // Cualquier reserva del mismo día en esa mesa la bloquea (ocupada/reservada).
+    if (tableHasReservationThatDay(tid, reservations, { date, excludeReservationId })) {
+      return false;
+    }
     if (tableHasConflictingReservation(tid, reservations, { date, time, excludeReservationId })) {
       return false;
     }
     const st = String(t?.status || '').toLowerCase();
-    if (st === 'reserved' || st === 'reservada' || st === 'maintenance' || st === 'mantenimiento') {
+    if (
+      st === 'reserved'
+      || st === 'reservada'
+      || st === 'occupied'
+      || st === 'ocupada'
+      || st === 'maintenance'
+      || st === 'mantenimiento'
+    ) {
       return false;
     }
     return true;

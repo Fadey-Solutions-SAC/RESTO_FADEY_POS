@@ -12,6 +12,11 @@ import {
   PAGO_PLAN_MODULE_PATH,
   isPagoPlanAvisoTitle,
 } from '../constants/masterNotifications';
+import {
+  getSessionReservationCajaAvisos,
+  removeSessionReservationCajaAviso,
+  RESERVA_CAJA_AVISOS_EVENT,
+} from '../utils/reservationCajaAvisosSession';
 
 const DISMISSED_AVISOS_STORAGE_KEY = 'admin_avisos_descartados_v1';
 const STAFF_CHAT_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
@@ -72,6 +77,7 @@ export default function NotificationCenter({ className = '' }) {
   const [tab, setTab] = useState(showAvisosBtn ? 'avisos' : 'chat');
   const [unreadChat, setUnreadChat] = useState(0);
   const [adminNotifications, setAdminNotifications] = useState([]);
+  const [sessionReservaAvisos, setSessionReservaAvisos] = useState(() => getSessionReservationCajaAvisos());
   const [dismissedAvisoIds, setDismissedAvisoIds] = useState(loadDismissedAvisoIds);
   const [avisoToDismiss, setAvisoToDismiss] = useState(null);
 
@@ -80,12 +86,15 @@ export default function NotificationCenter({ className = '' }) {
   const chatActiveRef = useRef(false);
 
   const visibleAdminNotifications = useMemo(() => {
-    let list = adminNotifications.filter((n) => !dismissedAvisoIds.includes(String(n.id)));
+    let list = [
+      ...sessionReservaAvisos,
+      ...adminNotifications.filter((n) => !dismissedAvisoIds.includes(String(n.id))),
+    ];
     if (!seesPagoUsoAviso) {
       list = list.filter((n) => n.title !== PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
     }
     return list;
-  }, [adminNotifications, dismissedAvisoIds, seesPagoUsoAviso]);
+  }, [adminNotifications, dismissedAvisoIds, seesPagoUsoAviso, sessionReservaAvisos]);
 
   const isChatActive = open && tab === 'chat';
   chatActiveRef.current = isChatActive;
@@ -105,6 +114,17 @@ export default function NotificationCenter({ className = '' }) {
     const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
   }, [showAvisosBtn]);
+
+  useEffect(() => {
+    const refresh = () => setSessionReservaAvisos(getSessionReservationCajaAvisos());
+    refresh();
+    window.addEventListener(RESERVA_CAJA_AVISOS_EVENT, refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener(RESERVA_CAJA_AVISOS_EVENT, refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
 
   const onUnreadDelta = useCallback((n) => {
     setUnreadChat((u) => u + n);
@@ -177,6 +197,11 @@ export default function NotificationCenter({ className = '' }) {
   const confirmDismissAviso = () => {
     if (!avisoToDismiss?.id) return;
     const id = String(avisoToDismiss.id);
+    if (avisoToDismiss.source === 'reservation_caja' || String(id).startsWith('reserva_caja_')) {
+      removeSessionReservationCajaAviso(id);
+      setAvisoToDismiss(null);
+      return;
+    }
     const next = [...new Set([...dismissedAvisoIds, id])];
     setDismissedAvisoIds(next);
     saveDismissedAvisoIds(next);
