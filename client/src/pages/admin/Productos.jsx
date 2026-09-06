@@ -11,7 +11,8 @@ import Modal from '../../components/Modal';
 import ContextMenu from '../../components/ContextMenu';
 import {
   MdAdd, MdEdit, MdDelete, MdSearch, MdRestaurantMenu, MdLunchDining,
-  MdTune, MdClose, MdCheck, MdToggleOn, MdToggleOff, MdDownload, MdSchedule, MdAutoAwesome
+  MdTune, MdClose, MdCheck, MdToggleOn, MdToggleOff, MdDownload, MdSchedule, MdAutoAwesome,
+  MdExpandMore, MdExpandLess,
 } from 'react-icons/md';
 import {
   DAY_KEYS,
@@ -147,6 +148,7 @@ export default function Productos() {
   const [selectedCat, setSelectedCat] = useState('');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [mobileCatsOpen, setMobileCatsOpen] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [expandedCats, setExpandedCats] = useState({});
 
@@ -463,7 +465,16 @@ export default function Productos() {
   const visibleCategories = categories
     .filter(c => !hiddenCategoryIds.has(c.id))
     .filter(c => !categoryFilter || (c.name || '').toLowerCase().includes(categoryFilter.toLowerCase()));
-  const visibleProducts = products.filter(p => !hiddenCategoryIds.has(p.category_id) && !!p.category_id);
+  const stockAlertActive = highlightLowStock || highlightOutOfStock;
+  const visibleProducts = products.filter((p) => {
+    if (hiddenCategoryIds.has(p.category_id)) return false;
+    if (p.category_id) return true;
+    // Alertas de stock: incluir no transformados aunque no tengan categoría
+    if (stockAlertActive || highlightSlowMoving) {
+      return String(p.process_type || '').trim().toLowerCase() === 'non_transformed';
+    }
+    return false;
+  });
   const comboPickerProducts = useMemo(
     () => visibleProducts.filter((p) => Number(p.is_active ?? 1) === 1),
     [visibleProducts],
@@ -505,20 +516,34 @@ export default function Productos() {
 
   const filtered = visibleProducts.filter(p => {
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase());
-    const matchCat = !selectedCat || p.category_id === selectedCat;
+    const matchCat = stockAlertActive || highlightSlowMoving
+      ? true
+      : (!selectedCat || p.category_id === selectedCat);
     const matchActive = showInactive ? isProductInactive(p) : !isProductInactive(p);
     const matchSlowMoving = !highlightSlowMoving || slowMovingProductIds.has(String(p.id));
+    const isNonTransformed = String(p.process_type || '').trim().toLowerCase() === 'non_transformed';
     const status = productStockStatus(p.stock, p.min_stock);
+    // Misma lógica que alertas del escritorio: solo no transformados
     const matchStockFilter = highlightOutOfStock
-      ? status === 'out'
+      ? isNonTransformed && status === 'out'
       : highlightLowStock
-        ? status === 'low' || status === 'out'
+        ? isNonTransformed && (status === 'low' || status === 'out')
         : true;
     return matchSearch && matchCat && matchActive && matchSlowMoving && matchStockFilter;
+  }).sort((a, b) => {
+    if (!stockAlertActive && !highlightSlowMoving) return 0;
+    const sa = Number(a.stock) || 0;
+    const sb = Number(b.stock) || 0;
+    if (sa !== sb) return sa - sb;
+    return String(a.name || '').localeCompare(String(b.name || ''), 'es');
   });
 
   useEffect(() => {
-    if (highlightSlowMoving || highlightLowStock || highlightOutOfStock) setActiveTab('platos');
+    if (highlightSlowMoving || highlightLowStock || highlightOutOfStock) {
+      setActiveTab('platos');
+      setSelectedCat('');
+      setShowInactive(false);
+    }
   }, [highlightSlowMoving, highlightLowStock, highlightOutOfStock]);
 
   const openNewProduct = () => {
@@ -839,21 +864,21 @@ export default function Productos() {
 
   return (
     <div>
-      <div className="flex gap-3 mb-5">
+      <div className="flex gap-2 sm:gap-3 mb-5 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:thin]">
         {TABS.map(tab => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col items-center gap-1 px-6 py-3 rounded-xl border-2 transition-all ${
+              className={`flex flex-col items-center gap-1 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl border-2 transition-all flex-shrink-0 min-w-[6.5rem] ${
                 activeTab === tab.id
                   ? 'bg-gold-500 border-gold-500 text-white shadow-md shadow-gold-500/20'
                   : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:border-gold-300 hover:text-gold-600'
               }`}
             >
-              <Icon className="text-2xl" />
-              <span className="text-xs font-medium">{tab.label}</span>
+              <Icon className="text-xl sm:text-2xl" />
+              <span className="text-[11px] sm:text-xs font-medium whitespace-nowrap">{tab.label}</span>
               {tab.id !== activeTab && <MdAdd className="text-sm opacity-50" />}
             </button>
           );
@@ -864,17 +889,17 @@ export default function Productos() {
         <>
           {highlightSlowMoving ? (
             <div className="mb-4 rounded-xl border border-red-300/50 bg-red-50 px-4 py-3 text-sm text-red-900">
-              Mostrando productos con stock sin ventas cobradas desde hace al menos {slowMovingDays} días (desde alta o última venta).
+              Mostrando {filtered.length} producto(s) con stock sin ventas cobradas desde hace al menos {slowMovingDays} días (desde alta o última venta).
             </div>
           ) : null}
           {highlightOutOfStock ? (
             <div className="mb-4 rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              Mostrando productos agotados (stock 0), según la alerta del escritorio.
+              Mostrando {filtered.length} producto(s) agotados (stock 0, no transformados), según la alerta del escritorio.
             </div>
           ) : null}
           {highlightLowStock && !highlightOutOfStock ? (
             <div className="mb-4 rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              Mostrando productos con stock bajo o agotado, según la alerta del escritorio.
+              Mostrando {filtered.length} producto(s) con stock bajo o agotado (no transformados), según la alerta del escritorio.
             </div>
           ) : null}
           {categoryMergeSourceId ? (
@@ -887,79 +912,101 @@ export default function Productos() {
               </button>
             </div>
           ) : null}
-        <div className="flex gap-5">
-          <div className="w-56 flex-shrink-0">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-5">
+          <div className="w-full lg:w-56 lg:flex-shrink-0">
             <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] overflow-hidden">
-              <div className="p-2.5 border-b border-[color:var(--ui-border)]">
-                <input
-                  value={categoryFilter}
-                  onChange={e => setCategoryFilter(e.target.value)}
-                  placeholder={t('categories.filter')}
-                  className="input-field w-full text-sm py-1.5 px-3"
-                />
-              </div>
-              <div className="p-2">
-                <button
-                  type="button"
-                  onClick={openNewCat}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-sm btn-primary mb-1 justify-center"
-                >
-                  <MdAdd className="text-base" /> {t('categories.add')}
-                </button>
-              </div>
-              <nav
-                className="max-h-[60vh] overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
-                style={{ touchAction: 'pan-y' }}
-                onWheel={(e) => e.stopPropagation()}
+              <button
+                type="button"
+                className="lg:hidden w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-semibold text-[var(--ui-body-text)] border-b border-[color:var(--ui-border)]"
+                onClick={() => setMobileCatsOpen((v) => !v)}
+                aria-expanded={mobileCatsOpen}
               >
-                {visibleCategories.map(cat => (
-                  <div key={cat.id} className="m-1 border border-[color:var(--ui-border)] rounded-lg bg-[var(--ui-surface-2)] overflow-hidden">
-                    <div className="flex items-center group">
-                      <button
-                        type="button"
-                        onClick={() => onCategoryClick(cat)}
-                        onContextMenu={(e) => openCatContextMenu(e, cat)}
-                        className={`flex-1 text-left px-3 py-1.5 text-sm transition-colors ${
-                          categoryMergeSourceId === cat.id
-                            ? 'bg-amber-500 text-white font-semibold ring-2 ring-amber-300'
-                            : selectedCat === cat.id
-                              ? 'bg-[var(--ui-accent)] text-white font-semibold'
-                              : categoryMergeSourceId
-                                ? 'text-[var(--ui-body-text)] hover:bg-amber-100'
-                                : 'text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-                        }`}
-                      >
-                        {cat.name}
-                        <span className={`text-xs ml-1 ${selectedCat === cat.id ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
-                          ({getCatProductCount(cat.id)})
-                        </span>
-                      </button>
-                      <div className="hidden group-hover:flex items-center pr-2 gap-0.5">
-                        <button type="button" onClick={() => openEditCat(cat)} className="p-1 hover:bg-[var(--ui-sidebar-hover)] rounded text-[var(--ui-accent)] text-xs" title={t('table.edit')}>
-                          <MdEdit />
+                <span className="truncate">
+                  {t('categories.title')}
+                  {selectedCat ? (
+                    <span className="font-normal text-[var(--ui-muted)]">
+                      {' · '}
+                      {getCatName(selectedCat)}
+                    </span>
+                  ) : null}
+                </span>
+                {mobileCatsOpen ? <MdExpandLess className="text-xl flex-shrink-0" /> : <MdExpandMore className="text-xl flex-shrink-0" />}
+              </button>
+              <div className={`${mobileCatsOpen ? 'block' : 'hidden'} lg:block`}>
+                <div className="p-2.5 border-b border-[color:var(--ui-border)]">
+                  <input
+                    value={categoryFilter}
+                    onChange={e => setCategoryFilter(e.target.value)}
+                    placeholder={t('categories.filter')}
+                    className="input-field w-full text-sm py-1.5 px-3"
+                  />
+                </div>
+                <div className="p-2">
+                  <button
+                    type="button"
+                    onClick={openNewCat}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-sm btn-primary mb-1 justify-center"
+                  >
+                    <MdAdd className="text-base" /> {t('categories.add')}
+                  </button>
+                </div>
+                <nav
+                  className="max-h-[40vh] lg:max-h-[60vh] overflow-y-auto overscroll-y-contain pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-y"
+                  style={{ touchAction: 'pan-y' }}
+                  onWheel={(e) => e.stopPropagation()}
+                >
+                  {visibleCategories.map(cat => (
+                    <div key={cat.id} className="m-1 border border-[color:var(--ui-border)] rounded-lg bg-[var(--ui-surface-2)] overflow-hidden">
+                      <div className="flex items-center group">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onCategoryClick(cat);
+                            setMobileCatsOpen(false);
+                          }}
+                          onContextMenu={(e) => openCatContextMenu(e, cat)}
+                          className={`flex-1 min-w-0 text-left px-3 py-2 lg:py-1.5 text-sm transition-colors ${
+                            categoryMergeSourceId === cat.id
+                              ? 'bg-amber-500 text-white font-semibold ring-2 ring-amber-300'
+                              : selectedCat === cat.id
+                                ? 'bg-[var(--ui-accent)] text-white font-semibold'
+                                : categoryMergeSourceId
+                                  ? 'text-[var(--ui-body-text)] hover:bg-amber-100'
+                                  : 'text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                          }`}
+                        >
+                          <span className="break-words">{cat.name}</span>
+                          <span className={`text-xs ml-1 ${selectedCat === cat.id ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
+                            ({getCatProductCount(cat.id)})
+                          </span>
                         </button>
-                        <button type="button" onClick={() => deleteCat(cat)} className="p-1 hover:bg-[var(--ui-sidebar-hover)] rounded text-[var(--ui-accent)] hover:text-red-500 text-xs" title={t('table.delete')}>
-                          <MdDelete />
-                        </button>
+                        <div className="flex items-center pr-2 gap-0.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100">
+                          <button type="button" onClick={() => openEditCat(cat)} className="p-1.5 hover:bg-[var(--ui-sidebar-hover)] rounded text-[var(--ui-accent)] text-sm" title={t('table.edit')}>
+                            <MdEdit />
+                          </button>
+                          <button type="button" onClick={() => deleteCat(cat)} className="p-1.5 hover:bg-[var(--ui-sidebar-hover)] rounded text-[var(--ui-accent)] hover:text-red-500 text-sm" title={t('table.delete')}>
+                            <MdDelete />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </nav>
+                  ))}
+                </nav>
+              </div>
             </div>
           </div>
 
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 w-full">
             <button type="button" onClick={openNewProduct} className="w-full py-3.5 btn-primary font-semibold rounded-xl mb-4 flex items-center justify-center gap-2 transition-colors shadow-sm">
               <MdAdd className="text-xl" /> {t('categories.newProduct')}
             </button>
 
-            <div className="flex items-center gap-3 mb-3">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
+              <div className="relative flex-1 min-w-0">
                 <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)]" />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('categories.filterProduct')} className="input-field pl-9 py-2" />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('categories.filterProduct')} className="input-field pl-9 py-2 w-full" />
               </div>
-              <label className="flex items-center gap-2 text-sm text-[var(--ui-body-text)] cursor-pointer whitespace-nowrap">
+              <label className="flex items-center gap-2 text-sm text-[var(--ui-body-text)] cursor-pointer whitespace-nowrap flex-shrink-0">
                 {t('categories.showCancelled')}
                 <button type="button" onClick={() => setShowInactive(!showInactive)} className="text-2xl">
                   {showInactive ? <MdToggleOn className="text-gold-500" /> : <MdToggleOff className="text-[var(--ui-muted)]" />}
@@ -976,23 +1023,33 @@ export default function Productos() {
                 })}
             </p>
 
-            <div className="bg-[var(--ui-surface)] rounded-xl border border-[color:var(--ui-border)] overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="bg-[var(--ui-surface)] rounded-xl border border-[color:var(--ui-border)] overflow-x-auto">
+              <table className="w-full text-sm min-w-[36rem] lg:min-w-0">
                 <thead>
                   <tr className="border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
                     <th className="text-left p-3 font-semibold text-[var(--ui-body-text)]">{t('table.product')}</th>
-                    <th className="text-left p-3 font-semibold text-[var(--ui-body-text)] w-20">{t('table.code')}</th>
-                    <th className="text-left p-3 font-semibold text-[var(--ui-body-text)] w-28">{t('table.category')}</th>
+                    <th className="text-left p-3 font-semibold text-[var(--ui-body-text)] w-20 hidden md:table-cell">{t('table.code')}</th>
+                    <th className="text-left p-3 font-semibold text-[var(--ui-body-text)] w-28 hidden sm:table-cell">{t('table.category')}</th>
                     <th className="text-right p-3 font-semibold text-[var(--ui-body-text)] w-24">{t('table.salePrice')}</th>
-                    <th className="text-right p-3 font-semibold text-[var(--ui-body-text)] w-24">{t('table.purchasePrice')}</th>
-                    <th className="text-center p-3 font-semibold text-[var(--ui-body-text)] w-24">{t('table.stock')}</th>
-                    <th className="text-center p-3 font-semibold text-[var(--ui-body-text)] w-24">{t('table.active')}</th>
+                    <th className="text-right p-3 font-semibold text-[var(--ui-body-text)] w-24 hidden lg:table-cell">{t('table.purchasePrice')}</th>
+                    <th className="text-center p-3 font-semibold text-[var(--ui-body-text)] w-20">{t('table.stock')}</th>
+                    <th className="text-center p-3 font-semibold text-[var(--ui-body-text)] w-24 hidden md:table-cell">{t('table.active')}</th>
                     <th className="text-center p-3 font-semibold text-[var(--ui-body-text)] w-20"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((p, idx) => (
-                    <tr key={p.id} className={`border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)] transition-colors ${!p.is_active ? 'opacity-50' : ''}`}>
+                  {filtered.map((p, idx) => {
+                    const stockStatus = productStockStatus(p.stock, p.min_stock);
+                    const alertRow = stockAlertActive || highlightSlowMoving;
+                    const rowTone = highlightOutOfStock || stockStatus === 'out'
+                      ? 'bg-red-50/90 border-l-4 border-l-red-500'
+                      : highlightLowStock || stockStatus === 'low'
+                        ? 'bg-amber-50/90 border-l-4 border-l-amber-500'
+                        : highlightSlowMoving
+                          ? 'bg-red-50/70 border-l-4 border-l-red-400'
+                          : '';
+                    return (
+                    <tr key={p.id} className={`border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)] transition-colors ${!p.is_active ? 'opacity-50' : ''} ${alertRow ? rowTone : ''}`}>
                       <td className="p-3">
                         <p className="font-medium text-[var(--ui-body-text)] hover:text-gold-600 cursor-pointer flex items-center gap-2" onClick={() => openEditProduct(p)}>
                           {slowMovingProductIds.has(String(p.id)) ? (
@@ -1001,6 +1058,12 @@ export default function Productos() {
                               title={`Sin ventas cobradas desde hace ${slowMovingDays} días o más`}
                               aria-label="Producto sin ventas recientes"
                             />
+                          ) : null}
+                          {alertRow && stockStatus === 'out' ? (
+                            <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-red-600 text-white shrink-0">Agotado</span>
+                          ) : null}
+                          {alertRow && stockStatus === 'low' ? (
+                            <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500 text-white shrink-0">Stock bajo</span>
                           ) : null}
                           <span>{p.name}</span>
                         </p>
@@ -1020,28 +1083,28 @@ export default function Productos() {
                         })()}
                         {p.description && <p className="text-xs text-[var(--ui-muted)] mt-0.5 line-clamp-1">{p.description}</p>}
                       </td>
-                      <td className="p-3 text-[var(--ui-muted)]">#{String(idx + 1).padStart(2, '0')}</td>
-                      <td className="p-3"><span className="text-xs px-2 py-0.5 bg-[var(--ui-surface-2)] rounded-full text-[var(--ui-body-text)] border border-[color:var(--ui-border)]">{getCatName(p.category_id)}</span></td>
-                      <td className="p-3 text-right font-bold text-[var(--ui-body-text)]">{formatCurrency(p.price)}</td>
-                      <td className="p-3 text-right text-[var(--ui-muted)]">
+                      <td className="p-3 text-[var(--ui-muted)] hidden md:table-cell">#{String(idx + 1).padStart(2, '0')}</td>
+                      <td className="p-3 hidden sm:table-cell"><span className="text-xs px-2 py-0.5 bg-[var(--ui-surface-2)] rounded-full text-[var(--ui-body-text)] border border-[color:var(--ui-border)]">{getCatName(p.category_id)}</span></td>
+                      <td className="p-3 text-right font-bold text-[var(--ui-body-text)] whitespace-nowrap">{formatCurrency(p.price)}</td>
+                      <td className="p-3 text-right text-[var(--ui-muted)] hidden lg:table-cell">
                         {p.purchase_price != null && Number(p.purchase_price) > 0
                           ? formatCurrency(p.purchase_price)
                           : '—'}
                       </td>
                       <td className="p-3 text-center">
-                        {showStockInOrderingUI(p) ? (() => {
-                          const status = productStockStatus(p.stock, p.min_stock);
+                        {(showStockInOrderingUI(p) || stockAlertActive) ? (() => {
+                          const status = stockStatus;
                           const cls = status === 'normal'
                             ? 'bg-emerald-100 text-emerald-700'
                             : status === 'low'
                               ? 'bg-gold-100 text-gold-700'
                               : 'bg-red-100 text-red-700';
                           return (
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{p.stock}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{p.stock ?? 0}</span>
                           );
                         })() : null}
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center hidden md:table-cell">
                         <button onClick={() => toggleProductActive(p)}>
                           {p.is_active ? (
                             <span className="text-emerald-600 flex items-center justify-center gap-1 text-xs font-medium"><MdCheck /> {t('table.yes')}</span>
@@ -1051,23 +1114,26 @@ export default function Productos() {
                         </button>
                       </td>
                       <td className="p-3">
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-1 sm:gap-2">
                           <button
                             onClick={() => openEditProduct(p)}
-                            className="px-2.5 py-1.5 text-xs rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center gap-1"
+                            className="p-2 sm:px-2.5 sm:py-1.5 text-xs rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center gap-1"
+                            title={t('table.edit')}
                           >
-                            <MdEdit className="text-sm" /> {t('table.edit')}
+                            <MdEdit className="text-sm" /> <span className="hidden sm:inline">{t('table.edit')}</span>
                           </button>
                           <button
                             onClick={() => deleteProduct(p)}
-                            className="px-2.5 py-1.5 text-xs rounded-lg bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-1"
+                            className="p-2 sm:px-2.5 sm:py-1.5 text-xs rounded-lg bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-1"
+                            title={t('table.delete')}
                           >
-                            <MdDelete className="text-sm" /> {t('table.delete')}
+                            <MdDelete className="text-sm" /> <span className="hidden sm:inline">{t('table.delete')}</span>
                           </button>
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {filtered.length === 0 && (
                     <tr><td colSpan="8" className="p-8 text-center text-[var(--ui-muted)]">
                       <MdRestaurantMenu className="text-4xl mx-auto mb-2 opacity-30" />

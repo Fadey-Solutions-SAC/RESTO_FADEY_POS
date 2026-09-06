@@ -232,6 +232,10 @@ function buildOperationalIntelligence(opts = {}) {
     `SELECT * FROM products WHERE ${isNonTransformedLowStockSql()} AND is_active = 1 AND ${INVENTORY_PRODUCT_WHERE}
      ORDER BY stock ASC LIMIT 10`
   );
+  const lowStockTotal = queryOne(
+    `SELECT COUNT(*) as count FROM products
+     WHERE ${isNonTransformedLowStockSql()} AND is_active = 1 AND ${INVENTORY_PRODUCT_WHERE}`
+  );
   const peakHourToday = queryOne(
     `SELECT ${s.EVENT_HOUR} as hour, COALESCE(SUM(total), 0) as total
      FROM orders
@@ -279,7 +283,7 @@ function buildOperationalIntelligence(opts = {}) {
   }
 
   const operationalAlerts = [];
-  const lowN = Number(lowStock?.length || 0);
+  const lowN = Number(lowStockTotal?.count || lowStock?.length || 0);
   if (stockBizAlertsOn && lowN > 0) {
     operationalAlerts.push({
       id: 'stock',
