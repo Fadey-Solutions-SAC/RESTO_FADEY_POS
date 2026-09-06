@@ -57,12 +57,12 @@ export default function Modal({
   const closeIconDefault = 'text-[var(--ui-muted)]';
 
   const bodyClass = isLight
-    ? `min-h-0 overflow-y-auto p-6 flex-1 bg-[var(--ui-surface)] text-[var(--ui-body-text)] [&_strong]:text-[var(--ui-body-text)] ${bodyClassName}`.trim()
-    : `min-h-0 overflow-y-auto p-6 flex-1 bg-[var(--ui-surface)] modal-sheet-body ${bodyClassName}`.trim();
+    ? `min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 flex-1 bg-[var(--ui-surface)] text-[var(--ui-body-text)] [&_strong]:text-[var(--ui-body-text)] ${bodyClassName}`.trim()
+    : `min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 flex-1 bg-[var(--ui-surface)] modal-sheet-body ${bodyClassName}`.trim();
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center ${placementClass} p-4 ${containerClassName}`}
+      className={`fixed inset-0 z-50 flex items-center ${placementClass} p-2 sm:p-4 ${containerClassName}`}
       role="presentation"
     >
       <button
@@ -73,14 +73,14 @@ export default function Modal({
         onClick={onClose}
       />
       <div
-        className={`rf-modal-panel relative z-10 rounded-2xl w-full ${sizeClass} ${maxHeightClass} flex flex-col overflow-hidden ${panelClass} ${dialogClassName}`.trim()}
+        className={`rf-modal-panel relative z-10 rounded-2xl w-full min-w-0 max-w-[calc(100vw-1rem)] ${sizeClass} ${maxHeightClass} flex flex-col overflow-hidden ${panelClass} ${dialogClassName}`.trim()}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title != null && title !== '' ? 'modal-title' : undefined}
       >
         <div
-          className={`flex items-center justify-between px-6 py-4 shrink-0 ${headerClassName || headerDefault}`}
+          className={`flex items-center justify-between px-4 sm:px-6 py-4 shrink-0 ${headerClassName || headerDefault}`}
         >
           {title != null && title !== '' ? (
             <h2 id="modal-title" className={`text-lg font-bold ${titleClassName || titleDefault}`}>

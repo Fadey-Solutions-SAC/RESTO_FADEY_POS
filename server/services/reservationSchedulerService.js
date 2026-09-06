@@ -86,8 +86,16 @@ function isReservationCajaAlertActive(reservation, now = new Date()) {
 }
 
 function releaseReservationKitchenOrders(reservation) {
-  const linked = findLinkedOrders(reservation.id).filter((o) => String(o.kitchen_release_at || '').trim());
-  if (linked.length === 0) {
+  const linkedPending = findLinkedOrders(reservation.id);
+  const held = linkedPending.filter((o) => String(o.kitchen_release_at || '').trim());
+
+  // Sin pedidos aún: no marcar enviado (el pedido puede crearse justo después).
+  if (linkedPending.length === 0) {
+    return { released: 0 };
+  }
+
+  // Pedidos ya visibles en cocina (sin hold): solo marcar bandera.
+  if (held.length === 0) {
     runSql(
       "UPDATE reservations SET kitchen_prep_sent_at = datetime('now', 'localtime'), updated_at = datetime('now') WHERE id = ? AND kitchen_prep_sent_at IS NULL",
       [reservation.id]
@@ -97,7 +105,7 @@ function releaseReservationKitchenOrders(reservation) {
 
   const io = getSocketIo();
   let released = 0;
-  for (const row of linked) {
+  for (const row of held) {
     runSql(
       "UPDATE orders SET kitchen_release_at = NULL, updated_at = datetime('now') WHERE id = ?",
       [row.id]
@@ -170,8 +178,15 @@ function runReservationSchedulerTick() {
       const kitchenReleaseAt = new Date(resAt.getTime() - RESERVATION_KITCHEN_PREP_MINUTES * 60_000);
       const cajaReminderAt = new Date(resAt.getTime() - RESERVATION_CAJA_VERIFY_MINUTES * 60_000);
 
-      if (!String(reservation.kitchen_prep_sent_at || '').trim() && now >= kitchenReleaseAt) {
-        releaseReservationKitchenOrders(reservation);
+      if (now >= kitchenReleaseAt) {
+        const heldLeft = findLinkedOrders(reservation.id).filter((o) =>
+          String(o.kitchen_release_at || '').trim()
+        );
+        if (heldLeft.length > 0 || !String(reservation.kitchen_prep_sent_at || '').trim()) {
+          releaseReservationKitchenOrders(reservation);
+          reservation.kitchen_prep_sent_at =
+            reservation.kitchen_prep_sent_at || 'pending-refresh';
+        }
       }
       if (!String(reservation.caja_verify_sent_at || '').trim() && now >= cajaReminderAt) {
         sendCajaReservationReminder(reservation);
@@ -200,11 +215,13 @@ function buildReservationCajaAlert(reservation) {
     : '';
   const tableAction = hasAssignedTable(reservation)
     ? ` ${tableLabel}: verifique que la mesa y el salón estén listos.`
-    : ' Asigne mesa y verifique preparativos.';
+    : ' Sin mesa asignada: asigne mesa y verifique preparativos.';
   return {
     id: `reserva_caja_${reservation.id}`,
     severity: 'warning',
-    title: 'Reserva próxima — verificar preparativos',
+    title: hasAssignedTable(reservation)
+      ? 'Reserva próxima — verificar preparativos'
+      : 'Reserva — asigne mesa y preparativos',
     message: `${reservation.client_name} · ${reservation.date} ${timeLabel} · ${Number(reservation.guests || 0)} persona(s).${tableAction}${orderHint}${notesHint}`,
     linkTo: '/admin/reservas',
     linkLabel: 'Ver reservas',
@@ -212,8 +229,8 @@ function buildReservationCajaAlert(reservation) {
 }
 
 /**
- * Alertas operativas para caja: ventana [T−20 min, T+2 h].
- * Si el scheduler no marcó aún, se incluye igual y se marca el envío.
+ * Alertas operativas para caja: ventana [T−20 min, T+2 h],
+ * más reservas con pedido activo sin mesa asignada.
  */
 function getReservationCajaOperationalAlerts() {
   const resExpr = reservationLocalSqlExpr('r');
@@ -228,10 +245,33 @@ function getReservationCajaOperationalAlerts() {
      LIMIT 30`
   );
 
+  const noTableWithOrder = queryAll(
+    `SELECT r.* FROM reservations r
+     WHERE r.status IN ('confirmed','pending')
+       AND (r.table_id IS NULL OR trim(r.table_id) = '')
+       AND ${resExpr} > datetime('now', 'localtime', '-${maxAfterHours} hours')
+       AND ${resExpr} <= datetime('now', 'localtime', '+1 day')
+       AND EXISTS (
+         SELECT 1 FROM orders o
+         WHERE o.notes LIKE ('%' || 'RESERVA_ID:' || r.id || '%')
+           AND o.status IN ('pending','preparing','ready')
+       )
+     ORDER BY r.date ASC, r.time ASC
+     LIMIT 20`
+  );
+
+  const byId = new Map();
+  for (const r of [...rows, ...noTableWithOrder]) {
+    if (r?.id) byId.set(r.id, r);
+  }
+
   const now = new Date();
   const active = [];
-  for (const reservation of rows) {
-    if (!isReservationCajaAlertActive(reservation, now)) continue;
+  for (const reservation of byId.values()) {
+    const noTable = !hasAssignedTable(reservation);
+    const inPrepWindow = isReservationCajaAlertActive(reservation, now);
+    if (!inPrepWindow && !noTable) continue;
+
     if (!String(reservation.caja_verify_sent_at || '').trim()) {
       markCajaVerifySent(reservation.id);
       reservation.caja_verify_sent_at = new Date().toISOString();
@@ -239,7 +279,7 @@ function getReservationCajaOperationalAlerts() {
       const io = getSocketIo();
       if (io) {
         io.emit('reservation-reminder', {
-          type: 'caja_verify',
+          type: noTable ? 'caja_assign_table' : 'caja_verify',
           reservation: {
             id: reservation.id,
             client_name: reservation.client_name,
@@ -250,6 +290,7 @@ function getReservationCajaOperationalAlerts() {
             table_label: getReservationTableLabel(reservation),
             has_order: linkedPending.length > 0,
             order_count: linkedPending.length,
+            needs_table: noTable,
             notes: reservation.notes || '',
           },
         });

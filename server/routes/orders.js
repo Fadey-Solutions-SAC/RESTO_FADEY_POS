@@ -601,6 +601,47 @@ router.post('/', authenticateToken, (req, res) => {
       }
       io.emit('order-update', order);
     }
+
+    const reservaIdMatch = String(order.notes || '').match(/RESERVA_ID:([0-9a-fA-F-]{8,})/i);
+    const reservationId = reservaIdMatch ? String(reservaIdMatch[1] || '').trim() : '';
+    if (reservationId) {
+      if (!kitchenHeld) {
+        try {
+          const { scheduleKitchenBarAutoPrint } = require('../services/kitchenBarAutoPrintService');
+          scheduleKitchenBarAutoPrint(order);
+        } catch (_) {
+          /* noop */
+        }
+        runSql(
+          "UPDATE reservations SET kitchen_prep_sent_at = datetime('now', 'localtime'), updated_at = datetime('now') WHERE id = ? AND kitchen_prep_sent_at IS NULL",
+          [reservationId]
+        );
+      }
+      try {
+        const { runReservationSchedulerTick } = require('../services/reservationSchedulerService');
+        runReservationSchedulerTick();
+      } catch (_) {
+        /* noop */
+      }
+      if (io && !String(order.table_id || '').trim()) {
+        io.emit('reservation-reminder', {
+          type: 'caja_assign_table',
+          reservation: {
+            id: reservationId,
+            client_name: order.customer_name || '',
+            phone: '',
+            date: String(req.body?.reservation_date || '').trim(),
+            time: String(req.body?.reservation_time || '').slice(0, 5),
+            guests: 0,
+            table_label: 'Sin mesa asignada',
+            has_order: true,
+            order_count: 1,
+            needs_table: true,
+            notes: 'Pedido de reserva sin mesa: asigne mesa en Reservas o Caja.',
+          },
+        });
+      }
+    }
     if (io && String(order.type || '') === 'dine_in') {
       const tableId = String(order.table_id || '').trim();
       if (tableId) {

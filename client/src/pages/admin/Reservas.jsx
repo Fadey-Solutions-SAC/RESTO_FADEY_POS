@@ -173,6 +173,7 @@ export default function Reservas() {
             items: buildOrderItemsPayload(cart),
             type: 'dine_in',
             customer_id: selectedCustomerId || '',
+            table_id: form.table_id || '',
             table_number: selectedTable ? String(selectedTable.number || '') : '',
             customer_name: clientName,
             hold_kitchen_for_reservation: true,
@@ -195,9 +196,12 @@ export default function Reservas() {
       setShowModal(false);
       resetForm();
       if (hadOrderLines) {
+        const noTable = !String(form.table_id || '').trim();
         toast.success(
           orderCreated
-            ? 'Reserva creada. El pedido se enviará a cocina 30 min antes de la hora reservada'
+            ? noTable
+              ? 'Reserva creada. Pedido a cocina; asigne mesa desde Caja o Reservas'
+              : 'Reserva creada. El pedido va a cocina 30 min antes (o ya, si faltan ≤30 min)'
             : 'Reserva creada'
         );
       } else {
@@ -306,14 +310,17 @@ export default function Reservas() {
         ) : (
           <div className="space-y-3">
             {visibleReservas.map((r) => (
-              <div key={r.id} className="flex items-center justify-between p-4 rounded-lg border border-slate-100 hover:bg-slate-50">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gold-100 rounded-full flex items-center justify-center">
+              <div
+                key={r.id}
+                className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 rounded-lg border border-slate-100 hover:bg-slate-50 min-w-0"
+              >
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 bg-gold-100 rounded-full flex items-center justify-center">
                     <span className="font-bold text-gold-700">{r.client_name[0]}</span>
                   </div>
-                  <div>
-                    <p className="font-bold rf-section-title">{r.client_name}</p>
-                    <p className="text-sm ui-text-muted">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold rf-section-title truncate">{r.client_name}</p>
+                    <p className="text-sm ui-text-muted break-words">
                       <MdCalendarToday className="inline text-xs mr-1" />
                       {r.date} · <MdAccessTime className="inline text-xs mr-1" />
                       {r.time} · {r.guests} personas
@@ -329,17 +336,17 @@ export default function Reservas() {
                       {tableLabel(r.table_id)}
                     </p>
                     {r.notes && (
-                      <p className="text-xs ui-text-muted mt-1 max-w-[520px] truncate">
+                      <p className="text-xs ui-text-muted mt-1 break-words whitespace-pre-wrap">
                         Nota: {r.notes}
                       </p>
                     )}
                   </div>
                 </div>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+                <div className="flex flex-col xs:flex-row sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
                   <select
                     value={r.table_id || ''}
                     onChange={(e) => assignTable(r.id, e.target.value)}
-                    className="input-field text-xs py-1.5 min-w-[140px] max-w-[200px]"
+                    className="input-field text-xs py-1.5 w-full sm:min-w-[140px] sm:max-w-[200px]"
                     title="Asignar o cambiar mesa"
                   >
                     <option value="">Sin mesa</option>
@@ -349,17 +356,19 @@ export default function Reservas() {
                       </option>
                     ))}
                   </select>
-                  <span className={statusColors[r.status] || UI_BADGE.slate}>
-                    {statusNames[r.status]}
-                  </span>
-                  {r.status !== 'cancelled' && (
-                    <button
-                      onClick={() => cancelReserva(r.id)}
-                      className="text-xs px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
-                    >
-                      Cancelar
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 justify-between sm:justify-start">
+                    <span className={statusColors[r.status] || UI_BADGE.slate}>
+                      {statusNames[r.status]}
+                    </span>
+                    {r.status !== 'cancelled' && (
+                      <button
+                        onClick={() => cancelReserva(r.id)}
+                        className="text-xs px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 shrink-0"
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -425,17 +434,17 @@ export default function Reservas() {
               Guardar como cliente nuevo si no existe (opción de nueva solicitud)
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="min-w-0">
               <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Teléfono</label>
               <input
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="input-field"
+                className="input-field w-full"
                 placeholder="999 999 999"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Comensales</label>
               <input
                 type="number"
@@ -443,18 +452,18 @@ export default function Reservas() {
                 max="20"
                 value={form.guests}
                 onChange={(e) => setForm({ ...form, guests: parseInt(e.target.value, 10) })}
-                className="input-field"
+                className="input-field w-full"
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="min-w-0">
               <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Fecha</label>
-              <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="input-field" required />
+              <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="input-field w-full" required />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Hora</label>
-              <input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} className="input-field" required />
+              <input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} className="input-field w-full" required />
             </div>
           </div>
           <div>
@@ -519,7 +528,7 @@ export default function Reservas() {
                           <span>Total</span>
                           <span className="text-[#BFDBFE]">{formatCurrency(cartTotal)}</span>
                         </div>
-                        <p className="text-xs text-[#9CA3AF]">Se programará para cocina 30 min antes de la hora reservada.</p>
+                        <p className="text-xs text-[#9CA3AF]">Se envía a cocina 30 min antes; si faltan ≤30 min, se envía al crear. Sin mesa también va a cocina y avisa a caja.</p>
                       </>
                     ) : null
                   }

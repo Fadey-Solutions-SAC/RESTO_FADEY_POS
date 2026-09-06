@@ -10,6 +10,34 @@ const ACTIVE_RESERVATION_SKIP = new Set([
   'completada',
 ]);
 
+function localTodayKey() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function parseReservationLocalMs(dateStr, timeStr) {
+  const date = String(dateStr || '').trim();
+  const time = String(timeStr || '').trim().slice(0, 5);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{1,2}:\d{2}$/.test(time)) return null;
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm] = time.split(':').map(Number);
+  if (!y || !m || !d || Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  const dt = new Date(y, m - 1, d, hh, mm, 0, 0);
+  return Number.isNaN(dt.getTime()) ? null : dt.getTime();
+}
+
+/**
+ * Antes de la hora de la reserva la mesa se muestra en gris (reservada),
+ * aunque ya exista un pedido retenido para cocina.
+ */
+function isBeforeReservationTime(reservation) {
+  if (!reservation) return false;
+  const ms = parseReservationLocalMs(reservation.date, reservation.time);
+  if (ms == null) return false;
+  return Date.now() < ms;
+}
+
 /**
  * @param {object} table
  * @param {Map<string, object>} reservationByTableId
@@ -24,8 +52,14 @@ export function getMesaMapVisualState(table, reservationByTableId, precuentaTabl
     return 'united';
   }
   const dbStatus = String(table.status || 'available').toLowerCase();
-  const hasReservation = reservationByTableId?.has?.(tid) || dbStatus === 'reserved';
-  if (hasReservation && !hasOrders) return 'reserved';
+  const reservation = reservationByTableId?.get?.(tid);
+  const hasReservation = Boolean(reservation) || dbStatus === 'reserved';
+
+  // Gris hasta la hora de la reserva; luego ocupada si hay pedido / estado.
+  if (hasReservation && isBeforeReservationTime(reservation)) {
+    return 'reserved';
+  }
+
   if (precuentaTableIds?.has?.(tid) && hasOrders) return 'precuenta';
   if (hasOrders || dbStatus === 'occupied') return 'occupied';
   if (hasReservation) return 'reserved';
@@ -36,7 +70,7 @@ export function getMesaMapVisualState(table, reservationByTableId, precuentaTabl
  * @param {Array<{ id?: string, date?: string, table_id?: string, status?: string }>} reservations
  */
 export function buildReservationByTableIdForToday(reservations) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localTodayKey();
   const map = new Map();
   for (const r of reservations || []) {
     const st = String(r?.status || '').toLowerCase();
@@ -83,11 +117,14 @@ export function clampChairCount(n) {
 export function formatMesaMapTableNumber(table) {
   const num = table?.number;
   if (num != null && String(num).trim() !== '') {
-    return String(num).padStart(2, '0');
+    const raw = String(num).trim().replace(/^M/i, '');
+    const n = /^\d+$/.test(raw) ? String(parseInt(raw, 10)) : raw;
+    return `M${n}`;
   }
   const name = String(table?.name || '').trim();
   const m = name.match(/(\d+)/);
-  if (m) return m[1].padStart(2, '0');
+  if (m) return `M${String(parseInt(m[1], 10))}`;
+  if (/^M/i.test(name)) return name.slice(0, 4);
   return name.slice(0, 4) || '—';
 }
 

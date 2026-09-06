@@ -974,16 +974,37 @@ router.put('/reservations/:id', (req, res) => {
 
   if (resetScheduleFlags) {
     const marker = `RESERVA_ID:${req.params.id}`;
-    const kitchenReleaseAt = computeKitchenReleaseAtForReservation(nextDate, nextTime);
+    let kitchenReleaseAt = computeKitchenReleaseAtForReservation(nextDate, nextTime);
+    if (kitchenReleaseAt) {
+      const dueRow = queryOne(
+        "SELECT CASE WHEN datetime(?) <= datetime('now', 'localtime') THEN 1 ELSE 0 END AS due",
+        [kitchenReleaseAt]
+      );
+      if (Number(dueRow?.due) === 1) kitchenReleaseAt = null;
+    }
     const linkedHeld = queryAll(
       "SELECT id FROM orders WHERE notes LIKE ? AND status IN ('pending','preparing') AND kitchen_release_at IS NOT NULL",
       [`%${marker}%`]
     );
+    const io = req.app.get('io');
     for (const row of linkedHeld) {
       runSql(
         "UPDATE orders SET kitchen_release_at = ?, updated_at = datetime('now') WHERE id = ?",
         [kitchenReleaseAt, row.id]
       );
+      if (!kitchenReleaseAt && io) {
+        const order = getOrderWithItems(row.id);
+        if (order) {
+          try {
+            const { scheduleKitchenBarAutoPrint } = require('../services/kitchenBarAutoPrintService');
+            scheduleKitchenBarAutoPrint(order);
+          } catch (_) {
+            /* noop */
+          }
+          io.emit('new-order', { ...order, _reservation_release: true });
+          io.emit('order-update', order);
+        }
+      }
     }
   }
 
@@ -1001,8 +1022,8 @@ router.put('/reservations/:id', (req, res) => {
     const io = req.app.get('io');
     for (const row of linkedForTable) {
       runSql(
-        "UPDATE orders SET table_number = ?, updated_at = datetime('now') WHERE id = ?",
-        [tableNumber, row.id]
+        "UPDATE orders SET table_id = ?, table_number = ?, updated_at = datetime('now') WHERE id = ?",
+        [String(nextTableId || '').trim(), tableNumber, row.id]
       );
       if (io) {
         const updatedOrder = getOrderWithItems(row.id);
