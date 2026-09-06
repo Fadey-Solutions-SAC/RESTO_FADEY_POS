@@ -166,6 +166,15 @@ router.patch('/:id/status', requireRole('admin', 'cajero', 'mozo'), (req, res) =
 
     runSql('UPDATE tables SET status = ? WHERE id = ?', [status || table.status, req.params.id]);
 
+    if (String(status || '').toLowerCase() === 'available') {
+      try {
+        const { completeReservationsForFreedTable } = require('../services/reservationCheckoutService');
+        completeReservationsForFreedTable(req.params.id);
+      } catch (err) {
+        console.warn('[reservations] completar al marcar available:', err.message || err);
+      }
+    }
+
     const updated = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     const io = req.app.get('io');
     if (io) io.emit('table-update', updated);
@@ -280,6 +289,13 @@ router.patch('/:id/free', requireRole('admin', 'cajero'), (req, res) => {
     }
 
     runSql("UPDATE tables SET status = 'available' WHERE id = ?", [req.params.id]);
+
+    try {
+      const { completeReservationsForFreedTable } = require('../services/reservationCheckoutService');
+      completeReservationsForFreedTable(req.params.id);
+    } catch (err) {
+      console.warn('[reservations] completar al liberar mesa:', err.message || err);
+    }
 
     const updated = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     const io = req.app.get('io');

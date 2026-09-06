@@ -13,14 +13,14 @@ const LIVE_DEFAULTS = {
 /** Azul corporativo de referencia (muestra + recuadro de módulos). */
 const CORPORATE_BLUE = '#2563EB';
 
-/** Morado corporativo (referencia usuario). */
-const CORPORATE_PURPLE = '#240046';
+/** Morado corporativo (referencia supervisor). */
+const CORPORATE_PURPLE = '#10002B';
 
 /** Menú oscuro morado: cabecera más oscura que el listado. */
 const SIDEBAR_CHROME_DARK = {
   bg: CORPORATE_PURPLE,
-  top: '#16002E',
-  hover: '#3A0A6E',
+  top: '#08001A',
+  hover: '#1E0848',
   fg: '#E5E7EB',
   activeFg: '#ffffff',
 };
@@ -148,7 +148,7 @@ export const THEME_PRESETS = {
       '--ui-logo-to': '#1D4ED8',
       '--ui-btn-secondary-hover': 'rgba(15, 23, 42, 0.06)',
       '--ui-glass': 'rgba(255, 255, 255, 0.88)',
-      // Variante clara del menú morado #240046
+      // Variante clara del menú morado #10002B
       '--ui-shell-header-bg': '#C4B5FD',
     },
     ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],

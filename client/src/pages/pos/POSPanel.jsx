@@ -2196,6 +2196,15 @@ export default function POSPanel() {
             const updatedTable = await api.get(`/tables/${tid}`);
             if (!updatedTable.orders || updatedTable.orders.length === 0) {
               await api.patch(`/tables/${tid}/status`, { status: 'available' });
+              // Completar reserva del día (gris/naranja → libre en el mapa)
+              const openRes = (reservations || []).filter((r) => {
+                const st = String(r?.status || '').toLowerCase();
+                if (['cancelled', 'completed', 'cancelada', 'completada'].includes(st)) return false;
+                return String(r?.table_id || '') === String(tid);
+              });
+              for (const r of openRes) {
+                await api.put(`/admin-modules/reservations/${r.id}`, { status: 'completed' }).catch(() => {});
+              }
             }
           } catch (_) {
             /* siguiente mesa */
@@ -2727,6 +2736,34 @@ export default function POSPanel() {
     }
   };
 
+  /** Mesa naranja/gris por reserva, sin pedidos: completar reserva y volver a libre. */
+  const liberarMesaReservadaSinPedidos = async (table = tableDetail) => {
+    if (!table?.id) return;
+    if (isDeliveryCheckoutTable(table) || isClientCheckoutTable(table)) return;
+    if ((table.orders || []).length > 0) {
+      return toast.error('Cobre o anule los pedidos antes de liberar la mesa.');
+    }
+    const tid = toast.loading('Liberando mesa…');
+    try {
+      await api.patch(`/tables/${table.id}/free`);
+      const openRes = (reservations || []).filter((r) => {
+        const st = String(r?.status || '').toLowerCase();
+        if (['cancelled', 'completed', 'cancelada', 'completada'].includes(st)) return false;
+        return String(r?.table_id || '') === String(table.id);
+      });
+      for (const r of openRes) {
+        await api.put(`/admin-modules/reservations/${r.id}`, { status: 'completed' }).catch(() => {});
+      }
+      toast.success('Mesa liberada', { id: tid });
+      setTableDetail(null);
+      setMesaDetailModalOpen(false);
+      setSelectedTable(null);
+      await loadData();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo liberar la mesa', { id: tid });
+    }
+  };
+
   const guardedUpdateQty = (lineKey, delta) => {
     if (editingOrderId) {
       const line = cart.find((c) => c.line_key === lineKey);
@@ -3078,7 +3115,7 @@ export default function POSPanel() {
     return () => clearInterval(id);
   }, []);
   const reservationByTableId = useMemo(
-    () => buildReservationByTableIdForToday(reservations),
+    () => buildReservationByTableIdForToday(reservations, mesaMapClockMs),
     // mesaMapClockMs: recalcular gris→ocupado al cruzar la hora de reserva
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [reservations, mesaMapClockMs]
@@ -3930,7 +3967,8 @@ export default function POSPanel() {
                 table,
                 reservationByTableId,
                 precuentaTableIds,
-                reservations
+                reservations,
+                mesaMapClockMs
               );
               const chairCount = getMesaMapChairCount(table, reservationByTableId, mesaPhysicalTables);
               return (
@@ -4149,16 +4187,46 @@ export default function POSPanel() {
                   <MdPrint className="shrink-0 text-lg" />
                   <span>Precuenta</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => beginCobrarMesa(tableDetail)}
-                  disabled={!tableDetail.orders?.length}
-                  className="btn-cobrar btn-mesa-grid"
-                  title={isDeliveryCheckoutTable(tableDetail) ? 'Cobrar delivery' : 'Cobrar mesa'}
-                >
-                  <MdAttachMoney className="shrink-0 text-lg" />
-                  <span>Cobrar</span>
-                </button>
+                {(() => {
+                  const heldByReserva =
+                    !tableDetail.orders?.length
+                    && !isDeliveryCheckoutTable(tableDetail)
+                    && !isClientCheckoutTable(tableDetail)
+                    && ['occupied', 'reserved'].includes(
+                      getMesaMapVisualState(
+                        tableDetail,
+                        reservationByTableId,
+                        precuentaTableIds,
+                        reservations,
+                        mesaMapClockMs
+                      )
+                    );
+                  if (heldByReserva) {
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => void liberarMesaReservadaSinPedidos(tableDetail)}
+                        className="btn-cobrar btn-mesa-grid"
+                        title="Liberar mesa (reserva sin pedidos)"
+                      >
+                        <MdTableRestaurant className="shrink-0 text-lg" />
+                        <span>Liberar</span>
+                      </button>
+                    );
+                  }
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => beginCobrarMesa(tableDetail)}
+                      disabled={!tableDetail.orders?.length}
+                      className="btn-cobrar btn-mesa-grid"
+                      title={isDeliveryCheckoutTable(tableDetail) ? 'Cobrar delivery' : 'Cobrar mesa'}
+                    >
+                      <MdAttachMoney className="shrink-0 text-lg" />
+                      <span>Cobrar</span>
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>

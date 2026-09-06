@@ -943,6 +943,12 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       ];
       if (tableNums.length) io.emit('table-update', { table_numbers: tableNums });
     }
+    try {
+      const { completeReservationsAfterCheckout } = require('../services/reservationCheckoutService');
+      completeReservationsAfterCheckout(paidOrders);
+    } catch (err) {
+      console.warn('[reservations] completar tras cobro:', err.message || err);
+    }
     for (const oid of chargedOrderIds) {
       const docRow = queryOne('SELECT * FROM electronic_documents WHERE order_id = ? LIMIT 1', [oid]);
       if (docRow?.id) {

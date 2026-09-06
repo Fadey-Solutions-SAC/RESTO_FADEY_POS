@@ -3,6 +3,8 @@
  * @typedef {'available'|'occupied'|'precuenta'|'reserved'|'united'} MesaMapVisualState
  */
 
+const BUSINESS_TZ = 'America/Lima';
+
 const ACTIVE_RESERVATION_SKIP = new Set([
   'cancelled',
   'completed',
@@ -10,64 +12,103 @@ const ACTIVE_RESERVATION_SKIP = new Set([
   'completada',
 ]);
 
-function localTodayKey() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+function businessTodayKey(nowMs = Date.now()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BUSINESS_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(nowMs));
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${map.year}-${map.month}-${map.day}`;
 }
 
-function parseReservationLocalMs(dateStr, timeStr) {
+/** Interpreta date+time de reserva como instante en America/Lima (igual que el servidor). */
+function parseReservationBusinessMs(dateStr, timeStr) {
   const date = String(dateStr || '').trim().slice(0, 10);
-  const time = String(timeStr || '').trim().slice(0, 5);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{1,2}:\d{2}$/.test(time)) return null;
-  const [y, m, d] = date.split('-').map(Number);
-  const [hh, mm] = time.split(':').map(Number);
-  if (!y || !m || !d || Number.isNaN(hh) || Number.isNaN(mm)) return null;
-  const dt = new Date(y, m - 1, d, hh, mm, 0, 0);
+  const rawTime = String(timeStr || '').trim();
+  const timeMatch = rawTime.match(/^(\d{1,2}):(\d{2})/);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !timeMatch) return null;
+  const hh = String(Number(timeMatch[1])).padStart(2, '0');
+  const mm = timeMatch[2];
+  // Lima es UTC−5 todo el año (sin DST).
+  const dt = new Date(`${date}T${hh}:${mm}:00-05:00`);
   return Number.isNaN(dt.getTime()) ? null : dt.getTime();
 }
 
-/** true si aún no llegó la hora de la reserva. */
-function isBeforeReservationTime(reservation) {
+/** true si aún no llegó la hora de la reserva (zona negocio). */
+function isBeforeReservationTime(reservation, nowMs = Date.now()) {
   if (!reservation) return false;
-  const ms = parseReservationLocalMs(reservation.date, reservation.time);
+  const ms = parseReservationBusinessMs(reservation.date, reservation.time);
   if (ms == null) return false;
-  return Date.now() < ms;
+  return nowMs < ms;
 }
 
 function isActiveReservationStatus(status) {
   return !ACTIVE_RESERVATION_SKIP.has(String(status || '').toLowerCase());
 }
 
-function findReservationForTable(tableId, reservationByTableId, reservationsList, orders) {
-  const tid = String(tableId || '').trim();
-  if (tid && reservationByTableId?.get?.(tid)) {
-    return reservationByTableId.get(tid);
+/**
+ * Entre varias reservas de la misma mesa, priorizar la que ya empezó (o la más próxima).
+ * Evita que una reserva futura deje la mesa en gris cuando ya pasó la hora de la actual.
+ */
+function pickBestReservationForNow(candidates, nowMs = Date.now()) {
+  const list = (candidates || []).filter((r) => r && isActiveReservationStatus(r.status));
+  if (!list.length) return null;
+  let best = null;
+  let bestScore = Infinity;
+  for (const r of list) {
+    const ms = parseReservationBusinessMs(r.date, r.time);
+    if (ms == null) {
+      if (!best) best = r;
+      continue;
+    }
+    // Ya empezó: score = qué tan reciente (0 = justo ahora). Futura: +1e12 + espera.
+    const score = ms <= nowMs ? nowMs - ms : 1e12 + (ms - nowMs);
+    if (score < bestScore) {
+      bestScore = score;
+      best = r;
+    }
   }
+  return best;
+}
 
+function findReservationForTable(tableId, reservationByTableId, reservationsList, orders, nowMs = Date.now()) {
+  const tid = String(tableId || '').trim();
+  const today = businessTodayKey(nowMs);
   const list = Array.isArray(reservationsList) ? reservationsList : [];
-  const today = localTodayKey();
+
+  const fromMap = tid && reservationByTableId?.get?.(tid);
+  const candidates = [];
+  if (fromMap) candidates.push(fromMap);
 
   if (tid) {
-    const byTable = list.find((r) => {
-      if (!isActiveReservationStatus(r?.status)) return false;
-      if (String(r?.table_id || '').trim() !== tid) return false;
+    for (const r of list) {
+      if (!isActiveReservationStatus(r?.status)) continue;
+      if (String(r?.table_id || '').trim() !== tid) continue;
       const rDate = String(r?.date || '').trim().slice(0, 10);
-      if (rDate === today) return true;
-      const ms = parseReservationLocalMs(r.date, r.time);
-      return ms != null && ms > Date.now();
-    });
-    if (byTable) return byTable;
+      const ms = parseReservationBusinessMs(r.date, r.time);
+      if (rDate === today || (ms != null && ms > nowMs)) {
+        candidates.push(r);
+      }
+    }
   }
 
   for (const o of orders || []) {
     const m = String(o?.notes || '').match(/RESERVA_ID:([0-9a-fA-F-]{8,})/i);
     if (!m) continue;
     const found = list.find((r) => String(r?.id || '') === String(m[1]));
-    if (found && isActiveReservationStatus(found.status)) return found;
+    if (found && isActiveReservationStatus(found.status)) candidates.push(found);
   }
 
-  return null;
+  // Deduplicar por id
+  const byId = new Map();
+  for (const r of candidates) {
+    const id = String(r?.id || '');
+    if (id) byId.set(id, r);
+    else byId.set(`anon-${byId.size}`, r);
+  }
+  return pickBestReservationForNow([...byId.values()], nowMs);
 }
 
 /**
@@ -75,12 +116,14 @@ function findReservationForTable(tableId, reservationByTableId, reservationsList
  * @param {Map<string, object>} reservationByTableId
  * @param {Set<string>} precuentaTableIds
  * @param {Array<object>} [reservationsList]
+ * @param {number} [nowMs]
  */
 export function getMesaMapVisualState(
   table,
   reservationByTableId,
   precuentaTableIds,
-  reservationsList
+  reservationsList,
+  nowMs = Date.now()
 ) {
   if (!table) return 'available';
   const tid = String(table.id || '').trim();
@@ -97,46 +140,51 @@ export function getMesaMapVisualState(
     tid,
     reservationByTableId,
     reservationsList,
-    orders
+    orders,
+    nowMs
   );
 
-  // Reserva: gris hasta la hora exacta; al llegar → naranja. Nada más cambia ese color.
-  if (reservation) {
-    return isBeforeReservationTime(reservation) ? 'reserved' : 'occupied';
+  // 1) Antes de la hora → gris (reservada), aunque aún no haya pedidos.
+  if (reservation && isBeforeReservationTime(reservation, nowMs)) {
+    return 'reserved';
   }
 
+  // 2) Pedidos / precuenta / unida
   if (precuentaTableIds?.has?.(tid) && hasOrders) return 'precuenta';
   if (hasOrders || dbStatus === 'occupied') return 'occupied';
-  if (dbStatus === 'reserved') return 'reserved';
+
+  // 3) Llegó la hora de reserva y sigue activa → naranja (ocupada) hasta cobrar/completar.
+  if (reservation) {
+    return 'occupied';
+  }
+
+  // 4) status reserved huérfano (sin reserva activa) → libre
   return 'available';
 }
 
 /**
  * @param {Array<{ id?: string, date?: string, table_id?: string, status?: string, time?: string }>} reservations
+ * @param {number} [nowMs]
  */
-export function buildReservationByTableIdForToday(reservations) {
-  const today = localTodayKey();
-  const map = new Map();
-  const now = Date.now();
+export function buildReservationByTableIdForToday(reservations, nowMs = Date.now()) {
+  const today = businessTodayKey(nowMs);
+  const byTable = new Map();
   for (const r of reservations || []) {
     if (!isActiveReservationStatus(r?.status)) continue;
     const tid = String(r?.table_id || '').trim();
     if (!tid) continue;
     const rDate = String(r?.date || '').trim().slice(0, 10);
-    const resMs = parseReservationLocalMs(r.date, r.time);
+    const resMs = parseReservationBusinessMs(r.date, r.time);
     const isToday = rDate === today;
-    const upcoming = resMs != null && resMs > now;
+    const upcoming = resMs != null && resMs > nowMs;
     if (!isToday && !upcoming) continue;
-    const prev = map.get(tid);
-    if (!prev) {
-      map.set(tid, r);
-      continue;
-    }
-    // Si hay varias, priorizar la más próxima aún no cumplida.
-    const prevMs = parseReservationLocalMs(prev.date, prev.time);
-    if (resMs != null && (prevMs == null || (resMs >= now && (prevMs < now || resMs < prevMs)))) {
-      map.set(tid, r);
-    }
+    if (!byTable.has(tid)) byTable.set(tid, []);
+    byTable.get(tid).push(r);
+  }
+  const map = new Map();
+  for (const [tid, list] of byTable) {
+    const best = pickBestReservationForNow(list, nowMs);
+    if (best) map.set(tid, best);
   }
   return map;
 }

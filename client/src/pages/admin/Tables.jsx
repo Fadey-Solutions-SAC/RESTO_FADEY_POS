@@ -250,16 +250,15 @@ export default function Tables() {
     ? tables
     : tables.filter(t => String(t.zone || 'principal') === selectedSalon);
 
-  const reservationByTableId = useMemo(
-    () => buildReservationByTableIdForToday(reservations),
-    [reservations]
-  );
   const [mesaMapClockMs, setMesaMapClockMs] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setMesaMapClockMs(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
-  void mesaMapClockMs;
+  const reservationByTableId = useMemo(
+    () => buildReservationByTableIdForToday(reservations, mesaMapClockMs),
+    [reservations, mesaMapClockMs]
+  );
 
   const filteredProducts = filterOrderingProducts(products, { search, selectedCat });
   const activeOrdersForTable = selectedTable?.orders || [];
@@ -380,7 +379,8 @@ export default function Tables() {
               table,
               reservationByTableId,
               precuentaTableIds,
-              reservations
+              reservations,
+              mesaMapClockMs
             );
             const chairCount = getMesaMapChairCount(table, reservationByTableId, tables);
             return (
