@@ -26,11 +26,11 @@ function ThemePreviewCard({ opt, selected, onSelect }) {
       }`}
     >
       <div
-        className="flex gap-2 mb-2 h-10 rounded-lg overflow-hidden border border-[color:var(--ui-border)]"
-        style={{ background: opt.bodyBg }}
+        className="flex mb-2 h-10 rounded-lg overflow-hidden border border-[color:var(--ui-border)]"
       >
-        <span className="w-1/3 h-full" style={{ background: opt.swatch }} />
-        <span className="flex-1 h-full" style={{ background: opt.surface }} />
+        <span className="w-[28%] h-full shrink-0" style={{ background: opt.swatch }} title="Menú" />
+        <span className="w-[18%] h-full shrink-0" style={{ background: opt.accent }} title="Acento" />
+        <span className="flex-1 h-full" style={{ background: opt.headerBg || opt.surface }} title="Cabecera" />
       </div>
       <p className="font-semibold text-sm text-[var(--ui-body-text)]">{opt.label}</p>
       <p className="text-xs text-[var(--ui-muted)] mt-0.5 line-clamp-2">{opt.description}</p>

@@ -41,25 +41,25 @@ const SIDEBAR_BY_THEME = {
   },
   emerald_business: { bg: '#064e3b', top: '#022c22', hover: '#065f46', fg: '#ECFDF5', activeFg: '#ffffff', solid: '#047857' },
   dark_elegance: {
-    bg: '#151922',
-    top: '#0c0e12',
-    hover: '#1e2430',
+    bg: '#0B1F3A',
+    top: '#061529',
+    hover: '#123056',
     fg: '#E5E7EB',
     activeFg: '#ffffff',
     solid: '#3b82f6',
   },
   gold_premium: {
-    bg: '#1a1712',
-    top: '#0f0d0a',
-    hover: '#252018',
+    bg: '#2A2110',
+    top: '#1A1408',
+    hover: '#3D3018',
     fg: '#faf7f2',
     activeFg: '#ffffff',
     solid: '#C9A227',
   },
   sunset_modern: {
-    bg: '#261a16',
-    top: '#1a1210',
-    hover: '#32221c',
+    bg: '#3B1A10',
+    top: '#24100A',
+    hover: '#5A2818',
     fg: '#fff7ed',
     activeFg: '#ffffff',
     solid: '#EA580C',
@@ -148,8 +148,8 @@ export const THEME_PRESETS = {
       '--ui-logo-to': '#1D4ED8',
       '--ui-btn-secondary-hover': 'rgba(15, 23, 42, 0.06)',
       '--ui-glass': 'rgba(255, 255, 255, 0.88)',
-      // Variante clara del menú morado #240046 (misma intensidad que Minimal / Emerald)
-      '--ui-shell-header-bg': '#DDD6FE',
+      // Variante clara del menú morado #240046
+      '--ui-shell-header-bg': '#C4B5FD',
     },
     ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
     'light'
@@ -240,8 +240,8 @@ export const THEME_PRESETS = {
       '--ui-logo-to': MINIMAL_NAVY,
       '--ui-btn-secondary-hover': 'rgba(0, 0, 0, 0.05)',
       '--ui-glass': 'rgba(255, 255, 255, 0.92)',
-      // Misma intensidad de pastel que Corporativo / Emerald (sobre #03045E)
-      '--ui-shell-header-bg': '#C7D2FE',
+      // Variante clara azul del menú navy #03045E (no lila)
+      '--ui-shell-header-bg': '#93C5FD',
     },
     ['#03045e', '#0077b6', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'],
     'light'
@@ -272,8 +272,8 @@ export const THEME_PRESETS = {
       '--ui-logo-to': '#064e3b',
       '--ui-btn-secondary-hover': 'rgba(6, 78, 59, 0.08)',
       '--ui-glass': 'rgba(255, 255, 255, 0.9)',
-      // Un poco más verde / saturado (misma intensidad que los otros dos)
-      '--ui-shell-header-bg': '#6EE7B7',
+      // Variante clara más verde del menú esmeralda
+      '--ui-shell-header-bg': '#34D399',
     },
     ['#064e3b', '#2563eb', '#f59e0b', '#ef4444', '#047857', '#8b5cf6'],
     'light'

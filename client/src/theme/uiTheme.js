@@ -26,8 +26,10 @@ export const UI_THEME_OPTIONS = UI_THEME_PRESET_LIST.map((p) => ({
   description: p.description,
   premium: PREMIUM_THEME_IDS.includes(p.id),
   swatch: p.vars?.['--ui-sidebar-panel-bg'] || p.vars?.['--ui-accent'] || '#2563eb',
+  accent: p.vars?.['--ui-theme-solid'] || p.vars?.['--ui-accent'] || '#2563eb',
   surface: p.vars?.['--ui-surface'] || '#1a2332',
   bodyBg: p.vars?.['--ui-body-bg'] || '#0f1419',
+  headerBg: p.vars?.['--ui-shell-header-bg'] || p.vars?.['--ui-surface'] || '#ffffff',
 }));
 
 export const UI_THEME_IDS = ALL_THEME_IDS;

@@ -158,19 +158,19 @@ h1, h2, h3, h4 {
   box-shadow: var(--ui-shadow-sm);
 }
 
-/* Cabecera: pastel del menú (misma intensidad en los 3 temas claros) */
+/* Cabecera: pastel del menú — colores bien distintos por tema */
 html[data-ui-theme='corporate_blue'] .rf-shell-header {
-  background: var(--ui-shell-header-bg, #DDD6FE) !important;
+  background: #C4B5FD !important;
   border-bottom-color: color-mix(in srgb, #240046 22%, transparent) !important;
 }
 
 html[data-ui-theme='minimal_white'] .rf-shell-header {
-  background: var(--ui-shell-header-bg, #C7D2FE) !important;
+  background: #93C5FD !important;
   border-bottom-color: color-mix(in srgb, #03045E 22%, transparent) !important;
 }
 
 html[data-ui-theme='emerald_business'] .rf-shell-header {
-  background: var(--ui-shell-header-bg, #6EE7B7) !important;
+  background: #34D399 !important;
   border-bottom-color: color-mix(in srgb, #064e3b 22%, transparent) !important;
 }
 
@@ -2309,8 +2309,7 @@ html[data-ui-theme='corporate_blue'] .rf-sidebar-brand {
   background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
 }
 
-/* Solo el tema Purple legacy + Corporativo usan el morado #240046.
-   Dark Elegance / Gold / Sunset usan --ui-sidebar-panel-* de su preset. */
+/* Solo Corporativo + Purple usan morado. Los demás temas: colores propios forzados. */
 html[data-ui-theme='purple'] .rf-sidebar-logo-bar {
   background: #16002E !important;
 }
@@ -2319,6 +2318,76 @@ html[data-ui-theme='purple'] .rf-sidebar,
 html[data-ui-theme='purple'] .rf-sidebar__nav,
 html[data-ui-theme='purple'] .rf-sidebar__footer {
   background: #240046 !important;
+}
+
+html[data-ui-theme='dark_elegance'] .rf-sidebar,
+html[data-ui-theme='dark_elegance'] .rf-sidebar__nav,
+html[data-ui-theme='dark_elegance'] .rf-sidebar__footer {
+  background: #0B1F3A !important;
+}
+html[data-ui-theme='dark_elegance'] .rf-sidebar-logo-bar {
+  background: #061529 !important;
+}
+html[data-ui-theme='dark_elegance'] .rf-nav-link--active,
+html[data-ui-theme='dark_elegance'] .rf-nav-sublink--active {
+  background: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme='gold_premium'] .rf-sidebar,
+html[data-ui-theme='gold_premium'] .rf-sidebar__nav,
+html[data-ui-theme='gold_premium'] .rf-sidebar__footer {
+  background: #2A2110 !important;
+}
+html[data-ui-theme='gold_premium'] .rf-sidebar-logo-bar {
+  background: #1A1408 !important;
+}
+html[data-ui-theme='gold_premium'] .rf-nav-link--active,
+html[data-ui-theme='gold_premium'] .rf-nav-sublink--active {
+  background: #C9A227 !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme='sunset_modern'] .rf-sidebar,
+html[data-ui-theme='sunset_modern'] .rf-sidebar__nav,
+html[data-ui-theme='sunset_modern'] .rf-sidebar__footer {
+  background: #3B1A10 !important;
+}
+html[data-ui-theme='sunset_modern'] .rf-sidebar-logo-bar {
+  background: #24100A !important;
+}
+html[data-ui-theme='sunset_modern'] .rf-nav-link--active,
+html[data-ui-theme='sunset_modern'] .rf-nav-sublink--active {
+  background: #EA580C !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme='minimal_white'] .rf-sidebar,
+html[data-ui-theme='minimal_white'] .rf-sidebar__nav,
+html[data-ui-theme='minimal_white'] .rf-sidebar__footer {
+  background: #03045E !important;
+}
+html[data-ui-theme='minimal_white'] .rf-sidebar-logo-bar {
+  background: #02033F !important;
+}
+html[data-ui-theme='minimal_white'] .rf-nav-link--active,
+html[data-ui-theme='minimal_white'] .rf-nav-sublink--active {
+  background: #0077B6 !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme='emerald_business'] .rf-sidebar,
+html[data-ui-theme='emerald_business'] .rf-sidebar__nav,
+html[data-ui-theme='emerald_business'] .rf-sidebar__footer {
+  background: #064e3b !important;
+}
+html[data-ui-theme='emerald_business'] .rf-sidebar-logo-bar {
+  background: #022c22 !important;
+}
+html[data-ui-theme='emerald_business'] .rf-nav-link--active,
+html[data-ui-theme='emerald_business'] .rf-nav-sublink--active {
+  background: #047857 !important;
+  color: #ffffff !important;
 }
 
 html[data-ui-theme='dark_elegance'] .rf-sidebar,
