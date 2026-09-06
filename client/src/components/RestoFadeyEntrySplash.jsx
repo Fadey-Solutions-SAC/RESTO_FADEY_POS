@@ -9,7 +9,7 @@ import EntrySplashCircuits from './EntrySplashCircuits';
 const LOGO_SRC = `/branding/resto-fadey-splash-logo.png?v=fy2026`;
 const SPLASH_BG = '#000000';
 /** Entrada + visible: raíces TL + continuación BR + fade final. */
-const SPLASH_HOLD_MS = 6200;
+const SPLASH_HOLD_MS = 3000;
 const SPLASH_EXIT_MS = 450;
 
 /** Evita reiniciar animación si React remonta el componente (StrictMode). */

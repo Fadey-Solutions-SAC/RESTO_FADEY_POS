@@ -1269,30 +1269,30 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     opacity: 1;
   }
 
-  /* TL: dibuja esquina→logo, luego borra esquina→logo (desaparece hacia el logo) */
+  /* TL: dibuja esquina→logo, luego borra hacia el logo (~0–1.3s) */
   .rf-entry-splash__seg--tl .rf-entry-splash__seg-wire {
     animation:
-      rf-entry-circuit-draw 0.11s linear calc(0.04s + (var(--seg) * 0.02s)) both,
-      rf-entry-circuit-undraw 0.11s linear calc(2.15s + (var(--seg) * 0.02s)) forwards;
+      rf-entry-circuit-draw 0.07s linear calc(0.02s + (var(--seg) * 0.01s)) both,
+      rf-entry-circuit-undraw 0.07s linear calc(0.85s + (var(--seg) * 0.01s)) forwards;
   }
 
   .rf-entry-splash__seg--tl .rf-entry-splash__seg-node {
     animation:
-      rf-entry-circuit-node-pop 0.1s cubic-bezier(0.22, 1.2, 0.36, 1) calc(0.04s + (var(--seg) * 0.02s) + 0.08s) both,
-      rf-entry-circuit-node-out 0.1s ease-in calc(2.15s + (var(--seg) * 0.02s)) forwards;
+      rf-entry-circuit-node-pop 0.06s cubic-bezier(0.22, 1.2, 0.36, 1) calc(0.02s + (var(--seg) * 0.01s) + 0.05s) both,
+      rf-entry-circuit-node-out 0.06s ease-in calc(0.85s + (var(--seg) * 0.01s)) forwards;
   }
 
-  /* BR: dibuja logo→esquina, luego borra logo→esquina (se retrae a la esquina) */
+  /* BR: dibuja logo→esquina, luego se retrae a la esquina (~1.35–2.9s) */
   .rf-entry-splash__seg--br .rf-entry-splash__seg-wire {
     animation:
-      rf-entry-circuit-draw 0.11s linear calc(2.85s + (var(--seg) * 0.018s)) both,
-      rf-entry-circuit-undraw 0.11s linear calc(4.55s + (var(--seg) * 0.018s)) forwards;
+      rf-entry-circuit-draw 0.07s linear calc(1.35s + (var(--seg) * 0.009s)) both,
+      rf-entry-circuit-undraw 0.07s linear calc(2.15s + (var(--seg) * 0.009s)) forwards;
   }
 
   .rf-entry-splash__seg--br .rf-entry-splash__seg-node {
     animation:
-      rf-entry-circuit-node-pop 0.1s cubic-bezier(0.22, 1.2, 0.36, 1) calc(2.85s + (var(--seg) * 0.018s) + 0.08s) both,
-      rf-entry-circuit-node-out 0.1s ease-in calc(4.55s + (var(--seg) * 0.018s)) forwards;
+      rf-entry-circuit-node-pop 0.06s cubic-bezier(0.22, 1.2, 0.36, 1) calc(1.35s + (var(--seg) * 0.009s) + 0.05s) both,
+      rf-entry-circuit-node-out 0.06s ease-in calc(2.15s + (var(--seg) * 0.009s)) forwards;
   }
 
   @media (min-width: 900px) {
