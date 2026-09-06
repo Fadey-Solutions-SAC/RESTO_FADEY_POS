@@ -28,7 +28,7 @@ const SIDEBAR_CHROME_DARK = {
 /** Azul Minimal White (referencia usuario). */
 const MINIMAL_NAVY = '#03045E';
 
-/** Corporativo azul = mismo esquema oscuro de la referencia + píldora #2563EB. */
+/** Cada tema premium/oscuro tiene su propio chrome de menú (no compartir el morado). */
 const SIDEBAR_BY_THEME = {
   corporate_blue: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
   minimal_white: {
@@ -40,12 +40,47 @@ const SIDEBAR_BY_THEME = {
     solid: '#0077B6',
   },
   emerald_business: { bg: '#064e3b', top: '#022c22', hover: '#065f46', fg: '#ECFDF5', activeFg: '#ffffff', solid: '#047857' },
-  dark_elegance: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
-  gold_premium: { ...SIDEBAR_CHROME_DARK, solid: '#C9A227' },
-  sunset_modern: { ...SIDEBAR_CHROME_DARK, solid: '#EA580C' },
-  blue: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
+  dark_elegance: {
+    bg: '#151922',
+    top: '#0c0e12',
+    hover: '#1e2430',
+    fg: '#E5E7EB',
+    activeFg: '#ffffff',
+    solid: '#3b82f6',
+  },
+  gold_premium: {
+    bg: '#1a1712',
+    top: '#0f0d0a',
+    hover: '#252018',
+    fg: '#faf7f2',
+    activeFg: '#ffffff',
+    solid: '#C9A227',
+  },
+  sunset_modern: {
+    bg: '#261a16',
+    top: '#1a1210',
+    hover: '#32221c',
+    fg: '#fff7ed',
+    activeFg: '#ffffff',
+    solid: '#EA580C',
+  },
+  blue: {
+    bg: '#0f172a',
+    top: '#020617',
+    hover: '#1e293b',
+    fg: '#E5E7EB',
+    activeFg: '#ffffff',
+    solid: CORPORATE_BLUE,
+  },
   light: { bg: '#DBEAFE', top: '#DBEAFE', hover: '#BFDBFE', fg: '#0f172a', activeFg: '#ffffff', solid: CORPORATE_BLUE },
-  dark: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
+  dark: {
+    bg: '#0f172a',
+    top: '#020617',
+    hover: '#1e293b',
+    fg: '#E5E7EB',
+    activeFg: '#ffffff',
+    solid: CORPORATE_BLUE,
+  },
   gray: { bg: '#18181b', top: '#0f0f12', hover: '#27272a', fg: '#E5E7EB', activeFg: '#ffffff', solid: '#71717A' },
   purple: { ...SIDEBAR_CHROME_DARK, solid: '#5A4EEF' },
   green: { bg: '#D1FAE5', top: '#D1FAE5', hover: '#A7F3D0', fg: '#064e3b', activeFg: '#ffffff', solid: '#059669' },
@@ -113,7 +148,8 @@ export const THEME_PRESETS = {
       '--ui-logo-to': '#1D4ED8',
       '--ui-btn-secondary-hover': 'rgba(15, 23, 42, 0.06)',
       '--ui-glass': 'rgba(255, 255, 255, 0.88)',
-      '--ui-shell-header-bg': '#BFDBFE',
+      // Variante clara del menú morado #240046 (misma intensidad que Minimal / Emerald)
+      '--ui-shell-header-bg': '#DDD6FE',
     },
     ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
     'light'
@@ -204,7 +240,8 @@ export const THEME_PRESETS = {
       '--ui-logo-to': MINIMAL_NAVY,
       '--ui-btn-secondary-hover': 'rgba(0, 0, 0, 0.05)',
       '--ui-glass': 'rgba(255, 255, 255, 0.92)',
-      '--ui-shell-header-bg': '#C5CAE9',
+      // Misma intensidad de pastel que Corporativo / Emerald (sobre #03045E)
+      '--ui-shell-header-bg': '#C7D2FE',
     },
     ['#03045e', '#0077b6', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'],
     'light'
@@ -235,7 +272,8 @@ export const THEME_PRESETS = {
       '--ui-logo-to': '#064e3b',
       '--ui-btn-secondary-hover': 'rgba(6, 78, 59, 0.08)',
       '--ui-glass': 'rgba(255, 255, 255, 0.9)',
-      '--ui-shell-header-bg': '#A7F3D0',
+      // Un poco más verde / saturado (misma intensidad que los otros dos)
+      '--ui-shell-header-bg': '#6EE7B7',
     },
     ['#064e3b', '#2563eb', '#f59e0b', '#ef4444', '#047857', '#8b5cf6'],
     'light'

@@ -158,19 +158,19 @@ h1, h2, h3, h4 {
   box-shadow: var(--ui-shadow-sm);
 }
 
-/* Cabecera: tonalidad clara del tema (no Dark Elegance) — color sólido bien visible */
+/* Cabecera: pastel del menú (misma intensidad en los 3 temas claros) */
 html[data-ui-theme='corporate_blue'] .rf-shell-header {
-  background: var(--ui-shell-header-bg, #BFDBFE) !important;
-  border-bottom-color: color-mix(in srgb, #1e3a8a 22%, transparent) !important;
+  background: var(--ui-shell-header-bg, #DDD6FE) !important;
+  border-bottom-color: color-mix(in srgb, #240046 22%, transparent) !important;
 }
 
 html[data-ui-theme='minimal_white'] .rf-shell-header {
-  background: var(--ui-shell-header-bg, #C5CAE9) !important;
+  background: var(--ui-shell-header-bg, #C7D2FE) !important;
   border-bottom-color: color-mix(in srgb, #03045E 22%, transparent) !important;
 }
 
 html[data-ui-theme='emerald_business'] .rf-shell-header {
-  background: var(--ui-shell-header-bg, #A7F3D0) !important;
+  background: var(--ui-shell-header-bg, #6EE7B7) !important;
   border-bottom-color: color-mix(in srgb, #064e3b 22%, transparent) !important;
 }
 
@@ -2309,35 +2309,21 @@ html[data-ui-theme='corporate_blue'] .rf-sidebar-brand {
   background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
 }
 
-/* Misma jerarquía en temas oscuros (cabecera más oscura) */
-html[data-ui-theme='purple'] .rf-sidebar-logo-bar,
-html[data-ui-theme='dark'] .rf-sidebar-logo-bar,
-html[data-ui-theme='dark_elegance'] .rf-sidebar-logo-bar,
-html[data-ui-theme='gold_premium'] .rf-sidebar-logo-bar,
-html[data-ui-theme='blue'] .rf-sidebar-logo-bar {
+/* Solo el tema Purple legacy + Corporativo usan el morado #240046.
+   Dark Elegance / Gold / Sunset usan --ui-sidebar-panel-* de su preset. */
+html[data-ui-theme='purple'] .rf-sidebar-logo-bar {
   background: #16002E !important;
 }
 
 html[data-ui-theme='purple'] .rf-sidebar,
 html[data-ui-theme='purple'] .rf-sidebar__nav,
-html[data-ui-theme='purple'] .rf-sidebar__footer,
-html[data-ui-theme='dark'] .rf-sidebar,
-html[data-ui-theme='dark'] .rf-sidebar__nav,
-html[data-ui-theme='dark'] .rf-sidebar__footer,
-html[data-ui-theme='dark_elegance'] .rf-sidebar,
-html[data-ui-theme='dark_elegance'] .rf-sidebar__nav,
-html[data-ui-theme='dark_elegance'] .rf-sidebar__footer,
-html[data-ui-theme='gold_premium'] .rf-sidebar,
-html[data-ui-theme='gold_premium'] .rf-sidebar__nav,
-html[data-ui-theme='gold_premium'] .rf-sidebar__footer,
-html[data-ui-theme='blue'] .rf-sidebar,
-html[data-ui-theme='blue'] .rf-sidebar__nav,
-html[data-ui-theme='blue'] .rf-sidebar__footer {
+html[data-ui-theme='purple'] .rf-sidebar__footer {
   background: #240046 !important;
 }
 
 html[data-ui-theme='dark_elegance'] .rf-sidebar,
-html[data-ui-theme='gold_premium'] .rf-sidebar {
+html[data-ui-theme='gold_premium'] .rf-sidebar,
+html[data-ui-theme='sunset_modern'] .rf-sidebar {
   backdrop-filter: blur(10px);
 }
 
