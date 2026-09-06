@@ -100,6 +100,7 @@ export const THEME_PRESETS = {
       '--ui-logo-to': '#1D4ED8',
       '--ui-btn-secondary-hover': 'rgba(15, 23, 42, 0.06)',
       '--ui-glass': 'rgba(255, 255, 255, 0.88)',
+      '--ui-shell-header-bg': '#DBEAFE',
     },
     ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
     'light'
@@ -190,6 +191,7 @@ export const THEME_PRESETS = {
       '--ui-logo-to': '#2563EB',
       '--ui-btn-secondary-hover': 'rgba(0, 0, 0, 0.05)',
       '--ui-glass': 'rgba(255, 255, 255, 0.92)',
+      '--ui-shell-header-bg': '#DBEAFE',
     },
     ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'],
     'light'
@@ -220,6 +222,7 @@ export const THEME_PRESETS = {
       '--ui-logo-to': '#064e3b',
       '--ui-btn-secondary-hover': 'rgba(6, 78, 59, 0.08)',
       '--ui-glass': 'rgba(255, 255, 255, 0.9)',
+      '--ui-shell-header-bg': '#D1FAE5',
     },
     ['#064e3b', '#2563eb', '#f59e0b', '#ef4444', '#047857', '#8b5cf6'],
     'light'

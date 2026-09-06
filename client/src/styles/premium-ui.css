@@ -158,6 +158,22 @@ h1, h2, h3, h4 {
     box-shadow: var(--ui-shadow-sm);
   }
 
+  /* Cabecera: tonalidad clara del tema (no Dark Elegance) */
+  html[data-ui-theme='corporate_blue'] .rf-shell-header {
+    background: var(--ui-shell-header-bg, #DBEAFE) !important;
+    border-bottom-color: color-mix(in srgb, #1e3a8a 18%, transparent) !important;
+  }
+
+  html[data-ui-theme='minimal_white'] .rf-shell-header {
+    background: var(--ui-shell-header-bg, #DBEAFE) !important;
+    border-bottom-color: color-mix(in srgb, #2563EB 20%, transparent) !important;
+  }
+
+  html[data-ui-theme='emerald_business'] .rf-shell-header {
+    background: var(--ui-shell-header-bg, #D1FAE5) !important;
+    border-bottom-color: color-mix(in srgb, #064e3b 18%, transparent) !important;
+  }
+
   .rf-main-content {
     animation: rf-page-in 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   }
