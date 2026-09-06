@@ -10,12 +10,8 @@ const LIVE_DEFAULTS = {
   danger: '#fb7185',
 };
 
-/** Morado corporativo del menú (muestra del cliente). */
-const CORPORATE_PURPLE = '#240046';
-/** Acento / ítem activo sobre el menú morado. */
-const CORPORATE_PURPLE_ACCENT = '#7C3AED';
-/** Variante clara del morado para la cabecera superior. */
-const CORPORATE_PURPLE_HEADER = '#EDE4F7';
+/** Azul corporativo de referencia (muestra + recuadro de módulos). */
+const CORPORATE_BLUE = '#2563EB';
 
 /** Menú oscuro morado (referencia): cabecera más oscura que el listado. */
 const SIDEBAR_CHROME_DARK = {
@@ -26,24 +22,27 @@ const SIDEBAR_CHROME_DARK = {
   activeFg: '#ffffff',
 };
 
-/** Corporativo morado = menú #240046 + acento #7C3AED + cabecera #EDE4F7. */
+/** Azul Minimal White (referencia usuario). */
+const MINIMAL_NAVY = '#03045E';
+
+/** Corporativo azul = mismo esquema oscuro de la referencia + píldora #2563EB. */
 const SIDEBAR_BY_THEME = {
-  corporate_blue: {
-    bg: CORPORATE_PURPLE,
-    top: '#1A0033',
-    hover: '#3D0A6B',
-    fg: '#F3E8FF',
+  corporate_blue: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
+  minimal_white: {
+    bg: MINIMAL_NAVY,
+    top: '#02033F',
+    hover: '#06107A',
+    fg: '#ffffff',
     activeFg: '#ffffff',
-    solid: CORPORATE_PURPLE_ACCENT,
+    solid: '#0077B6',
   },
-  minimal_white: { bg: '#2563EB', top: '#1D4ED8', hover: '#1E40AF', fg: '#ffffff', activeFg: '#ffffff', solid: '#1E3A8A' },
   emerald_business: { bg: '#064e3b', top: '#022c22', hover: '#065f46', fg: '#ECFDF5', activeFg: '#ffffff', solid: '#047857' },
-  dark_elegance: { ...SIDEBAR_CHROME_DARK, solid: '#2563EB' },
+  dark_elegance: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
   gold_premium: { ...SIDEBAR_CHROME_DARK, solid: '#C9A227' },
   sunset_modern: { ...SIDEBAR_CHROME_DARK, solid: '#EA580C' },
-  blue: { ...SIDEBAR_CHROME_DARK, solid: '#2563EB' },
-  light: { bg: '#DBEAFE', top: '#DBEAFE', hover: '#BFDBFE', fg: '#0f172a', activeFg: '#ffffff', solid: '#2563EB' },
-  dark: { ...SIDEBAR_CHROME_DARK, solid: '#2563EB' },
+  blue: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
+  light: { bg: '#DBEAFE', top: '#DBEAFE', hover: '#BFDBFE', fg: '#0f172a', activeFg: '#ffffff', solid: CORPORATE_BLUE },
+  dark: { ...SIDEBAR_CHROME_DARK, solid: CORPORATE_BLUE },
   gray: { bg: '#18181b', top: '#0f0f12', hover: '#27272a', fg: '#E5E7EB', activeFg: '#ffffff', solid: '#71717A' },
   purple: { ...SIDEBAR_CHROME_DARK, solid: '#5A4EEF' },
   green: { bg: '#D1FAE5', top: '#D1FAE5', hover: '#A7F3D0', fg: '#064e3b', activeFg: '#ffffff', solid: '#059669' },
@@ -52,7 +51,7 @@ const SIDEBAR_BY_THEME = {
 function preset(id, label, description, tags, vars, chartColors, colorScheme = 'dark') {
   const chrome = SIDEBAR_BY_THEME[id] || (colorScheme === 'light'
     ? SIDEBAR_BY_THEME.corporate_blue
-    : { ...SIDEBAR_CHROME_DARK, solid: vars['--ui-accent'] || CORPORATE_PURPLE_ACCENT });
+    : { ...SIDEBAR_CHROME_DARK, solid: vars['--ui-accent'] || CORPORATE_BLUE });
   const solid = chrome.solid;
   const varsWithSidebar = {
     ...vars,
@@ -88,32 +87,32 @@ function preset(id, label, description, tags, vars, chartColors, colorScheme = '
 export const THEME_PRESETS = {
   corporate_blue: preset(
     'corporate_blue',
-    'Corporativo morado',
+    'Corporativo azul',
     'Elegante, empresarial y moderno',
     ['empresarial', 'restaurante moderno'],
     {
-      '--ui-body-bg': '#f7f4fb',
+      '--ui-body-bg': '#f0f4fa',
       '--ui-body-text': '#0f172a',
-      '--ui-muted': '#5b5670',
+      '--ui-muted': '#475569',
       '--ui-surface': '#ffffff',
-      '--ui-surface-2': '#f3eff8',
-      '--ui-border': 'rgba(36, 0, 70, 0.14)',
-      '--ui-accent': CORPORATE_PURPLE_ACCENT,
-      '--ui-accent-hover': '#6D28D9',
-      '--ui-accent-muted': '#A78BFA',
+      '--ui-surface-2': '#f1f5f9',
+      '--ui-border': 'rgba(15, 23, 42, 0.12)',
+      '--ui-accent': '#2563EB',
+      '--ui-accent-hover': '#1D4ED8',
+      '--ui-accent-muted': '#3B82F6',
       '--ui-input-bg': '#ffffff',
-      '--ui-input-border': 'rgba(36, 0, 70, 0.2)',
-      '--ui-focus-ring': CORPORATE_PURPLE_ACCENT,
-      '--ui-sidebar-active-bg': 'rgba(124, 58, 237, 0.28)',
-      '--ui-sidebar-hover': 'rgba(255, 255, 255, 0.08)',
-      '--ui-sidebar-border': 'rgba(255, 255, 255, 0.1)',
-      '--ui-logo-from': '#A78BFA',
-      '--ui-logo-to': CORPORATE_PURPLE_ACCENT,
-      '--ui-btn-secondary-hover': 'rgba(36, 0, 70, 0.06)',
+      '--ui-input-border': 'rgba(15, 23, 42, 0.18)',
+      '--ui-focus-ring': '#2563EB',
+      '--ui-sidebar-active-bg': 'rgba(37, 99, 235, 0.22)',
+      '--ui-sidebar-hover': 'rgba(255, 255, 255, 0.06)',
+      '--ui-sidebar-border': 'rgba(255, 255, 255, 0.08)',
+      '--ui-logo-from': '#2563EB',
+      '--ui-logo-to': '#1D4ED8',
+      '--ui-btn-secondary-hover': 'rgba(15, 23, 42, 0.06)',
       '--ui-glass': 'rgba(255, 255, 255, 0.88)',
-      '--ui-shell-header-bg': CORPORATE_PURPLE_HEADER,
+      '--ui-shell-header-bg': '#BFDBFE',
     },
-    ['#7c3aed', '#a78bfa', '#240046', '#c4b5fd', '#8b5cf6', '#5b21b6'],
+    ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
     'light'
   ),
 
@@ -189,22 +188,22 @@ export const THEME_PRESETS = {
       '--ui-surface': '#ffffff',
       '--ui-surface-2': '#f5f5f5',
       '--ui-border': 'rgba(0, 0, 0, 0.08)',
-      '--ui-accent': '#2563EB',
-      '--ui-accent-hover': '#1D4ED8',
-      '--ui-accent-muted': '#3B82F6',
+      '--ui-accent': MINIMAL_NAVY,
+      '--ui-accent-hover': '#02033F',
+      '--ui-accent-muted': '#0077B6',
       '--ui-input-bg': '#ffffff',
       '--ui-input-border': 'rgba(0, 0, 0, 0.12)',
-      '--ui-focus-ring': '#2563EB',
+      '--ui-focus-ring': '#0077B6',
       '--ui-sidebar-active-bg': 'rgba(255, 255, 255, 0.18)',
       '--ui-sidebar-hover': 'rgba(255, 255, 255, 0.12)',
       '--ui-sidebar-border': 'rgba(255, 255, 255, 0.2)',
-      '--ui-logo-from': '#3B82F6',
-      '--ui-logo-to': '#2563EB',
+      '--ui-logo-from': '#0077B6',
+      '--ui-logo-to': MINIMAL_NAVY,
       '--ui-btn-secondary-hover': 'rgba(0, 0, 0, 0.05)',
       '--ui-glass': 'rgba(255, 255, 255, 0.92)',
-      '--ui-shell-header-bg': '#BFDBFE',
+      '--ui-shell-header-bg': '#C5CAE9',
     },
-    ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'],
+    ['#03045e', '#0077b6', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'],
     'light'
   ),
 
