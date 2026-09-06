@@ -1,6 +1,8 @@
 /**
- * Fecha/hora de reserva en hora local del servidor (alineada con datetime('now','localtime') en SQLite).
+ * Fecha/hora de reserva en hora de negocio (America/Lima).
+ * No usar Date(y,m,d,h,mi) del servidor: en Render eso es UTC y adelanta T−30 / avisos.
  */
+const { DEFAULT_UTC_OFFSET } = require('../utils/appDateTime');
 
 function normalizeReservationTime(timeStr) {
   const raw = String(timeStr || '').trim();
@@ -10,28 +12,40 @@ function normalizeReservationTime(timeStr) {
   return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`;
 }
 
+/** Interpreta date+time de reserva como instante absoluto (pared Lima). */
 function parseReservationLocalDateTime(dateStr, timeStr) {
   const date = String(dateStr || '').trim().slice(0, 10);
   const time = normalizeReservationTime(timeStr);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return null;
-  const [y, m, d] = date.split('-').map(Number);
-  const [hh, mm] = time.split(':').map(Number);
-  if (!y || !m || !d || Number.isNaN(hh) || Number.isNaN(mm)) return null;
-  const dt = new Date(y, m - 1, d, hh, mm, 0, 0);
-  return Number.isNaN(dt.getTime()) ? null : dt;
+  const d = new Date(`${date}T${time}:00${DEFAULT_UTC_OFFSET}`);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function formatSqliteLocalDatetime(date) {
   if (!date || !(date instanceof Date) || Number.isNaN(date.getTime())) return null;
   const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
+  // Mostrar componentes en Lima, no en TZ del proceso.
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Lima',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const map = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]));
+  let hour = map.hour || '00';
+  if (hour === '24') hour = '00';
+  return `${map.year}-${map.month}-${map.day} ${hour}:${map.minute}:${map.second || '00'}`;
 }
 
 function computeMinutesBeforeReservation(reservationDate, reservationTime, minutesBefore) {
   const at = parseReservationLocalDateTime(reservationDate, reservationTime);
   if (!at) return null;
-  at.setMinutes(at.getMinutes() - Math.max(0, Number(minutesBefore) || 0));
-  return formatSqliteLocalDatetime(at);
+  const release = new Date(at.getTime() - Math.max(0, Number(minutesBefore) || 0) * 60_000);
+  return formatSqliteLocalDatetime(release);
 }
 
 /** HH:MM normalizado en SQL (acepta 9:05, 09:05, 09:05:00). */
@@ -44,7 +58,7 @@ function reservationLocalSqlExpr(alias = 'r') {
   return `datetime(${alias}.date || ' ' || (${reservationTimeSqlExpr(alias)}))`;
 }
 
-/** Momento T−N de liberación a cocina (mismo reloj que localtime). */
+/** Momento T−N de liberación a cocina (misma pared horaria Lima que las reservas). */
 function reservationKitchenReleaseSqlExpr(alias = 'r', minutesBefore = 30) {
   const mins = Math.max(0, Number(minutesBefore) || 0);
   return `datetime(${alias}.date || ' ' || (${reservationTimeSqlExpr(alias)}), '-${mins} minutes')`;

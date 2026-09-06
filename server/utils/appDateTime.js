@@ -107,6 +107,18 @@ function sqlBusinessNow(queryOneFn) {
   return `'${nowLimaSql(queryOneFn)}'`;
 }
 
+/**
+ * Reloj de negocio en SQL (Lima), opcionalmente con modificadores SQLite
+ * p. ej. sqlBusinessNowExpr(q) → datetime('2026-09-05 21:22:00')
+ *      sqlBusinessNowExpr(q, '+1 day') → datetime('2026-09-05 21:22:00', '+1 day')
+ */
+function sqlBusinessNowExpr(queryOneFn, ...modifiers) {
+  const base = `'${nowLimaSql(queryOneFn)}'`;
+  if (!modifiers.length) return `datetime(${base})`;
+  const mods = modifiers.map((m) => `'${String(m).replace(/'/g, "''")}'`).join(', ');
+  return `datetime(${base}, ${mods})`;
+}
+
 module.exports = {
   DEFAULT_TIMEZONE,
   DEFAULT_UTC_OFFSET,
@@ -118,4 +130,5 @@ module.exports = {
   getBusinessMonthKey,
   sqlBusinessTimestamp,
   sqlBusinessNow,
+  sqlBusinessNowExpr,
 };

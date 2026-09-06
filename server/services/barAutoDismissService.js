@@ -11,6 +11,7 @@ const {
   isStationMarkedReady,
 } = require('../utils/kitchenStationReady');
 const { readBarStationSettings } = require('./barStationSettingsService');
+const { sqlBusinessNowExpr } = require('../utils/appDateTime');
 
 function markBarStationReady(order, { io, reason = 'manual', minutes = null } = {}) {
   const orderId = order.id;
@@ -75,6 +76,7 @@ function processBarAutoDismiss({ io } = {}) {
 
   const minutes = settings.autoDismissMinutes;
 
+  const nowExpr = sqlBusinessNowExpr(queryOne);
   const orders = queryAll(`
     SELECT * FROM orders
     WHERE status IN ('pending', 'preparing', 'ready')
@@ -82,14 +84,14 @@ function processBarAutoDismiss({ io } = {}) {
       AND (
         kitchen_release_at IS NULL
         OR trim(kitchen_release_at) = ''
-        OR datetime(kitchen_release_at) <= datetime('now', 'localtime')
+        OR datetime(kitchen_release_at) <= ${nowExpr}
       )
       AND (station_bar_ready_at IS NULL OR trim(station_bar_ready_at) = '')
       AND (station_bar_preparing_at IS NULL OR trim(station_bar_preparing_at) = '')
       AND kitchen_last_send_at IS NOT NULL
       AND trim(kitchen_last_send_at) != ''
       AND (
-        (julianday('now', 'localtime') - julianday(trim(kitchen_last_send_at))) * 1440
+        (julianday(${nowExpr}) - julianday(trim(kitchen_last_send_at))) * 1440
       ) >= ?
   `, [minutes]);
 

@@ -1,10 +1,11 @@
 const { queryOne } = require('../database');
 const { RESERVATION_KITCHEN_PREP_MINUTES } = require('../constants/reservationTiming');
 const { normalizeReservationTime } = require('./reservationDateTime');
+const { sqlBusinessNowExpr } = require('../utils/appDateTime');
 
 /**
- * T−N minutos antes de la reserva, en el mismo dominio de reloj que
- * datetime('now','localtime') del filtro de cocina.
+ * T−N minutos antes de la reserva, en hora de negocio (America/Lima),
+ * no en localtime del servidor (UTC en Render).
  */
 function computeKitchenReleaseAtForReservation(date, time) {
   const d = String(date || '').trim().slice(0, 10);
@@ -23,8 +24,9 @@ function computeKitchenReleaseAtForReservation(date, time) {
 function isKitchenReleaseDue(releaseAt) {
   const ts = String(releaseAt || '').trim();
   if (!ts) return true;
+  const nowExpr = sqlBusinessNowExpr(queryOne);
   const row = queryOne(
-    `SELECT CASE WHEN datetime(?) <= datetime('now', 'localtime') THEN 1 ELSE 0 END AS due`,
+    `SELECT CASE WHEN datetime(?) <= ${nowExpr} THEN 1 ELSE 0 END AS due`,
     [ts]
   );
   return Number(row?.due) === 1;

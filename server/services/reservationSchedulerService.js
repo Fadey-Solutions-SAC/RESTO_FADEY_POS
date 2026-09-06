@@ -13,6 +13,7 @@ const {
   reservationKitchenReleaseSqlExpr,
 } = require('./reservationDateTime');
 const { scheduleKitchenBarAutoPrint } = require('./kitchenBarAutoPrintService');
+const { sqlBusinessNowExpr } = require('../utils/appDateTime');
 
 let schedulerTimer = null;
 let tickInFlight = false;
@@ -132,12 +133,13 @@ function releaseReservationKitchenOrders(reservation) {
  * Libera holds cuyo kitchen_release_at ya venció (seguridad aunque el scheduler falle).
  */
 function releaseAllDueKitchenHolds() {
+  const nowExpr = sqlBusinessNowExpr(queryOne);
   const due = queryAll(
     `SELECT * FROM orders
      WHERE status IN ('pending','preparing')
        AND kitchen_release_at IS NOT NULL
        AND trim(kitchen_release_at) != ''
-       AND datetime(kitchen_release_at) <= datetime('now', 'localtime')
+       AND datetime(kitchen_release_at) <= ${nowExpr}
      ORDER BY created_at ASC
      LIMIT 80`
   );
@@ -150,6 +152,7 @@ function releaseAllDueKitchenHolds() {
  */
 function releaseHoldsByReservationSchedule() {
   const releaseExpr = reservationKitchenReleaseSqlExpr('r', RESERVATION_KITCHEN_PREP_MINUTES);
+  const nowExpr = sqlBusinessNowExpr(queryOne);
   const due = queryAll(
     `SELECT o.*
      FROM orders o
@@ -158,7 +161,7 @@ function releaseHoldsByReservationSchedule() {
        AND o.status IN ('pending','preparing')
        AND o.kitchen_release_at IS NOT NULL
        AND trim(o.kitchen_release_at) != ''
-       AND ${releaseExpr} <= datetime('now', 'localtime')
+       AND ${releaseExpr} <= ${nowExpr}
      ORDER BY o.created_at ASC
      LIMIT 80`
   );
@@ -243,11 +246,12 @@ function runReservationSchedulerTick() {
     releaseHoldsByReservationSchedule();
 
     const resExpr = reservationLocalSqlExpr('r');
+    const nowExpr = sqlBusinessNowExpr(queryOne);
     const reservations = queryAll(
       `SELECT * FROM reservations r
        WHERE r.status IN ('confirmed','pending')
-         AND ${resExpr} >= datetime('now', 'localtime', '-3 hours')
-         AND ${resExpr} <= datetime('now', 'localtime', '+2 days')
+         AND ${resExpr} >= ${sqlBusinessNowExpr(queryOne, '-3 hours')}
+         AND ${resExpr} <= ${sqlBusinessNowExpr(queryOne, '+2 days')}
        ORDER BY r.date ASC, r.time ASC`
     );
 
@@ -259,7 +263,7 @@ function runReservationSchedulerTick() {
       if (!resAt) continue;
 
       const dueRow = queryOne(
-        `SELECT CASE WHEN ${releaseExpr} <= datetime('now', 'localtime') THEN 1 ELSE 0 END AS due
+        `SELECT CASE WHEN ${releaseExpr} <= ${nowExpr} THEN 1 ELSE 0 END AS due
          FROM reservations r WHERE r.id = ?`,
         [reservation.id]
       );
@@ -336,8 +340,8 @@ function getReservationCajaOperationalAlerts() {
   const rows = queryAll(
     `SELECT r.* FROM reservations r
      WHERE r.status IN ('confirmed','pending')
-       AND ${resExpr} <= datetime('now', 'localtime', '+${verifyMins} minutes')
-       AND ${resExpr} > datetime('now', 'localtime', '-${maxAfterHours} hours')
+       AND ${resExpr} <= ${sqlBusinessNowExpr(queryOne, `+${verifyMins} minutes`)}
+       AND ${resExpr} > ${sqlBusinessNowExpr(queryOne, `-${maxAfterHours} hours`)}
      ORDER BY r.date ASC, r.time ASC
      LIMIT 30`
   );
@@ -346,8 +350,8 @@ function getReservationCajaOperationalAlerts() {
     `SELECT r.* FROM reservations r
      WHERE r.status IN ('confirmed','pending')
        AND (r.table_id IS NULL OR trim(r.table_id) = '')
-       AND ${resExpr} > datetime('now', 'localtime', '-${maxAfterHours} hours')
-       AND ${resExpr} <= datetime('now', 'localtime', '+1 day')
+       AND ${resExpr} > ${sqlBusinessNowExpr(queryOne, `-${maxAfterHours} hours`)}
+       AND ${resExpr} <= ${sqlBusinessNowExpr(queryOne, '+1 day')}
        AND EXISTS (
          SELECT 1 FROM orders o
          WHERE o.notes LIKE ('%' || 'RESERVA_ID:' || r.id || '%')

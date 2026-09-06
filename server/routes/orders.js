@@ -14,7 +14,7 @@ const kardexInventory = require('../services/kardexInventoryService');
 const { emitInventoryUpdate, emitBillingDocumentUpdate } = require('../socketBroadcast');
 const { recordWorkActivityEvent } = require('../services/workActivityTracker');
 const { logRouteError, publicErrorMessage } = require('../utils/routeErrors');
-const { sqlBusinessTimestamp, getBusinessTodayDateKey } = require('../utils/appDateTime');
+const { sqlBusinessTimestamp, getBusinessTodayDateKey, sqlBusinessNowExpr } = require('../utils/appDateTime');
 const {
   userCanAccessKitchenApi,
   userCanAccessKitchenStation,
@@ -190,7 +190,7 @@ router.get('/kitchen', authenticateToken, (req, res) => {
   }
   let query = `SELECT * FROM orders WHERE status IN ('pending', 'preparing', 'ready')
     AND IFNULL(TRIM(payment_status), 'pending') != 'paid'
-    AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= datetime('now', 'localtime'))`;
+    AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= ${sqlBusinessNowExpr(queryOne)})`;
   const params = [];
   if (type === 'delivery') query += " AND type = 'delivery'";
   else if (type === 'dine_in') query += " AND type = 'dine_in'";
@@ -597,7 +597,7 @@ router.post('/', authenticateToken, (req, res) => {
     const kitchenHeld = Boolean(String(order.kitchen_release_at || '').trim())
       && Number(
         queryOne(
-          "SELECT CASE WHEN datetime(?) > datetime('now', 'localtime') THEN 1 ELSE 0 END AS held",
+          `SELECT CASE WHEN datetime(?) > ${sqlBusinessNowExpr(queryOne)} THEN 1 ELSE 0 END AS held`,
           [String(order.kitchen_release_at).trim()]
         )?.held
       ) === 1;

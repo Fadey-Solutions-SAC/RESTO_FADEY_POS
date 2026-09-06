@@ -110,7 +110,9 @@ export function getMesaMapVisualState(
 
   if (precuentaTableIds?.has?.(tid) && hasOrders) return 'precuenta';
   if (hasOrders || dbStatus === 'occupied') return 'occupied';
-  if (reservation || dbStatus === 'reserved') return 'reserved';
+  // Llegó la hora de la reserva → ocupada (ya no gris).
+  if (reservation) return 'occupied';
+  if (dbStatus === 'reserved') return 'reserved';
   return 'available';
 }
 

@@ -13,6 +13,7 @@ const {
 const { emitStaffDataUpdate } = require('../socketBroadcast');
 const { getSlowMovingProductIds } = require('../services/slowMovingProductsService');
 const { getReservationCajaOperationalAlerts } = require('../services/reservationSchedulerService');
+const { sqlBusinessNowExpr } = require('../utils/appDateTime');
 const {
   getPaidSalesEventSql,
   metricsFromPaidOrdersWhere,
@@ -216,7 +217,7 @@ function buildOperationalIntelligence(opts = {}) {
   const kitchenPrepDelayed = queryOne(
     `SELECT COUNT(*) as count FROM orders
      WHERE status IN ('pending', 'preparing')
-       AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= datetime('now', 'localtime'))
+       AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= ${sqlBusinessNowExpr(queryOne)})
        AND (
          (status = 'pending' AND (julianday('now') - julianday(created_at)) * 24 * 60 > ?)
          OR (status = 'preparing' AND (julianday('now') - julianday(COALESCE(preparing_at, updated_at, created_at))) * 24 * 60 > ?)

@@ -254,6 +254,12 @@ export default function Tables() {
     () => buildReservationByTableIdForToday(reservations),
     [reservations]
   );
+  const [mesaMapClockMs, setMesaMapClockMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setMesaMapClockMs(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  void mesaMapClockMs;
 
   const filteredProducts = filterOrderingProducts(products, { search, selectedCat });
   const activeOrdersForTable = selectedTable?.orders || [];

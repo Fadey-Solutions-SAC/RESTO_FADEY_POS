@@ -1,6 +1,8 @@
 const { tableNumbersMatch, normalizeTableNumber } = require('../utils/tableNumberMatch');
 const { resolveProductionArea, orderHasBarItems, orderHasKitchenItems } = require('../utils/productionArea');
 const { isCocinaStationComplete, isBarStationComplete, isStationMarkedReady } = require('../utils/kitchenStationReady');
+const { sqlBusinessNowExpr } = require('../utils/appDateTime');
+const { queryOne: dbQueryOne } = require('../database');
 
 const TABLE_ORDER_MERGE_WINDOW_MINUTES = 40;
 
@@ -30,7 +32,7 @@ function isWithinMergeWindowTx(tx, order) {
   const releaseAt = String(order.kitchen_release_at || '').trim();
   if (releaseAt) {
     const held = tx.queryOne(
-      "SELECT CASE WHEN datetime(?) > datetime('now', 'localtime') THEN 1 ELSE 0 END AS held",
+      `SELECT CASE WHEN datetime(?) > ${sqlBusinessNowExpr(dbQueryOne)} THEN 1 ELSE 0 END AS held`,
       [releaseAt],
     );
     if (Number(held?.held || 0) === 1) return false;
@@ -38,7 +40,7 @@ function isWithinMergeWindowTx(tx, order) {
   const anchor = mergeAnchorDatetime(order);
   if (!anchor) return false;
   const within = tx.queryOne(
-    `SELECT CASE WHEN datetime(?) >= datetime('now', '-${TABLE_ORDER_MERGE_WINDOW_MINUTES} minutes', 'localtime') THEN 1 ELSE 0 END AS ok`,
+    `SELECT CASE WHEN datetime(?) >= ${sqlBusinessNowExpr(dbQueryOne, `-${TABLE_ORDER_MERGE_WINDOW_MINUTES} minutes`)} THEN 1 ELSE 0 END AS ok`,
     [anchor],
   );
   return Number(within?.ok || 0) === 1;

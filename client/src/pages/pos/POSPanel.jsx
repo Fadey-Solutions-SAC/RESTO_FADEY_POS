@@ -3052,9 +3052,16 @@ export default function POSPanel() {
     () => (tables || []).filter((t) => !isDeliveryCheckoutTable(t) && !isClientCheckoutTable(t)),
     [tables]
   );
+  const [mesaMapClockMs, setMesaMapClockMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setMesaMapClockMs(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
   const reservationByTableId = useMemo(
     () => buildReservationByTableIdForToday(reservations),
-    [reservations]
+    // mesaMapClockMs: recalcular gris→ocupado al cruzar la hora de reserva
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reservations, mesaMapClockMs]
   );
   useEffect(() => {
     setPrecuentaTableIds((prev) => {

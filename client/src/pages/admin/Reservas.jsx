@@ -12,6 +12,7 @@ import {
   getReservationKitchenReleaseInfo,
   reservationNotesHaveOrder,
 } from '../../utils/reservationKitchenTiming';
+import { filterTablesForReservationSelect } from '../../utils/reservationTableAvailability';
 import { MdAdd, MdExpandMore, MdEventSeat, MdPerson, MdPhone, MdCalendarToday, MdAccessTime } from 'react-icons/md';
 
 const WAREHOUSE_CATEGORY_NAMES = new Set(['PRODUCTOS ALMACEN', 'INSUMOS']);
@@ -260,6 +261,18 @@ export default function Reservas() {
   const today = todayKey;
   const visibleReservas = reservas.filter((r) => !['cancelled', 'cancelada'].includes(String(r.status || '').toLowerCase()));
   const todayReservas = visibleReservas.filter((r) => r.date === today);
+
+  const formSelectableTables = useMemo(
+    () =>
+      filterTablesForReservationSelect({
+        tables,
+        reservations: visibleReservas,
+        date: form.date,
+        time: form.time,
+        includeTableId: form.table_id,
+      }),
+    [tables, visibleReservas, form.date, form.time, form.table_id]
+  );
   const statusColors = {
     confirmed: UI_BADGE.emerald,
     pending: UI_BADGE.amber,
@@ -360,14 +373,21 @@ export default function Reservas() {
                   </div>
                 </div>
                 <div className="flex flex-col xs:flex-row sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
-                  <select
+                    <select
                     value={r.table_id || ''}
                     onChange={(e) => assignTable(r.id, e.target.value)}
                     className="input-field text-xs py-1.5 w-full sm:min-w-[140px] sm:max-w-[200px]"
                     title="Asignar o cambiar mesa"
                   >
                     <option value="">Sin mesa</option>
-                    {tables.map((t) => (
+                    {filterTablesForReservationSelect({
+                      tables,
+                      reservations: visibleReservas,
+                      date: r.date,
+                      time: r.time,
+                      excludeReservationId: r.id,
+                      includeTableId: r.table_id,
+                    }).map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name || `Mesa ${t.number}`} (Cap. {t.capacity})
                       </option>
@@ -489,7 +509,7 @@ export default function Reservas() {
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Mesa</label>
             <select value={form.table_id} onChange={(e) => setForm({ ...form, table_id: e.target.value })} className="input-field">
               <option value="">Sin asignar</option>
-              {tables.map((t) => (
+              {formSelectableTables.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name || `Mesa ${t.number}`} (Cap. {t.capacity})
                 </option>
