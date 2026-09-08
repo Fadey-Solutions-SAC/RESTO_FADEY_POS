@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from './Modal';
 import { api, formatCurrency } from '../utils/api';
 import toast from 'react-hot-toast';
@@ -67,15 +67,24 @@ export default function MesaTransferModal({
     return tables.filter((t) => t.id);
   }, [tables, pickSourceAndTarget]);
 
+  const initKeyRef = useRef('');
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initKeyRef.current = '';
+      return;
+    }
+    const initKey = `${mode}|${initialSourceId}|${pickSourceAndTarget}`;
+    if (initKeyRef.current === initKey) return;
+    initKeyRef.current = initKey;
+
     const sid = pickSourceAndTarget ? '' : (initialSourceId || '');
     setSourceId(sid);
     setTargetId('');
     setOccupiedPrompt(false);
     setBusy(false);
     setSelectedItemIds([]);
-  }, [open, initialSourceId, mode, tables, pickSourceAndTarget]);
+  }, [open, initialSourceId, mode, pickSourceAndTarget]);
 
   const handleSourceChange = (nextSourceId) => {
     setSourceId(nextSourceId);
