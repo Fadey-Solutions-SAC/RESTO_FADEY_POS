@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Modal from './Modal';
 import { api, formatCurrency } from '../utils/api';
-import { getOrderChargeTotal } from '../utils/mesaOrderLines';
 import toast from 'react-hot-toast';
 import { MdSwapHoriz, MdCallMerge, MdWarning } from 'react-icons/md';
 
@@ -9,10 +8,16 @@ function tableIsOccupied(table) {
   return Boolean(table?.orders?.length);
 }
 
+function itemLineSubtotal(item) {
+  const qty = Number(item.quantity || 0);
+  const unit = Number(item.unit_price ?? 0);
+  return Number(item.subtotal != null ? item.subtotal : unit * qty);
+}
+
 /**
  * @param {'move_table'|'move_orders'} mode
  * - move_table: mueve toda la cuenta (todos los pedidos activos)
- * - move_orders: mueve solo los pedidos seleccionados
+ * - move_orders: mueve solo los productos seleccionados (línea por línea)
  */
 export default function MesaTransferModal({
   open,
@@ -26,7 +31,7 @@ export default function MesaTransferModal({
 }) {
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
-  const [selectedOrderIds, setSelectedOrderIds] = useState([]);
+  const [selectedItemIds, setSelectedItemIds] = useState([]);
   const [occupiedPrompt, setOccupiedPrompt] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -39,6 +44,21 @@ export default function MesaTransferModal({
     [tables, targetId],
   );
   const sourceOrders = sourceTable?.orders || [];
+
+  const sourceItems = useMemo(() => {
+    const rows = [];
+    for (const order of sourceOrders) {
+      for (const item of order.items || []) {
+        if (!item?.id) continue;
+        rows.push({
+          ...item,
+          orderId: order.id,
+          orderNumber: order.order_number,
+        });
+      }
+    }
+    return rows;
+  }, [sourceOrders]);
 
   const sourceOptions = useMemo(() => {
     if (pickSourceAndTarget) {
@@ -54,24 +74,14 @@ export default function MesaTransferModal({
     setTargetId('');
     setOccupiedPrompt(false);
     setBusy(false);
-    if (mode === 'move_orders' && sid) {
-      const orders = (tables.find((t) => t.id === sid)?.orders) || [];
-      setSelectedOrderIds(orders.map((o) => o.id));
-    } else {
-      setSelectedOrderIds([]);
-    }
+    setSelectedItemIds([]);
   }, [open, initialSourceId, mode, tables, pickSourceAndTarget]);
 
   const handleSourceChange = (nextSourceId) => {
     setSourceId(nextSourceId);
     setTargetId('');
     setOccupiedPrompt(false);
-    if (mode === 'move_orders' && nextSourceId) {
-      const orders = (tables.find((t) => t.id === nextSourceId)?.orders) || [];
-      setSelectedOrderIds(orders.map((o) => o.id));
-    } else {
-      setSelectedOrderIds([]);
-    }
+    setSelectedItemIds([]);
   };
 
   const targetOptions = useMemo(
@@ -79,9 +89,9 @@ export default function MesaTransferModal({
     [tables, sourceId],
   );
 
-  const toggleOrder = (orderId) => {
-    setSelectedOrderIds((prev) =>
-      prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId],
+  const toggleItem = (itemId) => {
+    setSelectedItemIds((prev) =>
+      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId],
     );
   };
 
@@ -89,11 +99,10 @@ export default function MesaTransferModal({
     if (!sourceId) return toast.error('Selecciona la mesa origen');
     if (!targetId) return toast.error('Selecciona la mesa destino');
     if (sourceId === targetId) return toast.error('Origen y destino deben ser diferentes');
-    const orderIds =
-      mode === 'move_table'
-        ? sourceOrders.map((o) => o.id)
-        : selectedOrderIds.filter(Boolean);
-    if (!orderIds.length) return toast.error('Selecciona al menos un pedido para mover');
+
+    if (mode === 'move_orders') {
+      if (!selectedItemIds.length) return toast.error('Selecciona al menos un producto para mover');
+    }
 
     setBusy(true);
     try {
@@ -102,14 +111,16 @@ export default function MesaTransferModal({
         target_table_id: targetId,
         confirm_merge: Boolean(confirmMerge),
       };
-      if (mode === 'move_orders') body.order_ids = orderIds;
+      if (mode === 'move_orders') {
+        body.order_item_ids = selectedItemIds;
+      }
       await api.post('/tables/move-orders', body);
       toast.success(
         confirmMerge
           ? `Cuenta unida en ${targetTable?.name || 'mesa destino'}`
           : mode === 'move_table'
             ? `Mesa movida a ${targetTable?.name || 'destino'}`
-            : `${orderIds.length} pedido(s) movido(s)`,
+            : `${selectedItemIds.length} producto(s) movido(s)`,
       );
       setOccupiedPrompt(false);
       onClose?.();
@@ -143,8 +154,8 @@ export default function MesaTransferModal({
           {pickSourceAndTarget
             ? 'Seleccione la mesa origen y la mesa destino antes de confirmar la acción.'
             : isMoveTable
-              ? 'Traslada toda la cuenta (todos los pedidos activos) a otra mesa.'
-              : 'Selecciona los pedidos cuyos productos deseas enviar a otra mesa.'}
+              ? 'Traslada toda la cuenta (todos los productos activos) a otra mesa.'
+              : 'Selecciona los productos de la cuenta que deseas enviar a otra mesa.'}
         </p>
 
         <div>
@@ -159,7 +170,7 @@ export default function MesaTransferModal({
               <option key={t.id} value={t.id}>
                 {t.name}
                 {pickSourceAndTarget
-                  ? ` · ${t.orders?.length || 0} pedido(s)`
+                  ? ` · ${(t.orders || []).reduce((n, o) => n + (o.items?.length || 0), 0)} producto(s)`
                   : tableIsOccupied(t)
                     ? ' (ocupada)'
                     : ' (libre)'}
@@ -167,21 +178,20 @@ export default function MesaTransferModal({
             ))}
           </select>
           {pickSourceAndTarget && sourceOptions.length === 0 && (
-            <p className="mt-1 text-xs text-[var(--ui-muted)]">No hay mesas con pedidos activos.</p>
+            <p className="mt-1 text-xs text-[var(--ui-muted)]">No hay mesas con productos activos.</p>
           )}
         </div>
 
-        {mode === 'move_orders' && sourceOrders.length > 0 && (
+        {mode === 'move_orders' && sourceItems.length > 0 && (
           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 space-y-2 max-h-52 overflow-y-auto">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)]">
-              Pedidos de la cuenta
+              Productos de la cuenta
             </p>
-            {sourceOrders.map((order) => {
-              const checked = selectedOrderIds.includes(order.id);
-              const items = order.items || [];
+            {sourceItems.map((item) => {
+              const checked = selectedItemIds.includes(item.id);
               return (
                 <label
-                  key={order.id}
+                  key={item.id}
                   className={`flex gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
                     checked
                       ? 'border-sky-500/50 bg-sky-500/10'
@@ -191,25 +201,16 @@ export default function MesaTransferModal({
                   <input
                     type="checkbox"
                     checked={checked}
-                    onChange={() => toggleOrder(order.id)}
+                    onChange={() => toggleItem(item.id)}
                     className="mt-1 shrink-0"
                   />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex justify-between gap-2 text-sm font-medium text-[var(--ui-body-text)]">
-                      <span>Pedido #{order.order_number || '—'}</span>
-                      <span className="tabular-nums">{formatCurrency(getOrderChargeTotal(order))}</span>
-                    </div>
-                    <ul className="mt-1 text-xs text-[var(--ui-muted)] space-y-0.5">
-                      {items.length ? (
-                        items.map((it) => (
-                          <li key={it.id}>
-                            {Number(it.quantity || 0)}× {it.product_name}
-                          </li>
-                        ))
-                      ) : (
-                        <li>Sin líneas</li>
-                      )}
-                    </ul>
+                  <div className="min-w-0 flex-1 flex justify-between gap-2 text-sm text-[var(--ui-body-text)]">
+                    <span>
+                      {Number(item.quantity || 0)}× {item.product_name}
+                    </span>
+                    <span className="tabular-nums shrink-0">
+                      {formatCurrency(itemLineSubtotal(item))}
+                    </span>
                   </div>
                 </label>
               );
@@ -217,10 +218,14 @@ export default function MesaTransferModal({
           </div>
         )}
 
+        {mode === 'move_orders' && sourceId && sourceItems.length === 0 && (
+          <p className="text-sm text-[var(--ui-muted)]">La mesa no tiene productos activos.</p>
+        )}
+
         {isMoveTable && sourceTable && (
           <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-[var(--ui-body-text)]">
-            Se moverán <strong>{sourceOrders.length}</strong> pedido(s) ·{' '}
-            <strong>{formatCurrency(sourceOrders.reduce((s, o) => s + getOrderChargeTotal(o), 0))}</strong>
+            Se moverán todos los productos de la cuenta (
+            <strong>{sourceItems.length}</strong> línea(s)).
           </div>
         )}
 
@@ -276,7 +281,12 @@ export default function MesaTransferModal({
             <button
               type="button"
               onClick={handlePrimaryAction}
-              disabled={busy || !sourceId || !targetId}
+              disabled={
+                busy ||
+                !sourceId ||
+                !targetId ||
+                (mode === 'move_orders' && selectedItemIds.length === 0)
+              }
               className={`flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-white disabled:opacity-50 ${
                 isMoveTable
                   ? 'bg-sky-600 hover:bg-sky-700'

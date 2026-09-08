@@ -17,6 +17,8 @@ const {
 } = require('../services/tableUnionService');
 const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
 const { DEFAULT_PRIMARY_CAJA_ID } = require('../cajaSettings');
+const { withTransaction } = require('../database');
+const { moveOrderItemsBetweenTablesTx } = require('../services/tableMoveItemsService');
 
 router.use(authenticateToken);
 
@@ -314,7 +316,12 @@ router.patch('/:id/free', requireRole('admin', 'cajero'), (req, res) => {
 
 router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
   try {
-    const { source_table_id: sourceTableId, target_table_id: targetTableId, order_ids: orderIdsRaw } = req.body || {};
+    const {
+      source_table_id: sourceTableId,
+      target_table_id: targetTableId,
+      order_ids: orderIdsRaw,
+      order_item_ids: orderItemIdsRaw,
+    } = req.body || {};
     if (!sourceTableId || !targetTableId) {
       return res.status(400).json({ error: 'Mesa origen y destino son requeridas' });
     }
@@ -337,11 +344,18 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
     }
 
     const activeOrders = loadActiveTableOrders(source);
+    const orderItemIds = Array.isArray(orderItemIdsRaw) ? orderItemIdsRaw.filter(Boolean) : [];
     const requestedIds = Array.isArray(orderIdsRaw) ? orderIdsRaw.filter(Boolean) : [];
-    const selected = requestedIds.length
-      ? activeOrders.filter((o) => requestedIds.includes(o.id))
-      : activeOrders;
-    if (!selected.length) return res.status(400).json({ error: 'No hay pedidos activos para mover' });
+    const useItemMove = orderItemIds.length > 0;
+
+    if (!useItemMove) {
+      const selected = requestedIds.length
+        ? activeOrders.filter((o) => requestedIds.includes(o.id))
+        : activeOrders;
+      if (!selected.length) return res.status(400).json({ error: 'No hay pedidos activos para mover' });
+    } else if (!activeOrders.length) {
+      return res.status(400).json({ error: 'La mesa origen no tiene productos activos para mover' });
+    }
 
     const targetActiveOrders = loadActiveTableOrders(target);
     const confirmMerge = req.body?.confirm_merge === true || req.body?.confirm_merge === 1 || req.body?.confirm_merge === '1';
@@ -358,13 +372,35 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
       });
     }
 
-    const targetTableNumber = String(target.number ?? '').trim();
-    selected.forEach((order) => {
-      runSql(
-        "UPDATE orders SET table_number = ?, table_id = ?, customer_name = ?, updated_at = datetime('now') WHERE id = ?",
-        [targetTableNumber, target.id, `Mesa ${targetTableNumber}`, order.id]
+    let movedOrderIds = [];
+    let movedItemCount = 0;
+    let affectedOrderIds = [];
+
+    if (useItemMove) {
+      const result = withTransaction((tx) =>
+        moveOrderItemsBetweenTablesTx(tx, {
+          sourceTable: source,
+          targetTable: target,
+          orderItemIds,
+        }),
       );
-    });
+      movedOrderIds = result.moved_order_ids;
+      movedItemCount = result.moved_item_count;
+      affectedOrderIds = result.affected_order_ids || movedOrderIds;
+    } else {
+      const selected = requestedIds.length
+        ? activeOrders.filter((o) => requestedIds.includes(o.id))
+        : activeOrders;
+      const targetTableNumber = String(target.number ?? '').trim();
+      selected.forEach((order) => {
+        runSql(
+          "UPDATE orders SET table_number = ?, table_id = ?, customer_name = ?, updated_at = datetime('now') WHERE id = ?",
+          [targetTableNumber, target.id, `Mesa ${targetTableNumber}`, order.id],
+        );
+        movedOrderIds.push(order.id);
+      });
+      affectedOrderIds = [...movedOrderIds];
+    }
 
     logAudit({
       actorUserId: req.user.id,
@@ -373,7 +409,9 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
       resourceType: 'table',
       resourceId: `${source.id}->${target.id}`,
       details: {
-        moved_orders: selected.map((o) => o.id),
+        moved_orders: movedOrderIds,
+        moved_items: movedItemCount || undefined,
+        order_item_ids: useItemMove ? orderItemIds : undefined,
         confirm_merge: confirmMerge,
         target_had_orders: targetActiveOrders.length > 0,
       },
@@ -382,12 +420,18 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
     const io = req.app.get('io');
     if (io) {
       io.emit('table-update', {});
-      selected.forEach((o) => {
-        const full = getOrderWithItems(o.id);
+      affectedOrderIds.forEach((oid) => {
+        const full = getOrderWithItems(oid);
         if (full) io.emit('order-update', full);
       });
     }
-    res.json({ success: true, moved: selected.length, source_table: source.number, target_table: target.number });
+    res.json({
+      success: true,
+      moved: movedOrderIds.length,
+      moved_items: movedItemCount || undefined,
+      source_table: source.number,
+      target_table: target.number,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
