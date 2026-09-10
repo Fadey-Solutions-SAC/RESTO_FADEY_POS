@@ -627,7 +627,9 @@ export default function POSPanel() {
   const [dailySales, setDailySales] = useState(null);
   const [loading, setLoading] = useState(true);
   const [workAreaLoading, setWorkAreaLoading] = useState(false);
+  const [preparingCloseModal, setPreparingCloseModal] = useState(false);
   const [closingRegisterBusy, setClosingRegisterBusy] = useState(false);
+  const prepareCloseGenRef = useRef(0);
   const [selectedTable, setSelectedTable] = useState(null);
   const [tableDetail, setTableDetail] = useState(null);
   /** Detalle de mesa (productos + acciones) en ventana superpuesta. */
@@ -1616,24 +1618,11 @@ export default function POSPanel() {
   };
 
   const prepareClose = async () => {
+    if (preparingCloseModal || closingRegisterBusy) return;
+    const gen = prepareCloseGenRef.current + 1;
+    prepareCloseGenRef.current = gen;
     const now = new Date();
     setClosingAtPreview(now);
-    await wakeRemoteApi();
-    try {
-      await loadData();
-    } catch (_) {
-      /* usa el estado actual */
-    }
-    const posRole = String(posUserRef.current?.role || '').toLowerCase();
-    const adminRid = String(adminRegisterIdRef.current || '').trim();
-    const currentRegPath = posRole === 'admin'
-      ? (adminRid ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}` : null)
-      : '/pos/current-register';
-    const fresh = currentRegPath ? await api.get(currentRegPath).catch(() => null) : null;
-    if (currentRegPath && !fresh) {
-      toast.error('No se pudieron leer las ventas del turno. Reintente el cierre; no cierre si los totales salen en 0.');
-    }
-    setClosingData(fresh || register);
     setClosingAmount('');
     setClosingNotes('');
     setDenominations({
@@ -1649,7 +1638,39 @@ export default function POSPanel() {
       c20: '',
       c10: '',
     });
+    setPreparingCloseModal(true);
     setShowCloseModal(true);
+    try {
+      await wakeRemoteApi();
+      if (gen !== prepareCloseGenRef.current) return;
+      try {
+        await loadData();
+      } catch (_) {
+        /* usa el estado actual */
+      }
+      if (gen !== prepareCloseGenRef.current) return;
+      const posRole = String(posUserRef.current?.role || '').toLowerCase();
+      const adminRid = String(adminRegisterIdRef.current || '').trim();
+      const currentRegPath = posRole === 'admin'
+        ? (adminRid ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}` : null)
+        : '/pos/current-register';
+      const fresh = currentRegPath ? await api.get(currentRegPath).catch(() => null) : null;
+      if (gen !== prepareCloseGenRef.current) return;
+      if (currentRegPath && !fresh) {
+        toast.error('No se pudieron leer las ventas del turno. Reintente el cierre; no cierre si los totales salen en 0.');
+      }
+      setClosingData(fresh || register);
+    } finally {
+      if (gen === prepareCloseGenRef.current) setPreparingCloseModal(false);
+    }
+  };
+
+  const dismissCloseModal = () => {
+    if (closingRegisterBusy) return;
+    prepareCloseGenRef.current += 1;
+    setPreparingCloseModal(false);
+    setShowCloseModal(false);
+    setClosingAtPreview(null);
   };
 
   const calculateDenominationTotal = () => {
@@ -3911,6 +3932,14 @@ export default function POSPanel() {
       <div className={cobrarMapReady ? 'flex min-h-0 flex-1 flex-col' : 'mb-3'}>
       {activeCajaOption === 'cobrar' && (
         posRegisterReady ? (
+        workAreaLoading ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <PosInlineLoading
+              title="Cargando área de trabajo…"
+              subtitle="Mesas y zonas de su caja"
+            />
+          </div>
+        ) : (
         <>
       <div className="rf-mesa-map-toolbar mb-2 shrink-0">
         {tablesBySalon.length > 0 ? (
@@ -3992,12 +4021,7 @@ export default function POSPanel() {
       ) : null}
 
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain scrollbar-hide space-y-6 pb-2">
-        {workAreaLoading ? (
-          <PosInlineLoading
-            title="Cargando área de trabajo…"
-            subtitle="Mesas y zonas de su caja"
-          />
-        ) : selectedSalonTables.length > 0 ? (
+        {selectedSalonTables.length > 0 ? (
           <>
             <div className="rf-mesa-map-legend shrink-0">
               <span className="rf-mesa-map-legend__item">
@@ -4353,17 +4377,24 @@ export default function POSPanel() {
         </div>
         <button
           type="button"
-          onClick={prepareClose}
-          disabled={!register}
+          onClick={() => void prepareClose()}
+          disabled={!register || preparingCloseModal}
           className="card flex flex-row items-center gap-2.5 px-3 py-2.5 min-h-[3.75rem] hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
-            <MdClose className="text-red-600 text-xl" />
+            {preparingCloseModal ? (
+              <span className="animate-spin w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full" />
+            ) : (
+              <MdClose className="text-red-600 text-xl" />
+            )}
           </div>
-          <p className="text-base font-bold text-red-700 leading-tight">Cerrar Caja</p>
+          <p className="text-base font-bold text-red-700 leading-tight">
+            {preparingCloseModal ? 'Preparando cierre…' : 'Cerrar Caja'}
+          </p>
         </button>
       </div>
         </>
+        )
         ) : (
           renderOpenRegisterScreen()
         )
@@ -4420,7 +4451,21 @@ export default function POSPanel() {
               <div className="rf-surface-light rounded-lg p-3"><p className="text-xs ui-text-muted">Efectivo esperado</p><p className="font-bold">{formatCurrency(expectedRounded)}</p></div>
               <div className="rf-surface-light rounded-lg p-3"><p className="text-xs ui-text-muted">Ventas del turno</p><p className="font-bold">{formatCurrency(registerSales)}</p></div>
             </div>
-            <button onClick={prepareClose} className="btn-primary">Ir al cierre de caja</button>
+            <button
+              type="button"
+              onClick={() => void prepareClose()}
+              disabled={preparingCloseModal}
+              className="btn-primary flex items-center justify-center gap-2 disabled:opacity-70"
+            >
+              {preparingCloseModal ? (
+                <>
+                  <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                  Preparando cierre…
+                </>
+              ) : (
+                'Ir al cierre de caja'
+              )}
+            </button>
           </div>
         ) : (
           renderOpenRegisterScreen()
@@ -5822,15 +5867,16 @@ export default function POSPanel() {
       {/* Modal Cerrar Caja / Arqueo */}
       <Modal
         isOpen={showCloseModal}
-        onClose={() => {
-          if (closingRegisterBusy) return;
-          setShowCloseModal(false);
-          setClosingAtPreview(null);
-        }}
+        onClose={dismissCloseModal}
         title="Arqueo y Cierre de Caja"
         size="wide"
       >
-        {closingData && (
+        {preparingCloseModal ? (
+          <PosInlineLoading
+            title="Preparando datos de cierre…"
+            subtitle="Calculando ventas y arqueo del turno"
+          />
+        ) : closingData ? (
           <div className="text-[var(--ui-body-text)]">
             <div ref={printRef} className="cash-close-print space-y-0.5">
               <h2>ARQUEO DE CAJA</h2>
@@ -6031,7 +6077,7 @@ export default function POSPanel() {
             <div className="flex flex-wrap gap-3 pt-4 mt-4 border-t border-[color:var(--ui-border)]">
               <button
                 type="button"
-                onClick={() => setShowCloseModal(false)}
+                onClick={dismissCloseModal}
                 disabled={closingRegisterBusy}
                 className="btn-secondary flex-1 min-w-[120px] disabled:opacity-50"
               >
@@ -6064,6 +6110,11 @@ export default function POSPanel() {
               </button>
             </div>
           </div>
+        ) : (
+          <PosInlineLoading
+            title="Preparando datos de cierre…"
+            subtitle="Calculando ventas y arqueo del turno"
+          />
         )}
       </Modal>
 
