@@ -133,12 +133,12 @@ El script está en el repo: `scripts/render-start.sh`. Build: `scripts/render-bu
 | **Vercel** (frontend) | `VITE_API_URL` | `https://TU-SERVICIO.onrender.com` (**sin** `/api`) |
 | **Render** (backend) | `CORS_ORIGIN` | `https://tu-app.vercel.app,http://localhost:5173` |
 
-Despliegues conocidos (el front también los detecta por dominio si falta `VITE_API_URL`):
+Cada par front/API es independiente: **un proyecto Vercel** + **un Web Service Render**, cada uno con sus variables (no compartir `VITE_API_URL` entre proyectos Vercel distintos).
 
-| Vercel | Render |
-|--------|--------|
+| Ejemplo Vercel | Ejemplo Render (`VITE_API_URL` / `CORS_ORIGIN`) |
+|----------------|--------------------------------------------------|
 | `sistemademo.vercel.app` | `https://sistema-demo-m80e.onrender.com` |
-| `zoilas-suite-escape.vercel.app` | `https://zoilas-suite-escape.onrender.com` |
+| `resto-fadey-pos.vercel.app` | `https://resto-fadey-pos.onrender.com` |
 
 - `CORS_ORIGIN` en **Vercel no sirve** — debe estar en **Render**.
 - `JWT_SECRET`, `DB_PATH`, `PERU_CONSULTAS_TOKEN`, etc. van en **Render**, no en Vercel.

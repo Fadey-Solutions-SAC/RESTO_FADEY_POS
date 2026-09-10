@@ -552,9 +552,18 @@ async function start() {
     }
     console.error('[server] error en el socket HTTP:', err.message || err);
   });
+  if (isCloudDeployment() && !corsOrigins.length) {
+    console.warn(
+      '[CRÍTICO] CORS_ORIGIN vacío en Render. Defina la URL de su front (Vercel o dominio propio) en Environment.',
+    );
+  }
+
   server.listen(PORT, LISTEN_HOST, () => {
     const localUrl = `http://${LISTEN_HOST === '0.0.0.0' ? '127.0.0.1' : LISTEN_HOST}:${PORT}`;
     console.log(`[server] escuchando en http://${LISTEN_HOST}:${PORT} (acceso local típico: ${localUrl})`);
+    if (corsOrigins.length) {
+      console.log(`[server] CORS_ORIGIN: ${corsOrigins.join(', ')}`);
+    }
     console.log(`
 ======================================================
    RESTAURANT PLATFORM - SERVIDOR ACTIVO

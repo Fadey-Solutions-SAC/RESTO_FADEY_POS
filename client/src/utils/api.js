@@ -40,16 +40,76 @@ if (hasExplicitApi) {
   API_ORIGIN = normalizeApiOrigin(String(rawApi).trim());
 }
 
-/** Origen del API sin `/api`. Solo VITE_API_URL (o localStorage); nunca un host fijo. */
+function isLocalHostName(host) {
+  const h = String(host || '').toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+}
+
+/** Front en producción (Vercel, dominio propio, etc.), no localhost. */
+function isProductionRemoteFront() {
+  if (typeof window === 'undefined' || !import.meta.env.PROD) return false;
+  return !isLocalHostName(window.location.hostname);
+}
+
+/** En producción remota solo cuenta VITE_API_URL del build (no localStorage). */
+function allowLocalStorageApiOverride() {
+  if (typeof window === 'undefined') return false;
+  if (!import.meta.env.PROD) return true;
+  return !isProductionRemoteFront();
+}
+
+/** Origen del API sin `/api`. Solo VITE_API_URL embebida en el build (+ override local en dev/escritorio). */
 export function getConfiguredApiOrigin() {
   if (hasExplicitApi && API_ORIGIN) return API_ORIGIN;
   return '';
 }
 
-/** URL efectiva del API (`/api` incluido), con override opcional en localStorage. */
+/** Valida VITE_API_URL del build (Vercel) para este despliegue. */
+export function getApiDeployIssues() {
+  const issues = [];
+  if (typeof window === 'undefined' || !import.meta.env.PROD || !isProductionRemoteFront()) {
+    return issues;
+  }
+  const frontOrigin = window.location.origin;
+  const configured = getConfiguredApiOrigin();
+
+  if (!configured) {
+    issues.push(
+      'Falta VITE_API_URL en Vercel (Environment Variables). Use la URL de su API en Render, sin /api, y Redeploy.',
+    );
+    return issues;
+  }
+
+  try {
+    const apiHost = new URL(configured).hostname.toLowerCase();
+    if (/\.vercel\.app$/i.test(apiHost)) {
+      issues.push('VITE_API_URL no puede apuntar a Vercel. Debe ser la URL onrender.com de su API.');
+    }
+  } catch (_) {
+    issues.push('VITE_API_URL no es una URL válida.');
+    return issues;
+  }
+
+  if (configured === frontOrigin) {
+    issues.push('VITE_API_URL no puede ser la misma URL del frontend.');
+  }
+  return issues;
+}
+
+function apiConnectionErrorMessage(apiOrigin, frontOrigin) {
+  const configHint = getApiDeployIssues()[0];
+  if (configHint) return configHint;
+  return (
+    `No se pudo conectar al API (${apiOrigin || 'sin URL'}). ` +
+    `Vercel: VITE_API_URL = URL de su Render (sin /api). ` +
+    `Render: CORS_ORIGIN debe incluir ${frontOrigin}.`
+  );
+}
+
+/** URL efectiva del API (`/api` incluido). */
 export function getApiBase() {
   let origin = getConfiguredApiOrigin();
-  if (typeof window !== 'undefined') {
+  if (!origin && allowLocalStorageApiOverride() && typeof window !== 'undefined') {
     const ls = String(window.localStorage?.getItem('resto_api_url') || '').trim();
     if (ls) origin = normalizeApiOrigin(ls);
   }
@@ -58,21 +118,16 @@ export function getApiBase() {
 
 export const API_BASE = getApiBase();
 
-/** URL del backend sin `/api` (para mostrar en diagnóstico o sockets). */
+/** URL del backend sin `/api` (para diagnóstico o sockets). */
 export function getApiOrigin() {
-  if (typeof window !== 'undefined') {
+  const configured = getConfiguredApiOrigin();
+  if (configured) return configured;
+  if (allowLocalStorageApiOverride() && typeof window !== 'undefined') {
     const ls = String(window.localStorage?.getItem('resto_api_url') || '').trim();
     if (ls) return normalizeApiOrigin(ls);
   }
-  const configured = getConfiguredApiOrigin();
-  if (configured) return configured;
   if (typeof window !== 'undefined') return window.location.origin;
   return '';
-}
-
-function isLocalHostName(host) {
-  const h = String(host || '').toLowerCase();
-  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
 }
 
 /** Resto FADEY instalado: front en http://127.0.0.1:PUERTO (API embebida en la PC). */
@@ -324,12 +379,7 @@ async function request(endpoint, options = {}) {
             'Si el error se repite, revise que el servicio en Render esté en verde.',
         );
       }
-      throw new Error(
-        `No se pudo conectar al API (${origin}). ` +
-          `Caja puede seguir en modo local si ya cargó mesas y productos. ` +
-          `Vercel → VITE_API_URL = URL de ESTE Web Service de Render (sin /api) y Redeploy. ` +
-          `Render → CORS_ORIGIN debe incluir ${frontOrigin}.`,
-      );
+      throw new Error(apiConnectionErrorMessage(origin, frontOrigin));
     }
     throw err;
   }
@@ -1023,7 +1073,10 @@ export const api = {
       const msg = String(err?.message || err || '');
       if (/failed to fetch|network/i.test(msg)) {
         throw new Error(
-          `No se pudo conectar al API (${getApiOrigin() || API_BASE}). Revise VITE_API_URL en Vercel, CORS_ORIGIN en Render y que el servicio Node esté en verde.`,
+          apiConnectionErrorMessage(
+            getApiOrigin() || API_BASE,
+            typeof window !== 'undefined' ? window.location.origin : '',
+          ),
         );
       }
       throw err;
@@ -1034,7 +1087,7 @@ export const api = {
       data = text ? JSON.parse(text) : null;
     } catch (_) {
       if (/text\/html/i.test(String(res.headers.get('content-type') || '')) || text.trimStart().startsWith('<!')) {
-        throw new Error('El servidor devolvió HTML. VITE_API_URL en Vercel debe apuntar a su API en Render (sin /api).');
+        throw new Error('El servidor devolvió HTML. VITE_API_URL debe apuntar a su API en Render (sin /api).');
       }
     }
     if (!res.ok) {
@@ -1063,7 +1116,10 @@ export const api = {
       const msg = String(err?.message || err || '');
       if (/failed to fetch|network/i.test(msg)) {
         throw new Error(
-          `No se pudo conectar al API (${getApiOrigin() || API_BASE}). Revise VITE_API_URL en Vercel y que Render esté activo.`,
+          apiConnectionErrorMessage(
+            getApiOrigin() || API_BASE,
+            typeof window !== 'undefined' ? window.location.origin : '',
+          ),
         );
       }
       throw err;
@@ -1074,7 +1130,7 @@ export const api = {
     }
     const contentType = String(res.headers.get('content-type') || '').toLowerCase();
     if (contentType.includes('text/html')) {
-      throw new Error('El servidor devolvió HTML en lugar del .db. Revise VITE_API_URL en Vercel.');
+      throw new Error('El servidor devolvió HTML en lugar del .db. Revise VITE_API_URL (URL de Render, sin /api).');
     }
     const blob = await res.blob();
     const full = await blob.arrayBuffer();

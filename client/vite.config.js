@@ -10,6 +10,13 @@ const repoRoot = resolve(__dirname, '..');
 
 export default defineConfig(() => {
   const isDesktopBuild = String(process.env.VITE_DESKTOP_BUILD || '').trim() === '1';
+  const viteApiUrl = String(process.env.VITE_API_URL || '').trim();
+  if (process.env.VERCEL && !isDesktopBuild && !viteApiUrl) {
+    console.error('[build] Defina VITE_API_URL en Vercel (URL de su API en Render, sin /api).');
+  }
+  if (viteApiUrl && /\.vercel\.app/i.test(viteApiUrl)) {
+    console.error('[build] VITE_API_URL no puede apuntar a Vercel; use la URL onrender.com de su API.');
+  }
   return {
     base: isDesktopBuild ? './' : '/',
     define: {
