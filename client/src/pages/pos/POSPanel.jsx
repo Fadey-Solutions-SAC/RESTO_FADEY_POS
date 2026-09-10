@@ -593,6 +593,18 @@ function buildDeliveryCajaSlots(orders) {
   }));
 }
 
+function PosInlineLoading({ title, subtitle }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4 gap-3" role="status" aria-live="polite">
+      <div className="animate-spin w-10 h-10 border-4 border-gold-500 border-t-transparent rounded-full" aria-hidden="true" />
+      <p className="text-sm font-semibold text-[var(--ui-body-text)]">{title}</p>
+      {subtitle ? (
+        <p className="text-xs text-[var(--ui-muted)] text-center max-w-xs">{subtitle}</p>
+      ) : null}
+    </div>
+  );
+}
+
 export default function POSPanel() {
   const showDeliveryUi = useShowDeliveryUi();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -614,6 +626,8 @@ export default function POSPanel() {
   const [registerStatus, setRegisterStatus] = useState({ is_open: false, register: null });
   const [dailySales, setDailySales] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [workAreaLoading, setWorkAreaLoading] = useState(false);
+  const [closingRegisterBusy, setClosingRegisterBusy] = useState(false);
   const [selectedTable, setSelectedTable] = useState(null);
   const [tableDetail, setTableDetail] = useState(null);
   /** Detalle de mesa (productos + acciones) en ventana superpuesta. */
@@ -1530,9 +1544,11 @@ export default function POSPanel() {
   ];
 
   const openRegisterForCajero = async () => {
+    if (workAreaLoading) return;
     if (openingAmount === '') return toast.error('Ingresa el monto inicial de caja');
     const amount = parseFloat(openingAmount);
     if (Number.isNaN(amount) || amount < 0) return toast.error('El monto inicial no es válido');
+    setWorkAreaLoading(true);
     try {
       const reg = await api.post('/pos/open-register', { opening_amount: amount });
       setRegister(reg);
@@ -1541,14 +1557,17 @@ export default function POSPanel() {
       toast.success(`Caja abierta con ${formatCurrency(amount)}`);
       await loadData();
     } catch (err) { toast.error(err.message); }
+    finally { setWorkAreaLoading(false); }
   };
 
   const openStationRegisterForAdmin = async (stationId) => {
+    if (workAreaLoading) return;
     if (openingAmount === '') return toast.error('Ingresa el monto inicial de caja');
     const amount = parseFloat(openingAmount);
     if (Number.isNaN(amount) || amount < 0) return toast.error('El monto inicial no es válido');
     const sid = String(stationId || '').trim();
     if (!sid) return toast.error('Caja no válida');
+    setWorkAreaLoading(true);
     try {
       const reg = await api.post('/pos/open-register', { opening_amount: amount, caja_station_id: sid });
       persistAdminRegisterId(reg.id);
@@ -1559,27 +1578,34 @@ export default function POSPanel() {
       toast.success(`Caja abierta con ${formatCurrency(amount)}`);
       await loadData({ adminRegisterOverride: reg.id });
     } catch (err) { toast.error(err.message); }
+    finally { setWorkAreaLoading(false); }
   };
 
   const attachAdminToRegister = async (registerId) => {
+    if (workAreaLoading) return;
     const rid = String(registerId || '').trim();
     if (!rid) return;
-    persistAdminRegisterId(rid);
-    setAdminRegisterId(rid);
-    const station = cajaStations.find((s) => String(s.open_register?.id || '') === rid);
-    const op = station?.open_register;
-    if (op) {
-      setRegister((prev) => ({
-        ...(prev && String(prev.id) === rid ? prev : {}),
-        id: rid,
-        caja_station_id: station.id,
-        user_id: op.user_id,
-        cajero_name: op.cajero_name,
-        opened_at: op.opened_at,
-      }));
+    setWorkAreaLoading(true);
+    try {
+      persistAdminRegisterId(rid);
+      setAdminRegisterId(rid);
+      const station = cajaStations.find((s) => String(s.open_register?.id || '') === rid);
+      const op = station?.open_register;
+      if (op) {
+        setRegister((prev) => ({
+          ...(prev && String(prev.id) === rid ? prev : {}),
+          id: rid,
+          caja_station_id: station.id,
+          user_id: op.user_id,
+          cajero_name: op.cajero_name,
+          opened_at: op.opened_at,
+        }));
+      }
+      void prefetchTablesForCaja(station?.id, String(user?.role || '').toLowerCase());
+      await loadData({ adminRegisterOverride: rid });
+    } finally {
+      setWorkAreaLoading(false);
     }
-    void prefetchTablesForCaja(station?.id, String(user?.role || '').toLowerCase());
-    await loadData({ adminRegisterOverride: rid });
   };
 
   const clearAdminRegisterContext = async () => {
@@ -1642,9 +1668,11 @@ export default function POSPanel() {
   };
 
   const closeRegister = async () => {
+    if (closingRegisterBusy) return;
     if (closingAmount === '') return toast.error('Ingresa el efectivo contado para cerrar caja');
     const amount = roundMoneySoles(parseFloat(closingAmount));
     if (Number.isNaN(amount) || amount < 0) return toast.error('El efectivo contado no es válido');
+    setClosingRegisterBusy(true);
     try {
       await wakeRemoteApi();
       await api.post('/pos/close-register', {
@@ -1670,6 +1698,7 @@ export default function POSPanel() {
       await loadData();
       await loadCajaExtras();
     } catch (err) { toast.error(err.message); }
+    finally { setClosingRegisterBusy(false); }
   };
   /** Impresión clásica (diálogo del navegador / impresora USB), no tiketera térmica. */
   const printCloseRegisterManual = () => {
@@ -3773,18 +3802,37 @@ export default function POSPanel() {
                           <button
                             type="button"
                             onClick={() => void attachAdminToRegister(op.id)}
-                            className="btn-primary text-sm flex items-center gap-1"
+                            disabled={workAreaLoading}
+                            className="btn-primary text-sm flex items-center gap-1 disabled:opacity-60"
                           >
-                            <MdPointOfSale /> Operar esta caja
+                            {workAreaLoading ? (
+                              <>
+                                <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                Cargando área…
+                              </>
+                            ) : (
+                              <>
+                                <MdPointOfSale /> Operar esta caja
+                              </>
+                            )}
                           </button>
                         ) : (
                           <button
                             type="button"
                             onClick={() => void openStationRegisterForAdmin(st.id)}
-                            disabled={openingAmount === ''}
+                            disabled={openingAmount === '' || workAreaLoading}
                             className="btn-primary text-sm flex items-center gap-1 disabled:opacity-50"
                           >
-                            <MdPointOfSale /> Abrir turno
+                            {workAreaLoading ? (
+                              <>
+                                <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                Cargando área…
+                              </>
+                            ) : (
+                              <>
+                                <MdPointOfSale /> Abrir turno
+                              </>
+                            )}
                           </button>
                         )}
                       </div>
@@ -3831,10 +3879,19 @@ export default function POSPanel() {
           <button
             type="button"
             onClick={() => void openRegisterForCajero()}
-            disabled={openingAmount === ''}
+            disabled={openingAmount === '' || workAreaLoading}
             className="btn-primary w-full py-3 text-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <MdPointOfSale /> Abrir Caja
+            {workAreaLoading ? (
+              <>
+                <span className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                Cargando área de trabajo…
+              </>
+            ) : (
+              <>
+                <MdPointOfSale /> Abrir Caja
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -3935,7 +3992,12 @@ export default function POSPanel() {
       ) : null}
 
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain scrollbar-hide space-y-6 pb-2">
-        {selectedSalonTables.length > 0 ? (
+        {workAreaLoading ? (
+          <PosInlineLoading
+            title="Cargando área de trabajo…"
+            subtitle="Mesas y zonas de su caja"
+          />
+        ) : selectedSalonTables.length > 0 ? (
           <>
             <div className="rf-mesa-map-legend shrink-0">
               <span className="rf-mesa-map-legend__item">
@@ -5758,7 +5820,16 @@ export default function POSPanel() {
       </Modal>
 
       {/* Modal Cerrar Caja / Arqueo */}
-      <Modal isOpen={showCloseModal} onClose={() => { setShowCloseModal(false); setClosingAtPreview(null); }} title="Arqueo y Cierre de Caja" size="wide">
+      <Modal
+        isOpen={showCloseModal}
+        onClose={() => {
+          if (closingRegisterBusy) return;
+          setShowCloseModal(false);
+          setClosingAtPreview(null);
+        }}
+        title="Arqueo y Cierre de Caja"
+        size="wide"
+      >
         {closingData && (
           <div className="text-[var(--ui-body-text)]">
             <div ref={printRef} className="cash-close-print space-y-0.5">
@@ -5958,16 +6029,38 @@ export default function POSPanel() {
             </div>
 
             <div className="flex flex-wrap gap-3 pt-4 mt-4 border-t border-[color:var(--ui-border)]">
-              <button onClick={() => setShowCloseModal(false)} className="btn-secondary flex-1 min-w-[120px]">Cancelar</button>
+              <button
+                type="button"
+                onClick={() => setShowCloseModal(false)}
+                disabled={closingRegisterBusy}
+                className="btn-secondary flex-1 min-w-[120px] disabled:opacity-50"
+              >
+                Cancelar
+              </button>
               <button
                 type="button"
                 onClick={printCloseRegisterManual}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm btn-secondary min-w-[180px]"
+                disabled={closingRegisterBusy}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm btn-secondary min-w-[180px] disabled:opacity-50"
               >
                 <MdPrint /> Imprimir cierre de caja
               </button>
-              <button onClick={closeRegister} className="btn-primary flex-1 flex items-center justify-center gap-2">
-                <MdCheckCircle /> Cerrar Caja
+              <button
+                type="button"
+                onClick={closeRegister}
+                disabled={closingRegisterBusy}
+                className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-70"
+              >
+                {closingRegisterBusy ? (
+                  <>
+                    <span className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                    Preparando cierre de caja…
+                  </>
+                ) : (
+                  <>
+                    <MdCheckCircle /> Cerrar Caja
+                  </>
+                )}
               </button>
             </div>
           </div>
