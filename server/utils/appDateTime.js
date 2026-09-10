@@ -122,6 +122,7 @@ function sqlBusinessNowExpr(queryOneFn, ...modifiers) {
 module.exports = {
   DEFAULT_TIMEZONE,
   DEFAULT_UTC_OFFSET,
+  partsFromDate,
   resolveRegionalTimezone,
   formatLimaSqlDateTime,
   nowLimaSql,
