@@ -96,14 +96,38 @@ export function getApiDeployIssues() {
   return issues;
 }
 
-function apiConnectionErrorMessage(apiOrigin, frontOrigin) {
+function apiConnectionErrorMessage(apiOrigin, frontOrigin, { context = '' } = {}) {
   const configHint = getApiDeployIssues()[0];
   if (configHint) return configHint;
+  const prefix = context ? `${context} ` : '';
   return (
-    `No se pudo conectar al API (${apiOrigin || 'sin URL'}). ` +
-    `Vercel: VITE_API_URL = URL de su Render (sin /api). ` +
-    `Render: CORS_ORIGIN debe incluir ${frontOrigin}.`
+    `${prefix}No se pudo conectar al API (${apiOrigin || 'sin URL'}). ` +
+    'Reintente en unos segundos. Si el servicio en Render estaba inactivo puede tardar hasta 30 s en despertar. ' +
+    'Si el error se repite, revise en Render que el servicio esté activo (estado verde).'
   );
+}
+
+/** Despierta el API en Render antes de operaciones críticas (p. ej. cierre de caja). */
+export async function wakeRemoteApi(timeoutMs = 35000) {
+  if (!isProductionRemoteFront()) return true;
+  const base = getApiBase();
+  if (!base) return false;
+  const opts = { cache: 'no-store', method: 'GET' };
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    opts.signal = AbortSignal.timeout(timeoutMs);
+  }
+  try {
+    const res = await fetch(`${base}/health`, opts);
+    return res.ok;
+  } catch (_) {
+    return false;
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 /** URL efectiva del API (`/api` incluido). */
@@ -319,7 +343,7 @@ export function getSocketOrigin() {
   return '';
 }
 
-async function request(endpoint, options = {}) {
+async function request(endpoint, options = {}, attempt = 0) {
   const token = localStorage.getItem('token');
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -329,6 +353,8 @@ async function request(endpoint, options = {}) {
   const url = `${getApiBase()}${endpoint}`;
   const fetchOptions = { ...options };
   delete fetchOptions.skipOffline;
+  delete fetchOptions._retryContext;
+  const retryContext = String(options._retryContext || '').trim();
 
   const useLocalFallback = () => {
     if (skipOffline) return null;
@@ -351,7 +377,7 @@ async function request(endpoint, options = {}) {
 
   let timeoutId = null;
   if (!fetchOptions.signal) {
-    const timeoutMs = skipOffline ? 25000 : 8000;
+    const timeoutMs = skipOffline ? 55000 : 8000;
     if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
       fetchOptions.signal = AbortSignal.timeout(timeoutMs);
     } else if (typeof AbortController !== 'undefined') {
@@ -372,14 +398,19 @@ async function request(endpoint, options = {}) {
     if (/failed to fetch|networkerror|load failed|network|abort/i.test(msg) || err?.name === 'AbortError') {
       const origin = getApiOrigin() || url;
       const frontOrigin = typeof window !== 'undefined' ? window.location.origin : 'su dominio Vercel';
+      if (skipOffline && attempt < 1 && isNetworkFailure(err)) {
+        await sleep(2000);
+        await wakeRemoteApi();
+        return request(endpoint, { ...options, _retryContext: retryContext }, attempt + 1);
+      }
       if (err?.name === 'AbortError') {
         throw new Error(
-          `El servidor tardó demasiado en responder (${origin}). ` +
-            'Reintente el cierre; si acaba de despertar Render puede tardar unos segundos. ' +
+          `${retryContext ? `${retryContext} ` : ''}El servidor tardó demasiado en responder (${origin}). ` +
+            'Reintente; si acaba de despertar Render puede tardar unos segundos. ' +
             'Si el error se repite, revise que el servicio en Render esté en verde.',
         );
       }
-      throw new Error(apiConnectionErrorMessage(origin, frontOrigin));
+      throw new Error(apiConnectionErrorMessage(origin, frontOrigin, { context: retryContext }));
     }
     throw err;
   }

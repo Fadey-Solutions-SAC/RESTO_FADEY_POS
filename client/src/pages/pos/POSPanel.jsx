@@ -108,6 +108,7 @@ function dominantPaymentFromBreakdown(obj) {
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   api,
+  wakeRemoteApi,
   checkPrintingHealth,
   electronPrinting,
   formatCurrency,
@@ -1591,6 +1592,7 @@ export default function POSPanel() {
   const prepareClose = async () => {
     const now = new Date();
     setClosingAtPreview(now);
+    await wakeRemoteApi();
     try {
       await loadData();
     } catch (_) {
@@ -1644,6 +1646,7 @@ export default function POSPanel() {
     const amount = roundMoneySoles(parseFloat(closingAmount));
     if (Number.isNaN(amount) || amount < 0) return toast.error('El efectivo contado no es válido');
     try {
+      await wakeRemoteApi();
       await api.post('/pos/close-register', {
         closing_amount: amount,
         notes: closingNotes,
@@ -1655,7 +1658,7 @@ export default function POSPanel() {
           observations: closingNotes,
         },
         ...posRegisterBody(),
-      }, { skipOffline: true });
+      }, { skipOffline: true, _retryContext: 'Cierre de caja:' });
       toast.success('Caja cerrada — Informe guardado');
       setShowCloseModal(false);
       setClosingAtPreview(null);

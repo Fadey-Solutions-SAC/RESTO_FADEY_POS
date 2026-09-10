@@ -496,6 +496,7 @@ router.get('/current-register', authenticateToken, requireRole('admin', 'cajero'
 });
 
 router.post('/close-register', authenticateToken, requireRole('admin', 'cajero'), async (req, res) => {
+  try {
   const { closing_amount, notes: closingNotesText, arqueo } = req.body;
   const register = resolvePosRegister(req);
   if (!register) return res.status(400).json({ error: 'No tienes una caja abierta' });
@@ -588,6 +589,12 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
   }).catch((notifyErr) => {
     console.error('[close-register] aviso externo fallido:', notifyErr.message);
   });
+  } catch (err) {
+    console.error('[pos/close-register]', err?.message || err);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: err.message || 'No se pudo cerrar caja. Reintente.' });
+    }
+  }
 });
 
 router.post('/send-close-email', authenticateToken, requireRole('admin', 'cajero'), async (req, res) => {
