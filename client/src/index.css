@@ -1668,3 +1668,88 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
 @media print {
   .no-print { display: none !important; }
 }
+
+/* Catálogo «Agregar pedido»: columnas fijas (no depende de clases arbitrarias de Tailwind) */
+.rf-staff-order-catalog-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.75rem 5.25rem;
+  column-gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+.rf-staff-order-catalog-row--head {
+  padding-bottom: 0.125rem;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ui-muted);
+}
+.rf-staff-order-catalog-row--btn {
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  margin: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: 0.375rem;
+  background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: box-shadow 0.15s ease;
+}
+.rf-staff-order-catalog-row--btn:hover {
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+.rf-staff-order-catalog-row__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--ui-body-text) !important;
+}
+.rf-staff-order-catalog-row__stock {
+  text-align: right;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-muted) !important;
+}
+.rf-staff-order-catalog-row__stock.is-out {
+  color: #dc2626 !important;
+  font-weight: 600;
+}
+.rf-staff-order-catalog-row__price {
+  text-align: right;
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-accent) !important;
+}
+.rf-staff-order-catalog-row__head-stock,
+.rf-staff-order-catalog-row__head-price,
+.rf-staff-order-catalog-row__stock,
+.rf-staff-order-catalog-row__price {
+  text-align: right;
+}
+.rf-staff-order-catalog-row__combo-note {
+  grid-column: 1 / -1;
+  margin-top: -0.125rem;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ui-muted) !important;
+}
+html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
+  background: var(--ui-surface-2);
+}
+.rf-modal-panel .rf-staff-order-catalog-row__name,
+.rf-modal-panel .rf-staff-order-catalog-row__price,
+.rf-modal-panel .rf-staff-order-catalog-row__stock {
+  opacity: 1 !important;
+}

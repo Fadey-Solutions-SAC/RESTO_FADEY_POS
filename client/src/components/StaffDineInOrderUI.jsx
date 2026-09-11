@@ -508,15 +508,8 @@ export default function StaffDineInOrderUI({
 
   const fmtMoney = formatCurrency || ((amount) => `S/ ${Number(amount || 0).toFixed(2)}`);
 
-  /** Misma plantilla en cabecera y filas para alinear Stock y Precio */
-  const orderCatalogRowGridClass =
-    'grid w-full max-w-full min-w-0 grid-cols-[minmax(0,1fr)_3.75rem_5.25rem] items-center gap-x-2 px-3';
-
-  const orderRowBtnClass =
-    `${orderCatalogRowGridClass} rounded-md border border-[color:var(--ui-border)] bg-white py-2.5 text-left shadow-sm transition-shadow hover:shadow-md dark:bg-[var(--ui-surface-2)]`;
-
   const renderOrderProductName = (product) => (
-    <span className="min-w-0 truncate text-sm font-medium text-[var(--ui-body-text)]" title={product.name}>
+    <span className="rf-staff-order-catalog-row__name" title={product.name}>
       {product.is_combo ? (
         <span className="mr-1 inline-block rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase text-blue-800">
           Combo
@@ -530,16 +523,17 @@ export default function StaffDineInOrderUI({
     const stockText = orderingStockCellText(product, { hideStock: hideProductStock });
     const stockOut = orderingStockCellIsOut(product, { hideStock: hideProductStock });
     const unitPrice = fmtMoney(orderingProductUnitPrice(product));
-    const stockClass = stockOut ? 'text-red-600 font-semibold' : 'text-[var(--ui-muted)]';
     return (
-      <button type="button" onClick={() => onProductPick(product)} className={orderRowBtnClass}>
+      <button
+        type="button"
+        onClick={() => onProductPick(product)}
+        className="rf-staff-order-catalog-row rf-staff-order-catalog-row--btn"
+      >
         {renderOrderProductName(product)}
-        <span className={`text-right text-xs tabular-nums ${stockClass}`}>{stockText}</span>
-        <span className="text-right text-sm font-bold tabular-nums text-[var(--ui-accent)]">{unitPrice}</span>
+        <span className={`rf-staff-order-catalog-row__stock${stockOut ? ' is-out' : ''}`}>{stockText}</span>
+        <span className="rf-staff-order-catalog-row__price">{unitPrice}</span>
         {!compact && product.is_combo && product.description ? (
-          <span className="col-span-3 -mt-1 line-clamp-2 px-0 text-left text-[11px] text-[var(--ui-muted)]">
-            {product.description}
-          </span>
+          <span className="rf-staff-order-catalog-row__combo-note line-clamp-2">{product.description}</span>
         ) : null}
       </button>
     );
@@ -559,12 +553,12 @@ export default function StaffDineInOrderUI({
           {!showProductThumbnail ? (
             <>
               <div
-                className={`${orderCatalogRowGridClass} shrink-0 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]`}
+                className="rf-staff-order-catalog-row rf-staff-order-catalog-row--head shrink-0"
                 aria-hidden="true"
               >
                 <span>Producto</span>
-                <span className="text-right">Stock</span>
-                <span className="text-right">Precio</span>
+                <span className="rf-staff-order-catalog-row__head-stock">Stock</span>
+                <span className="rf-staff-order-catalog-row__head-price">Precio</span>
               </div>
               {filteredProducts.map((p) => (
                 <div key={p.id} className="min-w-0 max-w-full">
