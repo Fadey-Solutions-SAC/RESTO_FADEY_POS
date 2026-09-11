@@ -279,6 +279,7 @@ import Modal from '../../components/Modal';
 import MesaTransferModal from '../../components/MesaTransferModal';
 import MesaMapTableTile from '../../components/MesaMapTableTile';
 import StaffDineInOrderUI, { StaffDineInOrderCartPanel, VIEWPORT_CART_MAX_CLASS } from '../../components/StaffDineInOrderUI';
+import { staffOrderModalProps } from '../../components/staffOrderModalLayout';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
 import { canPosDeleteOrReleaseTable, canAjusteBarAutoDismiss } from '../../utils/posPermissions';
@@ -4578,44 +4579,43 @@ export default function POSPanel() {
 
       {/* Modal tomar pedido / venta rápida */}
       <Modal
-        isOpen={showMenu}
-        onClose={() => {
-          setShowMenu(false);
-          setQuickSaleMode(false);
-          setEditingOrderId('');
-          setEditingSessionOrderIds([]);
-          setParaLlevarMesa(false);
-          setMesaOrderObservation('');
-          setAmountReceived('');
-          setMultiPayEnabled(false);
-          setMultiPayAmounts(emptyMultiPaymentAmounts());
-          setTipPayEnabled(false);
-          setCheckoutTipAmount('');
-          resetBillingForm();
-          resetCart();
-          clearMesaLock();
-        }}
-        title={(() => {
-          if (quickSaleMode) return 'Venta rápida';
-          if (editingOrderId && selectedTable) {
-            if (editingSessionOrderIds.length > 1) {
-              const nums = (selectedTable.orders || [])
-                .filter((x) => editingSessionOrderIds.includes(x.id))
-                .map((x) => x.order_number)
-                .filter((n) => n != null);
-              const suffix = nums.length ? ` · #${nums.join(', #')}` : '';
-              return `Modificar pedidos — ${selectedTable.name || ''}${suffix}`;
+        {...staffOrderModalProps({
+          isOpen: showMenu,
+          onClose: () => {
+            setShowMenu(false);
+            setQuickSaleMode(false);
+            setEditingOrderId('');
+            setEditingSessionOrderIds([]);
+            setParaLlevarMesa(false);
+            setMesaOrderObservation('');
+            setAmountReceived('');
+            setMultiPayEnabled(false);
+            setMultiPayAmounts(emptyMultiPaymentAmounts());
+            setTipPayEnabled(false);
+            setCheckoutTipAmount('');
+            resetBillingForm();
+            resetCart();
+            clearMesaLock();
+          },
+          title: (() => {
+            if (quickSaleMode) return 'Venta rápida';
+            if (editingOrderId && selectedTable) {
+              if (editingSessionOrderIds.length > 1) {
+                const nums = (selectedTable.orders || [])
+                  .filter((x) => editingSessionOrderIds.includes(x.id))
+                  .map((x) => x.order_number)
+                  .filter((n) => n != null);
+                const suffix = nums.length ? ` · #${nums.join(', #')}` : '';
+                return `Modificar pedidos — ${selectedTable.name || ''}${suffix}`;
+              }
+              const o = (selectedTable.orders || []).find((x) => x.id === editingOrderId);
+              return o
+                ? `Modificar pedido #${o.order_number} — ${selectedTable.name || ''}`
+                : `Modificar pedido — ${selectedTable.name || ''}`;
             }
-            const o = (selectedTable.orders || []).find((x) => x.id === editingOrderId);
-            return o
-              ? `Modificar pedido #${o.order_number} — ${selectedTable.name || ''}`
-              : `Modificar pedido — ${selectedTable.name || ''}`;
-          }
-          return `Agregar Pedido — ${getMesaLock()?.name || selectedTable?.name || ''}`;
-        })()}
-        size="xl"
-        maxHeightClass="h-[min(92vh,920px)] max-h-[min(92vh,920px)]"
-        bodyClassName="!flex !min-h-0 !min-w-0 !flex-1 !flex-col !overflow-hidden !px-4 !pb-4 !pt-2 sm:!px-6 sm:!pb-6"
+            return `Agregar Pedido — ${getMesaLock()?.name || selectedTable?.name || ''}`;
+          })(),
+        })}
       >
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         {quickSaleMode ? (

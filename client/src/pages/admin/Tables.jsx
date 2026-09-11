@@ -9,6 +9,7 @@ import Modal from '../../components/Modal';
 import MesaTransferModal from '../../components/MesaTransferModal';
 import MesaMapTableTile from '../../components/MesaMapTableTile';
 import StaffDineInOrderUI, { StaffDineInOrderCartPanel, VIEWPORT_CART_MAX_CLASS } from '../../components/StaffDineInOrderUI';
+import { staffOrderModalProps } from '../../components/staffOrderModalLayout';
 import StaffMesaPedidoTabs from '../../components/StaffMesaPedidoTabs';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import toast from 'react-hot-toast';
@@ -403,12 +404,11 @@ export default function Tables() {
       )}
 
       <Modal
-        isOpen={showMenu && Boolean(selectedTable)}
-        onClose={closeMenuPanel}
-        title={`Agregar Pedido — ${selectedTable?.name || ''}`}
-        size="xl"
-        maxHeightClass="h-[min(92vh,920px)] max-h-[min(92vh,920px)]"
-        bodyClassName="!flex !min-h-0 !min-w-0 !flex-1 !flex-col !overflow-hidden !px-4 !pb-4 !pt-2 sm:!px-6 sm:!pb-6"
+        {...staffOrderModalProps({
+          isOpen: showMenu && Boolean(selectedTable),
+          onClose: closeMenuPanel,
+          title: `Agregar Pedido — ${selectedTable?.name || ''}`,
+        })}
       >
         {selectedTable ? (
           <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">

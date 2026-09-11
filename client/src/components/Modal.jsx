@@ -34,6 +34,8 @@ export default function Modal({
     lg: 'max-w-2xl',
     xl: 'max-w-4xl',
     full: 'max-w-6xl',
+    /** Tomar pedido (Mesas / Caja): ancho útil en PC, columna pedido angosta aparte */
+    staffOrder: 'max-w-[min(calc(100vw-1.5rem),72rem)]',
     /** Casi ancho completo útil en escritorio (generador de cartas, etc.) */
     wide: 'max-w-[min(96rem,calc(100vw-1rem))]',
   }[size] || 'max-w-lg';
