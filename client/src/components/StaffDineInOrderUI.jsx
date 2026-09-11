@@ -466,35 +466,43 @@ export default function StaffDineInOrderUI({
 
   const categoriesBlock = (
     <div
-      className={`flex shrink-0 flex-nowrap gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 pr-0.5 [-webkit-overflow-scrolling:touch] touch-pan-x ${fillParentHeight ? 'mb-2' : 'mb-3'}`}
+      className={`min-w-0 max-w-full shrink-0 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 [-webkit-overflow-scrolling:touch] ${fillParentHeight ? 'mb-2' : 'mb-3'}`}
       style={{ touchAction: 'pan-x' }}
-      onWheel={(e) => e.stopPropagation()}
+      onWheel={(e) => {
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+        if (e.deltaY === 0) return;
+        e.currentTarget.scrollLeft += e.deltaY;
+        e.preventDefault();
+        e.stopPropagation();
+      }}
     >
-      <button
-        type="button"
-        onClick={() => onSelectedCatChange('all')}
-        className={`${catBtnBase} ${
-          selectedCat === 'all'
-            ? 'border border-[color:var(--ui-accent)] bg-[var(--ui-accent)] text-white'
-            : 'border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-        }`}
-      >
-        Todos
-      </button>
-      {categories.map((c) => (
+      <div className="flex w-max min-w-full flex-nowrap gap-2 pr-2">
         <button
           type="button"
-          key={c.id}
-          onClick={() => onSelectedCatChange(c.id)}
+          onClick={() => onSelectedCatChange('all')}
           className={`${catBtnBase} ${
-            selectedCat === c.id
+            selectedCat === 'all'
               ? 'border border-[color:var(--ui-accent)] bg-[var(--ui-accent)] text-white'
               : 'border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
           }`}
         >
-          {c.name}
+          Todos
         </button>
-      ))}
+        {categories.map((c) => (
+          <button
+            type="button"
+            key={c.id}
+            onClick={() => onSelectedCatChange(c.id)}
+            className={`${catBtnBase} ${
+              selectedCat === c.id
+                ? 'border border-[color:var(--ui-accent)] bg-[var(--ui-accent)] text-white'
+                : 'border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+            }`}
+          >
+            {c.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 
@@ -656,8 +664,8 @@ export default function StaffDineInOrderUI({
       className={`flex min-h-0 flex-col overflow-hidden ${embedded || fillParentHeight ? '' : 'h-full'} ${fillParentHeight ? 'h-full gap-2' : embedded ? 'gap-3' : 'gap-4'} ${externalCartAside ? 'flex-1' : ''} ${externalCartAside ? '' : 'lg:flex-row'} ${externalCartAside ? '' : 'lg:items-stretch'} ${rootClass} ${className}`}
     >
       <div className="grid h-full min-h-0 min-w-0 flex-1 grid-rows-[auto_auto_minmax(0,1fr)] gap-2 overflow-hidden">
-        <div className="min-h-0 shrink-0">{searchBlock}</div>
-        <div className="min-h-0 shrink-0">{categoriesBlock}</div>
+        <div className="min-h-0 min-w-0 shrink-0">{searchBlock}</div>
+        <div className="min-h-0 min-w-0 max-w-full shrink-0 overflow-visible">{categoriesBlock}</div>
         <div {...scrollAreaProps}>{productGrid}</div>
       </div>
 

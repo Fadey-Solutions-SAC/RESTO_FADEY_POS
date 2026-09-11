@@ -1755,13 +1755,12 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
 }
 
 /* Mesas / Caja: fila catálogo — flex inline (no recortar precio en modal) */
-.rf-modal-panel .rf-order-catalog-table,
 .rf-modal-panel .rf-order-catalog-row,
 .rf-modal-panel .rf-order-catalog-row span {
   opacity: 1 !important;
   visibility: visible !important;
 }
-.rf-modal-panel .rf-order-catalog-row [style*='2563eb'],
-.rf-modal-panel .rf-order-catalog-row span:last-child {
+.rf-modal-panel .rf-order-catalog-row span[style*='2563eb'],
+.rf-modal-panel button.rf-order-catalog-row span:last-of-type {
   color: #2563eb !important;
 }

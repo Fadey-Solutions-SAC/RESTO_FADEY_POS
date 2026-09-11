@@ -4,8 +4,14 @@ import {
   orderingStockCellText,
 } from '../utils/productStockDisplay';
 
+function formatProductLine(product, unitPrice, stockText) {
+  const name = String(product.name || '').trim();
+  const stockPart = stockText && stockText !== '—' ? ` · Stk ${stockText}` : '';
+  return `${name}${stockPart}  ·  ${unitPrice}`;
+}
+
 /**
- * Catálogo Mesas / Caja: una fila por producto; precio y stock a la derecha (float, sin flex).
+ * Catálogo Mesas / Caja: precio y stock en el mismo texto visible (sin columnas que se recorten).
  */
 export default function StaffOrderProductCatalog({
   products = [],
@@ -18,143 +24,64 @@ export default function StaffOrderProductCatalog({
   if (!products.length) return null;
 
   return (
-    <table
-      className="rf-order-catalog-table w-full min-w-0"
-      style={{
-        width: '100%',
-        tableLayout: 'fixed',
-        borderCollapse: 'separate',
-        borderSpacing: '0 6px',
-      }}
-    >
-      <thead>
-        <tr>
-          <th
-            style={{
-              padding: '0 0.75rem 0.25rem',
-              fontSize: 10,
-              fontWeight: 600,
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
-              color: 'var(--ui-muted)',
-              textAlign: 'left',
-            }}
-          >
-            Producto
-            <span
-              style={{
-                float: 'right',
-                textTransform: 'uppercase',
-                fontWeight: 600,
-                letterSpacing: '0.04em',
-              }}
-            >
-              Stock · Precio
-            </span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
+    <div className="min-w-0 w-full max-w-full">
+      <p
+        className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]"
+        style={{ margin: '0 0 0.25rem', padding: '0 0.75rem 0.25rem' }}
+      >
+        Producto · Stock · Precio
+      </p>
+      <ul className="m-0 list-none space-y-1.5 p-0">
         {products.map((product) => {
           const stockText = orderingStockCellText(product, { hideStock: hideProductStock });
           const stockOut = orderingStockCellIsOut(product, { hideStock: hideProductStock });
           const unitPrice = fmtMoney(orderingProductUnitPrice(product));
-          const showStock = stockText !== '—';
+          const line = formatProductLine(product, unitPrice, stockText);
           return (
-            <tr key={product.id}>
-              <td style={{ padding: 0, border: 'none', verticalAlign: 'middle' }}>
-                <button
-                  type="button"
-                  onClick={() => onProductPick(product)}
-                  className="rf-order-catalog-row"
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    margin: 0,
-                    padding: '0.625rem 0.75rem',
-                    border: '1px solid var(--ui-border)',
-                    borderRadius: 6,
-                    background: '#ffffff',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    font: 'inherit',
-                    color: 'inherit',
-                  }}
-                >
+            <li key={product.id}>
+              <button
+                type="button"
+                onClick={() => onProductPick(product)}
+                className="rf-order-catalog-row block w-full max-w-full rounded-md border border-[color:var(--ui-border)] bg-white px-3 py-2.5 text-left text-sm leading-snug shadow-sm transition-shadow hover:shadow-md"
+                style={{
+                  color: 'var(--ui-body-text)',
+                  wordBreak: 'break-word',
+                }}
+                title={line}
+              >
+                {product.is_combo ? (
+                  <span className="mr-1 inline-block rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase text-blue-800">
+                    Combo
+                  </span>
+                ) : null}
+                <span style={{ fontWeight: 500 }}>{product.name}</span>
+                {stockText !== '—' ? (
                   <span
                     style={{
-                      display: 'block',
-                      overflow: 'hidden',
-                      paddingRight: '0.25rem',
+                      marginLeft: 6,
+                      fontSize: '0.75rem',
+                      fontWeight: stockOut ? 600 : 500,
+                      color: stockOut ? '#dc2626' : '#64748b',
                     }}
                   >
-                    <span
-                      style={{
-                        display: 'inline',
-                        fontSize: '0.875rem',
-                        fontWeight: 500,
-                        color: 'var(--ui-body-text)',
-                        wordBreak: 'break-word',
-                      }}
-                    >
-                      {product.is_combo ? (
-                        <span
-                          style={{
-                            marginRight: 4,
-                            padding: '1px 4px',
-                            borderRadius: 4,
-                            fontSize: 9,
-                            fontWeight: 700,
-                            background: '#dbeafe',
-                            color: '#1e40af',
-                          }}
-                        >
-                          COMBO
-                        </span>
-                      ) : null}
-                      {product.name}
-                    </span>
-                    <span
-                      style={{
-                        float: 'right',
-                        clear: 'none',
-                        marginLeft: '0.75rem',
-                        whiteSpace: 'nowrap',
-                        fontSize: '0.875rem',
-                        lineHeight: 1.35,
-                      }}
-                    >
-                      {showStock ? (
-                        <span
-                          style={{
-                            marginRight: '0.65rem',
-                            fontSize: '0.75rem',
-                            fontWeight: stockOut ? 600 : 500,
-                            fontVariantNumeric: 'tabular-nums',
-                            color: stockOut ? '#dc2626' : '#64748b',
-                          }}
-                        >
-                          {stockText}
-                        </span>
-                      ) : null}
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          fontVariantNumeric: 'tabular-nums',
-                          color: '#2563eb',
-                        }}
-                      >
-                        {unitPrice}
-                      </span>
-                    </span>
+                    Stk {stockText}
                   </span>
-                </button>
-              </td>
-            </tr>
+                ) : null}
+                <span
+                  style={{
+                    marginLeft: 8,
+                    fontWeight: 700,
+                    color: '#2563eb',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {unitPrice}
+                </span>
+              </button>
+            </li>
           );
         })}
-      </tbody>
-    </table>
+      </ul>
+    </div>
   );
 }
