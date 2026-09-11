@@ -508,35 +508,39 @@ export default function StaffDineInOrderUI({
 
   const fmtMoney = formatCurrency || ((amount) => `S/ ${Number(amount || 0).toFixed(2)}`);
 
+  const orderRowBtnClass =
+    'flex w-full min-w-0 items-start gap-3 rounded-md border border-[color:var(--ui-border)] bg-white p-3 text-left shadow-sm transition-shadow hover:shadow-md dark:bg-[var(--ui-surface-2)]';
+
   const renderOrderProductRow = (product) => {
     const showStock = !hideProductStock && showStockInOrderingUI(product);
     const stockQty = formatOrderingStockQty(product.stock);
     const stockOut = Number(product.stock) <= 0;
+    const unitPrice = fmtMoney(orderingProductUnitPrice(product));
     return (
-      <button
-        type="button"
-        onClick={() => onProductPick(product)}
-        className="rf-order-product-item"
-      >
-        <span className="rf-order-product-name">
-          {product.is_combo ? (
-            <>
+      <button type="button" onClick={() => onProductPick(product)} className={orderRowBtnClass}>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium leading-snug text-[var(--ui-body-text)]">
+            {product.is_combo ? (
               <span className="mr-1.5 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-800">
                 Combo
               </span>
-            </>
+            ) : null}
+            {product.name}
+          </p>
+          {showStock ? (
+            <p
+              className={`mt-0.5 text-xs font-medium tabular-nums ${
+                stockOut ? 'text-red-600' : 'text-[var(--ui-muted)]'
+              }`}
+            >
+              Stock: {stockQty}
+            </p>
           ) : null}
-          {product.name}
-        </span>
-        <span className="rf-order-product-price">{fmtMoney(orderingProductUnitPrice(product))}</span>
-        {showStock ? (
-          <span className={`rf-order-product-stock${stockOut ? ' is-out' : ''}`}>
-            Stock: {stockQty}
-          </span>
-        ) : null}
-        {product.is_combo && product.description ? (
-          <span className="rf-order-product-stock col-span-2 line-clamp-2">{product.description}</span>
-        ) : null}
+          {product.is_combo && product.description ? (
+            <p className="mt-0.5 line-clamp-2 text-xs text-[var(--ui-muted)]">{product.description}</p>
+          ) : null}
+        </div>
+        <span className="shrink-0 text-sm font-bold tabular-nums text-[var(--ui-accent)]">{unitPrice}</span>
       </button>
     );
   };
@@ -549,11 +553,16 @@ export default function StaffDineInOrderUI({
           <p>No hay productos para este filtro</p>
         </div>
       ) : (
-        <div className={`rf-staff-order-catalog ${showProductThumbnail ? `grid ${gridGapClass} ${gridColsClass}` : ''}`}>
+        <div
+          className={`w-full min-w-0 space-y-2 ${showProductThumbnail ? `grid ${gridGapClass} ${gridColsClass}` : ''}`}
+        >
           {!showProductThumbnail ? (
-            <div className="rf-order-product-head" aria-hidden="true">
-              <span>Producto</span>
-              <span className="text-right">Precio</span>
+            <div
+              className="flex shrink-0 items-center gap-3 px-3 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]"
+              aria-hidden="true"
+            >
+              <span className="min-w-0 flex-1">Producto</span>
+              <span className="shrink-0">Precio</span>
             </div>
           ) : null}
           {filteredProducts.map((p) => {
