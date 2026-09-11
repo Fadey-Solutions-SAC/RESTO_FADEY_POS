@@ -1760,7 +1760,7 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   opacity: 1 !important;
   visibility: visible !important;
 }
-.rf-modal-panel .rf-order-catalog-row span[style*='2563eb'],
-.rf-modal-panel button.rf-order-catalog-row span:last-of-type {
+.rf-modal-panel .rf-order-catalog-price,
+.rf-modal-panel button.rf-order-catalog-row span.rf-order-catalog-price {
   color: #2563eb !important;
 }
