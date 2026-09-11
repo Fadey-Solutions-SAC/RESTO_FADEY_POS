@@ -20,7 +20,9 @@ function lineSubtitle(item) {
 const VIEWPORT_CART_MAX_CLASS = 'max-h-[min(calc(92vh-7.5rem),calc(100dvh-8rem))]';
 /** En móvil (productos arriba + pedido abajo): no tapar el catálogo. */
 const MOBILE_STACKED_CART_MAX_CLASS = 'max-h-[min(42vh,340px)]';
-export { VIEWPORT_CART_MAX_CLASS, MOBILE_STACKED_CART_MAX_CLASS };
+/** Panel «Detalle del pedido» en PC (Mesas / Caja): más angosto → más ancho para el catálogo. */
+const DESKTOP_CART_PANEL_WIDTH_CLASS = 'lg:w-[min(100%,17.5rem)] lg:max-w-[17.5rem]';
+export { VIEWPORT_CART_MAX_CLASS, MOBILE_STACKED_CART_MAX_CLASS, DESKTOP_CART_PANEL_WIDTH_CLASS };
 
 /** En flex/grid anidados el hijo debe poder encogerse; si no, el padre recorta y la rueda no hace scroll. */
 const PRODUCT_SCROLL_CLASS =
@@ -306,12 +308,12 @@ export function StaffDineInOrderCartPanel({
     <div
       className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] lg:border lg:shadow-[0_4px_24px_rgba(15,23,42,0.08)] ${
         elevatedAside
-          ? `h-full min-h-0 w-full self-start p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem] ${shellMaxClass}`
+          ? `h-full min-h-0 w-full self-start p-3 ${DESKTOP_CART_PANEL_WIDTH_CLASS} ${shellMaxClass}`
           : stackedMobile
             ? `w-full min-h-0 shrink-0 p-3 ${shellMaxClass}`
             : fillParentHeight
-              ? `w-full min-h-0 self-start p-3 lg:w-[min(100%,22rem)] lg:max-w-[22rem] ${shellMaxClass}`
-              : 'p-4 lg:min-h-0 lg:h-full lg:w-[min(100%,22rem)] lg:max-w-[22rem]'
+              ? `w-full min-h-0 self-start p-3 ${DESKTOP_CART_PANEL_WIDTH_CLASS} ${shellMaxClass}`
+              : `p-4 lg:min-h-0 lg:h-full ${DESKTOP_CART_PANEL_WIDTH_CLASS}`
       } ${className}`.trim()}
     >
       <div className="grid h-full max-h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
