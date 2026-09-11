@@ -1,14 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../../utils/api';
 import Modal from '../Modal';
-import { MdQrCode2, MdPrint, MdDownload, MdRefresh } from 'react-icons/md';
 import { employeeStatusLabel } from './hrFormat';
 
 export default function HrStaffTab({ employees, schedules, branches, onReload }) {
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
-  const [qr, setQr] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const filtered = (employees || []).filter((e) => {
@@ -46,74 +44,12 @@ export default function HrStaffTab({ employees, schedules, branches, onReload })
     }
   };
 
-  const openQr = async (emp) => {
-    try {
-      const data = await api.get(`/hr/employees/${emp.id}/qr`);
-      setQr({ ...data, employee: emp });
-    } catch (err) {
-      toast.error(err.message);
-    }
-  };
-
-  const regenerate = async () => {
-    if (!qr?.employee?.id) return;
-    if (!window.confirm('¿Regenerar el QR? El código anterior dejará de funcionar.')) return;
-    try {
-      const data = await api.post(`/hr/employees/${qr.employee.id}/qr/regenerate`, {});
-      setQr({
-        ...qr,
-        ...data,
-        active: true,
-        has_credential: true,
-        png_base64: data.png_base64,
-        payload: data.payload,
-      });
-      toast.success('QR regenerado');
-      onReload?.();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  };
-
-  const deactivate = async () => {
-    if (!qr?.employee?.id) return;
-    try {
-      await api.post(`/hr/employees/${qr.employee.id}/qr/deactivate`, {});
-      toast.success('QR desactivado');
-      setQr(null);
-      onReload?.();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  };
-
-  const downloadQr = () => {
-    if (!qr?.png_base64) return;
-    const a = document.createElement('a');
-    a.href = `data:image/png;base64,${qr.png_base64}`;
-    a.download = `qr-${(qr.employee?.full_name || 'trabajador').replace(/\s+/g, '-')}.png`;
-    a.click();
-  };
-
-  const printQr = () => {
-    if (!qr?.png_base64) return;
-    const w = window.open('', '_blank', 'width=480,height=640');
-    if (!w) return;
-    w.document.write(`<!doctype html><html><head><title>QR ${qr.employee?.full_name || ''}</title>
-      <style>body{font-family:system-ui;text-align:center;padding:24px} img{width:280px;height:280px}</style></head>
-      <body><h2>${qr.employee?.full_name || ''}</h2><p>${qr.employee?.position || ''}</p>
-      <img src="data:image/png;base64,${qr.png_base64}" alt="QR" />
-      <p style="font-size:12px;color:#666">Resto-FADEY · Asistencia</p>
-      <script>window.onload=()=>{window.print();}</script></body></html>`);
-    w.document.close();
-  };
-
-  useEffect(() => {
-    if (qr?.needs_regenerate) toast('El QR activo no se puede visualizar: regenerelo.', { icon: 'ℹ️' });
-  }, [qr?.needs_regenerate]);
-
   return (
     <div className="space-y-3">
+      <p className="text-sm text-[var(--ui-muted)] rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2">
+        La marcación usa un <strong>único QR del local</strong> (botón «QR del local» arriba). Cada trabajador escanea
+        ese mismo código con su sesión iniciada en Control de asistencia.
+      </p>
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <input
           value={q}
@@ -132,7 +68,6 @@ export default function HrStaffTab({ employees, schedules, branches, onReload })
               <th className="p-3">Sede</th>
               <th className="p-3">Horario</th>
               <th className="p-3">Estado</th>
-              <th className="p-3">QR</th>
               <th className="p-3" />
             </tr>
           </thead>
@@ -147,17 +82,13 @@ export default function HrStaffTab({ employees, schedules, branches, onReload })
                 <td className="p-3">{branches.find((b) => b.id === e.branch_id)?.name || e.branch_id || '—'}</td>
                 <td className="p-3">{e.schedule_name || '—'}</td>
                 <td className="p-3">{employeeStatusLabel(e.status)}</td>
-                <td className="p-3">{e.qr_active ? 'Activo' : '—'}</td>
                 <td className="p-3 whitespace-nowrap">
-                  <button type="button" className="btn-secondary text-xs mr-1" onClick={() => setEdit({ ...e })}>Editar</button>
-                  <button type="button" className="btn-secondary text-xs inline-flex items-center gap-1" onClick={() => openQr(e)}>
-                    <MdQrCode2 /> QR
-                  </button>
+                  <button type="button" className="btn-secondary text-xs" onClick={() => setEdit({ ...e })}>Editar</button>
                 </td>
               </tr>
             ))}
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="p-8 text-center text-[var(--ui-muted)]">No hay trabajadores. Cree usuarios del sistema y aparecerán aquí.</td></tr>
+              <tr><td colSpan={6} className="p-8 text-center text-[var(--ui-muted)]">No hay trabajadores. Cree usuarios del sistema y aparecerán aquí.</td></tr>
             ) : null}
           </tbody>
         </table>
@@ -225,38 +156,6 @@ export default function HrStaffTab({ employees, schedules, branches, onReload })
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className="btn-secondary" onClick={() => setEdit(null)}>Cancelar</button>
               <button type="button" className="btn-primary" disabled={saving} onClick={save}>Guardar</button>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
-
-      <Modal isOpen={!!qr} onClose={() => setQr(null)} title={`QR · ${qr?.employee?.full_name || ''}`} size="md">
-        {qr ? (
-          <div className="space-y-3 text-center">
-            <p className="text-sm text-[var(--ui-muted)]">
-              Estado: {qr.active ? 'Activo' : 'Inactivo'}
-              {qr.created_at ? ` · creado ${qr.created_at}` : ''}
-            </p>
-            {qr.png_base64 ? (
-              <img
-                src={`data:image/png;base64,${qr.png_base64}`}
-                alt="Código QR"
-                className="mx-auto w-56 h-56 rounded-xl border border-[color:var(--ui-border)] bg-white p-2"
-              />
-            ) : (
-              <p className="text-sm py-8">No hay imagen QR. Genere o regenere el código.</p>
-            )}
-            <div className="flex flex-wrap justify-center gap-2">
-              <button type="button" className="btn-primary text-sm inline-flex items-center gap-1" onClick={regenerate}>
-                <MdRefresh /> Generar / Regenerar
-              </button>
-              <button type="button" className="btn-secondary text-sm inline-flex items-center gap-1" onClick={downloadQr} disabled={!qr.png_base64}>
-                <MdDownload /> Descargar
-              </button>
-              <button type="button" className="btn-secondary text-sm inline-flex items-center gap-1" onClick={printQr} disabled={!qr.png_base64}>
-                <MdPrint /> Imprimir
-              </button>
-              <button type="button" className="btn-secondary text-sm" onClick={deactivate} disabled={!qr.active}>Desactivar</button>
             </div>
           </div>
         ) : null}

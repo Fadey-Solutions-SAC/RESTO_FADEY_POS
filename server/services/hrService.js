@@ -70,6 +70,117 @@ function qrPayload(token) {
   return `RFHR:${token}`;
 }
 
+function normalizeScannedToken(raw) {
+  let token = String(raw || '').trim();
+  if (token.startsWith('RFHR:')) token = token.slice(5);
+  return token;
+}
+
+function sharedQrFromSettings(settings) {
+  const sq = settings?.shared_attendance_qr || {};
+  return {
+    active: isFlagOn(sq.active),
+    token_hash: String(sq.token_hash || ''),
+    token_cipher: String(sq.token_cipher || ''),
+    created_at: sq.created_at || null,
+  };
+}
+
+function revokeAllEmployeeQrs() {
+  runSql(
+    `UPDATE hr_qr_credentials SET active = 0, revoked_at = datetime('now') WHERE active = 1`,
+  );
+}
+
+function isSharedAttendanceToken(token, restaurantId) {
+  const plain = normalizeScannedToken(token);
+  if (!plain) return false;
+  const sq = sharedQrFromSettings(getHrSettings());
+  if (!sq.active || !sq.token_hash) return false;
+  return hashToken(plain) === sq.token_hash;
+}
+
+function sharedQrStatus() {
+  const sq = sharedQrFromSettings(getHrSettings());
+  return {
+    has_credential: Boolean(sq.token_hash),
+    active: sq.active && Boolean(sq.token_hash),
+    created_at: sq.created_at,
+  };
+}
+
+function issueSharedQr(actor) {
+  revokeAllEmployeeQrs();
+  const token = newPlainToken();
+  const patch = {
+    shared_attendance_qr: {
+      active: 1,
+      token_hash: hashToken(token),
+      token_cipher: encryptToken(token),
+      created_at: new Date().toISOString(),
+    },
+  };
+  saveHrSettings(patch, actor);
+  logAudit({
+    actorUserId: actor?.id,
+    actorName: actor?.full_name || actor?.username,
+    action: 'hr.shared_qr.issue',
+    resourceType: 'hr_settings',
+    resourceId: 'shared_attendance_qr',
+  });
+  return {
+    token,
+    payload: qrPayload(token),
+    active: true,
+  };
+}
+
+async function sharedQrBundle() {
+  const status = sharedQrStatus();
+  const sq = sharedQrFromSettings(getHrSettings());
+  const token = status.active ? decryptToken(sq.token_cipher) : '';
+  const payload = token ? qrPayload(token) : '';
+  let png_base64 = '';
+  if (payload) {
+    try {
+      const buf = await renderQrPng(payload);
+      png_base64 = Buffer.from(buf).toString('base64');
+    } catch (err) {
+      const e = new Error('No se pudo generar la imagen QR. Instale la dependencia qrcode.');
+      e.status = 500;
+      e.cause = err;
+      throw e;
+    }
+  }
+  return {
+    ...status,
+    payload: payload || null,
+    png_base64,
+    needs_regenerate: Boolean(status.active && !token),
+    shared: true,
+  };
+}
+
+function deactivateSharedQr(actor) {
+  const cur = getHrSettings();
+  const sq = sharedQrFromSettings(cur);
+  saveHrSettings({
+    shared_attendance_qr: {
+      ...sq,
+      active: 0,
+      revoked_at: new Date().toISOString(),
+    },
+  }, actor);
+  logAudit({
+    actorUserId: actor?.id,
+    actorName: actor?.full_name || actor?.username,
+    action: 'hr.shared_qr.deactivate',
+    resourceType: 'hr_settings',
+    resourceId: 'shared_attendance_qr',
+  });
+  return sharedQrStatus();
+}
+
 async function renderQrPng(payload) {
   const QRCode = require('qrcode');
   return QRCode.toBuffer(String(payload), {
@@ -546,8 +657,7 @@ function approvedLeaveToday(employeeId, date) {
 }
 
 function findEmployeeByToken(plainOrPayload, restaurantId) {
-  let token = String(plainOrPayload || '').trim();
-  if (token.startsWith('RFHR:')) token = token.slice(5);
+  const token = normalizeScannedToken(plainOrPayload);
   if (!token) return null;
   const cred = queryOne(
     `SELECT c.*, e.restaurant_id, e.status AS emp_status, e.branch_id, e.user_id
@@ -585,25 +695,41 @@ function lastAttendanceInstant(row) {
   return row?.check_out_at || row?.check_in_at || row?.updated_at || '';
 }
 
-function scanAttendance({ restaurantId, token, branchId, deviceId, ip }) {
+function scanAttendance({ restaurantId, token, userId, branchId, deviceId, ip }) {
   if (!isAsistenciaQrActiva()) {
     const err = new Error('La marcación por QR está desactivada. La jornada se cuenta por inicio y fin de sesión.');
     err.status = 403;
     throw err;
   }
   const settings = getHrSettings();
-  const cred = findEmployeeByToken(token, restaurantId);
-  if (!cred) {
-    const err = new Error('QR inválido o desactivado');
-    err.status = 400;
-    throw err;
+  let emp = null;
+  if (isSharedAttendanceToken(token, restaurantId)) {
+    const uid = String(userId || '').trim();
+    if (!uid) {
+      const err = new Error('Debe iniciar sesión con su usuario antes de escanear el QR del local');
+      err.status = 401;
+      throw err;
+    }
+    emp = employeeByUser(restaurantId, uid);
+    if (!emp) {
+      const err = new Error('Su usuario no está registrado como trabajador en Recursos humanos');
+      err.status = 403;
+      throw err;
+    }
+  } else {
+    const cred = findEmployeeByToken(token, restaurantId);
+    if (!cred) {
+      const err = new Error('QR inválido o desactivado. Use el QR único del local (Recursos humanos).');
+      err.status = 400;
+      throw err;
+    }
+    if (cred.foreign) {
+      const err = new Error('El QR no pertenece a esta empresa');
+      err.status = 403;
+      throw err;
+    }
+    emp = getEmployee(restaurantId, cred.employee_id);
   }
-  if (cred.foreign) {
-    const err = new Error('El QR no pertenece a esta empresa');
-    err.status = 403;
-    throw err;
-  }
-  const emp = getEmployee(restaurantId, cred.employee_id);
   if (!emp || emp.status !== 'active' || !emp.user_active) {
     const err = new Error('Trabajador inactivo o suspendido');
     err.status = 403;
@@ -1239,6 +1365,10 @@ module.exports = {
   qrStatus,
   qrBundle,
   deactivateQr,
+  sharedQrStatus,
+  sharedQrBundle,
+  issueSharedQr,
+  deactivateSharedQr,
   scanAttendance,
   listAttendance,
   dashboard,

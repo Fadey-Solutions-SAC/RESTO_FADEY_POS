@@ -7,7 +7,11 @@ import {
   MdDelete,
   MdEditNote,
 } from 'react-icons/md';
-import { showStockInOrderingUI } from '../utils/productStockDisplay';
+import {
+  formatOrderingStockQty,
+  orderingProductUnitPrice,
+  showStockInOrderingUI,
+} from '../utils/productStockDisplay';
 import { resolveMediaUrl } from '../utils/api';
 
 function lineSubtitle(item) {
@@ -502,6 +506,23 @@ export default function StaffDineInOrderUI({
     ? (singleColumnProductList ? 'grid-cols-1' : 'grid-cols-2')
     : 'grid-cols-1';
 
+  const renderProductPrice = (product) => (
+    <span className="shrink-0 text-sm font-bold tabular-nums text-[var(--ui-accent)] whitespace-nowrap">
+      {formatCurrency(orderingProductUnitPrice(product))}
+    </span>
+  );
+
+  const renderProductStock = (product) => {
+    if (hideProductStock || !showStockInOrderingUI(product)) return null;
+    const qty = formatOrderingStockQty(product.stock);
+    const status = Number(product.stock) <= 0 ? 'text-red-600' : 'text-[var(--ui-muted)]';
+    return (
+      <p className={`mt-1 text-xs font-medium tabular-nums ${status}`}>
+        Stock: {qty}
+      </p>
+    );
+  };
+
   const productGrid = (
     <>
       {filteredProducts.length === 0 ? (
@@ -513,7 +534,6 @@ export default function StaffDineInOrderUI({
         <div className={`grid ${gridGapClass} ${gridColsClass}`}>
           {filteredProducts.map((p) => {
             const imgUrl = String(resolveMediaUrl(p.image || '') || '').trim();
-            const showStock = !hideProductStock && showStockInOrderingUI(p);
             if (showProductThumbnail) {
               return (
                 <div
@@ -537,15 +557,13 @@ export default function StaffDineInOrderUI({
                       onClick={() => onProductPick(p)}
                       className="w-full text-left"
                     >
-                      <div className="flex items-baseline gap-2 min-w-0">
-                        <p className="min-w-0 flex-1 text-sm font-semibold leading-snug text-[var(--ui-body-text)] break-words">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1">
+                        <p className="min-w-0 text-sm font-semibold leading-snug text-[var(--ui-body-text)] break-words">
                           {p.name}
                         </p>
-                        <p className="shrink-0 text-sm font-bold tabular-nums text-[var(--ui-body-text)]">
-                          {formatCurrency(p.price)}
-                        </p>
+                        {renderProductPrice(p)}
                       </div>
-                      {showStock ? <p className="mt-0.5 text-xs text-[var(--ui-accent)]">Stock: {p.stock}</p> : null}
+                      {renderProductStock(p)}
                     </button>
                     {productActionLabel ? (
                       <button
@@ -572,25 +590,25 @@ export default function StaffDineInOrderUI({
                   onClick={() => onProductPick(p)}
                   className="w-full text-left"
                 >
-                  <div className="flex items-start gap-2 min-w-0">
-                    {p.is_combo ? (
-                      <span className="mt-0.5 shrink-0 rounded bg-[var(--ui-accent)]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--ui-accent)]">
-                        Combo
-                      </span>
-                    ) : null}
-                    <div className="flex min-w-0 flex-1 items-baseline gap-2">
-                      <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--ui-body-text)] break-words">
-                        {p.name}
-                      </p>
-                      <p className="shrink-0 text-sm font-bold tabular-nums text-[var(--ui-body-text)]">
-                        {formatCurrency(p.price)}
-                      </p>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {p.is_combo ? (
+                          <span className="shrink-0 rounded bg-[var(--ui-accent)]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--ui-accent)]">
+                            Combo
+                          </span>
+                        ) : null}
+                        <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--ui-body-text)] break-words">
+                          {p.name}
+                        </p>
+                      </div>
+                      {p.is_combo && p.description ? (
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--ui-muted)]">{p.description}</p>
+                      ) : null}
+                      {renderProductStock(p)}
                     </div>
+                    {renderProductPrice(p)}
                   </div>
-                  {p.is_combo && p.description ? (
-                    <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--ui-muted)]">{p.description}</p>
-                  ) : null}
-                  {showStock ? <p className="mt-0.5 text-xs text-[var(--ui-accent)]">Stock: {p.stock}</p> : null}
                 </button>
                 {productActionLabel ? (
                   <button

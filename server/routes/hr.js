@@ -82,20 +82,39 @@ router.patch('/employees/:id', requireHrAdmin, asyncHandler(async (req, res) => 
   res.json(hr.updateEmployee(rid(req), req.params.id, req.body || {}, req.user));
 }));
 
+router.get('/attendance-qr', requireHrAdmin, asyncHandler(async (req, res) => {
+  let bundle = await hr.sharedQrBundle();
+  if (!bundle?.has_credential) {
+    hr.issueSharedQr(req.user);
+    bundle = await hr.sharedQrBundle();
+  }
+  res.json(bundle);
+}));
+
+router.post('/attendance-qr/regenerate', requireHrAdmin, asyncHandler(async (req, res) => {
+  hr.issueSharedQr(req.user);
+  const bundle = await hr.sharedQrBundle();
+  res.json(bundle);
+}));
+
+router.post('/attendance-qr/deactivate', requireHrAdmin, asyncHandler(async (req, res) => {
+  res.json(hr.deactivateSharedQr(req.user));
+}));
+
 router.get('/employees/:id/qr', requireHrAdmin, asyncHandler(async (req, res) => {
-  const data = await hr.qrBundle(rid(req), req.params.id);
+  const data = await hr.sharedQrBundle();
   if (!data) return res.status(404).json({ error: 'Trabajador no encontrado' });
   return res.json(data);
 }));
 
 router.post('/employees/:id/qr/regenerate', requireHrAdmin, asyncHandler(async (req, res) => {
-  const issued = hr.issueQr(rid(req), req.params.id, req.user);
-  const bundle = await hr.qrBundle(rid(req), req.params.id);
-  return res.json({ ...issued, png_base64: bundle?.png_base64 || '' });
+  hr.issueSharedQr(req.user);
+  const bundle = await hr.sharedQrBundle();
+  return res.json(bundle);
 }));
 
 router.post('/employees/:id/qr/deactivate', requireHrAdmin, asyncHandler(async (req, res) => {
-  res.json(hr.deactivateQr(rid(req), req.params.id, req.user));
+  res.json(hr.deactivateSharedQr(req.user));
 }));
 
 router.get('/schedules', requireHrAdmin, asyncHandler(async (req, res) => {
@@ -123,6 +142,7 @@ router.post('/attendance/scan', scanLimiter, asyncHandler(async (req, res) => {
   const result = hr.scanAttendance({
     restaurantId: rid(req),
     token: req.body?.token || req.body?.payload || '',
+    userId: req.user?.id,
     branchId: req.body?.branch_id || '',
     deviceId: req.body?.device_id || '',
     ip: hr.clientIp(req),

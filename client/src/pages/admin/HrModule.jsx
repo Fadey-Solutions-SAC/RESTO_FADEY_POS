@@ -10,6 +10,7 @@ import {
   MdAssessment,
   MdTrendingUp,
   MdQrCodeScanner,
+  MdQrCode2,
   MdToggleOn,
   MdToggleOff,
 } from 'react-icons/md';
@@ -22,6 +23,7 @@ import HrReportsTab from '../../components/hr/HrReportsTab';
 import WorkTime from './WorkTime';
 import { Link } from 'react-router-dom';
 import Modal from '../../components/Modal';
+import HrSharedAttendanceQr from '../../components/hr/HrSharedAttendanceQr';
 
 const TABS = [
   { id: 'panel', label: 'Panel', icon: MdDashboard },
@@ -44,6 +46,7 @@ export default function HrModule() {
   const [pwdOpen, setPwdOpen] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
   const [pwdBusy, setPwdBusy] = useState(false);
+  const [sharedQrOpen, setSharedQrOpen] = useState(false);
 
   const loadCore = useCallback(async () => {
     try {
@@ -120,6 +123,13 @@ export default function HrModule() {
           <p className="text-sm text-[var(--ui-muted)]">Asistencia QR, horarios, permisos y reportes · FADEY Solutions</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="btn-secondary text-sm inline-flex items-center gap-1.5"
+            onClick={() => setSharedQrOpen(true)}
+          >
+            <MdQrCode2 /> QR del local
+          </button>
           <Link to="/admin/asistencia" className="btn-primary text-sm inline-flex items-center gap-1.5">
             <MdQrCodeScanner /> Control de asistencia
           </Link>
@@ -176,6 +186,10 @@ export default function HrModule() {
       {tab === 'reportes' && <HrReportsTab />}
       {tab === 'productividad' && <WorkTime />}
 
+      <Modal isOpen={sharedQrOpen} onClose={() => setSharedQrOpen(false)} title="QR de asistencia del local" size="md">
+        <HrSharedAttendanceQr />
+      </Modal>
+
       <Modal
         isOpen={pwdOpen}
         onClose={() => { if (!pwdBusy) { setPwdOpen(false); setAdminPassword(''); } }}
@@ -185,7 +199,7 @@ export default function HrModule() {
         <p className="text-sm text-[var(--ui-muted)] mb-3">
           {qrActiva
             ? 'Al desactivar, el tiempo se cuenta desde el inicio hasta el fin de sesión de cada usuario.'
-            : 'Al activar, el personal marca entrada y salida con el código QR (Control de asistencia).'}
+            : 'Al activar, el personal marca entrada y salida escaneando el QR único del local (Control de asistencia).'}
         </p>
         <label className="block text-sm font-medium mb-1">Contraseña de administrador</label>
         <input

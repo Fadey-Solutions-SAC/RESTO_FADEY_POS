@@ -65,7 +65,9 @@ export default function HrAttendanceKiosk() {
     <div className="space-y-4 max-w-2xl mx-auto">
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Control de asistencia</h1>
-        <p className="text-sm text-[var(--ui-muted)]">Escanea tu código QR</p>
+        <p className="text-sm text-[var(--ui-muted)]">
+          Escanea el QR del local (el mismo para todo el personal). Debe tener su sesión iniciada con su usuario.
+        </p>
       </div>
 
       {branches.length > 1 ? (
