@@ -4,6 +4,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { readLoyaltySurveyForm, saveLoyaltySurveyForm, loyaltyQuestionIds } = require('../loyaltySurveyQuestions');
 const { emitStaffDataUpdate } = require('../socketBroadcast');
 const { sendRouteError } = require('../utils/routeErrors');
+const { reconcileOrphanWaiterLoyaltySurveys } = require('../utils/purgeUserFromSystem');
 
 const router = express.Router();
 
@@ -109,6 +110,7 @@ function parseJsonList(raw) {
 
 router.get('/summary', (req, res) => {
   try {
+    reconcileOrphanWaiterLoyaltySurveys();
     const form = readLoyaltySurveyForm();
     const qIds = loyaltyQuestionIds(form);
     const rows = queryAll(
@@ -208,6 +210,7 @@ router.get('/summary', (req, res) => {
 /** Calificaciones por mozo (también usado en Recursos humanos). */
 router.get('/waiter-ratings', (req, res) => {
   try {
+    reconcileOrphanWaiterLoyaltySurveys();
     const rows = queryAll(
       `SELECT waiter_user_id, waiter_name, rating, created_at
        FROM loyalty_surveys
@@ -234,11 +237,6 @@ router.get('/waiter-ratings', (req, res) => {
         average: hit?.average || 0,
       };
     });
-    for (const w of waiters) {
-      if (!staff.some((s) => s.waiter_user_id === w.waiter_user_id)) {
-        staff.push({ ...w, is_active: false });
-      }
-    }
     staff.sort((a, b) => b.average - a.average || b.count - a.count || a.waiter_name.localeCompare(b.waiter_name, 'es'));
     res.json({ waiters: staff });
   } catch (err) {

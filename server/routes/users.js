@@ -19,6 +19,8 @@ const {
 } = require('../services/workSessionService');
 const { cajaSubPermissionKey, CAJA_USER_OPT_IN_SUBS } = require('../planModuleCatalog');
 const { getRawUserPermissionsJson } = require('../lib/cajaPermissions');
+const { purgeUserFromSystem } = require('../utils/purgeUserFromSystem');
+const { emitStaffDataUpdate } = require('../socketBroadcast');
 
 const router = express.Router();
 const VALID_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
@@ -475,9 +477,14 @@ router.delete('/:id', authenticateToken, requireRole('admin', 'master_admin'), (
       error: 'El administrador dueño del negocio solo puede eliminarlo el administrador maestro',
     });
   }
-  runSql('DELETE FROM user_permissions WHERE user_id = ?', [req.params.id]);
-  runSql('DELETE FROM users WHERE id = ?', [req.params.id]);
-  res.json({ success: true });
+  try {
+    purgeUserFromSystem(req.params.id);
+    emitStaffDataUpdate({ domain: 'loyalty' });
+    emitStaffDataUpdate({ domain: 'hr' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo eliminar el usuario' });
+  }
 });
 
 /** Panel de productividad, alertas, rankings e IA operativa (extiende Tiempo trabajado). */

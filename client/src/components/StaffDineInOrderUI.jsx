@@ -7,12 +7,9 @@ import {
   MdDelete,
   MdEditNote,
 } from 'react-icons/md';
-import {
-  orderingProductUnitPrice,
-  orderingStockCellIsOut,
-  orderingStockCellText,
-} from '../utils/productStockDisplay';
+import { orderingProductUnitPrice } from '../utils/productStockDisplay';
 import { resolveMediaUrl } from '../utils/api';
+import StaffOrderProductCatalog from './StaffOrderProductCatalog';
 
 function lineSubtitle(item) {
   if (item.modifier_option) return String(item.modifier_option);
@@ -508,33 +505,31 @@ export default function StaffDineInOrderUI({
 
   const fmtMoney = formatCurrency || ((amount) => `S/ ${Number(amount || 0).toFixed(2)}`);
 
-  const renderOrderProductName = (product) => (
-    <span className="rf-staff-order-catalog-row__name" title={product.name}>
-      {product.is_combo ? (
-        <span className="mr-1 inline-block rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase text-blue-800">
-          Combo
-        </span>
-      ) : null}
-      {product.name}
-    </span>
-  );
-
-  const renderOrderProductRow = (product, { compact = false } = {}) => {
-    const stockText = orderingStockCellText(product, { hideStock: hideProductStock });
-    const stockOut = orderingStockCellIsOut(product, { hideStock: hideProductStock });
+  const renderOrderProductRowCompact = (product) => {
     const unitPrice = fmtMoney(orderingProductUnitPrice(product));
     return (
       <button
         type="button"
         onClick={() => onProductPick(product)}
-        className="rf-staff-order-catalog-row rf-staff-order-catalog-row--btn"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) 3.25rem 5rem',
+          columnGap: '0.35rem',
+          alignItems: 'center',
+          width: '100%',
+          padding: '0.5rem 0.75rem',
+          border: '1px solid var(--ui-border)',
+          borderRadius: 6,
+          background: '#fff',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
       >
-        {renderOrderProductName(product)}
-        <span className={`rf-staff-order-catalog-row__stock${stockOut ? ' is-out' : ''}`}>{stockText}</span>
-        <span className="rf-staff-order-catalog-row__price">{unitPrice}</span>
-        {!compact && product.is_combo && product.description ? (
-          <span className="rf-staff-order-catalog-row__combo-note line-clamp-2">{product.description}</span>
-        ) : null}
+        <span className="min-w-0 truncate text-sm font-medium text-[var(--ui-body-text)]">{product.name}</span>
+        <span className="text-right text-xs tabular-nums text-[var(--ui-muted)]">—</span>
+        <span className="text-right text-sm font-bold tabular-nums" style={{ color: '#2563eb' }}>
+          {unitPrice}
+        </span>
       </button>
     );
   };
@@ -548,24 +543,15 @@ export default function StaffDineInOrderUI({
         </div>
       ) : (
         <div
-          className={`w-full min-w-0 ${showProductThumbnail ? `grid ${gridGapClass} ${gridColsClass}` : 'space-y-1.5'}`}
+          className={`w-full min-w-0 ${showProductThumbnail ? `grid ${gridGapClass} ${gridColsClass}` : ''}`}
         >
           {!showProductThumbnail ? (
-            <>
-              <div
-                className="rf-staff-order-catalog-row rf-staff-order-catalog-row--head shrink-0"
-                aria-hidden="true"
-              >
-                <span>Producto</span>
-                <span className="rf-staff-order-catalog-row__head-stock">Stock</span>
-                <span className="rf-staff-order-catalog-row__head-price">Precio</span>
-              </div>
-              {filteredProducts.map((p) => (
-                <div key={p.id} className="min-w-0 max-w-full">
-                  {renderOrderProductRow(p)}
-                </div>
-              ))}
-            </>
+            <StaffOrderProductCatalog
+              products={filteredProducts}
+              onProductPick={onProductPick}
+              formatCurrency={formatCurrency}
+              hideProductStock={hideProductStock}
+            />
           ) : (
             filteredProducts.map((p) => {
               const imgUrl = String(resolveMediaUrl(p.image || '') || '').trim();
@@ -586,7 +572,7 @@ export default function StaffDineInOrderUI({
                     )}
                   </div>
                   <div className="flex flex-col gap-2 bg-white p-2">
-                    {renderOrderProductRow(p, { compact: true })}
+                    {renderOrderProductRowCompact(p)}
                     {productActionLabel ? (
                       <button
                         type="button"
