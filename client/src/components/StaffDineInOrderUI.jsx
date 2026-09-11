@@ -20,8 +20,8 @@ function lineSubtitle(item) {
 const VIEWPORT_CART_MAX_CLASS = 'max-h-[min(calc(92vh-7.5rem),calc(100dvh-8rem))]';
 /** En móvil (productos arriba + pedido abajo): no tapar el catálogo. */
 const MOBILE_STACKED_CART_MAX_CLASS = 'max-h-[min(42vh,340px)]';
-/** Panel «Detalle del pedido» en PC (Mesas / Caja): más angosto → más ancho para el catálogo. */
-const DESKTOP_CART_PANEL_WIDTH_CLASS = 'lg:w-[min(100%,17.5rem)] lg:max-w-[17.5rem]';
+/** Panel «Detalle del pedido» en PC (Mesas / Caja): ancho suficiente para leer el nombre. */
+const DESKTOP_CART_PANEL_WIDTH_CLASS = 'lg:w-[min(100%,22rem)] lg:max-w-[22rem]';
 export { VIEWPORT_CART_MAX_CLASS, MOBILE_STACKED_CART_MAX_CLASS, DESKTOP_CART_PANEL_WIDTH_CLASS };
 
 /** En flex/grid anidados el hijo debe poder encogerse; si no, el padre recorta y la rueda no hace scroll. */
