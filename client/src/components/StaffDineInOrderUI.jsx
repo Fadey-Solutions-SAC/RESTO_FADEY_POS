@@ -20,8 +20,8 @@ function lineSubtitle(item) {
 const VIEWPORT_CART_MAX_CLASS = 'max-h-[min(calc(92vh-7.5rem),calc(100dvh-8rem))]';
 /** En móvil (productos arriba + pedido abajo): no tapar el catálogo. */
 const MOBILE_STACKED_CART_MAX_CLASS = 'max-h-[min(42vh,340px)]';
-/** Panel «Detalle del pedido» en PC (Mesas / Caja): ancho suficiente para leer el nombre. */
-const DESKTOP_CART_PANEL_WIDTH_CLASS = 'lg:w-[min(100%,22rem)] lg:max-w-[22rem]';
+/** Panel «Detalle del pedido» en PC: más ancho que el catálogo relativo, nombres legibles. */
+const DESKTOP_CART_PANEL_WIDTH_CLASS = 'lg:w-[min(100%,28rem)] lg:max-w-[28rem]';
 export { VIEWPORT_CART_MAX_CLASS, MOBILE_STACKED_CART_MAX_CLASS, DESKTOP_CART_PANEL_WIDTH_CLASS };
 
 /** En flex/grid anidados el hijo debe poder encogerse; si no, el padre recorta y la rueda no hace scroll. */
@@ -86,8 +86,8 @@ function CartLineItems({
     const lineHeaderClass =
       'mb-1.5 flex shrink-0 items-center gap-1 border-b border-[color:var(--ui-border)] pb-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--ui-muted)]';
     const lineRowClass = 'flex min-w-0 items-center gap-1 py-1.5';
-    const priceColClass = 'w-[3.1rem] shrink-0 truncate text-right text-[11px] tabular-nums text-[var(--ui-body-text)]';
-    const qtyColClass = 'flex w-[4.125rem] shrink-0 justify-center';
+    const priceColClass = 'w-[2.85rem] shrink-0 truncate text-right text-[11px] tabular-nums text-[var(--ui-body-text)]';
+    const qtyColClass = 'flex w-[3.75rem] shrink-0 justify-center';
 
     return (
       <div className="min-w-0">
