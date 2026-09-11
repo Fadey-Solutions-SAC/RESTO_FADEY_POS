@@ -506,20 +506,38 @@ export default function StaffDineInOrderUI({
     ? (singleColumnProductList ? 'grid-cols-1' : 'grid-cols-2')
     : 'grid-cols-1';
 
-  const renderProductPrice = (product) => (
-    <span className="shrink-0 text-sm font-bold tabular-nums text-[var(--ui-accent)] whitespace-nowrap">
-      {formatCurrency(orderingProductUnitPrice(product))}
-    </span>
-  );
+  const fmtMoney = formatCurrency || ((amount) => `S/ ${Number(amount || 0).toFixed(2)}`);
 
-  const renderProductStock = (product) => {
-    if (hideProductStock || !showStockInOrderingUI(product)) return null;
-    const qty = formatOrderingStockQty(product.stock);
-    const status = Number(product.stock) <= 0 ? 'text-red-600' : 'text-[var(--ui-muted)]';
+  const renderOrderProductRow = (product) => {
+    const showStock = !hideProductStock && showStockInOrderingUI(product);
+    const stockQty = formatOrderingStockQty(product.stock);
+    const stockOut = Number(product.stock) <= 0;
     return (
-      <p className={`mt-1 text-xs font-medium tabular-nums ${status}`}>
-        Stock: {qty}
-      </p>
+      <button
+        type="button"
+        onClick={() => onProductPick(product)}
+        className="rf-order-product-item"
+      >
+        <span className="rf-order-product-name">
+          {product.is_combo ? (
+            <>
+              <span className="mr-1.5 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-800">
+                Combo
+              </span>
+            </>
+          ) : null}
+          {product.name}
+        </span>
+        <span className="rf-order-product-price">{fmtMoney(orderingProductUnitPrice(product))}</span>
+        {showStock ? (
+          <span className={`rf-order-product-stock${stockOut ? ' is-out' : ''}`}>
+            Stock: {stockQty}
+          </span>
+        ) : null}
+        {product.is_combo && product.description ? (
+          <span className="rf-order-product-stock col-span-2 line-clamp-2">{product.description}</span>
+        ) : null}
+      </button>
     );
   };
 
@@ -531,7 +549,13 @@ export default function StaffDineInOrderUI({
           <p>No hay productos para este filtro</p>
         </div>
       ) : (
-        <div className={`grid ${gridGapClass} ${gridColsClass}`}>
+        <div className={`rf-staff-order-catalog ${showProductThumbnail ? `grid ${gridGapClass} ${gridColsClass}` : ''}`}>
+          {!showProductThumbnail ? (
+            <div className="rf-order-product-head" aria-hidden="true">
+              <span>Producto</span>
+              <span className="text-right">Precio</span>
+            </div>
+          ) : null}
           {filteredProducts.map((p) => {
             const imgUrl = String(resolveMediaUrl(p.image || '') || '').trim();
             if (showProductThumbnail) {
@@ -552,19 +576,7 @@ export default function StaffDineInOrderUI({
                     )}
                   </div>
                   <div className="flex flex-col gap-2 bg-white p-3">
-                    <button
-                      type="button"
-                      onClick={() => onProductPick(p)}
-                      className="w-full text-left"
-                    >
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1">
-                        <p className="min-w-0 text-sm font-semibold leading-snug text-[var(--ui-body-text)] break-words">
-                          {p.name}
-                        </p>
-                        {renderProductPrice(p)}
-                      </div>
-                      {renderProductStock(p)}
-                    </button>
+                    {renderOrderProductRow(p)}
                     {productActionLabel ? (
                       <button
                         type="button"
@@ -580,46 +592,7 @@ export default function StaffDineInOrderUI({
               );
             }
             return (
-              <div
-                key={p.id}
-                className="rounded-md bg-white p-3 text-left transition-shadow hover:shadow-md"
-                style={{ border: '1px solid var(--ui-border)' }}
-              >
-                <button
-                  type="button"
-                  onClick={() => onProductPick(p)}
-                  className="w-full text-left"
-                >
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {p.is_combo ? (
-                          <span className="shrink-0 rounded bg-[var(--ui-accent)]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--ui-accent)]">
-                            Combo
-                          </span>
-                        ) : null}
-                        <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--ui-body-text)] break-words">
-                          {p.name}
-                        </p>
-                      </div>
-                      {p.is_combo && p.description ? (
-                        <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--ui-muted)]">{p.description}</p>
-                      ) : null}
-                      {renderProductStock(p)}
-                    </div>
-                    {renderProductPrice(p)}
-                  </div>
-                </button>
-                {productActionLabel ? (
-                  <button
-                    type="button"
-                    onClick={() => onProductPick(p)}
-                    className="mt-2 w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-1.5 text-xs font-semibold text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
-                  >
-                    {productActionLabel}
-                  </button>
-                ) : null}
-              </div>
+              <div key={p.id}>{renderOrderProductRow(p)}</div>
             );
           })}
         </div>
