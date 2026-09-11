@@ -4615,7 +4615,7 @@ export default function POSPanel() {
         })()}
         size="xl"
         maxHeightClass="h-[min(92vh,920px)] max-h-[min(92vh,920px)]"
-        bodyClassName="!overflow-hidden !flex !min-h-0 !flex-1 !flex-col !px-4 !pb-4 !pt-2 sm:!px-6 sm:!pb-6"
+        bodyClassName="!flex !min-h-0 !min-w-0 !flex-1 !flex-col !overflow-hidden !px-4 !pb-4 !pt-2 sm:!px-6 sm:!pb-6"
       >
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         {quickSaleMode ? (

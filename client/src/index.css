@@ -1753,3 +1753,13 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
 .rf-modal-panel .rf-staff-order-catalog-row__stock {
   opacity: 1 !important;
 }
+
+/* Mesas / Caja: fila catálogo — flex inline (no recortar precio en modal) */
+.rf-modal-panel .rf-order-catalog-row,
+.rf-modal-panel .rf-order-catalog-row span {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+.rf-modal-panel .rf-order-catalog-row span:last-child {
+  color: #2563eb !important;
+}

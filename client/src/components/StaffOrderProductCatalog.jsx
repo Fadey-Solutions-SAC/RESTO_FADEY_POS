@@ -4,49 +4,68 @@ import {
   orderingStockCellText,
 } from '../utils/productStockDisplay';
 
-const TABLE_STYLE = {
-  width: '100%',
-  tableLayout: 'fixed',
-  borderCollapse: 'separate',
-  borderSpacing: '0 6px',
-};
-
-const COL_STOCK = { width: '3.25rem' };
-const COL_PRICE = { width: '5rem' };
-
-const HEAD_CELL = {
-  padding: '0 0.5rem 0.25rem',
-  fontSize: 10,
-  fontWeight: 600,
-  letterSpacing: '0.04em',
-  textTransform: 'uppercase',
-  color: 'var(--ui-muted)',
-  textAlign: 'left',
-};
-
-const ROW_BTN_STYLE = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) 3.25rem 5rem',
-  columnGap: '0.35rem',
+const ROW_SHELL = {
+  display: 'flex',
   alignItems: 'center',
+  gap: '0.5rem',
   width: '100%',
   maxWidth: '100%',
   minWidth: 0,
   boxSizing: 'border-box',
-  margin: 0,
   padding: '0.625rem 0.75rem',
+  margin: 0,
   border: '1px solid var(--ui-border)',
   borderRadius: 6,
   background: '#ffffff',
   cursor: 'pointer',
   textAlign: 'left',
-  font: 'inherit',
-  color: 'inherit',
+};
+
+const COL_NAME = {
+  flex: '1 1 0',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  fontSize: '0.875rem',
+  fontWeight: 500,
+  color: 'var(--ui-body-text)',
+};
+
+const COL_STOCK = {
+  flex: '0 0 3rem',
+  width: '3rem',
+  textAlign: 'right',
+  fontSize: '0.75rem',
+  fontVariantNumeric: 'tabular-nums',
+};
+
+const COL_PRICE = {
+  flex: '0 0 4.75rem',
+  width: '4.75rem',
+  textAlign: 'right',
+  fontSize: '0.875rem',
+  fontWeight: 700,
+  fontVariantNumeric: 'tabular-nums',
+  color: '#2563eb',
+};
+
+const HEAD_ROW = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  width: '100%',
+  minWidth: 0,
+  padding: '0 0.75rem 0.25rem',
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: '0.04em',
+  textTransform: 'uppercase',
+  color: 'var(--ui-muted)',
 };
 
 /**
- * Catálogo de productos al tomar pedido (Mesas / Caja). Tabla + grid inline para que
- * Precio y Stock no dependan de Tailwind ni de clases que el PWA pueda cachear mal.
+ * Catálogo al tomar pedido (Mesas / Caja). Flex fijo: nombre | stock | precio en una línea.
  */
 export default function StaffOrderProductCatalog({
   products = [],
@@ -59,92 +78,65 @@ export default function StaffOrderProductCatalog({
   if (!products.length) return null;
 
   return (
-    <div className="min-w-0 w-full max-w-full overflow-x-auto">
-      <table style={TABLE_STYLE} className="min-w-[17rem]">
-        <colgroup>
-          <col />
-          <col style={COL_STOCK} />
-          <col style={COL_PRICE} />
-        </colgroup>
-        <thead>
-          <tr>
-            <th style={HEAD_CELL}>Producto</th>
-            <th style={{ ...HEAD_CELL, textAlign: 'right' }}>Stock</th>
-            <th style={{ ...HEAD_CELL, textAlign: 'right', paddingRight: '0.75rem' }}>Precio</th>
-          </tr>
-        </thead>
-        <tbody>
-          {products.map((product) => {
-            const stockText = orderingStockCellText(product, { hideStock: hideProductStock });
-            const stockOut = orderingStockCellIsOut(product, { hideStock: hideProductStock });
-            const unitPrice = fmtMoney(orderingProductUnitPrice(product));
-            return (
-              <tr key={product.id}>
-                <td colSpan={3} style={{ padding: 0, verticalAlign: 'middle' }}>
-                  <button
-                    type="button"
-                    onClick={() => onProductPick(product)}
-                    style={ROW_BTN_STYLE}
-                    className="rf-staff-order-catalog-row--btn"
-                  >
+    <div className="min-w-0 w-full max-w-full" style={{ minWidth: 0, maxWidth: '100%' }}>
+      <div style={HEAD_ROW} aria-hidden="true">
+        <span style={{ ...COL_NAME, flex: '1 1 0', fontWeight: 600, color: 'var(--ui-muted)' }}>Producto</span>
+        <span style={{ ...COL_STOCK, color: 'var(--ui-muted)' }}>Stock</span>
+        <span style={{ ...COL_PRICE, color: 'var(--ui-muted)', fontWeight: 600 }}>Precio</span>
+      </div>
+      <ul className="m-0 list-none space-y-1.5 p-0" style={{ minWidth: 0, maxWidth: '100%' }}>
+        {products.map((product) => {
+          const stockText = orderingStockCellText(product, { hideStock: hideProductStock });
+          const stockOut = orderingStockCellIsOut(product, { hideStock: hideProductStock });
+          const unitPrice = fmtMoney(orderingProductUnitPrice(product));
+          return (
+            <li key={product.id} style={{ minWidth: 0, maxWidth: '100%' }}>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => onProductPick(product)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onProductPick(product);
+                  }
+                }}
+                style={ROW_SHELL}
+                className="rf-order-catalog-row"
+              >
+                <span style={COL_NAME} title={product.name}>
+                  {product.is_combo ? (
                     <span
                       style={{
-                        minWidth: 0,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        fontSize: '0.875rem',
-                        fontWeight: 500,
-                        color: 'var(--ui-body-text)',
-                      }}
-                      title={product.name}
-                    >
-                      {product.is_combo ? (
-                        <span
-                          style={{
-                            marginRight: 4,
-                            padding: '1px 4px',
-                            borderRadius: 4,
-                            fontSize: 9,
-                            fontWeight: 700,
-                            background: '#dbeafe',
-                            color: '#1e40af',
-                          }}
-                        >
-                          COMBO
-                        </span>
-                      ) : null}
-                      {product.name}
-                    </span>
-                    <span
-                      style={{
-                        textAlign: 'right',
-                        fontSize: '0.75rem',
-                        fontVariantNumeric: 'tabular-nums',
-                        color: stockOut ? '#dc2626' : '#64748b',
-                        fontWeight: stockOut ? 600 : 500,
-                      }}
-                    >
-                      {stockText}
-                    </span>
-                    <span
-                      style={{
-                        textAlign: 'right',
-                        fontSize: '0.875rem',
+                        marginRight: 4,
+                        padding: '1px 4px',
+                        borderRadius: 4,
+                        fontSize: 9,
                         fontWeight: 700,
-                        fontVariantNumeric: 'tabular-nums',
-                        color: '#2563eb',
+                        background: '#dbeafe',
+                        color: '#1e40af',
                       }}
                     >
-                      {unitPrice}
+                      COMBO
                     </span>
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  ) : null}
+                  {product.name}
+                </span>
+                <span
+                  style={{
+                    ...COL_STOCK,
+                    color: stockOut ? '#dc2626' : '#64748b',
+                    fontWeight: stockOut ? 600 : 500,
+                  }}
+                >
+                  {stockText}
+                </span>
+                <span style={COL_PRICE}>{unitPrice}</span>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

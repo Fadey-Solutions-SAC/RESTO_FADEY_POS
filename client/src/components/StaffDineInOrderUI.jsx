@@ -24,9 +24,9 @@ export { VIEWPORT_CART_MAX_CLASS, MOBILE_STACKED_CART_MAX_CLASS };
 
 /** En flex/grid anidados el hijo debe poder encogerse; si no, el padre recorta y la rueda no hace scroll. */
 const PRODUCT_SCROLL_CLASS =
-  'min-h-0 h-full overflow-y-auto overscroll-y-contain pr-1.5 [-webkit-overflow-scrolling:touch] touch-pan-y scrollbar-thin';
+  'min-h-0 min-w-0 max-w-full h-full overflow-y-auto overflow-x-hidden overscroll-y-contain pr-1.5 [-webkit-overflow-scrolling:touch] touch-pan-y scrollbar-thin';
 const PRODUCT_SCROLL_FLEX_CLASS =
-  'h-0 min-h-0 flex-1 basis-0 overflow-y-auto overscroll-y-contain pr-1.5 [-webkit-overflow-scrolling:touch] touch-pan-y scrollbar-thin';
+  'h-0 min-h-0 min-w-0 max-w-full flex-1 basis-0 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-1.5 [-webkit-overflow-scrolling:touch] touch-pan-y scrollbar-thin';
 
 function QtyStepper({ quantity, onDecrease, onIncrease, decreaseDisabled, compact = false }) {
   const btnClass = compact
