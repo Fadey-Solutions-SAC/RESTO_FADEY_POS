@@ -8,9 +8,9 @@ import {
   MdEditNote,
 } from 'react-icons/md';
 import {
-  formatOrderingStockQty,
   orderingProductUnitPrice,
-  showStockInOrderingUI,
+  orderingStockCellIsOut,
+  orderingStockCellText,
 } from '../utils/productStockDisplay';
 import { resolveMediaUrl } from '../utils/api';
 
@@ -508,39 +508,39 @@ export default function StaffDineInOrderUI({
 
   const fmtMoney = formatCurrency || ((amount) => `S/ ${Number(amount || 0).toFixed(2)}`);
 
-  const orderRowBtnClass =
-    'flex w-full min-w-0 items-start gap-3 rounded-md border border-[color:var(--ui-border)] bg-white p-3 text-left shadow-sm transition-shadow hover:shadow-md dark:bg-[var(--ui-surface-2)]';
+  /** Misma plantilla en cabecera y filas para alinear Stock y Precio */
+  const orderCatalogRowGridClass =
+    'grid w-full max-w-full min-w-0 grid-cols-[minmax(0,1fr)_3.75rem_5.25rem] items-center gap-x-2 px-3';
 
-  const renderOrderProductRow = (product) => {
-    const showStock = !hideProductStock && showStockInOrderingUI(product);
-    const stockQty = formatOrderingStockQty(product.stock);
-    const stockOut = Number(product.stock) <= 0;
+  const orderRowBtnClass =
+    `${orderCatalogRowGridClass} rounded-md border border-[color:var(--ui-border)] bg-white py-2.5 text-left shadow-sm transition-shadow hover:shadow-md dark:bg-[var(--ui-surface-2)]`;
+
+  const renderOrderProductName = (product) => (
+    <span className="min-w-0 truncate text-sm font-medium text-[var(--ui-body-text)]" title={product.name}>
+      {product.is_combo ? (
+        <span className="mr-1 inline-block rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase text-blue-800">
+          Combo
+        </span>
+      ) : null}
+      {product.name}
+    </span>
+  );
+
+  const renderOrderProductRow = (product, { compact = false } = {}) => {
+    const stockText = orderingStockCellText(product, { hideStock: hideProductStock });
+    const stockOut = orderingStockCellIsOut(product, { hideStock: hideProductStock });
     const unitPrice = fmtMoney(orderingProductUnitPrice(product));
+    const stockClass = stockOut ? 'text-red-600 font-semibold' : 'text-[var(--ui-muted)]';
     return (
       <button type="button" onClick={() => onProductPick(product)} className={orderRowBtnClass}>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium leading-snug text-[var(--ui-body-text)]">
-            {product.is_combo ? (
-              <span className="mr-1.5 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-800">
-                Combo
-              </span>
-            ) : null}
-            {product.name}
-          </p>
-          {showStock ? (
-            <p
-              className={`mt-0.5 text-xs font-medium tabular-nums ${
-                stockOut ? 'text-red-600' : 'text-[var(--ui-muted)]'
-              }`}
-            >
-              Stock: {stockQty}
-            </p>
-          ) : null}
-          {product.is_combo && product.description ? (
-            <p className="mt-0.5 line-clamp-2 text-xs text-[var(--ui-muted)]">{product.description}</p>
-          ) : null}
-        </div>
-        <span className="shrink-0 text-sm font-bold tabular-nums text-[var(--ui-accent)]">{unitPrice}</span>
+        {renderOrderProductName(product)}
+        <span className={`text-right text-xs tabular-nums ${stockClass}`}>{stockText}</span>
+        <span className="text-right text-sm font-bold tabular-nums text-[var(--ui-accent)]">{unitPrice}</span>
+        {!compact && product.is_combo && product.description ? (
+          <span className="col-span-3 -mt-1 line-clamp-2 px-0 text-left text-[11px] text-[var(--ui-muted)]">
+            {product.description}
+          </span>
+        ) : null}
       </button>
     );
   };
@@ -554,20 +554,27 @@ export default function StaffDineInOrderUI({
         </div>
       ) : (
         <div
-          className={`w-full min-w-0 space-y-2 ${showProductThumbnail ? `grid ${gridGapClass} ${gridColsClass}` : ''}`}
+          className={`w-full min-w-0 ${showProductThumbnail ? `grid ${gridGapClass} ${gridColsClass}` : 'space-y-1.5'}`}
         >
           {!showProductThumbnail ? (
-            <div
-              className="flex shrink-0 items-center gap-3 px-3 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]"
-              aria-hidden="true"
-            >
-              <span className="min-w-0 flex-1">Producto</span>
-              <span className="shrink-0">Precio</span>
-            </div>
-          ) : null}
-          {filteredProducts.map((p) => {
-            const imgUrl = String(resolveMediaUrl(p.image || '') || '').trim();
-            if (showProductThumbnail) {
+            <>
+              <div
+                className={`${orderCatalogRowGridClass} shrink-0 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]`}
+                aria-hidden="true"
+              >
+                <span>Producto</span>
+                <span className="text-right">Stock</span>
+                <span className="text-right">Precio</span>
+              </div>
+              {filteredProducts.map((p) => (
+                <div key={p.id} className="min-w-0 max-w-full">
+                  {renderOrderProductRow(p)}
+                </div>
+              ))}
+            </>
+          ) : (
+            filteredProducts.map((p) => {
+              const imgUrl = String(resolveMediaUrl(p.image || '') || '').trim();
               return (
                 <div
                   key={p.id}
@@ -584,8 +591,8 @@ export default function StaffDineInOrderUI({
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col gap-2 bg-white p-3">
-                    {renderOrderProductRow(p)}
+                  <div className="flex flex-col gap-2 bg-white p-2">
+                    {renderOrderProductRow(p, { compact: true })}
                     {productActionLabel ? (
                       <button
                         type="button"
@@ -599,11 +606,8 @@ export default function StaffDineInOrderUI({
                   </div>
                 </div>
               );
-            }
-            return (
-              <div key={p.id}>{renderOrderProductRow(p)}</div>
-            );
-          })}
+            })
+          )}
         </div>
       )}
     </>

@@ -58,3 +58,15 @@ export function formatOrderingStockQty(stock) {
   if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
   return n.toFixed(2).replace(/\.?0+$/, '');
 }
+
+/** Celda fija «Stock» en catálogo de pedidos (staff). */
+export function orderingStockCellText(product, { hideStock = false } = {}) {
+  if (hideStock || !product || product.is_combo) return '—';
+  if (!showStockInOrderingUI(product)) return '—';
+  return formatOrderingStockQty(product.stock);
+}
+
+export function orderingStockCellIsOut(product, { hideStock = false } = {}) {
+  if (hideStock || !product || !showStockInOrderingUI(product)) return false;
+  return Number(product.stock) <= 0;
+}
