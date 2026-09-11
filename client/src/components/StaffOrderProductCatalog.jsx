@@ -4,68 +4,8 @@ import {
   orderingStockCellText,
 } from '../utils/productStockDisplay';
 
-const ROW_SHELL = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.5rem',
-  width: '100%',
-  maxWidth: '100%',
-  minWidth: 0,
-  boxSizing: 'border-box',
-  padding: '0.625rem 0.75rem',
-  margin: 0,
-  border: '1px solid var(--ui-border)',
-  borderRadius: 6,
-  background: '#ffffff',
-  cursor: 'pointer',
-  textAlign: 'left',
-};
-
-const COL_NAME = {
-  flex: '1 1 0',
-  minWidth: 0,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-  fontSize: '0.875rem',
-  fontWeight: 500,
-  color: 'var(--ui-body-text)',
-};
-
-const COL_STOCK = {
-  flex: '0 0 3rem',
-  width: '3rem',
-  textAlign: 'right',
-  fontSize: '0.75rem',
-  fontVariantNumeric: 'tabular-nums',
-};
-
-const COL_PRICE = {
-  flex: '0 0 4.75rem',
-  width: '4.75rem',
-  textAlign: 'right',
-  fontSize: '0.875rem',
-  fontWeight: 700,
-  fontVariantNumeric: 'tabular-nums',
-  color: '#2563eb',
-};
-
-const HEAD_ROW = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.5rem',
-  width: '100%',
-  minWidth: 0,
-  padding: '0 0.75rem 0.25rem',
-  fontSize: 10,
-  fontWeight: 600,
-  letterSpacing: '0.04em',
-  textTransform: 'uppercase',
-  color: 'var(--ui-muted)',
-};
-
 /**
- * Catálogo al tomar pedido (Mesas / Caja). Flex fijo: nombre | stock | precio en una línea.
+ * Catálogo Mesas / Caja: una fila por producto; precio y stock a la derecha (float, sin flex).
  */
 export default function StaffOrderProductCatalog({
   products = [],
@@ -78,65 +18,143 @@ export default function StaffOrderProductCatalog({
   if (!products.length) return null;
 
   return (
-    <div className="min-w-0 w-full max-w-full" style={{ minWidth: 0, maxWidth: '100%' }}>
-      <div style={HEAD_ROW} aria-hidden="true">
-        <span style={{ ...COL_NAME, flex: '1 1 0', fontWeight: 600, color: 'var(--ui-muted)' }}>Producto</span>
-        <span style={{ ...COL_STOCK, color: 'var(--ui-muted)' }}>Stock</span>
-        <span style={{ ...COL_PRICE, color: 'var(--ui-muted)', fontWeight: 600 }}>Precio</span>
-      </div>
-      <ul className="m-0 list-none space-y-1.5 p-0" style={{ minWidth: 0, maxWidth: '100%' }}>
+    <table
+      className="rf-order-catalog-table w-full min-w-0"
+      style={{
+        width: '100%',
+        tableLayout: 'fixed',
+        borderCollapse: 'separate',
+        borderSpacing: '0 6px',
+      }}
+    >
+      <thead>
+        <tr>
+          <th
+            style={{
+              padding: '0 0.75rem 0.25rem',
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              color: 'var(--ui-muted)',
+              textAlign: 'left',
+            }}
+          >
+            Producto
+            <span
+              style={{
+                float: 'right',
+                textTransform: 'uppercase',
+                fontWeight: 600,
+                letterSpacing: '0.04em',
+              }}
+            >
+              Stock · Precio
+            </span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
         {products.map((product) => {
           const stockText = orderingStockCellText(product, { hideStock: hideProductStock });
           const stockOut = orderingStockCellIsOut(product, { hideStock: hideProductStock });
           const unitPrice = fmtMoney(orderingProductUnitPrice(product));
+          const showStock = stockText !== '—';
           return (
-            <li key={product.id} style={{ minWidth: 0, maxWidth: '100%' }}>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => onProductPick(product)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onProductPick(product);
-                  }
-                }}
-                style={ROW_SHELL}
-                className="rf-order-catalog-row"
-              >
-                <span style={COL_NAME} title={product.name}>
-                  {product.is_combo ? (
-                    <span
-                      style={{
-                        marginRight: 4,
-                        padding: '1px 4px',
-                        borderRadius: 4,
-                        fontSize: 9,
-                        fontWeight: 700,
-                        background: '#dbeafe',
-                        color: '#1e40af',
-                      }}
-                    >
-                      COMBO
-                    </span>
-                  ) : null}
-                  {product.name}
-                </span>
-                <span
+            <tr key={product.id}>
+              <td style={{ padding: 0, border: 'none', verticalAlign: 'middle' }}>
+                <button
+                  type="button"
+                  onClick={() => onProductPick(product)}
+                  className="rf-order-catalog-row"
                   style={{
-                    ...COL_STOCK,
-                    color: stockOut ? '#dc2626' : '#64748b',
-                    fontWeight: stockOut ? 600 : 500,
+                    display: 'block',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    margin: 0,
+                    padding: '0.625rem 0.75rem',
+                    border: '1px solid var(--ui-border)',
+                    borderRadius: 6,
+                    background: '#ffffff',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    font: 'inherit',
+                    color: 'inherit',
                   }}
                 >
-                  {stockText}
-                </span>
-                <span style={COL_PRICE}>{unitPrice}</span>
-              </div>
-            </li>
+                  <span
+                    style={{
+                      display: 'block',
+                      overflow: 'hidden',
+                      paddingRight: '0.25rem',
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline',
+                        fontSize: '0.875rem',
+                        fontWeight: 500,
+                        color: 'var(--ui-body-text)',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {product.is_combo ? (
+                        <span
+                          style={{
+                            marginRight: 4,
+                            padding: '1px 4px',
+                            borderRadius: 4,
+                            fontSize: 9,
+                            fontWeight: 700,
+                            background: '#dbeafe',
+                            color: '#1e40af',
+                          }}
+                        >
+                          COMBO
+                        </span>
+                      ) : null}
+                      {product.name}
+                    </span>
+                    <span
+                      style={{
+                        float: 'right',
+                        clear: 'none',
+                        marginLeft: '0.75rem',
+                        whiteSpace: 'nowrap',
+                        fontSize: '0.875rem',
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {showStock ? (
+                        <span
+                          style={{
+                            marginRight: '0.65rem',
+                            fontSize: '0.75rem',
+                            fontWeight: stockOut ? 600 : 500,
+                            fontVariantNumeric: 'tabular-nums',
+                            color: stockOut ? '#dc2626' : '#64748b',
+                          }}
+                        >
+                          {stockText}
+                        </span>
+                      ) : null}
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontVariantNumeric: 'tabular-nums',
+                          color: '#2563eb',
+                        }}
+                      >
+                        {unitPrice}
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              </td>
+            </tr>
           );
         })}
-      </ul>
-    </div>
+      </tbody>
+    </table>
   );
 }
