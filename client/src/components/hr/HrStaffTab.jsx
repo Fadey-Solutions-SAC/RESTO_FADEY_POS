@@ -59,6 +59,19 @@ function DetailRow({ label, value }) {
   );
 }
 
+function payModeLabel(mode) {
+  const m = String(mode || '').toLowerCase();
+  return PAY_MODE_LABEL[m] || (m ? m : null);
+}
+
+function paymentMethodLabel(e) {
+  const method = String(e?.payroll_payment_method || '').toLowerCase();
+  const ref = String(e?.payroll_payment_ref || e?.phone || '').trim();
+  if (method === 'cuenta') return ref ? `N° cuenta · ${ref}` : 'N° cuenta';
+  if (method === 'telefono' || ref) return ref ? `Teléfono · ${ref}` : 'Teléfono';
+  return null;
+}
+
 export default function HrStaffTab({ employees, branches, onReload }) {
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
@@ -232,42 +245,53 @@ export default function HrStaffTab({ employees, branches, onReload }) {
               <DetailRow label="Sede" value={branchName(inspect.branch_id)} />
               <DetailRow label="Estado" value={employeeStatusLabel(inspect.status)} />
               <DetailRow label="Horario" value={inspect.schedule_label || inspect.schedule_name} />
-              <DetailRow label="Pago" value={formatPaySummary(inspect)} />
-              <DetailRow
-                label="Método de pago"
-                value={
-                  inspect.payroll_payment_method === 'cuenta'
-                    ? `Cuenta · ${inspect.payroll_payment_ref || '—'}`
-                    : inspect.payroll_payment_method === 'telefono' || inspect.payroll_payment_ref || inspect.phone
-                      ? `Teléfono · ${inspect.payroll_payment_ref || inspect.phone || '—'}`
-                      : null
-                }
-              />
-              <DetailRow
-                label="Día de pago"
-                value={Number(inspect.payroll_payment_day) > 0 ? String(inspect.payroll_payment_day) : null}
-              />
-              <DetailRow label="Nota de pago" value={inspect.payroll_schedule_note} />
               <DetailRow
                 label="Contrato digital"
                 value={inspect.employment_contract?.label || null}
               />
               <DetailRow label="Foto" value={inspect.photo_url} />
             </div>
-            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-1">
-              <button type="button" className="btn-secondary w-full sm:w-auto" onClick={() => setInspect(null)}>
-                Cerrar
-              </button>
+
+            <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 space-y-2.5">
+              <h4 className="text-sm font-semibold text-[var(--ui-body-text)]">Datos de pago</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <DetailRow label="Formato de pago" value={payModeLabel(inspect.payroll_pay_mode)} />
+                <DetailRow
+                  label="Monto (S/)"
+                  value={
+                    Number(inspect.payroll_amount) > 0
+                      ? formatCurrency(Number(inspect.payroll_amount))
+                      : null
+                  }
+                />
+                <DetailRow
+                  label="Día de pago"
+                  value={
+                    Number(inspect.payroll_payment_day) > 0
+                      ? String(inspect.payroll_payment_day)
+                      : null
+                  }
+                />
+                <DetailRow label="Método de pago" value={paymentMethodLabel(inspect)} />
+                <DetailRow label="Nota / detalle" value={inspect.payroll_schedule_note} />
+                <DetailRow label="Resumen" value={formatPaySummary(inspect)} />
+              </div>
               {(inspect.payroll_payment_ref || inspect.phone) && inspect.payroll_payment_method !== 'cuenta' ? (
                 <a
-                  className="btn-secondary w-full sm:w-auto inline-flex items-center justify-center gap-1.5 text-emerald-700"
+                  className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline"
                   href={whatsappHref(inspect.payroll_payment_ref || inspect.phone, inspect.full_name)}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <FaWhatsapp /> WhatsApp
+                  <FaWhatsapp className="text-base" /> Abrir WhatsApp
                 </a>
               ) : null}
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-1">
+              <button type="button" className="btn-secondary w-full sm:w-auto" onClick={() => setInspect(null)}>
+                Cerrar
+              </button>
               <button
                 type="button"
                 className="btn-primary w-full sm:w-auto inline-flex items-center justify-center gap-1.5"
