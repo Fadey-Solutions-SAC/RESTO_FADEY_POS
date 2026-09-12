@@ -1148,8 +1148,8 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
   .rf-entry-splash__logo-ring {
     position: relative;
     z-index: 1;
-    width: min(42vw, 240px);
-    height: min(42vw, 240px);
+    width: min(58vw, 260px);
+    height: min(58vw, 260px);
     aspect-ratio: 1;
     border-radius: 50% !important;
     overflow: hidden !important;
@@ -1165,7 +1165,7 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
     object-position: center center;
     background: #000000;
   }
@@ -1317,8 +1317,8 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
       width: min(36vw, 320px);
     }
     .rf-entry-splash__logo-ring {
-      width: min(22vw, 260px);
-      height: min(22vw, 260px);
+      width: min(28vw, 280px);
+      height: min(28vw, 280px);
     }
     .rf-entry-splash__glow {
       width: min(48vw, 440px);
