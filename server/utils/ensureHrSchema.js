@@ -143,6 +143,9 @@ function ensureHrSchema() {
     if (!empNames.has('custom_end_time')) {
       runSql("ALTER TABLE hr_employees ADD COLUMN custom_end_time TEXT DEFAULT ''");
     }
+    if (!empNames.has('employment_contract_json')) {
+      runSql("ALTER TABLE hr_employees ADD COLUMN employment_contract_json TEXT DEFAULT ''");
+    }
   } catch (_) {
     /* noop */
   }

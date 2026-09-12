@@ -375,6 +375,14 @@ function employeePublic(row, extra = {}) {
     payroll_amount: Number(row.payroll_amount || 0),
     payroll_schedule_note: String(row.payroll_schedule_note || ''),
     payroll_payment_day: Number(row.payroll_payment_day || 0),
+    employment_contract: (() => {
+      try {
+        const { employmentContractSummary } = require('./employmentContractStore');
+        return employmentContractSummary(row.employment_contract_json || '');
+      } catch {
+        return { estado_firma: 'borrador', label: 'Sin firmar', fully_signed: false };
+      }
+    })(),
     ...extra,
   };
 }

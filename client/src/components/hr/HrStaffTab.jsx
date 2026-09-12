@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
+import { MdEdit, MdVisibility } from 'react-icons/md';
 import toast from 'react-hot-toast';
 import { api, formatCurrency } from '../../utils/api';
 import Modal from '../Modal';
 import { employeeStatusLabel } from './hrFormat';
+import HrEmploymentContractBox from './HrEmploymentContractBox';
 
 const PAY_MODE_LABEL = {
   hora: 'Por horas',
@@ -35,9 +37,19 @@ function scheduleKindFromEmployee(e) {
   return 'template';
 }
 
+function DetailRow({ label, value }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] text-[var(--ui-muted)]">{label}</div>
+      <div className="text-sm text-[var(--ui-body-text)] break-words">{value || '—'}</div>
+    </div>
+  );
+}
+
 export default function HrStaffTab({ employees, branches, onReload }) {
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
+  const [inspect, setInspect] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const filtered = useMemo(() => (employees || []).filter((e) => {
@@ -51,6 +63,7 @@ export default function HrStaffTab({ employees, branches, onReload }) {
 
   const openEdit = (e) => {
     const kind = scheduleKindFromEmployee(e);
+    setInspect(null);
     setEdit({
       ...e,
       schedule_kind: kind,
@@ -61,6 +74,11 @@ export default function HrStaffTab({ employees, branches, onReload }) {
       payroll_schedule_note: e.payroll_schedule_note || '',
       payroll_payment_day: e.payroll_payment_day || 0,
     });
+  };
+
+  const openInspect = (e) => {
+    setEdit(null);
+    setInspect(e);
   };
 
   const save = async () => {
@@ -102,12 +120,10 @@ export default function HrStaffTab({ employees, branches, onReload }) {
     }
   };
 
+  const branchName = (id) => branches.find((b) => b.id === id)?.name || id || '—';
+
   return (
     <div className="space-y-3">
-      <p className="text-sm text-[var(--ui-muted)] rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2">
-        La marcación usa un <strong>único QR del local</strong> (botón «QR del local» arriba). Cada trabajador escanea
-        ese mismo código con su sesión iniciada en Control de asistencia.
-      </p>
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <input
           value={q}
@@ -138,14 +154,31 @@ export default function HrStaffTab({ employees, branches, onReload }) {
                   <div className="text-xs text-[var(--ui-muted)]">@{e.username} · {e.role}</div>
                 </td>
                 <td className="p-3">{e.position || '—'}{e.department ? ` / ${e.department}` : ''}</td>
-                <td className="p-3">{branches.find((b) => b.id === e.branch_id)?.name || e.branch_id || '—'}</td>
+                <td className="p-3">{branchName(e.branch_id)}</td>
                 <td className="p-3 whitespace-nowrap">{e.schedule_label || e.schedule_name || '—'}</td>
                 <td className="p-3 text-xs">{formatPaySummary(e) || '—'}</td>
                 <td className="p-3">{employeeStatusLabel(e.status)}</td>
                 <td className="p-3 whitespace-nowrap">
-                  <button type="button" className="btn-secondary text-xs" onClick={() => openEdit(e)}>
-                    Editar
-                  </button>
+                  <div className="inline-flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs inline-flex items-center gap-1 py-1.5 px-2"
+                      onClick={() => openInspect(e)}
+                      title="Inspeccionar"
+                    >
+                      <MdVisibility className="text-base" />
+                      Inspeccionar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary p-1.5 inline-flex items-center justify-center"
+                      onClick={() => openEdit(e)}
+                      title="Editar"
+                      aria-label="Editar"
+                    >
+                      <MdEdit className="text-lg" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -155,6 +188,58 @@ export default function HrStaffTab({ employees, branches, onReload }) {
           </tbody>
         </table>
       </div>
+
+      <Modal
+        isOpen={!!inspect}
+        onClose={() => setInspect(null)}
+        title="Detalle del trabajador"
+        size="md"
+        maxHeightClass="max-h-[min(92vh,720px)]"
+        bodyClassName="!overflow-y-auto !px-3 !py-3 sm:!px-4"
+      >
+        {inspect ? (
+          <div className="space-y-3 max-w-full min-w-0">
+            <div>
+              <div className="text-base font-semibold text-[var(--ui-body-text)]">{inspect.full_name}</div>
+              <div className="text-xs text-[var(--ui-muted)]">@{inspect.username} · {inspect.role}</div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3">
+              <DetailRow label="Documento" value={inspect.document_id} />
+              <DetailRow label="Código" value={inspect.employee_code} />
+              <DetailRow label="Cargo" value={inspect.position} />
+              <DetailRow label="Área" value={inspect.department} />
+              <DetailRow label="Fecha ingreso" value={inspect.hire_date} />
+              <DetailRow label="Contrato" value={inspect.contract_type} />
+              <DetailRow label="Sede" value={branchName(inspect.branch_id)} />
+              <DetailRow label="Estado" value={employeeStatusLabel(inspect.status)} />
+              <DetailRow label="Horario" value={inspect.schedule_label || inspect.schedule_name} />
+              <DetailRow label="Pago" value={formatPaySummary(inspect)} />
+              <DetailRow
+                label="Día de pago"
+                value={Number(inspect.payroll_payment_day) > 0 ? String(inspect.payroll_payment_day) : null}
+              />
+              <DetailRow label="Nota de pago" value={inspect.payroll_schedule_note} />
+              <DetailRow
+                label="Contrato digital"
+                value={inspect.employment_contract?.label || null}
+              />
+              <DetailRow label="Foto" value={inspect.photo_url} />
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-1">
+              <button type="button" className="btn-secondary w-full sm:w-auto" onClick={() => setInspect(null)}>
+                Cerrar
+              </button>
+              <button
+                type="button"
+                className="btn-primary w-full sm:w-auto inline-flex items-center justify-center gap-1.5"
+                onClick={() => openEdit(inspect)}
+              >
+                <MdEdit /> Editar
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         isOpen={!!edit}
@@ -178,7 +263,6 @@ export default function HrStaffTab({ employees, branches, onReload }) {
                 ['position', 'Cargo'],
                 ['department', 'Área'],
                 ['hire_date', 'Fecha ingreso', 'date'],
-                ['contract_type', 'Contrato'],
               ].map(([key, label, type]) => (
                 <label key={key} className="text-xs space-y-1 min-w-0">
                   <span className="text-[var(--ui-muted)]">{label}</span>
@@ -190,6 +274,13 @@ export default function HrStaffTab({ employees, branches, onReload }) {
                   />
                 </label>
               ))}
+              <HrEmploymentContractBox
+                employeeId={edit.id}
+                employeeName={edit.full_name}
+                contractType={edit.contract_type || ''}
+                onContractTypeChange={(v) => setEdit((p) => ({ ...p, contract_type: v }))}
+                summaryLabel={edit.employment_contract?.label || ''}
+              />
               <label className="text-xs space-y-1 min-w-0 sm:col-span-2">
                 <span className="text-[var(--ui-muted)]">Foto (URL)</span>
                 <input

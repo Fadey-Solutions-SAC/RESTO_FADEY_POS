@@ -11,6 +11,7 @@ const {
   emptyFirmaSlot,
   normalizeContrato,
 } = require('../contratoStore');
+const employmentStore = require('../employmentContractStore');
 const {
   getProviderMode,
   mockAllowed,
@@ -23,12 +24,70 @@ const {
   hashPdfFile,
 } = require('./contractPdf');
 
-const PARTIES = new Set(['comprador', 'vendedor']);
+const PARTIES = new Set(['comprador', 'vendedor', 'empleador', 'empleado']);
 
 function partyFromRole(role) {
   if (role === 'master_admin') return 'vendedor';
   if (role === 'admin') return 'comprador';
   return '';
+}
+
+function normalizeParty(partyIn, { employment = false } = {}) {
+  const raw = String(partyIn || '').toLowerCase();
+  if (employment) {
+    if (raw === 'empleador' || raw === 'vendedor') return 'vendedor';
+    if (raw === 'empleado' || raw === 'comprador') return 'comprador';
+    return '';
+  }
+  if (raw === 'comprador' || raw === 'vendedor') return raw;
+  return '';
+}
+
+function parseRequestScope(details = {}) {
+  if (details?.kind === 'employment' && details.employee_id) {
+    return { kind: 'employment', employeeId: String(details.employee_id) };
+  }
+  return { kind: 'service', employeeId: '' };
+}
+
+function loadContratoByScope(scope) {
+  if (scope.kind === 'employment') {
+    return employmentStore.readEmploymentContrato(scope.employeeId);
+  }
+  return readContrato();
+}
+
+function saveContratoByScope(scope, contrato) {
+  if (scope.kind === 'employment') {
+    return employmentStore.writeEmploymentContrato(scope.employeeId, contrato);
+  }
+  return writeContrato(contrato);
+}
+
+function publicViewByScope(scope, contrato) {
+  if (scope.kind === 'employment') {
+    return employmentStore.publicEmploymentContratoView(contrato || loadContratoByScope(scope));
+  }
+  return publicContratoView(contrato || readContrato());
+}
+
+function pdfTitleForScope(scope, { both = false, partial = false } = {}) {
+  if (scope.kind === 'employment') {
+    if (both) return 'Contrato laboral firmado — RESTO FADEY.POS';
+    if (partial) return 'Contrato laboral (firma parcial) — RESTO FADEY.POS';
+    return 'Contrato laboral — RESTO FADEY.POS';
+  }
+  if (both) return 'Contrato firmado — RESTO FADEY.POS';
+  if (partial) return 'Contrato (firma parcial) — RESTO FADEY.POS';
+  return 'Contrato digital de servicio — RESTO FADEY.POS';
+}
+
+function applyTextSignatures(scope, texto, contrato) {
+  if (scope.kind === 'employment') {
+    return employmentStore.applyEmploymentSignaturesIntoText(texto, contrato);
+  }
+  const { applySignaturesIntoContractText } = require('./contractTextSignatures');
+  return applySignaturesIntoContractText(texto, contrato);
 }
 
 function ensureSignatureTables() {
@@ -157,7 +216,7 @@ function buildMobileLinks(temporaryToken) {
   };
 }
 
-async function ensureDefinitivePdf(contrato) {
+async function ensureDefinitivePdf(contrato, { title } = {}) {
   const version = contrato.version;
   const texto = String(contrato.texto_contrato || '').trim();
   const existingAbs = resolveContractPdfAbsolute(contrato.pdf_original_url);
@@ -174,7 +233,7 @@ async function ensureDefinitivePdf(contrato) {
   const pdf = await generateContractPdf({
     texto,
     version,
-    title: 'Contrato digital de servicio — RESTO FADEY.POS',
+    title: title || 'Contrato digital de servicio — RESTO FADEY.POS',
   });
   contrato.pdf_original_url = pdf.publicUrl;
   contrato.document_hash = pdf.documentHash;
@@ -185,26 +244,80 @@ async function ensureDefinitivePdf(contrato) {
   };
 }
 
-async function prepareSignature({ user, party: partyIn, documentNumber = '', signerName: signerNameIn = '' }) {
+function assertEmploymentPartyAllowed(user, party) {
+  const role = String(user?.role || '');
+  if (role !== 'admin' && role !== 'master_admin') {
+    const err = new Error('Solo un administrador puede iniciar la firma del contrato laboral.');
+    err.status = 403;
+    throw err;
+  }
+  if (party !== 'vendedor' && party !== 'comprador') {
+    const err = new Error('Indique la parte: empleador o empleado.');
+    err.status = 400;
+    throw err;
+  }
+}
+
+async function prepareSignature({
+  user,
+  party: partyIn,
+  documentNumber = '',
+  signerName: signerNameIn = '',
+  employeeId = '',
+}) {
   ensureSignatureTables();
-  const contrato = readContrato();
+  const scope = employeeId
+    ? { kind: 'employment', employeeId: String(employeeId) }
+    : { kind: 'service', employeeId: '' };
+  if (scope.kind === 'employment') {
+    employmentStore.ensureEmploymentContractColumn();
+  }
+
+  const contrato = loadContratoByScope(scope);
   if (isFullySigned(contrato)) {
-    const err = new Error('Este contrato ya está firmado. Solo se puede firmar una vez por despliegue.');
+    const err = new Error(
+      scope.kind === 'employment'
+        ? 'Este contrato laboral ya está firmado por ambas partes.'
+        : 'Este contrato ya está firmado. Solo se puede firmar una vez por despliegue.',
+    );
     err.status = 409;
     throw err;
   }
 
-  const party = String(partyIn || partyFromRole(user?.role) || '').toLowerCase();
-  if (!PARTIES.has(party)) {
-    const err = new Error('Indique la parte a firmar: comprador (cliente) o vendedor (proveedor).');
+  const party = normalizeParty(
+    partyIn || (scope.kind === 'employment' ? '' : partyFromRole(user?.role)),
+    { employment: scope.kind === 'employment' },
+  );
+  if (!party) {
+    const err = new Error(
+      scope.kind === 'employment'
+        ? 'Indique la parte a firmar: empleador o empleado.'
+        : 'Indique la parte a firmar: comprador (cliente) o vendedor (proveedor).',
+    );
     err.status = 400;
     throw err;
   }
-  assertPartyAllowed(user, party);
+
+  if (scope.kind === 'employment') {
+    assertEmploymentPartyAllowed(user, party);
+    if (party === 'comprador' && contrato.firma_vendedor?.status !== 'firmado') {
+      const err = new Error('Primero debe firmar el empleador; luego el empleado.');
+      err.status = 409;
+      throw err;
+    }
+  } else {
+    assertPartyAllowed(user, party);
+  }
 
   const slot = party === 'comprador' ? contrato.firma_comprador : contrato.firma_vendedor;
   if (slot?.status === 'firmado') {
-    const err = new Error(partyAlreadySignedMessage(party));
+    const err = new Error(
+      scope.kind === 'employment'
+        ? (party === 'vendedor'
+          ? 'El empleador ya firmó este contrato.'
+          : 'El empleado ya firmó este contrato.')
+        : partyAlreadySignedMessage(party),
+    );
     err.status = 409;
     throw err;
   }
@@ -212,37 +325,40 @@ async function prepareSignature({ user, party: partyIn, documentNumber = '', sig
   let texto = String(contrato.texto_contrato || '').trim();
   if (!texto) {
     try {
-      const { DEFAULT_SERVICE_CONTRACT_TEXT } = require('../../data/defaultServiceContract');
-      texto = String(DEFAULT_SERVICE_CONTRACT_TEXT || '').trim();
+      if (scope.kind === 'employment') {
+        texto = String(employmentStore.defaultEmploymentText() || '').trim();
+      } else {
+        const { DEFAULT_SERVICE_CONTRACT_TEXT } = require('../../data/defaultServiceContract');
+        texto = String(DEFAULT_SERVICE_CONTRACT_TEXT || '').trim();
+      }
       contrato.texto_contrato = texto;
     } catch (_) {
       /* ignore */
     }
   }
   if (!texto) {
-    const err = new Error('El contrato no tiene texto. El maestro debe guardar el contenido antes de firmar.');
+    const err = new Error('El contrato no tiene texto. Guarde el contenido antes de firmar.');
     err.status = 400;
     throw err;
   }
 
-  // Si ya hay PDF/hash de una firma en curso, el texto no puede haber cambiado.
   if (contrato.document_hash && contrato.pdf_original_url) {
     const abs = resolveContractPdfAbsolute(contrato.pdf_original_url);
     const fileHash = abs ? hashPdfFile(abs) : '';
     if (fileHash && fileHash !== contrato.document_hash) {
-      const err = new Error('El PDF del contrato no coincide con el hash. Reinicie el proceso de firma.');
+      const err = new Error('El PDF del contrato no coincide con el hash. Reinicie el flujo de firma.');
       err.status = 409;
       throw err;
     }
   }
 
-  const pdfInfo = await ensureDefinitivePdf(contrato);
+  const pdfInfo = await ensureDefinitivePdf(contrato, { title: pdfTitleForScope(scope) });
   const version = contrato.version;
   const documentHash = pdfInfo.documentHash;
   contrato.document_hash = documentHash;
   contrato.pdf_original_url = pdfInfo.publicUrl;
   contrato.estado_firma = SIGNATURE_STATUSES.FIRMANDO;
-  writeContrato(contrato);
+  saveContratoByScope(scope, contrato);
 
   const id = uuidv4();
   const temporaryToken = crypto.randomBytes(24).toString('hex');
@@ -251,6 +367,9 @@ async function prepareSignature({ user, party: partyIn, documentNumber = '', sig
   const signerId = String(user?.id || '');
   const providerMode = getProviderMode();
   const links = buildMobileLinks(temporaryToken);
+  const partyLabel = scope.kind === 'employment'
+    ? (party === 'vendedor' ? 'empleador' : 'empleado')
+    : party;
 
   runSql(
     `INSERT INTO contract_signature_request
@@ -266,10 +385,13 @@ async function prepareSignature({ user, party: partyIn, documentNumber = '', sig
       temporaryToken,
       expiresAt,
       JSON.stringify({
+        kind: scope.kind,
+        employee_id: scope.employeeId || undefined,
         document_number: String(documentNumber || '').trim(),
         signer_name: signerName,
         pdf_original_url: pdfInfo.publicUrl,
         provider_mode: providerMode,
+        party_label: partyLabel,
       }),
     ],
   );
@@ -278,31 +400,43 @@ async function prepareSignature({ user, party: partyIn, documentNumber = '', sig
     actorUserId: signerId,
     actorName: signerName,
     action: 'CONTRACT_SIGNATURE_STARTED',
-    resourceType: 'contrato',
-    resourceId: 'contrato',
+    resourceType: scope.kind === 'employment' ? 'hr_employment_contract' : 'contrato',
+    resourceId: scope.kind === 'employment' ? scope.employeeId : 'contrato',
     details: {
-      party,
+      party: partyLabel,
       request_id: id,
       contract_version: version,
       document_hash: documentHash,
       pdf_original_url: pdfInfo.publicUrl,
+      kind: scope.kind,
     },
   });
-  emitStaffDataUpdate({ domain: 'app_config' });
+  if (scope.kind === 'service') {
+    emitStaffDataUpdate({ domain: 'app_config' });
+  } else {
+    emitStaffDataUpdate({ domain: 'hr' });
+  }
+
+  const pollPath = scope.kind === 'employment'
+    ? `/api/hr/employees/${scope.employeeId}/contract/sign/status/${id}`
+    : `/api/contrato/sign/status/${id}`;
 
   return {
     request_id: id,
     temporary_token: temporaryToken,
     expires_at: expiresAt,
-    party,
+    party: partyLabel,
+    party_slot: party,
     contract_version: version,
     document_hash: documentHash,
     pdf_original_url: pdfInfo.publicUrl,
     provider: providerMode,
     mock_allowed: mockAllowed(),
+    kind: scope.kind,
+    employee_id: scope.employeeId || undefined,
     mobile: {
       ...links,
-      poll_path: `/api/contrato/sign/status/${id}`,
+      poll_path: pollPath,
     },
     instructions: {
       title: 'Firma digital DNIe',
@@ -311,11 +445,14 @@ async function prepareSignature({ user, party: partyIn, documentNumber = '', sig
         'Abra la app Android de firma o escanee el código / enlace.',
         'Acerque el DNIe al NFC del teléfono e ingrese el PIN solo en el dispositivo.',
         'El PIN nunca se envía a Resto Fadey.',
+        ...(scope.kind === 'employment'
+          ? ['Orden: primero firma el empleador; después el empleado.']
+          : []),
       ],
       pin_never_sent_to_server: true,
       requires_technical_validation: providerMode === 'real' || providerMode === 'auto',
     },
-    contrato: publicContratoView(contrato),
+    contrato: publicViewByScope(scope, contrato),
   };
 }
 
@@ -354,7 +491,14 @@ function loadPendingRequest({ requestId, temporaryToken, requireSignerId }) {
 }
 
 async function persistSignatureResult({ reqRow, user, signed, documentNumber = '', signerName = '' }) {
-  const contrato = readContrato();
+  let details = {};
+  try {
+    details = JSON.parse(reqRow.details || '{}');
+  } catch {
+    details = {};
+  }
+  const scope = parseRequestScope(details);
+  const contrato = loadContratoByScope(scope);
   if (isFullySigned(contrato)) {
     const err = new Error('Este contrato ya está firmado.');
     err.status = 409;
@@ -371,20 +515,13 @@ async function persistSignatureResult({ reqRow, user, signed, documentNumber = '
       actorUserId: user?.id || reqRow.signer_id,
       actorName: user?.full_name || user?.username || reqRow.signer_name || '',
       action: 'SIGNATURE_FAILED',
-      resourceType: 'contrato',
-      resourceId: 'contrato',
+      resourceType: scope.kind === 'employment' ? 'hr_employment_contract' : 'contrato',
+      resourceId: scope.kind === 'employment' ? scope.employeeId : 'contrato',
       details: { reason: 'hash_mismatch', request_id: reqRow.id },
     });
     const err = new Error('El documento fue modificado durante el proceso. Firma rechazada.');
     err.status = 409;
     throw err;
-  }
-
-  let details = {};
-  try {
-    details = JSON.parse(reqRow.details || '{}');
-  } catch {
-    details = {};
   }
   const docNum = String(documentNumber || details.document_number || signed.document_number || '').trim();
   const resolvedSignerName = String(
@@ -464,46 +601,54 @@ async function persistSignatureResult({ reqRow, user, signed, documentNumber = '
 
   // PDF visual con firmas dentro del bloque ACEPTACIÓN DIGITAL (no cambia el hash del PDF original).
   try {
-    const { applySignaturesIntoContractText } = require('./contractTextSignatures');
-    const filled = applySignaturesIntoContractText(contrato.texto_contrato, contrato);
+    const filled = applyTextSignatures(scope, contrato.texto_contrato, contrato);
     const visual = await generateContractPdf({
       texto: filled,
       version: contrato.version,
-      title: both
-        ? 'Contrato firmado — RESTO FADEY.POS'
-        : 'Contrato (firma parcial) — RESTO FADEY.POS',
+      title: pdfTitleForScope(scope, { both, partial: !both }),
     });
     if (visual.publicUrl) contrato.pdf_firmado_url = visual.publicUrl;
   } catch (_) {
     /* evidencia visual opcional */
   }
 
-  writeContrato(contrato);
+  saveContratoByScope(scope, contrato);
+
+  const partyLabel = scope.kind === 'employment'
+    ? (party === 'vendedor' ? 'empleador' : 'empleado')
+    : party;
 
   logAudit({
     actorUserId: user?.id || reqRow.signer_id,
     actorName: user?.full_name || user?.username || reqRow.signer_name || '',
     action: both ? 'CONTRACT_SIGNED' : 'SIGNATURE_CREATED',
-    resourceType: 'contrato',
-    resourceId: 'contrato',
+    resourceType: scope.kind === 'employment' ? 'hr_employment_contract' : 'contrato',
+    resourceId: scope.kind === 'employment' ? scope.employeeId : 'contrato',
     details: {
-      party,
+      party: partyLabel,
       signature_id: signatureId,
       request_id: reqRow.id,
       mock: Boolean(signed.mock),
       fully_signed: both,
       method: signed.method,
+      kind: scope.kind,
     },
   });
-  emitStaffDataUpdate({ domain: 'app_config' });
+  if (scope.kind === 'service') {
+    emitStaffDataUpdate({ domain: 'app_config' });
+  } else {
+    emitStaffDataUpdate({ domain: 'hr' });
+  }
 
   return {
     ok: true,
-    party,
+    party: partyLabel,
     fully_signed: both,
     mock: Boolean(signed.mock),
     signature_id: signatureId,
-    contrato: publicContratoView(contrato),
+    kind: scope.kind,
+    employee_id: scope.employeeId || undefined,
+    contrato: publicViewByScope(scope, contrato),
   };
 }
 
@@ -529,12 +674,18 @@ async function completeSignature({
     requireSignerId: user?.id,
   });
   if (alreadyDone) {
+    let doneDetails = {};
+    try { doneDetails = JSON.parse(reqRow.details || '{}'); } catch { doneDetails = {}; }
+    const doneScope = parseRequestScope(doneDetails);
+    const doneContrato = loadContratoByScope(doneScope);
     return {
       ok: true,
       already_completed: true,
-      party: reqRow.party,
-      fully_signed: isFullySigned(readContrato()),
-      contrato: publicContratoView(),
+      party: doneDetails.party_label || reqRow.party,
+      fully_signed: isFullySigned(doneContrato),
+      kind: doneScope.kind,
+      employee_id: doneScope.employeeId || undefined,
+      contrato: publicViewByScope(doneScope, doneContrato),
     };
   }
 
@@ -605,7 +756,8 @@ function getMobileSession(token) {
   } catch {
     details = {};
   }
-  const contrato = readContrato();
+  const scope = parseRequestScope(details);
+  const contrato = loadContratoByScope(scope);
   const origin = publicApiOrigin();
   const pdfPath = details.pdf_original_url || contrato.pdf_original_url || '';
   const pdfUrl = pdfPath
@@ -615,7 +767,9 @@ function getMobileSession(token) {
   return {
     status: 'pending',
     request_id: reqRow.id,
-    party: reqRow.party,
+    party: details.party_label || reqRow.party,
+    kind: scope.kind,
+    employee_id: scope.employeeId || undefined,
     signer_name: reqRow.signer_name,
     contract_version: reqRow.contract_version,
     document_hash: reqRow.document_hash,
@@ -655,10 +809,15 @@ async function submitMobileSignature(token, body = {}) {
     requireSignerId: null,
   });
   if (loaded.alreadyDone) {
+    let d = {};
+    try { d = JSON.parse(loaded.reqRow.details || '{}'); } catch { d = {}; }
+    const sc = parseRequestScope(d);
     return {
       ok: true,
       already_completed: true,
-      contrato: publicContratoView(),
+      kind: sc.kind,
+      employee_id: sc.employeeId || undefined,
+      contrato: publicViewByScope(sc),
     };
   }
 
@@ -705,12 +864,17 @@ function getRequestPollStatus(requestId, user) {
     err.status = 403;
     throw err;
   }
-  const contrato = publicContratoView();
+  let pollDetails = {};
+  try { pollDetails = JSON.parse(reqRow.details || '{}'); } catch { pollDetails = {}; }
+  const scope = parseRequestScope(pollDetails);
+  const contrato = publicViewByScope(scope);
   const mySlot = reqRow.party === 'vendedor' ? contrato.firma_vendedor : contrato.firma_comprador;
   return {
     request_id: reqRow.id,
     status: reqRow.status,
-    party: reqRow.party,
+    party: pollDetails.party_label || reqRow.party,
+    kind: scope.kind,
+    employee_id: scope.employeeId || undefined,
     expires_at: reqRow.expires_at,
     completed: reqRow.status === 'completed',
     party_signed: mySlot?.status === 'firmado',

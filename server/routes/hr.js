@@ -82,6 +82,106 @@ router.patch('/employees/:id', requireHrAdmin, asyncHandler(async (req, res) => 
   res.json(hr.updateEmployee(rid(req), req.params.id, req.body || {}, req.user));
 }));
 
+router.get('/employees/:id/contract', requireHrAdmin, asyncHandler(async (req, res) => {
+  const emp = hr.getEmployee(rid(req), req.params.id);
+  if (!emp) return res.status(404).json({ error: 'Trabajador no encontrado' });
+  const {
+    readEmploymentContrato,
+    publicEmploymentContratoView,
+    writeEmploymentContrato,
+  } = require('../services/employmentContractStore');
+  const raw = readEmploymentContrato(req.params.id);
+  // Persist default text on first open so firmas tienen base estable.
+  if (!String(raw.texto_contrato || '').trim()) {
+    writeEmploymentContrato(req.params.id, raw);
+  }
+  return res.json({
+    employee_id: emp.id,
+    employee_name: emp.full_name,
+    contract_type: emp.contract_type,
+    contrato: publicEmploymentContratoView(readEmploymentContrato(req.params.id)),
+  });
+}));
+
+router.put('/employees/:id/contract', requireHrAdmin, asyncHandler(async (req, res) => {
+  const emp = hr.getEmployee(rid(req), req.params.id);
+  if (!emp) return res.status(404).json({ error: 'Trabajador no encontrado' });
+  const {
+    readEmploymentContrato,
+    writeEmploymentContrato,
+    publicEmploymentContratoView,
+    isFullySigned,
+  } = require('../services/employmentContractStore');
+  const { isTextLocked } = require('../services/contratoStore');
+  const prev = readEmploymentContrato(req.params.id);
+  if (isFullySigned(prev) || isTextLocked(prev)) {
+    return res.status(409).json({
+      error: 'El texto del contrato está bloqueado porque hay firmas o el contrato ya está firmado.',
+      contrato: publicEmploymentContratoView(prev),
+    });
+  }
+  const next = {
+    ...prev,
+    texto_contrato: String(req.body?.texto_contrato ?? prev.texto_contrato ?? ''),
+  };
+  // Al editar texto sin firmas, limpiar PDF/hash previos.
+  next.document_hash = '';
+  next.pdf_original_url = '';
+  next.pdf_firmado_url = '';
+  next.estado_firma = 'borrador';
+  writeEmploymentContrato(req.params.id, next);
+  return res.json({
+    employee_id: emp.id,
+    contrato: publicEmploymentContratoView(readEmploymentContrato(req.params.id)),
+  });
+}));
+
+router.post('/employees/:id/contract/sign', requireHrAdmin, asyncHandler(async (req, res) => {
+  const emp = hr.getEmployee(rid(req), req.params.id);
+  if (!emp) return res.status(404).json({ error: 'Trabajador no encontrado' });
+  const { prepareSignature } = require('../services/contractSignature/contractSignatureService');
+  const result = await prepareSignature({
+    user: req.user,
+    party: req.body?.party,
+    documentNumber: req.body?.document_number,
+    signerName: req.body?.signer_name,
+    employeeId: emp.id,
+  });
+  res.status(201).json(result);
+}));
+
+router.post('/employees/:id/contract/sign/complete', requireHrAdmin, asyncHandler(async (req, res) => {
+  const emp = hr.getEmployee(rid(req), req.params.id);
+  if (!emp) return res.status(404).json({ error: 'Trabajador no encontrado' });
+  const { completeSignature } = require('../services/contractSignature/contractSignatureService');
+  try {
+    const result = await completeSignature({
+      user: req.user,
+      requestId: req.body?.request_id,
+      temporaryToken: req.body?.temporary_token,
+      ackReviewed: Boolean(req.body?.ack_reviewed),
+      documentNumber: req.body?.document_number,
+      signerName: req.body?.signer_name,
+      useMock: Boolean(req.body?.use_mock),
+    });
+    res.json(result);
+  } catch (err) {
+    const status = err.status || 500;
+    res.status(status).json({
+      error: err.message || 'No se pudo completar la firma',
+      code: err.code || undefined,
+      awaiting_mobile: status === 202 || err.code === 'AWAITING_MOBILE_NFC',
+    });
+  }
+}));
+
+router.get('/employees/:id/contract/sign/status/:requestId', requireHrAdmin, asyncHandler(async (req, res) => {
+  const emp = hr.getEmployee(rid(req), req.params.id);
+  if (!emp) return res.status(404).json({ error: 'Trabajador no encontrado' });
+  const { getRequestPollStatus } = require('../services/contractSignature/contractSignatureService');
+  res.json(getRequestPollStatus(req.params.requestId, req.user));
+}));
+
 router.get('/attendance-qr', requireHrAdmin, asyncHandler(async (req, res) => {
   let bundle = await hr.sharedQrBundle();
   if (!bundle?.has_credential) {

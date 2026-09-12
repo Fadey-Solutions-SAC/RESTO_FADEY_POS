@@ -115,47 +115,13 @@ export default function HrModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Recursos humanos</h1>
-          <p className="text-sm text-[var(--ui-muted)]">Asistencia QR, horarios y productividad · FADEY Solutions</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="btn-secondary text-sm inline-flex items-center gap-1.5"
-            onClick={() => setSharedQrOpen(true)}
-          >
-            <MdQrCode2 /> QR del local
-          </button>
-          <Link to="/admin/asistencia" className="btn-primary text-sm inline-flex items-center gap-1.5">
-            <MdQrCodeScanner /> Control de asistencia
-          </Link>
-          <button
-            type="button"
-            onClick={() => { setAdminPassword(''); setPwdOpen(true); }}
-            className={`text-sm inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border font-medium transition ${
-              qrActiva
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)]'
-            }`}
-            title={qrActiva
-              ? 'QR activo: la jornada se marca con código QR'
-              : 'QR desactivado: la jornada se cuenta por inicio y fin de sesión'}
-          >
-            {qrActiva ? <MdToggleOn className="text-xl" /> : <MdToggleOff className="text-xl" />}
-            {qrActiva ? 'QR jornada: activo' : 'QR jornada: off'}
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition ${
+            className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition ${
               tab === t.id
                 ? 'bg-gold-600 text-white border-gold-600'
                 : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
@@ -165,6 +131,31 @@ export default function HrModule() {
             {t.label}
           </button>
         ))}
+        <button
+          type="button"
+          className="btn-secondary text-sm inline-flex items-center gap-1.5 shrink-0"
+          onClick={() => setSharedQrOpen(true)}
+        >
+          <MdQrCode2 /> QR del local
+        </button>
+        <Link to="/admin/asistencia" className="btn-primary text-sm inline-flex items-center gap-1.5 shrink-0">
+          <MdQrCodeScanner /> Control de asistencia
+        </Link>
+        <button
+          type="button"
+          onClick={() => { setAdminPassword(''); setPwdOpen(true); }}
+          className={`shrink-0 text-sm inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border font-medium transition ${
+            qrActiva
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)]'
+          }`}
+          title={qrActiva
+            ? 'QR activo: la jornada se marca con código QR'
+            : 'QR desactivado: la jornada se cuenta por inicio y fin de sesión'}
+        >
+          {qrActiva ? <MdToggleOn className="text-xl" /> : <MdToggleOff className="text-xl" />}
+          {qrActiva ? 'QR jornada: activo' : 'QR jornada: off'}
+        </button>
       </div>
 
       {tab === 'panel' && <HrDashboardTab data={dashboard} loading={loadingDash} />}
