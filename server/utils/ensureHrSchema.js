@@ -134,6 +134,19 @@ function ensureHrSchema() {
     /* noop */
   }
 
+  try {
+    const empCols = queryAll('PRAGMA table_info(hr_employees)') || [];
+    const empNames = new Set((empCols || []).map((c) => c.name));
+    if (!empNames.has('custom_start_time')) {
+      runSql("ALTER TABLE hr_employees ADD COLUMN custom_start_time TEXT DEFAULT ''");
+    }
+    if (!empNames.has('custom_end_time')) {
+      runSql("ALTER TABLE hr_employees ADD COLUMN custom_end_time TEXT DEFAULT ''");
+    }
+  } catch (_) {
+    /* noop */
+  }
+
   return { ok: true, tables: tableExists('hr_employees') };
 }
 

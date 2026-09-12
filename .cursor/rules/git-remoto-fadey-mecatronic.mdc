@@ -1,0 +1,49 @@
+---
+description: Comandos para cambiar origin entre Fadey Solutions y MECATRONIC-MEN
+alwaysApply: true
+---
+
+# Cambio de remoto GitHub (Fadey ↔ Mecatronic)
+
+Cuando el usuario diga que quiere **cambiar a Fadey Solutions**, **cambiar a Mecatronic**, **MECATRONIC-MEN**, o similar **solo para GitHub / token / push**, responder **únicamente** con los comandos de remoto (formato numerado 1–5, un comando por bloque `text`). No confundir con la carpeta del sitio web `FADEY SOLUTIONS S.A.C`.
+
+## Carpeta de trabajo (siempre el POS)
+
+```text
+cd "c:\Users\Intel\OneDrive\RESTO FADEY POS"
+```
+
+(Git Bash: `cd "/c/Users/Intel/OneDrive/RESTO FADEY POS"`)
+
+## Remotos correctos
+
+| Destino | URL `origin` |
+|---------|----------------|
+| **Fadey Solutions** | `https://github.com/Fadey-Solutions-SAC/RESTO_FADEY_POS.git` |
+| **MECATRONIC-MEN** | `https://github.com/MECATRONIC-MEN/RESTAURANT.git` |
+
+**Nunca** usar `PAGINA_WEB_EMPRESARIAL` para esta carpeta POS.
+
+## Plantilla de respuesta (Fadey)
+
+1. `cd` al POS  
+2. `git remote set-url origin https://github.com/Fadey-Solutions-SAC/RESTO_FADEY_POS.git`  
+3. `git remote -v`  
+4. Borrar credencial vieja si hace falta: `printf "protocol=https\nhost=github.com\n\n" | git credential-manager erase`  
+5. `git push -u origin main`  
+
+Login / token: cuenta **Fadey-Solutions-SAC**.
+
+## Plantilla de respuesta (Mecatronic)
+
+Igual, pero paso 2:
+
+`git remote set-url origin https://github.com/MECATRONIC-MEN/RESTAURANT.git`
+
+Login / token: cuenta **MECATRONIC-MEN**.
+
+## Notas
+
+- Si pide usuario/contraseña: usuario = cuenta del destino; contraseña = **token** (`ghp_...`), no la clave de GitHub.
+- Si hay 403 “denied to X”: la PC tiene la otra cuenta guardada → borrar credencial y repetir el push.
+- No ejecutar el push automáticamente solo por pedir “cambiar a …”; dar los comandos. Si pide explícitamente subir, entonces sí se puede ejecutar tras el `set-url`.

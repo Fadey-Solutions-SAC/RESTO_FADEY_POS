@@ -359,6 +359,14 @@ function employeePublic(row, extra = {}) {
     status: row.status,
     schedule_id: row.schedule_id || '',
     schedule_name: row.schedule_name || '',
+    custom_start_time: String(row.custom_start_time || '').trim().slice(0, 5),
+    custom_end_time: String(row.custom_end_time || '').trim().slice(0, 5),
+    schedule_label: (() => {
+      const cs = String(row.custom_start_time || '').trim().slice(0, 5);
+      const ce = String(row.custom_end_time || '').trim().slice(0, 5);
+      if (cs && ce) return `${cs} – ${ce}`;
+      return row.schedule_name || '—';
+    })(),
     employee_code: row.employee_code || '',
     photo_url: row.photo_url || '',
     user_active: Number(row.user_active ?? row.is_active ?? 1) === 1,
@@ -451,6 +459,7 @@ function updateEmployee(restaurantId, employeeId, patch, actor) {
     `UPDATE hr_employees SET
       document_id = ?, position = ?, department = ?, branch_id = ?, hire_date = ?,
       contract_type = ?, status = ?, schedule_id = ?, employee_code = ?, photo_url = ?,
+      custom_start_time = ?, custom_end_time = ?,
       updated_at = datetime('now')
      WHERE id = ?`,
     [
@@ -464,6 +473,12 @@ function updateEmployee(restaurantId, employeeId, patch, actor) {
       patch.schedule_id != null ? String(patch.schedule_id).trim() : cur.schedule_id,
       patch.employee_code != null ? String(patch.employee_code).trim() : cur.employee_code,
       patch.photo_url != null ? String(patch.photo_url).trim() : cur.photo_url,
+      patch.custom_start_time != null
+        ? normalizeHhMm(patch.custom_start_time)
+        : normalizeHhMm(cur.custom_start_time),
+      patch.custom_end_time != null
+        ? normalizeHhMm(patch.custom_end_time)
+        : normalizeHhMm(cur.custom_end_time),
       employeeId,
     ]
   );
@@ -687,9 +702,50 @@ function deactivateQr(restaurantId, employeeId, actor) {
   return qrStatus(restaurantId, employeeId);
 }
 
+function normalizeHhMm(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const m = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return '';
+  const h = Math.min(23, Math.max(0, Number(m[1])));
+  const min = Math.min(59, Math.max(0, Number(m[2])));
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return '';
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
 function scheduleOfEmployee(emp) {
-  if (!emp?.schedule_id) return queryOne('SELECT * FROM hr_schedules WHERE restaurant_id = ? ORDER BY created_at ASC LIMIT 1', [emp.restaurant_id]);
-  return queryOne('SELECT * FROM hr_schedules WHERE id = ?', [emp.schedule_id]);
+  let base = null;
+  if (emp?.schedule_id) {
+    base = queryOne('SELECT * FROM hr_schedules WHERE id = ?', [emp.schedule_id]);
+  }
+  if (!base && emp?.restaurant_id) {
+    base = queryOne(
+      'SELECT * FROM hr_schedules WHERE restaurant_id = ? ORDER BY created_at ASC LIMIT 1',
+      [emp.restaurant_id],
+    );
+  }
+  const customStart = normalizeHhMm(emp?.custom_start_time);
+  const customEnd = normalizeHhMm(emp?.custom_end_time);
+  if (customStart && customEnd) {
+    const fallback = base || {
+      id: '',
+      restaurant_id: emp.restaurant_id,
+      name: 'Personalizado',
+      tolerance_in_minutes: 10,
+      tolerance_out_minutes: 10,
+      break_minutes: 60,
+      work_days: '[0,1,2,3,4,5,6]',
+      max_hours: 8,
+      overtime_after_minutes: null,
+    };
+    return {
+      ...fallback,
+      start_time: customStart,
+      end_time: customEnd,
+      name: base?.name ? `${base.name} · personalizado` : 'Horario personalizado',
+    };
+  }
+  return base;
 }
 
 function openAttendance(employeeId) {
