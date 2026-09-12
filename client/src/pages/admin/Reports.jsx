@@ -130,6 +130,66 @@ function downloadPurchaseGroup(group, format = 'excel', { usuario } = {}) {
   toast.success('Compra descargada (Excel)');
 }
 
+function purchaseFilterPeriodLabel(groups, { period, from, to, formatDateKey: fmtKey, formatDate: fmtDate }) {
+  const customFrom = String(from || '').trim();
+  const customTo = String(to || '').trim();
+  if (customFrom || customTo) {
+    const a = customFrom ? (fmtKey?.(customFrom) || customFrom) : '…';
+    const b = customTo ? (fmtKey?.(customTo) || customTo) : '…';
+    return `${a} — ${b}`;
+  }
+  if (period === 'ultima' && groups[0]) {
+    const raw = groups[0].purchase_date || groups[0].created_at;
+    return fmtKey?.(String(raw || '').slice(0, 10)) || fmtDate?.(raw) || String(raw || '').slice(0, 10) || 'Última compra';
+  }
+  if (period === 'semana') return 'Última semana';
+  if (period === 'mes') return 'Mes actual';
+  if (period === 'todo') return 'Todas las compras';
+  const dates = (groups || [])
+    .map((g) => String(g.purchase_date || g.created_at || '').slice(0, 10))
+    .filter(Boolean)
+    .sort();
+  if (!dates.length) return '—';
+  if (dates[0] === dates[dates.length - 1]) return fmtKey?.(dates[0]) || dates[0];
+  return `${fmtKey?.(dates[0]) || dates[0]} — ${fmtKey?.(dates[dates.length - 1]) || dates[dates.length - 1]}`;
+}
+
+function downloadFilteredPurchases(groups, format = 'excel', { usuario, period, from, to } = {}) {
+  const list = Array.isArray(groups) ? groups : [];
+  const items = list.flatMap((g) => g.items || []);
+  if (!items.length) {
+    toast.error('No hay compras en el filtro seleccionado');
+    return;
+  }
+  const dates = list
+    .map((g) => String(g.purchase_date || g.created_at || '').slice(0, 10))
+    .filter(Boolean)
+    .sort();
+  const merged = {
+    id: `filtro-${period || 'rango'}`,
+    items,
+    purchase_date: dates[0] || '',
+    created_at: list[0]?.created_at,
+    total: items.reduce((s, it) => s + Number(it.total_cost || 0), 0),
+    period_label: purchaseFilterPeriodLabel(list, {
+      period,
+      from,
+      to,
+      formatDateKey,
+      formatDate,
+    }),
+  };
+  const baseName = `compras-${period || 'filtro'}-${dates[0] || localTodayYmd()}${dates.length > 1 ? `_${dates[dates.length - 1]}` : ''}`;
+  const opts = { formatCurrency, formatDate, formatDateKey, usuario };
+  if (format === 'txt') {
+    downloadBlobFile(`${baseName}.txt`, buildPurchaseTxt(merged, opts));
+    toast.success('Compras del filtro descargadas (TXT)');
+    return;
+  }
+  downloadExcelFile(baseName, buildPurchaseExcelHtml(merged, opts));
+  toast.success('Compras del filtro descargadas (Excel)');
+}
+
 function sumProductSalesQty(products) {
   return (products || []).reduce((s, r) => s + Number(r.total_qty || 0), 0);
 }
@@ -643,6 +703,9 @@ export default function Reports() {
   const [ranking, setRanking] = useState([]);
   const [rankingPeriod, setRankingPeriod] = useState('month');
   const [purchaseExpenses, setPurchaseExpenses] = useState([]);
+  const [comprasPeriod, setComprasPeriod] = useState('ultima'); // ultima | semana | mes | todo
+  const [comprasFrom, setComprasFrom] = useState('');
+  const [comprasTo, setComprasTo] = useState('');
   const [inventoryReconciliations, setInventoryReconciliations] = useState([]);
   const [inventoryAlerts, setInventoryAlerts] = useState([]);
   const [inventoryMovementsTab, setInventoryMovementsTab] = useState('stock_minimo');
@@ -1435,7 +1498,7 @@ export default function Reports() {
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>;
 
-  const purchaseGroups = Object.values(
+  const purchaseGroupsAll = Object.values(
     (purchaseExpenses || []).reduce((acc, expense) => {
       const key = expense.requirement_id || expense.id;
       if (!acc[key]) {
@@ -1453,6 +1516,43 @@ export default function Reports() {
       return acc;
     }, {})
   ).sort((a, b) => new Date(b.purchase_date || b.created_at || 0) - new Date(a.purchase_date || a.created_at || 0));
+
+  const purchaseGroups = (() => {
+    const today = localTodayYmd();
+    const ymdOf = (g) => String(g.purchase_date || g.created_at || '').slice(0, 10);
+    const customFrom = String(comprasFrom || '').trim();
+    const customTo = String(comprasTo || '').trim();
+    if (customFrom || customTo) {
+      return purchaseGroupsAll.filter((g) => {
+        const d = ymdOf(g);
+        if (!d) return false;
+        if (customFrom && d < customFrom) return false;
+        if (customTo && d > customTo) return false;
+        return true;
+      });
+    }
+    if (comprasPeriod === 'ultima') {
+      return purchaseGroupsAll.slice(0, 1);
+    }
+    if (comprasPeriod === 'semana') {
+      const end = new Date(`${today}T12:00:00`);
+      const start = new Date(end);
+      start.setDate(start.getDate() - 6);
+      const from = toLocalDateKey(start) || today;
+      return purchaseGroupsAll.filter((g) => {
+        const d = ymdOf(g);
+        return d && d >= from && d <= today;
+      });
+    }
+    if (comprasPeriod === 'mes') {
+      const from = `${today.slice(0, 7)}-01`;
+      return purchaseGroupsAll.filter((g) => {
+        const d = ymdOf(g);
+        return d && d >= from && d <= today;
+      });
+    }
+    return purchaseGroupsAll;
+  })();
 
   return (
     <div>
@@ -2223,9 +2323,83 @@ export default function Reports() {
 
       {reportSection === 'compras' && (
         <div className="space-y-4">
-          {purchaseGroups.length === 0 ? (
-            <div className="card">
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <label className="block text-xs text-[var(--ui-muted)] mb-1">Desde</label>
+              <input
+                type="date"
+                className="input-field h-9 rounded-none text-sm"
+                value={comprasFrom}
+                onChange={(e) => {
+                  setComprasFrom(e.target.value);
+                  if (e.target.value || comprasTo) setComprasPeriod('todo');
+                }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[var(--ui-muted)] mb-1">Hasta</label>
+              <input
+                type="date"
+                className="input-field h-9 rounded-none text-sm"
+                value={comprasTo}
+                onChange={(e) => {
+                  setComprasTo(e.target.value);
+                  if (e.target.value || comprasFrom) setComprasPeriod('todo');
+                }}
+              />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                ['ultima', 'Última'],
+                ['semana', 'Semana'],
+                ['mes', 'Mes'],
+                ['todo', 'Todo'],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    setComprasPeriod(id);
+                    setComprasFrom('');
+                    setComprasTo('');
+                  }}
+                  className={`text-xs px-3 py-2 border font-medium rounded-none ${
+                    comprasPeriod === id && !comprasFrom && !comprasTo
+                      ? 'bg-[#3B82F6] text-white border-transparent'
+                      : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)]'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="ml-auto flex items-end">
+              <DownloadExcelTxtButtons
+                onExcel={() => downloadFilteredPurchases(purchaseGroups, 'excel', {
+                  usuario: reportUsuario,
+                  period: comprasPeriod,
+                  from: comprasFrom,
+                  to: comprasTo,
+                })}
+                onTxt={() => downloadFilteredPurchases(purchaseGroups, 'txt', {
+                  usuario: reportUsuario,
+                  period: comprasPeriod,
+                  from: comprasFrom,
+                  to: comprasTo,
+                })}
+                excelTitle="Descargar compras del filtro en Excel"
+                txtTitle="Descargar compras del filtro en TXT"
+              />
+            </div>
+          </div>
+
+          {purchaseGroupsAll.length === 0 ? (
+            <div className="card !rounded-none">
               <p className="text-[var(--ui-muted)]">No hay compras registradas.</p>
+            </div>
+          ) : purchaseGroups.length === 0 ? (
+            <div className="card !rounded-none">
+              <p className="text-[var(--ui-muted)]">No hay compras en el periodo seleccionado.</p>
             </div>
           ) : (
             purchaseGroups.map((group) => {
@@ -2236,15 +2410,7 @@ export default function Reports() {
                 || formatDate(group.purchase_date || group.created_at)
                 || '—';
               return (
-                <div key={group.id} className="card overflow-x-auto p-0">
-                  <div className="flex items-center justify-end gap-2 px-3 pt-3">
-                    <DownloadExcelTxtButtons
-                      onExcel={() => downloadPurchaseGroup(group, 'excel', { usuario: reportUsuario })}
-                      onTxt={() => downloadPurchaseGroup(group, 'txt', { usuario: reportUsuario })}
-                      excelTitle="Descargar informe de compras en Excel"
-                      txtTitle="Descargar informe de compras en TXT"
-                    />
-                  </div>
+                <div key={group.id} className="card !rounded-none overflow-x-auto p-0">
                   <div
                     className="text-white text-center font-bold py-4 text-lg uppercase tracking-wide"
                     style={{ background: INFORME_EXCEL_NAVY }}

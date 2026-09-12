@@ -150,7 +150,8 @@ export function buildPurchaseExcelHtml(group = {}, { formatDate, formatDateKey, 
   const qty = mapped.reduce((s, r) => s + Number(r.cantidad || 0), 0);
   const grand = mapped.reduce((s, r) => s + Number(r.total || 0), 0) || Number(group.total || 0);
   const dateRaw = group.purchase_date || group.created_at;
-  const period = formatDateKey?.(String(dateRaw || '').slice(0, 10))
+  const period = group.period_label
+    || formatDateKey?.(String(dateRaw || '').slice(0, 10))
     || (formatDate ? formatDate(dateRaw) : String(dateRaw || '').slice(0, 10))
     || '—';
   return buildStyledInformeExcelHtml({
@@ -189,7 +190,8 @@ export function buildPurchaseTxt(group = {}, { formatCurrency, formatDate, forma
   const qty = mapped.reduce((s, r) => s + Number(r.cantidad || 0), 0);
   const grand = mapped.reduce((s, r) => s + Number(r.total || 0), 0) || Number(group.total || 0);
   const dateRaw = group.purchase_date || group.created_at;
-  const period = formatDateKey?.(String(dateRaw || '').slice(0, 10))
+  const period = group.period_label
+    || formatDateKey?.(String(dateRaw || '').slice(0, 10))
     || (formatDate ? formatDate(dateRaw) : String(dateRaw || '').slice(0, 10))
     || '—';
   const fmtMoney = formatCurrency || formatSolesExcel;

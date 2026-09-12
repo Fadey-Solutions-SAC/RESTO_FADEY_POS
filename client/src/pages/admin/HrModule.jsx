@@ -113,13 +113,13 @@ export default function HrModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto overscroll-x-contain pb-1 -mx-1 px-1 touch-pan-x scrollbar-thin">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition ${
+            className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition whitespace-nowrap ${
               tab === t.id
                 ? 'bg-gold-600 text-white border-gold-600'
                 : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
@@ -131,7 +131,7 @@ export default function HrModule() {
         ))}
         <button
           type="button"
-          className="btn-secondary text-sm inline-flex items-center gap-1.5"
+          className="btn-secondary text-sm inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
           onClick={() => setSharedQrOpen(true)}
         >
           <MdQrCode2 /> QR del local
@@ -139,7 +139,7 @@ export default function HrModule() {
         <button
           type="button"
           onClick={() => { setAdminPassword(''); setPwdOpen(true); }}
-          className={`text-sm inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border font-medium transition ${
+          className={`shrink-0 whitespace-nowrap text-sm inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border font-medium transition ${
             qrActiva
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)]'
