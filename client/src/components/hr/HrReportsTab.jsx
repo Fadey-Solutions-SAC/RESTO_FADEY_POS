@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { api, getApiBase } from '../../utils/api';
+import { InlineDateField } from '../DateFilterControls';
 import { attendanceStatusLabel, formatMinutes } from './hrFormat';
 
 async function downloadReport(params) {
@@ -58,23 +59,17 @@ export default function HrReportsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2 items-end">
-        <label className="text-xs space-y-1">
-          <span className="text-[var(--ui-muted)]">Tipo</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value)} className="block h-9 px-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm">
+      <div className="flex flex-wrap gap-2 items-center">
+        <label className="text-xs inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+          <span className="text-[var(--ui-muted)] shrink-0">Tipo</span>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} className="bg-transparent border-0 p-0 h-full text-sm outline-none">
             <option value="daily">Diario</option>
             <option value="weekly">Semanal</option>
             <option value="monthly">Mensual</option>
           </select>
         </label>
-        <label className="text-xs space-y-1">
-          <span className="text-[var(--ui-muted)]">Desde</span>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="block h-9 px-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm" />
-        </label>
-        <label className="text-xs space-y-1">
-          <span className="text-[var(--ui-muted)]">Hasta</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="block h-9 px-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm" />
-        </label>
+        <InlineDateField label="Desde" value={from} onChange={setFrom} roundedNone={false} className="!rounded-lg" />
+        <InlineDateField label="Hasta" value={to} onChange={setTo} roundedNone={false} className="!rounded-lg" />
         <button type="button" className="btn-primary text-sm h-9" onClick={load} disabled={loading}>Generar</button>
         <button type="button" className="btn-secondary text-sm h-9" onClick={() => exportFmt('csv')}>CSV</button>
         <button type="button" className="btn-secondary text-sm h-9" onClick={() => exportFmt('xlsx')}>Excel</button>

@@ -12,6 +12,7 @@ import {
 import { formatCatalogNameInput } from '../utils/catalogNameFormat';
 import { downloadReconciliationRecord, downloadBlobFile, downloadExcelFile } from '../utils/inventoryCuadreExport';
 import DownloadExcelTxtButtons from './admin/DownloadExcelTxtButtons';
+import { InlineDateField } from './DateFilterControls';
 import {
   INSUMO_UM_OPTIONS,
   isMasaOrLitrajeUm,
@@ -1319,11 +1320,11 @@ export default function LogisticaKardexModule() {
 
       {tab === 'kardex' && (
         <div className="space-y-3">
-          <div className="flex flex-wrap gap-2 items-end">
+          <div className="flex flex-wrap gap-2 items-center">
             <div>
-              <label className="block text-xs ui-text-muted">Insumo</label>
+              <label className="block text-xs ui-text-muted mb-1">Insumo</label>
               <select
-                className="input-field text-sm py-1.5"
+                className="input-field text-sm h-9 py-0"
                 value={kardexInsumo}
                 onChange={(e) => setKardexInsumo(e.target.value)}
               >
@@ -1344,24 +1345,20 @@ export default function LogisticaKardexModule() {
                 )}
               </select>
             </div>
-            <div>
-              <label className="block text-xs ui-text-muted">Desde</label>
-              <input
-                type="date"
-                className="input-field text-sm py-1.5"
-                value={kardexFrom}
-                onChange={(e) => setKardexFrom(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs ui-text-muted">Hasta</label>
-              <input
-                type="date"
-                className="input-field text-sm py-1.5"
-                value={kardexTo}
-                onChange={(e) => setKardexTo(e.target.value)}
-              />
-            </div>
+            <InlineDateField
+              label="Desde"
+              value={kardexFrom}
+              onChange={setKardexFrom}
+              roundedNone={false}
+              className="!rounded-lg"
+            />
+            <InlineDateField
+              label="Hasta"
+              value={kardexTo}
+              onChange={setKardexTo}
+              roundedNone={false}
+              className="!rounded-lg"
+            />
             {kardexInsumo && (
               <DownloadExcelTxtButtons
                 onExcel={() => descargarKardex('excel').catch((e) => toast.error(e.message))}

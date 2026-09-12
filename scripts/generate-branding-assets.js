@@ -73,6 +73,58 @@ function buildEntrySplashCrop(img, bg) {
   return img.clone().crop(0, 0, w, cropH);
 }
 
+/** Solo el círculo RF (sin “RESTO FADEY” ni eslogan debajo). */
+function cropEmblemOnly(img, bg, threshold = 40) {
+  const w = img.bitmap.width;
+  const h = img.bitmap.height;
+  const contentRows = [];
+  for (let y = 0; y < h; y += 1) {
+    let rowHasContent = false;
+    for (let x = 0; x < w; x += 4) {
+      const c = Jimp.intToRGBA(img.getPixelColor(x, y));
+      const diff = Math.abs(c.r - bg.r) + Math.abs(c.g - bg.g) + Math.abs(c.b - bg.b);
+      if (diff > threshold) {
+        rowHasContent = true;
+        break;
+      }
+    }
+    if (rowHasContent) contentRows.push(y);
+  }
+  if (!contentRows.length) {
+    const size = Math.round(Math.min(w, h) * 0.7);
+    const x = Math.round((w - size) / 2);
+    const y = Math.round(h * 0.05);
+    return img.clone().crop(x, y, size, size);
+  }
+
+  const bands = [];
+  let start = contentRows[0];
+  let prev = contentRows[0];
+  for (let i = 1; i < contentRows.length; i += 1) {
+    const y = contentRows[i];
+    if (y - prev > 8) {
+      bands.push([start, prev]);
+      start = y;
+    }
+    prev = y;
+  }
+  bands.push([start, prev]);
+
+  const [emblemTop, emblemBottom] = bands[0];
+  const emblemH = emblemBottom - emblemTop + 1;
+  const pad = Math.round(emblemH * 0.06);
+  let cropTop = Math.max(0, emblemTop - pad);
+  let cropH = emblemBottom + pad - cropTop;
+  if (bands.length > 1) {
+    const textStart = bands[1][0];
+    cropH = Math.min(cropH, Math.max(64, textStart - 4 - cropTop));
+  }
+  cropH = Math.min(cropH, w, h - cropTop);
+  const cropW = cropH;
+  const cropX = Math.max(0, Math.round((w - cropW) / 2));
+  return img.clone().crop(cropX, cropTop, Math.min(cropW, w - cropX), cropH);
+}
+
 async function composePwaIcon(logo, size) {
   const canvas = new Jimp(size, size, PWA_ICON_BG);
   const logoSize = Math.round(size * 0.84);
@@ -98,44 +150,28 @@ async function main() {
   await img.clone().write(path.join(BRANDING, 'resto-fadey-splash.png'));
   await img.clone().write(path.join(PUBLIC, 'resto-fadey-splash.png'));
 
-  const bg = sampleBackgroundColor(img);
-  const entrySourcePath = path.join(BRANDING, 'resto-fadey-splash-entry-source.png');
-  let entryCrop;
-  let entryBg;
-  if (fs.existsSync(entrySourcePath)) {
-    entryCrop = await Jimp.read(entrySourcePath);
-    entryBg = sampleBackgroundColor(entryCrop);
-  } else {
-    entryCrop = buildEntrySplashCrop(img, bg);
-    entryBg = bg;
-    const targetW = Math.min(1400, Math.max(w, Math.round(w * 1.15)));
-    if (entryCrop.bitmap.width !== targetW) {
-      entryCrop.resize(targetW, Jimp.AUTO);
-    }
-  }
-  await entryCrop.write(path.join(BRANDING, 'resto-fadey-splash-entry.png'));
-  await entryCrop.write(path.join(PUBLIC, 'resto-fadey-splash-entry.png'));
+  /** Emblema circular RF (solo anillo, sin texto RESTO FADEY) para splash de ingreso. */
+  const splashLogoSourcePath = path.join(BRANDING, 'resto-fadey-splash-logo-source.png');
+  const emblemBase = fs.existsSync(splashLogoSourcePath) ? await Jimp.read(splashLogoSourcePath) : img;
+  const emblemBg = sampleBackgroundColor(emblemBase);
+  const splashLogo = cropEmblemOnly(emblemBase, emblemBg);
+  await splashLogo.write(path.join(BRANDING, 'resto-fadey-splash-logo.png'));
+
+  const logoOnly = splashLogo.clone();
+  await logoOnly.write(path.join(BRANDING, 'resto-fadey-logo.png'));
+
+  /** Entry splash también solo emblema (sin letras de la imagen). */
+  const entryEmblem = splashLogo.clone().resize(1024, 1024);
+  await entryEmblem.write(path.join(BRANDING, 'resto-fadey-splash-entry.png'));
+  await entryEmblem.write(path.join(PUBLIC, 'resto-fadey-splash-entry.png'));
   fs.writeFileSync(
     path.join(BRANDING, 'entry-splash-bg.json'),
-    `${JSON.stringify({ hex: rgbaToHex(entryBg) }, null, 2)}\n`,
+    `${JSON.stringify({ hex: rgbaToHex(emblemBg) }, null, 2)}\n`,
     'utf8',
   );
 
-  const cropSize = Math.round(Math.min(w, h) * 0.56);
-  const x = Math.round((w - cropSize) / 2);
-  const y = Math.round(h * 0.03);
-  const logo = img.clone().crop(x, y, cropSize, cropSize);
-  await logo.clone().write(path.join(BRANDING, 'resto-fadey-logo.png'));
-
-  /** Emblema circular RF (solo anillo, sin texto) para splash de ingreso. */
-  const emblemSize = Math.round(Math.min(w, h) * 0.46);
-  const emblemY = Math.round(h * 0.065);
-  const emblemX = Math.round((w - emblemSize) / 2);
-  const splashLogo = img.clone().crop(emblemX, emblemY, emblemSize, emblemSize);
-  await splashLogo.write(path.join(BRANDING, 'resto-fadey-splash-logo.png'));
-
-  const icon192 = await composePwaIcon(logo, 192);
-  const icon512 = await composePwaIcon(logo, 512);
+  const icon192 = await composePwaIcon(logoOnly, 192);
+  const icon512 = await composePwaIcon(logoOnly, 512);
 
   await icon192.write(path.join(PUBLIC, 'pwa-icon-192.png'));
   await icon512.write(path.join(PUBLIC, 'pwa-icon-512.png'));
@@ -158,12 +194,11 @@ async function main() {
   console.log('Branding generado:', {
     w,
     h,
-    cropSize,
-    x,
-    y,
-    entrySplash: `${entryCrop.bitmap.width}x${entryCrop.bitmap.height}`,
-    entryBg: rgbaToHex(entryBg),
-    entryFromUserCrop: fs.existsSync(entrySourcePath),
+    cropSize: splashLogo.bitmap.width,
+    emblemOnly: `${splashLogo.bitmap.width}x${splashLogo.bitmap.height}`,
+    entrySplash: `1024x1024`,
+    entryBg: rgbaToHex(emblemBg),
+    emblemFromSplashSource: fs.existsSync(splashLogoSourcePath),
   });
 }
 

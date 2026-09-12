@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
+import { InlineDateField } from '../../components/DateFilterControls';
 import VentasCuentasTable, { getOrderDocument, getAccountDocument, docLabel, getAccountAuditStatusBadge } from '../../components/admin/VentasCuentasTable';
 import {
   mapAccountToDetalleVentaRow,
@@ -639,24 +640,24 @@ export default function Ventas() {
               className="shrink-0"
             />
           ) : null}
-          <input
-            type="date"
+          <InlineDateField
+            label="Desde"
             value={fromDate}
-            onChange={e => setFromDate(e.target.value)}
-            className="input-field w-auto"
-            title="Desde"
+            onChange={setFromDate}
+            roundedNone={false}
+            className="!rounded-lg"
           />
-          <input
-            type="date"
+          <InlineDateField
+            label="Hasta"
             value={toDate}
-            onChange={e => setToDate(e.target.value)}
-            className="input-field w-auto"
-            title="Hasta"
+            onChange={setToDate}
+            roundedNone={false}
+            className="!rounded-lg"
           />
           <button
             type="button"
             onClick={() => { setFromDate(''); setToDate(''); }}
-            className="px-3 py-2 rounded-lg text-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+            className="h-9 px-3 rounded-lg text-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center"
           >
             Limpiar fechas
           </button>

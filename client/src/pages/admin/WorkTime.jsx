@@ -14,6 +14,7 @@ import {
 } from 'react-icons/md';
 import WorkTimeReportTab from '../../components/workTime/WorkTimeReportTab';
 import WorkTimeAnalyticsPanel from '../../components/workTime/WorkTimeAnalyticsPanel';
+import { InlineDateField } from '../../components/DateFilterControls';
 
 const MAIN_TABS = [
   { id: 'panel', label: 'Panel', icon: MdDashboard },
@@ -173,25 +174,21 @@ export default function WorkTime() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="flex items-center gap-1.5 h-9 px-2 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-            <span className="text-[var(--ui-muted)] shrink-0">Desde</span>
-            <input
-              type="date"
-              value={filters.from}
-              onChange={(e) => setFilters((p) => ({ ...p, from: e.target.value }))}
-              className="bg-transparent border-0 p-0 text-xs outline-none text-[var(--ui-body-text)] min-w-0"
-            />
-          </label>
-          <label className="flex items-center gap-1.5 h-9 px-2 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-            <span className="text-[var(--ui-muted)] shrink-0">Hasta</span>
-            <input
-              type="date"
-              value={filters.to}
-              onChange={(e) => setFilters((p) => ({ ...p, to: e.target.value }))}
-              className="bg-transparent border-0 p-0 text-xs outline-none text-[var(--ui-body-text)] min-w-0"
-            />
-          </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <InlineDateField
+            label="Desde"
+            value={filters.from}
+            onChange={(from) => setFilters((p) => ({ ...p, from }))}
+            roundedNone={false}
+            className="!rounded-lg"
+          />
+          <InlineDateField
+            label="Hasta"
+            value={filters.to}
+            onChange={(to) => setFilters((p) => ({ ...p, to }))}
+            roundedNone={false}
+            className="!rounded-lg"
+          />
           <label className="flex items-center gap-1.5 h-9 px-2 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] bg-[var(--ui-surface)] min-w-[10rem]">
             <span className="text-[var(--ui-muted)] shrink-0">Usuario</span>
             <select

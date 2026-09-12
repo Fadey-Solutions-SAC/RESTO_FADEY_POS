@@ -1,10 +1,12 @@
 import { DATE_PRESETS } from '../../utils/indicatorsDatePresets';
+import { currentYearDateBounds } from '../DateFilterControls';
 
 /** Misma altura y tipografía para filtros, fechas y acciones de Indicadores. */
 export const INDICADORES_CTRL =
   'h-8 shrink-0 px-2 rounded-lg text-xs font-medium leading-none border border-[color:var(--ui-border)] inline-flex items-center gap-1 box-border';
 
 export default function IndicatorsDateFilters({ preset, onPresetChange, filters, onFiltersChange }) {
+  const { min, max, today, monthStart } = currentYearDateBounds();
   return (
     <div className="flex items-center gap-1 flex-nowrap">
       {DATE_PRESETS.map((p) => (
@@ -26,8 +28,14 @@ export default function IndicatorsDateFilters({ preset, onPresetChange, filters,
         <input
           type="date"
           aria-label="Desde"
+          min={min}
+          max={max}
           className="min-w-0 w-full flex-1 bg-transparent border-0 p-0 h-full text-xs leading-none text-[var(--ui-body-text)] outline-none [&::-webkit-calendar-picker-indicator]:scale-75 [&::-webkit-calendar-picker-indicator]:m-0"
           value={filters.from}
+          onFocus={() => {
+            // Vacío → inicio de mes (mismo criterio que el preset Mes por defecto).
+            if (!filters.from) onFiltersChange({ ...filters, from: monthStart });
+          }}
           onChange={(e) => {
             onPresetChange('custom');
             onFiltersChange({ ...filters, from: e.target.value });
@@ -39,8 +47,13 @@ export default function IndicatorsDateFilters({ preset, onPresetChange, filters,
         <input
           type="date"
           aria-label="Hasta"
+          min={min}
+          max={max}
           className="min-w-0 w-full flex-1 bg-transparent border-0 p-0 h-full text-xs leading-none text-[var(--ui-body-text)] outline-none [&::-webkit-calendar-picker-indicator]:scale-75 [&::-webkit-calendar-picker-indicator]:m-0"
           value={filters.to}
+          onFocus={() => {
+            if (!filters.to) onFiltersChange({ ...filters, to: today });
+          }}
           onChange={(e) => {
             onPresetChange('custom');
             onFiltersChange({ ...filters, to: e.target.value });

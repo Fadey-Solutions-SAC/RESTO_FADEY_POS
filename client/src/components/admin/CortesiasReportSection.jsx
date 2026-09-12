@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { api, formatCurrency, formatDate, formatDateKey, formatDateTime } from '../../utils/api';
 import { downloadBlobFile, downloadExcelFile } from '../../utils/inventoryCuadreExport';
 import DownloadExcelTxtButtons from './DownloadExcelTxtButtons';
+import { InlineDateField } from '../DateFilterControls';
 import {
   formatMesaLabel,
   parseAdjustmentReason,
@@ -490,17 +491,22 @@ export default function CortesiasReportSection({
       </div>
 
       <div className="card mb-4">
-        <div className="flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="text-xs ui-text-muted block mb-1">Desde</label>
-            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="input-field" />
-          </div>
-          <div>
-            <label className="text-xs ui-text-muted block mb-1">Hasta</label>
-            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="input-field" />
-          </div>
+        <div className="flex flex-wrap gap-2 items-center">
+          <InlineDateField
+            label="Desde"
+            value={fromDate}
+            onChange={setFromDate}
+            roundedNone={false}
+            className="!rounded-lg"
+          />
+          <InlineDateField
+            label="Hasta"
+            value={toDate}
+            onChange={setToDate}
+            roundedNone={false}
+            className="!rounded-lg"
+          />
           <div className="flex-1 min-w-[200px]">
-            <label className="text-xs ui-text-muted block mb-1">Buscar</label>
             <div className="relative">
               <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)]" />
               <input
@@ -508,11 +514,12 @@ export default function CortesiasReportSection({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cliente, mesa, motivo, N° venta, usuario…"
-                className="input-field pl-9 w-full"
+                className="input-field pl-9 w-full h-9"
+                aria-label="Buscar"
               />
             </div>
           </div>
-          <button type="button" onClick={load} className="btn-secondary flex items-center gap-2" disabled={!datesValid}>
+          <button type="button" onClick={load} className="btn-secondary flex items-center gap-2 h-9" disabled={!datesValid}>
             <MdRefresh /> Actualizar
           </button>
           <DownloadExcelTxtButtons

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../../utils/api';
 import Modal from '../Modal';
+import { InlineDateField } from '../DateFilterControls';
 import { attendanceStatusLabel, formatMinutes, formatSqlTime } from './hrFormat';
 
 export default function HrHistoryTab({ employees, branches }) {
@@ -57,52 +58,64 @@ export default function HrHistoryTab({ employees, branches }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 items-end">
+      <div className="flex flex-wrap gap-2 items-center">
+        <InlineDateField
+          label="Desde"
+          value={filters.from}
+          onChange={(from) => setFilters((p) => ({ ...p, from, page: 1 }))}
+          roundedNone={false}
+          className="!rounded-lg"
+        />
+        <InlineDateField
+          label="Hasta"
+          value={filters.to}
+          onChange={(to) => setFilters((p) => ({ ...p, to, page: 1 }))}
+          roundedNone={false}
+          className="!rounded-lg"
+        />
         {[
-          ['from', 'Desde', 'date'],
-          ['to', 'Hasta', 'date'],
           ['q', 'Buscar', 'text'],
           ['department', 'Área', 'text'],
           ['position', 'Cargo', 'text'],
         ].map(([key, label, type]) => (
-          <label key={key} className="text-xs space-y-1">
-            <span className="text-[var(--ui-muted)]">{label}</span>
+          <label key={key} className="text-xs inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+            <span className="text-[var(--ui-muted)] shrink-0">{label}</span>
             <input
               type={type}
               value={filters[key]}
               onChange={(e) => setFilters((p) => ({ ...p, [key]: e.target.value, page: 1 }))}
-              className="block h-9 px-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm min-w-[8rem]"
+              className="bg-transparent border-0 p-0 h-full text-sm outline-none min-w-[6rem]"
             />
           </label>
         ))}
-        <label className="text-xs space-y-1">
-          <span className="text-[var(--ui-muted)]">Trabajador</span>
+        <label className="text-xs inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+          <span className="text-[var(--ui-muted)] shrink-0">Trabajador</span>
           <select
             value={filters.employee_id}
             onChange={(e) => setFilters((p) => ({ ...p, employee_id: e.target.value, page: 1 }))}
-            className="block h-9 px-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm min-w-[10rem]"
+            className="bg-transparent border-0 p-0 h-full text-sm outline-none min-w-[8rem]"
           >
             <option value="">Todos</option>
             {(employees || []).map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}
           </select>
         </label>
-        <label className="text-xs space-y-1">
-          <span className="text-[var(--ui-muted)]">Sede</span>
+        <label className="text-xs inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+          <span className="text-[var(--ui-muted)] shrink-0">Sede</span>
           <select
             value={filters.branch_id}
             onChange={(e) => setFilters((p) => ({ ...p, branch_id: e.target.value, page: 1 }))}
-            className="block h-9 px-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm"
+            className="bg-transparent border-0 p-0 h-full text-sm outline-none"
           >
             <option value="">Todas</option>
             {(branches || []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </label>
-        <label className="text-xs space-y-1">
-          <span className="text-[var(--ui-muted)]">Estado</span>
+        <label className="text-xs inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+          <span className="text-[var(--ui-muted)] shrink-0">Estado</span>
           <select
             value={filters.status}
             onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value, page: 1 }))}
-            className="block h-9 px-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm"
+            className="bg-transparent border-0 p-0 h-full text-sm outline-none"
           >
             <option value="">Todos</option>
             <option value="on_time">A tiempo</option>

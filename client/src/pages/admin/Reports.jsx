@@ -23,6 +23,7 @@ import {
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
+import { InlineDateField, DateFilterPeriodButton, currentYearDateBounds } from '../../components/DateFilterControls';
 import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
 import VentasCuentasTable from '../../components/admin/VentasCuentasTable';
 import toast from 'react-hot-toast';
@@ -144,6 +145,7 @@ function purchaseFilterPeriodLabel(groups, { period, from, to, formatDateKey: fm
   }
   if (period === 'semana') return 'Última semana';
   if (period === 'mes') return 'Mes actual';
+  if (period === 'anio') return `Año ${String(from || to || localTodayYmd()).slice(0, 4)}`;
   if (period === 'todo') return 'Todas las compras';
   const dates = (groups || [])
     .map((g) => String(g.purchase_date || g.created_at || '').slice(0, 10))
@@ -703,12 +705,15 @@ export default function Reports() {
   const [ranking, setRanking] = useState([]);
   const [rankingPeriod, setRankingPeriod] = useState('month');
   const [purchaseExpenses, setPurchaseExpenses] = useState([]);
-  const [comprasPeriod, setComprasPeriod] = useState('ultima'); // ultima | semana | mes | todo
+  const [comprasPeriod, setComprasPeriod] = useState('ultima'); // ultima | semana | mes | anio | todo | custom
   const [comprasFrom, setComprasFrom] = useState('');
   const [comprasTo, setComprasTo] = useState('');
   const [inventoryReconciliations, setInventoryReconciliations] = useState([]);
   const [inventoryAlerts, setInventoryAlerts] = useState([]);
   const [inventoryMovementsTab, setInventoryMovementsTab] = useState('stock_minimo');
+  const [cuadresPeriod, setCuadresPeriod] = useState('ultima'); // ultima | mes | todo | custom
+  const [cuadresFrom, setCuadresFrom] = useState('');
+  const [cuadresTo, setCuadresTo] = useState('');
   const [billingDocuments, setBillingDocuments] = useState([]);
   const [billingStatusFilter, setBillingStatusFilter] = useState('all');
   const [billingTypeFilter, setBillingTypeFilter] = useState('all');
@@ -941,6 +946,32 @@ export default function Reports() {
       .sort((a, b) => b.dateKey.localeCompare(a.dateKey));
   }, [inventoryReconciliations]);
 
+  const inventoryCuadreGroupsFiltered = useMemo(() => {
+    const today = localTodayYmd();
+    const customFrom = String(cuadresFrom || '').trim();
+    const customTo = String(cuadresTo || '').trim();
+    if (customFrom || customTo) {
+      return inventoryCuadreGroupsByDate.filter((g) => {
+        const d = g.dateKey;
+        if (!d) return false;
+        if (customFrom && d < customFrom) return false;
+        if (customTo && d > customTo) return false;
+        return true;
+      });
+    }
+    if (cuadresPeriod === 'ultima') {
+      return inventoryCuadreGroupsByDate.slice(0, 1);
+    }
+    if (cuadresPeriod === 'mes') {
+      const from = `${String(today || '').slice(0, 7)}-01`;
+      return inventoryCuadreGroupsByDate.filter((g) => {
+        const d = g.dateKey;
+        return d && d >= from && d <= today;
+      });
+    }
+    return inventoryCuadreGroupsByDate;
+  }, [inventoryCuadreGroupsByDate, cuadresPeriod, cuadresFrom, cuadresTo]);
+
   const inventoryCuadreLines = useMemo(
     () => inventoryCuadreGroupsByDate.reduce((sum, group) => sum + group.lineCount, 0),
     [inventoryCuadreGroupsByDate],
@@ -949,6 +980,16 @@ export default function Reports() {
   const inventoryCuadreCount = useMemo(
     () => inventoryCuadreGroupsByDate.reduce((sum, group) => sum + (group.sessions?.length || 0), 0),
     [inventoryCuadreGroupsByDate],
+  );
+
+  const inventoryCuadreLinesFiltered = useMemo(
+    () => inventoryCuadreGroupsFiltered.reduce((sum, group) => sum + group.lineCount, 0),
+    [inventoryCuadreGroupsFiltered],
+  );
+
+  const inventoryCuadreCountFiltered = useMemo(
+    () => inventoryCuadreGroupsFiltered.reduce((sum, group) => sum + (group.sessions?.length || 0), 0),
+    [inventoryCuadreGroupsFiltered],
   );
 
   useEffect(() => { loadRanking(rankingPeriod); }, [rankingPeriod]);
@@ -1551,6 +1592,13 @@ export default function Reports() {
         return d && d >= from && d <= today;
       });
     }
+    if (comprasPeriod === 'anio') {
+      const { yearStart } = currentYearDateBounds();
+      return purchaseGroupsAll.filter((g) => {
+        const d = ymdOf(g);
+        return d && d >= yearStart && d <= today;
+      });
+    }
     return purchaseGroupsAll;
   })();
 
@@ -2013,15 +2061,21 @@ export default function Reports() {
             </div>
             {productoTotalMode === 'fechas' ? (
               <>
-                <div className="flex flex-wrap gap-3 items-end mb-4">
-                  <div>
-                    <label className="text-xs text-[var(--ui-muted)] block mb-1">Desde</label>
-                    <input type="date" value={productoFrom} onChange={(e) => setProductoFrom(e.target.value)} className="input-field" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-[var(--ui-muted)] block mb-1">Hasta</label>
-                    <input type="date" value={productoTo} onChange={(e) => setProductoTo(e.target.value)} className="input-field" />
-                  </div>
+                <div className="flex flex-wrap gap-2 items-center mb-4">
+                  <InlineDateField
+                    label="Desde"
+                    value={productoFrom}
+                    onChange={setProductoFrom}
+                    roundedNone={false}
+                    className="!rounded-lg"
+                  />
+                  <InlineDateField
+                    label="Hasta"
+                    value={productoTo}
+                    onChange={setProductoTo}
+                    roundedNone={false}
+                    className="!rounded-lg"
+                  />
                 </div>
                 {productoTotalLoading && (
                   <p className="text-sm text-[var(--ui-muted)] mb-3 inline-flex items-center gap-2">
@@ -2323,57 +2377,53 @@ export default function Reports() {
 
       {reportSection === 'compras' && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-end gap-2">
-            <div>
-              <label className="block text-xs text-[var(--ui-muted)] mb-1">Desde</label>
-              <input
-                type="date"
-                className="input-field h-9 rounded-none text-sm"
-                value={comprasFrom}
-                onChange={(e) => {
-                  setComprasFrom(e.target.value);
-                  if (e.target.value || comprasTo) setComprasPeriod('todo');
-                }}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--ui-muted)] mb-1">Hasta</label>
-              <input
-                type="date"
-                className="input-field h-9 rounded-none text-sm"
-                value={comprasTo}
-                onChange={(e) => {
-                  setComprasTo(e.target.value);
-                  if (e.target.value || comprasFrom) setComprasPeriod('todo');
-                }}
-              />
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                ['ultima', 'Última'],
-                ['semana', 'Semana'],
-                ['mes', 'Mes'],
-                ['todo', 'Todo'],
-              ].map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => {
-                    setComprasPeriod(id);
+          <div className="flex flex-wrap items-center gap-2">
+            <InlineDateField
+              label="Desde"
+              value={comprasFrom}
+              onChange={(v) => {
+                setComprasFrom(v);
+                if (v || comprasTo) setComprasPeriod('custom');
+              }}
+            />
+            <InlineDateField
+              label="Hasta"
+              value={comprasTo}
+              onChange={(v) => {
+                setComprasTo(v);
+                if (v || comprasFrom) setComprasPeriod('custom');
+              }}
+            />
+            {[
+              ['ultima', 'Última'],
+              ['semana', 'Semana'],
+              ['mes', 'Mes'],
+              ['anio', 'Año'],
+              ['todo', 'Todo'],
+            ].map(([id, label]) => (
+              <DateFilterPeriodButton
+                key={id}
+                active={
+                  id === 'anio'
+                    ? comprasPeriod === 'anio'
+                    : comprasPeriod === id && !comprasFrom && !comprasTo
+                }
+                onClick={() => {
+                  setComprasPeriod(id);
+                  if (id === 'anio') {
+                    const { yearStart, today } = currentYearDateBounds();
+                    setComprasFrom(yearStart);
+                    setComprasTo(today);
+                  } else {
                     setComprasFrom('');
                     setComprasTo('');
-                  }}
-                  className={`text-xs px-3 py-2 border font-medium rounded-none ${
-                    comprasPeriod === id && !comprasFrom && !comprasTo
-                      ? 'bg-[#3B82F6] text-white border-transparent'
-                      : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)]'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="ml-auto flex items-end">
+                  }
+                }}
+              >
+                {label}
+              </DateFilterPeriodButton>
+            ))}
+            <div className="ml-auto">
               <DownloadExcelTxtButtons
                 onExcel={() => downloadFilteredPurchases(purchaseGroups, 'excel', {
                   usuario: reportUsuario,
@@ -2462,25 +2512,21 @@ export default function Reports() {
         <div className="space-y-6">
           <div className="card">
             <h3 className="font-bold text-[var(--ui-body-text)] mb-4">Resumen financiero</h3>
-            <div className="flex flex-wrap gap-3 mb-4 items-end">
-              <div>
-                <label className="block text-xs text-[var(--ui-muted)] mb-1">Desde</label>
-                <input
-                  type="date"
-                  className="input-field"
-                  value={financeFrom}
-                  onChange={(e) => setFinanceFrom(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-[var(--ui-muted)] mb-1">Hasta</label>
-                <input
-                  type="date"
-                  className="input-field"
-                  value={financeTo}
-                  onChange={(e) => setFinanceTo(e.target.value)}
-                />
-              </div>
+            <div className="flex flex-wrap gap-2 mb-4 items-center">
+              <InlineDateField
+                label="Desde"
+                value={financeFrom}
+                onChange={setFinanceFrom}
+                roundedNone={false}
+                className="!rounded-lg"
+              />
+              <InlineDateField
+                label="Hasta"
+                value={financeTo}
+                onChange={setFinanceTo}
+                roundedNone={false}
+                className="!rounded-lg"
+              />
             </div>
             {financeLoading ? (
               <p className="text-[var(--ui-muted)]">Cargando…</p>
@@ -2891,8 +2937,12 @@ export default function Reports() {
               }`}
             >
               <p className="text-lg font-bold text-sky-700 rf-section-title leading-tight">Cuadres de inventario</p>
-              <p className="text-4xl font-bold text-sky-700 tabular-nums">{inventoryCuadreCount}</p>
-              <p className="text-sm text-[var(--ui-muted)]">{inventoryCuadreLines} ajuste(s) registrado(s)</p>
+              <p className="text-4xl font-bold text-sky-700 tabular-nums">
+                {inventoryMovementsTab === 'cuadres' ? inventoryCuadreCountFiltered : inventoryCuadreCount}
+              </p>
+              <p className="text-sm text-[var(--ui-muted)]">
+                {inventoryMovementsTab === 'cuadres' ? inventoryCuadreLinesFiltered : inventoryCuadreLines} ajuste(s) registrado(s)
+              </p>
             </button>
           </div>
 
@@ -2918,84 +2968,133 @@ export default function Reports() {
                 No hay productos con stock bajo en este momento.
               </p>
             )
-          ) : inventoryCuadreGroupsByDate.length > 0 ? (
-            <div className="space-y-6">
-              {inventoryCuadreGroupsByDate.map((group) => (
-                <div key={group.dateKey} className="space-y-3">
-                  <div className="flex items-center justify-between gap-3 flex-wrap border-b border-sky-200 pb-2">
-                    <div>
-                      <p className="font-bold text-sky-800 rf-section-title">{group.dateLabel}</p>
-                      <p className="text-xs text-[var(--ui-muted)] mt-0.5">
-                        {group.sessions.length} cuadre(s) · {group.lineCount} ajuste(s)
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <DownloadExcelTxtButtons
-                        onExcel={() => downloadInventoryCuadresByDate(group, 'excel')}
-                        onTxt={() => downloadInventoryCuadresByDate(group, 'txt')}
-                        excelTitle={`Descargar todos los cuadres del ${group.dateLabel}`}
-                        txtTitle={`Descargar todos los cuadres del ${group.dateLabel}`}
-                        excelLabel="Fecha Excel"
-                        txtLabel="Fecha TXT"
-                      />
-                    </div>
-                  </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <InlineDateField
+                  label="Desde"
+                  value={cuadresFrom}
+                  onChange={(v) => {
+                    setCuadresFrom(v);
+                    if (v || cuadresTo) setCuadresPeriod('custom');
+                  }}
+                  roundedNone={false}
+                  className="!rounded-lg"
+                />
+                <InlineDateField
+                  label="Hasta"
+                  value={cuadresTo}
+                  onChange={(v) => {
+                    setCuadresTo(v);
+                    if (v || cuadresFrom) setCuadresPeriod('custom');
+                  }}
+                  roundedNone={false}
+                  className="!rounded-lg"
+                />
+                {[
+                  ['ultima', 'Último'],
+                  ['mes', 'Mes'],
+                  ['todo', 'Todos'],
+                ].map(([id, label]) => (
+                  <DateFilterPeriodButton
+                    key={id}
+                    active={cuadresPeriod === id && !cuadresFrom && !cuadresTo}
+                    className="!rounded-lg"
+                    onClick={() => {
+                      setCuadresPeriod(id);
+                      setCuadresFrom('');
+                      setCuadresTo('');
+                    }}
+                  >
+                    {label}
+                  </DateFilterPeriodButton>
+                ))}
+              </div>
 
-                  <div className="space-y-3">
-                    {group.sessions.map((session) => (
-                      <div key={session.id} className="border border-slate-200 rounded-lg p-3 bg-white">
-                        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-                          <div>
-                            <p className="font-semibold rf-section-title">
-                              Cuadre {String(session.id || '').slice(0, 8)}
-                            </p>
-                            <p className="text-xs text-[var(--ui-muted)] mt-0.5">
-                              {formatDateTime(session.created_at)} · {session.warehouse_name}
-                            </p>
-                            <p className="text-xs text-[var(--ui-muted)] mt-0.5">
-                              {session.lines.length} ajuste(s)
-                              {Number(session.total_shortage) > 0 ? ` · Faltante: ${session.total_shortage}` : ''}
-                              {Number(session.total_surplus) > 0 ? ` · Sobrante: ${session.total_surplus}` : ''}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <DownloadExcelTxtButtons
-                              onExcel={() => downloadInventoryCuadreSession(session, group, 'excel')}
-                              onTxt={() => downloadInventoryCuadreSession(session, group, 'txt')}
-                              excelTitle="Descargar este cuadre en Excel"
-                              txtTitle="Descargar este cuadre en TXT"
-                            />
-                          </div>
+              {inventoryCuadreGroupsFiltered.length > 0 ? (
+                <div className="space-y-6">
+                  {inventoryCuadreGroupsFiltered.map((group) => (
+                    <div key={group.dateKey} className="space-y-3">
+                      <div className="flex items-center justify-between gap-3 flex-wrap border-b border-sky-200 pb-2">
+                        <div>
+                          <p className="font-bold text-sky-800 rf-section-title">{group.dateLabel}</p>
+                          <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                            {group.sessions.length} cuadre(s) · {group.lineCount} ajuste(s)
+                          </p>
                         </div>
-                        <div className="space-y-1">
-                          {session.lines.map((line) => (
-                            <div
-                              key={line.id}
-                              className="text-sm flex items-center justify-between border-b border-slate-100 py-1.5 last:border-b-0"
-                            >
-                              <span className="font-medium pr-3">{line.product_name}</span>
-                              <span className="text-xs text-[var(--ui-muted)] whitespace-nowrap mr-3">
-                                Contado: {line.counted_stock}
-                              </span>
-                              <span className={`font-semibold tabular-nums whitespace-nowrap ${
-                                line.difference > 0 ? 'text-sky-600' : 'text-red-600'
-                              }`}
-                              >
-                                {line.difference > 0 ? `+${line.difference}` : line.difference}
-                              </span>
-                            </div>
-                          ))}
+                        <div className="flex flex-wrap gap-2">
+                          <DownloadExcelTxtButtons
+                            onExcel={() => downloadInventoryCuadresByDate(group, 'excel')}
+                            onTxt={() => downloadInventoryCuadresByDate(group, 'txt')}
+                            excelTitle={`Descargar todos los cuadres del ${group.dateLabel}`}
+                            txtTitle={`Descargar todos los cuadres del ${group.dateLabel}`}
+                            excelLabel="Fecha Excel"
+                            txtLabel="Fecha TXT"
+                          />
                         </div>
                       </div>
-                    ))}
-                  </div>
+
+                      <div className="space-y-3">
+                        {group.sessions.map((session) => (
+                          <div key={session.id} className="border border-slate-200 rounded-lg p-3 bg-white">
+                            <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+                              <div>
+                                <p className="font-semibold rf-section-title">
+                                  Cuadre {String(session.id || '').slice(0, 8)}
+                                </p>
+                                <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                                  {formatDateTime(session.created_at)} · {session.warehouse_name}
+                                </p>
+                                <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                                  {session.lines.length} ajuste(s)
+                                  {Number(session.total_shortage) > 0 ? ` · Faltante: ${session.total_shortage}` : ''}
+                                  {Number(session.total_surplus) > 0 ? ` · Sobrante: ${session.total_surplus}` : ''}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <DownloadExcelTxtButtons
+                                  onExcel={() => downloadInventoryCuadreSession(session, group, 'excel')}
+                                  onTxt={() => downloadInventoryCuadreSession(session, group, 'txt')}
+                                  excelTitle="Descargar este cuadre en Excel"
+                                  txtTitle="Descargar este cuadre en TXT"
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {session.lines.map((line) => (
+                                <div
+                                  key={line.id}
+                                  className="text-sm flex items-center justify-between border-b border-slate-100 py-1.5 last:border-b-0"
+                                >
+                                  <span className="font-medium pr-3">{line.product_name}</span>
+                                  <span className="text-xs text-[var(--ui-muted)] whitespace-nowrap mr-3">
+                                    Contado: {line.counted_stock}
+                                  </span>
+                                  <span className={`font-semibold tabular-nums whitespace-nowrap ${
+                                    line.difference > 0 ? 'text-sky-600' : 'text-red-600'
+                                  }`}
+                                  >
+                                    {line.difference > 0 ? `+${line.difference}` : line.difference}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-8 text-center text-[var(--ui-muted)]">
-              <MdInventory2 className="mx-auto text-3xl mb-2 opacity-50" />
-              <p className="text-sm">No hay cuadres de inventario registrados.</p>
+              ) : (
+                <div className="py-8 text-center text-[var(--ui-muted)]">
+                  <MdInventory2 className="mx-auto text-3xl mb-2 opacity-50" />
+                  <p className="text-sm">
+                    {inventoryCuadreGroupsByDate.length > 0
+                      ? 'No hay cuadres en el periodo seleccionado.'
+                      : 'No hay cuadres de inventario registrados.'}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

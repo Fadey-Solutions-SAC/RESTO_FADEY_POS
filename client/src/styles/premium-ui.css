@@ -1146,8 +1146,10 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: contain;
-    object-position: center center;
+    /* Emblema circular: cover + top evita letras si el PNG aún las trae abajo */
+    object-fit: cover;
+    object-position: center 38%;
+    transform: scale(1.08);
     border-radius: 50%;
     background: #000000;
   }

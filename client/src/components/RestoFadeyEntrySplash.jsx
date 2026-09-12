@@ -6,7 +6,7 @@ import {
 } from '../utils/entrySplashSession';
 import EntrySplashCircuits from './EntrySplashCircuits';
 
-const LOGO_SRC = `/branding/resto-fadey-splash-logo.png?v=fy2026`;
+const LOGO_SRC = `/branding/resto-fadey-splash-logo.png?v=rf-emblem-only-1`;
 const SPLASH_BG = '#000000';
 /** Entrada + visible: raíces TL + continuación BR + fade final. */
 const SPLASH_HOLD_MS = 3000;
