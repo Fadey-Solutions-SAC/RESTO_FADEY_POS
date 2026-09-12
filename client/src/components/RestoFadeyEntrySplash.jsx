@@ -7,7 +7,7 @@ import {
 import EntrySplashCircuits from './EntrySplashCircuits';
 
 /** Imagen completa de empresa (animación). Los iconos PWA/instalación van aparte, sin letras. */
-const LOGO_SRC = `/branding/resto-fadey-splash-logo.png?v=company-full-2`;
+const LOGO_SRC = `/branding/resto-fadey-splash-logo.png?v=fy-company-1`;
 const SPLASH_BG = '#000000';
 /** Entrada + visible: raíces TL + continuación BR + fade final. */
 const SPLASH_HOLD_MS = 3000;

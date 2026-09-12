@@ -1068,6 +1068,13 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     background: #000000;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     pointer-events: none;
+    overflow: hidden;
+    overscroll-behavior: none;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    box-sizing: border-box;
   }
 
   .rf-entry-splash--out {
@@ -1126,11 +1133,11 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     pointer-events: none;
   }
 
-  /* Imagen completa de empresa (animación). No circular: incluye RF + RESTO FADEY. */
+  /* Imagen completa de empresa (animación). Cuadrado con monograma FY. */
   .rf-entry-splash__company {
     position: relative;
     z-index: 1;
-    width: min(78vw, 360px);
+    width: min(72vw, 300px);
     aspect-ratio: 1;
     flex-shrink: 0;
     overflow: hidden;
@@ -1307,7 +1314,7 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
 
   @media (min-width: 900px) {
     .rf-entry-splash__company {
-      width: min(42vw, 400px);
+      width: min(36vw, 320px);
     }
     .rf-entry-splash__logo-ring {
       width: min(22vw, 260px);
