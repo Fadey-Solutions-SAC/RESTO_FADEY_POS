@@ -1382,24 +1382,39 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     border-color: rgba(192, 132, 252, 0.45);
   }
 
-  /* Texto legible dentro de modales oscuros (evita labels slate sobre fondo oscuro / forzado por SO) */
-  .modal-sheet-body {
+  /* Texto legible dentro de modales oscuros (evita labels slate sobre fondo oscuro / forzado por SO).
+     En tema claro no forzar gris claro: quedaría invisible sobre superficie blanca. */
+  html[data-ui-color-scheme='dark'] .modal-sheet-body,
+  html:not([data-ui-color-scheme='light']) .modal-sheet-body {
     @apply text-[#F9FAFB];
   }
-  .modal-sheet-body label {
+  html[data-ui-color-scheme='dark'] .modal-sheet-body label,
+  html:not([data-ui-color-scheme='light']) .modal-sheet-body label {
     color: #e5e7eb !important;
   }
-  .modal-sheet-body .text-slate-900,
-  .modal-sheet-body .text-slate-800,
-  .modal-sheet-body .text-slate-700 {
+  html[data-ui-color-scheme='dark'] .modal-sheet-body .text-slate-900,
+  html[data-ui-color-scheme='dark'] .modal-sheet-body .text-slate-800,
+  html[data-ui-color-scheme='dark'] .modal-sheet-body .text-slate-700,
+  html:not([data-ui-color-scheme='light']) .modal-sheet-body .text-slate-900,
+  html:not([data-ui-color-scheme='light']) .modal-sheet-body .text-slate-800,
+  html:not([data-ui-color-scheme='light']) .modal-sheet-body .text-slate-700 {
     color: #e5e7eb !important;
   }
-  .modal-sheet-body .text-slate-600 {
+  html[data-ui-color-scheme='dark'] .modal-sheet-body .text-slate-600,
+  html:not([data-ui-color-scheme='light']) .modal-sheet-body .text-slate-600 {
     color: #d1d5db !important;
   }
-  .modal-sheet-body .text-slate-500,
-  .modal-sheet-body .text-slate-400 {
+  html[data-ui-color-scheme='dark'] .modal-sheet-body .text-slate-500,
+  html[data-ui-color-scheme='dark'] .modal-sheet-body .text-slate-400,
+  html:not([data-ui-color-scheme='light']) .modal-sheet-body .text-slate-500,
+  html:not([data-ui-color-scheme='light']) .modal-sheet-body .text-slate-400 {
     color: #9ca3af !important;
+  }
+  html[data-ui-color-scheme='light'] .modal-sheet-body {
+    color: var(--ui-body-text);
+  }
+  html[data-ui-color-scheme='light'] .modal-sheet-body label {
+    color: var(--ui-body-text) !important;
   }
 
   /* Arqueo de caja (modal): siempre contraste con el tema activo */

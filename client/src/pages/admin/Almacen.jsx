@@ -612,6 +612,12 @@ export default function Almacen() {
   }, [activeView, searchParams, setSearchParams, almacenViewsForPlan]);
 
   useEffect(() => {
+    window.scrollTo(0, 0);
+    const main = document.querySelector('.rf-main-content');
+    if (main) main.scrollTop = 0;
+  }, [activeView]);
+
+  useEffect(() => {
     const w = warehouses.find((x) => sameWarehouseId(x.id, selectedWarehouseView));
     if (!isInsumosWarehouse(w)) {
       setInsumosVistaArea('all');
@@ -2129,6 +2135,7 @@ export default function Almacen() {
         <div className="flex flex-wrap items-stretch gap-3">
           <div
             onClick={() => setSelectedWarehouseView(ALL_WAREHOUSES_VIEW)}
+            onMouseDown={(e) => e.preventDefault()}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -2137,7 +2144,7 @@ export default function Almacen() {
             }}
             role="button"
             tabIndex={0}
-            className={`bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
+            className={`scroll-mt-[calc(var(--ui-shell-header-h)+0.75rem)] bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
               isAllWarehousesView(selectedWarehouseView)
                 ? 'border-gold-500 ring-2 ring-gold-200'
                 : 'border-slate-200 hover:border-gold-300'
@@ -2160,6 +2167,7 @@ export default function Almacen() {
               <div
                 key={w.id}
                 onClick={() => setSelectedWarehouseView(String(w.id))}
+                onMouseDown={(e) => e.preventDefault()}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
@@ -2168,7 +2176,7 @@ export default function Almacen() {
                 }}
                 role="button"
                 tabIndex={0}
-                className={`bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
+                className={`scroll-mt-[calc(var(--ui-shell-header-h)+0.75rem)] bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
                   sameWarehouseId(selectedWarehouseView, w.id)
                     ? 'border-gold-500 ring-2 ring-gold-200'
                     : 'border-slate-200 hover:border-gold-300'
@@ -2344,6 +2352,7 @@ export default function Almacen() {
             </tbody>
           </table>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left ui-text-muted border-b">
@@ -2363,7 +2372,7 @@ export default function Almacen() {
             </thead>
             <tbody>
               {productsForSelectedWarehouse.map(p => (
-                <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50 [&>td]:py-2">
                   <td className="py-3 font-medium">{p.name}</td>
                   <td className="py-3 ui-text-muted">{p.category_name || '-'}</td>
                   <td className="py-3">{formatCurrency(p.price)}</td>
@@ -2385,8 +2394,8 @@ export default function Almacen() {
                         ? UI_BADGE.amber
                         : UI_BADGE.red
                   }>{productStockStatus(p.stock, p.min_stock) === 'normal' ? 'Normal' : productStockStatus(p.stock, p.min_stock) === 'low' ? 'Bajo' : 'Agotado'}</span></td>
-                  <td className="py-3">
-                    <div className="flex items-center justify-end gap-2 flex-wrap">
+                  <td className="py-2 whitespace-nowrap text-right">
+                    <div className="inline-flex flex-nowrap items-center justify-end gap-1.5">
                       <button
                         type="button"
                         onClick={() => {
@@ -2404,14 +2413,14 @@ export default function Almacen() {
                           setShowDeleteFlow(false);
                           setDeleteReason('');
                         }}
-                        className="text-xs px-3 py-1.5 bg-sky-50 text-sky-600 rounded-lg hover:bg-sky-100"
+                        className="shrink-0 text-xs px-2.5 py-1 bg-sky-50 text-sky-600 rounded-lg hover:bg-sky-100"
                       >
                         Ajustar
                       </button>
                       <button
                         type="button"
                         onClick={() => navigate(`/admin/productos?edit=${encodeURIComponent(p.id)}`)}
-                        className="text-xs px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 inline-flex items-center gap-1"
+                        className="shrink-0 text-xs px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 inline-flex items-center gap-1"
                         title="Editar producto"
                       >
                         <MdEdit className="text-sm" />
@@ -2435,6 +2444,7 @@ export default function Almacen() {
               )}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -2535,7 +2545,7 @@ export default function Almacen() {
         title="Nuevo almacén"
         size="sm"
       >
-        <form onSubmit={handleCreateWarehouse} className="space-y-4 modal-sheet-body">
+        <form onSubmit={handleCreateWarehouse} className="space-y-4">
           <div className="space-y-2">
             <p className="text-sm font-medium text-[var(--ui-body-text)]">Tipo</p>
             <label className="flex items-center gap-2 text-sm text-[var(--ui-body-text)] cursor-pointer">

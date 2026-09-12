@@ -705,9 +705,9 @@ export default function Reports() {
   const [ranking, setRanking] = useState([]);
   const [rankingPeriod, setRankingPeriod] = useState('month');
   const [purchaseExpenses, setPurchaseExpenses] = useState([]);
-  const [comprasPeriod, setComprasPeriod] = useState('ultima'); // ultima | semana | mes | anio | todo | custom
-  const [comprasFrom, setComprasFrom] = useState('');
-  const [comprasTo, setComprasTo] = useState('');
+  const [comprasPeriod, setComprasPeriod] = useState('mes'); // ultima | semana | mes | anio | todo | custom
+  const [comprasFrom, setComprasFrom] = useState(localMonthStartYmd);
+  const [comprasTo, setComprasTo] = useState(localTodayYmd);
   const [inventoryReconciliations, setInventoryReconciliations] = useState([]);
   const [inventoryAlerts, setInventoryAlerts] = useState([]);
   const [inventoryMovementsTab, setInventoryMovementsTab] = useState('stock_minimo');
@@ -2403,16 +2403,21 @@ export default function Reports() {
             ].map(([id, label]) => (
               <DateFilterPeriodButton
                 key={id}
-                active={
-                  id === 'anio'
-                    ? comprasPeriod === 'anio'
-                    : comprasPeriod === id && !comprasFrom && !comprasTo
-                }
+                active={comprasPeriod === id}
                 onClick={() => {
                   setComprasPeriod(id);
-                  if (id === 'anio') {
-                    const { yearStart, today } = currentYearDateBounds();
+                  const { yearStart, monthStart, today } = currentYearDateBounds();
+                  if (id === 'mes') {
+                    setComprasFrom(monthStart);
+                    setComprasTo(today);
+                  } else if (id === 'anio') {
                     setComprasFrom(yearStart);
+                    setComprasTo(today);
+                  } else if (id === 'semana') {
+                    const end = new Date(`${today}T12:00:00`);
+                    const start = new Date(end);
+                    start.setDate(start.getDate() - 6);
+                    setComprasFrom(toLocalDateKey(start) || monthStart);
                     setComprasTo(today);
                   } else {
                     setComprasFrom('');

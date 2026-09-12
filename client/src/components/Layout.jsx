@@ -90,7 +90,10 @@ export default function Layout() {
   const shellTitle = getShellModuleTitle(location.pathname, location.search, td);
   const isCajaPage = location.pathname === '/admin/caja' || location.pathname.startsWith('/admin/caja/');
   const isSettingsPage = location.pathname === '/admin/configuracion' || location.pathname.startsWith('/admin/configuracion/');
-  const isShellLockedScroll = isCajaPage || isSettingsPage;
+  const isAlmacenPage = location.pathname === '/admin/almacen' || location.pathname.startsWith('/admin/almacen/');
+  /** Caja/config: scroll interno del módulo. Almacén: scroll en <main> para que la franja superior no se desplace. */
+  const isShellLockedScroll = isCajaPage || isSettingsPage || isAlmacenPage;
+  const mainScrollsInternally = isAlmacenPage;
   const isCajaMapView = isCajaPage && (() => {
     const view = new URLSearchParams(location.search).get('view') || 'cobrar';
     return view === 'cobrar';
@@ -197,7 +200,11 @@ export default function Layout() {
           isSettingsPage ? 'p-0' : 'p-3 sm:p-6'
         } ${
           isShellLockedScroll
-            ? 'flex-1 min-h-0 overflow-hidden flex flex-col'
+            ? `flex-1 min-h-0 flex flex-col ${
+                mainScrollsInternally
+                  ? 'overflow-y-auto overscroll-y-contain'
+                  : 'overflow-hidden'
+              }`
             : 'min-h-[calc(100vh-var(--ui-shell-header-h))]'
         }`}>
           {isMozoBlocked ? (
