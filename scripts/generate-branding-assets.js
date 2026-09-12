@@ -150,22 +150,36 @@ async function main() {
   await img.clone().write(path.join(BRANDING, 'resto-fadey-splash.png'));
   await img.clone().write(path.join(PUBLIC, 'resto-fadey-splash.png'));
 
-  /** Animación: imagen completa de empresa (con letras). Iconos PWA: solo emblema. */
+  /**
+   * Logo de empresa FY para animación: resto-fadey-splash-logo(-source).png
+   * NO sobrescribir salvo --force-company-splash (pedido explícito del usuario).
+   */
+  const forceCompanySplash = process.argv.includes('--force-company-splash');
+  const splashLogoPath = path.join(BRANDING, 'resto-fadey-splash-logo.png');
   const splashLogoSourcePath = path.join(BRANDING, 'resto-fadey-splash-logo-source.png');
-  const companyImg = fs.existsSync(splashLogoSourcePath) ? await Jimp.read(splashLogoSourcePath) : img;
-  const companyBg = sampleBackgroundColor(companyImg);
+  if (forceCompanySplash) {
+    const companyImg = fs.existsSync(splashLogoSourcePath) ? await Jimp.read(splashLogoSourcePath) : img;
+    await companyImg.clone().write(splashLogoPath);
+    await companyImg.clone().write(path.join(BRANDING, 'resto-fadey-splash-entry.png'));
+    await companyImg.clone().write(path.join(PUBLIC, 'resto-fadey-splash-entry.png'));
+    console.log('FORZADO: splash de empresa regenerado');
+  } else {
+    console.log('Splash empresa protegido (no se toca). Usa --force-company-splash solo si el usuario lo pide.');
+  }
 
-  await companyImg.clone().write(path.join(BRANDING, 'resto-fadey-splash-logo.png'));
-  await companyImg.clone().write(path.join(BRANDING, 'resto-fadey-splash-entry.png'));
-  await companyImg.clone().write(path.join(PUBLIC, 'resto-fadey-splash-entry.png'));
+  const companyBg = sampleBackgroundColor(
+    fs.existsSync(splashLogoPath) ? await Jimp.read(splashLogoPath) : img,
+  );
   fs.writeFileSync(
     path.join(BRANDING, 'entry-splash-bg.json'),
     `${JSON.stringify({ hex: rgbaToHex(companyBg) }, null, 2)}\n`,
     'utf8',
   );
 
-  /** Solo emblema RF (sin “RESTO FADEY”) para icono al instalar en móvil/PC. */
-  const logoOnly = cropEmblemOnly(companyImg, companyBg);
+  /** Iconos de instalación: emblema sin texto (arte aparte; no usa el splash FY). */
+  const installSrc = img;
+  const installBg = sampleBackgroundColor(installSrc);
+  const logoOnly = cropEmblemOnly(installSrc, installBg);
   await logoOnly.write(path.join(BRANDING, 'resto-fadey-logo.png'));
 
   const icon192 = await composePwaIcon(logoOnly, 192);
@@ -193,10 +207,9 @@ async function main() {
     w,
     h,
     cropSize: logoOnly.bitmap.width,
-    companySplash: `${companyImg.bitmap.width}x${companyImg.bitmap.height}`,
     installIconEmblem: `${logoOnly.bitmap.width}x${logoOnly.bitmap.height}`,
     entryBg: rgbaToHex(companyBg),
-    companyFromSplashSource: fs.existsSync(splashLogoSourcePath),
+    companySplashProtected: !forceCompanySplash,
   });
 }
 
