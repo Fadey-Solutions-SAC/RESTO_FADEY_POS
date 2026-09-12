@@ -35,7 +35,7 @@ function scheduleKindFromEmployee(e) {
   return 'template';
 }
 
-export default function HrStaffTab({ employees, schedules, branches, onReload }) {
+export default function HrStaffTab({ employees, branches, onReload }) {
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -82,7 +82,7 @@ export default function HrStaffTab({ employees, schedules, branches, onReload })
         hire_date: edit.hire_date,
         contract_type: edit.contract_type,
         status: edit.status,
-        schedule_id: edit.schedule_id || '',
+        schedule_id: kind === 'custom' ? (edit.schedule_id || '') : '',
         employee_code: edit.employee_code,
         photo_url: edit.photo_url,
         custom_start_time: kind === 'custom' ? edit.custom_start_time : '',
@@ -230,7 +230,14 @@ export default function HrStaffTab({ employees, schedules, branches, onReload })
                 <span className="text-[var(--ui-muted)]">Tipo de horario</span>
                 <select
                   value={edit.schedule_kind || 'template'}
-                  onChange={(e) => setEdit((p) => ({ ...p, schedule_kind: e.target.value }))}
+                  onChange={(e) => {
+                    const kind = e.target.value;
+                    setEdit((p) => ({
+                      ...p,
+                      schedule_kind: kind,
+                      ...(kind === 'template' ? { schedule_id: '' } : {}),
+                    }));
+                  }}
                   className={fieldClass}
                 >
                   <option value="template">Plantilla del local</option>
@@ -258,31 +265,8 @@ export default function HrStaffTab({ employees, schedules, branches, onReload })
                       className={fieldClass}
                     />
                   </label>
-                  <label className="text-xs space-y-1 min-w-0 col-span-2">
-                    <span className="text-[var(--ui-muted)]">Plantilla base (opcional, días / tolerancias)</span>
-                    <select
-                      value={edit.schedule_id || ''}
-                      onChange={(e) => setEdit((p) => ({ ...p, schedule_id: e.target.value }))}
-                      className={fieldClass}
-                    >
-                      <option value="">Por defecto del local</option>
-                      {schedules.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </label>
                 </div>
-              ) : (
-                <label className="text-xs space-y-1 block min-w-0">
-                  <span className="text-[var(--ui-muted)]">Horario de trabajo</span>
-                  <select
-                    value={edit.schedule_id || ''}
-                    onChange={(e) => setEdit((p) => ({ ...p, schedule_id: e.target.value }))}
-                    className={fieldClass}
-                  >
-                    <option value="">—</option>
-                    {schedules.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </label>
-              )}
+              ) : null}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <label className="text-xs space-y-1 min-w-0">
