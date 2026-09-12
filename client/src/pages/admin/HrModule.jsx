@@ -6,8 +6,6 @@ import {
   MdPeople,
   MdSchedule,
   MdHistory,
-  MdBeachAccess,
-  MdAssessment,
   MdTrendingUp,
   MdQrCodeScanner,
   MdQrCode2,
@@ -18,8 +16,6 @@ import HrDashboardTab from '../../components/hr/HrDashboardTab';
 import HrStaffTab from '../../components/hr/HrStaffTab';
 import HrSchedulesTab from '../../components/hr/HrSchedulesTab';
 import HrHistoryTab from '../../components/hr/HrHistoryTab';
-import HrLeavesTab from '../../components/hr/HrLeavesTab';
-import HrReportsTab from '../../components/hr/HrReportsTab';
 import WorkTime from './WorkTime';
 import { Link } from 'react-router-dom';
 import Modal from '../../components/Modal';
@@ -30,8 +26,6 @@ const TABS = [
   { id: 'personal', label: 'Personal', icon: MdPeople },
   { id: 'horarios', label: 'Horarios', icon: MdSchedule },
   { id: 'historial', label: 'Historial', icon: MdHistory },
-  { id: 'permisos', label: 'Permisos', icon: MdBeachAccess },
-  { id: 'reportes', label: 'Reportes', icon: MdAssessment },
   { id: 'productividad', label: 'Productividad POS', icon: MdTrendingUp },
 ];
 
@@ -85,6 +79,10 @@ export default function HrModule() {
     if (tab === 'panel') loadDashboard();
   }, [tab, loadDashboard]);
 
+  useEffect(() => {
+    if (!TABS.some((t) => t.id === tab)) setTab('panel');
+  }, [tab]);
+
   const confirmToggleQr = async () => {
     const pwd = String(adminPassword || '').trim();
     if (!pwd) {
@@ -120,7 +118,7 @@ export default function HrModule() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Recursos humanos</h1>
-          <p className="text-sm text-[var(--ui-muted)]">Asistencia QR, horarios, permisos y reportes · FADEY Solutions</p>
+          <p className="text-sm text-[var(--ui-muted)]">Asistencia QR, horarios y productividad · FADEY Solutions</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -182,8 +180,6 @@ export default function HrModule() {
         <HrSchedulesTab schedules={schedules} employees={employees} onReload={loadCore} />
       )}
       {tab === 'historial' && <HrHistoryTab employees={employees} branches={branches} />}
-      {tab === 'permisos' && <HrLeavesTab employees={employees} />}
-      {tab === 'reportes' && <HrReportsTab />}
       {tab === 'productividad' && <WorkTime />}
 
       <Modal isOpen={sharedQrOpen} onClose={() => setSharedQrOpen(false)} title="QR de asistencia del local" size="md">

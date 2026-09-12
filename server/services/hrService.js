@@ -340,6 +340,8 @@ function syncEmployeesFromUsers(restaurantId) {
 
 function employeePublic(row, extra = {}) {
   if (!row) return null;
+  const payModeRaw = String(row.payroll_pay_mode || '').trim().toLowerCase();
+  const payMode = payModeRaw === 'jornada' ? 'dia' : payModeRaw;
   return {
     id: row.id,
     user_id: row.user_id,
@@ -361,6 +363,10 @@ function employeePublic(row, extra = {}) {
     photo_url: row.photo_url || '',
     user_active: Number(row.user_active ?? row.is_active ?? 1) === 1,
     qr_active: Number(row.qr_active || 0) === 1,
+    payroll_pay_mode: payMode,
+    payroll_amount: Number(row.payroll_amount || 0),
+    payroll_schedule_note: String(row.payroll_schedule_note || ''),
+    payroll_payment_day: Number(row.payroll_payment_day || 0),
     ...extra,
   };
 }
@@ -384,6 +390,7 @@ function listEmployees(restaurantId, { q = '', status = '', branch_id = '' } = {
   }
   const rows = queryAll(
     `SELECT e.*, u.full_name, u.username, u.role, u.phone, u.is_active AS user_active,
+            u.payroll_pay_mode, u.payroll_amount, u.payroll_schedule_note, u.payroll_payment_day,
             s.name AS schedule_name,
             (SELECT MAX(c.active) FROM hr_qr_credentials c WHERE c.employee_id = e.id) AS qr_active
      FROM hr_employees e
@@ -398,7 +405,9 @@ function listEmployees(restaurantId, { q = '', status = '', branch_id = '' } = {
 
 function getEmployee(restaurantId, employeeId) {
   const row = queryOne(
-    `SELECT e.*, u.full_name, u.username, u.role, u.phone, u.is_active AS user_active, s.name AS schedule_name,
+    `SELECT e.*, u.full_name, u.username, u.role, u.phone, u.is_active AS user_active,
+            u.payroll_pay_mode, u.payroll_amount, u.payroll_schedule_note, u.payroll_payment_day,
+            s.name AS schedule_name,
             (SELECT MAX(c.active) FROM hr_qr_credentials c WHERE c.employee_id = e.id) AS qr_active
      FROM hr_employees e
      JOIN users u ON u.id = e.user_id
@@ -412,7 +421,9 @@ function getEmployee(restaurantId, employeeId) {
 function employeeByUser(restaurantId, userId) {
   syncEmployeesFromUsers(restaurantId);
   const row = queryOne(
-    `SELECT e.*, u.full_name, u.username, u.role, u.phone, u.is_active AS user_active, s.name AS schedule_name
+    `SELECT e.*, u.full_name, u.username, u.role, u.phone, u.is_active AS user_active,
+            u.payroll_pay_mode, u.payroll_amount, u.payroll_schedule_note, u.payroll_payment_day,
+            s.name AS schedule_name
      FROM hr_employees e
      JOIN users u ON u.id = e.user_id
      LEFT JOIN hr_schedules s ON s.id = e.schedule_id
@@ -456,6 +467,47 @@ function updateEmployee(restaurantId, employeeId, patch, actor) {
       employeeId,
     ]
   );
+
+  const payrollPatch = {};
+  if (patch.payroll_pay_mode !== undefined) {
+    let m = String(patch.payroll_pay_mode || '').trim().toLowerCase();
+    if (m === 'jornada') m = 'dia';
+    if (!['', 'hora', 'dia', 'mes'].includes(m)) {
+      const err = new Error('Formato de pago inválido (hora, dia o mes)');
+      err.status = 400;
+      throw err;
+    }
+    payrollPatch.payroll_pay_mode = m;
+  }
+  if (patch.payroll_amount !== undefined) {
+    const pa = Number(patch.payroll_amount);
+    if (!Number.isFinite(pa) || pa < 0) {
+      const err = new Error('Monto de pago inválido');
+      err.status = 400;
+      throw err;
+    }
+    payrollPatch.payroll_amount = pa;
+  }
+  if (patch.payroll_schedule_note !== undefined) {
+    payrollPatch.payroll_schedule_note = String(patch.payroll_schedule_note || '').trim();
+  }
+  if (patch.payroll_payment_day !== undefined) {
+    const d = parseInt(patch.payroll_payment_day, 10);
+    if (!Number.isFinite(d) || d < 0 || d > 31) {
+      const err = new Error('Día de pago inválido (0–31)');
+      err.status = 400;
+      throw err;
+    }
+    payrollPatch.payroll_payment_day = d;
+  }
+  if (Object.keys(payrollPatch).length) {
+    const cols = Object.keys(payrollPatch);
+    runSql(
+      `UPDATE users SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
+      [...cols.map((c) => payrollPatch[c]), cur.user_id]
+    );
+  }
+
   logAudit({
     actorUserId: actor?.id,
     actorName: actor?.full_name || actor?.username,

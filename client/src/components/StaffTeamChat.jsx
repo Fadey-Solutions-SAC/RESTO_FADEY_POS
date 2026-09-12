@@ -236,21 +236,6 @@ export default function StaffTeamChat({ isActive, onUnreadDelta, suppressExterna
         </div>
       )}
 
-      <div
-        className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-800 dark:text-amber-200"
-        role="status"
-      >
-        <strong className="font-semibold">Chat temporal (24 horas).</strong>
-        {' '}
-        Los mensajes no se guardan para siempre: el historial se borra automáticamente cada 24 horas.
-        {chatMeta?.cycle_ends_at && (
-          <>
-            {' '}
-            Próximo reinicio: {formatDateTime(chatMeta.cycle_ends_at)}.
-          </>
-        )}
-      </div>
-
       <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 space-y-2 mb-3">
         {messages.length === 0 ? (
           <p className="text-sm text-[var(--ui-muted)] text-center py-8">

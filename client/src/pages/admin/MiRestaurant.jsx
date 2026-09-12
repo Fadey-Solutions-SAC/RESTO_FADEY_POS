@@ -965,16 +965,17 @@ export default function MiRestaurant() {
                         <label className="block text-xs text-[var(--ui-muted)] mb-0.5">Sueldo por</label>
                         <select
                           className="input-field text-sm"
-                          value={u.payroll_pay_mode || ''}
+                          value={u.payroll_pay_mode === 'jornada' ? 'dia' : (u.payroll_pay_mode || '')}
                           onChange={(e) => patchStaffUser(u.id, { payroll_pay_mode: e.target.value })}
                         >
                           <option value="">—</option>
-                          <option value="hora">Hora</option>
-                          <option value="jornada">Jornada</option>
+                          <option value="hora">Por horas</option>
+                          <option value="dia">Por días</option>
+                          <option value="mes">Por mes</option>
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs text-[var(--ui-muted)] mb-0.5">Monto (S/ por hora o por jornada)</label>
+                        <label className="block text-xs text-[var(--ui-muted)] mb-0.5">Monto (S/)</label>
                         <input
                           type="number"
                           min="0"

@@ -379,10 +379,10 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     const payrollPatch = {};
     if (req.body?.payroll_pay_mode !== undefined) {
       const m = String(req.body.payroll_pay_mode || '').trim().toLowerCase();
-      if (!['', 'hora', 'jornada'].includes(m)) {
-        return res.status(400).json({ error: 'Modo de nómina inválido (hora o jornada)' });
+      if (!['', 'hora', 'dia', 'mes', 'jornada'].includes(m)) {
+        return res.status(400).json({ error: 'Modo de nómina inválido (hora, dia o mes)' });
       }
-      payrollPatch.payroll_pay_mode = m;
+      payrollPatch.payroll_pay_mode = m === 'jornada' ? 'dia' : m;
     }
     if (req.body?.payroll_amount !== undefined) {
       const pa = Number(req.body.payroll_amount);
