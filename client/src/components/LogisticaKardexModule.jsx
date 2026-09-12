@@ -638,13 +638,13 @@ export default function LogisticaKardexModule() {
 
   return (
     <div className="logistica-kardex-module space-y-4 text-[var(--ui-body-text)]">
-      <div className="flex flex-wrap gap-1.5 border-b border-[color:var(--ui-border)] pb-2">
+      <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto overscroll-x-contain touch-pan-x border-b border-[color:var(--ui-border)] pb-2 -mx-1 px-1">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium transition ${
               tab === t.id
                 ? 'bg-[var(--ui-accent)] text-white shadow-sm border border-[color:var(--ui-accent)]'
                 : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] border border-[color:var(--ui-border)]'

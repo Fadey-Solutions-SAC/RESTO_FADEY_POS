@@ -2052,113 +2052,6 @@ export default function Almacen() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-stretch gap-3 mb-5">
-        <div
-          onClick={() => setSelectedWarehouseView(ALL_WAREHOUSES_VIEW)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setSelectedWarehouseView(ALL_WAREHOUSES_VIEW);
-            }
-          }}
-          role="button"
-          tabIndex={0}
-          className={`bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
-            isAllWarehousesView(selectedWarehouseView)
-              ? 'border-gold-500 ring-2 ring-gold-200'
-              : 'border-slate-200 hover:border-gold-300'
-          }`}
-        >
-          <p className="font-semibold text-[var(--ui-body-text)]">Todos</p>
-          <p className="text-xs text-[var(--ui-body-text)] mt-1">Vista consolidada de todos los almacenes</p>
-          <p className="text-xs text-[var(--ui-body-text)] mt-2">
-            Productos: <strong>{products.length}</strong>
-            {' · '}
-            Insumos: <strong>{insumosActivos.length}</strong>
-          </p>
-        </div>
-        {warehouses.map(w => {
-          const linkedProducts = isInsumosWarehouse(w)
-            ? insumosActivos.length
-            : (warehouseUsageMap[w.id] || 0);
-          const canDelete = linkedProducts === 0;
-          return (
-            <div
-              key={w.id}
-              onClick={() => setSelectedWarehouseView(String(w.id))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setSelectedWarehouseView(String(w.id));
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              className={`bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
-                sameWarehouseId(selectedWarehouseView, w.id)
-                  ? 'border-gold-500 ring-2 ring-gold-200'
-                  : 'border-slate-200 hover:border-gold-300'
-              }`}
-            >
-              <p className="font-semibold text-[var(--ui-body-text)]">{w.name}</p>
-              {w.description && <p className="text-xs text-[var(--ui-body-text)] mt-1">{w.description}</p>}
-              <p className="text-xs text-[var(--ui-body-text)] mt-2">
-                {isInsumosWarehouse(w) ? 'Insumos vinculados: ' : 'Productos con stock: '}
-                <strong>{linkedProducts}</strong>
-              </p>
-              <div className="mt-auto flex justify-end">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteWarehouse(w);
-                  }}
-                  disabled={!canDelete}
-                  className={`text-xs px-3 py-1.5 rounded-lg ${
-                    canDelete
-                      ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                      : 'bg-slate-100 text-[var(--ui-muted)] cursor-not-allowed'
-                  }`}
-                >
-                  Eliminar almacén
-                </button>
-              </div>
-            </div>
-          );
-        })}
-        <div className="flex flex-1 min-w-[min(100%,18rem)] flex-row gap-2 items-stretch">
-          <button
-            type="button"
-            onClick={() => {
-              setWarehouseForm({ name: '', description: '', linkedInsumos: false });
-              setShowWarehouseModal(true);
-            }}
-            className="btn-secondary flex-1 flex items-center justify-center gap-2 text-sm px-3 py-3 min-h-28"
-          >
-            <MdAdd className="shrink-0" /> Nuevo almacén
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (selectedIsInsumosWarehouse) {
-                setEditingInsumo(null);
-                setShowInsumoModal(true);
-                return;
-              }
-              setItemForm(prev => ({
-                ...prev,
-                category_id: '',
-                stock_warehouse: getDefaultCreateWarehouseId(),
-                note_required: 0,
-              }));
-              setShowCreateModal(true);
-            }}
-            className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm px-3 py-3 min-h-28"
-          >
-            <MdAdd className="shrink-0" /> Nuevo producto
-          </button>
-        </div>
-      </div>
-
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3 mb-5">
         <MovimientoInternoStatCard
           label="Total ítems"
@@ -2198,6 +2091,115 @@ export default function Almacen() {
                 : productsForSelectedWarehouse.reduce((s, p) => s + p.stock, 0)
           }
         />
+      </div>
+
+      <div className="mb-5 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setWarehouseForm({ name: '', description: '', linkedInsumos: false });
+              setShowWarehouseModal(true);
+            }}
+            className="btn-secondary flex items-center justify-center gap-2 text-sm h-10 px-4"
+          >
+            <MdAdd className="shrink-0" /> Nuevo almacén
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedIsInsumosWarehouse) {
+                setEditingInsumo(null);
+                setShowInsumoModal(true);
+                return;
+              }
+              setItemForm(prev => ({
+                ...prev,
+                category_id: '',
+                stock_warehouse: getDefaultCreateWarehouseId(),
+                note_required: 0,
+              }));
+              setShowCreateModal(true);
+            }}
+            className="btn-primary flex items-center justify-center gap-2 text-sm h-10 px-4"
+          >
+            <MdAdd className="shrink-0" /> Nuevo producto
+          </button>
+        </div>
+        <div className="flex flex-wrap items-stretch gap-3">
+          <div
+            onClick={() => setSelectedWarehouseView(ALL_WAREHOUSES_VIEW)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setSelectedWarehouseView(ALL_WAREHOUSES_VIEW);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            className={`bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
+              isAllWarehousesView(selectedWarehouseView)
+                ? 'border-gold-500 ring-2 ring-gold-200'
+                : 'border-slate-200 hover:border-gold-300'
+            }`}
+          >
+            <p className="font-semibold text-[var(--ui-body-text)]">Todos</p>
+            <p className="text-xs text-[var(--ui-body-text)] mt-1">Vista consolidada de todos los almacenes</p>
+            <p className="text-xs text-[var(--ui-body-text)] mt-2">
+              Productos: <strong>{products.length}</strong>
+              {' · '}
+              Insumos: <strong>{insumosActivos.length}</strong>
+            </p>
+          </div>
+          {warehouses.map(w => {
+            const linkedProducts = isInsumosWarehouse(w)
+              ? insumosActivos.length
+              : (warehouseUsageMap[w.id] || 0);
+            const canDelete = linkedProducts === 0;
+            return (
+              <div
+                key={w.id}
+                onClick={() => setSelectedWarehouseView(String(w.id))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedWarehouseView(String(w.id));
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                className={`bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
+                  sameWarehouseId(selectedWarehouseView, w.id)
+                    ? 'border-gold-500 ring-2 ring-gold-200'
+                    : 'border-slate-200 hover:border-gold-300'
+                }`}
+              >
+                <p className="font-semibold text-[var(--ui-body-text)]">{w.name}</p>
+                {w.description && <p className="text-xs text-[var(--ui-body-text)] mt-1">{w.description}</p>}
+                <p className="text-xs text-[var(--ui-body-text)] mt-2">
+                  {isInsumosWarehouse(w) ? 'Insumos vinculados: ' : 'Productos con stock: '}
+                  <strong>{linkedProducts}</strong>
+                </p>
+                <div className="mt-auto flex justify-end">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteWarehouse(w);
+                    }}
+                    disabled={!canDelete}
+                    className={`text-xs px-3 py-1.5 rounded-lg ${
+                      canDelete
+                        ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                        : 'bg-slate-100 text-[var(--ui-muted)] cursor-not-allowed'
+                    }`}
+                  >
+                    Eliminar almacén
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
       {lowStock.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
