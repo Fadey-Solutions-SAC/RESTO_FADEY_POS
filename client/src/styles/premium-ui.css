@@ -1121,10 +1121,10 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: min(72vw, 420px);
-    height: min(72vw, 420px);
-    margin-top: calc(min(72vw, 420px) / -2);
-    margin-left: calc(min(72vw, 420px) / -2);
+    width: min(58vw, 320px);
+    height: min(58vw, 320px);
+    margin-top: calc(min(58vw, 320px) / -2);
+    margin-left: calc(min(58vw, 320px) / -2);
     border-radius: 50%;
     background: radial-gradient(circle, rgba(212, 175, 55, 0.28) 0%, rgba(192, 192, 192, 0.08) 45%, transparent 72%);
     animation:
@@ -1148,8 +1148,8 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
   .rf-entry-splash__logo-ring {
     position: relative;
     z-index: 1;
-    width: min(58vw, 260px);
-    height: min(58vw, 260px);
+    width: min(46vw, 200px);
+    height: min(46vw, 200px);
     aspect-ratio: 1;
     border-radius: 50% !important;
     overflow: hidden !important;
@@ -1317,14 +1317,14 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
       width: min(36vw, 320px);
     }
     .rf-entry-splash__logo-ring {
-      width: min(28vw, 280px);
-      height: min(28vw, 280px);
+      width: min(22vw, 220px);
+      height: min(22vw, 220px);
     }
     .rf-entry-splash__glow {
-      width: min(48vw, 440px);
-      height: min(48vw, 440px);
-      margin-top: calc(min(48vw, 440px) / -2);
-      margin-left: calc(min(48vw, 440px) / -2);
+      width: min(32vw, 340px);
+      height: min(32vw, 340px);
+      margin-top: calc(min(32vw, 340px) / -2);
+      margin-left: calc(min(32vw, 340px) / -2);
     }
   }
 

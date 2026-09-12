@@ -143,7 +143,7 @@ export default function PwaInstallPrompt() {
       <div className="flex items-start gap-3 min-w-0">
         <div className="shrink-0 w-10 h-10 rounded-xl overflow-hidden bg-[#00050d] ring-1 ring-[color:var(--ui-border)]">
           <img
-            src="/pwa-icon-192.png?v=fy-company-1"
+            src="/pwa-icon-192.png?v=rf-emblem-circle-3"
             alt=""
             className="w-full h-full object-contain"
             width={40}

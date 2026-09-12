@@ -6,8 +6,8 @@ import {
 } from '../utils/entrySplashSession';
 import EntrySplashCircuits from './EntrySplashCircuits';
 
-/** Solo emblema de empresa (circular en splash). Iconos PWA usan el mismo arte. */
-const LOGO_SRC = `/branding/resto-fadey-logo.png?v=fy-circle-1`;
+/** Emblema circular RF (sin texto). Cache-bust fuerte para móvil/PWA. */
+const LOGO_SRC = `/branding/resto-fadey-logo.png?v=rf-emblem-circle-3`;
 const SPLASH_BG = '#000000';
 /** Entrada + visible: raíces TL + continuación BR + fade final. */
 const SPLASH_HOLD_MS = 3000;
