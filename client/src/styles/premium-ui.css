@@ -1133,11 +1133,11 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     pointer-events: none;
   }
 
-  /* Imagen completa de empresa (animación). Cuadrado con monograma FY. */
+  /* Imagen de empresa en la animación (archivo intacto). */
   .rf-entry-splash__company {
     position: relative;
     z-index: 1;
-    width: min(72vw, 300px);
+    width: min(56vw, 240px);
     aspect-ratio: 1;
     flex-shrink: 0;
     overflow: hidden;
@@ -1165,7 +1165,7 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     object-position: center center;
     background: #000000;
   }
@@ -1314,7 +1314,7 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
 
   @media (min-width: 900px) {
     .rf-entry-splash__company {
-      width: min(36vw, 320px);
+      width: min(28vw, 260px);
     }
     .rf-entry-splash__logo-ring {
       width: min(22vw, 220px);

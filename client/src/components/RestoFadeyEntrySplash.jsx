@@ -6,8 +6,8 @@ import {
 } from '../utils/entrySplashSession';
 import EntrySplashCircuits from './EntrySplashCircuits';
 
-/** Emblema circular RF (sin texto). Cache-bust fuerte para móvil/PWA. */
-const LOGO_SRC = `/branding/resto-fadey-logo.png?v=rf-emblem-circle-3`;
+/** Imagen de empresa para la animación (no regenerar/recortar). */
+const LOGO_SRC = `/branding/resto-fadey-splash-logo.png?v=company-restore-2`;
 const SPLASH_BG = '#000000';
 /** Entrada + visible: raíces TL + continuación BR + fade final. */
 const SPLASH_HOLD_MS = 3000;
@@ -17,7 +17,7 @@ const SPLASH_EXIT_MS = 450;
 let splashAnimationStarted = false;
 
 /**
- * Pantalla splash al abrir / recargar. Logo circular + crédito abajo a la izquierda.
+ * Pantalla splash al abrir / recargar. Marca de empresa + crédito abajo a la izquierda.
  */
 export default function RestoFadeyEntrySplash({ onComplete }) {
   const [phase, setPhase] = useState('in');
@@ -71,13 +71,13 @@ export default function RestoFadeyEntrySplash({ onComplete }) {
         <div className={`rf-entry-splash__stack${phase === 'out' ? ' rf-entry-splash__stack--out' : ''}`}>
           <div className="rf-entry-splash__logo-wrap">
             <div className="rf-entry-splash__glow" aria-hidden />
-            <div className="rf-entry-splash__logo-ring">
+            <div className="rf-entry-splash__company">
               <img
                 src={LOGO_SRC}
                 alt=""
                 className="rf-entry-splash__logo-img"
-                width={512}
-                height={512}
+                width={1024}
+                height={1024}
                 decoding="async"
                 fetchPriority="high"
               />
