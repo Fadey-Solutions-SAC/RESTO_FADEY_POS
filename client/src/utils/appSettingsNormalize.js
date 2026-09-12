@@ -90,5 +90,10 @@ export function mergeSavedAppSettings(normalized, source, opts = {}) {
   if (Array.isArray(source.auto_pedido_cartas)) {
     next.auto_pedido_cartas = source.auto_pedido_cartas;
   }
+  if (source.auto_pedido_qr_home != null) {
+    const v = String(source.auto_pedido_qr_home || '').trim().toLowerCase();
+    next.auto_pedido_qr_home =
+      v === 'cartas' || v === 'carta' ? 'cartas' : v === 'ambos' || v === 'both' ? 'ambos' : 'productos';
+  }
   return next;
 }

@@ -127,6 +127,9 @@ function mergeSettingsBlob(prevParsed, incoming) {
   if (!Object.prototype.hasOwnProperty.call(next, 'auto_pedido_cartas') && Array.isArray(prev.auto_pedido_cartas)) {
     merged.auto_pedido_cartas = prev.auto_pedido_cartas;
   }
+  if (!Object.prototype.hasOwnProperty.call(next, 'auto_pedido_qr_home') && prev.auto_pedido_qr_home != null) {
+    merged.auto_pedido_qr_home = prev.auto_pedido_qr_home;
+  }
   try {
     const { shouldKeepPreviousCatalog } = require('../services/settingsCatalogRecover');
     if (shouldKeepPreviousCatalog(prev.cajas, next.cajas, 'cajas')) {
@@ -419,6 +422,33 @@ function persistAutoPedidoCartas(cartas) {
   saveDb();
 }
 
+function normalizeAutoPedidoQrHome(raw) {
+  const v = String(raw || '').trim().toLowerCase();
+  if (v === 'cartas' || v === 'carta') return 'cartas';
+  if (v === 'ambos' || v === 'both') return 'ambos';
+  return 'productos';
+}
+
+function readAutoPedidoQrHomeFromDb() {
+  const settingsObj = parseJsonSafe(queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings'])?.value, {});
+  return normalizeAutoPedidoQrHome(settingsObj.auto_pedido_qr_home);
+}
+
+function persistAutoPedidoQrHome(mode) {
+  const prevRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
+  const settingsObj = parseJsonSafe(prevRow?.value, {});
+  settingsObj.auto_pedido_qr_home = normalizeAutoPedidoQrHome(mode);
+  runSql(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+    ['settings', JSON.stringify(settingsObj)]
+  );
+  const { saveDb } = require('../database');
+  saveDb();
+  return settingsObj.auto_pedido_qr_home;
+}
+
 router.get('/auto-pedido/cartas', (req, res) => {
   const settingsObj = parseJsonSafe(queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings'])?.value, {});
   let cartas = readAutoPedidoCartasFromDb();
@@ -431,7 +461,10 @@ router.get('/auto-pedido/cartas', (req, res) => {
       cartas = recovered;
     }
   }
-  res.json({ cartas });
+  res.json({
+    cartas,
+    qr_home: normalizeAutoPedidoQrHome(settingsObj.auto_pedido_qr_home),
+  });
 });
 
 router.put('/auto-pedido/cartas', requireRole('admin'), (req, res) => {
@@ -449,7 +482,25 @@ router.put('/auto-pedido/cartas', requireRole('admin'), (req, res) => {
       details: { count: normalized.length },
     });
     broadcastStaffData('auto_pedido_cartas');
-    res.json({ cartas: normalized });
+    res.json({ cartas: normalized, qr_home: readAutoPedidoQrHomeFromDb() });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'No se pudo guardar' });
+  }
+});
+
+router.put('/auto-pedido/qr-home', requireRole('admin'), (req, res) => {
+  try {
+    const mode = persistAutoPedidoQrHome(req.body?.qr_home ?? req.body?.mode);
+    logAudit({
+      actorUserId: req.user.id,
+      actorName: req.user.full_name || req.user.username || '',
+      action: 'app_settings.auto_pedido_qr_home',
+      resourceType: 'app_settings',
+      resourceId: 'settings',
+      details: { qr_home: mode },
+    });
+    broadcastStaffData('auto_pedido_qr_home');
+    res.json({ qr_home: mode });
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo guardar' });
   }

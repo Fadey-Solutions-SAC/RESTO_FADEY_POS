@@ -86,7 +86,11 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard label="Personal en turno" value={dashboard?.operations?.staff_online ?? 0} sub="Jornadas abiertas" />
           <StatCard label="Ventas hoy" value={formatMoney(dashboard?.today?.sales_total)} sub={`${dashboard?.today?.orders_paid ?? 0} cuentas`} accent="emerald" />
-          <StatCard label="Horas hoy" value={formatMinutes(dashboard?.today?.worked_minutes)} sub={`${dashboard?.today?.sessions ?? 0} sesiones`} />
+          <StatCard
+            label="Horas hoy"
+            value={formatMinutes(dashboard?.today?.worked_minutes)}
+            sub={`${dashboard?.today?.sessions ?? 0} ${dashboard?.jornada_source === 'qr' || data?.jornada_source === 'qr' ? 'marcaciones QR' : 'sesiones'}`}
+          />
           <StatCard label="Cocina / Delivery" value={`${dashboard?.operations?.kitchen_preparing ?? 0} / ${dashboard?.operations?.delivery_active ?? 0}`} sub="Activos ahora" accent="amber" />
         </div>
 
@@ -139,6 +143,14 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
     return (
       <div className="space-y-4">
         <div className="card overflow-x-auto">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold text-[var(--ui-body-text)]">Productividad</h3>
+            {data?.jornada_source === 'qr' ? (
+              <span className="text-[11px] rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-sky-800">
+                Horas = jornada QR
+              </span>
+            ) : null}
+          </div>
           <table className="w-full text-sm min-w-[820px]">
             <thead>
               <tr className="text-left text-[var(--ui-muted)] border-b border-[color:var(--ui-border)]">

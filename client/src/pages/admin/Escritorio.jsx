@@ -11,8 +11,7 @@ import { MdDateRange, MdKeyboardArrowDown, MdChevronLeft, MdChevronRight, MdKitc
 import { useChartTheme } from '../../theme/useChartTheme';
 import {
   isActiveProductionQueueOrder,
-  orderPendingForBarStation,
-  orderPendingForKitchenStation,
+  orderPendingForProductionStation,
 } from '../../utils/productionArea';
 import { isCourtesyOrder, isDiscountOrder, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
 
@@ -332,7 +331,10 @@ export default function Escritorio() {
   const [rankingMode, setRankingMode] = useState('dias');
   const [cajaStations, setCajaStations] = useState([]);
   const [selectedCajaStationId, setSelectedCajaStationId] = useState('');
-  const [activeProductionAreaIds, setActiveProductionAreaIds] = useState(() => new Set(['cocina', 'bar']));
+  const [activeProductionAreas, setActiveProductionAreas] = useState(() => [
+    { id: 'cocina', name: 'Cocina' },
+    { id: 'bar', name: 'Bar' },
+  ]);
   const [registerPeriodReport, setRegisterPeriodReport] = useState(null);
   const [registerReportLoading, setRegisterReportLoading] = useState(true);
   const [hourlyHistoryIndex, setHourlyHistoryIndex] = useState(0);
@@ -347,27 +349,18 @@ export default function Escritorio() {
     return true;
   }, [deliverySettingsLoaded, deliveryEnabled, liveDash?.deliveryEnabled]);
 
-  const monitoreoSyncLabel = useMemo(() => {
-    const parts = ['Caja'];
-    if (activeProductionAreaIds.has('cocina')) parts.push('Cocina');
-    if (activeProductionAreaIds.has('bar')) parts.push('Bar');
-    parts.push('Mesas');
-    if (deliveryModuleActive) parts.push('Delivery');
-    parts.push('inventario');
-    return parts.join(', ');
-  }, [deliveryModuleActive, activeProductionAreaIds]);
-
   useEffect(() => {
     const loadAreas = () => {
       api
         .get('/production-areas/active')
         .then((list) => {
-          const ids = new Set(
-            (Array.isArray(list) ? list : [])
-              .map((a) => String(a?.id || '').trim())
-              .filter(Boolean)
-          );
-          setActiveProductionAreaIds(ids);
+          const areas = (Array.isArray(list) ? list : [])
+            .map((a) => ({
+              id: String(a?.id || '').trim(),
+              name: String(a?.name || a?.id || '').trim() || 'Área',
+            }))
+            .filter((a) => a.id);
+          setActiveProductionAreas(areas);
         })
         .catch(() => {});
     };
@@ -402,6 +395,7 @@ export default function Escritorio() {
           registerOpenSummary: null,
           lowStock: [],
           liveSales: null,
+          liveSalesByRegister: [],
           today: null,
         });
         setLiveDashError('');
@@ -455,9 +449,20 @@ export default function Escritorio() {
   }, [loadRegisterPeriodReport]);
 
   useEffect(() => {
-    api.get('/pos/caja-stations')
-      .then((res) => setCajaStations(Array.isArray(res?.stations) ? res.stations : []))
-      .catch(() => setCajaStations([]));
+    const loadCajaStations = () => {
+      api
+        .get('/pos/caja-stations')
+        .then((res) => setCajaStations(Array.isArray(res?.stations) ? res.stations : []))
+        .catch(() => setCajaStations([]));
+    };
+    loadCajaStations();
+    const onFocus = () => loadCajaStations();
+    window.addEventListener('focus', onFocus);
+    const timer = window.setInterval(loadCajaStations, 15000);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -808,21 +813,33 @@ export default function Escritorio() {
   const topDiasYTicks = useMemo(() => getChartYAxisTicks(topDiasYMax), [topDiasYMax]);
   const topMesasYTicks = useMemo(() => getChartYAxisTicks(topMesasYMax), [topMesasYMax]);
 
-  const kitchenQueue = useMemo(
-    () =>
-      activeProductionAreaIds.has('cocina')
-        ? orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForKitchenStation(o)).length
-        : 0,
-    [orders, activeProductionAreaIds]
+  const productionQueuesByArea = useMemo(() => {
+    const map = {};
+    for (const area of activeProductionAreas) {
+      const id = String(area.id || '').trim();
+      if (!id) continue;
+      map[id] = orders.filter(
+        (o) => isActiveProductionQueueOrder(o) && orderPendingForProductionStation(o, id)
+      ).length;
+    }
+    return map;
+  }, [orders, activeProductionAreas]);
+  const productionQueueTotal = useMemo(
+    () => Object.values(productionQueuesByArea).reduce((s, n) => s + Number(n || 0), 0),
+    [productionQueuesByArea]
   );
-  const barQueue = useMemo(
-    () =>
-      activeProductionAreaIds.has('bar')
-        ? orders.filter((o) => isActiveProductionQueueOrder(o) && orderPendingForBarStation(o)).length
-        : 0,
-    [orders, activeProductionAreaIds]
+  const activeCajaStations = useMemo(
+    () => (Array.isArray(cajaStations) ? cajaStations : []).filter((s) => s && (s.active !== false && s.active !== 0)),
+    [cajaStations]
   );
-  const productionQueueTotal = kitchenQueue + barQueue;
+  const liveSalesByStationId = useMemo(() => {
+    const map = {};
+    for (const row of liveDash?.liveSalesByRegister || []) {
+      const sid = String(row?.caja_station_id || '').trim();
+      if (sid) map[sid] = row;
+    }
+    return map;
+  }, [liveDash?.liveSalesByRegister]);
   const visibleOperationalAlerts = useMemo(() => {
     const list = Array.isArray(liveDash?.operationalAlerts) ? liveDash.operationalAlerts : [];
     if (productionQueueTotal > 0) return list;
@@ -841,22 +858,50 @@ export default function Escritorio() {
     if (value >= 5) return { label: 'Alto', pill: 'bg-amber-100 text-amber-700', card: 'border-amber-300 bg-amber-50' };
     return { label: 'Normal', pill: 'bg-emerald-100 text-emerald-700', card: 'border-emerald-200 bg-emerald-50' };
   };
+  const productionAreaTone = (areaId) => {
+    const id = String(areaId || '').trim();
+    if (id === 'bar') {
+      return {
+        icon: MdLocalBar,
+        title: 'text-indigo-700',
+        value: 'text-indigo-800',
+        sub: 'text-indigo-700',
+        link: 'text-indigo-700',
+      };
+    }
+    if (id === 'cocina') {
+      return {
+        icon: MdKitchen,
+        title: 'text-amber-700',
+        value: 'text-amber-800',
+        sub: 'text-amber-700',
+        link: 'ui-live-link-amber',
+      };
+    }
+    return {
+      icon: MdKitchen,
+      title: 'text-teal-700',
+      value: 'text-teal-800',
+      sub: 'text-teal-700',
+      link: 'text-teal-700',
+    };
+  };
 
   const dateRangeLabel = datePreset === 'total'
     ? 'Total · todos los cierres de caja'
-    : `Del ${formatDateForLabel(startDate)} hasta ${formatDateForLabel(endDate)}`;
+    : `Inicio ${formatDateForLabel(startDate)} · Fin ${formatDateForLabel(endDate)}`;
   const dateRangeDisplay = datePreset === 'total'
-    ? 'Desde inicio – Hoy'
-    : `${formatDateForLabel(startDate)} – ${formatDateForLabel(endDate)}`;
+    ? 'Inicio: desde el comienzo · Fin: hoy'
+    : `Inicio ${formatDateForLabel(startDate)} · Fin ${formatDateForLabel(endDate)}`;
   const datePickerCaption = datePickStep === 'start'
-    ? 'Selecciona INICIO'
+    ? 'Inicio'
     : datePickStep === 'end'
-      ? 'Selecciona FIN'
-      : (datePreset === 'custom' ? 'Periodo' : datePreset === 'week' ? 'Semana' : datePreset === 'total' ? 'Todos' : 'Mes');
+      ? 'Fin'
+      : (datePreset === 'custom' ? 'Inicio · Fin' : datePreset === 'week' ? 'Semana' : datePreset === 'total' ? 'Todos' : 'Mes');
   const datePickerValue = datePickStep === 'start'
-    ? '—'
+    ? 'Elige fecha de inicio'
     : datePickStep === 'end'
-      ? `${formatDateForLabel(pendingStart)} – …`
+      ? `Inicio ${formatDateForLabel(pendingStart)} · elige fin`
       : dateRangeDisplay;
   const resetPendingRange = () => {
     setDatePickStep('idle');
@@ -901,9 +946,16 @@ export default function Escritorio() {
     setDatePickStep('start');
     setPendingStart('');
     setPendingEnd('');
-    const input = startDateInputRef.current;
-    if (input) input.value = '';
-    openNativeDatePicker(startDateInputRef);
+    window.requestAnimationFrame(() => {
+      openNativeDatePicker(startDateInputRef);
+    });
+  };
+  const onDateRangeButtonClick = () => {
+    if (datePickStep === 'end' && isIsoDate(pendingStart)) {
+      openNativeDatePicker(endDateInputRef);
+      return;
+    }
+    startRangeSelection();
   };
   const applyCustomRange = (fromValue, toValue) => {
     if (!isIsoDate(fromValue) || !isIsoDate(toValue)) return;
@@ -927,14 +979,11 @@ export default function Escritorio() {
             <MdBolt className="text-xl text-[var(--ui-accent-muted)] shrink-0" />
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-[var(--ui-body-text)]">Monitoreo en vivo</h3>
-              <p className="text-xs text-[var(--ui-muted)]">
-                Sincronizado con {monitoreoSyncLabel}
-                {liveDash?.generated_at ? (
-                  <span className="ml-1">
-                    · actualizado {formatInstantTime(liveDash.generated_at, { withSeconds: true })}
-                  </span>
-                ) : null}
-              </p>
+              {liveDash?.generated_at ? (
+                <p className="text-xs text-[var(--ui-muted)]">
+                  Actualizado {formatInstantTime(liveDash.generated_at, { withSeconds: true })}
+                </p>
+              ) : null}
             </div>
           </div>
           {liveDash ? (
@@ -974,80 +1023,86 @@ export default function Escritorio() {
         {liveDash ? (
           <>
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 mb-3">
-            <button
-              type="button"
-              onClick={() => navigate('/admin/caja')}
-              className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-left hover:bg-sky-100 transition-colors"
-            >
-              <div className="flex items-center gap-1.5 text-sky-700 font-semibold text-xs">
-                <MdPointOfSale className="shrink-0" />
-                <span className="truncate">{liveDash.liveSales?.label || 'Caja'}</span>
-              </div>
-              <p className="text-lg font-bold text-sky-800 tabular-nums mt-1">
-                {formatCurrency(Number(liveDash.liveSales?.total ?? liveDash.today?.total ?? 0))}
-              </p>
-              <p className="text-[11px] text-sky-700">
-                {Number(liveDash.liveSales?.count ?? liveDash.today?.count ?? 0)} cobradas
-                {liveDash.liveSales?.subtitle ? ` · ${liveDash.liveSales.subtitle}` : ''}
-                {liveDash.registerOpen && liveDash.registerOpenSummary?.user_name
-                  ? ` · ${liveDash.registerOpenSummary.user_name}`
-                  : ''}
-              </p>
-              {liveDash.registerOpen &&
-              liveDash.liveSales?.day_total != null &&
-              Number(liveDash.liveSales.day_total) !== Number(liveDash.liveSales.total) ? (
-                <p className="text-[10px] text-sky-600 mt-0.5">
-                  Día: {formatCurrency(liveDash.liveSales.day_total)} ({liveDash.liveSales.day_count ?? 0})
-                </p>
-              ) : null}
-              {liveDash.liveSales?.mode === 'register_closed' && !liveDash.registerOpen ? (
-                <p className="text-[10px] text-amber-600 mt-0.5">Sin turno activo</p>
-              ) : null}
-              {liveDash.liveSales?.mode === 'venue_closed' && !liveDash.registerOpen ? (
-                <p className="text-[10px] text-sky-600 mt-0.5">Local fuera de horario</p>
-              ) : null}
-              <p className="text-[11px] font-medium text-sky-700 mt-0.5">Ir a Caja</p>
-            </button>
-            {activeProductionAreaIds.has('cocina') ? (
-            <button
-              type="button"
-              onClick={() => navigate('/admin/cocina')}
-              className={`rounded-lg border px-3 py-2 text-left transition-colors hover:opacity-95 ${getQueueLevel(kitchenQueue).card}`}
-            >
-              <div className="flex items-center justify-between gap-1">
-                <div className="flex items-center gap-1.5 text-amber-700 font-semibold text-xs">
-                  <MdKitchen className="shrink-0" />
-                  Cocina
-                </div>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${getQueueLevel(kitchenQueue).pill}`}>
-                  {getQueueLevel(kitchenQueue).label}
-                </span>
-              </div>
-              <p className="text-lg font-bold text-amber-800 tabular-nums mt-1">{kitchenQueue}</p>
-              <p className="text-[11px] text-amber-700">Pedidos en cola</p>
-              <p className="text-[11px] font-medium ui-live-link-amber mt-0.5">Ir a Cocina</p>
-            </button>
-            ) : null}
-            {activeProductionAreaIds.has('bar') ? (
-            <button
-              type="button"
-              onClick={() => navigate('/admin/bar')}
-              className={`rounded-lg border px-3 py-2 text-left transition-colors hover:opacity-95 ${getQueueLevel(barQueue).card}`}
-            >
-              <div className="flex items-center justify-between gap-1">
-                <div className="flex items-center gap-1.5 text-indigo-700 font-semibold text-xs">
-                  <MdLocalBar className="shrink-0" />
-                  Bar
-                </div>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${getQueueLevel(barQueue).pill}`}>
-                  {getQueueLevel(barQueue).label}
-                </span>
-              </div>
-              <p className="text-lg font-bold text-indigo-800 tabular-nums mt-1">{barQueue}</p>
-              <p className="text-[11px] text-indigo-700">Pedidos en cola</p>
-              <p className="text-[11px] font-medium text-indigo-700 mt-0.5">Ir a Bar</p>
-            </button>
-            ) : null}
+            {(activeCajaStations.length
+              ? activeCajaStations
+              : [{ id: '_default', name: liveDash.liveSales?.label || 'Caja', active: 1 }]
+            ).map((station) => {
+              const sid = String(station.id || '').trim();
+              const perReg = sid && sid !== '_default' ? liveSalesByStationId[sid] : null;
+              const openReg =
+                sid && sid !== '_default'
+                  ? (liveDash.openRegisters || []).find(
+                      (r) => String(r?.caja_station_id || '').trim() === sid
+                    )
+                  : liveDash.registerOpen
+                    ? liveDash.registerOpenSummary
+                    : null;
+              const isOpen = Boolean(perReg || openReg || (sid === '_default' && liveDash.registerOpen));
+              const total = perReg
+                ? Number(perReg.total || 0)
+                : sid === '_default'
+                  ? Number(liveDash.liveSales?.total ?? liveDash.today?.total ?? 0)
+                  : 0;
+              const count = perReg
+                ? Number(perReg.count || 0)
+                : sid === '_default'
+                  ? Number(liveDash.liveSales?.count ?? liveDash.today?.count ?? 0)
+                  : 0;
+              const stationName = station.name || perReg?.station_name || openReg?.station_name || 'Caja';
+              const cashier = perReg?.user_name || openReg?.user_name || '';
+              return (
+                <button
+                  key={sid || stationName}
+                  type="button"
+                  onClick={() => navigate('/admin/caja')}
+                  className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-left hover:bg-sky-100 transition-colors"
+                >
+                  <div className="flex items-center gap-1.5 text-sky-700 font-semibold text-xs">
+                    <MdPointOfSale className="shrink-0" />
+                    <span className="truncate">{stationName}</span>
+                  </div>
+                  <p className="text-lg font-bold text-sky-800 tabular-nums mt-1">
+                    {formatCurrency(total)}
+                  </p>
+                  <p className="text-[11px] text-sky-700">
+                    {isOpen ? `${count} cobradas` : 'Sin turno activo'}
+                    {isOpen && cashier ? ` · ${cashier}` : ''}
+                  </p>
+                  <p className="text-[11px] font-medium text-sky-700 mt-0.5">Ir a Caja</p>
+                </button>
+              );
+            })}
+            {activeProductionAreas.map((area) => {
+              const areaId = String(area.id || '').trim();
+              if (!areaId) return null;
+              const queue = Number(productionQueuesByArea[areaId] || 0);
+              const level = getQueueLevel(queue);
+              const tone = productionAreaTone(areaId);
+              const Icon = tone.icon;
+              return (
+                <button
+                  key={areaId}
+                  type="button"
+                  onClick={() => navigate(`/admin/produccion/${areaId}`)}
+                  className={`rounded-lg border px-3 py-2 text-left transition-colors hover:opacity-95 ${level.card}`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <div className={`flex items-center gap-1.5 font-semibold text-xs ${tone.title}`}>
+                      <Icon className="shrink-0" />
+                      <span className="truncate">{area.name || areaId}</span>
+                    </div>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${level.pill}`}>
+                      {level.label}
+                    </span>
+                  </div>
+                  <p className={`text-lg font-bold tabular-nums mt-1 ${tone.value}`}>{queue}</p>
+                  <p className={`text-[11px] ${tone.sub}`}>Pedidos en cola</p>
+                  <p className={`text-[11px] font-medium mt-0.5 ${tone.link}`}>
+                    Ir a {area.name || areaId}
+                  </p>
+                </button>
+              );
+            })}
             {deliveryModuleActive ? (
             <button
               type="button"
@@ -1211,10 +1266,10 @@ export default function Escritorio() {
         </div>
 
         <div className="rounded-lg border border-[color:var(--ui-card-border)] bg-[var(--ui-surface)] px-3 py-2 text-left text-sm flex flex-col gap-2">
-          <div className="grid grid-cols-12 gap-2">
+          <div className="grid grid-cols-12 gap-2 relative">
             <button
               type="button"
-              onClick={startRangeSelection}
+              onClick={onDateRangeButtonClick}
               className={`col-span-6 rounded-md border px-2 py-1.5 text-left transition-colors min-w-0 ${
                 datePreset === 'custom' || datePickStep !== 'idle'
                   ? 'bg-[var(--ui-accent)] border-[var(--ui-accent)] text-white'
@@ -1227,7 +1282,7 @@ export default function Escritorio() {
                 <MdDateRange className={`shrink-0 ${
                   datePreset === 'custom' || datePickStep !== 'idle' ? 'text-white' : 'text-[var(--ui-accent-muted)]'
                 }`} />
-                <span className="truncate">{datePickerCaption}</span>
+                <span className="truncate font-semibold tracking-wide">{datePickerCaption}</span>
                 <MdKeyboardArrowDown className={`ml-auto shrink-0 ${
                   datePreset === 'custom' || datePickStep !== 'idle' ? 'text-white' : 'text-[var(--ui-accent-muted)]'
                 }`} />
@@ -1271,10 +1326,11 @@ export default function Escritorio() {
             >
               Todos
             </button>
+            {/* Inputs casi visibles: showPicker en Android falla con sr-only/clip. */}
             <input
               ref={startDateInputRef}
               type="date"
-              value={datePickStep === 'start' ? pendingStart : (pendingStart || startDate || '')}
+              value={datePickStep === 'start' ? (pendingStart || '') : (pendingStart || startDate || '')}
               onChange={(e) => {
                 const next = e.target.value;
                 if (!isIsoDate(next)) return;
@@ -1282,35 +1338,36 @@ export default function Escritorio() {
                 setPendingEnd('');
                 setDatePickStep('end');
                 window.setTimeout(() => {
-                  const input = endDateInputRef.current;
-                  if (input) input.value = '';
                   openNativeDatePicker(endDateInputRef);
-                }, 80);
+                }, 320);
               }}
-              onCancel={resetPendingRange}
-              className="sr-only"
+              className="pointer-events-none absolute left-0 top-0 h-px w-px opacity-[0.01]"
               tabIndex={-1}
-              aria-hidden="true"
+              aria-label="Fecha de inicio"
             />
             <input
               ref={endDateInputRef}
               type="date"
-              value={datePickStep === 'end' ? pendingEnd : (endDate || '')}
+              value={datePickStep === 'end' ? (pendingEnd || '') : (endDate || '')}
               min={pendingStart || startDate || undefined}
               onChange={(e) => {
                 const next = e.target.value;
                 if (!isIsoDate(next) || !isIsoDate(pendingStart)) return;
+                setPendingEnd(next);
                 applyCustomRange(pendingStart, next);
               }}
-              onCancel={resetPendingRange}
-              className="sr-only"
+              className="pointer-events-none absolute left-0 top-0 h-px w-px opacity-[0.01]"
               tabIndex={-1}
-              aria-hidden="true"
+              aria-label="Fecha de fin"
             />
           </div>
           <p className="text-[11px] text-[var(--ui-muted)]">
-            {dateRangeLabel}
-            {registerReportLoading ? ' · actualizando…' : null}
+            {datePickStep === 'start'
+              ? 'Paso 1 · elige la fecha de inicio'
+              : datePickStep === 'end'
+                ? 'Paso 2 · elige la fecha de fin (actualiza al confirmar)'
+                : dateRangeLabel}
+            {registerReportLoading && datePickStep === 'idle' ? ' · actualizando…' : null}
           </p>
         </div>
       </div>
@@ -1326,14 +1383,20 @@ export default function Escritorio() {
       <div className="card p-4">
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <div className="xl:col-span-2 min-w-0 self-start overflow-visible">
-            <p className="text-xs text-[var(--ui-muted)]">Hora punta</p>
-            <p className="text-3xl font-light text-[var(--ui-body-text)] leading-normal tabular-nums py-1 min-h-[2.5rem] flex items-center">
-              {peakHour.hour}
-            </p>
-            <p className="text-xs text-[var(--ui-muted)] mt-3">Hora más libre</p>
-            <p className="text-3xl font-light text-[var(--ui-body-text)] leading-normal tabular-nums py-1 min-h-[2.5rem] flex items-center">
-              {lowHour.hour}
-            </p>
+            <div className="grid grid-cols-2 xl:grid-cols-1 gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--ui-muted)]">Hora punta</p>
+                <p className="text-3xl font-light text-[var(--ui-body-text)] leading-normal tabular-nums py-1 min-h-[2.5rem] flex items-center">
+                  {peakHour.hour}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--ui-muted)]">Hora más libre</p>
+                <p className="text-3xl font-light text-[var(--ui-body-text)] leading-normal tabular-nums py-1 min-h-[2.5rem] flex items-center">
+                  {lowHour.hour}
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="xl:col-span-10">

@@ -87,8 +87,12 @@ export default function WorkTimeReportTab({
                           ) : null}
                           <p className="text-xs mt-1">
                             Asistencia:{' '}
-                            <span className={row.attendance_status === 'asistente' || (isAdminSession && row.attendance_status === 'pending') ? 'text-emerald-600 font-medium' : row.attendance_status === 'pending' ? 'text-amber-600 font-medium' : 'text-[var(--ui-muted)]'}>
-                              {isAdminSession && row.attendance_status === 'pending' ? 'Sin revisión (admin)' : ATT_LABEL[row.attendance_status] || ATT_LABEL.pending}
+                            <span className={row.attendance_status === 'asistente' || (isAdminSession && row.attendance_status === 'pending') || row.jornada_source === 'qr' ? 'text-emerald-600 font-medium' : row.attendance_status === 'pending' ? 'text-amber-600 font-medium' : 'text-[var(--ui-muted)]'}>
+                              {row.jornada_source === 'qr'
+                                ? (row.logout_at ? 'Marcación QR cerrada' : 'Marcación QR en curso')
+                                : isAdminSession && row.attendance_status === 'pending'
+                                  ? 'Sin revisión (admin)'
+                                  : ATT_LABEL[row.attendance_status] || ATT_LABEL.pending}
                             </span>
                           </p>
                           {(row.has_photo_login || row.has_photo_logout) ? (
@@ -96,7 +100,7 @@ export default function WorkTimeReportTab({
                               <MdPhotoCamera /> Ver fotos
                             </button>
                           ) : null}
-                          {row.attendance_status === 'pending' && row.logout_at && !isAdminSession ? (
+                          {row.jornada_source !== 'qr' && row.attendance_status === 'pending' && row.logout_at && !isAdminSession ? (
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <select className="input-field text-xs py-1.5 max-w-[11rem]" value={classifyDraft[row.id] || 'asistente'} onChange={(e) => setClassifyDraft((p) => ({ ...p, [row.id]: e.target.value }))}>
                                 <option value="asistente">Asistente</option>

@@ -206,7 +206,88 @@ function buildSessionDateWhere(alias, from, to, params) {
   return parts.length ? parts.join(' AND ') : '1=1';
 }
 
+function queryAggregatedJornadasFromQr({ from, to, userId }) {
+  const params = [];
+  const parts = [
+    'a.check_in_at IS NOT NULL',
+    "trim(coalesce(a.check_in_at, '')) != ''",
+    "IFNULL(a.status, '') != 'leave'",
+  ];
+  if (from) {
+    parts.push('a.work_date >= date(?)');
+    params.push(from);
+  }
+  if (to) {
+    parts.push('a.work_date <= date(?)');
+    params.push(to);
+  }
+  if (userId && userId !== 'all') {
+    parts.push('e.user_id = ?');
+    params.push(userId);
+  }
+  const workedEx = `CASE
+    WHEN a.check_out_at IS NOT NULL AND trim(a.check_out_at) != ''
+      THEN MAX(0, COALESCE(a.worked_minutes, 0))
+    ELSE MAX(0, CAST((julianday('now') - julianday(a.check_in_at)) * 24 * 60 AS INTEGER)
+      - COALESCE(a.break_minutes, 0))
+  END`;
+
+  const rows = queryAll(
+    `SELECT
+      a.id,
+      e.user_id,
+      COALESCE(NULLIF(u.full_name, ''), u.username, e.employee_code, e.user_id) AS full_name,
+      COALESCE(NULLIF(u.username, ''), e.employee_code, '') AS username,
+      COALESCE(NULLIF(u.role, ''), e.position, '') AS role,
+      a.work_date AS work_day,
+      a.check_in_at AS login_at,
+      a.check_out_at AS logout_at,
+      ${workedEx} AS worked_minutes,
+      ${workedEx} AS raw_worked_minutes,
+      a.status AS hr_status,
+      a.source
+     FROM hr_attendance a
+     INNER JOIN hr_employees e ON e.id = a.employee_id
+     LEFT JOIN users u ON u.id = e.user_id
+     WHERE ${parts.join(' AND ')}
+     ORDER BY datetime(a.check_in_at) DESC
+     LIMIT 500`,
+    params
+  );
+
+  return (rows || []).map((row) => {
+    const closed = Boolean(String(row.logout_at || '').trim());
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      full_name: row.full_name || '',
+      username: row.username || '',
+      role: row.role || '',
+      work_day: row.work_day,
+      login_at: row.login_at,
+      logout_at: row.logout_at || null,
+      raw_worked_minutes: Number(row.raw_worked_minutes || 0),
+      worked_minutes: Number(row.worked_minutes || 0),
+      attendance_status: closed ? 'asistente' : 'pending',
+      has_photo_login: 0,
+      has_photo_logout: 0,
+      device_sessions_count: 1,
+      parallel_sessions_count: 0,
+      is_aggregated_jornada: true,
+      jornada_source: 'qr',
+      hr_status: row.hr_status || '',
+    };
+  });
+}
+
 function queryAggregatedJornadas({ from, to, userId }) {
+  try {
+    if (require('./hrService').isAsistenciaQrActiva()) {
+      return queryAggregatedJornadasFromQr({ from, to, userId });
+    }
+  } catch (_) {
+    /* fallback sesión */
+  }
   const params = [];
   const sw = buildSessionDateWhere('s', from, to, params);
   const userFilter = userId && userId !== 'all' ? ' AND s.user_id = ?' : '';
@@ -278,6 +359,7 @@ function queryAggregatedJornadas({ from, to, userId }) {
       device_sessions_count: Number(row.device_sessions_count || 0),
       parallel_sessions_count: Number(row.parallel_sessions_count || 0),
       is_aggregated_jornada: true,
+      jornada_source: 'session',
     };
   });
 }

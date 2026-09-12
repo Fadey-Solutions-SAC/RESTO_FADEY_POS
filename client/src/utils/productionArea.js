@@ -89,17 +89,26 @@ export function isProductionStationMarkedReady(order = {}, station = 'cocina') {
 
 /** Comanda con trabajo pendiente en cocina (misma lógica que panel cocina / Escritorio). */
 export function orderPendingForKitchenStation(order = {}) {
-  if (!orderHasKitchenItems(order.items)) return false;
-  if (isProductionStationMarkedReady(order, 'cocina')) return false;
-  const kitchenItems = filterItemsForKitchenStation(order.items || [], 'cocina');
-  if (!kitchenItems.length) return false;
-  return kitchenItems.some((item) => !isKitchenItemMarkedReady(item));
+  return orderPendingForProductionStation(order, 'cocina');
 }
 
 /** Comanda con trabajo pendiente en bar (comanda completa en bar). */
 export function orderPendingForBarStation(order = {}) {
-  if (!orderHasBarItems(order.items)) return false;
-  return !isProductionStationMarkedReady(order, 'bar');
+  return orderPendingForProductionStation(order, 'bar');
+}
+
+/** Comanda con trabajo pendiente en un área de producción (id dinámico). */
+export function orderPendingForProductionStation(order = {}, areaId = 'cocina') {
+  const st = String(areaId || '').trim() || 'cocina';
+  const items = Array.isArray(order?.items) ? order.items : [];
+  if (!items.length) return false;
+  const stationItems = filterItemsForKitchenStation(items, st);
+  if (!stationItems.length) return false;
+  if (isProductionStationMarkedReady(order, st)) return false;
+  if (st === 'cocina') {
+    return stationItems.some((item) => !isKitchenItemMarkedReady(item));
+  }
+  return true;
 }
 
 export function isActiveProductionQueueOrder(order = {}) {

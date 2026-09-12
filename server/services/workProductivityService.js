@@ -1,6 +1,7 @@
 /**
  * Métricas de productividad y monitoreo laboral (Tiempo trabajado).
- * Agrega datos de user_work_sessions, orders, delivery, caja — sin flujos paralelos.
+ * Con QR activo: horas/jornada desde hr_attendance.
+ * Con QR off: user_work_sessions (login→logout).
  */
 
 const { queryAll, queryOne } = require('../database');
@@ -20,6 +21,43 @@ const {
   parseDateKey,
   shiftLabelFromLoginSql,
 } = require('../lib/workSessionSql');
+
+function isQrJornadaMode() {
+  try {
+    return Boolean(require('./hrService').isAsistenciaQrActiva());
+  } catch {
+    return false;
+  }
+}
+
+/** Minutos trabajados de una fila hr_attendance (abierta = hasta ahora, menos refrigerio). */
+function hrAttendanceWorkedMinutesSql(alias = 'a') {
+  return `CASE
+    WHEN ${alias}.check_out_at IS NOT NULL AND trim(${alias}.check_out_at) != ''
+      THEN MAX(0, COALESCE(${alias}.worked_minutes, 0))
+    WHEN ${alias}.check_in_at IS NOT NULL AND trim(${alias}.check_in_at) != ''
+      THEN MAX(0, CAST((julianday('now') - julianday(${alias}.check_in_at)) * 24 * 60 AS INTEGER)
+        - COALESCE(${alias}.break_minutes, 0))
+    ELSE 0
+  END`;
+}
+
+function hrAttendanceDateWhere(alias, from, to, params) {
+  const parts = [
+    `${alias}.check_in_at IS NOT NULL`,
+    `trim(coalesce(${alias}.check_in_at, '')) != ''`,
+    `IFNULL(${alias}.status, '') != 'leave'`,
+  ];
+  if (from) {
+    parts.push(`${alias}.work_date >= date(?)`);
+    params.push(from);
+  }
+  if (to) {
+    parts.push(`${alias}.work_date <= date(?)`);
+    params.push(to);
+  }
+  return parts.join(' AND ');
+}
 
 const FIN = FINANCIAL_FILTER_SQL;
 /** Alertas de inactividad: permiso/día libre no debe disparar aviso por pausas cortas. */
@@ -131,6 +169,79 @@ function activeMinutesExpr(alias = 's') {
 }
 
 function buildLiveDashboard() {
+  if (isQrJornadaMode()) {
+    const workedEx = hrAttendanceWorkedMinutesSql('a');
+    const activeStaffRaw = queryAll(
+      `SELECT
+        a.id AS session_id,
+        e.user_id,
+        COALESCE(NULLIF(trim(u.full_name), ''), NULLIF(trim(u.username), ''), e.employee_code, e.user_id) AS full_name,
+        COALESCE(NULLIF(trim(u.username), ''), e.employee_code, '') AS username,
+        COALESCE(NULLIF(trim(u.role), ''), e.position, '') AS role,
+        a.check_in_at AS login_at,
+        a.check_in_at AS last_activity_at,
+        CASE
+          WHEN CAST(strftime('%H', datetime(a.check_in_at, 'localtime')) AS INTEGER) < 12 THEN 'Mañana'
+          WHEN CAST(strftime('%H', datetime(a.check_in_at, 'localtime')) AS INTEGER) < 18 THEN 'Tarde'
+          ELSE 'Noche'
+        END AS shift_label,
+        ${workedEx} AS raw_minutes,
+        ${workedEx} AS worked_minutes,
+        ${workedEx} AS active_minutes,
+        0 AS idle_minutes
+       FROM hr_attendance a
+       INNER JOIN hr_employees e ON e.id = a.employee_id
+       LEFT JOIN users u ON u.id = e.user_id AND IFNULL(u.is_active, 1) = 1
+       WHERE a.check_out_at IS NULL
+         AND a.check_in_at IS NOT NULL
+         AND IFNULL(a.status, '') != 'leave'
+       ORDER BY datetime(a.check_in_at) ASC`
+    );
+    const activeStaffByUser = new Map();
+    for (const row of activeStaffRaw || []) {
+      const prev = activeStaffByUser.get(row.user_id);
+      if (!prev || Number(row.active_minutes || 0) >= Number(prev.active_minutes || 0)) {
+        activeStaffByUser.set(row.user_id, row);
+      }
+    }
+    const activeStaff = [...activeStaffByUser.values()];
+    const today = new Date().toISOString().split('T')[0];
+    const todayStats = queryOne(
+      `SELECT
+        COUNT(*) AS sessions_today,
+        COALESCE(SUM(${workedEx}), 0) AS minutes_today
+       FROM hr_attendance a
+       WHERE a.work_date = date(?)
+         AND a.check_in_at IS NOT NULL
+         AND IFNULL(a.status, '') != 'leave'`,
+      [today]
+    );
+    const salesToday = metricsFromPaidOrdersWhere(`${getPaidSalesEventSql().ORDER_DATE} = date('now', 'localtime')`);
+    const inKitchen = queryOne(`SELECT COUNT(*) AS c FROM orders WHERE status = 'preparing'`);
+    const deliveryActive = queryOne(
+      `SELECT COUNT(*) AS c FROM orders WHERE type = 'delivery' AND status IN ('pending','preparing','ready')`
+    );
+    return {
+      generated_at: new Date().toISOString(),
+      jornada_source: 'qr',
+      active_staff: (activeStaff || []).map((r) => ({
+        ...r,
+        is_idle: false,
+      })),
+      today: {
+        sessions: Number(todayStats?.sessions_today || 0),
+        worked_minutes: Number(todayStats?.minutes_today || 0),
+        orders_paid: Number(salesToday.orders || 0),
+        sales_total: Number(salesToday.sales || 0),
+      },
+      operations: {
+        kitchen_preparing: Number(inKitchen?.c || 0),
+        delivery_active: Number(deliveryActive?.c || 0),
+        staff_online: activeStaff?.length || 0,
+      },
+    };
+  }
+
   const rawEx = rawWorkedMinutesExpr('s');
   const effEx = effectiveWorkedMinutesExpr('s');
   const activeEx = activeMinutesExpr('s');
@@ -187,6 +298,7 @@ function buildLiveDashboard() {
 
   return {
     generated_at: new Date().toISOString(),
+    jornada_source: 'session',
     active_staff: (activeStaff || []).map((r) => ({
       ...r,
       is_idle: Number(r.idle_minutes || 0) >= IDLE_MINUTES_WARN,
@@ -259,33 +371,61 @@ function buildSalesTotalByUser(from, to, userId) {
 }
 
 function buildProductivityByUser(from, to, userId) {
-  const params = [];
-  const sw = sessionDateWhere('s', from, to, params);
-  const userFilter = userId && userId !== 'all' ? ' AND s.user_id = ?' : '';
-  if (userId && userId !== 'all') params.push(userId);
+  let rows;
+  if (isQrJornadaMode()) {
+    const params = [];
+    const aw = hrAttendanceDateWhere('a', from, to, params);
+    const userFilter = userId && userId !== 'all' ? ' AND e.user_id = ?' : '';
+    if (userId && userId !== 'all') params.push(userId);
+    const workedEx = hrAttendanceWorkedMinutesSql('a');
+    rows = queryAll(
+      `SELECT
+        e.user_id,
+        COALESCE(NULLIF(u.full_name, ''), u.username, e.employee_code, e.user_id) AS full_name,
+        COALESCE(NULLIF(u.username, ''), e.employee_code, '') AS username,
+        COALESCE(NULLIF(u.role, ''), e.position, '') AS role,
+        COUNT(*) AS sessions_count,
+        COALESCE(SUM(${workedEx}), 0) AS worked_minutes,
+        COALESCE(SUM(${workedEx}), 0) AS active_minutes,
+        COALESCE(SUM(${workedEx}), 0) AS raw_minutes,
+        COALESCE(SUM(a.break_minutes), 0) AS pause_minutes
+       FROM hr_attendance a
+       INNER JOIN hr_employees e ON e.id = a.employee_id
+       LEFT JOIN users u ON u.id = e.user_id
+       WHERE ${aw}${userFilter}
+       GROUP BY e.user_id, u.full_name, u.username, u.role, e.employee_code, e.position
+       ORDER BY worked_minutes DESC`,
+      params
+    );
+  } else {
+    const params = [];
+    const sw = sessionDateWhere('s', from, to, params);
+    const userFilter = userId && userId !== 'all' ? ' AND s.user_id = ?' : '';
+    if (userId && userId !== 'all') params.push(userId);
 
-  const rawEx = rawWorkedMinutesExpr('s');
-  const effEx = effectiveWorkedMinutesExpr('s');
-  const activeEx = activeMinutesExpr('s');
+    const rawEx = rawWorkedMinutesExpr('s');
+    const effEx = effectiveWorkedMinutesExpr('s');
+    const activeEx = activeMinutesExpr('s');
 
-  const rows = queryAll(
-    `SELECT
-      s.user_id,
-      COALESCE(NULLIF(u.full_name, ''), s.full_name) AS full_name,
-      COALESCE(NULLIF(u.username, ''), s.username) AS username,
-      COALESCE(NULLIF(u.role, ''), s.role) AS role,
-      COUNT(*) AS sessions_count,
-      COALESCE(SUM(${effEx}), 0) AS worked_minutes,
-      COALESCE(SUM(${activeEx}), 0) AS active_minutes,
-      COALESCE(SUM(${rawEx}), 0) AS raw_minutes,
-      COALESCE(SUM(s.pause_minutes), 0) AS pause_minutes
-     FROM user_work_sessions s
-     LEFT JOIN users u ON u.id = s.user_id
-     WHERE ${sw}${userFilter}
-     GROUP BY s.user_id, u.full_name, s.full_name, u.username, s.username, u.role, s.role
-     ORDER BY worked_minutes DESC`,
-    params
-  );
+    rows = queryAll(
+      `SELECT
+        s.user_id,
+        COALESCE(NULLIF(u.full_name, ''), s.full_name) AS full_name,
+        COALESCE(NULLIF(u.username, ''), s.username) AS username,
+        COALESCE(NULLIF(u.role, ''), s.role) AS role,
+        COUNT(*) AS sessions_count,
+        COALESCE(SUM(${effEx}), 0) AS worked_minutes,
+        COALESCE(SUM(${activeEx}), 0) AS active_minutes,
+        COALESCE(SUM(${rawEx}), 0) AS raw_minutes,
+        COALESCE(SUM(s.pause_minutes), 0) AS pause_minutes
+       FROM user_work_sessions s
+       LEFT JOIN users u ON u.id = s.user_id
+       WHERE ${sw}${userFilter}
+       GROUP BY s.user_id, u.full_name, s.full_name, u.username, s.username, u.role, s.role
+       ORDER BY worked_minutes DESC`,
+      params
+    );
+  }
 
   const opParams = [];
   const od = orderCreatedDateWhere(from, to, opParams);
@@ -497,39 +637,65 @@ function buildAlerts() {
   const idleEx = idleMinutesExpr('s');
   const rawEx = rawWorkedMinutesExpr('s');
 
-  const idleUsers = queryAll(
-    `SELECT s.user_id, COALESCE(u.full_name, s.full_name) AS full_name, COALESCE(u.role, s.role) AS role,
-            ${idleEx} AS idle_minutes, s.login_at
-     FROM user_work_sessions s LEFT JOIN users u ON u.id = s.user_id
-     WHERE s.logout_at IS NULL AND (${idleEx}) >= ?`,
-    [IDLE_MINUTES_WARN]
-  );
-  (idleUsers || []).forEach((u) => {
-    const idleMin = Number(u.idle_minutes) || 0;
-    alerts.push({
-      id: `idle_${u.user_id}`,
-      severity: idleMin >= IDLE_MINUTES_SEVERE ? 'warning' : 'info',
-      category: 'inactividad',
-      title: 'Usuario inactivo',
-      message: `${u.full_name} lleva ${formatIdleDuration(idleMin)} sin actividad en el sistema.`,
+  if (isQrJornadaMode()) {
+    const workedEx = hrAttendanceWorkedMinutesSql('a');
+    const longShifts = queryAll(
+      `SELECT e.user_id,
+              COALESCE(NULLIF(u.full_name, ''), u.username, e.employee_code) AS full_name,
+              ${workedEx} AS minutes
+       FROM hr_attendance a
+       INNER JOIN hr_employees e ON e.id = a.employee_id
+       LEFT JOIN users u ON u.id = e.user_id
+       WHERE a.check_out_at IS NULL
+         AND a.check_in_at IS NOT NULL
+         AND IFNULL(a.status, '') != 'leave'
+         AND (${workedEx}) >= ?`,
+      [LONG_SHIFT_MIN]
+    );
+    (longShifts || []).forEach((u) => {
+      alerts.push({
+        id: `long_${u.user_id}`,
+        severity: 'warning',
+        category: 'turno',
+        title: 'Jornada prolongada (QR)',
+        message: `${u.full_name} supera ${Math.floor(LONG_SHIFT_MIN / 60)} h desde el check-in por QR.`,
+      });
     });
-  });
+  } else {
+    const idleUsers = queryAll(
+      `SELECT s.user_id, COALESCE(u.full_name, s.full_name) AS full_name, COALESCE(u.role, s.role) AS role,
+              ${idleEx} AS idle_minutes, s.login_at
+       FROM user_work_sessions s LEFT JOIN users u ON u.id = s.user_id
+       WHERE s.logout_at IS NULL AND (${idleEx}) >= ?`,
+      [IDLE_MINUTES_WARN]
+    );
+    (idleUsers || []).forEach((u) => {
+      const idleMin = Number(u.idle_minutes) || 0;
+      alerts.push({
+        id: `idle_${u.user_id}`,
+        severity: idleMin >= IDLE_MINUTES_SEVERE ? 'warning' : 'info',
+        category: 'inactividad',
+        title: 'Usuario inactivo',
+        message: `${u.full_name} lleva ${formatIdleDuration(idleMin)} sin actividad en el sistema.`,
+      });
+    });
 
-  const longShifts = queryAll(
-    `SELECT s.user_id, COALESCE(u.full_name, s.full_name) AS full_name, ${rawEx} AS minutes
-     FROM user_work_sessions s LEFT JOIN users u ON u.id = s.user_id
-     WHERE s.logout_at IS NULL AND (${rawEx}) >= ?`,
-    [LONG_SHIFT_MIN]
-  );
-  (longShifts || []).forEach((u) => {
-    alerts.push({
-      id: `long_${u.user_id}`,
-      severity: 'warning',
-      category: 'turno',
-      title: 'Jornada prolongada',
-      message: `${u.full_name} supera ${Math.floor(LONG_SHIFT_MIN / 60)} h de turno abierto.`,
+    const longShifts = queryAll(
+      `SELECT s.user_id, COALESCE(u.full_name, s.full_name) AS full_name, ${rawEx} AS minutes
+       FROM user_work_sessions s LEFT JOIN users u ON u.id = s.user_id
+       WHERE s.logout_at IS NULL AND (${rawEx}) >= ?`,
+      [LONG_SHIFT_MIN]
+    );
+    (longShifts || []).forEach((u) => {
+      alerts.push({
+        id: `long_${u.user_id}`,
+        severity: 'warning',
+        category: 'turno',
+        title: 'Jornada prolongada',
+        message: `${u.full_name} supera ${Math.floor(LONG_SHIFT_MIN / 60)} h de turno abierto.`,
+      });
     });
-  });
+  }
 
   const kitchenDelayed = queryOne(
     `SELECT COUNT(*) AS c FROM orders WHERE status IN ('pending','preparing')
@@ -708,6 +874,25 @@ function buildTimeline(from, to, userId) {
 }
 
 function buildShiftSummary(from, to) {
+  if (isQrJornadaMode()) {
+    const params = [];
+    const aw = hrAttendanceDateWhere('a', from, to, params);
+    const workedEx = hrAttendanceWorkedMinutesSql('a');
+    return queryAll(
+      `SELECT
+        CASE
+          WHEN CAST(strftime('%H', datetime(a.check_in_at, 'localtime')) AS INTEGER) < 12 THEN 'Mañana'
+          WHEN CAST(strftime('%H', datetime(a.check_in_at, 'localtime')) AS INTEGER) < 18 THEN 'Tarde'
+          ELSE 'Noche'
+        END AS shift_label,
+        COUNT(*) AS sessions,
+        COALESCE(SUM(${workedEx}), 0) AS total_minutes
+       FROM hr_attendance a
+       WHERE ${aw}
+       GROUP BY shift_label ORDER BY shift_label`,
+      params
+    );
+  }
   const params = [];
   const sw = sessionDateWhere('s', from, to, params);
   const eff = effectiveWorkedMinutesExpr('s');
@@ -723,6 +908,42 @@ function buildShiftSummary(from, to) {
 }
 
 function buildHoursRollup(from, to, userId) {
+  if (isQrJornadaMode()) {
+    const params = [];
+    const aw = hrAttendanceDateWhere('a', from, to, params);
+    const uf = userId && userId !== 'all' ? ' AND e.user_id = ?' : '';
+    if (userId && userId !== 'all') params.push(userId);
+    const workedEx = hrAttendanceWorkedMinutesSql('a');
+    const joinEmp = uf ? ' INNER JOIN hr_employees e ON e.id = a.employee_id' : '';
+    const daily = queryAll(
+      `SELECT a.work_date AS day,
+              COALESCE(SUM(${workedEx}), 0) AS minutes
+       FROM hr_attendance a${joinEmp}
+       WHERE ${aw}${uf}
+       GROUP BY day ORDER BY day DESC LIMIT 31`,
+      params
+    );
+    const weekly = queryOne(
+      `SELECT COALESCE(SUM(${workedEx}), 0) AS minutes
+       FROM hr_attendance a${joinEmp}
+       WHERE ${aw}${uf}
+         AND a.work_date >= date('now', 'localtime', '-7 days')`,
+      params
+    );
+    const monthly = queryOne(
+      `SELECT COALESCE(SUM(${workedEx}), 0) AS minutes
+       FROM hr_attendance a${joinEmp}
+       WHERE ${aw}${uf}
+         AND strftime('%Y-%m', a.work_date) = strftime('%Y-%m', 'now', 'localtime')`,
+      params
+    );
+    return {
+      daily: daily || [],
+      weekly_minutes: Number(weekly?.minutes || 0),
+      monthly_minutes: Number(monthly?.minutes || 0),
+    };
+  }
+
   const params = [];
   const sw = sessionDateWhere('s', from, to, params);
   const uf = userId && userId !== 'all' ? ' AND s.user_id = ?' : '';
@@ -774,6 +995,7 @@ function buildAnalyticsBundle(query = {}) {
 
   return {
     filters: { from, to, user_id: userId },
+    jornada_source: isQrJornadaMode() ? 'qr' : 'session',
     dashboard: buildLiveDashboard(),
     productivity: buildProductivityByUser(from, to, userId),
     areas: buildAreaMetrics(from, to),

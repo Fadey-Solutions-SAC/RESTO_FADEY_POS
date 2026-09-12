@@ -32,6 +32,8 @@ export default function SelfOrderCliente() {
   const [modifiers, setModifiers] = useState([]);
   const [cartas, setCartas] = useState([]);
   const [showCartaModal, setShowCartaModal] = useState(false);
+  const [qrHome, setQrHome] = useState('productos');
+  const [clientView, setClientView] = useState(null);
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState('all');
 
@@ -73,6 +75,8 @@ export default function SelfOrderCliente() {
         setCategories(data.categories || []);
         setModifiers(Array.isArray(data.modifiers) ? data.modifiers : []);
         setCartas(Array.isArray(data.cartas) ? data.cartas : []);
+        const home = String(data.qr_home || '').trim().toLowerCase();
+        setQrHome(home === 'cartas' || home === 'ambos' ? home : 'productos');
         setBootError('');
       })
       .catch((err) => {
@@ -111,7 +115,7 @@ export default function SelfOrderCliente() {
   useActiveInterval(loadOrders, 8000);
 
   const STAFF_CATALOG_DOMAINS = useMemo(
-    () => new Set(['modifiers', 'auto_pedido_cartas', 'discounts', 'offers', 'combos', 'catalog']),
+    () => new Set(['modifiers', 'auto_pedido_cartas', 'auto_pedido_qr_home', 'discounts', 'offers', 'combos', 'catalog']),
     []
   );
 
@@ -134,6 +138,9 @@ export default function SelfOrderCliente() {
   );
 
   const table = bootstrap?.table;
+  const effectiveHome = clientView || qrHome;
+  const showCartasMain = effectiveHome === 'cartas' || effectiveHome === 'ambos';
+  const showProductsMain = effectiveHome === 'productos' || effectiveHome === 'ambos';
 
   const openOrderPanel = () => {
     setShowOrderPanel(true);
@@ -296,13 +303,33 @@ export default function SelfOrderCliente() {
           >
             Salir
           </button>
-          <button
-            type="button"
-            onClick={() => setShowCartaModal(true)}
-            className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm font-semibold text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
-          >
-            Ver carta
-          </button>
+          {qrHome === 'cartas' && effectiveHome === 'cartas' ? (
+            <button
+              type="button"
+              onClick={() => setClientView('productos')}
+              className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm font-semibold text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+            >
+              Ver productos
+            </button>
+          ) : null}
+          {qrHome === 'cartas' && effectiveHome === 'productos' ? (
+            <button
+              type="button"
+              onClick={() => setClientView('cartas')}
+              className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm font-semibold text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+            >
+              Ver carta
+            </button>
+          ) : null}
+          {qrHome !== 'cartas' && cartas.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowCartaModal(true)}
+              className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm font-semibold text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+            >
+              Ver carta
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={openOrderPanel}
@@ -314,32 +341,43 @@ export default function SelfOrderCliente() {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ui-surface-2)]">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
-          <StaffDineInOrderUI
-            stackedSelfOrder
-            search={search}
-            onSearchChange={setSearch}
-            selectedCat={selectedCat}
-            onSelectedCatChange={setSelectedCat}
-            categories={categories}
-            filteredProducts={filteredProducts}
-            onProductPick={addToCart}
-            cart={cart}
-            noteEditorLineKey={noteEditorLineKey}
-            setNoteEditorLineKey={setNoteEditorLineKey}
-            updateQty={updateQty}
-            removeFromCart={removeFromCart}
-            updateItemNote={updateItemNote}
-            cartTotal={cartTotal}
-            formatCurrency={formatCurrency}
-            minHeightClass="min-h-0 flex-1"
-            className="min-h-0 min-w-0 flex-1"
-            productActionLabel="Agregar pedido"
-            singleColumnProductList
-            showProductThumbnail
-            hideProductStock
-          />
-        </div>
+        {showCartasMain ? (
+          <div
+            className={`min-h-0 overflow-hidden p-3 ${
+              showProductsMain ? 'shrink-0 h-[min(42vh,360px)] border-b border-[color:var(--ui-border)]' : 'flex-1'
+            }`}
+          >
+            <CartasHorizontalCarousel cartas={cartas} showSwipeHint className="h-full min-h-0" />
+          </div>
+        ) : null}
+        {showProductsMain ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
+            <StaffDineInOrderUI
+              stackedSelfOrder
+              search={search}
+              onSearchChange={setSearch}
+              selectedCat={selectedCat}
+              onSelectedCatChange={setSelectedCat}
+              categories={categories}
+              filteredProducts={filteredProducts}
+              onProductPick={addToCart}
+              cart={cart}
+              noteEditorLineKey={noteEditorLineKey}
+              setNoteEditorLineKey={setNoteEditorLineKey}
+              updateQty={updateQty}
+              removeFromCart={removeFromCart}
+              updateItemNote={updateItemNote}
+              cartTotal={cartTotal}
+              formatCurrency={formatCurrency}
+              minHeightClass="min-h-0 flex-1"
+              className="min-h-0 min-w-0 flex-1"
+              productActionLabel="Agregar pedido"
+              singleColumnProductList
+              showProductThumbnail
+              hideProductStock
+            />
+          </div>
+        ) : null}
       </main>
 
       <Modal

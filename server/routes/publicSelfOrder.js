@@ -66,6 +66,14 @@ function getAutoPedidoCartas() {
     .sort((a, b) => a.sort - b.sort);
 }
 
+function getAutoPedidoQrHome() {
+  const s = parseAppSettingsObject();
+  const v = String(s.auto_pedido_qr_home || '').trim().toLowerCase();
+  if (v === 'cartas' || v === 'carta') return 'cartas';
+  if (v === 'ambos' || v === 'both') return 'ambos';
+  return 'productos';
+}
+
 function findTableByMesa(mesaRaw) {
   const key = normalizeTableNumber(mesaRaw);
   if (!key) return null;
@@ -189,6 +197,7 @@ router.get('/bootstrap', (req, res) => {
         categories: loadCategoriesActive(),
         modifiers: loadModifiersPublic(),
         cartas: getAutoPedidoCartas(),
+        qr_home: getAutoPedidoQrHome(),
       });
     }
 
@@ -207,6 +216,7 @@ router.get('/bootstrap', (req, res) => {
       categories: loadCategoriesActive(),
       modifiers: loadModifiersPublic(),
       cartas: getAutoPedidoCartas(),
+      qr_home: getAutoPedidoQrHome(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Error al cargar datos' });

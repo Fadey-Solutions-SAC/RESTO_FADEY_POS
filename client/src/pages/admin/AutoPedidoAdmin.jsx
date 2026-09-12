@@ -101,6 +101,8 @@ export default function AutoPedidoAdmin() {
   const [generatingImages, setGeneratingImages] = useState(false);
   const [imageGenWarnings, setImageGenWarnings] = useState([]);
   const [showImageGenWarnings, setShowImageGenWarnings] = useState(false);
+  const [qrHome, setQrHome] = useState('productos');
+  const [savingQrHome, setSavingQrHome] = useState(false);
   const cartasDirtyRef = useRef(false);
   const loadSeqRef = useRef(0);
 
@@ -122,6 +124,8 @@ export default function AutoPedidoAdmin() {
         if (!cartasDirtyRef.current) {
           setCartas(Array.isArray(cData.cartas) ? cData.cartas : []);
         }
+        const home = String(cData?.qr_home || '').trim().toLowerCase();
+        setQrHome(home === 'cartas' || home === 'ambos' ? home : 'productos');
         setTables(Array.isArray(tData) ? tData : []);
         setProducts(Array.isArray(pData) ? pData : []);
         setCategories(Array.isArray(catData) ? catData : []);
@@ -140,7 +144,9 @@ export default function AutoPedidoAdmin() {
 
   useSocket('staff-data-update', (p) => {
     const d = p?.domain;
-    if (['auto_pedido_cartas', 'modifiers', 'discounts', 'offers', 'combos', 'catalog'].includes(d)) void load();
+    if (['auto_pedido_cartas', 'auto_pedido_qr_home', 'modifiers', 'discounts', 'offers', 'combos', 'catalog'].includes(d)) {
+      void load();
+    }
   });
   useSocket('inventory-update', () => {
     void load();
@@ -278,6 +284,35 @@ export default function AutoPedidoAdmin() {
       toast.success('Cartas guardadas', { id: tid });
     } catch (e) {
       toast.error(e.message || 'No se pudo guardar', { id: tid });
+    }
+  };
+
+  const saveQrHome = async (mode) => {
+    const next = mode === 'cartas' || mode === 'ambos' ? mode : 'productos';
+    if (!canSave) {
+      setQrHome(next);
+      return;
+    }
+    if (next === qrHome || savingQrHome) return;
+    const prev = qrHome;
+    setQrHome(next);
+    setSavingQrHome(true);
+    try {
+      const data = await api.put('/admin-modules/auto-pedido/qr-home', { qr_home: next });
+      const saved = String(data?.qr_home || next).trim().toLowerCase();
+      setQrHome(saved === 'cartas' || saved === 'ambos' ? saved : 'productos');
+      toast.success(
+        saved === 'cartas'
+          ? 'Al escanear el QR se mostrarán primero las cartas'
+          : saved === 'ambos'
+            ? 'Al escanear el QR se mostrarán cartas y productos'
+            : 'Al escanear el QR se mostrarán primero los productos'
+      );
+    } catch (e) {
+      setQrHome(prev);
+      toast.error(e.message || 'No se pudo guardar la vista del QR');
+    } finally {
+      setSavingQrHome(false);
     }
   };
 
@@ -446,6 +481,41 @@ export default function AutoPedidoAdmin() {
             {showProductCatalog ? <MdVisibilityOff className="text-lg" /> : <MdVisibility className="text-lg" />}
             {showProductCatalog ? 'Ocultar productos' : 'Mostrar productos'}
           </button>
+        </div>
+      </div>
+
+      <div className="card mb-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="font-semibold text-[var(--ui-body-text)]">Al escanear el QR mostrar primero</p>
+            <p className="text-xs text-[var(--ui-muted)] mt-1">
+              Define qué ve el cliente al abrir el enlace de la mesa: productos, cartas o ambos.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 w-full sm:w-auto sm:min-w-[320px]">
+            {[
+              { id: 'productos', label: 'Productos' },
+              { id: 'cartas', label: 'Cartas' },
+              { id: 'ambos', label: 'Ambos' },
+            ].map((opt) => {
+              const active = qrHome === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  disabled={!canSave || savingQrHome}
+                  onClick={() => void saveQrHome(opt.id)}
+                  className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    active
+                      ? 'bg-[var(--ui-accent)] border-[var(--ui-accent)] text-white'
+                      : 'bg-[var(--ui-surface-2)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:border-[var(--ui-accent-muted)]'
+                  } disabled:opacity-60`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

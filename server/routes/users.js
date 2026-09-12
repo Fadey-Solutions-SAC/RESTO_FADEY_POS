@@ -506,9 +506,16 @@ router.get('/work-sessions', authenticateToken, requireRole('admin'), (req, res)
   const jornadas = queryAggregatedJornadas({ from, to, userId });
   const deviceSessions = queryDeviceSessions({ from, to, userId });
   const summary = summarizeJornadas(jornadas);
+  let jornadaSource = 'session';
+  try {
+    jornadaSource = require('../services/hrService').isAsistenciaQrActiva() ? 'qr' : 'session';
+  } catch (_) {
+    /* */
+  }
 
   res.json({
     filters: { from, to, user_id: userId || 'all' },
+    jornada_source: jornadaSource,
     jornadas,
     device_sessions: deviceSessions,
     sessions: jornadas,

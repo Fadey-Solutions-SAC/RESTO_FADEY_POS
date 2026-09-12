@@ -751,10 +751,23 @@ router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero', 'mast
       console.warn('[reports] financeMonthToDateSnapshot:', err.message || err);
     }
     const liveSales = buildLiveSalesPanel(op.registerOpen);
+    const liveSalesByRegister = (op.openRegisters || []).map((reg) => {
+      const session = queryRegisterSessionSales(reg);
+      return {
+        register_id: reg.id,
+        caja_station_id: String(reg.caja_station_id || '').trim(),
+        station_name: reg.station_name || 'Caja',
+        user_name: reg.user_name || '',
+        opened_at: reg.opened_at,
+        total: Number(session.total_sales || 0),
+        count: Number(session.order_count || 0),
+      };
+    });
 
     res.json({
       today: todaySales,
       liveSales,
+      liveSalesByRegister,
       month: monthSales,
       activeOrders: op.summary.activeOrders,
       topProducts,
