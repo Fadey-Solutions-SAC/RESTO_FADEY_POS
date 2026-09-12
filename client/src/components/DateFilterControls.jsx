@@ -1,8 +1,11 @@
 import { toLocalDateKey } from '../utils/api';
 
-/** Altura unificada para filtros de fecha (compras, informes, etc.). */
+/** Altura unificada (misma que «Semana» / recuadros de fecha). */
+export const DATE_FILTER_H = 'h-10 min-h-10';
+
+/** Base compartida sin colores de fondo/texto (evita pelear con el estado activo). */
 export const DATE_FILTER_CTRL =
-  'h-9 shrink-0 px-2.5 rounded-none text-sm font-medium leading-none border border-[color:var(--ui-border)] inline-flex items-center gap-1.5 box-border bg-[var(--ui-surface)] text-[var(--ui-body-text)]';
+  `${DATE_FILTER_H} shrink-0 px-2.5 rounded-none text-sm font-medium leading-none border border-[color:var(--ui-border)] inline-flex items-center gap-1.5 box-border`;
 
 export function currentLocalYear() {
   return String(toLocalDateKey(new Date()) || '').slice(0, 4) || String(new Date().getFullYear());
@@ -25,13 +28,6 @@ export function currentYearDateBounds() {
 /**
  * Input date con etiqueta delante (Desde/Hasta).
  * Si está vacío, al enfocar ancla el calendario al año/mes actual (no cambia defaults ya cargados).
- * Al hacer clic en el año del picker nativo se puede cambiar a otro año (rango min/max).
- *
- * emptySeed:
- * - 'monthStart' (default en Desde): inicio del mes actual — alineado con Productos/Finanzas/Descuentos/Indicadores
- * - 'yearStart': 1 de enero del año actual
- * - 'today': hoy
- * - false: no rellenar al enfocar
  */
 export function InlineDateField({
   label,
@@ -58,7 +54,7 @@ export function InlineDateField({
 
   return (
     <label
-      className={`${DATE_FILTER_CTRL} ${widthClass} justify-start overflow-hidden ${roundedNone ? 'rounded-none' : 'rounded-lg'} ${className}`}
+      className={`${DATE_FILTER_CTRL} ${widthClass} justify-start overflow-hidden bg-[var(--ui-surface)] text-[var(--ui-body-text)] ${roundedNone ? 'rounded-none' : 'rounded-lg'} ${className}`}
     >
       <span className="text-[var(--ui-muted)] shrink-0 text-xs">{label}</span>
       <input
@@ -66,10 +62,9 @@ export function InlineDateField({
         aria-label={label}
         min={min}
         max={max}
-        className="min-w-0 w-full flex-1 bg-transparent border-0 p-0 h-full text-sm leading-none text-[var(--ui-body-text)] outline-none [&::-webkit-calendar-picker-indicator]:scale-90 [&::-webkit-calendar-picker-indicator]:m-0"
+        className="min-w-0 w-full flex-1 bg-transparent border-0 p-0 h-full min-h-0 text-sm leading-none text-[var(--ui-body-text)] outline-none [&::-webkit-calendar-picker-indicator]:scale-90 [&::-webkit-calendar-picker-indicator]:m-0"
         value={value || ''}
         onFocus={() => {
-          // Solo si el campo está vacío: no toca defaults ya puestos (p. ej. inicio de mes → hoy).
           if (!value && seed) onChange?.(seed);
         }}
         onChange={(e) => onChange?.(e.target.value)}
@@ -88,10 +83,11 @@ export function DateFilterPeriodButton({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`${DATE_FILTER_CTRL} px-3 justify-center whitespace-nowrap ${
         active
-          ? 'bg-[#3B82F6] text-white border-transparent'
-          : 'hover:bg-[var(--ui-sidebar-hover)]'
+          ? 'bg-[var(--ui-accent)] text-white border-[var(--ui-accent)]'
+          : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
       } ${className}`}
     >
       {children}

@@ -150,25 +150,23 @@ async function main() {
   await img.clone().write(path.join(BRANDING, 'resto-fadey-splash.png'));
   await img.clone().write(path.join(PUBLIC, 'resto-fadey-splash.png'));
 
-  /** Emblema circular RF (solo anillo, sin texto RESTO FADEY) para splash de ingreso. */
+  /** Animación: imagen completa de empresa (con letras). Iconos PWA: solo emblema. */
   const splashLogoSourcePath = path.join(BRANDING, 'resto-fadey-splash-logo-source.png');
-  const emblemBase = fs.existsSync(splashLogoSourcePath) ? await Jimp.read(splashLogoSourcePath) : img;
-  const emblemBg = sampleBackgroundColor(emblemBase);
-  const splashLogo = cropEmblemOnly(emblemBase, emblemBg);
-  await splashLogo.write(path.join(BRANDING, 'resto-fadey-splash-logo.png'));
+  const companyImg = fs.existsSync(splashLogoSourcePath) ? await Jimp.read(splashLogoSourcePath) : img;
+  const companyBg = sampleBackgroundColor(companyImg);
 
-  const logoOnly = splashLogo.clone();
-  await logoOnly.write(path.join(BRANDING, 'resto-fadey-logo.png'));
-
-  /** Entry splash también solo emblema (sin letras de la imagen). */
-  const entryEmblem = splashLogo.clone().resize(1024, 1024);
-  await entryEmblem.write(path.join(BRANDING, 'resto-fadey-splash-entry.png'));
-  await entryEmblem.write(path.join(PUBLIC, 'resto-fadey-splash-entry.png'));
+  await companyImg.clone().write(path.join(BRANDING, 'resto-fadey-splash-logo.png'));
+  await companyImg.clone().write(path.join(BRANDING, 'resto-fadey-splash-entry.png'));
+  await companyImg.clone().write(path.join(PUBLIC, 'resto-fadey-splash-entry.png'));
   fs.writeFileSync(
     path.join(BRANDING, 'entry-splash-bg.json'),
-    `${JSON.stringify({ hex: rgbaToHex(emblemBg) }, null, 2)}\n`,
+    `${JSON.stringify({ hex: rgbaToHex(companyBg) }, null, 2)}\n`,
     'utf8',
   );
+
+  /** Solo emblema RF (sin “RESTO FADEY”) para icono al instalar en móvil/PC. */
+  const logoOnly = cropEmblemOnly(companyImg, companyBg);
+  await logoOnly.write(path.join(BRANDING, 'resto-fadey-logo.png'));
 
   const icon192 = await composePwaIcon(logoOnly, 192);
   const icon512 = await composePwaIcon(logoOnly, 512);
@@ -194,11 +192,11 @@ async function main() {
   console.log('Branding generado:', {
     w,
     h,
-    cropSize: splashLogo.bitmap.width,
-    emblemOnly: `${splashLogo.bitmap.width}x${splashLogo.bitmap.height}`,
-    entrySplash: `1024x1024`,
-    entryBg: rgbaToHex(emblemBg),
-    emblemFromSplashSource: fs.existsSync(splashLogoSourcePath),
+    cropSize: logoOnly.bitmap.width,
+    companySplash: `${companyImg.bitmap.width}x${companyImg.bitmap.height}`,
+    installIconEmblem: `${logoOnly.bitmap.width}x${logoOnly.bitmap.height}`,
+    entryBg: rgbaToHex(companyBg),
+    companyFromSplashSource: fs.existsSync(splashLogoSourcePath),
   });
 }
 

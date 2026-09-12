@@ -1114,16 +1114,28 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: min(48vw, 280px);
-    height: min(48vw, 280px);
-    margin-top: calc(min(48vw, 280px) / -2);
-    margin-left: calc(min(48vw, 280px) / -2);
+    width: min(72vw, 420px);
+    height: min(72vw, 420px);
+    margin-top: calc(min(72vw, 420px) / -2);
+    margin-left: calc(min(72vw, 420px) / -2);
     border-radius: 50%;
     background: radial-gradient(circle, rgba(212, 175, 55, 0.28) 0%, rgba(192, 192, 192, 0.08) 45%, transparent 72%);
     animation:
       rf-entry-glow-in 0.9s ease-out both,
       rf-entry-glow 2s ease-in-out 0.9s infinite;
     pointer-events: none;
+  }
+
+  /* Imagen completa de empresa (animación). No circular: incluye RF + RESTO FADEY. */
+  .rf-entry-splash__company {
+    position: relative;
+    z-index: 1;
+    width: min(78vw, 360px);
+    aspect-ratio: 1;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: #000000;
+    animation: rf-entry-ring-pulse 1.15s cubic-bezier(0.22, 1.15, 0.36, 1) both;
   }
 
   .rf-entry-splash__logo-ring {
@@ -1146,11 +1158,8 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     display: block;
     width: 100%;
     height: 100%;
-    /* Emblema circular: cover + top evita letras si el PNG aún las trae abajo */
-    object-fit: cover;
-    object-position: center 38%;
-    transform: scale(1.08);
-    border-radius: 50%;
+    object-fit: contain;
+    object-position: center center;
     background: #000000;
   }
 
@@ -1159,7 +1168,6 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     position: absolute;
     inset: 0;
     z-index: 2;
-    border-radius: 50%;
     pointer-events: none;
     overflow: hidden;
   }
@@ -1298,15 +1306,18 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
   }
 
   @media (min-width: 900px) {
+    .rf-entry-splash__company {
+      width: min(42vw, 400px);
+    }
     .rf-entry-splash__logo-ring {
       width: min(22vw, 260px);
       height: min(22vw, 260px);
     }
     .rf-entry-splash__glow {
-      width: min(24vw, 280px);
-      height: min(24vw, 280px);
-      margin-top: calc(min(24vw, 280px) / -2);
-      margin-left: calc(min(24vw, 280px) / -2);
+      width: min(48vw, 440px);
+      height: min(48vw, 440px);
+      margin-top: calc(min(48vw, 440px) / -2);
+      margin-left: calc(min(48vw, 440px) / -2);
     }
   }
 
@@ -1316,6 +1327,7 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
       opacity: 0;
     }
     .rf-entry-splash__logo-wrap,
+    .rf-entry-splash__company,
     .rf-entry-splash__logo-ring,
     .rf-entry-splash__brand,
     .rf-entry-splash__credit,
