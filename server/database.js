@@ -1913,6 +1913,8 @@ async function initDatabase() {
     addUserColIfMissing('payroll_amount', 'ALTER TABLE users ADD COLUMN payroll_amount REAL DEFAULT 0');
     addUserColIfMissing('payroll_schedule_note', "ALTER TABLE users ADD COLUMN payroll_schedule_note TEXT DEFAULT ''");
     addUserColIfMissing('payroll_payment_day', 'ALTER TABLE users ADD COLUMN payroll_payment_day INTEGER DEFAULT 0');
+    addUserColIfMissing('payroll_payment_method', "ALTER TABLE users ADD COLUMN payroll_payment_method TEXT DEFAULT ''");
+    addUserColIfMissing('payroll_payment_ref', "ALTER TABLE users ADD COLUMN payroll_payment_ref TEXT DEFAULT ''");
     /** Admin dueño del negocio (creado solo desde Administrador maestro). Distinto de admins del personal. */
     addUserColIfMissing('is_buyer_admin', 'ALTER TABLE users ADD COLUMN is_buyer_admin INTEGER DEFAULT 0');
     try {
@@ -3174,6 +3176,8 @@ function ensureUsersSchemaColumns() {
     ['payroll_amount', 'ALTER TABLE users ADD COLUMN payroll_amount REAL DEFAULT 0'],
     ['payroll_schedule_note', "ALTER TABLE users ADD COLUMN payroll_schedule_note TEXT DEFAULT ''"],
     ['payroll_payment_day', 'ALTER TABLE users ADD COLUMN payroll_payment_day INTEGER DEFAULT 0'],
+    ['payroll_payment_method', "ALTER TABLE users ADD COLUMN payroll_payment_method TEXT DEFAULT ''"],
+    ['payroll_payment_ref', "ALTER TABLE users ADD COLUMN payroll_payment_ref TEXT DEFAULT ''"],
     ['is_buyer_admin', 'ALTER TABLE users ADD COLUMN is_buyer_admin INTEGER DEFAULT 0'],
   ];
   let changed = false;

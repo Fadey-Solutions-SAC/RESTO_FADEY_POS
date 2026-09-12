@@ -7,7 +7,6 @@ import {
   MdSchedule,
   MdHistory,
   MdTrendingUp,
-  MdQrCodeScanner,
   MdQrCode2,
   MdToggleOn,
   MdToggleOff,
@@ -17,7 +16,6 @@ import HrStaffTab from '../../components/hr/HrStaffTab';
 import HrSchedulesTab from '../../components/hr/HrSchedulesTab';
 import HrHistoryTab from '../../components/hr/HrHistoryTab';
 import WorkTime from './WorkTime';
-import { Link } from 'react-router-dom';
 import Modal from '../../components/Modal';
 import HrSharedAttendanceQr from '../../components/hr/HrSharedAttendanceQr';
 
@@ -115,13 +113,13 @@ export default function HrModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+      <div className="flex flex-wrap items-center gap-2">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition ${
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition ${
               tab === t.id
                 ? 'bg-gold-600 text-white border-gold-600'
                 : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
@@ -133,18 +131,15 @@ export default function HrModule() {
         ))}
         <button
           type="button"
-          className="btn-secondary text-sm inline-flex items-center gap-1.5 shrink-0"
+          className="btn-secondary text-sm inline-flex items-center gap-1.5"
           onClick={() => setSharedQrOpen(true)}
         >
           <MdQrCode2 /> QR del local
         </button>
-        <Link to="/admin/asistencia" className="btn-primary text-sm inline-flex items-center gap-1.5 shrink-0">
-          <MdQrCodeScanner /> Control de asistencia
-        </Link>
         <button
           type="button"
           onClick={() => { setAdminPassword(''); setPwdOpen(true); }}
-          className={`shrink-0 text-sm inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border font-medium transition ${
+          className={`text-sm inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border font-medium transition ${
             qrActiva
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)]'

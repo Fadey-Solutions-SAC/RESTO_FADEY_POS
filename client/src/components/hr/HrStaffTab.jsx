@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { MdEdit, MdVisibility } from 'react-icons/md';
+import { FaWhatsapp } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { api, formatCurrency } from '../../utils/api';
 import Modal from '../Modal';
@@ -28,6 +29,18 @@ function formatPaySummary(e) {
   if (!mode || !Number.isFinite(amount) || amount <= 0) return null;
   const label = PAY_MODE_LABEL[mode] || mode;
   return `${label} · ${formatCurrency(amount)}`;
+}
+
+function whatsappHref(rawPhone, employeeName = '') {
+  const digits = String(rawPhone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  const withCountry = digits.length === 9 && digits.startsWith('9') ? `51${digits}` : digits;
+  const text = encodeURIComponent(
+    employeeName
+      ? `Hola ${employeeName}, te escribo sobre el pago de tu trabajo.`
+      : 'Hola, te escribo sobre el pago de tu trabajo.',
+  );
+  return `https://wa.me/${withCountry}?text=${text}`;
 }
 
 function scheduleKindFromEmployee(e) {
@@ -73,6 +86,10 @@ export default function HrStaffTab({ employees, branches, onReload }) {
       payroll_amount: e.payroll_amount ?? 0,
       payroll_schedule_note: e.payroll_schedule_note || '',
       payroll_payment_day: e.payroll_payment_day || 0,
+      payroll_payment_method: e.payroll_payment_method
+        || (String(e.phone || '').trim() ? 'telefono' : ''),
+      payroll_payment_ref: e.payroll_payment_ref
+        || (String(e.phone || '').trim() || ''),
     });
   };
 
@@ -109,6 +126,8 @@ export default function HrStaffTab({ employees, branches, onReload }) {
         payroll_amount: Number(edit.payroll_amount || 0),
         payroll_schedule_note: edit.payroll_schedule_note || '',
         payroll_payment_day: Number(edit.payroll_payment_day || 0),
+        payroll_payment_method: edit.payroll_payment_method || '',
+        payroll_payment_ref: edit.payroll_payment_ref || '',
       });
       toast.success('Trabajador actualizado');
       setEdit(null);
@@ -215,6 +234,16 @@ export default function HrStaffTab({ employees, branches, onReload }) {
               <DetailRow label="Horario" value={inspect.schedule_label || inspect.schedule_name} />
               <DetailRow label="Pago" value={formatPaySummary(inspect)} />
               <DetailRow
+                label="Método de pago"
+                value={
+                  inspect.payroll_payment_method === 'cuenta'
+                    ? `Cuenta · ${inspect.payroll_payment_ref || '—'}`
+                    : inspect.payroll_payment_method === 'telefono' || inspect.payroll_payment_ref || inspect.phone
+                      ? `Teléfono · ${inspect.payroll_payment_ref || inspect.phone || '—'}`
+                      : null
+                }
+              />
+              <DetailRow
                 label="Día de pago"
                 value={Number(inspect.payroll_payment_day) > 0 ? String(inspect.payroll_payment_day) : null}
               />
@@ -229,6 +258,16 @@ export default function HrStaffTab({ employees, branches, onReload }) {
               <button type="button" className="btn-secondary w-full sm:w-auto" onClick={() => setInspect(null)}>
                 Cerrar
               </button>
+              {(inspect.payroll_payment_ref || inspect.phone) && inspect.payroll_payment_method !== 'cuenta' ? (
+                <a
+                  className="btn-secondary w-full sm:w-auto inline-flex items-center justify-center gap-1.5 text-emerald-700"
+                  href={whatsappHref(inspect.payroll_payment_ref || inspect.phone, inspect.full_name)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <FaWhatsapp /> WhatsApp
+                </a>
+              ) : null}
               <button
                 type="button"
                 className="btn-primary w-full sm:w-auto inline-flex items-center justify-center gap-1.5"
@@ -260,8 +299,6 @@ export default function HrStaffTab({ employees, branches, onReload }) {
               {[
                 ['document_id', 'Documento'],
                 ['employee_code', 'Código'],
-                ['position', 'Cargo'],
-                ['department', 'Área'],
                 ['hire_date', 'Fecha ingreso', 'date'],
               ].map(([key, label, type]) => (
                 <label key={key} className="text-xs space-y-1 min-w-0">
@@ -274,6 +311,26 @@ export default function HrStaffTab({ employees, branches, onReload }) {
                   />
                 </label>
               ))}
+              <label className="text-xs space-y-1 min-w-0">
+                <span className="text-[var(--ui-muted)]">Cargo</span>
+                <input
+                  type="text"
+                  value={edit.position || ''}
+                  readOnly
+                  className={`${fieldClass} opacity-90 bg-[var(--ui-surface-2)]`}
+                  title="Según el rol del usuario del sistema"
+                />
+              </label>
+              <label className="text-xs space-y-1 min-w-0">
+                <span className="text-[var(--ui-muted)]">Área</span>
+                <input
+                  type="text"
+                  value={edit.department || ''}
+                  readOnly
+                  className={`${fieldClass} opacity-90 bg-[var(--ui-surface-2)]`}
+                  title="Según el área del usuario (cocina, bar, caja-mesas…)"
+                />
+              </label>
               <HrEmploymentContractBox
                 employeeId={edit.id}
                 employeeName={edit.full_name}
@@ -396,6 +453,61 @@ export default function HrStaffTab({ employees, branches, onReload }) {
                     className={fieldClass}
                   />
                 </label>
+                <div className="text-xs space-y-1 min-w-0">
+                  <span className="text-[var(--ui-muted)]">Método de pago</span>
+                  <div className="flex gap-1.5 items-stretch min-w-0">
+                    <select
+                      value={edit.payroll_payment_method || ''}
+                      onChange={(e) => {
+                        const method = e.target.value;
+                        setEdit((p) => ({
+                          ...p,
+                          payroll_payment_method: method,
+                          payroll_payment_ref: method === 'telefono'
+                            ? (p.payroll_payment_ref || p.phone || '')
+                            : (method === 'cuenta' ? (p.payroll_payment_ref || '') : ''),
+                        }));
+                      }}
+                      className={`${fieldClass} max-w-[7.5rem] shrink-0`}
+                    >
+                      <option value="">—</option>
+                      <option value="telefono">Teléfono</option>
+                      <option value="cuenta">N° cuenta</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={edit.payroll_payment_ref || ''}
+                      onChange={(e) => setEdit((p) => ({ ...p, payroll_payment_ref: e.target.value }))}
+                      className={`${fieldClass} flex-1`}
+                      placeholder={
+                        edit.payroll_payment_method === 'cuenta'
+                          ? 'N° de cuenta'
+                          : 'N° de teléfono'
+                      }
+                      inputMode={edit.payroll_payment_method === 'cuenta' ? 'numeric' : 'tel'}
+                    />
+                    {edit.payroll_payment_method !== 'cuenta' ? (
+                      <a
+                        href={whatsappHref(edit.payroll_payment_ref || edit.phone, edit.full_name) || undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Enviar WhatsApp"
+                        aria-label="Enviar WhatsApp"
+                        onClick={(ev) => {
+                          if (!whatsappHref(edit.payroll_payment_ref || edit.phone, edit.full_name)) {
+                            ev.preventDefault();
+                            toast.error('Indica un número de teléfono válido');
+                          }
+                        }}
+                        className={`shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 ${
+                          !(edit.payroll_payment_ref || edit.phone) ? 'opacity-40 pointer-events-none' : ''
+                        }`}
+                      >
+                        <FaWhatsapp className="text-lg" />
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
                 <label className="text-xs space-y-1 min-w-0 sm:col-span-2">
                   <span className="text-[var(--ui-muted)]">Nota / detalle del pago</span>
                   <input

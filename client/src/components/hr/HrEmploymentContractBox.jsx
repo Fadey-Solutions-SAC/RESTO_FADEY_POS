@@ -305,7 +305,7 @@ export default function HrEmploymentContractBox({
         >
           <div className="min-w-0">
             <div className="text-sm font-medium text-[var(--ui-body-text)] truncate">
-              {contractType || 'planilla'} · contrato laboral
+              Contrato Laboral
             </div>
             <div className="text-[11px] text-[var(--ui-muted)] mt-0.5">
               {statusLabel}

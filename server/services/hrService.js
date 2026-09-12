@@ -306,9 +306,12 @@ function ensureDefaultSchedule(restaurantId) {
 
 function syncEmployeesFromUsers(restaurantId) {
   ensureHrSchema();
+  const { deriveHrPositionDepartment } = require('./hrRoleMapping');
   const defaultSchedule = ensureDefaultSchedule(restaurantId);
   const users = queryAll(
-    `SELECT id, full_name, role, phone, is_active, restaurant_id FROM users
+    `SELECT id, full_name, role, phone, is_active, restaurant_id,
+            production_area_id, caja_station_id
+     FROM users
      WHERE restaurant_id = ?
         OR (IFNULL(trim(restaurant_id), '') = '' AND IFNULL(?, '') != '')`,
     [restaurantId, restaurantId]
@@ -316,8 +319,23 @@ function syncEmployeesFromUsers(restaurantId) {
   const branches = listBranches(restaurantId);
   const defaultBranch = branches[0]?.id || 'principal';
   for (const u of users || []) {
+    const derived = deriveHrPositionDepartment(u);
     const found = queryOne('SELECT id, status FROM hr_employees WHERE user_id = ?', [u.id]);
-    if (found?.id) continue;
+    if (found?.id) {
+      runSql(
+        `UPDATE hr_employees SET
+           position = ?, department = ?, employee_code = ?,
+           updated_at = datetime('now')
+         WHERE id = ?`,
+        [
+          derived.position,
+          derived.department,
+          String(u.role || '').toUpperCase(),
+          found.id,
+        ]
+      );
+      continue;
+    }
     const id = uuidv4();
     const active = Number(u.is_active || 0) === 1;
     runSql(
@@ -329,8 +347,8 @@ function syncEmployeesFromUsers(restaurantId) {
         restaurantId,
         defaultBranch,
         String(u.role || '').toUpperCase(),
-        String(u.role || ''),
-        '',
+        derived.position,
+        derived.department,
         active ? 'active' : 'inactive',
         defaultSchedule,
       ]
@@ -342,6 +360,20 @@ function employeePublic(row, extra = {}) {
   if (!row) return null;
   const payModeRaw = String(row.payroll_pay_mode || '').trim().toLowerCase();
   const payMode = payModeRaw === 'jornada' ? 'dia' : payModeRaw;
+  let position = row.position || '';
+  let department = row.department || '';
+  try {
+    const { deriveHrPositionDepartment } = require('./hrRoleMapping');
+    const derived = deriveHrPositionDepartment({
+      id: row.user_id,
+      role: row.role,
+      production_area_id: row.production_area_id,
+    });
+    if (derived.position) position = derived.position;
+    if (derived.department) department = derived.department;
+  } catch (_) {
+    /* keep stored */
+  }
   return {
     id: row.id,
     user_id: row.user_id,
@@ -351,8 +383,8 @@ function employeePublic(row, extra = {}) {
     role: row.role,
     phone: row.phone || '',
     document_id: row.document_id || '',
-    position: row.position || '',
-    department: row.department || '',
+    position,
+    department,
     branch_id: row.branch_id || '',
     hire_date: row.hire_date || '',
     contract_type: row.contract_type || 'planilla',
@@ -375,6 +407,20 @@ function employeePublic(row, extra = {}) {
     payroll_amount: Number(row.payroll_amount || 0),
     payroll_schedule_note: String(row.payroll_schedule_note || ''),
     payroll_payment_day: Number(row.payroll_payment_day || 0),
+    payroll_payment_method: (() => {
+      const m = String(row.payroll_payment_method || '').trim().toLowerCase();
+      if (m === 'telefono' || m === 'cuenta') return m;
+      // Si no hay método pero sí teléfono del usuario, asumir teléfono.
+      if (String(row.phone || '').trim()) return 'telefono';
+      return '';
+    })(),
+    payroll_payment_ref: (() => {
+      const ref = String(row.payroll_payment_ref || '').trim();
+      if (ref) return ref;
+      const m = String(row.payroll_payment_method || '').trim().toLowerCase();
+      if (m === 'cuenta') return '';
+      return String(row.phone || '').trim();
+    })(),
     employment_contract: (() => {
       try {
         const { employmentContractSummary } = require('./employmentContractStore');
@@ -407,6 +453,8 @@ function listEmployees(restaurantId, { q = '', status = '', branch_id = '' } = {
   const rows = queryAll(
     `SELECT e.*, u.full_name, u.username, u.role, u.phone, u.is_active AS user_active,
             u.payroll_pay_mode, u.payroll_amount, u.payroll_schedule_note, u.payroll_payment_day,
+            u.payroll_payment_method, u.payroll_payment_ref,
+            u.production_area_id, u.caja_station_id,
             s.name AS schedule_name,
             (SELECT MAX(c.active) FROM hr_qr_credentials c WHERE c.employee_id = e.id) AS qr_active
      FROM hr_employees e
@@ -423,6 +471,8 @@ function getEmployee(restaurantId, employeeId) {
   const row = queryOne(
     `SELECT e.*, u.full_name, u.username, u.role, u.phone, u.is_active AS user_active,
             u.payroll_pay_mode, u.payroll_amount, u.payroll_schedule_note, u.payroll_payment_day,
+            u.payroll_payment_method, u.payroll_payment_ref,
+            u.production_area_id, u.caja_station_id,
             s.name AS schedule_name,
             (SELECT MAX(c.active) FROM hr_qr_credentials c WHERE c.employee_id = e.id) AS qr_active
      FROM hr_employees e
@@ -439,6 +489,8 @@ function employeeByUser(restaurantId, userId) {
   const row = queryOne(
     `SELECT e.*, u.full_name, u.username, u.role, u.phone, u.is_active AS user_active,
             u.payroll_pay_mode, u.payroll_amount, u.payroll_schedule_note, u.payroll_payment_day,
+            u.payroll_payment_method, u.payroll_payment_ref,
+            u.production_area_id, u.caja_station_id,
             s.name AS schedule_name
      FROM hr_employees e
      JOIN users u ON u.id = e.user_id
@@ -463,6 +515,12 @@ function updateEmployee(restaurantId, employeeId, patch, actor) {
     throw err;
   }
   if (status !== 'active') revokeEmployeeQr(employeeId);
+  const { deriveHrPositionDepartment } = require('./hrRoleMapping');
+  const linkedUser = queryOne(
+    'SELECT id, role, production_area_id FROM users WHERE id = ?',
+    [cur.user_id]
+  );
+  const derived = deriveHrPositionDepartment(linkedUser || { role: '' });
   runSql(
     `UPDATE hr_employees SET
       document_id = ?, position = ?, department = ?, branch_id = ?, hire_date = ?,
@@ -472,8 +530,8 @@ function updateEmployee(restaurantId, employeeId, patch, actor) {
      WHERE id = ?`,
     [
       patch.document_id != null ? String(patch.document_id).trim() : cur.document_id,
-      patch.position != null ? String(patch.position).trim() : cur.position,
-      patch.department != null ? String(patch.department).trim() : cur.department,
+      derived.position || cur.position,
+      derived.department || cur.department,
       patch.branch_id != null ? String(patch.branch_id).trim() : cur.branch_id,
       patch.hire_date != null ? String(patch.hire_date).trim() : cur.hire_date,
       patch.contract_type != null ? String(patch.contract_type).trim() : cur.contract_type,
@@ -523,11 +581,41 @@ function updateEmployee(restaurantId, employeeId, patch, actor) {
     }
     payrollPatch.payroll_payment_day = d;
   }
+  if (patch.payroll_payment_method !== undefined) {
+    const m = String(patch.payroll_payment_method || '').trim().toLowerCase();
+    if (!['', 'telefono', 'cuenta'].includes(m)) {
+      const err = new Error('Método de pago inválido (telefono o cuenta)');
+      err.status = 400;
+      throw err;
+    }
+    payrollPatch.payroll_payment_method = m;
+  }
+  if (patch.payroll_payment_ref !== undefined) {
+    payrollPatch.payroll_payment_ref = String(patch.payroll_payment_ref || '').trim();
+  }
   if (Object.keys(payrollPatch).length) {
     const cols = Object.keys(payrollPatch);
+    // Si el método es teléfono, mantener sincronizado el phone del usuario.
+    const sets = cols.map((c) => `${c} = ?`);
+    const vals = cols.map((c) => payrollPatch[c]);
+    const method = payrollPatch.payroll_payment_method != null
+      ? payrollPatch.payroll_payment_method
+      : undefined;
+    const ref = payrollPatch.payroll_payment_ref != null
+      ? payrollPatch.payroll_payment_ref
+      : undefined;
+    if ((method === 'telefono' || (method == null && ref != null)) && ref != null) {
+      const effectiveMethod = method != null
+        ? method
+        : String(queryOne('SELECT payroll_payment_method FROM users WHERE id = ?', [cur.user_id])?.payroll_payment_method || '').toLowerCase();
+      if (effectiveMethod === 'telefono' || effectiveMethod === '') {
+        sets.push('phone = ?');
+        vals.push(ref);
+      }
+    }
     runSql(
-      `UPDATE users SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
-      [...cols.map((c) => payrollPatch[c]), cur.user_id]
+      `UPDATE users SET ${sets.join(', ')} WHERE id = ?`,
+      [...vals, cur.user_id]
     );
   }
 

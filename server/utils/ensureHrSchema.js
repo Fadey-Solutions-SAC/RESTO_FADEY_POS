@@ -7,6 +7,12 @@ function tableExists(name) {
 
 function ensureHrSchema() {
   const { runSql } = require('../database');
+  try {
+    const { ensureUsersSchemaColumns } = require('../database');
+    if (typeof ensureUsersSchemaColumns === 'function') ensureUsersSchemaColumns();
+  } catch (_) {
+    /* noop */
+  }
 
   runSql(`
     CREATE TABLE IF NOT EXISTS hr_schedules (
