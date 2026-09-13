@@ -48,19 +48,34 @@ function getEffectivePermissionsForUser(user) {
 function userHasModule(user, moduleId) {
   const role = String(user?.role || '').toLowerCase();
   if (role === 'admin' || role === 'master_admin') return true;
-  if (moduleId === 'cocina' && (role === 'cocina' || role === 'produccion')) {
+  const u = loadStaffProductionFields(user);
+  const area = String(u?.production_area_id || '').trim().toLowerCase();
+  const perms = getEffectivePermissionsForUser(u);
+
+  if (moduleId === 'cocina') {
     if (role === 'cocina') return true;
-    const aid = String(user?.production_area_id || '').trim();
-    return !aid || aid === 'cocina';
+    if (role === 'produccion') {
+      if (Object.prototype.hasOwnProperty.call(perms, 'cocina')) return Boolean(perms.cocina);
+      return !area || area === 'cocina';
+    }
+    return Boolean(perms.cocina);
   }
-  if (moduleId === 'bar' && (role === 'bar' || role === 'produccion')) {
+  if (moduleId === 'bar') {
     if (role === 'bar') return true;
-    const aid = String(user?.production_area_id || '').trim();
-    return !aid || aid === 'bar';
+    if (role === 'produccion') {
+      if (Object.prototype.hasOwnProperty.call(perms, 'bar')) return Boolean(perms.bar);
+      return area === 'bar';
+    }
+    return Boolean(perms.bar);
   }
-  if (moduleId === 'produccion' && (role === 'produccion' || role === 'cocina' || role === 'bar')) return true;
-  const perms = getEffectivePermissionsForUser(user);
-  return Boolean(perms[moduleId]) || (moduleId === 'produccion' && (perms.cocina || perms.bar));
+  if (moduleId === 'produccion') {
+    if (role === 'produccion' || role === 'cocina' || role === 'bar') {
+      if (area && area !== 'cocina' && area !== 'bar') return true;
+      return Boolean(perms.produccion) || Boolean(perms.cocina) || Boolean(perms.bar);
+    }
+    return Boolean(perms.produccion) || Boolean(perms.cocina) || Boolean(perms.bar);
+  }
+  return Boolean(perms[moduleId]);
 }
 
 /** Puede abrir el API de pedidos de producción (lectura del panel). */

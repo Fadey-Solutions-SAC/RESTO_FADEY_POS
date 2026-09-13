@@ -3112,13 +3112,23 @@ function applyUserProductionArea(uid, aid, nextRole) {
 
 function ensureProductionStaffPermissions(userId) {
   try {
+    const user = queryOne('SELECT role, production_area_id FROM users WHERE id = ?', [userId]);
     const row = queryOne('SELECT permissions FROM user_permissions WHERE user_id = ?', [userId]);
     if (!row) return;
     let perms = {};
     try { perms = JSON.parse(row.permissions || '{}') || {}; } catch { perms = {}; }
-    perms.produccion = true;
-    perms.cocina = true;
-    perms.bar = true;
+    const roleLc = String(user?.role || '').toLowerCase();
+    const area = String(user?.production_area_id || '').trim().toLowerCase();
+    perms.produccion = false;
+    perms.cocina = false;
+    perms.bar = false;
+    if (roleLc === 'bar' || area === 'bar') {
+      perms.bar = true;
+    } else if (roleLc === 'cocina' || area === 'cocina' || !area) {
+      perms.cocina = true;
+    } else {
+      perms.produccion = true;
+    }
     runSql('UPDATE user_permissions SET permissions = ? WHERE user_id = ?', [JSON.stringify(perms), userId]);
   } catch (err) {
     console.warn('[users] permisos producción:', err.message || err);

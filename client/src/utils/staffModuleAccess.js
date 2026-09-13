@@ -36,19 +36,37 @@ export function hasModulePermission(user, moduleId) {
   if (!moduleId) return true;
   if (user?.role === 'master_admin') return true;
   const role = String(user?.role || '').toLowerCase();
-  if (role === 'produccion' && (moduleId === 'produccion' || moduleId === 'cocina' || moduleId === 'bar')) {
-    return true;
+  const area = String(user?.production_area_id || '').trim().toLowerCase();
+  const perms = user && typeof user.permissions === 'object' && user.permissions !== null
+    ? user.permissions
+    : null;
+
+  const isProdStaff = role === 'produccion' || role === 'cocina' || role === 'bar';
+  if (isProdStaff && (moduleId === 'cocina' || moduleId === 'bar' || moduleId === 'produccion')) {
+    if (perms && isPermissionExplicitlyDenied(perms[moduleId])) return false;
+    if (perms && isPermissionEnabled(perms[moduleId])) return true;
+
+    if (moduleId === 'cocina') {
+      if (perms && isPermissionEnabled(perms.produccion) && (!area || area === 'cocina')) return true;
+      if (perms) return false;
+      return role === 'cocina' || area === 'cocina' || (role === 'produccion' && !area);
+    }
+    if (moduleId === 'bar') {
+      if (perms && isPermissionEnabled(perms.produccion) && area === 'bar') return true;
+      if (perms) return false;
+      return role === 'bar' || area === 'bar';
+    }
+    // moduleId === 'produccion' (áreas custom / nav genérica)
+    if (area && area !== 'cocina' && area !== 'bar') return true;
+    if (perms && (isPermissionEnabled(perms.cocina) || isPermissionEnabled(perms.bar))) return true;
+    return false;
   }
-  if (role === 'cocina' && (moduleId === 'cocina' || moduleId === 'produccion')) return true;
-  if (role === 'bar' && (moduleId === 'bar' || moduleId === 'produccion')) return true;
+
   if (!user || typeof user.permissions !== 'object' || user.permissions === null) return false;
   if (isPermissionEnabled(user.permissions[moduleId])) return true;
-  // produccion cubre cocina/bar legado y viceversa
+  // Compat: permiso cocina/bar puede abrir rutas de producción del mismo área
   if (moduleId === 'produccion') {
     return isPermissionEnabled(user.permissions.cocina) || isPermissionEnabled(user.permissions.bar);
-  }
-  if ((moduleId === 'cocina' || moduleId === 'bar') && isPermissionEnabled(user.permissions.produccion)) {
-    return true;
   }
   return false;
 }

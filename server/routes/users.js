@@ -263,9 +263,19 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
         ? createFullPermissions()
         : createEmptyPermissions();
     if (prodNorm.role === 'produccion' || ['produccion', 'cocina', 'bar'].includes(String(insertFields.role))) {
-      permissionsObj.produccion = true;
-      permissionsObj.cocina = true;
-      permissionsObj.bar = true;
+      const area = String(prodNorm.production_area_id || insertFields.production_area_id || '').trim().toLowerCase();
+      const roleLc = String(insertFields.role || prodNorm.role || '').toLowerCase();
+      permissionsObj.produccion = false;
+      permissionsObj.cocina = false;
+      permissionsObj.bar = false;
+      if (roleLc === 'bar' || area === 'bar') {
+        permissionsObj.bar = true;
+      } else if (roleLc === 'cocina' || area === 'cocina' || !area) {
+        permissionsObj.cocina = true;
+      } else {
+        // Área custom: acceso por área vinculada (sin módulo «Producción» en UI).
+        permissionsObj.produccion = true;
+      }
     }
     if (finalRole === 'mozo') {
       permissionsObj.mesas = true;
@@ -645,6 +655,22 @@ router.get('/:id/permissions', authenticateToken, requireRole('admin'), (req, re
   }, {});
   for (const subId of CAJA_USER_OPT_IN_SUBS) {
     permissions[cajaSubPermissionKey(subId)] = isPermissionEnabled(parsed[cajaSubPermissionKey(subId)]);
+  }
+  const userRow = queryOne('SELECT role, production_area_id FROM users WHERE id = ?', [req.params.id]);
+  const roleLc = String(userRow?.role || '').toLowerCase();
+  if (['produccion', 'cocina', 'bar'].includes(roleLc)) {
+    const area = String(userRow?.production_area_id || '').trim().toLowerCase();
+    const multiStation = Boolean(permissions.cocina && permissions.bar)
+      || Boolean(permissions.produccion && permissions.cocina)
+      || Boolean(permissions.produccion && permissions.bar);
+    if (multiStation) {
+      permissions.produccion = false;
+      permissions.cocina = false;
+      permissions.bar = false;
+      if (roleLc === 'bar' || area === 'bar') permissions.bar = true;
+      else if (area && area !== 'cocina' && area !== 'bar') permissions.produccion = true;
+      else permissions.cocina = true;
+    }
   }
   res.json(permissions);
 });

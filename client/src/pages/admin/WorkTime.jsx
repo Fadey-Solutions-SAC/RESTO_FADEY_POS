@@ -173,11 +173,6 @@ export default function WorkTime() {
 
   return (
     <div className="space-y-4">
-      {(analytics?.jornada_source === 'qr' || (Array.isArray(sessions) && sessions.some((s) => s.jornada_source === 'qr'))) ? (
-        <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-          Horas y jornadas según marcación QR (entrada/salida). Ventas y cuentas siguen atribuidas al usuario en el POS.
-        </div>
-      ) : null}
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <InlineDateField

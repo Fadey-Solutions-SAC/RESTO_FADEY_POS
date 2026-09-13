@@ -356,6 +356,184 @@ function syncEmployeesFromUsers(restaurantId) {
   }
 }
 
+function currentMonthBounds(timeZone = 'America/Lima') {
+  let y;
+  let m;
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+    const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    y = Number(map.year);
+    m = Number(map.month);
+  } catch {
+    const now = new Date();
+    y = now.getFullYear();
+    m = now.getMonth() + 1;
+  }
+  const from = `${y}-${String(m).padStart(2, '0')}-01`;
+  const last = new Date(y, m, 0).getDate();
+  const to = `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+  return { from, to, year: y, month: m };
+}
+
+function roundMoney(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+/**
+ * Acumula pago del periodo (mes actual por defecto) según jornadas culminadas.
+ * - dia: +tarifa por cada día con salida registrada
+ * - hora: horas normales × tarifa + horas extra × tarifa × 1.25
+ * - mes: tarifa mensual del periodo (+ extra si hay overtime)
+ */
+function computePayrollDue({
+  employeeId,
+  userId,
+  payMode,
+  payRate,
+  maxHours = 8,
+  from = '',
+  to = '',
+} = {}) {
+  const modeRaw = String(payMode || '').trim().toLowerCase();
+  const mode = modeRaw === 'jornada' ? 'dia' : modeRaw;
+  const rate = Number(payRate || 0);
+  const bounds = from && to ? { from, to } : currentMonthBounds(hrTimeZone());
+  const empty = {
+    period_from: bounds.from,
+    period_to: bounds.to,
+    pay_mode: mode || '',
+    rate,
+    days_completed: 0,
+    hours_normal: 0,
+    hours_overtime: 0,
+    hours_total: 0,
+    amount_base: 0,
+    amount_overtime: 0,
+    amount_due: 0,
+    summary: '',
+  };
+  if (!mode || !Number.isFinite(rate) || rate <= 0 || !employeeId) return empty;
+
+  const OT_MULT = 1.25;
+  const dayHours = Math.max(1, Number(maxHours) || 8);
+  let units = [];
+
+  if (isAsistenciaQrActiva()) {
+    units = queryAll(
+      `SELECT a.work_date,
+              COALESCE(a.worked_minutes, 0) AS worked_minutes,
+              COALESCE(a.overtime_minutes, 0) AS overtime_minutes
+       FROM hr_attendance a
+       WHERE a.employee_id = ?
+         AND a.work_date >= date(?)
+         AND a.work_date <= date(?)
+         AND a.check_in_at IS NOT NULL
+         AND trim(coalesce(a.check_out_at, '')) != ''
+         AND IFNULL(a.status, '') != 'leave'`,
+      [employeeId, bounds.from, bounds.to]
+    ) || [];
+  } else if (userId) {
+    const { effectiveWorkedMinutesExpr } = require('../lib/workSessionSql');
+    const eff = effectiveWorkedMinutesExpr('s');
+    const dayCap = Math.round(dayHours * 60);
+    units = (queryAll(
+      `SELECT date(datetime(s.login_at, 'localtime')) AS work_date,
+              COALESCE(SUM(${eff}), 0) AS worked_minutes
+       FROM user_work_sessions s
+       WHERE s.user_id = ?
+         AND s.logout_at IS NOT NULL
+         AND date(datetime(s.login_at, 'localtime')) >= date(?)
+         AND date(datetime(s.login_at, 'localtime')) <= date(?)
+       GROUP BY date(datetime(s.login_at, 'localtime'))`,
+      [userId, bounds.from, bounds.to]
+    ) || []).map((r) => {
+      const worked = Math.max(0, Number(r.worked_minutes || 0));
+      const ot = Math.max(0, worked - dayCap);
+      return { work_date: r.work_date, worked_minutes: worked, overtime_minutes: ot };
+    });
+  }
+
+  const daysSet = new Set();
+  let normalMin = 0;
+  let otMin = 0;
+  for (const u of units) {
+    if (u.work_date) daysSet.add(String(u.work_date));
+    const worked = Math.max(0, Number(u.worked_minutes || 0));
+    const ot = Math.max(0, Number(u.overtime_minutes || 0));
+    const normal = Math.max(0, worked - ot);
+    normalMin += normal;
+    otMin += ot;
+  }
+
+  const daysCompleted = daysSet.size;
+  const hoursNormal = normalMin / 60;
+  const hoursOt = otMin / 60;
+  const hoursTotal = (normalMin + otMin) / 60;
+
+  let amountBase = 0;
+  let amountOt = 0;
+
+  if (mode === 'dia') {
+    amountBase = daysCompleted * rate;
+    const hourlyEq = rate / dayHours;
+    amountOt = hoursOt * hourlyEq * OT_MULT;
+  } else if (mode === 'hora') {
+    amountBase = hoursNormal * rate;
+    amountOt = hoursOt * rate * OT_MULT;
+  } else if (mode === 'mes') {
+    amountBase = daysCompleted > 0 ? rate : 0;
+    const hourlyEq = rate / (22 * dayHours);
+    amountOt = hoursOt * hourlyEq * OT_MULT;
+  }
+
+  const amountDue = roundMoney(amountBase + amountOt);
+  amountBase = roundMoney(amountBase);
+  amountOt = roundMoney(amountOt);
+
+  const parts = [];
+  if (mode === 'dia') {
+    parts.push(`${daysCompleted} día(s) × ${roundMoney(rate).toFixed(2)}`);
+  } else if (mode === 'hora') {
+    parts.push(`${hoursNormal.toFixed(2)} h × ${roundMoney(rate).toFixed(2)}`);
+  } else if (mode === 'mes') {
+    parts.push(daysCompleted > 0 ? `Mes ${bounds.from.slice(0, 7)}` : 'Sin jornadas culminadas');
+  }
+  if (amountOt > 0) {
+    parts.push(`extra ${hoursOt.toFixed(2)} h (+${amountOt.toFixed(2)})`);
+  }
+  const summary = parts.length
+    ? `${parts.join(' · ')} → S/ ${amountDue.toFixed(2)}`
+    : '';
+
+  return {
+    period_from: bounds.from,
+    period_to: bounds.to,
+    pay_mode: mode,
+    rate,
+    days_completed: daysCompleted,
+    hours_normal: Math.round(hoursNormal * 100) / 100,
+    hours_overtime: Math.round(hoursOt * 100) / 100,
+    hours_total: Math.round(hoursTotal * 100) / 100,
+    amount_base: amountBase,
+    amount_overtime: amountOt,
+    amount_due: amountDue,
+    summary,
+  };
+}
+
+function scheduleMaxHoursForEmployee(row) {
+  if (row?.schedule_id) {
+    const s = queryOne('SELECT max_hours FROM hr_schedules WHERE id = ?', [row.schedule_id]);
+    if (s && Number(s.max_hours) > 0) return Number(s.max_hours);
+  }
+  return 8;
+}
+
 function employeePublic(row, extra = {}) {
   if (!row) return null;
   const payModeRaw = String(row.payroll_pay_mode || '').trim().toLowerCase();
@@ -374,6 +552,13 @@ function employeePublic(row, extra = {}) {
   } catch (_) {
     /* keep stored */
   }
+  const payrollDue = computePayrollDue({
+    employeeId: row.id,
+    userId: row.user_id,
+    payMode,
+    payRate: Number(row.payroll_amount || 0),
+    maxHours: scheduleMaxHoursForEmployee(row),
+  });
   return {
     id: row.id,
     user_id: row.user_id,
@@ -421,6 +606,7 @@ function employeePublic(row, extra = {}) {
       if (m === 'cuenta') return '';
       return String(row.phone || '').trim();
     })(),
+    payroll_due: payrollDue,
     employment_contract: (() => {
       try {
         const { employmentContractSummary } = require('./employmentContractStore');
@@ -1586,4 +1772,5 @@ module.exports = {
   meToday,
   adjustmentsOf,
   calc,
+  computePayrollDue,
 };

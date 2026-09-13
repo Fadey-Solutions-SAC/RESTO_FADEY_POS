@@ -140,14 +140,15 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
     const ratingByUser = new Map(
       (Array.isArray(waiterRatings) ? waiterRatings : []).map((w) => [w.waiter_user_id, w]),
     );
+    const qrHoursOnly = data?.jornada_source === 'qr';
     return (
       <div className="space-y-4">
         <div className="card overflow-x-auto">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold text-[var(--ui-body-text)]">Productividad</h3>
-            {data?.jornada_source === 'qr' ? (
+            {qrHoursOnly ? (
               <span className="text-[11px] rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-sky-800">
-                Horas = jornada QR
+                Horas = jornada QR (sin tiempo activo de sesión)
               </span>
             ) : null}
           </div>
@@ -157,7 +158,7 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
                 <th className="py-2 pr-2">Empleado</th>
                 <th className="py-2">Rol</th>
                 <th className="py-2">Horas</th>
-                <th className="py-2">Activo</th>
+                {qrHoursOnly ? null : <th className="py-2">Activo</th>}
                 <th className="py-2">Cuentas</th>
                 <th className="py-2">Ventas</th>
                 <th className="py-2">Delivery</th>
@@ -173,7 +174,9 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
                     <td className="py-2 pr-2 font-medium">{p.full_name}</td>
                     <td className="py-2">{ROLE_LABEL[p.role] || p.role}</td>
                     <td className="py-2">{formatMinutes(p.worked_minutes)}</td>
-                    <td className="py-2">{formatMinutes(p.active_minutes)}</td>
+                    {qrHoursOnly ? null : (
+                      <td className="py-2">{formatMinutes(p.active_minutes)}</td>
+                    )}
                     <td className="py-2">{p.orders_paid}</td>
                     <td className="py-2">{formatMoney(p.sales_total)}</td>
                     <td className="py-2">{p.deliveries || '—'}</td>

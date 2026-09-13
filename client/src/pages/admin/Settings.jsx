@@ -66,9 +66,8 @@ const ALL_MODULES = [
   { id: 'ventas', label: 'Ventas', icon: MdAttachMoney, defaultRoles: ['admin', 'cajero'] },
   { id: 'caja', label: 'Caja', icon: MdPointOfSale, defaultRoles: ['admin', 'cajero'] },
   { id: 'mesas', label: 'Mesas', icon: MdTableBar, defaultRoles: ['admin', 'mozo'] },
-  { id: 'produccion', label: 'Producción', icon: MdKitchen, defaultRoles: ['admin', 'produccion'] },
-  { id: 'cocina', label: 'Cocina (legado)', icon: MdKitchen, defaultRoles: ['admin', 'produccion'] },
-  { id: 'bar', label: 'Bar (legado)', icon: MdLocalBar, defaultRoles: ['admin', 'produccion'] },
+  { id: 'cocina', label: 'Cocina', icon: MdKitchen, defaultRoles: ['admin'] },
+  { id: 'bar', label: 'Bar', icon: MdLocalBar, defaultRoles: ['admin'] },
   { id: 'reservas', label: 'Reservas', icon: MdEventSeat, defaultRoles: ['admin', 'cajero', 'mozo'] },
   { id: 'auto_pedido', label: 'Auto pedido', icon: MdTouchApp, defaultRoles: ['admin', 'mozo'] },
   { id: 'creditos', label: 'Créditos', icon: MdCreditCard, defaultRoles: ['admin', 'cajero'] },
@@ -106,6 +105,36 @@ function uiStaffRole(role) {
 
 function isProductionStaffRole(role) {
   return ['produccion', 'cocina', 'bar'].includes(String(role || '').toLowerCase());
+}
+
+/** Solo el área asignada (cocina/bar); áreas custom no usan módulo «Producción». */
+function defaultProductionAreaPermissions(user) {
+  const role = String(user?.role || '').toLowerCase();
+  const area = String(user?.production_area_id || '').trim().toLowerCase();
+  const out = { cocina: false, bar: false, produccion: false };
+  if (role === 'bar' || area === 'bar') {
+    out.bar = true;
+  } else if (role === 'cocina' || area === 'cocina' || (role === 'produccion' && !area)) {
+    out.cocina = true;
+  } else if (area) {
+    // Área personalizada: acceso por vinculación de área, sin módulo aparte.
+    out.produccion = true;
+  } else {
+    out.cocina = true;
+  }
+  return out;
+}
+
+function isModuleDefaultForUser(mod, user) {
+  if (!mod || !user) return false;
+  if (isProductionStaffRole(user.role)) {
+    if (mod.id === 'cocina' || mod.id === 'bar') {
+      return Boolean(defaultProductionAreaPermissions(user)[mod.id]);
+    }
+    return false;
+  }
+  const role = String(user.role || '').toLowerCase();
+  return (mod.defaultRoles || []).includes(role) || (mod.defaultRoles || []).includes(uiStaffRole(role));
 }
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
@@ -2685,7 +2714,15 @@ function UsersSection({
 
   const savePermissions = async () => {
     try {
-      await api.put(`/users/${permsUser.id}/permissions`, { permissions: perms });
+      const payload = { ...perms };
+      if (isProductionStaffRole(permsUser?.role)) {
+        const areaDefaults = defaultProductionAreaPermissions(permsUser);
+        // No exponer módulo «Producción»; conservar flag interno solo para áreas custom.
+        payload.produccion = Boolean(areaDefaults.produccion);
+        if (!Object.prototype.hasOwnProperty.call(payload, 'cocina')) payload.cocina = false;
+        if (!Object.prototype.hasOwnProperty.call(payload, 'bar')) payload.bar = false;
+      }
+      await api.put(`/users/${permsUser.id}/permissions`, { permissions: payload });
       toast.success(`Permisos actualizados para ${permsUser.full_name}. Si ya está conectado, que cierre sesión y vuelva a entrar (o cambie de pestaña).`);
       setShowPermsModal(false);
     } catch (err) { toast.error(err.message); }
@@ -2698,7 +2735,17 @@ function UsersSection({
   const resetToDefaults = () => {
     if (!permsUser) return;
     const defaults = {};
-    ALL_MODULES.forEach(m => { defaults[m.id] = m.defaultRoles.includes(permsUser.role); });
+    ALL_MODULES.forEach((m) => {
+      defaults[m.id] = isModuleDefaultForUser(m, permsUser);
+    });
+    if (isProductionStaffRole(permsUser.role)) {
+      const areaDefaults = defaultProductionAreaPermissions(permsUser);
+      defaults.cocina = areaDefaults.cocina;
+      defaults.bar = areaDefaults.bar;
+    }
+    CAJA_EXTRA_PERMISSIONS.forEach((p) => {
+      defaults[p.key] = false;
+    });
     setPerms(defaults);
   };
 
@@ -2977,7 +3024,7 @@ function UsersSection({
             <div className="space-y-1 max-h-96 overflow-y-auto">
               {ALL_MODULES.map(mod => {
                 const Icon = mod.icon;
-                const isDefault = mod.defaultRoles.includes(uiStaffRole(permsUser?.role));
+                const isDefault = isModuleDefaultForUser(mod, permsUser);
                 const isEnabled = perms[mod.id] || false;
                 return (
                   <div

@@ -386,7 +386,7 @@ function buildProductivityByUser(from, to, userId) {
         COALESCE(NULLIF(u.role, ''), e.position, '') AS role,
         COUNT(*) AS sessions_count,
         COALESCE(SUM(${workedEx}), 0) AS worked_minutes,
-        COALESCE(SUM(${workedEx}), 0) AS active_minutes,
+        NULL AS active_minutes,
         COALESCE(SUM(${workedEx}), 0) AS raw_minutes,
         COALESCE(SUM(a.break_minutes), 0) AS pause_minutes
        FROM hr_attendance a
@@ -489,7 +489,11 @@ function buildProductivityByUser(from, to, userId) {
       deliveries: Number(del.deliveries || 0),
       avg_delivery_minutes: Math.round(Number(del.avg_delivery_minutes || 0)),
       productivity_per_hour: Math.round(productivityScore / hours),
-      idle_minutes: Math.max(0, Number(r.raw_minutes || 0) - Number(r.active_minutes || 0)),
+      active_minutes: r.active_minutes == null ? null : Number(r.active_minutes || 0),
+      idle_minutes:
+        r.active_minutes == null
+          ? null
+          : Math.max(0, Number(r.raw_minutes || 0) - Number(r.active_minutes || 0)),
     };
   });
 }

@@ -17,18 +17,28 @@ const fieldClass =
   'w-full min-w-0 h-9 px-2.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-sm text-[var(--ui-body-text)]';
 
 function payAmountHint(mode) {
-  if (mode === 'hora') return 'Monto por hora (S/)';
-  if (mode === 'dia') return 'Monto por día (S/)';
-  if (mode === 'mes') return 'Monto mensual (S/)';
-  return 'Monto (S/)';
+  if (mode === 'hora') return 'Tarifa por hora (S/)';
+  if (mode === 'dia') return 'Tarifa por día (S/)';
+  if (mode === 'mes') return 'Tarifa mensual (S/)';
+  return 'Tarifa (S/)';
 }
 
 function formatPaySummary(e) {
+  const due = e?.payroll_due;
+  if (due?.summary) return due.summary;
   const mode = String(e.payroll_pay_mode || '').toLowerCase();
   const amount = Number(e.payroll_amount || 0);
   if (!mode || !Number.isFinite(amount) || amount <= 0) return null;
   const label = PAY_MODE_LABEL[mode] || mode;
-  return `${label} · ${formatCurrency(amount)}`;
+  return `${label} · tarifa ${formatCurrency(amount)}`;
+}
+
+function formatMontoAPagar(e) {
+  const due = e?.payroll_due;
+  if (due && Number.isFinite(Number(due.amount_due))) {
+    return formatCurrency(Number(due.amount_due));
+  }
+  return null;
 }
 
 function whatsappHref(rawPhone, employeeName = '') {
@@ -257,10 +267,22 @@ export default function HrStaffTab({ employees, branches, onReload }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <DetailRow label="Formato de pago" value={payModeLabel(inspect.payroll_pay_mode)} />
                 <DetailRow
-                  label="Monto (S/)"
+                  label="Monto a pagar"
+                  value={formatMontoAPagar(inspect)}
+                />
+                <DetailRow
+                  label="Tarifa configurada"
                   value={
                     Number(inspect.payroll_amount) > 0
-                      ? formatCurrency(Number(inspect.payroll_amount))
+                      ? `${formatCurrency(Number(inspect.payroll_amount))}${
+                          inspect.payroll_pay_mode === 'hora'
+                            ? ' / h'
+                            : inspect.payroll_pay_mode === 'dia'
+                              ? ' / día'
+                              : inspect.payroll_pay_mode === 'mes'
+                                ? ' / mes'
+                                : ''
+                        }`
                       : null
                   }
                 />
@@ -274,6 +296,29 @@ export default function HrStaffTab({ employees, branches, onReload }) {
                 />
                 <DetailRow label="Método de pago" value={paymentMethodLabel(inspect)} />
                 <DetailRow label="Nota / detalle" value={inspect.payroll_schedule_note} />
+                {inspect.payroll_due?.days_completed != null && inspect.payroll_pay_mode === 'dia' ? (
+                  <DetailRow
+                    label="Días culminados (mes)"
+                    value={String(inspect.payroll_due.days_completed)}
+                  />
+                ) : null}
+                {inspect.payroll_due && (inspect.payroll_pay_mode === 'hora' || Number(inspect.payroll_due.hours_overtime) > 0) ? (
+                  <DetailRow
+                    label="Horas (mes)"
+                    value={
+                      `Normal ${Number(inspect.payroll_due.hours_normal || 0).toFixed(2)} h`
+                      + (Number(inspect.payroll_due.hours_overtime) > 0
+                        ? ` · Extra ${Number(inspect.payroll_due.hours_overtime).toFixed(2)} h`
+                        : '')
+                    }
+                  />
+                ) : null}
+                {Number(inspect.payroll_due?.amount_overtime) > 0 ? (
+                  <DetailRow
+                    label="Pago horas extra"
+                    value={formatCurrency(Number(inspect.payroll_due.amount_overtime))}
+                  />
+                ) : null}
                 <DetailRow label="Resumen" value={formatPaySummary(inspect)} />
               </div>
               {(inspect.payroll_payment_ref || inspect.phone) && inspect.payroll_payment_method !== 'cuenta' ? (
