@@ -9,6 +9,7 @@ const { emitInventoryUpdate } = require('../socketBroadcast');
 const { createRateLimiter } = require('../middleware/rateLimit');
 const { JWT_SECRET } = require('../middleware/auth');
 const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
+const { getTableDisplayLabel } = require('../utils/tableDisplayLabel');
 const { loadActiveTableOrders } = require('../services/tableOrdersQueryService');
 
 const router = express.Router();
@@ -333,7 +334,7 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
     delivery_address: '',
     notes: notes || '',
     payment_method: payment_method || 'efectivo',
-    customer_name: String(customer_name || '').trim() || `Mesa ${table.number}`,
+    customer_name: String(customer_name || '').trim() || getTableDisplayLabel(table),
     discount: 0,
     customer_id: null,
   };

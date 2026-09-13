@@ -1977,6 +1977,9 @@ async function initDatabase() {
     if (!(tableColsCaja || []).some((c) => c.name === 'caja_station_id')) {
       db.run("ALTER TABLE tables ADD COLUMN caja_station_id TEXT DEFAULT ''");
     }
+    if (!(tableColsCaja || []).some((c) => c.name === 'display_label')) {
+      db.run("ALTER TABLE tables ADD COLUMN display_label TEXT DEFAULT 'number'");
+    }
 
     const seqExists = queryOne('SELECT COUNT(*) as c FROM order_sequence');
     if (seqExists.c === 0) {

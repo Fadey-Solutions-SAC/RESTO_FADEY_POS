@@ -2,6 +2,7 @@
 
 import { toLocalDateKey, parseApiDate, APP_DISPLAY_TIMEZONE } from './api';
 import { UI_BADGE } from './uiBadges';
+import { getTableDisplayLabel } from './mesaMapTableVisual';
 
 /**
  * Identidad de línea para mesa / precuenta / cobro: mismo producto, variante, notas y precio unitario → se agrupan cantidades.
@@ -368,7 +369,7 @@ export function buildDineInOrderPayload({ table, cartItems, extra = {} }) {
     table_number: String(table?.number ?? '').trim(),
     table_id: String(table?.id ?? '').trim(),
     target_order_id: '',
-    customer_name: `Mesa ${table?.number ?? ''}`,
+    customer_name: getTableDisplayLabel(table),
     payment_method: 'efectivo',
     ...extra,
   };

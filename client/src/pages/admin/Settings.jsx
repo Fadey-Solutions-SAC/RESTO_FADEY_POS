@@ -53,6 +53,7 @@ import {
 import { syncLocaleFromRegional, setAppLocale } from '../../i18n';
 import { normalizeConfigFromApi, mergeSavedAppSettings } from '../../utils/appSettingsNormalize';
 import { salonSlugFromName, reorderSalonList, tablesForSalon } from '../../utils/salonesUtils';
+import { getTableDisplayLabel, normalizeTableDisplayLabel } from '../../utils/mesaMapTableVisual';
 import SettingsAppearancePanel from '../../components/settings/SettingsAppearancePanel';
 import ProductionAreasSection from '../../components/settings/ProductionAreasSection';
 import { useSocket } from '../../hooks/useSocket';
@@ -107,18 +108,20 @@ function isProductionStaffRole(role) {
   return ['produccion', 'cocina', 'bar'].includes(String(role || '').toLowerCase());
 }
 
-/** Solo el área asignada (cocina/bar); áreas custom no usan módulo «Producción». */
+/** Permisos de estación según el área vinculada (nunca forzar Cocina si el área es otra). */
 function defaultProductionAreaPermissions(user) {
   const role = String(user?.role || '').toLowerCase();
   const area = String(user?.production_area_id || '').trim().toLowerCase();
   const out = { cocina: false, bar: false, produccion: false };
   if (role === 'bar' || area === 'bar') {
     out.bar = true;
-  } else if (role === 'cocina' || area === 'cocina' || (role === 'produccion' && !area)) {
+  } else if (role === 'cocina' || area === 'cocina') {
     out.cocina = true;
   } else if (area) {
-    // Área personalizada: acceso por vinculación de área, sin módulo aparte.
+    // Área personalizada (ej. Parrilla): acceso por área, no por Cocina/Bar.
     out.produccion = true;
+  } else if (role === 'produccion') {
+    // Sin área aún: no asignar Cocina por defecto.
   } else {
     out.cocina = true;
   }
@@ -128,6 +131,7 @@ function defaultProductionAreaPermissions(user) {
 function isModuleDefaultForUser(mod, user) {
   if (!mod || !user) return false;
   if (isProductionStaffRole(user.role)) {
+    if (mod.isProductionAreaLink) return true;
     if (mod.id === 'cocina' || mod.id === 'bar') {
       return Boolean(defaultProductionAreaPermissions(user)[mod.id]);
     }
@@ -135,6 +139,33 @@ function isModuleDefaultForUser(mod, user) {
   }
   const role = String(user.role || '').toLowerCase();
   return (mod.defaultRoles || []).includes(role) || (mod.defaultRoles || []).includes(uiStaffRole(role));
+}
+
+function buildPermModulesForUser(user, areaNameById) {
+  if (!isProductionStaffRole(user?.role)) return ALL_MODULES;
+  const areaId = String(user?.production_area_id || '').trim();
+  const areaLc = areaId.toLowerCase();
+  const areaName = (areaNameById && areaNameById.get(areaId)) || areaId || 'Área de producción';
+  const withoutStations = ALL_MODULES.filter((m) => m.id !== 'cocina' && m.id !== 'bar');
+  const insertAt = Math.max(0, withoutStations.findIndex((m) => m.id === 'mesas') + 1);
+  const areaRow = {
+    id: '_production_area',
+    label: areaName,
+    icon: MdKitchen,
+    defaultRoles: ['produccion'],
+    isProductionAreaLink: true,
+    productionAreaId: areaId,
+    hint: areaId
+      ? 'Área vinculada en Áreas de producción'
+      : 'Vincula un área en Configuración → Áreas de producción',
+  };
+  // Si el área es cocina/bar legado, mostrar con ese nombre; si es custom, solo el área.
+  if (areaLc === 'cocina' || areaLc === 'bar') {
+    areaRow.label = areaLc === 'bar' ? 'Bar' : 'Cocina';
+  }
+  const next = [...withoutStations];
+  next.splice(insertAt, 0, areaRow);
+  return next;
 }
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
@@ -2692,22 +2723,48 @@ function UsersSection({
   const [permsLoading, setPermsLoading] = useState(false);
 
   const openPermissions = async (u) => {
-    setPermsUser(u);
+    let userForPerms = u;
+    // Si no trae área en el listado, resolver por encargado en Áreas de producción.
+    if (isProductionStaffRole(u?.role) && !String(u?.production_area_id || '').trim()) {
+      const linked = (appSettings?.production_areas || []).find((a) =>
+        (Array.isArray(a?.encargado_user_ids) ? a.encargado_user_ids : []).map(String).includes(String(u.id))
+      );
+      if (linked?.id) {
+        userForPerms = { ...u, production_area_id: String(linked.id).trim() };
+      }
+    }
+    setPermsUser(userForPerms);
     setPermsLoading(true);
     setShowPermsModal(true);
     try {
       const data = await api.get(`/users/${u.id}/permissions`);
       const defaults = {};
-      ALL_MODULES.forEach(m => {
+      ALL_MODULES.forEach((m) => {
         defaults[m.id] = data[m.id] === true;
       });
       CAJA_EXTRA_PERMISSIONS.forEach((p) => {
         defaults[p.key] = data[p.key] === true;
       });
+      if (isProductionStaffRole(userForPerms.role)) {
+        const areaDefaults = defaultProductionAreaPermissions(userForPerms);
+        defaults.cocina = areaDefaults.cocina;
+        defaults.bar = areaDefaults.bar;
+        defaults.produccion = areaDefaults.produccion;
+        defaults._production_area = Boolean(
+          areaDefaults.cocina || areaDefaults.bar || areaDefaults.produccion || String(userForPerms.production_area_id || '').trim()
+        );
+      }
       setPerms(defaults);
     } catch {
       const defaults = {};
-      ALL_MODULES.forEach(m => { defaults[m.id] = false; });
+      ALL_MODULES.forEach((m) => { defaults[m.id] = false; });
+      if (isProductionStaffRole(userForPerms.role)) {
+        const areaDefaults = defaultProductionAreaPermissions(userForPerms);
+        Object.assign(defaults, areaDefaults);
+        defaults._production_area = Boolean(
+          areaDefaults.cocina || areaDefaults.bar || areaDefaults.produccion || String(userForPerms.production_area_id || '').trim()
+        );
+      }
       setPerms(defaults);
     } finally { setPermsLoading(false); }
   };
@@ -2715,12 +2772,18 @@ function UsersSection({
   const savePermissions = async () => {
     try {
       const payload = { ...perms };
+      delete payload._production_area;
       if (isProductionStaffRole(permsUser?.role)) {
         const areaDefaults = defaultProductionAreaPermissions(permsUser);
-        // No exponer módulo «Producción»; conservar flag interno solo para áreas custom.
-        payload.produccion = Boolean(areaDefaults.produccion);
-        if (!Object.prototype.hasOwnProperty.call(payload, 'cocina')) payload.cocina = false;
-        if (!Object.prototype.hasOwnProperty.call(payload, 'bar')) payload.bar = false;
+        const areaOn = perms._production_area !== false;
+        payload.cocina = false;
+        payload.bar = false;
+        payload.produccion = false;
+        if (areaOn) {
+          payload.cocina = areaDefaults.cocina;
+          payload.bar = areaDefaults.bar;
+          payload.produccion = areaDefaults.produccion;
+        }
       }
       await api.put(`/users/${permsUser.id}/permissions`, { permissions: payload });
       toast.success(`Permisos actualizados para ${permsUser.full_name}. Si ya está conectado, que cierre sesión y vuelva a entrar (o cambie de pestaña).`);
@@ -2729,7 +2792,7 @@ function UsersSection({
   };
 
   const togglePerm = (moduleId) => {
-    setPerms(prev => ({ ...prev, [moduleId]: !prev[moduleId] }));
+    setPerms((prev) => ({ ...prev, [moduleId]: !prev[moduleId] }));
   };
 
   const resetToDefaults = () => {
@@ -2742,6 +2805,10 @@ function UsersSection({
       const areaDefaults = defaultProductionAreaPermissions(permsUser);
       defaults.cocina = areaDefaults.cocina;
       defaults.bar = areaDefaults.bar;
+      defaults.produccion = areaDefaults.produccion;
+      defaults._production_area = Boolean(
+        areaDefaults.cocina || areaDefaults.bar || areaDefaults.produccion || String(permsUser.production_area_id || '').trim()
+      );
     }
     CAJA_EXTRA_PERMISSIONS.forEach((p) => {
       defaults[p.key] = false;
@@ -3022,10 +3089,10 @@ function UsersSection({
             </div>
 
             <div className="space-y-1 max-h-96 overflow-y-auto">
-              {ALL_MODULES.map(mod => {
+              {buildPermModulesForUser(permsUser, areaNameById).map((mod) => {
                 const Icon = mod.icon;
                 const isDefault = isModuleDefaultForUser(mod, permsUser);
-                const isEnabled = perms[mod.id] || false;
+                const isEnabled = Boolean(perms[mod.id]);
                 return (
                   <div
                     key={mod.id}
@@ -3040,10 +3107,16 @@ function UsersSection({
                       </div>
                       <div>
                         <p className={`text-sm font-medium ${isEnabled ? 'text-emerald-800' : 'ui-text-muted'}`}>{mod.label}</p>
-                        {isDefault && <p className="text-[10px] text-[var(--ui-muted)]">Incluido por defecto en rol {ROLES[uiStaffRole(permsUser?.role)]?.label}</p>}
+                        {mod.isProductionAreaLink ? (
+                          <p className="text-[10px] text-[var(--ui-muted)]">
+                            {mod.hint || 'Área de producción vinculada'}
+                          </p>
+                        ) : isDefault ? (
+                          <p className="text-[10px] text-[var(--ui-muted)]">Incluido por defecto en rol {ROLES[uiStaffRole(permsUser?.role)]?.label}</p>
+                        ) : null}
                       </div>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer" onClick={e => e.stopPropagation()}>
+                    <label className="relative inline-flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={isEnabled} onChange={() => togglePerm(mod.id)} className="sr-only peer" />
                       <div className="w-10 h-5 bg-slate-300 peer-checked:bg-emerald-500 rounded-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5" />
                     </label>
@@ -3120,7 +3193,7 @@ function SalonMesasSection({ appSettings }) {
 
   const [showMesaModal, setShowMesaModal] = useState(false);
   const [editMesa, setEditMesa] = useState(null);
-  const [mesaForm, setMesaForm] = useState({ number: '', name: '', capacity: 4, zone: 'principal', caja_station_id: defaultCajaId });
+  const [mesaForm, setMesaForm] = useState({ number: '', name: '', capacity: 4, zone: 'principal', caja_station_id: defaultCajaId, display_label: 'number' });
 
   useEffect(() => {
     if (!activeCajas.some((c) => c.id === selectedCajaId)) {
@@ -3274,7 +3347,7 @@ function SalonMesasSection({ appSettings }) {
   const openNewMesa = (salonId) => {
     const nextNum = tables.length > 0 ? Math.max(...tables.map(t => t.number)) + 1 : 1;
     setEditMesa(null);
-    setMesaForm({ number: nextNum, name: '', capacity: 4, zone: salonId, caja_station_id: selectedCajaId });
+    setMesaForm({ number: nextNum, name: '', capacity: 4, zone: salonId, caja_station_id: selectedCajaId, display_label: 'number' });
     setShowMesaModal(true);
   };
 
@@ -3286,6 +3359,7 @@ function SalonMesasSection({ appSettings }) {
       capacity: t.capacity || 4,
       zone: t.zone || 'principal',
       caja_station_id: mesaCajaId(t) || selectedCajaId,
+      display_label: normalizeTableDisplayLabel(t.display_label),
     });
     setShowMesaModal(true);
   };
@@ -3310,7 +3384,7 @@ function SalonMesasSection({ appSettings }) {
   };
 
   const deleteMesa = async (t) => {
-    if (!confirm(`¿Eliminar "${t.name || 'Mesa ' + t.number}"?`)) return;
+    if (!confirm(`¿Eliminar "${getTableDisplayLabel(t)}"?`)) return;
     try {
       await api.delete(`/tables/${t.id}`);
       toast.success('Mesa eliminada');
@@ -3406,7 +3480,7 @@ function SalonMesasSection({ appSettings }) {
                             </div>
                           </div>
                         </td>
-                        <td className="p-3 font-medium text-slate-700">{t.name || `Mesa ${t.number}`}</td>
+                        <td className="p-3 font-medium text-slate-700">{getTableDisplayLabel(t)}</td>
                         <td className="p-3 text-center">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded-full text-xs font-medium text-[var(--ui-muted)]">
                             <MdPeople className="text-sm" /> {t.capacity}
@@ -3514,7 +3588,51 @@ function SalonMesasSection({ appSettings }) {
             <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Número</label><input type="number" value={mesaForm.number} onChange={e => setMesaForm({ ...mesaForm, number: parseInt(e.target.value) })} className="input-field" required min="1" /></div>
             <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Capacidad (personas)</label><input type="number" value={mesaForm.capacity} onChange={e => setMesaForm({ ...mesaForm, capacity: parseInt(e.target.value) })} className="input-field" required min="1" max="20" /></div>
           </div>
-          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre (opcional)</label><input value={mesaForm.name} onChange={e => setMesaForm({ ...mesaForm, name: e.target.value })} className="input-field" placeholder={`Mesa ${mesaForm.number}`} /></div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre (opcional)</label>
+            <input
+              value={mesaForm.name}
+              onChange={(e) => {
+                const nextName = e.target.value;
+                setMesaForm((prev) => ({
+                  ...prev,
+                  name: nextName,
+                  display_label: String(nextName || '').trim() ? prev.display_label : 'number',
+                }));
+              }}
+              className="input-field"
+              placeholder={`Mesa ${mesaForm.number}`}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Mostrar en Caja y Mesas</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setMesaForm({ ...mesaForm, display_label: 'number' })}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  mesaForm.display_label === 'number'
+                    ? 'border-[var(--ui-accent)] bg-[var(--ui-accent)]/10 text-[var(--ui-body-text)]'
+                    : 'border-[color:var(--ui-border)] text-[var(--ui-muted)]'
+                }`}
+              >
+                Número ({mesaForm.number || '—'})
+              </button>
+              <button
+                type="button"
+                onClick={() => setMesaForm({ ...mesaForm, display_label: 'name' })}
+                disabled={!String(mesaForm.name || '').trim()}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  mesaForm.display_label === 'name'
+                    ? 'border-[var(--ui-accent)] bg-[var(--ui-accent)]/10 text-[var(--ui-body-text)]'
+                    : 'border-[color:var(--ui-border)] text-[var(--ui-muted)]'
+                }`}
+              >
+                Nombre ({String(mesaForm.name || '').trim() || '…'})
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-[var(--ui-muted)]">Así se verá la mesa en el mapa y en cobros.</p>
+          </div>
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Salón</label>
             <select value={mesaForm.zone} onChange={e => setMesaForm({ ...mesaForm, zone: e.target.value })} className="input-field">

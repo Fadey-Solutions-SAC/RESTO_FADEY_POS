@@ -871,6 +871,19 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     letter-spacing: -0.02em;
   }
 
+  .rf-mesa-map-tile__number--name {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    max-width: 90%;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.1;
+    text-transform: uppercase;
+  }
+
   .rf-mesa-map-tile__capacity {
     display: inline-flex;
     align-items: center;

@@ -1,5 +1,5 @@
 import { MdCallMerge, MdPerson } from 'react-icons/md';
-import { formatMesaMapTableNumber } from '../utils/mesaMapTableVisual';
+import { formatMesaMapTableNumber, getTableDisplayLabel } from '../utils/mesaMapTableVisual';
 
 /**
  * Mesa cuadrada para el mapa de caja (sin sillas).
@@ -16,6 +16,8 @@ export default function MesaMapTableTile({
 }) {
   const numberLabel = formatMesaMapTableNumber(table);
   const capacityLabel = String(chairCount);
+  const isNameLabel = String(table?.display_label || '').toLowerCase() === 'name'
+    && String(table?.name || '').trim();
 
   return (
     <button
@@ -30,13 +32,13 @@ export default function MesaMapTableTile({
       ]
         .filter(Boolean)
         .join(' ')}
-      title={table?.name || `Mesa ${numberLabel}`}
+      title={getTableDisplayLabel(table)}
     >
       <div className="rf-mesa-map-tile__table">
         {visualState === 'united' ? (
           <MdCallMerge className="rf-mesa-map-tile__union-icon" aria-hidden="true" />
         ) : null}
-        <span className="rf-mesa-map-tile__number">{numberLabel}</span>
+        <span className={`rf-mesa-map-tile__number${isNameLabel ? ' rf-mesa-map-tile__number--name' : ''}`}>{numberLabel}</span>
         <span className="rf-mesa-map-tile__capacity">
           <MdPerson className="rf-mesa-map-tile__capacity-icon" aria-hidden="true" />
           {capacityLabel}

@@ -14,6 +14,7 @@ import {
   reservationNotesHaveOrder,
 } from '../../utils/reservationKitchenTiming';
 import { filterTablesForReservationSelect } from '../../utils/reservationTableAvailability';
+import { getTableDisplayLabel } from '../../utils/mesaMapTableVisual';
 import {
   dismissReservationCajaToast,
   reservationCajaToastId,
@@ -250,7 +251,7 @@ export default function Reservas() {
   const tableLabel = (tableId) => {
     if (!tableId) return 'Sin mesa';
     const t = tableById.get(tableId);
-    return t ? (t.name || `Mesa ${t.number}`) : 'Mesa asignada';
+    return t ? getTableDisplayLabel(t) : 'Mesa asignada';
   };
 
   const assignTable = async (reservationId, tableId) => {
@@ -400,7 +401,7 @@ export default function Reservas() {
                         includeTableId: r.table_id,
                       }).map((t) => ({
                         value: t.id,
-                        label: `${t.name || `Mesa ${String(t.number).padStart(2, '0')}`} (Cap. ${t.capacity})`,
+                        label: `${getTableDisplayLabel(t)} (Cap. ${t.capacity})`,
                       })),
                     ]}
                   />
@@ -527,7 +528,7 @@ export default function Reservas() {
                 { value: '', label: 'Sin asignar' },
                 ...formSelectableTables.map((t) => ({
                   value: t.id,
-                  label: `${t.name || `Mesa ${String(t.number).padStart(2, '0')}`} (Cap. ${t.capacity})`,
+                  label: `${getTableDisplayLabel(t)} (Cap. ${t.capacity})`,
                 })),
               ]}
             />

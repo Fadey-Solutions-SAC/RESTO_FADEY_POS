@@ -16,6 +16,7 @@ const {
   resolveTableForDetail,
 } = require('../services/tableUnionService');
 const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
+const { normalizeDisplayLabel, getTableDisplayLabel } = require('../utils/tableDisplayLabel');
 const { DEFAULT_PRIMARY_CAJA_ID } = require('../cajaSettings');
 const { withTransaction } = require('../database');
 const { moveOrderItemsBetweenTablesTx } = require('../services/tableMoveItemsService');
@@ -188,7 +189,7 @@ router.patch('/:id/status', requireRole('admin', 'cajero', 'mozo'), (req, res) =
 
 router.post('/', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
   try {
-    const { number, name, capacity, zone, caja_station_id: cajaBody } = req.body;
+    const { number, name, capacity, zone, caja_station_id: cajaBody, display_label: displayBody } = req.body;
     if (!number) return res.status(400).json({ error: 'Número de mesa es requerido' });
     const existing = queryOne('SELECT id FROM tables WHERE number = ?', [number]);
     if (existing) return res.status(400).json({ error: `La mesa #${number} ya existe` });
@@ -200,9 +201,14 @@ router.post('/', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
       const salon = salones.find((s) => s.id === String(zone || 'principal').trim());
       cajaStationId = String(salon?.caja_station_id || '').trim();
     }
+    const displayLabel = normalizeDisplayLabel(displayBody);
+    const tableName = String(name || '').trim() || `Mesa ${number}`;
+    if (displayLabel === 'name' && !String(name || '').trim()) {
+      return res.status(400).json({ error: 'Indica un nombre para mostrar el nombre en Caja y Mesas' });
+    }
     runSql(
-      'INSERT INTO tables (id, number, name, capacity, zone, restaurant_id, caja_station_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, number, name || `Mesa ${number}`, capacity || 4, zone || 'principal', restaurant?.id, cajaStationId]
+      'INSERT INTO tables (id, number, name, capacity, zone, restaurant_id, caja_station_id, display_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, number, tableName, capacity || 4, zone || 'principal', restaurant?.id, cajaStationId, displayLabel]
     );
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [id]);
     const io = req.app.get('io');
@@ -213,7 +219,7 @@ router.post('/', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
 
 router.put('/:id', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
   try {
-    const { number, name, capacity, zone, caja_station_id: cajaBody } = req.body;
+    const { number, name, capacity, zone, caja_station_id: cajaBody, display_label: displayBody } = req.body;
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
     if (number && number !== table.number) {
@@ -227,21 +233,27 @@ router.put('/:id', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
       const salon = salones.find((s) => s.id === String(nextZone || '').trim());
       if (salon?.caja_station_id) cajaStationId = String(salon.caja_station_id).trim();
     }
-    runSql(
-      'UPDATE tables SET number = COALESCE(?, number), name = COALESCE(?, name), capacity = COALESCE(?, capacity), zone = COALESCE(?, zone), caja_station_id = ? WHERE id = ?',
-      [number, name, capacity, zone, cajaStationId, req.params.id]
-    );
-    if (number && String(number) !== String(table.number)) {
-      const nextNumber = String(number).trim();
-      runSql(
-        `UPDATE orders SET table_number = ?, customer_name = ?, updated_at = datetime('now')
-         WHERE table_id = ? AND type = 'dine_in'
-           AND status IN ('pending','preparing','ready')
-           AND IFNULL(TRIM(payment_status), 'pending') != 'paid'`,
-        [nextNumber, `Mesa ${nextNumber}`, req.params.id],
-      );
+    const nextName = name != null ? String(name).trim() : String(table.name || '').trim();
+    const nextDisplay = displayBody !== undefined
+      ? normalizeDisplayLabel(displayBody)
+      : normalizeDisplayLabel(table.display_label);
+    if (nextDisplay === 'name' && !nextName) {
+      return res.status(400).json({ error: 'Indica un nombre para mostrar el nombre en Caja y Mesas' });
     }
+    runSql(
+      'UPDATE tables SET number = COALESCE(?, number), name = COALESCE(?, name), capacity = COALESCE(?, capacity), zone = COALESCE(?, zone), caja_station_id = ?, display_label = ? WHERE id = ?',
+      [number, name, capacity, zone, cajaStationId, nextDisplay, req.params.id]
+    );
     const updated = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
+    const nextNumber = String(updated.number ?? '').trim();
+    const label = getTableDisplayLabel(updated);
+    runSql(
+      `UPDATE orders SET table_number = ?, customer_name = ?, updated_at = datetime('now')
+       WHERE table_id = ? AND type = 'dine_in'
+         AND status IN ('pending','preparing','ready')
+         AND IFNULL(TRIM(payment_status), 'pending') != 'paid'`,
+      [nextNumber, label, req.params.id],
+    );
     const io = req.app.get('io');
     if (io) io.emit('table-update', updated);
     res.json(updated);

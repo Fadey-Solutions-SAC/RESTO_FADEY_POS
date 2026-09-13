@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql } = require('../database');
+const { getTableDisplayLabel } = require('../utils/tableDisplayLabel');
 const { loadActiveTableOrders, deriveTableStatus } = require('./tableOrdersQueryService');
 
 const DEFAULT_LABEL = 'Mesa Unida';
@@ -141,7 +142,7 @@ function enrichTableWithUnion(table, allTables, union) {
     name: label,
     union_id: union.id,
     union_member_ids: memberIds,
-    union_member_labels: memberTables.map((t) => String(t.name || `Mesa ${t.number}`).trim()),
+    union_member_labels: memberTables.map((t) => getTableDisplayLabel(t)),
     orders: allOrders,
     order_total: allOrders.reduce((sum, o) => sum + Number(o.total || 0), 0),
     status: deriveTableStatus(table, allOrders),

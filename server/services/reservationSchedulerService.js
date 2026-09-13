@@ -14,6 +14,7 @@ const {
 } = require('./reservationDateTime');
 const { scheduleKitchenBarAutoPrint } = require('./kitchenBarAutoPrintService');
 const { sqlBusinessNowExpr } = require('../utils/appDateTime');
+const { getTableDisplayLabel } = require('../utils/tableDisplayLabel');
 
 let schedulerTimer = null;
 let tickInFlight = false;
@@ -28,9 +29,9 @@ function hasAssignedTable(reservation) {
 
 function getReservationTableLabel(reservation) {
   if (!hasAssignedTable(reservation)) return 'Sin mesa asignada';
-  const table = queryOne('SELECT number, name, zone FROM tables WHERE id = ?', [reservation.table_id]);
+  const table = queryOne('SELECT number, name, zone, display_label FROM tables WHERE id = ?', [reservation.table_id]);
   if (!table) return 'Mesa asignada';
-  const base = table.name || `Mesa ${table.number}`;
+  const base = getTableDisplayLabel(table);
   const zone = String(table.zone || '').trim();
   return zone ? `${base} (${zone})` : base;
 }

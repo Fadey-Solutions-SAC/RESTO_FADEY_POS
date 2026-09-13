@@ -221,14 +221,34 @@ export function clampChairCount(n) {
   return Math.max(1, Math.min(12, Math.floor(Number(n) || 4)));
 }
 
+/** Preferencia de etiqueta: 'number' | 'name' */
+export function normalizeTableDisplayLabel(value) {
+  return String(value || '').trim().toLowerCase() === 'name' ? 'name' : 'number';
+}
+
+/** Etiqueta larga para Caja, toasts, pedidos (ej. "BARRA" o "Mesa 100"). */
+export function getTableDisplayLabel(table) {
+  const mode = normalizeTableDisplayLabel(table?.display_label);
+  const name = String(table?.name || '').trim();
+  if (mode === 'name' && name) return name;
+  const num = table?.number;
+  if (num != null && String(num).trim() !== '') return `Mesa ${String(num).trim()}`;
+  return name || 'Mesa';
+}
+
+/** Texto corto en el mapa de mesas (número M12 o nombre truncado). */
 export function formatMesaMapTableNumber(table) {
+  const mode = normalizeTableDisplayLabel(table?.display_label);
+  const name = String(table?.name || '').trim();
+  if (mode === 'name' && name) {
+    return name.length > 8 ? `${name.slice(0, 7)}…` : name;
+  }
   const num = table?.number;
   if (num != null && String(num).trim() !== '') {
     const raw = String(num).trim().replace(/^M/i, '');
     const n = /^\d+$/.test(raw) ? String(parseInt(raw, 10)) : raw;
     return `M${n}`;
   }
-  const name = String(table?.name || '').trim();
   const m = name.match(/(\d+)/);
   if (m) return `M${String(parseInt(m[1], 10))}`;
   if (/^M/i.test(name)) return name.slice(0, 4);

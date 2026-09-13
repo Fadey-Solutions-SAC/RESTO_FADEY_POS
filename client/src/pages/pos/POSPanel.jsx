@@ -288,6 +288,7 @@ import {
   buildReservationByTableIdForToday,
   getMesaMapChairCount,
   getMesaMapVisualState,
+  getTableDisplayLabel,
 } from '../../utils/mesaMapTableVisual';
 import { readGetCache } from '../../utils/offlinePos';
 import {
@@ -5511,10 +5512,7 @@ export default function POSPanel() {
                     <div className="flex items-start justify-between gap-3">
                       <h3 className="text-base font-bold text-[var(--ui-body-text)] shrink-0">Cobro</h3>
                       <p className="text-base sm:text-lg font-extrabold text-[var(--ui-body-text)] tracking-wide text-right leading-tight">
-                        {selectedTable?.name?.trim()
-                          || (selectedTable?.number != null && selectedTable?.number !== ''
-                            ? `Mesa ${selectedTable.number}`
-                            : '—')}
+                        {selectedTable ? getTableDisplayLabel(selectedTable) : '—'}
                       </p>
                     </div>
                     <div className="text-right border-b border-[color:var(--ui-border)] pb-3">

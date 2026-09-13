@@ -11,6 +11,7 @@ import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
 import { MdAdd, MdClose, MdDelete, MdReceipt, MdRemove, MdRestaurantMenu } from 'react-icons/md';
 import { filterOrderingProducts } from '../../utils/orderingCatalog';
+import { getTableDisplayLabel } from '../../utils/mesaMapTableVisual';
 
 export default function SelfOrder() {
   const [searchParams] = useSearchParams();
@@ -144,9 +145,9 @@ export default function SelfOrder() {
           notes: String(i.notes || '').trim(),
         })),
         payment_method: 'efectivo',
-        customer_name: `Mesa ${table.number}`,
+        customer_name: getTableDisplayLabel(table),
       });
-      toast.success(`Pedido enviado — mesa ${table.number}`, { id: tid });
+      toast.success(`Pedido enviado — ${getTableDisplayLabel(table)}`, { id: tid });
       resetCart();
       closeOrderPanel();
       loadOrders();
@@ -185,7 +186,7 @@ export default function SelfOrder() {
       <header className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface)]/95 px-4 py-3">
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-[var(--ui-body-text)] truncate">Auto pedido</h1>
-          <p className="text-xs text-[var(--ui-accent)] truncate">{table?.name || `Mesa ${table?.number}`}</p>
+          <p className="text-xs text-[var(--ui-accent)] truncate">{table ? getTableDisplayLabel(table) : ''}</p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {qrHome === 'cartas' && effectiveHome === 'cartas' ? (

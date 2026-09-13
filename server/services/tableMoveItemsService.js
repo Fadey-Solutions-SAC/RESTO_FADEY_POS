@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const { round2 } = require('../utils/paymentBreakdown');
+const { getTableDisplayLabel } = require('../utils/tableDisplayLabel');
 const { orderBelongsToTable } = require('./tableOrdersQueryService');
 
 function lineItemSubtotal(it) {
@@ -126,7 +127,7 @@ function moveOrderItemsBetweenTablesTx(tx, { sourceTable, targetTable, orderItem
   const targetMeta = {
     table_number: String(targetTable.number ?? '').trim(),
     table_id: targetTable.id,
-    customer_name: `Mesa ${String(targetTable.number ?? '').trim()}`,
+    customer_name: getTableDisplayLabel(targetTable),
   };
 
   const ph = uniq.map(() => '?').join(',');

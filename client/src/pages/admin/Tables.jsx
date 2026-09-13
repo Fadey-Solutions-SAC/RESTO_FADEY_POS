@@ -16,6 +16,7 @@ import toast from 'react-hot-toast';
 import { MdTableRestaurant, MdReceipt, MdOpenWith, MdSwapHoriz } from 'react-icons/md';
 import { KITCHEN_TAKEOUT_NOTE } from '../../utils/ticketPlainText';
 import { buildDineInOrderPayload } from '../../utils/mesaOrderLines';
+import { getTableDisplayLabel } from '../../utils/mesaMapTableVisual';
 import { buildTablesBySalon } from '../../utils/salonesUtils';
 import {
   buildReservationByTableIdForToday,
@@ -223,7 +224,7 @@ export default function Tables() {
       void printKitchenBarOnComandaSend(created, {
         merged: Boolean(created.merged_into_existing),
       });
-      toast.success(`Pedido enviado a Mesa ${tableForOrder?.number ?? selectedTable.number}`, { id: tid });
+      toast.success(`Pedido enviado a ${getTableDisplayLabel(tableForOrder || selectedTable)}`, { id: tid });
       closeMenuPanel();
       loadTables();
     } catch (err) {
