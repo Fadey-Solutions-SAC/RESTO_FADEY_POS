@@ -112,8 +112,8 @@ export default function HrModule() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto overscroll-x-contain pb-1 -mx-1 px-1 touch-pan-x scrollbar-thin">
+    <div className="flex flex-col flex-1 min-h-0 h-full gap-4">
+      <div className="shrink-0 flex flex-nowrap items-center gap-2 overflow-x-auto overscroll-x-contain pb-1 -mx-1 px-1 touch-pan-x scrollbar-thin">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -153,20 +153,22 @@ export default function HrModule() {
         </button>
       </div>
 
-      {tab === 'panel' && <HrDashboardTab data={dashboard} loading={loadingDash} />}
-      {tab === 'personal' && (
-        <HrStaffTab
-          employees={employees}
-          schedules={schedules}
-          branches={branches}
-          onReload={loadCore}
-        />
-      )}
-      {tab === 'horarios' && (
-        <HrSchedulesTab schedules={schedules} employees={employees} onReload={loadCore} />
-      )}
-      {tab === 'historial' && <HrHistoryTab employees={employees} branches={branches} />}
-      {tab === 'productividad' && <WorkTime />}
+      <div className={`flex-1 min-h-0 min-w-0 ${tab === 'productividad' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto overscroll-contain'}`}>
+        {tab === 'panel' && <HrDashboardTab data={dashboard} loading={loadingDash} />}
+        {tab === 'personal' && (
+          <HrStaffTab
+            employees={employees}
+            schedules={schedules}
+            branches={branches}
+            onReload={loadCore}
+          />
+        )}
+        {tab === 'horarios' && (
+          <HrSchedulesTab schedules={schedules} employees={employees} onReload={loadCore} />
+        )}
+        {tab === 'historial' && <HrHistoryTab employees={employees} branches={branches} />}
+        {tab === 'productividad' && <WorkTime />}
+      </div>
 
       <Modal isOpen={sharedQrOpen} onClose={() => setSharedQrOpen(false)} title="QR de asistencia del local" size="md">
         <HrSharedAttendanceQr />

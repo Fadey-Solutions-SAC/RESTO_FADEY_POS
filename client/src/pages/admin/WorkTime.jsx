@@ -172,9 +172,9 @@ export default function WorkTime() {
   const alertCount = analytics?.alerts?.length ?? 0;
 
   return (
-    <div className="flex flex-col sm:flex-row gap-4 items-start">
+    <div className="flex flex-col sm:flex-row gap-4 items-stretch flex-1 min-h-0 h-full">
       <nav
-        className="w-full sm:w-44 shrink-0 flex flex-col gap-2 sm:sticky sm:top-2"
+        className="w-full sm:w-44 shrink-0 flex flex-col gap-2"
         aria-label="Secciones de productividad"
       >
         {MAIN_TABS.map((t) => (
@@ -199,8 +199,8 @@ export default function WorkTime() {
         ))}
       </nav>
 
-      <div className="flex-1 min-w-0 space-y-4 w-full">
-        <div className="flex flex-wrap items-end justify-between gap-2">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-4 w-full">
+        <div className="shrink-0 flex flex-wrap items-end justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <InlineDateField
               label="Desde"
@@ -240,35 +240,37 @@ export default function WorkTime() {
           </div>
         </div>
 
-        {mainTab === 'reporte' ? (
-          <WorkTimeReportTab
-            sessions={sessions}
-            summary={summary}
-            loading={loading}
-            loadReport={loadReport}
-            photoModal={photoModal}
-            setPhotoModal={setPhotoModal}
-            openSessionPhotos={openSessionPhotos}
-            classifyDraft={classifyDraft}
-            setClassifyDraft={setClassifyDraft}
-            classifySavingId={classifySavingId}
-            applyClassification={applyClassification}
-          />
-        ) : analyticsLoading && !analytics ? (
-          <div className="flex justify-center py-16">
-            <div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" />
-          </div>
-        ) : (
-          <WorkTimeAnalyticsPanel
-            data={analytics}
-            subTab={analyticsSubTab}
-            filters={filters}
-            setFilters={setFilters}
-            users={users}
-            waiterRatings={waiterRatings}
-            onExport={exportCsv}
-          />
-        )}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin pr-0.5">
+          {mainTab === 'reporte' ? (
+            <WorkTimeReportTab
+              sessions={sessions}
+              summary={summary}
+              loading={loading}
+              loadReport={loadReport}
+              photoModal={photoModal}
+              setPhotoModal={setPhotoModal}
+              openSessionPhotos={openSessionPhotos}
+              classifyDraft={classifyDraft}
+              setClassifyDraft={setClassifyDraft}
+              classifySavingId={classifySavingId}
+              applyClassification={applyClassification}
+            />
+          ) : analyticsLoading && !analytics ? (
+            <div className="flex justify-center py-16">
+              <div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" />
+            </div>
+          ) : (
+            <WorkTimeAnalyticsPanel
+              data={analytics}
+              subTab={analyticsSubTab}
+              filters={filters}
+              setFilters={setFilters}
+              users={users}
+              waiterRatings={waiterRatings}
+              onExport={exportCsv}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

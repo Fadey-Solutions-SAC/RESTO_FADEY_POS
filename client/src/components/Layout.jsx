@@ -91,8 +91,9 @@ export default function Layout() {
   const isCajaPage = location.pathname === '/admin/caja' || location.pathname.startsWith('/admin/caja/');
   const isSettingsPage = location.pathname === '/admin/configuracion' || location.pathname.startsWith('/admin/configuracion/');
   const isAlmacenPage = location.pathname === '/admin/almacen' || location.pathname.startsWith('/admin/almacen/');
-  /** Caja/config: scroll interno del módulo. Almacén: scroll en <main> para que la franja superior no se desplace. */
-  const isShellLockedScroll = isCajaPage || isSettingsPage || isAlmacenPage;
+  const isHrPage = location.pathname === '/admin/tiempo-trabajado' || location.pathname.startsWith('/admin/tiempo-trabajado/');
+  /** Caja/config/RRHH: scroll interno del módulo. Almacén: scroll en <main> para que la franja superior no se desplace. */
+  const isShellLockedScroll = isCajaPage || isSettingsPage || isAlmacenPage || isHrPage;
   const mainScrollsInternally = isAlmacenPage;
   const isCajaMapView = isCajaPage && (() => {
     const view = new URLSearchParams(location.search).get('view') || 'cobrar';
