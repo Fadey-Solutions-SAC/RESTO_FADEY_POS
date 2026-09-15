@@ -13,8 +13,10 @@ import {
   CUSTOM_THEME_VAR_KEYS,
 } from '../../theme/uiTheme';
 import { getThemePreset } from '../../theme/themePresets';
+import { getSidebarBrandMark } from '../../theme/sidebarBrand';
 
 function ThemePreviewCard({ opt, selected, onSelect }) {
+  const mark = getSidebarBrandMark(opt.id);
   return (
     <button
       type="button"
@@ -26,11 +28,17 @@ function ThemePreviewCard({ opt, selected, onSelect }) {
       }`}
     >
       <div
-        className="flex mb-2 h-10 rounded-lg overflow-hidden border border-[color:var(--ui-border)]"
+        className="flex items-center gap-2 mb-2 h-12 rounded-lg overflow-hidden border border-black/40 px-2.5"
+        style={{
+          background: `linear-gradient(180deg, ${opt.swatch} 0%, #050508 100%)`,
+          boxShadow: `inset 0 0 0 1px ${mark.fadey}55, 0 0 10px ${mark.fadey}33`,
+        }}
       >
-        <span className="w-[28%] h-full shrink-0" style={{ background: opt.swatch }} title="Menú" />
-        <span className="w-[18%] h-full shrink-0" style={{ background: opt.accent }} title="Acento" />
-        <span className="flex-1 h-full" style={{ background: opt.headerBg || opt.surface }} title="Cabecera" />
+        <img src={mark.src} alt="" className="w-8 h-8 object-contain rounded-md shrink-0" draggable={false} />
+        <span className="rf-font-display text-sm font-extrabold tracking-tight truncate">
+          <span className="text-white">Resto </span>
+          <span style={{ color: mark.fadey }}>Fadey</span>
+        </span>
       </div>
       <p className="font-semibold text-sm text-[var(--ui-body-text)]">{opt.label}</p>
       <p className="text-xs text-[var(--ui-muted)] mt-0.5 line-clamp-2">{opt.description}</p>

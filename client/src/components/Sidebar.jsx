@@ -15,6 +15,8 @@ import {
   MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdGroups, MdKitchen, MdLocalBar, MdTouchApp, MdStars,
 } from 'react-icons/md';
 import { getProductionAreaIcon } from '../utils/productionAreaUi';
+import { useUiTheme } from '../theme/useUiTheme';
+import { getSidebarBrandMark } from '../theme/sidebarBrand';
 
 /** Icono por módulo; etiqueta vía i18n `dashboard:nav.*`. */
 const SIDEBAR_LINK_META = {
@@ -71,6 +73,8 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const { t: tc } = useTranslation('common');
   const { user, refreshStaffProfile } = useAuth();
   const location = useLocation();
+  const uiTheme = useUiTheme();
+  const brandMark = getSidebarBrandMark(uiTheme);
   const showDeliveryUi = useShowDeliveryUi();
   const [productionAreas, setProductionAreas] = useState([]);
 
@@ -392,9 +396,12 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
             className="h-full w-full flex flex-row items-center justify-center gap-1 transition-colors"
             aria-label={tc('layout.menu', { defaultValue: 'Menú' })}
           >
-            <div className="rf-sidebar-brand w-6 h-6 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
-              <MdStorefront className="text-white text-sm" />
-            </div>
+            <img
+              src={brandMark.src}
+              alt=""
+              className="rf-sidebar-brand rf-sidebar-brand--img w-7 h-7 object-contain flex-shrink-0"
+              draggable={false}
+            />
             <span className="rf-sidebar-burger" aria-hidden="true">
               <span />
               <span />
@@ -403,11 +410,15 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
           </button>
         ) : (
           <>
-            <div className="rf-sidebar-brand w-8 h-8 bg-gradient-to-br from-[var(--ui-logo-from)] to-[var(--ui-logo-to)] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
-              <MdStorefront className="text-white text-base" />
-            </div>
-            <span className="rf-sidebar-logo-name rf-font-display">
-              {tc('layout.brandName')}
+            <img
+              src={brandMark.src}
+              alt=""
+              className="rf-sidebar-brand rf-sidebar-brand--img w-9 h-9 object-contain flex-shrink-0"
+              draggable={false}
+            />
+            <span className="rf-sidebar-logo-name rf-font-display" aria-label={tc('layout.brandName')}>
+              <span className="rf-sidebar-logo-name__resto">Resto </span>
+              <span className="rf-sidebar-logo-name__fadey" style={{ color: brandMark.fadey }}>Fadey</span>
             </span>
             <button
               type="button"

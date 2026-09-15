@@ -125,8 +125,8 @@ function preset(id, label, description, tags, vars, chartColors, colorScheme = '
 export const THEME_PRESETS = {
   corporate_blue: preset(
     'corporate_blue',
-    'Corporativo azul',
-    'Elegante, empresarial y moderno',
+    'Corporativo',
+    'Elegante, empresarial y moderno (marca morada)',
     ['empresarial', 'restaurante moderno'],
     {
       '--ui-body-bg': '#f0f4fa',
@@ -144,8 +144,9 @@ export const THEME_PRESETS = {
       '--ui-sidebar-active-bg': 'rgba(37, 99, 235, 0.22)',
       '--ui-sidebar-hover': 'rgba(255, 255, 255, 0.06)',
       '--ui-sidebar-border': 'rgba(255, 255, 255, 0.08)',
-      '--ui-logo-from': '#2563EB',
-      '--ui-logo-to': '#1D4ED8',
+      '--ui-logo-from': '#A855F7',
+      '--ui-logo-to': '#7C3AED',
+      '--ui-brand-fadey': '#C084FC',
       '--ui-btn-secondary-hover': 'rgba(15, 23, 42, 0.06)',
       '--ui-glass': 'rgba(255, 255, 255, 0.88)',
       // Variante clara del menú morado #10002B
@@ -238,6 +239,7 @@ export const THEME_PRESETS = {
       '--ui-sidebar-border': 'rgba(255, 255, 255, 0.2)',
       '--ui-logo-from': '#0077B6',
       '--ui-logo-to': MINIMAL_NAVY,
+      '--ui-brand-fadey': '#38BDF8',
       '--ui-btn-secondary-hover': 'rgba(0, 0, 0, 0.05)',
       '--ui-glass': 'rgba(255, 255, 255, 0.92)',
       // Variante clara azul del menú navy #03045E (no lila)
@@ -270,6 +272,7 @@ export const THEME_PRESETS = {
       '--ui-sidebar-border': 'rgba(255, 255, 255, 0.12)',
       '--ui-logo-from': '#047857',
       '--ui-logo-to': '#064e3b',
+      '--ui-brand-fadey': '#34D399',
       '--ui-btn-secondary-hover': 'rgba(6, 78, 59, 0.08)',
       '--ui-glass': 'rgba(255, 255, 255, 0.9)',
       // Variante clara más verde del menú esmeralda

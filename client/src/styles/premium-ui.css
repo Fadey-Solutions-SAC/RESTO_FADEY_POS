@@ -224,6 +224,21 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     line-height: 1;
   }
 
+  .rf-sidebar-logo-name__resto {
+    color: #ffffff !important;
+  }
+
+  .rf-sidebar-logo-name__fadey {
+    color: var(--ui-brand-fadey, var(--ui-accent-muted, #38bdf8)) !important;
+  }
+
+  .rf-sidebar-brand--img {
+    border-radius: 0.55rem;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-brand-fadey, #38bdf8) 45%, transparent),
+      0 0 12px color-mix(in srgb, var(--ui-brand-fadey, #38bdf8) 35%, transparent);
+    background: rgba(0, 0, 0, 0.25);
+  }
+
   .rf-sidebar-menu-btn {
     flex-shrink: 0;
     width: 1.85rem;
@@ -2453,8 +2468,47 @@ html[data-ui-theme='corporate_blue'] .rf-nav-sublink--active {
   color: #ffffff !important;
 }
 
-html[data-ui-theme='corporate_blue'] .rf-sidebar-brand {
-  background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
+html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-logo-name__resto,
+html[data-ui-theme='minimal_white'] .rf-sidebar .rf-sidebar-logo-name__resto,
+html[data-ui-theme='emerald_business'] .rf-sidebar .rf-sidebar-logo-name__resto,
+html[data-ui-theme='purple'] .rf-sidebar .rf-sidebar-logo-name__resto,
+html[data-ui-theme='blue'] .rf-sidebar .rf-sidebar-logo-name__resto,
+html[data-ui-theme='green'] .rf-sidebar .rf-sidebar-logo-name__resto {
+  color: #ffffff !important;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-sidebar .rf-sidebar-logo-name__fadey,
+html[data-ui-theme='purple'] .rf-sidebar .rf-sidebar-logo-name__fadey {
+  color: #C084FC !important;
+}
+
+html[data-ui-theme='minimal_white'] .rf-sidebar .rf-sidebar-logo-name__fadey,
+html[data-ui-theme='blue'] .rf-sidebar .rf-sidebar-logo-name__fadey {
+  color: #38BDF8 !important;
+}
+
+html[data-ui-theme='emerald_business'] .rf-sidebar .rf-sidebar-logo-name__fadey,
+html[data-ui-theme='green'] .rf-sidebar .rf-sidebar-logo-name__fadey {
+  color: #34D399 !important;
+}
+
+html[data-ui-theme='corporate_blue'] .rf-sidebar-brand,
+html[data-ui-theme='corporate_blue'] .rf-sidebar-brand--img,
+html[data-ui-theme='purple'] .rf-sidebar-brand--img {
+  background: transparent !important;
+  box-shadow: 0 0 0 1px rgba(192, 132, 252, 0.55), 0 0 14px rgba(168, 85, 247, 0.4);
+}
+
+html[data-ui-theme='minimal_white'] .rf-sidebar-brand--img,
+html[data-ui-theme='blue'] .rf-sidebar-brand--img {
+  background: transparent !important;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.55), 0 0 14px rgba(14, 165, 233, 0.4);
+}
+
+html[data-ui-theme='emerald_business'] .rf-sidebar-brand--img,
+html[data-ui-theme='green'] .rf-sidebar-brand--img {
+  background: transparent !important;
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.55), 0 0 14px rgba(16, 185, 129, 0.4);
 }
 
 /* Solo Corporativo + Purple usan morado. Los demás temas: colores propios forzados. */
