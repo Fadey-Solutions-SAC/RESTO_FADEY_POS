@@ -3,6 +3,7 @@ import { api, getApiOrigin } from '../utils/api';
 import { applyUiThemeFromAppSettings } from '../theme/uiTheme';
 import { isBrowserOffline, readGetCache, saveGetCache } from '../utils/offlinePos';
 import { clearReservationCajaAvisosSession } from '../utils/reservationCajaAvisosSession';
+import { clearMasterViewAsOwner } from '../utils/masterViewMode';
 
 const STAFF_USER_KEY = 'rf_offline_staff_user';
 
@@ -189,6 +190,7 @@ export function AuthProvider({ children }) {
     }
     localStorage.removeItem('token');
     try { localStorage.removeItem(STAFF_USER_KEY); } catch { /* ignore */ }
+    clearMasterViewAsOwner();
     clearReservationCajaAvisosSession();
     setUser(null);
     window.location.href = '/';

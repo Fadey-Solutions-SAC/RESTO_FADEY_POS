@@ -293,7 +293,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   /** Asistencia QR cuelga del módulo del rol (admin → RR. HH.; producción → su área vinculada). */
   const linkHostsAttendanceQr = (link) => {
     if (!asistenciaQrActiva) return false;
-    if (roleLc === 'admin') return link.moduleId === 'tiempo_trabajado';
+    if (roleLc === 'admin' || roleLc === 'master_admin') return link.moduleId === 'tiempo_trabajado';
     if (roleLc === 'mozo') return link.moduleId === 'mesas';
     if (roleLc === 'cajero') return link.moduleId === 'caja';
     if (roleLc === 'produccion' || roleLc === 'cocina' || roleLc === 'bar') {
@@ -311,7 +311,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   };
 
   const attendanceExpandedFor = (link) => {
-    if (roleLc === 'admin') return isHrExpanded;
+    if (roleLc === 'admin' || roleLc === 'master_admin') return isHrExpanded;
     if (roleLc === 'mozo') return isMesasExpanded;
     if (roleLc === 'cajero') return isCajaExpanded;
     if (roleLc === 'produccion' || roleLc === 'cocina' || roleLc === 'bar') return isProdExpanded;

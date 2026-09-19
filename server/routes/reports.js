@@ -4,6 +4,7 @@ const { queryAll, queryOne, runSql } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { FINANCIAL_FILTER_SQL, getSalesEventSql, getLocalTodayDateKey, COURTESY_ORDER_WHERE_SQL } = require('../businessRules');
 const { getEffectiveFlat } = require('../services/businessConfigService');
+const { getControlConfig } = require('../masterAdminService');
 const { computeOpenStatus } = require('../services/systemConfigHubService');
 const { getOpenRegistersOnActiveStations, listCajasWithIds } = require('../cajaSettings');
 const {
@@ -177,7 +178,8 @@ function buildOperationalIntelligence(opts = {}) {
   const deliveryEnabled = readDeliveryEnabled();
   const biz = readBusinessIntelFlat();
   const autoAlertsOn = biz.auto_alerts_enabled !== false;
-  const stockBizAlertsOn = autoAlertsOn && biz.alert_critical_stock_enabled !== false;
+  const masterStockOn = Number(getControlConfig()?.stock_alerts_enabled) !== 0;
+  const stockBizAlertsOn = autoAlertsOn && masterStockOn && biz.alert_critical_stock_enabled !== false;
   const marginBizAlertsOn = autoAlertsOn && biz.alert_low_margin_enabled !== false;
   const lossRatioThresholdPct = Math.min(80, Math.max(5, Number(biz.var_tolerance_pct ?? 14)));
   const targetNetMarginPct = Math.min(90, Math.max(1, Number(biz.prof_target_net_margin_pct ?? 12)));
@@ -581,7 +583,7 @@ function buildOperationalIntelligence(opts = {}) {
       auto_slow_moving_days: slowMovingDays,
       loss_ratio_threshold_pct: lossRatioThresholdPct,
       target_net_margin_pct: targetNetMarginPct,
-      show_stock_alert_panel: autoAlertsOn && biz.alert_critical_stock_enabled !== false,
+      show_stock_alert_panel: autoAlertsOn && masterStockOn && biz.alert_critical_stock_enabled !== false,
     },
   };
 }

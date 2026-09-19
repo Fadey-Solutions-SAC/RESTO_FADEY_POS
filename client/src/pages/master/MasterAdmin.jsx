@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../../hooks/useSocket';
 import toast from 'react-hot-toast';
 import { api, resolveMediaUrl } from '../../utils/api';
@@ -27,8 +28,10 @@ import {
   MdPayment,
   MdLayers,
   MdBackup,
+  MdStorefront,
 } from 'react-icons/md';
 import MasterRestaurantBillingWorkspace from '../../components/master/MasterRestaurantBillingWorkspace';
+import { setMasterViewAsOwner } from '../../utils/masterViewMode';
 
 const TABS = [
   { id: 'usuarios', label: 'Usuario administrador', icon: MdAdminPanelSettings },
@@ -43,7 +46,8 @@ const TABS = [
 ];
 
 export default function MasterAdmin() {
-  const { logout } = useAuth();
+  const { logout, refreshStaffProfile } = useAuth();
+  const navigate = useNavigate();
   const [tab, setTab] = useState('usuarios');
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
@@ -76,12 +80,14 @@ export default function MasterAdmin() {
   const [planModuleDraft, setPlanModuleDraft] = useState({});
   const [planPrecioDraft, setPlanPrecioDraft] = useState('');
   const [planPrecioSaving, setPlanPrecioSaving] = useState(false);
+  const [stockAlertsEnabled, setStockAlertsEnabled] = useState(true);
 
   const loadDashboard = async () => {
     try {
       const data = await api.get('/master-admin/dashboard');
       setDashboard(data);
       setPlanModuleDraft({ ...(data?.control?.service_plan_module_overrides || {}) });
+      setStockAlertsEnabled(Number(data?.control?.stock_alerts_enabled) !== 0);
     } catch (err) {
       toast.error(err.message || 'No se pudo cargar administrador maestro');
     } finally {
@@ -193,6 +199,9 @@ export default function MasterAdmin() {
       }));
       if (controlResp && typeof controlResp.service_plan_module_overrides === 'object') {
         setPlanModuleDraft({ ...(controlResp.service_plan_module_overrides || {}) });
+      }
+      if (controlResp && controlResp.stock_alerts_enabled !== undefined) {
+        setStockAlertsEnabled(Number(controlResp.stock_alerts_enabled) !== 0);
       }
       if (okMessage) toast.success(okMessage);
     } catch (err) {
@@ -412,6 +421,18 @@ export default function MasterAdmin() {
               <h1 className="text-2xl font-bold text-[var(--ui-body-text)]">Administrador Maestro</h1>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="btn-primary flex items-center gap-2"
+                onClick={async () => {
+                  setMasterViewAsOwner(true);
+                  await refreshStaffProfile?.();
+                  toast.success('Viendo el sistema como admin dueño');
+                  navigate('/admin');
+                }}
+              >
+                <MdStorefront /> Ver como admin dueño
+              </button>
               <button onClick={logout} className="btn-secondary flex items-center gap-2"><MdLogout /> Salir</button>
             </div>
           </div>
@@ -547,6 +568,44 @@ export default function MasterAdmin() {
                   Desactivar un módulo oculta su entrada en el menú. Desactivar un submódulo (p. ej. una vista de Caja) oculta solo esa opción si el módulo
                   padre sigue activo.
                 </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+                  <h3 className="text-sm font-semibold text-slate-800">Controles del plan</h3>
+                  <label className="flex items-center justify-between gap-3 cursor-pointer">
+                    <span className="text-sm text-slate-700">Alertas de stock</span>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      checked={stockAlertsEnabled}
+                      onChange={(e) => setStockAlertsEnabled(e.target.checked)}
+                    />
+                  </label>
+                  <p className="text-[11px] text-slate-500 -mt-1">Escritorio, Dashboard y avisos de stock bajo / agotado.</p>
+                  <div className="border-t border-slate-100 pt-2 space-y-2">
+                    <p className="text-xs font-medium text-slate-600">Control de recursos</p>
+                    {[
+                      { key: 'almacen:requerimiento', label: 'Requerimientos' },
+                      { key: 'almacen:recepcion', label: 'Recepción' },
+                      { key: 'almacen:ir_modulo_gastos', label: 'Gastos' },
+                    ].map((row) => (
+                      <label key={row.key} className="flex items-center justify-between gap-3 cursor-pointer">
+                        <span className="text-sm text-slate-700">{row.label}</span>
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                          checked={planModuleDraft[row.key] !== false}
+                          onChange={(e) => {
+                            setPlanModuleDraft((prev) => {
+                              const next = { ...prev };
+                              if (e.target.checked) delete next[row.key];
+                              else next[row.key] = false;
+                              return next;
+                            });
+                          }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <div className="flex justify-end">
                   <button
                     type="button"
@@ -559,6 +618,7 @@ export default function MasterAdmin() {
                           {
                             service_plan: control.service_plan || 'profesional',
                             service_plan_module_overrides: planModuleDraft,
+                            stock_alerts_enabled: stockAlertsEnabled ? 1 : 0,
                           },
                           null,
                         );

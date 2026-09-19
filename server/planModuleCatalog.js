@@ -68,6 +68,9 @@ const ALMACEN_SUBS = [
   { id: 'ir_modulo_gastos', label: 'Gastos' },
 ];
 
+/** Submódulos de control de recursos que el maestro puede apagar en cualquier plan. */
+const ALMACEN_RESOURCE_CONTROL_SUBS = ['requerimiento', 'recepcion', 'ir_modulo_gastos'];
+
 const PARENTS_WITH_SUBS = new Set(['caja', 'mi_restaurant', 'almacen']);
 
 function isTruthyOverride(v) {
@@ -147,6 +150,10 @@ function collectAllowedOverrideKeys(planKey) {
       keys.add(`${node.id}:${ch.id}`);
     }
   }
+  // Siempre permitir apagar control de recursos aunque el plan base no los liste.
+  for (const id of ALMACEN_RESOURCE_CONTROL_SUBS) {
+    keys.add(`almacen:${id}`);
+  }
   return keys;
 }
 
@@ -200,6 +207,7 @@ function getEffectivePermissions(planKey, role, rawPerms = {}, moduleOverrides =
 function buildSubPermissions(planKey, moduleOverrides, topLevelPermissions, rawUserPerms = {}) {
   const ov = parseModuleOverrides(moduleOverrides);
   const out = { caja: {}, mi_restaurant: {}, almacen: {} };
+  const p = normalizePlan(planKey);
   for (const parent of PARENTS_WITH_SUBS) {
     const parentOn = Boolean(topLevelPermissions[parent]);
     const children = getSubmoduleListForPlan(planKey, parent);
@@ -212,6 +220,13 @@ function buildSubPermissions(planKey, moduleOverrides, topLevelPermissions, rawU
       out[parent][ch.id] = subOn;
     }
   }
+  // Asegurar claves de control de recursos aunque el plan básico no las liste en el árbol.
+  const almacenOn = Boolean(topLevelPermissions.almacen);
+  for (const id of ALMACEN_RESOURCE_CONTROL_SUBS) {
+    if (out.almacen[id] !== undefined) continue;
+    const planAllows = p !== 'basico' || id === 'ir_modulo_gastos';
+    out.almacen[id] = almacenOn && planAllows && ov[`almacen:${id}`] !== false;
+  }
   return out;
 }
 
@@ -219,6 +234,7 @@ module.exports = {
   MODULE_LABELS,
   PARENTS_WITH_SUBS,
   CAJA_USER_OPT_IN_SUBS,
+  ALMACEN_RESOURCE_CONTROL_SUBS,
   cajaSubPermissionKey,
   buildPlanModuleTreeForPlan,
   buildPlanModuleTrees,

@@ -14,6 +14,7 @@ import useStaffSessionHeartbeat from '../hooks/useStaffSessionHeartbeat';
 import { getShellModuleTitle } from '../utils/shellModuleTitle';
 import { getOfflinePosStatus, subscribeOfflinePos } from '../utils/offlinePos';
 import OfflineCajaBanner from './OfflineCajaBanner';
+import { clearMasterViewAsOwner } from '../utils/masterViewMode';
 
 export default function Layout() {
   const { t } = useTranslation('common');
@@ -171,6 +172,7 @@ export default function Layout() {
             {user?.role === 'master_admin' && (
               <Link
                 to="/master"
+                onClick={() => clearMasterViewAsOwner()}
                 className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-accent-muted)] hover:bg-[var(--ui-sidebar-hover)]"
               >
                 <MdAdminPanelSettings className="text-base" /> {t('layout.masterPanel')}

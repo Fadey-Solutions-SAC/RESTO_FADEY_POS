@@ -55,6 +55,8 @@ const DEFAULT_CONTROL = {
   service_plan: 'profesional',
   /** { "caja": false, "caja:cobrar": true } — solo claves válidas para el plan; ausente = habilitado por defecto */
   service_plan_module_overrides: {},
+  /** 1 = alertas de stock crítico activas en Escritorio / Dashboard / Productos */
+  stock_alerts_enabled: 1,
   /** null o vacío = sin límite; entero > 0 = máximo de consultas DNI/RUC al mes (zona Lima). */
   padron_monthly_query_limit: null,
   padron_query_usage_month: '',
@@ -848,6 +850,9 @@ function setControlConfig(patch = {}, actorName = '') {
       throw new Error('Plan inválido: use plan basico, plan pro o plan premium');
     }
     next.service_plan = norm;
+  }
+  if (patch.stock_alerts_enabled !== undefined) {
+    next.stock_alerts_enabled = Number(patch.stock_alerts_enabled) === 0 ? 0 : 1;
   }
   if (patch.allow_restaurant_admin_billing_bot !== undefined) {
     next.allow_restaurant_admin_billing_bot = Number(patch.allow_restaurant_admin_billing_bot) === 1 ? 1 : 0;

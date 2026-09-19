@@ -39,7 +39,9 @@ export default function Dashboard() {
     { label: 'Ventas Hoy', value: formatCurrency(data.today.total), sub: `${data.today.count} cuentas`, icon: MdAttachMoney, color: 'bg-emerald-500' },
     { label: 'Ventas del Mes', value: formatCurrency(data.month.total), sub: `${data.month.count} cuentas`, icon: MdTrendingUp, color: 'bg-blue-500' },
     { label: 'Pedidos Activos', value: data.activeOrders, sub: 'En proceso', icon: MdShoppingCart, color: 'bg-amber-500' },
-    { label: 'Stock Bajo', value: (data.lowStock || []).length, sub: 'Productos', icon: MdWarning, color: 'bg-red-500' },
+    ...(showStockPanel
+      ? [{ label: 'Stock Bajo', value: (data.lowStock || []).length, sub: 'Productos', icon: MdWarning, color: 'bg-red-500' }]
+      : []),
   ];
 
   return (

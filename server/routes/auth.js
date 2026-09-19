@@ -167,6 +167,11 @@ router.post('/login', async (req, res) => {
     } catch (_) { /* base vacía */ }
     const master = getMasterCredentialsPublic();
     const token = buildMasterToken();
+    const control = getControlConfig();
+    const plan = normalizePlan(control.service_plan);
+    const moduleOverrides = control.service_plan_module_overrides || {};
+    const permissions = getEffectivePermissions(plan, 'admin', {}, moduleOverrides);
+    const sub_permissions = buildSubPermissions(plan, moduleOverrides, permissions, {});
     return res.json({
       token,
       user: {
@@ -176,6 +181,10 @@ router.post('/login', async (req, res) => {
         full_name: 'Administrador Maestro',
         role: 'master_admin',
         avatar: '',
+        permissions,
+        sub_permissions,
+        service_plan: plan,
+        stock_alerts_enabled: Number(control.stock_alerts_enabled) !== 0,
         ...appearance,
       },
     });
@@ -395,12 +404,21 @@ router.post('/customer/login', (req, res) => {
 router.get('/me', authenticateToken, async (req, res) => {
   if (req.user.role === 'master_admin') {
     const master = getMasterCredentialsPublic();
+    const control = getControlConfig();
+    const plan = normalizePlan(control.service_plan);
+    const moduleOverrides = control.service_plan_module_overrides || {};
+    const permissions = getEffectivePermissions(plan, 'admin', {}, moduleOverrides);
+    const sub_permissions = buildSubPermissions(plan, moduleOverrides, permissions, {});
     return res.json({
       id: 'master-admin',
       username: master.username,
       full_name: 'Administrador Maestro',
       role: 'master_admin',
       type: 'staff',
+      permissions,
+      sub_permissions,
+      service_plan: plan,
+      stock_alerts_enabled: Number(control.stock_alerts_enabled) !== 0,
       ...readUiAppearanceFromStoredSettings(),
     });
   }

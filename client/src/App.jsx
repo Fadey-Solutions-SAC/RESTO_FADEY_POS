@@ -45,6 +45,7 @@ import PwaInstallPrompt from './components/PwaInstallPrompt';
 import BackgroundKitchenAutoPrinter from './components/BackgroundKitchenAutoPrinter';
 import PrintingAssistantAutoDiscover from './components/PrintingAssistantAutoDiscover';
 import { ADMIN_MODULE_PATHS, hasModulePermission, canAccessStaffModule, getDefaultStaffPath } from './utils/staffModuleAccess';
+import { isMasterViewingAsOwner } from './utils/masterViewMode';
 import { useDeliverySettings } from './hooks/useDeliveryEnabled';
 import { api } from './utils/api';
 import { startOfflinePosListeners } from './utils/offlinePos';
@@ -118,7 +119,9 @@ function DefaultPage() {
   const { t } = useTranslation('common');
   const { user } = useAuth();
   if (!user) return <Navigate to="/" replace />;
-  if (user.role === 'master_admin') return <Navigate to="/master" replace />;
+  if (user.role === 'master_admin' && !isMasterViewingAsOwner()) {
+    return <Navigate to="/master" replace />;
+  }
   const defaultPath = getDefaultStaffPath(user);
   if (defaultPath !== '/admin') return <Navigate to={defaultPath} replace />;
   if (!hasModulePermission(user, 'escritorio')) {

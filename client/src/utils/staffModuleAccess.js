@@ -1,4 +1,6 @@
 /** Rutas de módulos admin y roles base (permiso fino vía `user.permissions`). */
+import { isMasterViewingAsOwner } from './masterViewMode';
+
 export const ADMIN_MODULE_PATHS = [
   { path: '/admin', moduleId: 'escritorio', roles: ['admin', 'cajero'] },
   { path: '/admin/caja', moduleId: 'caja', roles: ['admin', 'cajero'] },
@@ -34,7 +36,13 @@ export function isPermissionExplicitlyDenied(value) {
 
 export function hasModulePermission(user, moduleId) {
   if (!moduleId) return true;
-  if (user?.role === 'master_admin') return true;
+  if (user?.role === 'master_admin') {
+    // En vista «como dueño» respeta el plan comercial; en panel maestro no aplica.
+    if (user.permissions && typeof user.permissions === 'object') {
+      return isPermissionEnabled(user.permissions[moduleId]);
+    }
+    return true;
+  }
   const role = String(user?.role || '').toLowerCase();
   const area = String(user?.production_area_id || '').trim().toLowerCase();
   const perms = user && typeof user.permissions === 'object' && user.permissions !== null
@@ -80,6 +88,17 @@ export function hasModulePermission(user, moduleId) {
 export function canAccessStaffModule(user, { moduleId, roles } = {}) {
   if (!user) return false;
   if (user.role === 'master_admin') {
+    if (isMasterViewingAsOwner()) {
+      if (moduleId && typeof user.permissions === 'object' && user.permissions != null) {
+        if (isPermissionExplicitlyDenied(user.permissions[moduleId])) return false;
+      }
+      if (moduleId && hasModulePermission(user, moduleId)) return true;
+      const roleList = Array.isArray(roles) ? roles : [];
+      if (roleList.includes('admin') || roleList.includes('master_admin')) {
+        return !moduleId || hasModulePermission(user, moduleId);
+      }
+      return false;
+    }
     return moduleId === 'mi_restaurant' || !moduleId;
   }
   if (moduleId && typeof user.permissions === 'object' && user.permissions != null) {
@@ -93,7 +112,9 @@ export function canAccessStaffModule(user, { moduleId, roles } = {}) {
 
 export function getDefaultStaffPath(user, opts = {}) {
   if (!user) return '/';
-  if (user.role === 'master_admin') return '/master';
+  if (user.role === 'master_admin') {
+    return isMasterViewingAsOwner() ? '/admin' : '/master';
+  }
   const qrOn = opts.asistenciaQrActiva != null
     ? Boolean(opts.asistenciaQrActiva)
     : (user.asistencia_qr_activa == null ? true : Boolean(user.asistencia_qr_activa));

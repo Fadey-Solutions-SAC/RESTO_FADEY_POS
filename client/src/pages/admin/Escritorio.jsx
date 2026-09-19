@@ -845,6 +845,7 @@ export default function Escritorio() {
     if (productionQueueTotal > 0) return list;
     return list.filter((a) => !['kitchen_prep_demora', 'ready_demora', 'kitchen_load'].includes(String(a?.id || '')));
   }, [liveDash?.operationalAlerts, productionQueueTotal]);
+  const showStockAlertPanel = liveDash?.businessIntel?.show_stock_alert_panel !== false;
   const deliveryReady = useMemo(
     () => orders.filter(o => o.type === 'delivery' && o.status === 'ready').length,
     [orders]
@@ -1139,6 +1140,7 @@ export default function Escritorio() {
               </p>
               <p className="text-[11px] font-medium ui-live-link-rose mt-0.5">Ir a Mesas</p>
             </button>
+            {showStockAlertPanel ? (
             <button
               type="button"
               onClick={() => navigate('/admin/almacen')}
@@ -1149,6 +1151,7 @@ export default function Escritorio() {
               <p className="text-[11px] text-[var(--ui-muted)]">Inventario</p>
               <p className="text-[11px] font-medium text-[var(--ui-accent-muted)] mt-0.5">Ir a Control De Recursos</p>
             </button>
+            ) : null}
           </div>
           {liveDash.operationalSummary &&
           (liveDash.operationalSummary.pendingCount != null ||
