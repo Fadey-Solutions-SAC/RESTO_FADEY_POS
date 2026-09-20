@@ -71,7 +71,7 @@ function buildCsv(hub, tab) {
     lines.push('');
   }
   if (!tab || tab === 'ia' || tab === 'all') {
-    lines.push('=== IA analítica ===');
+    lines.push('=== IA Fadey ===');
     (hub.insights || []).forEach((ins) => {
       lines.push(`${escapeCsv(ins.priority)},${escapeCsv(ins.message)}`);
     });
@@ -113,7 +113,7 @@ function streamPdf(hub, tab, res) {
     doc.moveDown();
   }
   if (!tab || tab === 'ia' || tab === 'all') {
-    doc.fontSize(14).text('IA analítica', { underline: true });
+    doc.fontSize(14).text('IA Fadey', { underline: true });
     doc.fontSize(10);
     (hub.insights || []).slice(0, 8).forEach((ins) => {
       doc.text(`• ${ins.message}`);

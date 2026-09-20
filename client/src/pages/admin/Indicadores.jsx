@@ -33,6 +33,7 @@ import {
 import IndicatorsAlertsPanel from '../../components/indicadores/IndicatorsAlertsPanel';
 import IndicatorsDateFilters, { INDICADORES_CTRL } from '../../components/indicadores/IndicatorsDateFilters';
 import IndicatorsExportMenu from '../../components/indicadores/IndicatorsExportMenu';
+import { FADEY_AI_AVATAR_SRC } from '../../constants/fadeyAiBranding';
 
 const TABS = [
   { id: 'general', label: 'Panel', icon: MdDashboard },
@@ -162,6 +163,9 @@ export default function Indicadores() {
   const ActiveModuleIcon = activeModule.icon;
 
   const renderPanel = () => {
+    if (tab === 'ia') {
+      return <IndicatorsInsightsPanel data={data || {}} />;
+    }
     if (loadError && !data) {
       return (
         <div className="card border border-red-500/30 bg-red-500/5 p-6 text-center space-y-3">
@@ -198,14 +202,12 @@ export default function Indicadores() {
         return <IndicatorsChartsPanel data={data} />;
       case 'alertas':
         return <IndicatorsAlertsPanel data={data} />;
-      case 'ia':
-        return <IndicatorsInsightsPanel data={data} />;
       default:
         return <IndicatorsGeneralPanel data={data} />;
     }
   };
 
-  if (loading && !data) {
+  if (loading && !data && tab !== 'ia') {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <div className="animate-spin w-10 h-10 border-4 border-gold-500 border-t-transparent rounded-full" />
@@ -238,7 +240,16 @@ export default function Indicadores() {
             aria-haspopup="listbox"
             aria-expanded={moduleOpen}
           >
-            <ActiveModuleIcon className="text-gold-600 shrink-0 text-sm" />
+            {activeModule.id === 'ia' ? (
+              <img
+                src={FADEY_AI_AVATAR_SRC}
+                alt=""
+                className="w-5 h-5 rounded-full object-cover shrink-0 border border-[color:var(--ui-border)]"
+                draggable={false}
+              />
+            ) : (
+              <ActiveModuleIcon className="text-gold-600 shrink-0 text-sm" />
+            )}
             <span className="flex-1 text-left truncate">{activeModule.label}</span>
             {activeModule.id === 'alertas' && alertCount > 0 ? (
               <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px]">{alertCount}</span>
@@ -279,7 +290,16 @@ export default function Indicadores() {
                         : 'text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
                     }`}
                   >
-                    <Icon />
+                    {t.id === 'ia' ? (
+                      <img
+                        src={FADEY_AI_AVATAR_SRC}
+                        alt=""
+                        className="w-4 h-4 rounded-full object-cover shrink-0"
+                        draggable={false}
+                      />
+                    ) : (
+                      <Icon />
+                    )}
                     <span className="flex-1">{t.label}</span>
                     {t.id === 'alertas' && alertCount > 0 ? (
                       <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${selected ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>
@@ -293,6 +313,7 @@ export default function Indicadores() {
             document.body,
           )
           : null}
+        {tab !== 'ia' ? (
         <div className="flex items-center gap-1 flex-nowrap overflow-x-auto min-w-0">
         <IndicatorsDateFilters
           preset={preset}
@@ -317,6 +338,7 @@ export default function Indicadores() {
           <MdDownload /> Exportar
         </button>
         </div>
+        ) : null}
       </div>
 
       <div className={refreshing ? 'opacity-90 transition-opacity' : ''}>{renderPanel()}</div>

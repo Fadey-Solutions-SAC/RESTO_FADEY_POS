@@ -28,6 +28,7 @@ import { useState } from 'react';
 import { formatCurrency, formatDateTime } from '../../utils/api';
 import IndicatorStatCard from './IndicatorStatCard';
 import Modal from '../Modal';
+import FadeyAiHomePanel from './FadeyAiHomePanel';
 
 const CHART_PALETTE = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#e11d48'];
 
@@ -586,26 +587,5 @@ export function IndicatorsChartsPanel({ data }) {
 }
 
 export function IndicatorsInsightsPanel({ data }) {
-  const insights = data?.insights || [];
-  const priorityClass = (p) => {
-    if (p === 'high') return 'border-l-red-500';
-    if (p === 'medium') return 'border-l-amber-500';
-    return 'border-l-gold-500';
-  };
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-[var(--ui-muted)] card">
-        Recomendaciones generadas automáticamente a partir de ventas, productos, inventario, productividad y operación en tiempo real.
-      </p>
-      <ul className="space-y-3">
-        {insights.map((ins, i) => (
-          <li key={i} className={`card border-l-4 pl-4 ${priorityClass(ins.priority)}`}>
-            <p className="text-sm text-[var(--ui-body-text)]">{ins.message}</p>
-            <span className="text-[10px] uppercase text-[var(--ui-muted)] mt-1 inline-block">{ins.priority}</span>
-          </li>
-        ))}
-        {insights.length === 0 ? <p className="text-sm text-[var(--ui-muted)]">Generando recomendaciones…</p> : null}
-      </ul>
-    </div>
-  );
+  return <FadeyAiHomePanel data={data} />;
 }

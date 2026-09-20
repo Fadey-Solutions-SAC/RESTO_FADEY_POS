@@ -1807,6 +1807,34 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   font-size: 1.25rem;
   flex-shrink: 0;
   box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);
+  overflow: hidden;
+}
+.rf-fadey-ai-header-avatar--photo {
+  background: #0b1b34;
+  padding: 0;
+}
+.rf-fadey-ai-pix {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 999px;
+}
+.rf-fadey-ai-pix--sm,
+.rf-fadey-ai-pix--header,
+.rf-fadey-ai-pix--lg {
+  width: 100%;
+  height: 100%;
+}
+.rf-fadey-ai-avatar-sm--photo,
+.rf-fadey-ai-avatar-lg--photo {
+  background: #0b1b34;
+  padding: 0;
+  overflow: hidden;
+}
+.rf-fadey-ai-avatar-lg--photo {
+  width: 5.5rem;
+  height: 5.5rem;
 }
 .rf-fadey-ai-header-text {
   display: flex;
@@ -2108,6 +2136,10 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
 .rf-fadey-ai-send:not(:disabled):hover {
   background: #2563eb !important;
 }
+.rf-fadey-ai-body--home .rf-fadey-ai-scroll {
+  min-height: 8rem;
+}
+
 .rf-fadey-ai-disclaimer {
   margin: 0.45rem 0 0;
   text-align: center;

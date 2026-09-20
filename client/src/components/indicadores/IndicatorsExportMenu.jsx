@@ -15,7 +15,7 @@ const TABS = [
   { id: 'financiero', label: 'Financiero' },
   { id: 'productos', label: 'Productos' },
   { id: 'alertas', label: 'Alertas' },
-  { id: 'ia', label: 'IA' },
+  { id: 'ia', label: 'IA Fadey' },
 ];
 
 export default function IndicatorsExportMenu({ open, onClose, hub, filters, activeTab }) {

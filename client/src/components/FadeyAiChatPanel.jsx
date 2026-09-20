@@ -1,11 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MdSmartToy, MdSend, MdChatBubbleOutline, MdAutoAwesome, MdPerson } from 'react-icons/md';
+import { MdSend, MdChatBubbleOutline, MdAutoAwesome, MdPerson } from 'react-icons/md';
 import { api } from '../utils/api';
+import { FADEY_AI_AVATAR_SRC, FADEY_AI_TAGLINE } from '../constants/fadeyAiBranding';
 
 const SUGGESTED = [
   '¿Cómo cerrar caja?',
   '¿Cómo cambiar una mesa?',
   '¿Cómo registrar una venta?',
+];
+
+function PixAvatar({ className = '', size = 'sm' }) {
+  return (
+    <img
+      src={FADEY_AI_AVATAR_SRC}
+      alt=""
+      className={`rf-fadey-ai-pix ${size === 'lg' ? 'rf-fadey-ai-pix--lg' : size === 'header' ? 'rf-fadey-ai-pix--header' : 'rf-fadey-ai-pix--sm'} ${className}`}
+      draggable={false}
+    />
+  );
+}
+
+const HOME_SUGGESTED = [
+  '¿Qué vendimos hoy?',
+  '¿Qué productos se venden más?',
+  'Genera un resumen de ventas',
+  '¿Qué me recomiendas hoy?',
 ];
 
 function stripMd(s) {
@@ -176,8 +195,16 @@ function AssistantCard({ content }) {
 
 /**
  * Chat IA Fadey — UI alineada a la referencia (avatar, pasos, chips, disclaimer).
+ * variant "home": sede general dentro de Indicadores → IA Fadey.
  */
-export default function FadeyAiChatPanel({ isActive = false }) {
+export default function FadeyAiChatPanel({
+  isActive = false,
+  variant = 'popup',
+  suggested,
+  introMessage = '',
+}) {
+  const chips = suggested || (variant === 'home' ? HOME_SUGGESTED : SUGGESTED);
+  const isHome = variant === 'home';
   const [status, setStatus] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -291,8 +318,8 @@ export default function FadeyAiChatPanel({ isActive = false }) {
   if (!status?.enabled) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center px-4 gap-2">
-        <div className="rf-fadey-ai-avatar-lg">
-          <MdSmartToy />
+        <div className="rf-fadey-ai-avatar-lg rf-fadey-ai-avatar-lg--photo">
+          <PixAvatar size="lg" />
         </div>
         <p className="text-sm font-semibold text-[#0f172a]">IA Fadey desactivada</p>
         <p className="text-xs text-[#64748b]">Actívala en Admin Maestro → control del plan.</p>
@@ -301,18 +328,30 @@ export default function FadeyAiChatPanel({ isActive = false }) {
   }
 
   return (
-    <div className="rf-fadey-ai-body h-full min-h-0 flex flex-col">
+    <div className={`rf-fadey-ai-body h-full min-h-0 flex flex-col ${isHome ? 'rf-fadey-ai-body--home' : ''}`}>
       <div className="rf-fadey-ai-scroll flex-1 min-h-0 overflow-y-auto px-3 pt-3 pb-2 space-y-3">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !isHome ? (
           <div className="flex flex-col items-center justify-center text-center px-4 gap-2 py-8">
-            <div className="rf-fadey-ai-avatar-lg">
-              <MdSmartToy />
+            <div className="rf-fadey-ai-avatar-lg rf-fadey-ai-avatar-lg--photo">
+              <PixAvatar size="lg" />
             </div>
-            <p className="text-sm font-semibold text-[#0f172a]">¿En qué te ayudo?</p>
+            <p className="text-sm font-semibold text-[#0f172a]">PIX</p>
+            <p className="text-sm font-medium text-[#2563eb]">{FADEY_AI_TAGLINE}</p>
             <p className="text-xs text-[#64748b] max-w-[16rem]">
               Pregunta cómo hacer algo en el POS o elige una sugerencia.
             </p>
           </div>
+        ) : messages.length === 0 && isHome && introMessage ? (
+          <div className="rf-fadey-ai-row rf-fadey-ai-row--assistant">
+            <div className="rf-fadey-ai-avatar-sm rf-fadey-ai-avatar-sm--photo" aria-hidden>
+              <PixAvatar size="sm" />
+            </div>
+            <div className="rf-fadey-ai-card">
+              <p className="rf-fadey-ai-card-plain whitespace-pre-wrap">{introMessage}</p>
+            </div>
+          </div>
+        ) : messages.length === 0 ? (
+          <p className="text-xs text-[#64748b] text-center py-4">Escribe una consulta o elige una sugerencia.</p>
         ) : (
           messages.map((m) => {
             const isUser = m.role === 'user';
@@ -328,8 +367,8 @@ export default function FadeyAiChatPanel({ isActive = false }) {
             }
             return (
               <div key={m.id} className="rf-fadey-ai-row rf-fadey-ai-row--assistant">
-                <div className="rf-fadey-ai-avatar-sm" aria-hidden>
-                  <MdSmartToy />
+                <div className="rf-fadey-ai-avatar-sm rf-fadey-ai-avatar-sm--photo" aria-hidden>
+                  <PixAvatar size="sm" />
                 </div>
                 <AssistantCard content={m.content} />
               </div>
@@ -338,8 +377,8 @@ export default function FadeyAiChatPanel({ isActive = false }) {
         )}
         {busy ? (
           <div className="rf-fadey-ai-row rf-fadey-ai-row--assistant">
-            <div className="rf-fadey-ai-avatar-sm" aria-hidden>
-              <MdSmartToy />
+            <div className="rf-fadey-ai-avatar-sm rf-fadey-ai-avatar-sm--photo" aria-hidden>
+              <PixAvatar size="sm" />
             </div>
             <div className="rf-fadey-ai-card rf-fadey-ai-card--typing">
               <span />
@@ -358,7 +397,7 @@ export default function FadeyAiChatPanel({ isActive = false }) {
             Preguntas sugeridas
           </p>
           <div className="rf-fadey-ai-suggest-chips">
-            {SUGGESTED.map((q) => (
+            {chips.map((q) => (
               <button
                 key={q}
                 type="button"
@@ -389,7 +428,7 @@ export default function FadeyAiChatPanel({ isActive = false }) {
               className="rf-fadey-ai-input"
               value={input}
               disabled={busy}
-              placeholder="Escribe tu pregunta..."
+              placeholder={isHome ? 'Escribe tu consulta…' : 'Escribe tu pregunta...'}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {

@@ -1,0 +1,347 @@
+.rf-ai-home {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.rf-ai-home__main,
+.rf-ai-home__side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.rf-ai-home__hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 1.15rem;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 88% 20%, rgba(56, 189, 248, 0.22), transparent 42%),
+    linear-gradient(135deg, #0b1b34 0%, #123056 55%, #1d4ed8 140%);
+  color: #f8fafc;
+}
+
+.rf-ai-home__bot {
+  width: 4.4rem;
+  height: 4.4rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, #38bdf8, #2563eb);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.28);
+  font-size: 2.2rem;
+  overflow: hidden;
+}
+
+.rf-ai-home__bot--photo {
+  background: #0b1b34;
+  padding: 0;
+}
+
+.rf-ai-home__bot--photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rf-ai-home__bot--sm {
+  width: 2.6rem;
+  height: 2.6rem;
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+
+.rf-ai-home__tagline {
+  margin: 0 0 0.45rem !important;
+  font-size: 0.95rem !important;
+  font-weight: 600;
+  color: #7dd3fc !important;
+}
+
+.rf-ai-home__hero-copy h2 {
+  margin: 0 0 0.2rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.rf-ai-home__hero-copy p {
+  margin: 0 0 0.55rem;
+  font-size: 0.86rem;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.rf-ai-home__hero-copy ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.rf-ai-home__hero-copy li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: #e2e8f0;
+}
+
+.rf-ai-home__hero-copy li svg {
+  color: #4ade80;
+  flex-shrink: 0;
+}
+
+.rf-ai-home__hero-aside {
+  margin: 0;
+  max-width: 7.5rem;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: #bfdbfe;
+  text-align: right;
+}
+
+.rf-ai-home__chat {
+  min-height: 22rem;
+  height: min(38vh, 26rem);
+  padding: 0;
+  overflow: hidden;
+}
+
+.rf-ai-home__chat .rf-fadey-ai-body--home {
+  height: 100%;
+}
+
+.rf-ai-home__kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.rf-ai-home__kpi {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 0.8rem;
+  border-radius: 14px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+}
+
+.rf-ai-home__kpi p {
+  margin: 0;
+  font-size: 0.68rem;
+  color: var(--ui-muted);
+}
+
+.rf-ai-home__kpi strong {
+  display: block;
+  font-size: 1.05rem;
+  color: var(--ui-body-text);
+  line-height: 1.2;
+}
+
+.rf-ai-home__kpi em {
+  display: block;
+  font-size: 0.64rem;
+  font-style: normal;
+  color: #16a34a;
+}
+
+.rf-ai-home__kpi-icon {
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.rf-ai-home__kpi-icon--blue { background: #2563eb; }
+.rf-ai-home__kpi-icon--sky { background: #0ea5e9; }
+.rf-ai-home__kpi-icon--navy { background: #1e3a8a; }
+.rf-ai-home__kpi-icon--cyan { background: #0284c7; }
+
+.rf-ai-home__charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.rf-ai-home__chart h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.rf-ai-home__pie-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.rf-ai-home__pie-wrap ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.rf-ai-home__pie-wrap li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.7rem;
+  color: var(--ui-body-text);
+}
+
+.rf-ai-home__pie-wrap i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.rf-ai-home__empty {
+  margin: 0;
+  padding: 1.5rem 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--ui-muted);
+}
+
+.rf-ai-home__exports {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  font-size: 0.72rem;
+  color: var(--ui-muted);
+}
+
+.rf-ai-home__export {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.rf-ai-home__recs h3,
+.rf-ai-home__actions h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.7rem;
+  font-size: 0.92rem;
+}
+
+.rf-ai-home__recs ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.rf-ai-home__recs li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.rf-ai-home__recs p {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--ui-body-text);
+}
+
+.rf-ai-home__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  background: #38bdf8;
+}
+
+.rf-ai-home__dot--high { background: #ef4444; }
+.rf-ai-home__dot--medium { background: #f59e0b; }
+.rf-ai-home__dot--info { background: #22c55e; }
+
+.rf-ai-home__action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.rf-ai-home__action-grid a {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.5rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--ui-border);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ui-body-text);
+}
+
+.rf-ai-home__action-grid a:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.rf-ai-home__quote {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 14px;
+  background: #0b1b34;
+  color: #e2e8f0;
+}
+
+.rf-ai-home__quote p {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 1100px) {
+  .rf-ai-home {
+    grid-template-columns: 1fr;
+  }
+
+  .rf-ai-home__hero {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .rf-ai-home__hero-aside {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .rf-ai-home__kpis,
+  .rf-ai-home__charts,
+  .rf-ai-home__action-grid,
+  .rf-ai-home__pie-wrap {
+    grid-template-columns: 1fr;
+  }
+
+  .rf-ai-home__chat {
+    height: 22rem;
+  }
+}

@@ -7,7 +7,8 @@ import { getSocket } from '../hooks/useSocket';
 import StaffTeamChat from './StaffTeamChat';
 import FadeyAiChatPanel from './FadeyAiChatPanel';
 import toast from 'react-hot-toast';
-import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload, MdSmartToy } from 'react-icons/md';
+import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload } from 'react-icons/md';
+import { FADEY_AI_AVATAR_SRC, FADEY_AI_TAGLINE } from '../constants/fadeyAiBranding';
 import {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   PAGO_PLAN_MODULE_PATH,
@@ -261,12 +262,12 @@ export default function NotificationCenter({ className = '' }) {
               >
                 {tab === 'ia' ? (
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="rf-fadey-ai-header-avatar" aria-hidden>
-                      <MdSmartToy />
+                    <div className="rf-fadey-ai-header-avatar rf-fadey-ai-header-avatar--photo" aria-hidden>
+                      <img src={FADEY_AI_AVATAR_SRC} alt="" className="rf-fadey-ai-pix rf-fadey-ai-pix--header" draggable={false} />
                     </div>
                     <div className="rf-fadey-ai-header-text">
                       <span className="rf-fadey-ai-header-name">IA Fadey</span>
-                      <span className="rf-fadey-ai-header-sub">Asistente de Resto Fadey</span>
+                      <span className="rf-fadey-ai-header-sub">{FADEY_AI_TAGLINE}</span>
                     </div>
                   </div>
                 ) : (
@@ -423,7 +424,12 @@ export default function NotificationCenter({ className = '' }) {
           aria-expanded={open && tab === 'ia'}
           aria-label="IA Fadey"
         >
-          <MdSmartToy className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
+          <img
+            src={FADEY_AI_AVATAR_SRC}
+            alt="PIX"
+            className="w-8 h-8 rounded-full object-cover border border-[color:var(--ui-border)]"
+            draggable={false}
+          />
         </button>
       ) : null}
 
