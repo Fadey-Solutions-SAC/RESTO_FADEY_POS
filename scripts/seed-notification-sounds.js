@@ -1,25 +1,80 @@
 /**
- * Genera MP3 mínimos válidos para notificaciones de cocina/bar (sin dependencias externas).
+ * Genera WAV audibles para notificaciones de cocina/bar (sin dependencias).
  * Ejecutar: node scripts/seed-notification-sounds.js
  */
 const fs = require('fs');
 const path = require('path');
 
 const OUT_DIR = path.join(__dirname, '..', 'client', 'public', 'sounds');
+const SAMPLE_RATE = 22050;
 
-/** MP3 corto válido (≈0.15 s, tono suave) — base64; sustituir por assets profesionales si se desea. */
-const KITCHEN_MP3_B64 =
-  'SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//uQwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjM1AAAAAAAAAAAAAAAAJAAAAAAAAAAAAcQv8pR0AAAAAAAAAAAAAAAAAAAA//uQxAAAAANIAAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
-
-const BAR_MP3_B64 = KITCHEN_MP3_B64;
-
-function writeSound(name, b64) {
-  fs.mkdirSync(OUT_DIR, { recursive: true });
-  const buf = Buffer.from(b64, 'base64');
-  const file = path.join(OUT_DIR, name);
-  fs.writeFileSync(file, buf);
-  console.log(`Wrote ${file} (${buf.length} bytes)`);
+function writeWav(filePath, samples) {
+  const numSamples = samples.length;
+  const dataSize = numSamples * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+  buffer.write('RIFF', 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write('WAVE', 8);
+  buffer.write('fmt ', 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(SAMPLE_RATE, 24);
+  buffer.writeUInt32LE(SAMPLE_RATE * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write('data', 36);
+  buffer.writeUInt32LE(dataSize, 40);
+  for (let i = 0; i < numSamples; i += 1) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    buffer.writeInt16LE(Math.round(s * 32767), 44 + i * 2);
+  }
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, buffer);
+  console.log(`Wrote ${filePath} (${buffer.length} bytes)`);
 }
 
-writeSound('kitchen-notification.mp3', KITCHEN_MP3_B64);
-writeSound('bar-notification.mp3', BAR_MP3_B64);
+function tone(freq, durationSec, gain = 0.45) {
+  const n = Math.floor(SAMPLE_RATE * durationSec);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const t = i / SAMPLE_RATE;
+    const env = Math.min(1, i / (SAMPLE_RATE * 0.012)) * Math.min(1, (n - i) / (SAMPLE_RATE * 0.04));
+    out[i] = Math.sin(2 * Math.PI * freq * t) * gain * env;
+  }
+  return out;
+}
+
+function silence(durationSec) {
+  return new Float32Array(Math.floor(SAMPLE_RATE * durationSec));
+}
+
+function concat(...parts) {
+  const total = parts.reduce((sum, p) => sum + p.length, 0);
+  const out = new Float32Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
+}
+
+/** Cocina: tres tonos ascendentes (alerta clara). */
+const kitchenSamples = concat(
+  tone(660, 0.18, 0.5),
+  silence(0.06),
+  tone(880, 0.18, 0.5),
+  silence(0.06),
+  tone(1100, 0.28, 0.55),
+);
+
+/** Bar: dos tonos más agudos. */
+const barSamples = concat(
+  tone(990, 0.16, 0.5),
+  silence(0.05),
+  tone(1320, 0.32, 0.55),
+);
+
+writeWav(path.join(OUT_DIR, 'kitchen-notification.wav'), kitchenSamples);
+writeWav(path.join(OUT_DIR, 'bar-notification.wav'), barSamples);

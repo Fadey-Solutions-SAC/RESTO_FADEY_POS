@@ -23,7 +23,7 @@ import {
 import { isBarProductionItemForStation } from '../../utils/productionArea';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import { canAjusteBarAutoDismiss } from '../../utils/posPermissions';
-import { playNotificationSound, preloadNotificationSound } from '../../utils/playNotificationSound';
+import { playNotificationSound, preloadNotificationSound, unlockNotificationAudio, onNotificationAudioUnlockChange } from '../../utils/playNotificationSound';
 
 /** Pedido auto-pedido con cuenta de cliente (sin mesa física). */
 function isCuentaClienteSelfOrder(order) {
@@ -142,6 +142,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const [historyOrders, setHistoryOrders] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [areaDisplayName, setAreaDisplayName] = useState('');
+  const [soundReady, setSoundReady] = useState(false);
   const StationIcon = getProductionAreaIcon({ id: areaId, name: areaDisplayName || areaId });
   const panelTitle = isBar
     ? t('panel.barTitle')
@@ -181,32 +182,26 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   }, [areaId, isBar, isCocina]);
 
   const playStationAlert = () => {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      const ctx = new Ctx();
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.value = isBar ? 880 : 660;
-      gainNode.gain.setValueAtTime(0.001, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      oscillator.start();
-      oscillator.stop(ctx.currentTime + 0.38);
-      oscillator.onended = () => {
-        if (ctx.state !== 'closed') ctx.close().catch(() => {});
-      };
-    } catch (_) {
-      // noop: if browser blocks autoplay or audio context
-    }
+    playNotificationSound(isBar ? 'bar' : 'kitchen', `overdue-${Date.now()}`);
   };
 
   useEffect(() => {
     preloadNotificationSound(isBar ? 'bar' : 'kitchen');
   }, [isBar]);
+
+  useEffect(() => {
+    const unsub = onNotificationAudioUnlockChange((ready) => setSoundReady(Boolean(ready)));
+    const unlock = () => {
+      void unlockNotificationAudio();
+    };
+    window.addEventListener('pointerdown', unlock, { once: true, capture: true });
+    window.addEventListener('keydown', unlock, { once: true, capture: true });
+    return () => {
+      unsub();
+      window.removeEventListener('pointerdown', unlock, { capture: true });
+      window.removeEventListener('keydown', unlock, { capture: true });
+    };
+  }, []);
 
   useEffect(() => {
     if (!showDeliveryUi && filter === 'delivery') setFilter('all');
@@ -655,6 +650,15 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
 
   return (
     <div className="min-h-screen bg-[var(--ui-body-bg)] text-[var(--ui-body-text)]">
+      {!soundReady ? (
+        <button
+          type="button"
+          onClick={() => void unlockNotificationAudio()}
+          className="w-full px-3 py-2 text-left text-sm font-medium bg-amber-500/15 text-amber-900 dark:text-amber-100 border-b border-amber-500/30 hover:bg-amber-500/25"
+        >
+          Toca aquí para activar el sonido de pedidos nuevos
+        </button>
+      ) : null}
       <header className="bg-[var(--ui-surface)] backdrop-blur-xl border-b border-[color:var(--ui-border)] px-3 py-2 sm:px-6 sm:py-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
           <StationIcon className="text-2xl sm:text-3xl text-[var(--ui-body-text)] shrink-0" />
