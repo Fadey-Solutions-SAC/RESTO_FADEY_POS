@@ -282,7 +282,59 @@ const TOOL_DEFS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'business_insights',
+      description: 'Análisis del negocio: ventas, recomendaciones, alertas e insights de indicadores.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
 ];
+
+function toolBusinessInsights(user) {
+  if (!canSeeFinancials(user)) {
+    return { ok: false, error: 'Tu rol no puede consultar el análisis del negocio.' };
+  }
+  try {
+    const { buildIndicatorsHub } = require('../indicatorsHubService');
+    const hub = buildIndicatorsHub({});
+    const g = hub.general || {};
+    const insights = Array.isArray(hub.insights) ? hub.insights : [];
+    const alerts = Array.isArray(hub.alerts) ? hub.alerts : [];
+    const top = (hub.products?.top_sellers || []).slice(0, 3);
+    const lines = [
+      '**Análisis del negocio (datos en vivo)**',
+      `Ventas hoy: S/ ${Number(g.sales_today || 0).toFixed(2)} · ${g.orders_today || 0} pedido(s).`,
+      g.avg_ticket != null ? `Ticket promedio: S/ ${Number(g.avg_ticket || 0).toFixed(2)}.` : null,
+      g.growth_month_pct != null ? `Variación vs mes anterior: ${Number(g.growth_month_pct).toFixed(1)}%.` : null,
+    ].filter(Boolean);
+
+    if (top.length) {
+      lines.push('Productos destacados:');
+      top.forEach((p, i) => {
+        lines.push(`${i + 1}. ${p.product_name || p.name} (${p.qty} uds${p.revenue != null ? `, S/ ${Number(p.revenue).toFixed(0)}` : ''})`);
+      });
+    }
+
+    if (insights.length) {
+      lines.push('', '**Recomendaciones / insights:**');
+      insights.slice(0, 6).forEach((ins, i) => {
+        const msg = typeof ins === 'string' ? ins : (ins.message || '');
+        if (msg) lines.push(`${i + 1}. ${msg}`);
+      });
+    }
+
+    if (alerts.length) {
+      lines.push('', `Alertas activas: ${alerts.length}. Revisa Indicadores → Alertas o inventario.`);
+    }
+
+    lines.push('', 'También puedes preguntarme por ventas del día, top productos, stock bajo o cómo operar el POS.');
+    return { ok: true, text: lines.join('\n'), insights_count: insights.length, alerts_count: alerts.length };
+  } catch (err) {
+    return { ok: false, error: err.message || 'No se pudo armar el análisis.' };
+  }
+}
 
 function toolsForUser(user) {
   const r = roleLc(user);
@@ -293,6 +345,7 @@ function toolsForUser(user) {
     if (name === 'low_stock') return canSeeFinancials(user);
     if (name === 'kitchen_open_orders') return canSeeKitchenOps(user);
     if (name === 'active_staff') return canSeeHr(user);
+    if (name === 'business_insights') return canSeeFinancials(user);
     return true;
   });
 }
@@ -311,6 +364,8 @@ function runTool(name, args, user) {
       return toolActiveStaff(user);
     case 'search_guides':
       return toolSearchGuides(args || {});
+    case 'business_insights':
+      return toolBusinessInsights(user);
     default:
       return { ok: false, error: `Herramienta desconocida: ${name}` };
   }

@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MdCheckCircle,
@@ -16,7 +17,7 @@ import {
 } from 'react-icons/md';
 import { Cell, Pie, PieChart, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { formatCurrency } from '../../utils/api';
-import { FADEY_AI_AVATAR_SRC, FADEY_AI_TAGLINE } from '../../constants/fadeyAiBranding';
+import { FADEY_AI_TAGLINE, getFadeyAiAvatarSrc } from '../../constants/fadeyAiBranding';
 import FadeyAiChatPanel from '../FadeyAiChatPanel';
 import './FadeyAiHomePanel.css';
 
@@ -37,6 +38,8 @@ function formatShortDate(key) {
 }
 
 export default function FadeyAiHomePanel({ data }) {
+  const chatRef = useRef(null);
+  const chatPanelRef = useRef(null);
   const g = data?.general || {};
   const ch = data?.charts || {};
   const products = data?.products || {};
@@ -55,16 +58,33 @@ export default function FadeyAiHomePanel({ data }) {
     FADEY_AI_TAGLINE + '.',
     `Hoy se registraron ventas por ${formatCurrency(g.sales_today)} en ${g.orders_today ?? 0} pedidos.`,
     g.avg_ticket ? `Ticket promedio: ${formatCurrency(g.avg_ticket)}.` : '',
-    'Pregúntame por ventas, productos, caja u operación; te respondo aquí mismo.',
+    'Puedo analizar datos, generar resúmenes/informes, dar recomendaciones y ayudarte a decidir. Pregúntame aquí.',
   ].filter(Boolean).join(' ');
+
+  const openChat = () => {
+    try {
+      chatRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (_) {
+      /* noop */
+    }
+    requestAnimationFrame(() => {
+      chatPanelRef.current?.focusInput?.();
+    });
+  };
 
   return (
     <div className="rf-ai-home">
       <div className="rf-ai-home__main">
         <section className="rf-ai-home__hero">
-          <div className="rf-ai-home__bot rf-ai-home__bot--photo" aria-hidden>
-            <img src={FADEY_AI_AVATAR_SRC} alt="" draggable={false} />
-          </div>
+          <button
+            type="button"
+            className="rf-ai-home__bot rf-ai-home__bot--photo"
+            onClick={openChat}
+            title="Abrir chat con PIX"
+            aria-label="Abrir chat con PIX"
+          >
+            <img src={getFadeyAiAvatarSrc('saludo')} alt="" draggable={false} />
+          </button>
           <div className="rf-ai-home__hero-copy">
             <h2>Hola, soy PIX</h2>
             <p className="rf-ai-home__tagline">{FADEY_AI_TAGLINE}</p>
@@ -76,11 +96,14 @@ export default function FadeyAiHomePanel({ data }) {
               <li><MdCheckCircle /> Te ayudo a tomar mejores decisiones</li>
             </ul>
           </div>
-          <p className="rf-ai-home__hero-aside">{FADEY_AI_TAGLINE}</p>
         </section>
 
-        <section className="rf-ai-home__chat card" aria-label="Conversación con IA Fadey">
-          <FadeyAiChatPanel isActive variant="home" introMessage={intro} />
+        <section
+          ref={chatRef}
+          className="rf-ai-home__chat card"
+          aria-label="Conversación con IA Fadey"
+        >
+          <FadeyAiChatPanel ref={chatPanelRef} isActive variant="home" introMessage={intro} />
         </section>
 
         <section className="rf-ai-home__kpis">
@@ -118,7 +141,10 @@ export default function FadeyAiHomePanel({ data }) {
 
         <section className="rf-ai-home__charts">
           <div className="card rf-ai-home__chart">
-            <h3>Ventas por producto</h3>
+            <h3>
+              <img src={getFadeyAiAvatarSrc('analizando')} alt="" className="rf-ai-home__inline-pix" draggable={false} />
+              Ventas por producto
+            </h3>
             {categoryData.length ? (
               <div className="rf-ai-home__pie-wrap">
                 <ResponsiveContainer width="100%" height={190}>
@@ -146,7 +172,10 @@ export default function FadeyAiHomePanel({ data }) {
             )}
           </div>
           <div className="card rf-ai-home__chart">
-            <h3>Ventas por hora</h3>
+            <h3>
+              <img src={getFadeyAiAvatarSrc('reportes')} alt="" className="rf-ai-home__inline-pix" draggable={false} />
+              Ventas por hora
+            </h3>
             {hourData.length ? (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={hourData}>
@@ -179,7 +208,10 @@ export default function FadeyAiHomePanel({ data }) {
 
       <aside className="rf-ai-home__side">
         <section className="card rf-ai-home__recs">
-          <h3><MdBolt /> Recomendaciones de la IA</h3>
+          <h3>
+            <img src={getFadeyAiAvatarSrc('asesorando')} alt="" className="rf-ai-home__inline-pix" draggable={false} />
+            Recomendaciones de la IA
+          </h3>
           <ul>
             {insights.slice(0, 5).map((ins, i) => (
               <li key={`${ins.priority}-${i}`}>
@@ -205,7 +237,7 @@ export default function FadeyAiHomePanel({ data }) {
 
         <section className="rf-ai-home__quote">
           <div className="rf-ai-home__bot rf-ai-home__bot--sm rf-ai-home__bot--photo" aria-hidden>
-            <img src={FADEY_AI_AVATAR_SRC} alt="" draggable={false} />
+            <img src={getFadeyAiAvatarSrc(insights.length ? 'asesorando' : 'feliz')} alt="" draggable={false} />
           </div>
           <p>“{FADEY_AI_TAGLINE}.”</p>
         </section>

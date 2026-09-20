@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { MdSend, MdChatBubbleOutline, MdAutoAwesome, MdPerson } from 'react-icons/md';
 import { api } from '../utils/api';
-import { FADEY_AI_AVATAR_SRC, FADEY_AI_TAGLINE } from '../constants/fadeyAiBranding';
+import {
+  FADEY_AI_TAGLINE,
+  getFadeyAiAvatarSrc,
+  resolveFadeyAiMood,
+} from '../constants/fadeyAiBranding';
 
 const SUGGESTED = [
   '¿Cómo cerrar caja?',
@@ -9,10 +13,10 @@ const SUGGESTED = [
   '¿Cómo registrar una venta?',
 ];
 
-function PixAvatar({ className = '', size = 'sm' }) {
+function PixAvatar({ className = '', size = 'sm', mood = 'saludo' }) {
   return (
     <img
-      src={FADEY_AI_AVATAR_SRC}
+      src={getFadeyAiAvatarSrc(mood)}
       alt=""
       className={`rf-fadey-ai-pix ${size === 'lg' ? 'rf-fadey-ai-pix--lg' : size === 'header' ? 'rf-fadey-ai-pix--header' : 'rf-fadey-ai-pix--sm'} ${className}`}
       draggable={false}
@@ -197,12 +201,12 @@ function AssistantCard({ content }) {
  * Chat IA Fadey — UI alineada a la referencia (avatar, pasos, chips, disclaimer).
  * variant "home": sede general dentro de Indicadores → IA Fadey.
  */
-export default function FadeyAiChatPanel({
+const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
   isActive = false,
   variant = 'popup',
   suggested,
   introMessage = '',
-}) {
+}, ref) {
   const chips = suggested || (variant === 'home' ? HOME_SUGGESTED : SUGGESTED);
   const isHome = variant === 'home';
   const [status, setStatus] = useState(null);
@@ -213,6 +217,16 @@ export default function FadeyAiChatPanel({
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    focusInput: () => {
+      try {
+        inputRef.current?.focus?.();
+      } catch (_) {
+        /* noop */
+      }
+    },
+  }));
 
   const scrollBottom = () => {
     try {
@@ -319,7 +333,7 @@ export default function FadeyAiChatPanel({
     return (
       <div className="h-full flex flex-col items-center justify-center text-center px-4 gap-2">
         <div className="rf-fadey-ai-avatar-lg rf-fadey-ai-avatar-lg--photo">
-          <PixAvatar size="lg" />
+          <PixAvatar size="lg" mood="saludo" />
         </div>
         <p className="text-sm font-semibold text-[#0f172a]">IA Fadey desactivada</p>
         <p className="text-xs text-[#64748b]">Actívala en Admin Maestro → control del plan.</p>
@@ -333,7 +347,7 @@ export default function FadeyAiChatPanel({
         {messages.length === 0 && !isHome ? (
           <div className="flex flex-col items-center justify-center text-center px-4 gap-2 py-8">
             <div className="rf-fadey-ai-avatar-lg rf-fadey-ai-avatar-lg--photo">
-              <PixAvatar size="lg" />
+              <PixAvatar size="lg" mood="saludo" />
             </div>
             <p className="text-sm font-semibold text-[#0f172a]">PIX</p>
             <p className="text-sm font-medium text-[#2563eb]">{FADEY_AI_TAGLINE}</p>
@@ -344,7 +358,7 @@ export default function FadeyAiChatPanel({
         ) : messages.length === 0 && isHome && introMessage ? (
           <div className="rf-fadey-ai-row rf-fadey-ai-row--assistant">
             <div className="rf-fadey-ai-avatar-sm rf-fadey-ai-avatar-sm--photo" aria-hidden>
-              <PixAvatar size="sm" />
+              <PixAvatar size="sm" mood="asesorando" />
             </div>
             <div className="rf-fadey-ai-card">
               <p className="rf-fadey-ai-card-plain whitespace-pre-wrap">{introMessage}</p>
@@ -365,10 +379,11 @@ export default function FadeyAiChatPanel({
                 </div>
               );
             }
+            const mood = resolveFadeyAiMood({ sources: m.sources, content: m.content });
             return (
               <div key={m.id} className="rf-fadey-ai-row rf-fadey-ai-row--assistant">
                 <div className="rf-fadey-ai-avatar-sm rf-fadey-ai-avatar-sm--photo" aria-hidden>
-                  <PixAvatar size="sm" />
+                  <PixAvatar size="sm" mood={mood} />
                 </div>
                 <AssistantCard content={m.content} />
               </div>
@@ -378,7 +393,7 @@ export default function FadeyAiChatPanel({
         {busy ? (
           <div className="rf-fadey-ai-row rf-fadey-ai-row--assistant">
             <div className="rf-fadey-ai-avatar-sm rf-fadey-ai-avatar-sm--photo" aria-hidden>
-              <PixAvatar size="sm" />
+              <PixAvatar size="sm" mood="pensando" />
             </div>
             <div className="rf-fadey-ai-card rf-fadey-ai-card--typing">
               <span />
@@ -391,25 +406,27 @@ export default function FadeyAiChatPanel({
       </div>
 
       <div className="rf-fadey-ai-footer shrink-0">
-        <div className="rf-fadey-ai-suggest">
-          <p className="rf-fadey-ai-suggest-label">
-            <MdAutoAwesome className="rf-fadey-ai-suggest-star" />
-            Preguntas sugeridas
-          </p>
-          <div className="rf-fadey-ai-suggest-chips">
-            {chips.map((q) => (
-              <button
-                key={q}
-                type="button"
-                className="rf-fadey-ai-chip"
-                disabled={busy}
-                onClick={() => void sendText(q)}
-              >
-                {q}
-              </button>
-            ))}
+        {(!isHome || messages.length === 0) ? (
+          <div className="rf-fadey-ai-suggest">
+            <p className="rf-fadey-ai-suggest-label">
+              <MdAutoAwesome className="rf-fadey-ai-suggest-star" />
+              Preguntas sugeridas
+            </p>
+            <div className="rf-fadey-ai-suggest-chips">
+              {chips.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  className="rf-fadey-ai-chip"
+                  disabled={busy}
+                  onClick={() => void sendText(q)}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
 
         {error ? <p className="text-[11px] text-rose-600 px-1 pb-1">{error}</p> : null}
 
@@ -448,10 +465,14 @@ export default function FadeyAiChatPanel({
           </button>
         </form>
 
-        <p className="rf-fadey-ai-disclaimer">
-          IA Fadey puede cometer errores. Verifica la información importante.
-        </p>
+        {!isHome ? (
+          <p className="rf-fadey-ai-disclaimer">
+            IA Fadey puede cometer errores. Verifica la información importante.
+          </p>
+        ) : null}
       </div>
     </div>
   );
-}
+});
+
+export default FadeyAiChatPanel;

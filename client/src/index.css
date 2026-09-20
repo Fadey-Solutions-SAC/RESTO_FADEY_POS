@@ -1816,7 +1816,8 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
 .rf-fadey-ai-pix {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center bottom;
   display: block;
   border-radius: 999px;
 }
@@ -2137,7 +2138,8 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   background: #2563eb !important;
 }
 .rf-fadey-ai-body--home .rf-fadey-ai-scroll {
-  min-height: 8rem;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .rf-fadey-ai-disclaimer {

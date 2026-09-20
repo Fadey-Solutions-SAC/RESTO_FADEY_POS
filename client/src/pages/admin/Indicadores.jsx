@@ -33,7 +33,7 @@ import {
 import IndicatorsAlertsPanel from '../../components/indicadores/IndicatorsAlertsPanel';
 import IndicatorsDateFilters, { INDICADORES_CTRL } from '../../components/indicadores/IndicatorsDateFilters';
 import IndicatorsExportMenu from '../../components/indicadores/IndicatorsExportMenu';
-import { FADEY_AI_AVATAR_SRC } from '../../constants/fadeyAiBranding';
+import { getFadeyAiAvatarSrc } from '../../constants/fadeyAiBranding';
 
 const TABS = [
   { id: 'general', label: 'Panel', icon: MdDashboard },
@@ -242,7 +242,7 @@ export default function Indicadores() {
           >
             {activeModule.id === 'ia' ? (
               <img
-                src={FADEY_AI_AVATAR_SRC}
+                src={getFadeyAiAvatarSrc('saludo')}
                 alt=""
                 className="w-5 h-5 rounded-full object-cover shrink-0 border border-[color:var(--ui-border)]"
                 draggable={false}
@@ -292,7 +292,7 @@ export default function Indicadores() {
                   >
                     {t.id === 'ia' ? (
                       <img
-                        src={FADEY_AI_AVATAR_SRC}
+                        src={getFadeyAiAvatarSrc('analizando')}
                         alt=""
                         className="w-4 h-4 rounded-full object-cover shrink-0"
                         draggable={false}

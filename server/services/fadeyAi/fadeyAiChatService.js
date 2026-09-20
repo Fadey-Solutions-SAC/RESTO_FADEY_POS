@@ -132,9 +132,22 @@ function heuristicToolPrefetch(message, user) {
   const m = String(message || '').toLowerCase();
   const sources = [];
   const chunks = [];
-  const isHowTo = /c[oó]mo |como |paso a paso|dónde |donde |explicame|explícame|ayuda|creo |crear |configurar |registrar /.test(m)
+  const wantsAnalytics = /recomienda|recomendaci[oó]n|analiz|decisi[oó]n|vendimos|qu[eé]\s+vend|resumen de ventas|genera un resumen|informe de ventas|reporte de ventas|indicador|proyecci|alerta|datos en (vivo|tiempo)/.test(m)
+    || /qu[eé] me recomiendas|mejorar (ventas|negocio)|qu[eé] hago/.test(m);
+  const isHowTo = !wantsAnalytics && (
+    /c[oó]mo |como |paso a paso|dónde |donde |explicame|explícame|ayuda|creo |crear |configurar |registrar /.test(m)
     || /cerrar caja|abrir caja|requerimiento|recepci[oó]n|auto.?pedido|carta|usuario|impresora|sal[oó]n|liberar mesa|asistencia|cobrar|área|area|producci|mover|traslad|transfer/.test(m)
-    || /descuento|cortes[ií]a|oferta|cr[eé]dito|fideliz|encuesta|cliente|delivery|reserva|inventario|kardex|egreso|ingreso|informe|reporte|permiso|qr|mensaje|notificaci|almac[eé]n|gasto|indicador|offline|sunat|comprobante|plan/.test(m);
+    || /descuento|cortes[ií]a|oferta|cr[eé]dito|fideliz|encuesta|cliente|delivery|reserva|inventario|kardex|egreso|ingreso|permiso|qr|mensaje|notificaci|almac[eé]n|gasto|offline|sunat|comprobante|plan/.test(m)
+  );
+
+  if (wantsAnalytics) {
+    const r = runTool('business_insights', {}, user);
+    if (r.ok && r.text) {
+      chunks.push(r.text);
+      sources.push({ kind: 'tool', title: 'business_insights' });
+      return { chunks, sources };
+    }
+  }
 
   if (isHowTo) {
     const r = runTool('search_guides', { query: message }, user);

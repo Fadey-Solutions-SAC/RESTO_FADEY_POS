@@ -8,7 +8,7 @@ import StaffTeamChat from './StaffTeamChat';
 import FadeyAiChatPanel from './FadeyAiChatPanel';
 import toast from 'react-hot-toast';
 import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload } from 'react-icons/md';
-import { FADEY_AI_AVATAR_SRC, FADEY_AI_TAGLINE } from '../constants/fadeyAiBranding';
+import { FADEY_AI_TAGLINE, getFadeyAiAvatarSrc } from '../constants/fadeyAiBranding';
 import {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   PAGO_PLAN_MODULE_PATH,
@@ -263,7 +263,7 @@ export default function NotificationCenter({ className = '' }) {
                 {tab === 'ia' ? (
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="rf-fadey-ai-header-avatar rf-fadey-ai-header-avatar--photo" aria-hidden>
-                      <img src={FADEY_AI_AVATAR_SRC} alt="" className="rf-fadey-ai-pix rf-fadey-ai-pix--header" draggable={false} />
+                      <img src={getFadeyAiAvatarSrc('chat')} alt="" className="rf-fadey-ai-pix rf-fadey-ai-pix--header" draggable={false} />
                     </div>
                     <div className="rf-fadey-ai-header-text">
                       <span className="rf-fadey-ai-header-name">IA Fadey</span>
@@ -425,7 +425,7 @@ export default function NotificationCenter({ className = '' }) {
           aria-label="IA Fadey"
         >
           <img
-            src={FADEY_AI_AVATAR_SRC}
+            src={getFadeyAiAvatarSrc('saludo')}
             alt="PIX"
             className="w-8 h-8 rounded-full object-cover border border-[color:var(--ui-border)]"
             draggable={false}
@@ -442,7 +442,12 @@ export default function NotificationCenter({ className = '' }) {
           aria-expanded={open && tab === 'avisos'}
           aria-label="Notificaciones"
         >
-          <MdCampaign className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
+          <img
+            src={getFadeyAiAvatarSrc('notif')}
+            alt=""
+            className="w-8 h-8 rounded-full object-cover border border-[color:var(--ui-border)]"
+            draggable={false}
+          />
           {visibleAdminNotifications.length > 0 ? (
             <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
               {visibleAdminNotifications.length > 99 ? '99+' : visibleAdminNotifications.length}

@@ -681,11 +681,15 @@ Nota: sin habilitación del maestro o plan básico, la opción no aparece.`,
     id: 'guide-ia',
     title: 'Qué puede hacer la IA Fadey',
     keywords: ['ia fadey', 'asistente', 'qué puedes', 'ayuda', 'como funciona la ia'],
-    body: `Soy la IA Fadey de este local. Puedo:
-- Explicar paso a paso cómo operar todo el POS (caja, mesas, almacén, QR, usuarios, informes…).
-- Consultar ventas, platos más vendidos, stock bajo y personal en jornada (según tu rol).
+    body: `Soy PIX, la IA Fadey de este local. Puedo:
+- Explicar paso a paso cómo operar el POS (caja, mesas, almacén, QR, usuarios, informes…).
+- Analizar datos en vivo: ventas, ticket, productos top y variación vs periodos.
+- Generar resúmenes / “informes” hablados con insights del negocio.
+- Dar recomendaciones inteligentes (stock, hora pico, delivery, margen…).
+- Consultar stock bajo y personal en jornada (según tu rol).
 - Avisar en segundo plano demoras o stock bajo (tras el periodo de aprendizaje).
-No puedo cobrar, anular ni cambiar precios por ti: te indico cómo hacerlo en el sistema.`,
+No puedo cobrar, anular ni cambiar precios por ti: te indico cómo hacerlo en el sistema.
+Frase: «Conectado con tu negocio».`,
   },
 ];
 
