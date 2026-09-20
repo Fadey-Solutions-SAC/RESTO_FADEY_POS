@@ -78,7 +78,8 @@ export function isNotificationAudioUnlocked() {
 }
 
 /**
- * Debe llamarse tras un gesto del usuario (click/tap) para permitir reproducir sonido.
+ * Debe llamarse tras un gesto del usuario (click/tap) en navegadores web.
+ * En Electron (autoplay libre) desbloquea al montar cocina/bar sin gesto.
  */
 export async function unlockNotificationAudio() {
   if (typeof window === 'undefined') return false;

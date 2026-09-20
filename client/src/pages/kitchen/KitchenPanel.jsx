@@ -191,15 +191,19 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
 
   useEffect(() => {
     const unsub = onNotificationAudioUnlockChange((ready) => setSoundReady(Boolean(ready)));
+    // Sonido activo al entrar a cocina/bar (Electron: autoplay libre; navegador: intenta ya).
+    void unlockNotificationAudio();
     const unlock = () => {
       void unlockNotificationAudio();
     };
     window.addEventListener('pointerdown', unlock, { once: true, capture: true });
     window.addEventListener('keydown', unlock, { once: true, capture: true });
+    window.addEventListener('touchstart', unlock, { once: true, capture: true });
     return () => {
       unsub();
       window.removeEventListener('pointerdown', unlock, { capture: true });
       window.removeEventListener('keydown', unlock, { capture: true });
+      window.removeEventListener('touchstart', unlock, { capture: true });
     };
   }, []);
 

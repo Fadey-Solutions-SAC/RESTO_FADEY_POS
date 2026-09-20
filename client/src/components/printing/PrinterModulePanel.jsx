@@ -1,15 +1,37 @@
-import { MdPrint, MdSave } from 'react-icons/md';
-import { hasElectronPrinting } from '../../utils/api';
+import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
+import { MdPrint, MdSave, MdVolumeUp, MdVolumeOff } from 'react-icons/md';
+import {
+  getPersistedPrintingBridgeOrigin,
+  hasElectronPrinting,
+  markPrintingLinkConfigured,
+  persistPrintingBridgeOrigin,
+} from '../../utils/api';
 import { usePrintingModule } from '../../hooks/usePrintingModule';
 import PrintingAssistantDownloadButton from './PrintingAssistantDownloadButton';
+import {
+  unlockNotificationAudio,
+  playNotificationSound,
+  preloadNotificationSound,
+  onNotificationAudioUnlockChange,
+  isNotificationAudioUnlocked,
+} from '../../utils/playNotificationSound';
+
+function soundTypeForModule(moduleKey) {
+  const key = String(moduleKey || '').trim().toLowerCase();
+  if (key === 'bar') return 'bar';
+  if (key === 'caja') return '';
+  return 'kitchen';
+}
 
 /**
- * Panel unificado de configuración de impresora (caja y áreas de producción).
+ * Panel unificado de configuración (caja y áreas de producción).
  * Guarda solo el módulo indicado (merge en servidor) para no desvincular los demás.
  */
 export default function PrinterModulePanel({
   moduleKey,
   showLinkSection = true,
+  showSoundControl = false,
   compact = false,
   onConfigLoaded,
 }) {
@@ -28,6 +50,26 @@ export default function PrinterModulePanel({
     loadConfig,
   } = usePrintingModule(moduleKey);
 
+  const [manualPrintingApi, setManualPrintingApi] = useState(() => (
+    getPersistedPrintingBridgeOrigin() || 'http://127.0.0.1:3002'
+  ));
+  const [linking, setLinking] = useState(false);
+  const [soundReady, setSoundReady] = useState(() => isNotificationAudioUnlocked());
+  const soundType = soundTypeForModule(moduleKey);
+  const showSound = Boolean(showSoundControl && soundType);
+
+  useEffect(() => {
+    const o = getPersistedPrintingBridgeOrigin();
+    if (o) setManualPrintingApi(o);
+  }, [moduleKey]);
+
+  useEffect(() => {
+    if (!showSound) return undefined;
+    preloadNotificationSound(soundType);
+    void unlockNotificationAudio();
+    return onNotificationAudioUnlockChange((ready) => setSoundReady(Boolean(ready)));
+  }, [showSound, soundType]);
+
   const handleSave = async () => {
     const saved = await saveModule();
     if (saved && onConfigLoaded) onConfigLoaded(saved);
@@ -39,6 +81,37 @@ export default function PrinterModulePanel({
     await refreshLink();
   };
 
+  const linkPrintingAssistantManually = async () => {
+    const raw = String(manualPrintingApi || '').trim();
+    if (!raw) {
+      toast.error('Ingrese una URL local (ej. http://127.0.0.1:3002)');
+      return;
+    }
+    setLinking(true);
+    try {
+      window.localStorage?.setItem('resto_local_printing_api', raw);
+      persistPrintingBridgeOrigin(raw);
+      const ok = await refreshLink();
+      if (ok) {
+        markPrintingLinkConfigured(raw);
+        toast.success('Asistente de impresión vinculado');
+      } else {
+        toast.error('No se pudo vincular el asistente');
+      }
+    } catch (_) {
+      toast.error('No se pudo guardar la URL local');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const activateSound = async () => {
+    if (!soundType) return;
+    await unlockNotificationAudio();
+    playNotificationSound(soundType, `cfg-test-${Date.now()}`, { force: true });
+    toast.success('Sonido de pedidos activado');
+  };
+
   const cfg = moduleConfig;
 
   return (
@@ -46,7 +119,7 @@ export default function PrinterModulePanel({
       {showLinkSection && (
         <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
+            <div className="min-w-0">
               <p className={`text-sm font-semibold ${linkStatus.connected ? 'text-emerald-700' : 'text-rose-700'}`}>
                 {linkStatus.checking ? 'Verificando vínculo…' : linkStatus.connected ? 'Vinculación activa' : 'Sin vinculación'}
               </p>
@@ -55,12 +128,31 @@ export default function PrinterModulePanel({
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" className="btn-secondary text-sm" onClick={() => void handleRefresh()} disabled={busy || linkStatus.checking}>
+              <button type="button" className="btn-secondary text-sm" onClick={() => void handleRefresh()} disabled={busy || linkStatus.checking || linking}>
                 Verificar vínculo
               </button>
-              <PrintingAssistantDownloadButton disabled={busy} />
+              <PrintingAssistantDownloadButton disabled={busy || linking} />
             </div>
           </div>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              className="input-field flex-1 min-w-[220px]"
+              value={manualPrintingApi}
+              onChange={(e) => setManualPrintingApi(e.target.value)}
+              placeholder="http://127.0.0.1:3002"
+              disabled={busy || linking}
+            />
+            <button
+              type="button"
+              className="btn-secondary text-sm shrink-0"
+              onClick={() => void linkPrintingAssistantManually()}
+              disabled={busy || linking || linkStatus.checking}
+            >
+              Vincular manual
+            </button>
+          </div>
+
           {printerStatus.status ? (
             <p className={`text-xs ${printerStatus.connected ? 'text-emerald-600' : 'text-[var(--ui-muted)]'}`}>
               Impresora: {printerStatus.status}
@@ -68,6 +160,27 @@ export default function PrinterModulePanel({
           ) : null}
         </div>
       )}
+
+      {showSound ? (
+        <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--ui-body-text)]">Sonido de pedidos nuevos</p>
+            <p className="text-xs ui-text-muted mt-0.5">
+              {soundReady
+                ? 'Activo: sonará al llegar un pedido a esta área.'
+                : 'Activando sonido… Si el navegador lo bloquea, pulse el botón.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            className={`text-sm inline-flex items-center gap-1.5 shrink-0 ${soundReady ? 'btn-secondary' : 'btn-primary'}`}
+            onClick={() => void activateSound()}
+          >
+            {soundReady ? <MdVolumeUp /> : <MdVolumeOff />}
+            {soundReady ? 'Probar sonido' : 'Activar sonido'}
+          </button>
+        </div>
+      ) : null}
 
       {!hasElectronPrinting() && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">

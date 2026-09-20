@@ -277,9 +277,6 @@ export default function HrQrScanner({ onScan, paused = false }) {
           ) : null}
         </div>
       </form>
-      <p className="text-[11px] text-[var(--ui-muted)] text-center">
-        El token está bajo el QR del local → «Copiar token».
-      </p>
     </div>
   );
 }

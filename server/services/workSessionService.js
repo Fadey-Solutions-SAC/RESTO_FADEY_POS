@@ -10,10 +10,20 @@ const {
   rawWorkedMinutesExpr,
   effectiveWorkedMinutesFromValues,
   parseDateKey,
+  businessNowSqlLiteral,
 } = require('../lib/workSessionSql');
 const { STAFF_IDLE_LOGOUT_MINUTES } = require('../constants/staffSessionPolicy');
+const { nowLimaSql } = require('../utils/appDateTime');
 
 const TRACKABLE_STAFF_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery']);
+
+function businessNow() {
+  try {
+    return nowLimaSql(queryOne);
+  } catch (_) {
+    return String(businessNowSqlLiteral()).replace(/^'|'$/g, '');
+  }
+}
 
 function initialAttendanceStatusForRole(role) {
   return String(role || '').toLowerCase() === 'admin' ? 'asistente' : 'pending';
@@ -33,11 +43,12 @@ function startWorkSession(user, photoLogin = null) {
   const sessionTokenId = uuidv4();
   const sessionKind = isParallel ? 'parallel' : 'jornada';
   const att = isParallel ? 'asistente' : initialAttendanceStatusForRole(user.role);
+  const nowSql = businessNow();
 
   runSql(
     `INSERT INTO user_work_sessions
       (id, user_id, session_token_id, username, full_name, role, login_at, last_activity_at, photo_login, attendance_status, session_kind, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, datetime('now'), datetime('now'))`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       uuidv4(),
       user.id,
@@ -45,9 +56,13 @@ function startWorkSession(user, photoLogin = null) {
       user.username,
       user.full_name,
       user.role,
+      nowSql,
+      nowSql,
       isParallel ? null : photoLogin,
       att,
       sessionKind,
+      nowSql,
+      nowSql,
     ]
   );
 
@@ -73,27 +88,29 @@ function closeWorkSession(userId, sessionTokenId = '', closeReason = 'logout', p
   const openBefore = countOpenSessions(uid);
   const isParallel = String(active.session_kind || '') === 'parallel';
   const reason = isParallel ? 'parallel_logout' : closeReason;
+  const nowSql = businessNow();
+  const nowLit = `'${String(nowSql).replace(/'/g, "''")}'`;
 
   if (isParallel) {
     runSql(
       `UPDATE user_work_sessions
-       SET logout_at = datetime('now'),
-           worked_minutes = CAST((julianday('now') - julianday(login_at)) * 24 * 60 AS INTEGER),
+       SET logout_at = ?,
+           worked_minutes = MAX(0, CAST((julianday(${nowLit}) - julianday(login_at)) * 24 * 60 AS INTEGER)),
            close_reason = ?,
-           updated_at = datetime('now')
+           updated_at = ?
        WHERE id = ?`,
-      [reason, active.id]
+      [nowSql, reason, nowSql, active.id]
     );
   } else {
     runSql(
       `UPDATE user_work_sessions
-       SET logout_at = datetime('now'),
-           worked_minutes = CAST((julianday('now') - julianday(login_at)) * 24 * 60 AS INTEGER),
+       SET logout_at = ?,
+           worked_minutes = MAX(0, CAST((julianday(${nowLit}) - julianday(login_at)) * 24 * 60 AS INTEGER)),
            close_reason = ?,
            photo_logout = COALESCE(?, photo_logout),
-           updated_at = datetime('now')
+           updated_at = ?
        WHERE id = ?`,
-      [reason, photoLogout, active.id]
+      [nowSql, reason, photoLogout, nowSql, active.id]
     );
   }
 
@@ -133,9 +150,10 @@ function touchStaffSessionNow(userId, sessionTokenId = '') {
   const row = resolveJwtStaffSession(userId, sessionTokenId)
     || resolveOpenStaffSession(userId, sessionTokenId);
   if (!row?.id) return false;
+  const nowSql = businessNow();
   runSql(
-    `UPDATE user_work_sessions SET last_activity_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
-    [row.id]
+    `UPDATE user_work_sessions SET last_activity_at = ?, updated_at = ? WHERE id = ?`,
+    [nowSql, nowSql, row.id]
   );
   return true;
 }
@@ -146,8 +164,9 @@ function getStaffSessionIdleMinutes(userId, sessionTokenId = '') {
   if (!row) return null;
   const anchor = String(row.last_activity_at || '').trim() || String(row.login_at || '').trim();
   if (!anchor) return 0;
+  const nowLit = businessNowSqlLiteral();
   const idle = queryOne(
-    `SELECT CAST((julianday('now') - julianday(?)) * 24 * 60 AS INTEGER) AS idle_minutes`,
+    `SELECT CAST((julianday(${nowLit}) - julianday(?)) * 24 * 60 AS INTEGER) AS idle_minutes`,
     [anchor]
   );
   return Math.max(0, Number(idle?.idle_minutes || 0));
@@ -174,12 +193,13 @@ function enforceStaffIdleLogout(user) {
 /** Cierra jornadas abiertas sin actividad real (p. ej. cerró el navegador sin «Finalizar jornada»). */
 function closeStaleOpenWorkSessions({ minIdleMinutes = STAFF_IDLE_LOGOUT_MINUTES } = {}) {
   const threshold = Math.max(60, Number(minIdleMinutes) || 0);
+  const nowLit = businessNowSqlLiteral();
   const rows = queryAll(
     `SELECT s.id, s.user_id, s.session_token_id,
             CASE
               WHEN s.last_activity_at IS NULL OR trim(s.last_activity_at) = ''
-                THEN CAST((julianday('now') - julianday(s.login_at)) * 24 * 60 AS INTEGER)
-              ELSE CAST((julianday('now') - julianday(s.last_activity_at)) * 24 * 60 AS INTEGER)
+                THEN CAST((julianday(${nowLit}) - julianday(s.login_at)) * 24 * 60 AS INTEGER)
+              ELSE CAST((julianday(${nowLit}) - julianday(s.last_activity_at)) * 24 * 60 AS INTEGER)
             END AS idle_minutes
      FROM user_work_sessions s
      WHERE s.logout_at IS NULL`
@@ -196,11 +216,11 @@ function closeStaleOpenWorkSessions({ minIdleMinutes = STAFF_IDLE_LOGOUT_MINUTES
 function buildSessionDateWhere(alias, from, to, params) {
   const parts = [];
   if (from) {
-    parts.push(`date(datetime(${alias}.login_at, 'localtime')) >= date(?)`);
+    parts.push(`date(${alias}.login_at) >= date(?)`);
     params.push(from);
   }
   if (to) {
-    parts.push(`date(datetime(${alias}.login_at, 'localtime')) <= date(?)`);
+    parts.push(`date(${alias}.login_at) <= date(?)`);
     params.push(to);
   }
   return parts.length ? parts.join(' AND ') : '1=1';
@@ -225,10 +245,11 @@ function queryAggregatedJornadasFromQr({ from, to, userId }) {
     parts.push('e.user_id = ?');
     params.push(userId);
   }
+  const nowLit = businessNowSqlLiteral();
   const workedEx = `CASE
     WHEN a.check_out_at IS NOT NULL AND trim(a.check_out_at) != ''
       THEN MAX(0, COALESCE(a.worked_minutes, 0))
-    ELSE MAX(0, CAST((julianday('now') - julianday(a.check_in_at)) * 24 * 60 AS INTEGER)
+    ELSE MAX(0, CAST((julianday(${nowLit}) - julianday(a.check_in_at)) * 24 * 60 AS INTEGER)
       - COALESCE(a.break_minutes, 0))
   END`;
 
@@ -293,21 +314,22 @@ function queryAggregatedJornadas({ from, to, userId }) {
   const userFilter = userId && userId !== 'all' ? ' AND s.user_id = ?' : '';
   if (userId && userId !== 'all') params.push(userId);
 
+  const nowLit = businessNowSqlLiteral();
   const rows = queryAll(
     `SELECT
       s.user_id,
-      date(datetime(s.login_at, 'localtime')) AS work_day,
+      date(s.login_at) AS work_day,
       MIN(s.login_at) AS login_at,
       CASE WHEN SUM(CASE WHEN s.logout_at IS NULL THEN 1 ELSE 0 END) > 0 THEN NULL ELSE MAX(s.logout_at) END AS logout_at,
       CASE WHEN SUM(CASE WHEN s.logout_at IS NULL THEN 1 ELSE 0 END) > 0
-        THEN CAST((julianday('now') - julianday(MIN(s.login_at))) * 24 * 60 AS INTEGER)
+        THEN CAST((julianday(${nowLit}) - julianday(MIN(s.login_at))) * 24 * 60 AS INTEGER)
         ELSE CAST((julianday(MAX(s.logout_at)) - julianday(MIN(s.login_at))) * 24 * 60 AS INTEGER)
       END AS raw_worked_minutes,
       COUNT(*) AS device_sessions_count,
       SUM(CASE WHEN COALESCE(s.session_kind, 'jornada') = 'parallel' THEN 1 ELSE 0 END) AS parallel_sessions_count
      FROM user_work_sessions s
      WHERE ${sw}${userFilter}
-     GROUP BY s.user_id, date(datetime(s.login_at, 'localtime'))
+     GROUP BY s.user_id, date(s.login_at)
      ORDER BY MIN(s.login_at) DESC`,
     params
   );
@@ -440,11 +462,13 @@ function ensureOpenWorkSession(user) {
 
 /** Repara jornadas abiertas sin last_activity_at (usuarios bloqueados tras migración). */
 function backfillOpenSessionActivity() {
+  const nowSql = businessNow();
   runSql(
     `UPDATE user_work_sessions
-     SET last_activity_at = datetime('now'), updated_at = datetime('now')
+     SET last_activity_at = ?, updated_at = ?
      WHERE logout_at IS NULL
-       AND (last_activity_at IS NULL OR trim(last_activity_at) = '')`
+       AND (last_activity_at IS NULL OR trim(last_activity_at) = '')`,
+    [nowSql, nowSql]
   );
 }
 

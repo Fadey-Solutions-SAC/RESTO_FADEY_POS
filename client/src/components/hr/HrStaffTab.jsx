@@ -82,7 +82,7 @@ function paymentMethodLabel(e) {
   return null;
 }
 
-export default function HrStaffTab({ employees, branches, onReload }) {
+export default function HrStaffTab({ employees, schedules = [], branches, onReload }) {
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
   const [inspect, setInspect] = useState(null);
@@ -103,6 +103,7 @@ export default function HrStaffTab({ employees, branches, onReload }) {
     setEdit({
       ...e,
       schedule_kind: kind,
+      schedule_id: e.schedule_id || schedules[0]?.id || '',
       custom_start_time: e.custom_start_time || '08:00',
       custom_end_time: e.custom_end_time || '17:00',
       payroll_pay_mode: e.payroll_pay_mode || '',
@@ -129,9 +130,13 @@ export default function HrStaffTab({ employees, branches, onReload }) {
         toast.error('Indica hora de ingreso y salida');
         return;
       }
+    } else if (!edit.schedule_id && !(schedules || []).length) {
+      toast.error('Crea una plantilla de horario en la pestaña Horarios');
+      return;
     }
     setSaving(true);
     try {
+      const templateId = edit.schedule_id || schedules[0]?.id || '';
       await api.patch(`/hr/employees/${edit.id}`, {
         document_id: edit.document_id,
         position: edit.position,
@@ -140,7 +145,7 @@ export default function HrStaffTab({ employees, branches, onReload }) {
         hire_date: edit.hire_date,
         contract_type: edit.contract_type,
         status: edit.status,
-        schedule_id: kind === 'custom' ? (edit.schedule_id || '') : '',
+        schedule_id: kind === 'custom' ? '' : templateId,
         employee_code: edit.employee_code,
         photo_url: edit.photo_url,
         custom_start_time: kind === 'custom' ? edit.custom_start_time : '',
@@ -452,7 +457,9 @@ export default function HrStaffTab({ employees, branches, onReload }) {
                     setEdit((p) => ({
                       ...p,
                       schedule_kind: kind,
-                      ...(kind === 'template' ? { schedule_id: '' } : {}),
+                      ...(kind === 'template'
+                        ? { schedule_id: p.schedule_id || schedules[0]?.id || '' }
+                        : {}),
                     }));
                   }}
                   className={fieldClass}
@@ -483,7 +490,23 @@ export default function HrStaffTab({ employees, branches, onReload }) {
                     />
                   </label>
                 </div>
-              ) : null}
+              ) : (
+                <label className="text-xs space-y-1 block min-w-0">
+                  <span className="text-[var(--ui-muted)]">Plantilla</span>
+                  <select
+                    value={edit.schedule_id || ''}
+                    onChange={(e) => setEdit((p) => ({ ...p, schedule_id: e.target.value }))}
+                    className={fieldClass}
+                  >
+                    <option value="">Seleccione plantilla…</option>
+                    {(schedules || []).map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} · {s.start_time}–{s.end_time}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <label className="text-xs space-y-1 min-w-0">

@@ -6,7 +6,14 @@ const http = require('http');
 const { execFile, spawn } = require('child_process');
 const express = require('express');
 const cors = require('cors');
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, shell, dialog, session, systemPreferences } = require('electron');
+
+/** Audio de cocina/bar sin gesto manual; permisos de cámara/mic se conceden al arrancar. */
+try {
+  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+} catch (_) {
+  /* noop */
+}
 const { buildTicket } = require('../server/printing/escposBuilder');
 const { getThermalGdiFontPx } = require('../server/printing/thermalMagnify');
 const thermalPrintLayoutJson = require('../server/printing/thermalPrintLayout.json');
@@ -629,6 +636,105 @@ async function printerStatus(moduleKey) {
   return { status: connected ? 'Conectada' : 'No disponible', connected, tipo: 'red', module: key };
 }
 
+const DESKTOP_PERMISSIONS = new Set([
+  'media',
+  'mediaKeySystem',
+  'geolocation',
+  'notifications',
+  'clipboard-read',
+  'clipboard-sanitized-write',
+  'display-capture',
+  'idle-detection',
+  'pointerLock',
+  'fullscreen',
+  'openExternal',
+]);
+
+function configureDesktopSessionPermissions() {
+  const sess = session.defaultSession;
+  if (!sess) return;
+
+  sess.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    const perm = String(permission || '');
+    if (DESKTOP_PERMISSIONS.has(perm)) {
+      callback(true);
+      return;
+    }
+    if (perm === 'media' || details?.mediaTypes?.length) {
+      callback(true);
+      return;
+    }
+    callback(false);
+  });
+
+  sess.setPermissionCheckHandler((_wc, permission) => {
+    const perm = String(permission || '');
+    return DESKTOP_PERMISSIONS.has(perm) || perm === 'media';
+  });
+
+  if (typeof sess.setDisplayMediaRequestHandler === 'function') {
+    sess.setDisplayMediaRequestHandler((_request, callback) => {
+      callback({});
+    });
+  }
+}
+
+/** Una sola vez al instalar/arrancar: Windows pide cámara/mic/notificaciones aquí, no en cocina/QR. */
+async function primeDesktopOsPermissions() {
+  try {
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      if (systemPreferences?.getMediaAccessStatus) {
+        const cam = systemPreferences.getMediaAccessStatus('camera');
+        const mic = systemPreferences.getMediaAccessStatus('microphone');
+        if (cam !== 'granted' && typeof systemPreferences.askForMediaAccess === 'function') {
+          await systemPreferences.askForMediaAccess('camera').catch(() => false);
+        }
+        if (mic !== 'granted' && typeof systemPreferences.askForMediaAccess === 'function') {
+          await systemPreferences.askForMediaAccess('microphone').catch(() => false);
+        }
+      }
+    }
+  } catch (_) {
+    /* noop */
+  }
+
+  const probe = new BrowserWindow({
+    width: 1,
+    height: 1,
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  try {
+    await probe.loadURL('about:blank');
+    await probe.webContents.executeJavaScript(
+      `(() => {
+        const askNotify = (typeof Notification !== 'undefined' && Notification.permission === 'default')
+          ? Notification.requestPermission().catch(() => 'denied')
+          : Promise.resolve(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
+        const askMedia = (navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+          ? navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+              .then((stream) => { try { stream.getTracks().forEach((t) => t.stop()); } catch (_) {} })
+              .catch(() => {})
+          : Promise.resolve();
+        return Promise.all([askNotify, askMedia]);
+      })()`,
+      true,
+    ).catch(() => {});
+  } catch (_) {
+    /* noop */
+  } finally {
+    try {
+      if (!probe.isDestroyed()) probe.destroy();
+    } catch (_) {
+      /* noop */
+    }
+  }
+}
+
 function createWindow() {
   if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
   const preloadPath = path.join(__dirname, 'preload.js');
@@ -641,6 +747,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       preload: preloadPath,
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
   mainWindow.on('close', (e) => {
@@ -1386,6 +1493,7 @@ if (!acquiredSingleInstance) {
     if (app.isPackaged) {
       console.log('[electron] ejecutable:', process.execPath);
     }
+    configureDesktopSessionPermissions();
     if (pendingProtocolWake) {
       handleProtocolWake(pendingProtocolWake);
       pendingProtocolWake = '';
@@ -1397,6 +1505,7 @@ if (!acquiredSingleInstance) {
     createTray();
     void startPrintingAssistantServer();
     registerPrintingIpc();
+    void primeDesktopOsPermissions();
     startDesktopAutoUpdater();
     app.on('activate', () => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();

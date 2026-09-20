@@ -1,9 +1,34 @@
-/** Expresiones SQL compartidas para jornadas (Tiempo trabajado). */
+/** Expresiones SQL compartidas para jornadas (Tiempo trabajado).
+ * Los timestamps de jornada se guardan en hora del restaurante (p. ej. America/Lima).
+ * Las duraciones deben restar contra «ahora» en la misma zona, no contra UTC de SQLite.
+ */
+
+function businessNowSqlLiteral() {
+  try {
+    const { queryOne } = require('../database');
+    const { nowLimaSql } = require('../utils/appDateTime');
+    const sql = String(nowLimaSql(queryOne) || '').trim();
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(sql)) {
+      return `'${sql}'`;
+    }
+  } catch (_) {
+    /* fallback */
+  }
+  try {
+    const { formatLimaSqlDateTime } = require('../utils/appDateTime');
+    return `'${formatLimaSqlDateTime(new Date())}'`;
+  } catch (_) {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `'${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}'`;
+  }
+}
 
 function rawWorkedMinutesExpr(alias = 's') {
+  const nowLit = businessNowSqlLiteral();
   return `CASE
-      WHEN ${alias}.logout_at IS NULL THEN CAST((julianday('now') - julianday(${alias}.login_at)) * 24 * 60 AS INTEGER)
-      ELSE COALESCE(${alias}.worked_minutes, CAST((julianday(${alias}.logout_at) - julianday(${alias}.login_at)) * 24 * 60 AS INTEGER), 0)
+      WHEN ${alias}.logout_at IS NULL THEN MAX(0, CAST((julianday(${nowLit}) - julianday(${alias}.login_at)) * 24 * 60 AS INTEGER))
+      ELSE COALESCE(${alias}.worked_minutes, MAX(0, CAST((julianday(${alias}.logout_at) - julianday(${alias}.login_at)) * 24 * 60 AS INTEGER)), 0)
     END`;
 }
 
@@ -41,15 +66,17 @@ function shiftLabelFromHour(hour) {
   return 'noche';
 }
 
+/** login_at ya está en hora del restaurante: no aplicar 'localtime' de SQLite (en cloud es UTC). */
 function shiftLabelFromLoginSql(alias = 's') {
   return `CASE
-    WHEN CAST(strftime('%H', datetime(${alias}.login_at, 'localtime')) AS INTEGER) BETWEEN 5 AND 11 THEN 'mañana'
-    WHEN CAST(strftime('%H', datetime(${alias}.login_at, 'localtime')) AS INTEGER) BETWEEN 12 AND 17 THEN 'tarde'
+    WHEN CAST(strftime('%H', ${alias}.login_at) AS INTEGER) BETWEEN 5 AND 11 THEN 'mañana'
+    WHEN CAST(strftime('%H', ${alias}.login_at) AS INTEGER) BETWEEN 12 AND 17 THEN 'tarde'
     ELSE 'noche'
   END`;
 }
 
 module.exports = {
+  businessNowSqlLiteral,
   rawWorkedMinutesExpr,
   effectiveWorkedMinutesExpr,
   effectiveWorkedMinutesFromValues,

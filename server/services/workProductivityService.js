@@ -20,6 +20,7 @@ const {
   effectiveWorkedMinutesExpr,
   parseDateKey,
   shiftLabelFromLoginSql,
+  businessNowSqlLiteral,
 } = require('../lib/workSessionSql');
 
 function isQrJornadaMode() {
@@ -30,13 +31,14 @@ function isQrJornadaMode() {
   }
 }
 
-/** Minutos trabajados de una fila hr_attendance (abierta = hasta ahora, menos refrigerio). */
+/** Minutos trabajados de una fila hr_attendance (abierta = hasta ahora local, menos refrigerio). */
 function hrAttendanceWorkedMinutesSql(alias = 'a') {
+  const nowLit = businessNowSqlLiteral();
   return `CASE
     WHEN ${alias}.check_out_at IS NOT NULL AND trim(${alias}.check_out_at) != ''
       THEN MAX(0, COALESCE(${alias}.worked_minutes, 0))
     WHEN ${alias}.check_in_at IS NOT NULL AND trim(${alias}.check_in_at) != ''
-      THEN MAX(0, CAST((julianday('now') - julianday(${alias}.check_in_at)) * 24 * 60 AS INTEGER)
+      THEN MAX(0, CAST((julianday(${nowLit}) - julianday(${alias}.check_in_at)) * 24 * 60 AS INTEGER)
         - COALESCE(${alias}.break_minutes, 0))
     ELSE 0
   END`;
@@ -70,11 +72,11 @@ const LONG_SHIFT_MIN = 600;
 function sessionDateWhere(alias, from, to, params) {
   const parts = [];
   if (from) {
-    parts.push(`date(datetime(${alias}.login_at, 'localtime')) >= date(?)`);
+    parts.push(`date(${alias}.login_at) >= date(?)`);
     params.push(from);
   }
   if (to) {
-    parts.push(`date(datetime(${alias}.login_at, 'localtime')) <= date(?)`);
+    parts.push(`date(${alias}.login_at) <= date(?)`);
     params.push(to);
   }
   return parts.length ? parts.join(' AND ') : '1=1';
@@ -143,10 +145,11 @@ const ORDER_SERVICE_ELIGIBLE_SQL = `
 `;
 
 function idleMinutesExpr(alias = 's') {
+  const nowLit = businessNowSqlLiteral();
   return `CASE
     WHEN ${alias}.logout_at IS NOT NULL THEN 0
     WHEN ${alias}.last_activity_at IS NULL OR trim(${alias}.last_activity_at) = '' THEN (${rawWorkedMinutesExpr(alias)})
-    ELSE CAST((julianday('now') - julianday(${alias}.last_activity_at)) * 24 * 60 AS INTEGER)
+    ELSE MAX(0, CAST((julianday(${nowLit}) - julianday(${alias}.last_activity_at)) * 24 * 60 AS INTEGER))
   END`;
 }
 
@@ -181,8 +184,8 @@ function buildLiveDashboard() {
         a.check_in_at AS login_at,
         a.check_in_at AS last_activity_at,
         CASE
-          WHEN CAST(strftime('%H', datetime(a.check_in_at, 'localtime')) AS INTEGER) < 12 THEN 'Mañana'
-          WHEN CAST(strftime('%H', datetime(a.check_in_at, 'localtime')) AS INTEGER) < 18 THEN 'Tarde'
+          WHEN CAST(strftime('%H', a.check_in_at) AS INTEGER) < 12 THEN 'Mañana'
+          WHEN CAST(strftime('%H', a.check_in_at) AS INTEGER) < 18 THEN 'Tarde'
           ELSE 'Noche'
         END AS shift_label,
         ${workedEx} AS raw_minutes,
@@ -205,7 +208,8 @@ function buildLiveDashboard() {
       }
     }
     const activeStaff = [...activeStaffByUser.values()];
-    const today = new Date().toISOString().split('T')[0];
+    const { getBusinessTodayDateKey } = require('../utils/appDateTime');
+    const today = getBusinessTodayDateKey(queryOne);
     const todayStats = queryOne(
       `SELECT
         COUNT(*) AS sessions_today,
@@ -216,7 +220,7 @@ function buildLiveDashboard() {
          AND IFNULL(a.status, '') != 'leave'`,
       [today]
     );
-    const salesToday = metricsFromPaidOrdersWhere(`${getPaidSalesEventSql().ORDER_DATE} = date('now', 'localtime')`);
+    const salesToday = metricsFromPaidOrdersWhere(`${getPaidSalesEventSql().ORDER_DATE} = date(?)`, [today]);
     const inKitchen = queryOne(`SELECT COUNT(*) AS c FROM orders WHERE status = 'preparing'`);
     const deliveryActive = queryOne(
       `SELECT COUNT(*) AS c FROM orders WHERE type = 'delivery' AND status IN ('pending','preparing','ready')`
@@ -278,18 +282,19 @@ function buildLiveDashboard() {
   }
   const activeStaff = [...activeStaffByUser.values()];
 
-  const today = new Date().toISOString().split('T')[0];
+  const { getBusinessTodayDateKey } = require('../utils/appDateTime');
+  const today = getBusinessTodayDateKey(queryOne);
   const todayStats = queryOne(
     `SELECT
       COUNT(*) AS sessions_today,
       COALESCE(SUM(${effEx}), 0) AS minutes_today
      FROM user_work_sessions s
      LEFT JOIN users u ON u.id = s.user_id
-     WHERE date(datetime(s.login_at, 'localtime')) = date(?)`,
+     WHERE date(s.login_at) = date(?)`,
     [today]
   );
 
-  const salesToday = metricsFromPaidOrdersWhere(`${getPaidSalesEventSql().ORDER_DATE} = date('now', 'localtime')`);
+  const salesToday = metricsFromPaidOrdersWhere(`${getPaidSalesEventSql().ORDER_DATE} = date(?)`, [today]);
 
   const inKitchen = queryOne(`SELECT COUNT(*) AS c FROM orders WHERE status = 'preparing'`);
   const deliveryActive = queryOne(
@@ -531,13 +536,14 @@ function buildAreaMetrics(from, to) {
     op
   );
 
+  const nowLit = businessNowSqlLiteral();
   const kitchen = queryOne(
     `SELECT
       COUNT(*) AS orders_in_kitchen,
       AVG((julianday(COALESCE(o.updated_at, o.created_at)) - julianday(o.created_at)) * 24 * 60) AS avg_kitchen_minutes,
       SUM(CASE WHEN
-        (o.status = 'pending' AND (julianday('now') - julianday(o.created_at)) * 24 * 60 > 15)
-        OR (o.status = 'preparing' AND (julianday('now') - julianday(COALESCE(o.preparing_at, o.updated_at, o.created_at))) * 24 * 60 > ?)
+        (o.status = 'pending' AND (julianday(${nowLit}) - julianday(o.created_at)) * 24 * 60 > 15)
+        OR (o.status = 'preparing' AND (julianday(${nowLit}) - julianday(COALESCE(o.preparing_at, o.updated_at, o.created_at))) * 24 * 60 > ?)
       THEN 1 ELSE 0 END) AS delayed_now
      FROM orders o
      WHERE o.status IN ('pending','preparing','ready','delivered') AND o.type != 'delivery' AND ${od}`,
@@ -556,12 +562,13 @@ function buildAreaMetrics(from, to) {
   }
   const delW = delD.length ? delD.join(' AND ') : '1=1';
 
+  const nowLitDel = businessNowSqlLiteral();
   const delivery = queryOne(
     `SELECT
       COUNT(*) AS assignments,
       SUM(CASE WHEN da.status = 'delivered' THEN 1 ELSE 0 END) AS delivered,
       AVG(CASE WHEN da.delivered_at IS NOT NULL THEN (julianday(da.delivered_at) - julianday(da.assigned_at)) * 24 * 60 END) AS avg_delivery_minutes,
-      SUM(CASE WHEN da.status != 'delivered' AND (julianday('now') - julianday(da.assigned_at)) * 24 * 60 > ? THEN 1 ELSE 0 END) AS delayed_active
+      SUM(CASE WHEN da.status != 'delivered' AND (julianday(${nowLitDel}) - julianday(da.assigned_at)) * 24 * 60 > ? THEN 1 ELSE 0 END) AS delayed_active
      FROM delivery_assignments da WHERE ${delW}`,
     [...delP, DELIVERY_SLOW_MIN]
   );
@@ -701,9 +708,10 @@ function buildAlerts() {
     });
   }
 
+  const nowLitAlert = businessNowSqlLiteral();
   const kitchenDelayed = queryOne(
     `SELECT COUNT(*) AS c FROM orders WHERE status IN ('pending','preparing')
-     AND (julianday('now') - julianday(created_at)) * 24 * 60 > ?`,
+     AND (julianday(${nowLitAlert}) - julianday(created_at)) * 24 * 60 > ?`,
     [KITCHEN_SLOW_MIN]
   );
   if (Number(kitchenDelayed?.c || 0) > 0) {
@@ -718,7 +726,7 @@ function buildAlerts() {
 
   const delDelayed = queryOne(
     `SELECT COUNT(*) AS c FROM delivery_assignments
-     WHERE status != 'delivered' AND (julianday('now') - julianday(assigned_at)) * 24 * 60 > ?`,
+     WHERE status != 'delivered' AND (julianday(${nowLitAlert}) - julianday(assigned_at)) * 24 * 60 > ?`,
     [DELIVERY_SLOW_MIN]
   );
   if (Number(delDelayed?.c || 0) > 0) {
@@ -885,8 +893,8 @@ function buildShiftSummary(from, to) {
     return queryAll(
       `SELECT
         CASE
-          WHEN CAST(strftime('%H', datetime(a.check_in_at, 'localtime')) AS INTEGER) < 12 THEN 'Mañana'
-          WHEN CAST(strftime('%H', datetime(a.check_in_at, 'localtime')) AS INTEGER) < 18 THEN 'Tarde'
+          WHEN CAST(strftime('%H', a.check_in_at) AS INTEGER) < 12 THEN 'Mañana'
+          WHEN CAST(strftime('%H', a.check_in_at) AS INTEGER) < 18 THEN 'Tarde'
           ELSE 'Noche'
         END AS shift_label,
         COUNT(*) AS sessions,
@@ -927,19 +935,21 @@ function buildHoursRollup(from, to, userId) {
        GROUP BY day ORDER BY day DESC LIMIT 31`,
       params
     );
+    const { getBusinessTodayDateKey } = require('../utils/appDateTime');
+    const todayKey = getBusinessTodayDateKey(queryOne);
     const weekly = queryOne(
       `SELECT COALESCE(SUM(${workedEx}), 0) AS minutes
        FROM hr_attendance a${joinEmp}
        WHERE ${aw}${uf}
-         AND a.work_date >= date('now', 'localtime', '-7 days')`,
-      params
+         AND a.work_date >= date(?, '-7 days')`,
+      [...params, todayKey]
     );
     const monthly = queryOne(
       `SELECT COALESCE(SUM(${workedEx}), 0) AS minutes
        FROM hr_attendance a${joinEmp}
        WHERE ${aw}${uf}
-         AND strftime('%Y-%m', a.work_date) = strftime('%Y-%m', 'now', 'localtime')`,
-      params
+         AND strftime('%Y-%m', a.work_date) = strftime('%Y-%m', ?)`,
+      [...params, todayKey]
     );
     return {
       daily: daily || [],
@@ -954,8 +964,11 @@ function buildHoursRollup(from, to, userId) {
   if (userId && userId !== 'all') params.push(userId);
   const eff = effectiveWorkedMinutesExpr('s');
 
+  const { getBusinessTodayDateKey } = require('../utils/appDateTime');
+  const todayKey = getBusinessTodayDateKey(queryOne);
+
   const daily = queryAll(
-    `SELECT date(datetime(s.login_at, 'localtime')) AS day,
+    `SELECT date(s.login_at) AS day,
             COALESCE(SUM(${eff}), 0) AS minutes
      FROM user_work_sessions s LEFT JOIN users u ON u.id = s.user_id
      WHERE ${sw}${uf}
@@ -967,16 +980,16 @@ function buildHoursRollup(from, to, userId) {
     `SELECT COALESCE(SUM(${eff}), 0) AS minutes FROM user_work_sessions s
      LEFT JOIN users u ON u.id = s.user_id
      WHERE ${sw}${uf}
-       AND date(datetime(s.login_at, 'localtime')) >= date('now', 'localtime', '-7 days')`,
-    params
+       AND date(s.login_at) >= date(?, '-7 days')`,
+    [...params, todayKey]
   );
 
   const monthly = queryOne(
     `SELECT COALESCE(SUM(${eff}), 0) AS minutes FROM user_work_sessions s
      LEFT JOIN users u ON u.id = s.user_id
      WHERE ${sw}${uf}
-       AND strftime('%Y-%m', datetime(s.login_at, 'localtime')) = strftime('%Y-%m', 'now', 'localtime')`,
-    params
+       AND strftime('%Y-%m', s.login_at) = strftime('%Y-%m', ?)`,
+    [...params, todayKey]
   );
 
   return {

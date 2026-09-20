@@ -9,10 +9,10 @@ export default function PrinterModuleModal({ isOpen, onClose, moduleKey, moduleL
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`Impresora — ${moduleLabel}`}
+      title={`Configuración — ${moduleLabel}`}
       size="lg"
     >
-      <PrinterModulePanel moduleKey={moduleKey} showLinkSection />
+      <PrinterModulePanel moduleKey={moduleKey} showLinkSection showSoundControl />
     </Modal>
   );
 }

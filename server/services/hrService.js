@@ -749,7 +749,18 @@ function updateEmployee(restaurantId, employeeId, patch, actor) {
       patch.hire_date != null ? String(patch.hire_date).trim() : cur.hire_date,
       patch.contract_type != null ? String(patch.contract_type).trim() : cur.contract_type,
       status,
-      patch.schedule_id != null ? String(patch.schedule_id).trim() : cur.schedule_id,
+      (() => {
+        const customStart = patch.custom_start_time != null
+          ? normalizeHhMm(patch.custom_start_time)
+          : normalizeHhMm(cur.custom_start_time);
+        const customEnd = patch.custom_end_time != null
+          ? normalizeHhMm(patch.custom_end_time)
+          : normalizeHhMm(cur.custom_end_time);
+        // Horario personalizado: no depende de plantilla; plantilla usa schedule_id.
+        if (customStart && customEnd) return '';
+        if (patch.schedule_id != null) return String(patch.schedule_id).trim();
+        return cur.schedule_id || '';
+      })(),
       patch.employee_code != null ? String(patch.employee_code).trim() : cur.employee_code,
       patch.photo_url != null ? String(patch.photo_url).trim() : cur.photo_url,
       patch.custom_start_time != null
@@ -761,6 +772,12 @@ function updateEmployee(restaurantId, employeeId, patch, actor) {
       employeeId,
     ]
   );
+
+  try {
+    recomputeEmployeeAttendanceForDate(restaurantId, employeeId, hrTodayDate());
+  } catch (_) {
+    /* no bloquear guardado si el recálculo falla */
+  }
 
   const payrollPatch = {};
   if (patch.payroll_pay_mode !== undefined) {
@@ -900,15 +917,36 @@ function assignSchedule({ restaurantId, scheduleId, employeeIds = [], department
     err.status = 404;
     throw err;
   }
+  const touched = [];
   if (department) {
-    runSql('UPDATE hr_employees SET schedule_id = ?, updated_at = datetime(\'now\') WHERE restaurant_id = ? AND department = ?', [
-      scheduleId, restaurantId, department,
-    ]);
+    const deps = queryAll(
+      'SELECT id FROM hr_employees WHERE restaurant_id = ? AND department = ?',
+      [restaurantId, department],
+    ) || [];
+    runSql(
+      `UPDATE hr_employees SET schedule_id = ?, custom_start_time = '', custom_end_time = '', updated_at = datetime('now')
+       WHERE restaurant_id = ? AND department = ?`,
+      [scheduleId, restaurantId, department],
+    );
+    deps.forEach((r) => touched.push(r.id));
   }
   for (const eid of employeeIds || []) {
-    runSql('UPDATE hr_employees SET schedule_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND restaurant_id = ?', [
-      scheduleId, String(eid), restaurantId,
-    ]);
+    const id = String(eid || '').trim();
+    if (!id) continue;
+    runSql(
+      `UPDATE hr_employees SET schedule_id = ?, custom_start_time = '', custom_end_time = '', updated_at = datetime('now')
+       WHERE id = ? AND restaurant_id = ?`,
+      [scheduleId, id, restaurantId],
+    );
+    touched.push(id);
+  }
+  const today = hrTodayDate();
+  for (const id of [...new Set(touched)]) {
+    try {
+      recomputeEmployeeAttendanceForDate(restaurantId, id, today);
+    } catch (_) {
+      /* noop */
+    }
   }
   return { ok: true };
 }
@@ -1022,6 +1060,14 @@ function normalizeHhMm(value) {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
 
+/**
+ * Horario efectivo del trabajador (prioridad):
+ * 1) Horario personalizado (custom_start_time + custom_end_time)
+ * 2) Plantilla asignada (schedule_id)
+ * 3) Primera plantilla del local
+ *
+ * La tardanza siempre se calcula con este horario efectivo.
+ */
 function scheduleOfEmployee(emp) {
   let base = null;
   if (emp?.schedule_id) {
@@ -1051,10 +1097,62 @@ function scheduleOfEmployee(emp) {
       ...fallback,
       start_time: customStart,
       end_time: customEnd,
-      name: base?.name ? `${base.name} · personalizado` : 'Horario personalizado',
+      name: 'Horario personalizado',
+      is_custom: true,
     };
   }
-  return base;
+  if (!base) return null;
+  return { ...base, is_custom: false };
+}
+
+/** Recalcula tardanza del día con el horario efectivo actual (p. ej. tras cambiar a personalizado). */
+function recomputeEmployeeAttendanceForDate(restaurantId, employeeId, workDate) {
+  const emp = getEmployee(restaurantId, employeeId);
+  if (!emp) return 0;
+  const schedule = scheduleOfEmployee({ ...emp, restaurant_id: restaurantId });
+  if (!schedule?.start_time) return 0;
+  const date = String(workDate || hrTodayDate()).slice(0, 10);
+  const rows = queryAll(
+    `SELECT * FROM hr_attendance WHERE employee_id = ? AND restaurant_id = ? AND work_date = ?`,
+    [employeeId, restaurantId, date],
+  ) || [];
+  let updated = 0;
+  const overnight = calc.isOvernightSchedule(schedule.start_time, schedule.end_time);
+  for (const row of rows) {
+    if (!row.check_in_at) continue;
+    if (Number(row.late_justified || 0) === 1) {
+      runSql(
+        `UPDATE hr_attendance SET scheduled_start = ?, scheduled_end = ?, updated_at = datetime('now') WHERE id = ?`,
+        [schedule.start_time, schedule.end_time, row.id],
+      );
+      updated += 1;
+      continue;
+    }
+    const leave = approvedLeaveToday(employeeId, date);
+    const late = calc.computeLateMinutes(row.check_in_at, schedule.start_time, overnight);
+    const status = leave
+      ? 'leave'
+      : (row.check_out_at
+        ? calc.attendanceStatus({
+            lateMinutes: late,
+            toleranceMinutes: schedule.tolerance_in_minutes,
+            justified: false,
+          })
+        : calc.attendanceStatus({
+            lateMinutes: late,
+            toleranceMinutes: schedule.tolerance_in_minutes,
+            justified: false,
+          }));
+    runSql(
+      `UPDATE hr_attendance SET
+         late_minutes = ?, status = ?, scheduled_start = ?, scheduled_end = ?,
+         updated_at = datetime('now')
+       WHERE id = ?`,
+      [late, status, schedule.start_time, schedule.end_time, row.id],
+    );
+    updated += 1;
+  }
+  return updated;
 }
 
 function openAttendance(employeeId) {
@@ -1435,7 +1533,8 @@ function dashboard(restaurantId) {
     [restaurantId, monthStart]
   );
   const byDay = queryAll(
-    `SELECT work_date AS date, COUNT(*) AS attendance, COALESCE(SUM(CASE WHEN late_minutes > 10 THEN 1 ELSE 0 END),0) AS late,
+    `SELECT work_date AS date, COUNT(*) AS attendance,
+            COALESCE(SUM(CASE WHEN status IN ('late','late_justified') THEN 1 ELSE 0 END),0) AS late,
             COALESCE(SUM(worked_minutes),0) AS worked_minutes
      FROM hr_attendance WHERE restaurant_id = ? AND work_date >= date('now','-13 days')
      GROUP BY work_date ORDER BY work_date ASC`,
@@ -1806,4 +1905,6 @@ module.exports = {
   adjustmentsOf,
   calc,
   computePayrollDue,
+  scheduleOfEmployee,
+  recomputeEmployeeAttendanceForDate,
 };
