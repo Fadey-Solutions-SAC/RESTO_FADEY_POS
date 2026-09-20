@@ -7,7 +7,7 @@ import { getSocket } from '../hooks/useSocket';
 import StaffTeamChat from './StaffTeamChat';
 import FadeyAiChatPanel from './FadeyAiChatPanel';
 import toast from 'react-hot-toast';
-import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload, MdPsychology } from 'react-icons/md';
+import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload, MdPsychology, MdSmartToy } from 'react-icons/md';
 import {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   PAGO_PLAN_MODULE_PATH,
@@ -244,16 +244,32 @@ export default function NotificationCenter({ className = '' }) {
             />
             <div
               ref={panelRef}
-              className="fixed z-[100] top-[var(--ui-shell-header-h,3.5rem)] left-2 right-2 sm:left-auto sm:right-6 w-auto sm:w-[min(100vw-1.5rem,420px)] h-[min(78dvh,620px)] sm:h-[min(72vh,580px)] flex flex-col rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-2xl overflow-hidden text-[var(--ui-body-text)]"
+              className={`fixed z-[100] top-[var(--ui-shell-header-h,3.5rem)] left-2 right-2 sm:left-auto sm:right-6 w-auto sm:w-[min(100vw-1.5rem,420px)] h-[min(78dvh,620px)] sm:h-[min(72vh,580px)] flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${
+                tab === 'ia'
+                  ? 'rf-fadey-ai-shell'
+                  : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)]'
+              }`}
               role="dialog"
               aria-label={panelTitle}
             >
-              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] shrink-0">
-                <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
+              <div
+                className={`flex items-center justify-between px-3.5 py-3 shrink-0 ${
+                  tab === 'ia'
+                    ? 'rf-fadey-ai-header'
+                    : 'border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]'
+                }`}
+              >
+                <p
+                  className={`flex items-center gap-2 ${
+                    tab === 'ia'
+                      ? 'rf-fadey-ai-header-title'
+                      : 'text-sm font-semibold text-[var(--ui-body-text)]'
+                  }`}
+                >
                   {tab === 'avisos' ? (
                     <MdCampaign className="text-lg text-[var(--ui-accent)]" />
                   ) : tab === 'ia' ? (
-                    <MdPsychology className="text-lg text-[var(--ui-accent)]" />
+                    <MdSmartToy className="text-xl rf-fadey-ai-header-icon" />
                   ) : (
                     <MdChat className="text-lg text-[var(--ui-accent)]" />
                   )}
@@ -262,7 +278,11 @@ export default function NotificationCenter({ className = '' }) {
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="p-1.5 rounded-lg hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-muted)]"
+                  className={`p-1.5 rounded-lg ${
+                    tab === 'ia'
+                      ? 'rf-fadey-ai-header-close hover:bg-black/5'
+                      : 'hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-muted)]'
+                  }`}
                   aria-label="Cerrar"
                 >
                   <MdClose className="text-lg" />

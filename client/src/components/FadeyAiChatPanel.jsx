@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MdPsychology, MdSend } from 'react-icons/md';
+import { MdSmartToy, MdSend } from 'react-icons/md';
 import { api } from '../utils/api';
 
 function renderContent(text) {
@@ -8,7 +8,7 @@ function renderContent(text) {
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       return (
-        <strong key={i} className="font-semibold text-[var(--ui-body-text)]">
+        <strong key={i} className="font-semibold text-[#0f172a]">
           {part.slice(2, -2)}
         </strong>
       );
@@ -18,7 +18,7 @@ function renderContent(text) {
 }
 
 /**
- * Chat del asistente IA Fadey (instancia local). Separado de avisos y mensajes del equipo.
+ * Chat del asistente IA Fadey — estilo referencia móvil.
  */
 export default function FadeyAiChatPanel({ isActive = false }) {
   const [status, setStatus] = useState(null);
@@ -112,15 +112,15 @@ export default function FadeyAiChatPanel({ isActive = false }) {
   };
 
   if (loading) {
-    return <p className="text-sm text-[var(--ui-muted)] text-center py-8">Cargando…</p>;
+    return <p className="text-sm text-[#64748b] text-center py-8">Cargando…</p>;
   }
 
   if (!status?.enabled) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center px-4 gap-2">
-        <MdPsychology className="text-3xl text-[var(--ui-muted)]" />
-        <p className="text-sm font-medium text-[var(--ui-body-text)]">IA Fadey desactivada</p>
-        <p className="text-xs text-[var(--ui-muted)]">
+        <MdSmartToy className="text-3xl text-[#94a3b8]" />
+        <p className="text-sm font-medium text-[#0f172a]">IA Fadey desactivada</p>
+        <p className="text-xs text-[#64748b]">
           Actívala en Admin Maestro → control del plan.
         </p>
       </div>
@@ -128,15 +128,15 @@ export default function FadeyAiChatPanel({ isActive = false }) {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col">
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-3 px-0.5 pb-2">
+    <div className="rf-fadey-ai-body h-full min-h-0 flex flex-col -m-3 p-3">
+      <div className="rf-fadey-ai-scroll flex-1 min-h-0 overflow-y-auto space-y-2.5 pb-2">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-4 gap-2 py-10">
-            <div className="w-12 h-12 rounded-full bg-[color-mix(in_srgb,var(--ui-accent)_14%,var(--ui-surface))] flex items-center justify-center">
-              <MdPsychology className="text-2xl text-[var(--ui-accent)]" />
+            <div className="w-12 h-12 rounded-full bg-[#e8eef5] flex items-center justify-center">
+              <MdSmartToy className="text-2xl text-[#3b82f6]" />
             </div>
-            <p className="text-sm font-medium text-[var(--ui-body-text)]">¿En qué te ayudo?</p>
-            <p className="text-xs text-[var(--ui-muted)] max-w-[16rem]">
+            <p className="text-sm font-semibold text-[#0f172a]">¿En qué te ayudo?</p>
+            <p className="text-xs text-[#64748b] max-w-[16rem]">
               Pregunta cómo hacer algo en el POS, por ejemplo crear un área o cerrar caja.
             </p>
           </div>
@@ -145,13 +145,7 @@ export default function FadeyAiChatPanel({ isActive = false }) {
             const isUser = m.role === 'user';
             return (
               <div key={m.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words leading-relaxed ${
-                    isUser
-                      ? 'bg-[color-mix(in_srgb,var(--ui-accent)_16%,var(--ui-surface))] text-[var(--ui-body-text)] rounded-br-md'
-                      : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)] rounded-bl-md'
-                  }`}
-                >
+                <div className={isUser ? 'rf-fadey-ai-bubble-user' : 'rf-fadey-ai-bubble-assistant'}>
                   {renderContent(m.content)}
                 </div>
               </div>
@@ -159,7 +153,7 @@ export default function FadeyAiChatPanel({ isActive = false }) {
           })
         )}
         {busy ? (
-          <p className="text-xs text-[var(--ui-muted)] italic px-1">Pensando…</p>
+          <p className="text-xs text-[#94a3b8] italic px-1">Pensando…</p>
         ) : null}
         <div ref={bottomRef} />
       </div>
@@ -167,7 +161,7 @@ export default function FadeyAiChatPanel({ isActive = false }) {
       {error ? <p className="text-[11px] text-rose-600 shrink-0 px-1 pb-1">{error}</p> : null}
 
       <form
-        className="shrink-0 flex gap-2 items-center pt-1 border-t border-[color:var(--ui-border)] mt-1"
+        className="rf-fadey-ai-composer shrink-0"
         onSubmit={(e) => {
           e.preventDefault();
           void send();
@@ -176,10 +170,10 @@ export default function FadeyAiChatPanel({ isActive = false }) {
         <input
           ref={inputRef}
           type="text"
-          className="input-field flex-1 min-h-[44px] h-11 text-sm rounded-full px-4"
+          className="rf-fadey-ai-input"
           value={input}
           disabled={busy}
-          placeholder="Escribe tu pregunta…"
+          placeholder="Escribe tu pregunta..."
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -190,11 +184,11 @@ export default function FadeyAiChatPanel({ isActive = false }) {
         />
         <button
           type="submit"
-          className="shrink-0 w-11 h-11 rounded-full bg-[var(--ui-accent)] text-white flex items-center justify-center shadow-md disabled:opacity-45 hover:opacity-95 transition-opacity"
+          className="rf-fadey-ai-send"
           disabled={busy || !String(input).trim()}
           aria-label="Enviar"
         >
-          <MdSend className="text-lg translate-x-px" />
+          <MdSend className="text-[1.15rem] translate-x-px -translate-y-px" />
         </button>
       </form>
     </div>

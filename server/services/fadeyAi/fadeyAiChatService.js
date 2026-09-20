@@ -93,7 +93,7 @@ function guidesOnlyReply(message) {
   const hits = searchMemory(message, { kinds: ['guide', 'config', 'catalog', 'snapshot'], limit: 2 });
   if (!hits.length) {
     return {
-      reply: 'No encontré una guía exacta. Prueba preguntar con más detalle, por ejemplo: «cómo crear un área de producción» o «cómo cerrar caja».',
+      reply: 'No encontré una guía exacta. Prueba preguntar con más detalle.',
       sources: [],
     };
   }

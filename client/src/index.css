@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Temas: Configuración → Apariencia (`data-ui-theme` + `data-ui-color-scheme` en <html>) */
+/* Temas: ConfiguraciÃ³n â Apariencia (`data-ui-theme` + `data-ui-color-scheme` en <html>) */
 html {
   --ui-shell-header-h: 3.5rem;
   --ui-sidebar-width: 13rem;
@@ -50,7 +50,7 @@ html:not([data-ui-color-scheme]) {
   color-scheme: dark;
 }
 
-/* Claro: alto contraste — texto y bordes casi negros, fondos blancos (colores de acento/estado no se tocan en componentes) */
+/* Claro: alto contraste â texto y bordes casi negros, fondos blancos (colores de acento/estado no se tocan en componentes) */
 html[data-ui-color-scheme='light'] {
   --ui-live-success-text: #047857;
   --ui-live-warning-text: #92400e;
@@ -220,7 +220,7 @@ html[data-ui-color-scheme='light'] {
     color: var(--ui-body-text);
   }
 
-  /* Oscuro: .bg-white de Tailwind → superficie (evita “papel” blanco). Claro: blanco real */
+  /* Oscuro: .bg-white de Tailwind â superficie (evita âpapelâ blanco). Claro: blanco real */
   html[data-ui-color-scheme='dark'] .bg-white {
     background-color: var(--ui-surface-2) !important;
     color: var(--ui-body-text) !important;
@@ -232,7 +232,7 @@ html[data-ui-color-scheme='light'] {
 }
 
 /*
- * Modo claro (temas premium + legacy `light`, vía `data-ui-color-scheme='light'`): texto oscuro en #root
+ * Modo claro (temas premium + legacy `light`, vÃ­a `data-ui-color-scheme='light'`): texto oscuro en #root
  * pensadas para fondo oscuro (#F9FAFB, text-white en tarjetas, slate-100, etc.).
  * `data-ui-isolate="dark-surface"` revierte en login, modales oscuros, toolbar oscuro del escritorio, etc.
  */
@@ -378,7 +378,7 @@ html[data-ui-color-scheme='light'] #root .text-neutral-400 {
   color: #262626 !important;
 }
 
-/* Pasteles de estado (amber/sky/emerald 200–400) ilegibles en modo claro */
+/* Pasteles de estado (amber/sky/emerald 200â400) ilegibles en modo claro */
 html[data-ui-color-scheme='light'] #root [class*='text-amber-200'],
 html[data-ui-color-scheme='light'] #root [class*='text-amber-300'],
 html[data-ui-color-scheme='light'] #root [class*='text-amber-400'] {
@@ -463,7 +463,7 @@ html[data-ui-color-scheme='light'] #root .bg-red-950\/20 {
 }
 
 /*
- * Tema oscuro: text-slate-600+ son tonos oscuros de la escala estándar → ilegibles sobre fondo oscuro.
+ * Tema oscuro: text-slate-600+ son tonos oscuros de la escala estÃ¡ndar â ilegibles sobre fondo oscuro.
  */
 html[data-ui-color-scheme='dark'] #root .text-slate-600,
 html[data-ui-color-scheme='dark'] #root .text-slate-700,
@@ -498,7 +498,7 @@ html[data-ui-color-scheme='dark'] #root .text-neutral-500 {
 
 /*
  * Temas oscuros (Gold Premium, etc.): bloques Tailwind con fondo claro mantienen
- * fondo blanco/gris pero el texto del tema es claro → forzar texto oscuro.
+ * fondo blanco/gris pero el texto del tema es claro â forzar texto oscuro.
  */
 html[data-ui-color-scheme='dark'] #root :is(.bg-slate-50, .bg-slate-50\/60, .bg-slate-50\/80, .bg-slate-100, .bg-gray-50, .bg-gray-100) {
   color: #0f172a !important;
@@ -538,7 +538,7 @@ html[data-ui-color-scheme='light'] #root .hover\:bg-slate-200:hover {
   background-color: #e2e8f0 !important;
 }
 
-/* Divisores: slate-100 en paleta invertida es oscuro; en claro usar línea gris estándar */
+/* Divisores: slate-100 en paleta invertida es oscuro; en claro usar lÃ­nea gris estÃ¡ndar */
 html[data-ui-color-scheme='light'] #root .border-slate-100 {
   border-color: #e5e7eb !important;
 }
@@ -655,7 +655,7 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     background-color: var(--ui-btn-secondary-hover);
   }
 
-  /* Panel en vivo / alertas operativas — rojo legible sobre fondo rosa */
+  /* Panel en vivo / alertas operativas â rojo legible sobre fondo rosa */
   .ui-live-alert-warning,
   a.ui-live-alert-warning,
   a.ui-live-alert-warning:link,
@@ -706,7 +706,7 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     color: var(--ui-live-warning-text);
   }
 
-  /* Informes · Finanzas — legible en tema claro y oscuro */
+  /* Informes Â· Finanzas â legible en tema claro y oscuro */
   .ui-finance-kpi {
     @apply rounded-lg p-3 border;
     background: var(--ui-surface-2);
@@ -1060,8 +1060,8 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     background-color: rgb(224 242 254 / 0.85);
   }
 
-  /* Vista previa contrato Word: lienzo tamaño A4 (como página Word) + scroll */
-  /* Contrato: letras en serif; solo dígitos 0-9 en Arial (unicode-range). */
+  /* Vista previa contrato Word: lienzo tamaÃ±o A4 (como pÃ¡gina Word) + scroll */
+  /* Contrato: letras en serif; solo dÃ­gitos 0-9 en Arial (unicode-range). */
   @font-face {
     font-family: 'ContractDigitsArial';
     src: local('Arial'), local('Arial MT'), local('Helvetica Neue'), local('Helvetica');
@@ -1105,7 +1105,7 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     background: #e8ecf1;
   }
 
-  /* Tipografía base tipo Word (cuerpo ~12pt) */
+  /* TipografÃ­a base tipo Word (cuerpo ~12pt) */
   .contract-mammoth-preview--page {
     font-family: Calibri, 'Segoe UI', system-ui, sans-serif;
     font-size: 12pt;
@@ -1215,7 +1215,7 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     display: block;
   }
 
-  /* Fallback si el HTML no pasó por normalize: mammoth a veces envuelve la img en <span> */
+  /* Fallback si el HTML no pasÃ³ por normalize: mammoth a veces envuelve la img en <span> */
   .contract-mammoth-preview--image-under-text > p:first-of-type:has(> img:only-child),
   .contract-mammoth-preview--image-under-text > p:first-of-type:has(img):not(:has(*:not(img):not(span))),
   .contract-mammoth-preview--image-under-text > figure:first-of-type:has(img),
@@ -1276,7 +1276,7 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     @apply bg-red-600/30 text-red-50 border-red-400/45;
   }
 
-  /* Etiquetas de estado — alto contraste en claro y oscuro (no usar dark: de Tailwind) */
+  /* Etiquetas de estado â alto contraste en claro y oscuro (no usar dark: de Tailwind) */
   .ui-badge {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border;
   }
@@ -1383,7 +1383,7 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
   }
 
   /* Texto legible dentro de modales oscuros (evita labels slate sobre fondo oscuro / forzado por SO).
-     En tema claro no forzar gris claro: quedaría invisible sobre superficie blanca. */
+     En tema claro no forzar gris claro: quedarÃ­a invisible sobre superficie blanca. */
   html[data-ui-color-scheme='dark'] .modal-sheet-body,
   html:not([data-ui-color-scheme='light']) .modal-sheet-body {
     @apply text-[#F9FAFB];
@@ -1493,7 +1493,7 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
     white-space: nowrap;
   }
 
-  /* Catálogo tomar pedido (modal Caja/Mesas): precio y stock siempre visibles */
+  /* CatÃ¡logo tomar pedido (modal Caja/Mesas): precio y stock siempre visibles */
   .rf-staff-order-catalog {
     display: flex;
     flex-direction: column;
@@ -1684,7 +1684,7 @@ html[data-ui-color-scheme='light'] #root .badge-cancelled {
   .no-print { display: none !important; }
 }
 
-/* Catálogo «Agregar pedido»: columnas fijas (no depende de clases arbitrarias de Tailwind) */
+/* CatÃ¡logo Â«Agregar pedidoÂ»: columnas fijas (no depende de clases arbitrarias de Tailwind) */
 .rf-staff-order-catalog-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 3.75rem 5.25rem;
@@ -1769,7 +1769,7 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   opacity: 1 !important;
 }
 
-/* Mesas / Caja: fila catálogo — flex inline (no recortar precio en modal) */
+/* Mesas / Caja: fila catÃ¡logo â flex inline (no recortar precio en modal) */
 .rf-modal-panel .rf-order-catalog-row,
 .rf-modal-panel .rf-order-catalog-row span {
   opacity: 1 !important;
@@ -1778,4 +1778,110 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
 .rf-modal-panel .rf-order-catalog-price,
 .rf-modal-panel button.rf-order-catalog-row span.rf-order-catalog-price {
   color: #2563eb !important;
+}
+
+/* IA Fadey chat (referencia movil) */
+.rf-fadey-ai-shell {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #1e293b !important;
+}
+.rf-fadey-ai-shell .rf-fadey-ai-header {
+  background: #eef2f7 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: #1e293b !important;
+}
+.rf-fadey-ai-shell .rf-fadey-ai-header-title {
+  color: #0f172a !important;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.rf-fadey-ai-shell .rf-fadey-ai-header-icon {
+  color: #3b82f6 !important;
+}
+.rf-fadey-ai-shell .rf-fadey-ai-header-close {
+  color: #64748b !important;
+}
+.rf-fadey-ai-body {
+  background: #f8fafc;
+  color: #1e293b;
+}
+.rf-fadey-ai-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #60a5fa transparent;
+}
+.rf-fadey-ai-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.rf-fadey-ai-scroll::-webkit-scrollbar-thumb {
+  background: #60a5fa;
+  border-radius: 999px;
+}
+.rf-fadey-ai-bubble-assistant {
+  background: #e8eef5;
+  color: #1e293b;
+  border-radius: 14px;
+  padding: 0.7rem 0.9rem;
+  max-width: 94%;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.rf-fadey-ai-bubble-user {
+  background: #bfd6f7;
+  color: #0f172a;
+  border-radius: 16px 16px 4px 16px;
+  padding: 0.65rem 0.9rem;
+  max-width: 88%;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.rf-fadey-ai-composer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.35rem;
+  background: #ffffff;
+}
+.rf-fadey-ai-input {
+  flex: 1;
+  min-height: 44px;
+  height: 44px;
+  border-radius: 12px !important;
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  padding: 0 0.95rem !important;
+  font-size: 0.875rem !important;
+  box-shadow: none !important;
+  outline: none;
+}
+.rf-fadey-ai-input::placeholder {
+  color: #94a3b8 !important;
+}
+.rf-fadey-ai-input:focus {
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+}
+.rf-fadey-ai-send {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: #3b82f6 !important;
+  color: #fff !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+  flex-shrink: 0;
+}
+.rf-fadey-ai-send:disabled {
+  opacity: 0.45;
+}
+.rf-fadey-ai-send:not(:disabled):hover {
+  background: #2563eb !important;
 }
