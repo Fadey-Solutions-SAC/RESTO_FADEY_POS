@@ -80,13 +80,39 @@ function extractPhrases(q) {
     /cerrar\s+caja/,
     /abrir\s+caja/,
     /mover\s+(?:un?\s+)?pedido/,
+    /cambiar\s+(?:una\s+)?mesa/,
     /traslad(?:ar|o)\s/,
+    /unir\s+(?:cuentas|mesas)/,
+    /liberar\s+mesa/,
+    /anular\s+(?:producto|pedido|mesa)/,
     /requerimiento/,
     /recepcion/,
+    /movimiento\s+interno/,
+    /kardex|inventario/,
     /auto\s*pedido/,
+    /imprimir\s+qr|generar\s+qr/,
     /impresora/,
     /salon(?:es)?/,
     /asistencia/,
+    /fidelizacion/,
+    /creditos?/,
+    /descuento|cortesia/,
+    /ofertas?/,
+    /delivery|reparto/,
+    /reservas?/,
+    /informes?|reportes?/,
+    /facturacion\s+electronica|sunat/,
+    /pago\s+(?:de\s+)?plan|comprobante/,
+    /mensajes?|chat\s+interno/,
+    /ingresos|egresos/,
+    /clientes?/,
+    /productos?|platos?/,
+    /categorias?/,
+    /combo|receta/,
+    /indicadores/,
+    /escritorio/,
+    /permisos?/,
+    /offline|sin\s+internet/,
   ];
   for (const re of patterns) {
     const m = n.match(re);
@@ -115,6 +141,10 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
   const wantsCreateArea = /crear?\s+un?\s+area|creo\s+un?\s+area|nueva\s+area/.test(q);
   const wantsCreateUser = /crear?\s+un?\s+usuario|creo\s+un?\s+usuario|nuevo\s+usuario/.test(q);
   const wantsLinkArea = /vincular|asignar/.test(q) && /area|produccion/.test(q);
+  const wantsMove = /mover|traslad|transfer|cambiar\s+mesa/.test(q) && /pedido|cuenta|mesa/.test(q);
+  const wantsCobrar = /cobrar|pagar\s+cuenta|registrar\s+venta/.test(q);
+  const wantsStock = /stock|kardex|inventario|existencia/.test(q);
+  const wantsQr = /qr|auto\s*pedido/.test(q);
 
   const scored = rows.map((r) => {
     let metaKw = [];
@@ -132,20 +162,17 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
 
     let score = 0;
 
-    // Frases completas pesan mucho (título/keywords)
     for (const ph of phrases) {
       if (hayTitleKw.includes(ph)) score += 40;
       else if (hayAll.includes(ph)) score += 12;
     }
 
-    // Tokens significativos
     for (const t of tokens) {
       if (titleN.includes(t)) score += 14;
       else if (kwN.includes(t)) score += 10;
       else if (bodyN.includes(t)) score += 2;
     }
 
-    // Intenciones específicas
     const id = String(r.id || '');
     if (wantsCreateArea) {
       if (id === 'guide-crear-area-produccion') score += 80;
@@ -157,6 +184,17 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
       if (id === 'guide-crear-area-produccion') score -= 40;
     }
     if (wantsLinkArea && id === 'guide-area-produccion') score += 50;
+    if (wantsMove && id === 'guide-mover-pedido') score += 70;
+    if (wantsCobrar && id === 'guide-cobrar') score += 60;
+    if (wantsStock && (id === 'guide-inventario-kardex' || id === 'guide-recepcion')) score += 40;
+    if (
+      wantsQr
+      && (id === 'guide-qr-imprimir'
+        || id === 'guide-auto-pedido-cartas'
+        || id === 'guide-qr-home-productos-cartas')
+    ) {
+      score += 35;
+    }
 
     return { ...r, score };
   }).filter((r) => r.score > 0);

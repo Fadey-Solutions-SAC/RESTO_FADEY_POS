@@ -7,7 +7,7 @@ import { getSocket } from '../hooks/useSocket';
 import StaffTeamChat from './StaffTeamChat';
 import FadeyAiChatPanel from './FadeyAiChatPanel';
 import toast from 'react-hot-toast';
-import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload, MdPsychology, MdSmartToy } from 'react-icons/md';
+import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload, MdSmartToy } from 'react-icons/md';
 import {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   PAGO_PLAN_MODULE_PATH,
@@ -253,28 +253,32 @@ export default function NotificationCenter({ className = '' }) {
               aria-label={panelTitle}
             >
               <div
-                className={`flex items-center justify-between px-3.5 py-3 shrink-0 ${
+                className={`flex items-center justify-between shrink-0 ${
                   tab === 'ia'
                     ? 'rf-fadey-ai-header'
-                    : 'border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]'
+                    : 'px-3.5 py-3 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]'
                 }`}
               >
-                <p
-                  className={`flex items-center gap-2 ${
-                    tab === 'ia'
-                      ? 'rf-fadey-ai-header-title'
-                      : 'text-sm font-semibold text-[var(--ui-body-text)]'
-                  }`}
-                >
-                  {tab === 'avisos' ? (
-                    <MdCampaign className="text-lg text-[var(--ui-accent)]" />
-                  ) : tab === 'ia' ? (
-                    <MdSmartToy className="text-xl rf-fadey-ai-header-icon" />
-                  ) : (
-                    <MdChat className="text-lg text-[var(--ui-accent)]" />
-                  )}
-                  {panelTitle}
-                </p>
+                {tab === 'ia' ? (
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="rf-fadey-ai-header-avatar" aria-hidden>
+                      <MdSmartToy />
+                    </div>
+                    <div className="rf-fadey-ai-header-text">
+                      <span className="rf-fadey-ai-header-name">IA Fadey</span>
+                      <span className="rf-fadey-ai-header-sub">Asistente de Resto Fadey</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
+                    {tab === 'avisos' ? (
+                      <MdCampaign className="text-lg text-[var(--ui-accent)]" />
+                    ) : (
+                      <MdChat className="text-lg text-[var(--ui-accent)]" />
+                    )}
+                    {panelTitle}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
@@ -290,7 +294,7 @@ export default function NotificationCenter({ className = '' }) {
               </div>
 
               <div className="relative flex-1 min-h-0 flex flex-col">
-                <div className="flex-1 min-h-0 overflow-hidden flex flex-col p-3">
+                <div className={`flex-1 min-h-0 overflow-hidden flex flex-col ${tab === 'ia' ? 'p-0' : 'p-3'}`}>
                 {tab === 'avisos' && showAvisosBtn && (
                   <div className="h-full overflow-y-auto space-y-2">
                     {visibleAdminNotifications.length === 0 ? (
@@ -419,7 +423,7 @@ export default function NotificationCenter({ className = '' }) {
           aria-expanded={open && tab === 'ia'}
           aria-label="IA Fadey"
         >
-          <MdPsychology className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
+          <MdSmartToy className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
         </button>
       ) : null}
 
@@ -441,23 +445,21 @@ export default function NotificationCenter({ className = '' }) {
         </button>
       ) : null}
 
-      {canUseStaffChat ? (
-        <button
-          type="button"
-          onClick={() => openWithTab('chat')}
-          className={btnClass(open && tab === 'chat')}
-          title="Mensajes"
-          aria-expanded={open && tab === 'chat'}
-          aria-label="Mensajes"
-        >
-          <MdChat className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
-          {unreadChat > 0 ? (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
-              {unreadChat > 99 ? '99+' : unreadChat}
-            </span>
-          ) : null}
-        </button>
-      ) : null}
+      <button
+        type="button"
+        onClick={() => openWithTab('chat')}
+        className={btnClass(open && tab === 'chat')}
+        title="Mensajes"
+        aria-expanded={open && tab === 'chat'}
+        aria-label="Mensajes"
+      >
+        <MdChat className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
+        {unreadChat > 0 ? (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
+            {unreadChat > 99 ? '99+' : unreadChat}
+          </span>
+        ) : null}
+      </button>
 
       {panel}
     </div>
