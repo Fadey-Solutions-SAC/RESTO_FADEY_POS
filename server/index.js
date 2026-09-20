@@ -529,6 +529,7 @@ async function start() {
   }
   try {
     const { runFadeyAiMonitorCycle } = require('./services/fadeyAi/fadeyAiMonitorService');
+    const { purgeFadeyAiChatIfNewDay } = require('./services/fadeyAi/fadeyAiChatService');
     setInterval(() => {
       try {
         runFadeyAiMonitorCycle();
@@ -536,9 +537,21 @@ async function start() {
         console.warn('[fadey-ai] monitor:', err.message || err);
       }
     }, 20 * 60 * 1000);
+    setInterval(() => {
+      try {
+        purgeFadeyAiChatIfNewDay();
+      } catch (err) {
+        console.warn('[fadey-ai] purge chat:', err.message || err);
+      }
+    }, 60 * 1000);
     setTimeout(() => {
       try {
         runFadeyAiMonitorCycle();
+      } catch (_) {
+        /* noop */
+      }
+      try {
+        purgeFadeyAiChatIfNewDay();
       } catch (_) {
         /* noop */
       }

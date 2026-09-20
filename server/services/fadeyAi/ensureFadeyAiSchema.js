@@ -40,6 +40,11 @@ function ensureFadeyAiSchema() {
     )
   `);
   runSql(`CREATE INDEX IF NOT EXISTS idx_fadey_ai_chat_user ON fadey_ai_chat_messages(user_id, created_at)`);
+  try {
+    runSql(`ALTER TABLE fadey_ai_state ADD COLUMN last_chat_purge_day TEXT`);
+  } catch (_) {
+    /* columna ya existe */
+  }
   const row = queryOne('SELECT id FROM fadey_ai_state WHERE id = 1');
   if (!row) {
     runSql(

@@ -221,6 +221,22 @@ export default function FadeyAiChatPanel({ isActive = false }) {
     return undefined;
   }, [isActive, load]);
 
+  /** Si cruza medianoche con el panel abierto, recarga (servidor ya borró el historial). */
+  useEffect(() => {
+    if (!isActive) return undefined;
+    let lastDay = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+    const tick = () => {
+      const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+      if (day !== lastDay) {
+        lastDay = day;
+        setMessages([]);
+        void load();
+      }
+    };
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, [isActive, load]);
+
   useEffect(() => {
     if (isActive) scrollBottom();
   }, [messages, isActive, busy]);

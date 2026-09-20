@@ -55,6 +55,7 @@ function checkRateLimit(userId) {
 
 function saveMessage(userId, role, content, sources = null) {
   ensureFadeyAiSchema();
+  purgeFadeyAiChatIfNewDay();
   const id = uuidv4();
   runSql(
     `INSERT INTO fadey_ai_chat_messages (id, user_id, role, content, sources_json, created_at)
@@ -64,15 +65,37 @@ function saveMessage(userId, role, content, sources = null) {
   return id;
 }
 
+/**
+ * Borra el historial de chat al pasar la medianoche (día Lima).
+ * Seguro llamar muchas veces: solo ejecuta el DELETE al cambiar el día.
+ */
+function purgeFadeyAiChatIfNewDay() {
+  ensureFadeyAiSchema();
+  const today = String(businessNow()).slice(0, 10);
+  const state = getState();
+  const last = state.last_chat_purge_day ? String(state.last_chat_purge_day).slice(0, 10) : null;
+  if (last === today) return { purged: false, day: today };
+
+  runSql(`DELETE FROM fadey_ai_chat_messages WHERE substr(created_at, 1, 10) < ?`, [today]);
+  runSql(
+    `UPDATE fadey_ai_state SET last_chat_purge_day = ?, updated_at = ? WHERE id = 1`,
+    [today, businessNow()]
+  );
+  return { purged: true, day: today };
+}
+
 function getHistory(userId, limit = 40) {
   ensureFadeyAiSchema();
+  purgeFadeyAiChatIfNewDay();
+  const today = String(businessNow()).slice(0, 10);
   const rows = queryAll(
     `SELECT id, role, content, sources_json, created_at
      FROM fadey_ai_chat_messages
      WHERE user_id = ?
+       AND substr(created_at, 1, 10) = ?
      ORDER BY datetime(created_at) DESC
      LIMIT ?`,
-    [userId, Math.min(100, Math.max(1, Number(limit) || 40))]
+    [userId, today, Math.min(100, Math.max(1, Number(limit) || 40))]
   ) || [];
   return rows.reverse().map((r) => ({
     id: r.id,
@@ -198,4 +221,5 @@ module.exports = {
   chat,
   getHistory,
   bootstrapKnowledge,
+  purgeFadeyAiChatIfNewDay,
 };

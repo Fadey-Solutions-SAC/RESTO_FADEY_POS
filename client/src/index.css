@@ -1787,8 +1787,8 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   color: #1e293b !important;
 }
 .rf-fadey-ai-shell .rf-fadey-ai-header {
-  background: #ffffff !important;
-  border-bottom: 1px solid #e8eef5 !important;
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
   color: #1e293b !important;
   padding: 0.85rem 1rem !important;
 }
@@ -1826,10 +1826,11 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   line-height: 1.2;
 }
 .rf-fadey-ai-body {
-  background: #ffffff;
+  background: #eef2f7;
   color: #1e293b;
 }
 .rf-fadey-ai-scroll {
+  background: #eef2f7;
   scrollbar-width: thin;
   scrollbar-color: #60a5fa transparent;
 }
@@ -1881,7 +1882,7 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   font-size: 1.5rem;
 }
 .rf-fadey-ai-bubble-user {
-  background: #dbeafe;
+  background: #bfdbfe;
   color: #0f172a;
   border-radius: 16px 16px 4px 16px;
   padding: 0.6rem 0.85rem;
@@ -1892,12 +1893,13 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   word-break: break-word;
 }
 .rf-fadey-ai-card {
-  background: #f1f5f9;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   padding: 0.85rem 0.9rem;
   max-width: min(92%, 340px);
   color: #1e293b;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 .rf-fadey-ai-card-title {
   margin: 0 0 0.35rem;
