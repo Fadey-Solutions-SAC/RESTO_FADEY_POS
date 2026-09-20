@@ -185,6 +185,7 @@ router.post('/login', async (req, res) => {
         sub_permissions,
         service_plan: plan,
         stock_alerts_enabled: Number(control.stock_alerts_enabled) !== 0,
+        fadey_ai_enabled: Number(control.fadey_ai_enabled) === 1,
         ...appearance,
       },
     });
@@ -331,6 +332,7 @@ router.post('/login', async (req, res) => {
       production_area_ids,
       asistencia_qr_activa,
       jornada_qr_abierta,
+      fadey_ai_enabled: Number(getControlConfig().fadey_ai_enabled) === 1,
       ...readUiAppearanceFromStoredSettings(),
       ...cajaMeta,
     },
@@ -425,6 +427,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       sub_permissions,
       service_plan: plan,
       stock_alerts_enabled: Number(control.stock_alerts_enabled) !== 0,
+      fadey_ai_enabled: Number(control.fadey_ai_enabled) === 1,
       ...readUiAppearanceFromStoredSettings(),
     });
   }
@@ -494,6 +497,7 @@ router.get('/me', authenticateToken, async (req, res) => {
     caja_name: caja?.name || '',
     asistencia_qr_activa,
     jornada_qr_abierta,
+    fadey_ai_enabled: Number(getControlConfig().fadey_ai_enabled) === 1,
     ...readUiAppearanceFromStoredSettings(),
   };
   if (shouldRefreshStaffToken(req.user)) {

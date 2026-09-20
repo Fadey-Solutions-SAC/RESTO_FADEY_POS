@@ -273,6 +273,7 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/hr', require('./routes/hr'));
 app.use('/api/staff-chat', require('./routes/staffChat'));
+app.use('/api/fadey-ai', require('./routes/fadeyAi'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/kardex-inventory', require('./routes/kardexInventory'));
 app.use('/api/pos', require('./routes/pos'));
@@ -450,6 +451,12 @@ async function start() {
     console.warn('[db] hr schema (startup):', err.message || err);
   }
   try {
+    const { ensureFadeyAiSchema } = require('./services/fadeyAi/ensureFadeyAiSchema');
+    ensureFadeyAiSchema();
+  } catch (err) {
+    console.warn('[db] fadey-ai schema (startup):', err.message || err);
+  }
+  try {
     const { repairKitchenOrdersAtStartup } = require('./services/kitchenOrderRepairService');
     repairKitchenOrdersAtStartup();
   } catch (err) {
@@ -519,6 +526,25 @@ async function start() {
     }, 15 * 60 * 1000);
   } catch (err) {
     console.warn('[staff-chat] intervalo no iniciado:', err.message || err);
+  }
+  try {
+    const { runFadeyAiMonitorCycle } = require('./services/fadeyAi/fadeyAiMonitorService');
+    setInterval(() => {
+      try {
+        runFadeyAiMonitorCycle();
+      } catch (err) {
+        console.warn('[fadey-ai] monitor:', err.message || err);
+      }
+    }, 20 * 60 * 1000);
+    setTimeout(() => {
+      try {
+        runFadeyAiMonitorCycle();
+      } catch (_) {
+        /* noop */
+      }
+    }, 45 * 1000);
+  } catch (err) {
+    console.warn('[fadey-ai] monitor no iniciado:', err.message || err);
   }
   setInterval(() => {
     try {

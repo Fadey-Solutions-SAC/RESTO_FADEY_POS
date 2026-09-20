@@ -5,8 +5,9 @@ import { api, resolveMediaUrl, formatDateTime } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { getSocket } from '../hooks/useSocket';
 import StaffTeamChat from './StaffTeamChat';
+import FadeyAiChatPanel from './FadeyAiChatPanel';
 import toast from 'react-hot-toast';
-import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload } from 'react-icons/md';
+import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload, MdPsychology } from 'react-icons/md';
 import {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   PAGO_PLAN_MODULE_PATH,
@@ -70,11 +71,15 @@ export default function NotificationCenter({ className = '' }) {
     && user?.role !== 'master_admin'
     && user?.type !== 'customer'
     && (!user?.role || STAFF_CHAT_ROLES.has(String(user.role).toLowerCase()));
+  const canUseFadeyAi = Boolean(user?.id)
+    && user?.type !== 'customer'
+    && Boolean(user?.fadey_ai_enabled)
+    && (user?.role === 'master_admin' || STAFF_CHAT_ROLES.has(String(user.role || '').toLowerCase()));
 
   const seesPagoUsoAviso = user?.role === 'admin' || user?.role === 'master_admin';
 
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState(showAvisosBtn ? 'avisos' : 'chat');
+  const [tab, setTab] = useState(showAvisosBtn ? 'avisos' : (canUseFadeyAi ? 'ia' : 'chat'));
   const [unreadChat, setUnreadChat] = useState(0);
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [sessionReservaAvisos, setSessionReservaAvisos] = useState(() => getSessionReservationCajaAvisos());
@@ -100,8 +105,16 @@ export default function NotificationCenter({ className = '' }) {
   chatActiveRef.current = isChatActive;
 
   useEffect(() => {
-    if (!showAvisosBtn && tab === 'avisos') setTab('chat');
-  }, [showAvisosBtn, tab]);
+    if (!showAvisosBtn && tab === 'avisos') {
+      setTab(canUseFadeyAi ? 'ia' : 'chat');
+    }
+  }, [showAvisosBtn, tab, canUseFadeyAi]);
+
+  useEffect(() => {
+    if (!canUseFadeyAi && tab === 'ia') {
+      setTab(showAvisosBtn ? 'avisos' : 'chat');
+    }
+  }, [canUseFadeyAi, tab, showAvisosBtn]);
 
   useEffect(() => {
     if (!showAvisosBtn) return;
@@ -216,7 +229,7 @@ export default function NotificationCenter({ className = '' }) {
     setTab(nextTab);
   };
 
-  const panelTitle = tab === 'avisos' ? 'Avisos' : 'Mensajes';
+  const panelTitle = tab === 'avisos' ? 'Avisos' : tab === 'ia' ? 'IA Fadey' : 'Mensajes';
 
   const panel =
     open && typeof document !== 'undefined'
@@ -240,6 +253,8 @@ export default function NotificationCenter({ className = '' }) {
                 <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
                   {tab === 'avisos' ? (
                     <MdCampaign className="text-lg text-[var(--ui-accent)]" />
+                  ) : tab === 'ia' ? (
+                    <MdPsychology className="text-lg text-[var(--ui-accent)]" />
                   ) : (
                     <MdChat className="text-lg text-[var(--ui-accent)]" />
                   )}
@@ -307,6 +322,11 @@ export default function NotificationCenter({ className = '' }) {
                     )}
                   </div>
                 )}
+                {canUseFadeyAi ? (
+                  <div className={tab === 'ia' ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
+                    <FadeyAiChatPanel isActive={open && tab === 'ia'} />
+                  </div>
+                ) : null}
                 {canUseStaffChat ? (
                   <div className={tab === 'chat' ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
                     <StaffTeamChat
@@ -384,6 +404,19 @@ export default function NotificationCenter({ className = '' }) {
               {visibleAdminNotifications.length > 99 ? '99+' : visibleAdminNotifications.length}
             </span>
           ) : null}
+        </button>
+      ) : null}
+
+      {canUseFadeyAi ? (
+        <button
+          type="button"
+          onClick={() => openWithTab('ia')}
+          className={btnClass(open && tab === 'ia')}
+          title="IA Fadey"
+          aria-expanded={open && tab === 'ia'}
+          aria-label="IA Fadey"
+        >
+          <MdPsychology className="text-xl text-[var(--ui-body-text)]" />
         </button>
       ) : null}
 

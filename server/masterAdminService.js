@@ -57,6 +57,8 @@ const DEFAULT_CONTROL = {
   service_plan_module_overrides: {},
   /** 1 = alertas de stock crítico activas en Escritorio / Dashboard / Productos */
   stock_alerts_enabled: 1,
+  /** 1 = asistente IA Fadey (chat en notificaciones + monitoreo del local) */
+  fadey_ai_enabled: 0,
   /** null o vacío = sin límite; entero > 0 = máximo de consultas DNI/RUC al mes (zona Lima). */
   padron_monthly_query_limit: null,
   padron_query_usage_month: '',
@@ -854,6 +856,9 @@ function setControlConfig(patch = {}, actorName = '') {
   if (patch.stock_alerts_enabled !== undefined) {
     next.stock_alerts_enabled = Number(patch.stock_alerts_enabled) === 0 ? 0 : 1;
   }
+  if (patch.fadey_ai_enabled !== undefined) {
+    next.fadey_ai_enabled = Number(patch.fadey_ai_enabled) === 0 ? 0 : 1;
+  }
   if (patch.allow_restaurant_admin_billing_bot !== undefined) {
     next.allow_restaurant_admin_billing_bot = Number(patch.allow_restaurant_admin_billing_bot) === 1 ? 1 : 0;
   }
@@ -880,6 +885,13 @@ function setControlConfig(patch = {}, actorName = '') {
     next.service_plan_module_overrides || {}
   );
   upsertSetting(MASTER_SETTING_KEY, next);
+  if (Number(next.fadey_ai_enabled) === 1 && Number(current.fadey_ai_enabled) !== 1) {
+    try {
+      require('./services/fadeyAi/fadeyAiKnowledgeService').bootstrapKnowledge({ forceLearningReset: false });
+    } catch (err) {
+      console.warn('[fadey-ai] bootstrap al activar:', err.message || err);
+    }
+  }
   /** Al fijar la fecha de facturación (día de compra), la próxima fecha de pago por uso = ancla + 1 o 6 meses según periodo. */
   if (patch.billing_date !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(String(next.billing_date || '').trim())) {
     syncPagoUsoProximaFechaFromBillingAnchor(next.billing_date);

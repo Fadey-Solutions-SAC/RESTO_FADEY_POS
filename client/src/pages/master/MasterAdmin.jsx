@@ -81,6 +81,7 @@ export default function MasterAdmin() {
   const [planPrecioDraft, setPlanPrecioDraft] = useState('');
   const [planPrecioSaving, setPlanPrecioSaving] = useState(false);
   const [stockAlertsEnabled, setStockAlertsEnabled] = useState(true);
+  const [fadeyAiEnabled, setFadeyAiEnabled] = useState(false);
 
   const loadDashboard = async () => {
     try {
@@ -88,6 +89,7 @@ export default function MasterAdmin() {
       setDashboard(data);
       setPlanModuleDraft({ ...(data?.control?.service_plan_module_overrides || {}) });
       setStockAlertsEnabled(Number(data?.control?.stock_alerts_enabled) !== 0);
+      setFadeyAiEnabled(Number(data?.control?.fadey_ai_enabled) === 1);
     } catch (err) {
       toast.error(err.message || 'No se pudo cargar administrador maestro');
     } finally {
@@ -202,6 +204,9 @@ export default function MasterAdmin() {
       }
       if (controlResp && controlResp.stock_alerts_enabled !== undefined) {
         setStockAlertsEnabled(Number(controlResp.stock_alerts_enabled) !== 0);
+      }
+      if (controlResp && controlResp.fadey_ai_enabled !== undefined) {
+        setFadeyAiEnabled(Number(controlResp.fadey_ai_enabled) === 1);
       }
       if (okMessage) toast.success(okMessage);
     } catch (err) {
@@ -580,6 +585,18 @@ export default function MasterAdmin() {
                     />
                   </label>
                   <p className="text-[11px] text-slate-500 -mt-1">Escritorio, Dashboard y avisos de stock bajo / agotado.</p>
+                  <label className="flex items-center justify-between gap-3 cursor-pointer">
+                    <span className="text-sm text-slate-700">Asistente IA Fadey</span>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      checked={fadeyAiEnabled}
+                      onChange={(e) => setFadeyAiEnabled(e.target.checked)}
+                    />
+                  </label>
+                  <p className="text-[11px] text-slate-500 -mt-1">
+                    Chat en Notificaciones para el personal, aprendizaje del local y monitoreo en segundo plano.
+                  </p>
                   <div className="border-t border-slate-100 pt-2 space-y-2">
                     <p className="text-xs font-medium text-slate-600">Control de recursos</p>
                     {[
@@ -619,6 +636,7 @@ export default function MasterAdmin() {
                             service_plan: control.service_plan || 'profesional',
                             service_plan_module_overrides: planModuleDraft,
                             stock_alerts_enabled: stockAlertsEnabled ? 1 : 0,
+                            fadey_ai_enabled: fadeyAiEnabled ? 1 : 0,
                           },
                           null,
                         );
