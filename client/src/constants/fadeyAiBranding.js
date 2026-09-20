@@ -4,6 +4,9 @@ export const FADEY_AI_AVATAR_SRC = '/branding/pix-ai-avatar.png';
 /** Frase al abrir el chat. */
 export const FADEY_AI_TAGLINE = 'Conectado con tu negocio';
 
+/** Evento global para abrir el chat PIX desde otros paneles. */
+export const OPEN_FADEY_AI_EVENT = 'rf-open-fadey-ai';
+
 /** Expresiones / usos del personaje según la acción de la IA. */
 export const FADEY_AI_EXPRESSIONS = {
   saludo: '/branding/pix-saludo.png',

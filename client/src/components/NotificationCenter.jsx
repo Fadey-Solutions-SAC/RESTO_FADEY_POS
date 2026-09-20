@@ -1,14 +1,13 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { api, resolveMediaUrl, formatDateTime } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { getSocket } from '../hooks/useSocket';
-import StaffTeamChat from './StaffTeamChat';
 import FadeyAiChatPanel from './FadeyAiChatPanel';
 import toast from 'react-hot-toast';
 import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload } from 'react-icons/md';
-import { FADEY_AI_TAGLINE, getFadeyAiAvatarSrc } from '../constants/fadeyAiBranding';
+import { FADEY_AI_TAGLINE, getFadeyAiAvatarSrc, OPEN_FADEY_AI_EVENT } from '../constants/fadeyAiBranding';
 import {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   PAGO_PLAN_MODULE_PATH,
@@ -61,8 +60,8 @@ function showIncomingMessageToast(msg) {
 }
 
 /**
- * Tres botones independientes: IA Fadey, Avisos (sistema) y Mensajes (chat del equipo).
- * Al llegar un mensaje se muestra notificación con nombre y texto durante 5 s.
+ * Botones: IA Fadey (PIX) y Notificaciones (megáfono).
+ * El chat de PIX vive solo en el panel de notificaciones / IA.
  */
 export default function NotificationCenter({ className = '' }) {
   const { user } = useAuth();
@@ -79,8 +78,7 @@ export default function NotificationCenter({ className = '' }) {
   const seesPagoUsoAviso = user?.role === 'admin' || user?.role === 'master_admin';
 
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState(showAvisosBtn ? 'avisos' : (canUseFadeyAi ? 'ia' : 'chat'));
-  const [unreadChat, setUnreadChat] = useState(0);
+  const [tab, setTab] = useState(showAvisosBtn ? 'avisos' : (canUseFadeyAi ? 'ia' : 'avisos'));
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [sessionReservaAvisos, setSessionReservaAvisos] = useState(() => getSessionReservationCajaAvisos());
   const [dismissedAvisoIds, setDismissedAvisoIds] = useState(loadDismissedAvisoIds);
@@ -88,7 +86,6 @@ export default function NotificationCenter({ className = '' }) {
 
   const rootRef = useRef(null);
   const panelRef = useRef(null);
-  const chatActiveRef = useRef(false);
 
   const visibleAdminNotifications = useMemo(() => {
     let list = [
@@ -101,20 +98,27 @@ export default function NotificationCenter({ className = '' }) {
     return list;
   }, [adminNotifications, dismissedAvisoIds, seesPagoUsoAviso, sessionReservaAvisos]);
 
-  const isChatActive = open && tab === 'chat';
-  chatActiveRef.current = isChatActive;
-
   useEffect(() => {
     if (!showAvisosBtn && tab === 'avisos') {
-      setTab(canUseFadeyAi ? 'ia' : 'chat');
+      setTab(canUseFadeyAi ? 'ia' : 'avisos');
     }
   }, [showAvisosBtn, tab, canUseFadeyAi]);
 
   useEffect(() => {
     if (!canUseFadeyAi && tab === 'ia') {
-      setTab(showAvisosBtn ? 'avisos' : 'chat');
+      setTab('avisos');
     }
-  }, [canUseFadeyAi, tab, showAvisosBtn]);
+  }, [canUseFadeyAi, tab]);
+
+  useEffect(() => {
+    const openIa = () => {
+      if (!canUseFadeyAi) return;
+      setTab('ia');
+      setOpen(true);
+    };
+    window.addEventListener(OPEN_FADEY_AI_EVENT, openIa);
+    return () => window.removeEventListener(OPEN_FADEY_AI_EVENT, openIa);
+  }, [canUseFadeyAi]);
 
   useEffect(() => {
     if (!showAvisosBtn) return;
@@ -139,10 +143,6 @@ export default function NotificationCenter({ className = '' }) {
     };
   }, []);
 
-  const onUnreadDelta = useCallback((n) => {
-    setUnreadChat((u) => u + n);
-  }, []);
-
   useEffect(() => {
     if (!canUseStaffChat) return undefined;
     const s = getSocket();
@@ -165,8 +165,6 @@ export default function NotificationCenter({ className = '' }) {
       if (msg.recipient_id != null && String(msg.recipient_id) !== '' && String(msg.recipient_id) !== me) {
         return;
       }
-      if (chatActiveRef.current) return;
-      setUnreadChat((u) => u + 1);
       showIncomingMessageToast(msg);
     };
 
@@ -176,10 +174,6 @@ export default function NotificationCenter({ className = '' }) {
       s.off('staff-chat-message', onMsg);
     };
   }, [canUseStaffChat, user?.id]);
-
-  useEffect(() => {
-    if (isChatActive) setUnreadChat(0);
-  }, [isChatActive]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -229,7 +223,7 @@ export default function NotificationCenter({ className = '' }) {
     setTab(nextTab);
   };
 
-  const panelTitle = tab === 'avisos' ? 'Notificaciones' : tab === 'ia' ? 'IA Fadey' : 'Mensajes';
+  const panelTitle = tab === 'avisos' ? 'Notificaciones' : 'IA Fadey';
 
   const panel =
     open && typeof document !== 'undefined'
@@ -263,7 +257,7 @@ export default function NotificationCenter({ className = '' }) {
                 {tab === 'ia' ? (
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="rf-fadey-ai-header-avatar rf-fadey-ai-header-avatar--photo" aria-hidden>
-                      <img src={getFadeyAiAvatarSrc('chat')} alt="" className="rf-fadey-ai-pix rf-fadey-ai-pix--header" draggable={false} />
+                      <img src={getFadeyAiAvatarSrc('saludo')} alt="" className="rf-fadey-ai-pix rf-fadey-ai-pix--header" draggable={false} />
                     </div>
                     <div className="rf-fadey-ai-header-text">
                       <span className="rf-fadey-ai-header-name">IA Fadey</span>
@@ -271,13 +265,14 @@ export default function NotificationCenter({ className = '' }) {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
-                    {tab === 'avisos' ? (
-                      <MdCampaign className="text-lg text-[var(--ui-accent)]" />
-                    ) : (
-                      <MdChat className="text-lg text-[var(--ui-accent)]" />
-                    )}
-                    {panelTitle}
+                  <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2 min-w-0">
+                    <img
+                      src={getFadeyAiAvatarSrc('saludo')}
+                      alt=""
+                      className="w-8 h-8 rounded-full object-cover border border-[color:var(--ui-border)] shrink-0"
+                      draggable={false}
+                    />
+                    <span className="truncate">{panelTitle}</span>
                   </p>
                 )}
                 <button
@@ -299,48 +294,66 @@ export default function NotificationCenter({ className = '' }) {
                 {tab === 'avisos' && showAvisosBtn && (
                   <div className="h-full overflow-y-auto space-y-2">
                     {visibleAdminNotifications.length === 0 ? (
-                      <p className="text-sm text-[var(--ui-muted)] text-center py-8">Sin avisos del sistema.</p>
+                      <div className="flex flex-col items-center justify-center gap-2 py-10 px-4 text-center">
+                        <img
+                          src={getFadeyAiAvatarSrc('saludo')}
+                          alt=""
+                          className="w-14 h-14 rounded-full object-cover border border-[color:var(--ui-border)]"
+                          draggable={false}
+                        />
+                        <p className="text-sm text-[var(--ui-muted)]">Sin avisos del sistema.</p>
+                      </div>
                     ) : (
                       visibleAdminNotifications.slice(0, 15).map((n) => (
                         <div key={n.id} className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 overflow-hidden">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold text-[var(--ui-body-text)] pr-2 flex-1 min-w-0 select-none cursor-default">
-                              {n.title}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => setAvisoToDismiss(n)}
-                              className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-red-950/60 hover:bg-red-900/70 text-red-200 border border-red-800/50"
-                              aria-label="Quitar aviso de la lista"
-                            >
-                              <MdDelete className="text-sm" />
-                              Quitar
-                            </button>
-                          </div>
-                          <p className="text-[10px] text-[var(--ui-muted)] mt-1">{formatDateTime(n.created_at)}</p>
-                          {n.image_url ? (
-                            <div className="mt-2 -mx-0.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] overflow-hidden">
-                              <img
-                                src={resolveMediaUrl(n.image_url)}
-                                alt=""
-                                className="w-full h-auto max-h-[min(42vh,320px)] object-contain object-center block"
-                              />
+                          <div className="flex items-start gap-2.5">
+                            <img
+                              src={getFadeyAiAvatarSrc('notif')}
+                              alt=""
+                              className="w-9 h-9 rounded-full object-cover border border-[color:var(--ui-border)] shrink-0 mt-0.5"
+                              draggable={false}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-semibold text-[var(--ui-body-text)] pr-2 flex-1 min-w-0 select-none cursor-default">
+                                  {n.title}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => setAvisoToDismiss(n)}
+                                  className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-red-950/60 hover:bg-red-900/70 text-red-200 border border-red-800/50"
+                                  aria-label="Quitar aviso de la lista"
+                                >
+                                  <MdDelete className="text-sm" />
+                                  Quitar
+                                </button>
+                              </div>
+                              <p className="text-[10px] text-[var(--ui-muted)] mt-1">{formatDateTime(n.created_at)}</p>
+                              {n.image_url ? (
+                                <div className="mt-2 -mx-0.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] overflow-hidden">
+                                  <img
+                                    src={resolveMediaUrl(n.image_url)}
+                                    alt=""
+                                    className="w-full h-auto max-h-[min(42vh,320px)] object-contain object-center block"
+                                  />
+                                </div>
+                              ) : null}
+                              <p className="text-xs text-[var(--ui-body-text)] mt-2 whitespace-pre-wrap select-text">{n.message}</p>
+                              {seesPagoUsoAviso && isPagoPlanAvisoTitle(n.title) ? (
+                                <button
+                                  type="button"
+                                  className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--ui-accent)] px-3 py-2.5 text-sm font-semibold text-[#fff] hover:opacity-95"
+                                  onClick={() => {
+                                    setOpen(false);
+                                    navigate(PAGO_PLAN_MODULE_PATH);
+                                  }}
+                                >
+                                  <MdUpload className="text-lg" />
+                                  Cargar Comprobante
+                                </button>
+                              ) : null}
                             </div>
-                          ) : null}
-                          <p className="text-xs text-[var(--ui-body-text)] mt-2 whitespace-pre-wrap select-text">{n.message}</p>
-                          {seesPagoUsoAviso && isPagoPlanAvisoTitle(n.title) ? (
-                            <button
-                              type="button"
-                              className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--ui-accent)] px-3 py-2.5 text-sm font-semibold text-[#fff] hover:opacity-95"
-                              onClick={() => {
-                                setOpen(false);
-                                navigate(PAGO_PLAN_MODULE_PATH);
-                              }}
-                            >
-                              <MdUpload className="text-lg" />
-                              Cargar Comprobante
-                            </button>
-                          ) : null}
+                          </div>
                         </div>
                       ))
                     )}
@@ -350,19 +363,6 @@ export default function NotificationCenter({ className = '' }) {
                   <div className={tab === 'ia' ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
                     <FadeyAiChatPanel isActive={open && tab === 'ia'} />
                   </div>
-                ) : null}
-                {canUseStaffChat ? (
-                  <div className={tab === 'chat' ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
-                    <StaffTeamChat
-                      isActive={isChatActive}
-                      onUnreadDelta={onUnreadDelta}
-                      suppressExternalNotify
-                    />
-                  </div>
-                ) : tab === 'chat' ? (
-                  <p className="text-sm text-[var(--ui-muted)] text-center py-8">
-                    El chat interno es solo para personal del restaurante.
-                  </p>
                 ) : null}
                 </div>
 
@@ -442,12 +442,7 @@ export default function NotificationCenter({ className = '' }) {
           aria-expanded={open && tab === 'avisos'}
           aria-label="Notificaciones"
         >
-          <img
-            src={getFadeyAiAvatarSrc('notif')}
-            alt=""
-            className="w-8 h-8 rounded-full object-cover border border-[color:var(--ui-border)]"
-            draggable={false}
-          />
+          <MdCampaign className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
           {visibleAdminNotifications.length > 0 ? (
             <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
               {visibleAdminNotifications.length > 99 ? '99+' : visibleAdminNotifications.length}
@@ -455,22 +450,6 @@ export default function NotificationCenter({ className = '' }) {
           ) : null}
         </button>
       ) : null}
-
-      <button
-        type="button"
-        onClick={() => openWithTab('chat')}
-        className={btnClass(open && tab === 'chat')}
-        title="Mensajes"
-        aria-expanded={open && tab === 'chat'}
-        aria-label="Mensajes"
-      >
-        <MdChat className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
-        {unreadChat > 0 ? (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
-            {unreadChat > 99 ? '99+' : unreadChat}
-          </span>
-        ) : null}
-      </button>
 
       {panel}
     </div>

@@ -81,7 +81,7 @@ export default function MasterAdmin() {
   const [planPrecioDraft, setPlanPrecioDraft] = useState('');
   const [planPrecioSaving, setPlanPrecioSaving] = useState(false);
   const [stockAlertsEnabled, setStockAlertsEnabled] = useState(true);
-  const [fadeyAiEnabled, setFadeyAiEnabled] = useState(false);
+  const [fadeyAiEnabled, setFadeyAiEnabled] = useState(true);
 
   const loadDashboard = async () => {
     try {

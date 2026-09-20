@@ -457,6 +457,12 @@ async function start() {
     console.warn('[db] fadey-ai schema (startup):', err.message || err);
   }
   try {
+    const { ensureFadeyAiEnabledByDefault } = require('./masterAdminService');
+    ensureFadeyAiEnabledByDefault();
+  } catch (err) {
+    console.warn('[fadey-ai] default enable:', err.message || err);
+  }
+  try {
     const { repairKitchenOrdersAtStartup } = require('./services/kitchenOrderRepairService');
     repairKitchenOrdersAtStartup();
   } catch (err) {

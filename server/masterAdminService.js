@@ -57,8 +57,8 @@ const DEFAULT_CONTROL = {
   service_plan_module_overrides: {},
   /** 1 = alertas de stock crítico activas en Escritorio / Dashboard / Productos */
   stock_alerts_enabled: 1,
-  /** 1 = asistente IA Fadey (chat en notificaciones + monitoreo del local) */
-  fadey_ai_enabled: 0,
+  /** 1 = asistente IA Fadey (chat en notificaciones + monitoreo del local). Activada por defecto. */
+  fadey_ai_enabled: 1,
   /** null o vacío = sin límite; entero > 0 = máximo de consultas DNI/RUC al mes (zona Lima). */
   padron_monthly_query_limit: null,
   padron_query_usage_month: '',
@@ -908,6 +908,18 @@ function setControlConfig(patch = {}, actorName = '') {
   return next;
 }
 
+/** Una vez: activa IA Fadey en instalaciones que aún tenían el default anterior (apagado). */
+function ensureFadeyAiEnabledByDefault() {
+  const FLAG = 'fadey_ai_default_on_v1';
+  if (readSetting(FLAG, null)) return getControlConfig();
+  const current = getControlConfig();
+  if (Number(current.fadey_ai_enabled) !== 1) {
+    setControlConfig({ fadey_ai_enabled: 1 }, 'system');
+  }
+  upsertSetting(FLAG, { at: new Date().toISOString() });
+  return getControlConfig();
+}
+
 function getLockState() {
   const control = evaluateAutomaticBillingRules();
   return {
@@ -1021,6 +1033,7 @@ module.exports = {
   recordSuccessfulPadronConsult,
   getPadronQuotaPublic,
   setControlConfig,
+  ensureFadeyAiEnabledByDefault,
   getNotifications,
   getActiveNotifications,
   addNotification,
