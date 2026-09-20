@@ -134,7 +134,7 @@ function heuristicToolPrefetch(message, user) {
   const chunks = [];
   const isHowTo = /c[oó]mo |como |paso a paso|dónde |donde |explicame|explícame|ayuda|creo |crear |configurar |registrar /.test(m)
     || /cerrar caja|abrir caja|requerimiento|recepci[oó]n|auto.?pedido|carta|usuario|impresora|sal[oó]n|liberar mesa|asistencia|cobrar|área|area|producci|mover|traslad|transfer/.test(m)
-    || /descuento|cortes[ií]a|oferta|cr[eé]dito|fideliz|cliente|delivery|reserva|inventario|kardex|egreso|ingreso|informe|reporte|permiso|qr|mensaje|notificaci|almac[eé]n|gasto|indicador|offline|sunat|comprobante|plan/.test(m);
+    || /descuento|cortes[ií]a|oferta|cr[eé]dito|fideliz|encuesta|cliente|delivery|reserva|inventario|kardex|egreso|ingreso|informe|reporte|permiso|qr|mensaje|notificaci|almac[eé]n|gasto|indicador|offline|sunat|comprobante|plan/.test(m);
 
   if (isHowTo) {
     const r = runTool('search_guides', { query: message }, user);

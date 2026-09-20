@@ -296,24 +296,43 @@ Para crear un área nueva, pregunta «cómo crear un área de producción».`,
   {
     id: 'guide-creditos',
     title: 'Cómo usar créditos de clientes',
-    keywords: ['creditos', 'créditos', 'fiado', 'cuenta cliente', 'cobrar credito', 'pago credito'],
+    keywords: ['creditos', 'créditos', 'fiado', 'cuenta cliente', 'cobrar credito', 'pago credito', 'abono cliente'],
     body: `Paso a paso — Créditos:
 1. Menú Créditos.
 2. Selecciona o crea el cliente.
 3. Registra un crédito (venta a cuenta) o un abono/pago.
 4. Revisa el saldo pendiente.
 5. Al cobrar en Caja puedes aplicar pago a crédito si el flujo del local lo permite.
-Nota: Mi empresa → Pagos de créditos controla políticas relacionadas al plan.`,
+Nota: créditos ≠ encuestas. Para la encuesta de satisfacción ve a Fidelización → Configuración.`,
+  },
+  {
+    id: 'guide-encuesta-clientes',
+    title: 'Cómo configurar la encuesta para clientes',
+    keywords: [
+      'encuesta', 'encuestas', 'configurar encuesta', 'encuesta clientes', 'encuesta satisfaccion',
+      'satisfacción', 'qr encuesta', 'formulario clientes', 'calificacion clientes', 'opinión cliente',
+    ],
+    body: `Paso a paso — Encuesta de clientes (Fidelización):
+1. Menú Fidelización (permiso admin/cajero según tu plan).
+2. Abre la pestaña Configuración.
+3. Arma el formato del cuadro: título, textos, estilo tipográfico y etiquetas de campos.
+4. Define áreas del negocio (ej. Restaurante, Terraza) y marca cuáles aparecen.
+5. Ajusta filas de calificación (Excelente → Muy malo) y preguntas / opciones «más le gustó» y «mejorar».
+6. Pulsa Guardar formato.
+7. Descarga el QR de la encuesta (PNG) y colócalo en mesas o la entrada.
+8. El cliente escanea el QR (/encuesta), completa y envía. Las respuestas salen en Fidelización (resumen y listado).
+9. Opcional: imprime una encuesta respondida en la impresora de caja desde el listado.
+Nota: no confundir con Créditos (fiado/cuenta). La encuesta es solo opinión/calificación.`,
   },
   {
     id: 'guide-fidelizacion',
     title: 'Cómo usar fidelización / puntos',
-    keywords: ['fidelizacion', 'fidelización', 'puntos', 'cliente frecuente', 'premios', 'loyalty'],
+    keywords: ['fidelizacion', 'fidelización', 'puntos', 'cliente frecuente', 'premios', 'loyalty', 'canjear puntos'],
     body: `Paso a paso — Fidelización:
 1. Menú Fidelización (admin/cajero con permiso).
-2. Configura o revisa el programa de puntos/premios.
-3. Al cobrar, identifica al cliente para acumular o canjear.
-4. Consulta historial y mensajes de clientes en el módulo.
+2. Revisa el resumen de encuestas y calificaciones de mozos.
+3. Para configurar el formulario y el QR: pestaña Configuración (ver guía de encuesta).
+4. Si el local usa puntos/premios, acumula o canjea al identificar al cliente al cobrar.
 Nota: si no aparece, falta permiso o el plan lo desactivó.`,
   },
 
@@ -544,7 +563,7 @@ Sin la app abierta, la detección USB no funciona.`,
 - Auto pedido QR y cartas: menú Auto pedido
 - Almacén: Control de recursos (requerimiento, recepción, kardex, gastos)
 - Caja operativa: Cobrar, apertura/cierre, ingresos/egresos
-- Clientes, créditos, fidelización, ofertas, descuentos: menú lateral
+- Clientes, créditos, fidelización/encuestas, ofertas, descuentos: menú lateral
 - Informes y ventas: Informes / Ventas / Escritorio
 - RRHH y asistencia: Recursos humanos / Asistencia QR
 - Mi empresa y pago de plan: Mi empresa

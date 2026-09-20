@@ -98,6 +98,7 @@ function extractPhrases(q) {
     /creditos?/,
     /descuento|cortesia/,
     /ofertas?/,
+    /encuesta|satisfaccion|calificacion/,
     /delivery|reparto/,
     /reservas?/,
     /informes?|reportes?/,
@@ -145,6 +146,8 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
   const wantsCobrar = /cobrar|pagar\s+cuenta|registrar\s+venta/.test(q);
   const wantsStock = /stock|kardex|inventario|existencia/.test(q);
   const wantsQr = /qr|auto\s*pedido/.test(q);
+  const wantsEncuesta = /encuesta|satisfaccion|calificacion\s+(?:de\s+)?clientes|opinion/.test(q);
+  const wantsCredito = /credito|fiado|abono/.test(q) && !wantsEncuesta;
 
   const scored = rows.map((r) => {
     let metaKw = [];
@@ -195,6 +198,13 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
     ) {
       score += 35;
     }
+    if (wantsEncuesta) {
+      if (id === 'guide-encuesta-clientes') score += 90;
+      if (id === 'guide-fidelizacion') score += 25;
+      if (id === 'guide-creditos' || id === 'guide-clientes') score -= 60;
+    }
+    if (wantsCredito && id === 'guide-creditos') score += 70;
+    if (wantsCredito && id === 'guide-encuesta-clientes') score -= 40;
 
     return { ...r, score };
   }).filter((r) => r.score > 0);
