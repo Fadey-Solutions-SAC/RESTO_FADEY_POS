@@ -65,14 +65,23 @@ function emptyForm() {
     questions: [],
     liked_options: [],
     improve_options: [],
+    area_options: [
+      { id: 'restaurante', label: 'Restaurante', visible: true },
+      { id: 'hotel', label: 'Hotel', visible: true },
+      { id: 'ambos', label: 'Ambos', visible: true },
+    ],
   };
 }
 
-const AREA_LABEL = {
-  restaurante: 'Restaurante',
-  hotel: 'Hotel',
-  ambos: 'Ambos',
-};
+function resolveAreaLabel(form, areaId) {
+  const id = String(areaId || '').trim().toLowerCase();
+  if (!id) return '—';
+  const list = Array.isArray(form?.area_options) ? form.area_options : [];
+  const hit = list.find((a) => String(a.id || '').toLowerCase() === id);
+  if (hit?.label) return hit.label;
+  const legacy = { restaurante: 'Restaurante', hotel: 'Hotel', ambos: 'Ambos' };
+  return legacy[id] || id;
+}
 
 export default function Fidelizacion() {
   const { user } = useAuth();
@@ -119,6 +128,9 @@ export default function Fidelizacion() {
         questions: Array.isArray(row?.questions) ? row.questions : [],
         liked_options: Array.isArray(row?.liked_options) ? row.liked_options : [],
         improve_options: Array.isArray(row?.improve_options) ? row.improve_options : [],
+        area_options: Array.isArray(row?.area_options) && row.area_options.length
+          ? row.area_options
+          : emptyForm().area_options,
       }))
       .catch((e) => toast.error(e.message || 'No se pudo cargar el formato'))
       .finally(() => setFormLoading(false));
@@ -191,6 +203,33 @@ export default function Fidelizacion() {
     });
   };
 
+  const patchAreaOption = (index, patch) => {
+    setForm((prev) => ({
+      ...prev,
+      area_options: prev.area_options.map((a, i) => (i === index ? { ...a, ...patch } : a)),
+    }));
+  };
+
+  const addAreaOption = () => {
+    setForm((prev) => {
+      if (prev.area_options.length >= 12) return prev;
+      return {
+        ...prev,
+        area_options: [...prev.area_options, { id: '', label: 'Nueva área', visible: true }],
+      };
+    });
+  };
+
+  const removeAreaOption = (index) => {
+    setForm((prev) => {
+      if (prev.area_options.length <= 1) {
+        toast.error('Deja al menos un área');
+        return prev;
+      }
+      return { ...prev, area_options: prev.area_options.filter((_, i) => i !== index) };
+    });
+  };
+
   const saveForm = async () => {
     if (!canEdit) return;
     const questions = form.questions
@@ -200,6 +239,21 @@ export default function Fidelizacion() {
       toast.error('Añade al menos una pregunta');
       return;
     }
+    const area_options = (Array.isArray(form.area_options) ? form.area_options : [])
+      .map((a) => ({
+        id: a.id,
+        label: String(a.label || '').trim(),
+        visible: a.visible !== false,
+      }))
+      .filter((a) => a.label);
+    if (!area_options.length) {
+      toast.error('Añade al menos un área del negocio');
+      return;
+    }
+    if (!area_options.some((a) => a.visible)) {
+      toast.error('Marca al menos un área para que aparezca en la encuesta');
+      return;
+    }
     setSaving(true);
     try {
       const saved = await api.put('/loyalty/form', {
@@ -207,6 +261,7 @@ export default function Fidelizacion() {
         questions,
         liked_options: Array.isArray(form.liked_options) ? form.liked_options : [],
         improve_options: Array.isArray(form.improve_options) ? form.improve_options : [],
+        area_options,
         form_version: 2,
       });
       setForm({
@@ -215,6 +270,7 @@ export default function Fidelizacion() {
         questions: saved.questions || questions,
         liked_options: saved.liked_options || [],
         improve_options: saved.improve_options || [],
+        area_options: saved.area_options || area_options,
       });
       toast.success('Formato guardado. El cliente ya verá este cuadro.');
       loadSummary();
@@ -431,7 +487,7 @@ export default function Fidelizacion() {
                       <td className="py-2.5 pr-3 font-medium">{r.customer_name}</td>
                       <td className="py-2.5 pr-3">{String(r.waiter_name || '').trim() || '—'}</td>
                       <td className="py-2.5 pr-3 whitespace-nowrap">{r.visit_date || '—'}</td>
-                      <td className="py-2.5 pr-3">{AREA_LABEL[r.visit_area] || r.visit_area || '—'}</td>
+                      <td className="py-2.5 pr-3">{resolveAreaLabel(form, r.visit_area)}</td>
                       <td className="py-2.5 pr-3">{r.party_size || '—'}</td>
                       <td className="py-2.5 pr-3 whitespace-nowrap">{Number(r.rating || 0).toFixed(0)} ★</td>
                       <td className="py-2.5 pr-3 max-w-[14rem]">
@@ -575,6 +631,59 @@ export default function Fidelizacion() {
 
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-2">
+                    <h3 className="font-medium rf-section-title">Áreas del negocio</h3>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        className="btn-secondary text-sm inline-flex items-center gap-1"
+                        onClick={addAreaOption}
+                        disabled={form.area_options.length >= 12}
+                      >
+                        <MdAdd /> Añadir área
+                      </button>
+                    ) : null}
+                  </div>
+                  <p className="text-xs ui-text-muted mb-2">
+                    Define una o más áreas (ej. Restaurante, Hotel, Terraza). Marca «Aparece» para mostrarlas en la encuesta.
+                  </p>
+                  <div className="space-y-2">
+                    {form.area_options.map((a, i) => (
+                      <div key={a.id || `area-${i}`} className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs ui-text-muted w-5 shrink-0">{i + 1}</span>
+                        <input
+                          className="input-field flex-1 min-w-[10rem]"
+                          value={a.label}
+                          onChange={(e) => patchAreaOption(i, { label: e.target.value })}
+                          disabled={!canEdit}
+                          maxLength={60}
+                          placeholder="Nombre del área"
+                        />
+                        <label className="inline-flex items-center gap-1.5 text-sm shrink-0 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={a.visible !== false}
+                            onChange={(e) => patchAreaOption(i, { visible: e.target.checked })}
+                            disabled={!canEdit}
+                          />
+                          Aparece
+                        </label>
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            className="p-2 rounded-lg text-red-500 hover:bg-red-50"
+                            onClick={() => removeAreaOption(i)}
+                            aria-label="Quitar área"
+                          >
+                            <MdDelete />
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
                     <h3 className="font-medium rf-section-title">Filas de calificación (Excelente → Muy malo)</h3>
                     {canEdit ? (
                       <button type="button" className="btn-secondary text-sm inline-flex items-center gap-1" onClick={addQuestion} disabled={form.questions.length >= 12}>
@@ -661,12 +770,14 @@ export default function Fidelizacion() {
                       <fieldset className="rf-survey-field">
                         <legend>{form.area_label || 'Área utilizada'}</legend>
                         <div className="rf-survey-check-row">
-                          {['Restaurante', 'Hotel', 'Ambos'].map((a) => (
-                            <label key={a} className="rf-survey-check">
-                              <input type="radio" disabled name="preview-area" />
-                              <span>{a}</span>
-                            </label>
-                          ))}
+                          {(form.area_options || [])
+                            .filter((a) => a.visible !== false && String(a.label || '').trim())
+                            .map((a) => (
+                              <label key={a.id || a.label} className="rf-survey-check">
+                                <input type="radio" disabled name="preview-area" />
+                                <span>{a.label}</span>
+                              </label>
+                            ))}
                         </div>
                       </fieldset>
                       <label className="rf-survey-field">

@@ -47,6 +47,7 @@ export default function EncuestaPublica() {
     questions: [],
     liked_options: [],
     improve_options: [],
+    area_options: [],
     rating_scale: DEFAULT_SCALE,
     waiters: [],
   });
@@ -91,6 +92,7 @@ export default function EncuestaPublica() {
           questions: Array.isArray(data?.questions) ? data.questions : [],
           liked_options: Array.isArray(data?.liked_options) ? data.liked_options : [],
           improve_options: Array.isArray(data?.improve_options) ? data.improve_options : [],
+          area_options: Array.isArray(data?.area_options) ? data.area_options : [],
           rating_scale: Array.isArray(data?.rating_scale) && data.rating_scale.length
             ? data.rating_scale
             : DEFAULT_SCALE,
@@ -98,6 +100,8 @@ export default function EncuestaPublica() {
           waiters,
         }));
         if (waiters.length === 1) setWaiterId(String(waiters[0].id || ''));
+        const areas = Array.isArray(data?.area_options) ? data.area_options : [];
+        if (areas.length === 1) setVisitArea(String(areas[0].id || ''));
       })
       .catch((e) => toast.error(e.message || 'No se pudo cargar la encuesta'))
       .finally(() => setLoading(false));
@@ -215,11 +219,14 @@ export default function EncuestaPublica() {
                   <fieldset className="rf-survey-field">
                     <legend>{form.area_label}</legend>
                     <div className="rf-survey-check-row">
-                      {[
-                        { id: 'restaurante', label: 'Restaurante' },
-                        { id: 'hotel', label: 'Hotel' },
-                        { id: 'ambos', label: 'Ambos' },
-                      ].map((a) => (
+                      {(Array.isArray(form.area_options) && form.area_options.length
+                        ? form.area_options
+                        : [
+                            { id: 'restaurante', label: 'Restaurante' },
+                            { id: 'hotel', label: 'Hotel' },
+                            { id: 'ambos', label: 'Ambos' },
+                          ]
+                      ).map((a) => (
                         <label key={a.id} className="rf-survey-check">
                           <input
                             type="radio"

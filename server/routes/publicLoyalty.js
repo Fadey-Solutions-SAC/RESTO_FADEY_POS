@@ -4,13 +4,15 @@ const { queryOne, queryAll, runSql, ensureLoyaltySurveysTable } = require('../da
 const { createRateLimiter } = require('../middleware/rateLimit');
 const { emitStaffDataUpdate } = require('../socketBroadcast');
 const { attachProfileToRestaurant } = require('../services/miRestaurantConfigService');
-const { readLoyaltySurveyForm, loyaltyQuestionIds } = require('../loyaltySurveyQuestions');
+const {
+  readLoyaltySurveyForm,
+  loyaltyQuestionIds,
+  visibleAreaOptions,
+} = require('../loyaltySurveyQuestions');
 const { sendRouteError } = require('../utils/routeErrors');
 
 const router = express.Router();
 const postLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 8 });
-
-const AREA_VALUES = new Set(['restaurante', 'hotel', 'ambos']);
 
 function clampRating(value) {
   const n = Number(value);
@@ -85,6 +87,7 @@ router.get('/form', (req, res) => {
     res.json({
       ...restaurantBranding(),
       ...form,
+      area_options: visibleAreaOptions(form),
       waiters: listActiveWaiters(),
     });
   } catch (err) {
@@ -125,8 +128,9 @@ router.post('/', postLimiter, (req, res) => {
     }
 
     const visitDate = String(b.visit_date || '').trim().slice(0, 32);
+    const allowedAreas = new Set(visibleAreaOptions(form).map((a) => String(a.id || '').toLowerCase()));
     const visitArea = String(b.visit_area || '').trim().toLowerCase();
-    if (!AREA_VALUES.has(visitArea)) {
+    if (!visitArea || !allowedAreas.has(visitArea)) {
       return res.status(400).json({ error: `Selecciona ${String(form.area_label || 'el área').toLowerCase()}.` });
     }
     const partySize = Math.round(Number(b.party_size));

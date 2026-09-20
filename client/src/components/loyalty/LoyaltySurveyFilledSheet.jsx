@@ -9,7 +9,7 @@ const DEFAULT_SCALE = [
   { value: 1, label: 'Muy malo', emoji: '😢' },
 ];
 
-const AREA_OPTIONS = [
+const DEFAULT_AREA_OPTIONS = [
   { id: 'restaurante', label: 'Restaurante' },
   { id: 'hotel', label: 'Hotel' },
   { id: 'ambos', label: 'Ambos' },
@@ -36,6 +36,20 @@ export default function LoyaltySurveyFilledSheet({
   const liked = Array.isArray(response?.liked) ? response.liked : [];
   const improve = Array.isArray(response?.improve) ? response.improve : [];
   const typeClass = surveyTypeClass(form?.text_style || DEFAULT_LOYALTY_TEXT_STYLE);
+  const selectedArea = String(response?.visit_area || '').trim().toLowerCase();
+  const areaOptionsRaw = Array.isArray(form?.area_options) && form.area_options.length
+    ? form.area_options
+    : DEFAULT_AREA_OPTIONS;
+  const areaOptions = (() => {
+    const list = areaOptionsRaw.map((a) => ({
+      id: String(a.id || '').toLowerCase(),
+      label: a.label,
+    }));
+    if (selectedArea && !list.some((a) => a.id === selectedArea)) {
+      list.push({ id: selectedArea, label: selectedArea });
+    }
+    return list;
+  })();
 
   return (
     <div
@@ -72,13 +86,13 @@ export default function LoyaltySurveyFilledSheet({
             <fieldset className="rf-survey-field">
               <legend>{form?.area_label || 'Área utilizada'}</legend>
               <div className="rf-survey-check-row">
-                {AREA_OPTIONS.map((a) => (
+                {areaOptions.map((a) => (
                   <label key={a.id} className="rf-survey-check">
                     <input
                       type="radio"
                       readOnly
                       disabled
-                      checked={String(response?.visit_area || '') === a.id}
+                      checked={selectedArea === a.id}
                     />
                     <span>{a.label}</span>
                   </label>

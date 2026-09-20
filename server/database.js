@@ -468,15 +468,43 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
   withTransaction((tx) => {
     tx.run('PRAGMA foreign_keys = OFF');
 
+    const clearTable = (tableName) => {
+      try {
+        tx.run(`DELETE FROM ${tableName}`);
+      } catch (_) {
+        /* tabla opcional en instalaciones antiguas */
+      }
+    };
+
     const tablesToClear = [
+      /* RRHH (orden hijo → padre) */
+      'hr_attendance_adjustments',
+      'hr_attendance',
+      'hr_leave_requests',
+      'hr_qr_credentials',
+      'hr_employees',
+      'hr_schedules',
+      /* jornadas / actividad */
+      'user_work_activity_events',
       'user_work_sessions',
+      /* fidelización */
+      'loyalty_surveys',
+      /* operaciones / ventas */
       'delivery_assignments',
+      'order_product_removals',
+      'order_station_state',
       'order_items',
       'orders',
+      'table_unions',
       'cash_movements',
       'cash_notes',
       'cash_registers',
       'inventory_logs',
+      'inventory_requirement_items',
+      'inventory_requirements',
+      'inventory_reconciliation_items',
+      'inventory_reconciliations',
+      'inventory_expenses',
       'inventory_warehouse_stocks',
       'purchase_order_items',
       'purchase_orders',
@@ -507,11 +535,17 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
       'inventario_fisico_detalle',
       'inventario_fisico',
       'insumos',
+      'investment_movements',
+      'finance_loss_events',
+      'operational_delay_events',
     ];
 
-    tablesToClear.forEach((tableName) => {
-      tx.run(`DELETE FROM ${tableName}`);
-    });
+    tablesToClear.forEach((tableName) => clearTable(tableName));
+
+    if (!preserveContrato) {
+      clearTable('contract_signature');
+      clearTable('contract_signature_request');
+    }
 
     try {
       tx.run(
@@ -522,7 +556,7 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
     }
 
     if (keepId) {
-      tx.run("DELETE FROM users WHERE id != ?", [keepId]);
+      tx.run('DELETE FROM users WHERE id != ?', [keepId]);
       tx.run("UPDATE users SET role = 'admin', is_active = 1, is_buyer_admin = 1 WHERE id = ?", [keepId]);
     } else {
       tx.run('DELETE FROM users');
@@ -540,7 +574,7 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
              tax_rate = 18,
              currency = 'PEN',
              currency_symbol = 'S/',
-             delivery_enabled = 1,
+             delivery_enabled = 0,
              delivery_fee = 5,
              delivery_min_order = 20,
              delivery_radius_km = 10,
@@ -692,6 +726,13 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
     tx.run('DELETE FROM order_sequence');
     tx.run('INSERT INTO order_sequence (id, current_number) VALUES (1, 0)');
 
+    try {
+      tx.run('DELETE FROM sale_sequence');
+      tx.run('INSERT INTO sale_sequence (id, current_number) VALUES (1, 0)');
+    } catch (_) {
+      /* sale_sequence puede no existir aún */
+    }
+
     const activeRestaurant = tx.queryOne('SELECT id FROM restaurants LIMIT 1');
     if (activeRestaurant?.id) {
       for (let i = 1; i <= 5; i += 1) {
@@ -832,7 +873,7 @@ async function initDatabase() {
         tax_rate REAL DEFAULT 18.0,
         currency TEXT DEFAULT 'PEN',
         currency_symbol TEXT DEFAULT 'S/',
-        delivery_enabled INTEGER DEFAULT 1,
+        delivery_enabled INTEGER DEFAULT 0,
         delivery_fee REAL DEFAULT 5.00,
         delivery_min_order REAL DEFAULT 20.00,
         delivery_radius_km REAL DEFAULT 10.0,

@@ -1403,22 +1403,23 @@ export default function Escritorio() {
           </div>
 
           <div className="xl:col-span-10">
-            <div className="flex flex-wrap items-center justify-center gap-2 mb-2">
+            <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 mb-2">
               <button
                 type="button"
                 onClick={goToOlderHourlyDay}
                 disabled={!hourlySalesHistory.length || hourlyHistoryIndex >= hourlySalesHistory.length - 1}
-                className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[var(--ui-accent-muted)]"
+                className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[var(--ui-accent-muted)]"
                 title="Día anterior"
                 aria-label="Ver día anterior"
               >
                 <MdChevronLeft className="text-xl" />
               </button>
-              <div className="text-center min-w-[12rem]">
-                <h3 className="text-[var(--ui-body-text)] font-medium">
-                  Cobros del día · barras y tendencia
+              <div className="flex-1 min-w-0 text-center px-0.5">
+                <h3 className="text-sm sm:text-base text-[var(--ui-body-text)] font-medium leading-snug">
+                  <span className="sm:hidden">Cobros del día</span>
+                  <span className="hidden sm:inline">Cobros del día · barras y tendencia</span>
                 </h3>
-                <p className="text-xs text-[var(--ui-muted)] tabular-nums">
+                <p className="text-[11px] sm:text-xs text-[var(--ui-muted)] tabular-nums leading-snug break-words">
                   {hourlyHistoryEntry
                     ? `${hourlyHistoryEntry.dateLabel} · ${formatCurrency(hourlyHistoryEntry.total)} · ${hourlyHistoryEntry.accountCount} cuenta(s)`
                     : 'Sin datos en el rango'}
@@ -1431,7 +1432,7 @@ export default function Escritorio() {
                 type="button"
                 onClick={goToNewerHourlyDay}
                 disabled={!hourlySalesHistory.length || hourlyHistoryIndex <= 0}
-                className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[var(--ui-accent-muted)]"
+                className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[var(--ui-accent-muted)]"
                 title="Día siguiente"
                 aria-label="Ver día siguiente"
               >

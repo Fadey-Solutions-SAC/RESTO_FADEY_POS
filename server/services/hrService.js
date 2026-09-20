@@ -318,19 +318,46 @@ function syncEmployeesFromUsers(restaurantId) {
   );
   const branches = listBranches(restaurantId);
   const defaultBranch = branches[0]?.id || 'principal';
+
+  /* Empleados huérfanos (usuario ya borrado): quitar asistencia y ficha */
+  const orphans = queryAll(
+    `SELECT id FROM hr_employees
+     WHERE restaurant_id = ?
+       AND (user_id IS NULL OR trim(user_id) = '' OR user_id NOT IN (SELECT id FROM users))`,
+    [restaurantId],
+  ) || [];
+  for (const emp of orphans) {
+    const employeeId = String(emp.id || '').trim();
+    if (!employeeId) continue;
+    const attendances = queryAll('SELECT id FROM hr_attendance WHERE employee_id = ?', [employeeId]) || [];
+    for (const row of attendances) {
+      try {
+        runSql('DELETE FROM hr_attendance_adjustments WHERE attendance_id = ?', [row.id]);
+      } catch (_) {
+        /* noop */
+      }
+    }
+    try { runSql('DELETE FROM hr_attendance WHERE employee_id = ?', [employeeId]); } catch (_) { /* noop */ }
+    try { runSql('DELETE FROM hr_leave_requests WHERE employee_id = ?', [employeeId]); } catch (_) { /* noop */ }
+    try { runSql('DELETE FROM hr_qr_credentials WHERE employee_id = ?', [employeeId]); } catch (_) { /* noop */ }
+    try { runSql('DELETE FROM hr_employees WHERE id = ?', [employeeId]); } catch (_) { /* noop */ }
+  }
+
   for (const u of users || []) {
     const derived = deriveHrPositionDepartment(u);
     const found = queryOne('SELECT id, status FROM hr_employees WHERE user_id = ?', [u.id]);
     if (found?.id) {
+      const active = Number(u.is_active || 0) === 1;
       runSql(
         `UPDATE hr_employees SET
            position = ?, department = ?, employee_code = ?,
-           updated_at = datetime('now')
+           status = ?, updated_at = datetime('now')
          WHERE id = ?`,
         [
           derived.position,
           derived.department,
           String(u.role || '').toUpperCase(),
+          active ? 'active' : 'inactive',
           found.id,
         ]
       );
@@ -1375,7 +1402,13 @@ function dashboard(restaurantId) {
   syncEmployeesFromUsers(restaurantId);
   const today = hrTodayDate();
   const monthStart = `${today.slice(0, 7)}-01`;
-  const registered = queryOne('SELECT COUNT(*) AS c FROM hr_employees WHERE restaurant_id = ? AND status = \'active\'', [restaurantId]);
+  const registered = queryOne(
+    `SELECT COUNT(*) AS c
+     FROM hr_employees e
+     JOIN users u ON u.id = e.user_id
+     WHERE e.restaurant_id = ? AND e.status = 'active'`,
+    [restaurantId],
+  );
   const present = queryOne(
     `SELECT COUNT(*) AS c FROM hr_attendance a
      JOIN hr_employees e ON e.id = a.employee_id

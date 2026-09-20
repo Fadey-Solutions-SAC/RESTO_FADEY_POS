@@ -40,6 +40,13 @@ const DEFAULT_IMPROVE = Object.freeze([
   { id: 'limpieza', label: 'Limpieza' },
 ]);
 
+/** Áreas del negocio que el cliente puede marcar en la encuesta (configurables). */
+const DEFAULT_AREA_OPTIONS = Object.freeze([
+  { id: 'restaurante', label: 'Restaurante', visible: true },
+  { id: 'hotel', label: 'Hotel', visible: true },
+  { id: 'ambos', label: 'Ambos', visible: true },
+]);
+
 /** @deprecated usar readLoyaltySurveyForm().questions */
 const LOYALTY_SURVEY_QUESTIONS = DEFAULT_QUESTIONS;
 
@@ -68,6 +75,7 @@ function defaultForm() {
     questions: DEFAULT_QUESTIONS.map((q) => ({ ...q })),
     liked_options: DEFAULT_LIKED.map((o) => ({ ...o })),
     improve_options: DEFAULT_IMPROVE.map((o) => ({ ...o })),
+    area_options: DEFAULT_AREA_OPTIONS.map((o) => ({ ...o })),
     rating_scale: RATING_SCALE.map((s) => ({ ...s })),
   };
 }
@@ -97,6 +105,43 @@ function normalizeOptionList(raw, fallbackList, max = 12) {
 
 function normalizeQuestions(raw) {
   return normalizeOptionList(raw, DEFAULT_QUESTIONS, 12);
+}
+
+function normalizeAreaOptions(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of list) {
+    if (out.length >= 12) break;
+    const label = sanitizeLabel(item?.label, '', 60);
+    if (!label) continue;
+    let id = String(item?.id || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '');
+    if (!id || seen.has(id)) id = `a_${uuidv4().replace(/-/g, '').slice(0, 10)}`;
+    seen.add(id);
+    const visible = item?.visible !== false && item?.visible !== 0 && item?.visible !== '0';
+    out.push({ id, label, visible: !!visible });
+  }
+  if (!out.length) return DEFAULT_AREA_OPTIONS.map((o) => ({ ...o }));
+  if (!out.some((o) => o.visible)) out[0].visible = true;
+  return out;
+}
+
+function visibleAreaOptions(form) {
+  const f = form && Array.isArray(form.area_options) ? form : readLoyaltySurveyForm();
+  return (f.area_options || []).filter((a) => a && a.visible);
+}
+
+function resolveAreaLabel(form, areaId) {
+  const id = String(areaId || '').trim().toLowerCase();
+  if (!id) return '';
+  const list = Array.isArray(form?.area_options) ? form.area_options : [];
+  const hit = list.find((a) => String(a.id || '').toLowerCase() === id);
+  if (hit?.label) return hit.label;
+  const fallback = DEFAULT_AREA_OPTIONS.find((a) => a.id === id);
+  return fallback?.label || id;
 }
 
 function normalizeForm(raw) {
@@ -130,6 +175,7 @@ function normalizeForm(raw) {
     improve_options: upgrade
       ? DEFAULT_IMPROVE.map((x) => ({ ...x }))
       : normalizeOptionList(o.improve_options, DEFAULT_IMPROVE),
+    area_options: normalizeAreaOptions(o.area_options),
     rating_scale: RATING_SCALE.map((s) => ({ ...s })),
   };
 }
@@ -167,8 +213,12 @@ module.exports = {
   DEFAULT_QUESTIONS,
   DEFAULT_LIKED,
   DEFAULT_IMPROVE,
+  DEFAULT_AREA_OPTIONS,
   defaultForm,
   normalizeForm,
+  normalizeAreaOptions,
+  visibleAreaOptions,
+  resolveAreaLabel,
   readLoyaltySurveyForm,
   saveLoyaltySurveyForm,
   loyaltyQuestionIds,

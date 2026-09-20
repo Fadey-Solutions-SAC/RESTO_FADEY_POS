@@ -1,4 +1,4 @@
-const AREA_LABEL = {
+const DEFAULT_AREA_LABELS = {
   restaurante: 'Restaurante',
   hotel: 'Hotel',
   ambos: 'Ambos',
@@ -20,6 +20,15 @@ function scaleLabel(form, value) {
   return hit?.label || String(value || '—');
 }
 
+function resolveAreaLabel(form, areaId) {
+  const id = String(areaId || '').trim().toLowerCase();
+  if (!id) return '—';
+  const list = Array.isArray(form?.area_options) ? form.area_options : [];
+  const hit = list.find((a) => String(a.id || '').toLowerCase() === id);
+  if (hit?.label) return hit.label;
+  return DEFAULT_AREA_LABELS[id] || id;
+}
+
 /**
  * Texto térmico de encuesta respondida (impresora de caja).
  */
@@ -33,7 +42,7 @@ export function buildLoyaltySurveyTicketText(form, response, restaurantName = 'R
   lines.push(`${form?.waiter_label || 'Mozo'}: ${response?.waiter_name || '—'}`);
   lines.push(`${form?.visit_date_label || 'Visita'}: ${response?.visit_date || '—'}`);
   lines.push(
-    `${form?.area_label || 'Area'}: ${AREA_LABEL[response?.visit_area] || response?.visit_area || '—'}`,
+    `${form?.area_label || 'Area'}: ${resolveAreaLabel(form, response?.visit_area)}`,
   );
   lines.push(`${form?.party_size_label || 'Personas'}: ${response?.party_size || '—'}`);
   lines.push('-'.repeat(32));

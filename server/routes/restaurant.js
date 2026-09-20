@@ -268,7 +268,17 @@ router.post('/reset-operational', authenticateToken, requireRole('master_admin')
     return res.status(403).json({ error: 'Contraseña incorrecta' });
   }
   try {
-    const keepAdminUserId = req.user?.role === 'admin' ? req.user.id : '';
+    let keepAdminUserId = '';
+    if (req.user?.role === 'admin') {
+      keepAdminUserId = String(req.user.id || '').trim();
+    } else {
+      const buyer = queryOne(
+        `SELECT id FROM users
+         WHERE role = 'admin' AND CAST(COALESCE(is_buyer_admin, 0) AS INTEGER) = 1
+         ORDER BY created_at ASC LIMIT 1`,
+      );
+      keepAdminUserId = String(buyer?.id || '').trim();
+    }
     resetOperationalData({ keepAdminUserId, preserveContrato: true });
     return res.json({
       success: true,
