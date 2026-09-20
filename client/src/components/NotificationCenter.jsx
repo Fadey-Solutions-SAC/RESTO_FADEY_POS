@@ -60,7 +60,7 @@ function showIncomingMessageToast(msg) {
 }
 
 /**
- * Dos botones independientes: Avisos (sistema) y Mensajes (chat del equipo).
+ * Tres botones independientes: IA Fadey, Avisos (sistema) y Mensajes (chat del equipo).
  * Al llegar un mensaje se muestra notificación con nombre y texto durante 5 s.
  */
 export default function NotificationCenter({ className = '' }) {
@@ -229,7 +229,7 @@ export default function NotificationCenter({ className = '' }) {
     setTab(nextTab);
   };
 
-  const panelTitle = tab === 'avisos' ? 'Avisos' : tab === 'ia' ? 'IA Fadey' : 'Mensajes';
+  const panelTitle = tab === 'avisos' ? 'Notificaciones' : tab === 'ia' ? 'IA Fadey' : 'Mensajes';
 
   const panel =
     open && typeof document !== 'undefined'
@@ -389,14 +389,27 @@ export default function NotificationCenter({ className = '' }) {
 
   return (
     <div ref={rootRef} className={`relative flex items-center gap-0.5 ${className}`}>
+      {canUseFadeyAi ? (
+        <button
+          type="button"
+          onClick={() => openWithTab('ia')}
+          className={btnClass(open && tab === 'ia')}
+          title="IA"
+          aria-expanded={open && tab === 'ia'}
+          aria-label="IA Fadey"
+        >
+          <MdPsychology className="text-xl text-[var(--ui-body-text)]" />
+        </button>
+      ) : null}
+
       {showAvisosBtn ? (
         <button
           type="button"
           onClick={() => openWithTab('avisos')}
           className={btnClass(open && tab === 'avisos')}
-          title="Avisos"
+          title="Notificaciones"
           aria-expanded={open && tab === 'avisos'}
-          aria-label="Avisos"
+          aria-label="Notificaciones"
         >
           <MdCampaign className="text-xl text-[var(--ui-body-text)]" />
           {visibleAdminNotifications.length > 0 ? (
@@ -404,19 +417,6 @@ export default function NotificationCenter({ className = '' }) {
               {visibleAdminNotifications.length > 99 ? '99+' : visibleAdminNotifications.length}
             </span>
           ) : null}
-        </button>
-      ) : null}
-
-      {canUseFadeyAi ? (
-        <button
-          type="button"
-          onClick={() => openWithTab('ia')}
-          className={btnClass(open && tab === 'ia')}
-          title="IA Fadey"
-          aria-expanded={open && tab === 'ia'}
-          aria-label="IA Fadey"
-        >
-          <MdPsychology className="text-xl text-[var(--ui-body-text)]" />
         </button>
       ) : null}
 

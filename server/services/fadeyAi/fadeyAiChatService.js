@@ -1,5 +1,9 @@
+/**
+ * Chat IA Fadey — 100 % local a esta instancia (guías + datos del POS).
+ * No llama a OpenAI ni a ningún servicio externo de LLM.
+ */
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, queryOne, runSql } = require('../../database');
+const { queryAll, runSql } = require('../../database');
 const { getControlConfig } = require('../../masterAdminService');
 const { ensureFadeyAiSchema } = require('./ensureFadeyAiSchema');
 const {
@@ -9,14 +13,10 @@ const {
   searchMemory,
   businessNow,
 } = require('./fadeyAiKnowledgeService');
-const { toolsForUser, runTool } = require('./fadeyAiTools');
+const { runTool } = require('./fadeyAiTools');
 
 const RATE = new Map();
 const MAX_PER_MIN = 20;
-
-function hasLlmKey() {
-  return Boolean(String(process.env.OPENAI_API_KEY || '').trim());
-}
 
 function isFeatureEnabled() {
   try {
@@ -33,12 +33,11 @@ function getStatus() {
   const learning = enabled ? isLearningPeriod() : false;
   return {
     enabled,
-    has_llm_key: hasLlmKey(),
     learning,
     bootstrapped_at: state.bootstrapped_at || null,
     learning_until: state.learning_until || null,
     last_monitor_at: state.last_monitor_at || null,
-    mode: !enabled ? 'off' : (hasLlmKey() ? 'full' : 'guides_only'),
+    mode: !enabled ? 'off' : 'local',
   };
 }
 
@@ -90,59 +89,11 @@ function getHistory(userId, limit = 40) {
   }));
 }
 
-function buildSystemPrompt(user, status) {
-  const role = String(user?.role || 'staff');
-  const name = String(user?.full_name || user?.username || 'usuario').trim();
-  const learningNote = status.learning
-    ? 'Estás en periodo de aprendizaje (primera semana): prioriza guías y datos recientes; indica que sigues aprendiendo el ritmo del local.'
-    : 'Ya pasaste el periodo inicial de aprendizaje: usa snapshots y herramientas con confianza.';
-  return `Eres IA Fadey, el asistente propio de ESTE restaurante (esta instalación del POS).
-Hablas en español claro. Te diriges a ${name} (rol: ${role}).
-${learningNote}
-Cuando pregunten CÓMO hacer algo (cerrar caja, requerimiento, recepción, auto pedido QR, cartas vs productos, crear usuario, área de producción, impresora, salones, etc.):
-1. Usa SIEMPRE la herramienta search_guides.
-2. Responde con el paso a paso completo de la guía (números 1, 2, 3…).
-3. Indica la ruta de menú exacta (ej. Caja → Apertura y cierre).
-Reglas:
-- No inventes cifras ni stock: usa herramientas. Si una tool falla o no hay permiso, dilo.
-- No ejecutes cobros, anulaciones ni cambios de precio; solo orientas.
-- Responde con datos concretos del local cuando uses tools de ventas/stock.`;
-}
-
-async function callOpenAi({ messages, tools }) {
-  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
-  if (!apiKey) return null;
-  const model = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
-  const body = {
-    model,
-    messages,
-    temperature: 0.3,
-  };
-  if (tools?.length) {
-    body.tools = tools;
-    body.tool_choice = 'auto';
-  }
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error(`LLM error ${response.status}: ${errText.slice(0, 200)}`);
-  }
-  const data = await response.json();
-  return data?.choices?.[0]?.message || null;
-}
-
-function guidesOnlyReply(message, user) {
+function guidesOnlyReply(message) {
   const hits = searchMemory(message, { kinds: ['guide', 'config', 'catalog', 'snapshot'], limit: 3 });
   if (!hits.length) {
     return {
-      reply: 'No encontré una guía exacta. Prueba preguntar por ejemplo:\n• Cómo cerrar caja\n• Cómo generar un requerimiento\n• Cómo cargar una carta al auto pedido\n• Cómo crear un usuario\n• Cómo configurar impresora\n• Cómo configurar salones\n\nEl administrador maestro puede activar la clave LLM (OPENAI_API_KEY) para respuestas más flexibles.',
+      reply: 'No encontré una guía exacta. Prueba preguntar por ejemplo:\n• Cómo cerrar caja\n• Cómo mover un pedido\n• Cómo generar un requerimiento\n• Cómo cargar una carta al auto pedido\n• Cómo crear un usuario\n• Cómo configurar impresora\n• Cómo configurar salones',
       sources: [],
     };
   }
@@ -163,9 +114,8 @@ function heuristicToolPrefetch(message, user) {
   const sources = [];
   const chunks = [];
   const isHowTo = /c[oó]mo |como |paso a paso|dónde |donde |explicame|explícame|ayuda/.test(m)
-    || /cerrar caja|abrir caja|requerimiento|recepci[oó]n|auto.?pedido|carta|usuario|impresora|sal[oó]n|liberar mesa|asistencia|cobrar|área|area de producci/.test(m);
+    || /cerrar caja|abrir caja|requerimiento|recepci[oó]n|auto.?pedido|carta|usuario|impresora|sal[oó]n|liberar mesa|asistencia|cobrar|área|area de producci|mover|traslad|transfer/.test(m);
 
-  // Preguntas de procedimiento: priorizar guías completas
   if (isHowTo) {
     const r = runTool('search_guides', { query: message }, user);
     if (r.ok && r.hits?.length) {
@@ -235,68 +185,20 @@ async function chat(user, message) {
 
   saveMessage(user.id, 'user', text);
 
-  if (!hasLlmKey()) {
-    const prefetch = heuristicToolPrefetch(text, user);
-    let result;
-    if (prefetch.chunks.length) {
-      result = { reply: prefetch.chunks.join('\n\n'), sources: prefetch.sources };
-    } else {
-      result = guidesOnlyReply(text, user);
-    }
-    saveMessage(user.id, 'assistant', result.reply, result.sources);
-    return { ...result, mode: 'guides_only', status: getStatus() };
+  const prefetch = heuristicToolPrefetch(text, user);
+  let result;
+  if (prefetch.chunks.length) {
+    result = { reply: prefetch.chunks.join('\n\n'), sources: prefetch.sources };
+  } else {
+    result = guidesOnlyReply(text);
   }
-
-  const tools = toolsForUser(user);
-  const history = getHistory(user.id, 12).map((m) => ({
-    role: m.role === 'assistant' ? 'assistant' : 'user',
-    content: m.content,
-  }));
-  const messages = [
-    { role: 'system', content: buildSystemPrompt(user, st) },
-    ...history.slice(0, -1),
-    { role: 'user', content: text },
-  ];
-
-  let assistantMsg = await callOpenAi({ messages, tools });
-  const sources = [];
-  let guard = 0;
-  while (assistantMsg?.tool_calls?.length && guard < 4) {
-    guard += 1;
-    messages.push({
-      role: 'assistant',
-      content: assistantMsg.content || null,
-      tool_calls: assistantMsg.tool_calls,
-    });
-    for (const call of assistantMsg.tool_calls) {
-      const name = call.function?.name;
-      let args = {};
-      try {
-        args = JSON.parse(call.function?.arguments || '{}');
-      } catch {
-        args = {};
-      }
-      const result = runTool(name, args, user);
-      sources.push({ kind: 'tool', title: name });
-      messages.push({
-        role: 'tool',
-        tool_call_id: call.id,
-        content: JSON.stringify(result),
-      });
-    }
-    assistantMsg = await callOpenAi({ messages, tools });
-  }
-
-  const reply = String(assistantMsg?.content || '').trim()
-    || 'No pude generar una respuesta. Intenta de nuevo.';
-  saveMessage(user.id, 'assistant', reply, sources);
-  return { reply, sources, mode: 'full', status: getStatus() };
+  saveMessage(user.id, 'assistant', result.reply, result.sources);
+  return { ...result, mode: 'local', status: getStatus() };
 }
 
 module.exports = {
   getStatus,
   isFeatureEnabled,
-  hasLlmKey,
   chat,
   getHistory,
   bootstrapKnowledge,

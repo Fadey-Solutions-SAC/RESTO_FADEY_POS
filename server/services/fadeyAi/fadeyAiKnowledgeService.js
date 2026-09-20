@@ -58,6 +58,7 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
   if (!q) return rows.slice(0, limit);
 
   const synonyms = [
+    ['mover', 'traslad', 'transfer', 'cambiar mesa', 'pasar pedido'],
     ['cerrar caja', 'cierre', 'arqueo', 'cerrar turno'],
     ['abrir caja', 'apertura', 'abrir turno'],
     ['requerimiento', 'requerir', 'solicitar insumos'],

@@ -4,6 +4,24 @@
  */
 const OPERATION_GUIDES = [
   {
+    id: 'guide-mover-pedido',
+    title: 'Cómo mover un pedido o cuenta a otra mesa',
+    keywords: ['mover pedido', 'mover cuenta', 'trasladar', 'traslado', 'transferir mesa', 'cambiar mesa', 'pasar pedido'],
+    body: `Paso a paso — Mover pedido / traslado de mesa:
+1. Entra a Mesas o Caja (según tu permiso).
+2. Abre la mesa de origen (la que tiene el pedido o la cuenta).
+3. Busca la opción de traslado / mover / transferir (modal de mesa o menú de la cuenta).
+4. Elige destino:
+   - Mover toda la cuenta a otra mesa, o
+   - Mover solo algunos productos a otra mesa (si el sistema lo ofrece).
+5. Selecciona la mesa destino (libre o con cuenta; si tiene cuenta, puede unirse).
+6. Confirma. Los pedidos pasan a la mesa destino y la origen se libera si quedó vacía.
+Importante:
+- Trasladar ≠ anular: el pedido sigue activo, solo cambia de mesa.
+- Para liberar sin mover, usa anular/liberar mesa (requiere permiso).
+- Si no ves el botón, tu usuario no tiene permiso de traslado o no hay mesa destino válida.`,
+  },
+  {
     id: 'guide-cerrar-caja',
     title: 'Cómo cerrar caja (cierre de turno)',
     keywords: ['cerrar caja', 'cierre', 'cierre de caja', 'cerrar turno', 'arqueo', 'apertura y cierre'],
