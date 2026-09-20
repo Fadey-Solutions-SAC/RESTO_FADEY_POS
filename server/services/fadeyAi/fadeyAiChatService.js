@@ -90,22 +90,18 @@ function getHistory(userId, limit = 40) {
 }
 
 function guidesOnlyReply(message) {
-  const hits = searchMemory(message, { kinds: ['guide', 'config', 'catalog', 'snapshot'], limit: 3 });
+  const hits = searchMemory(message, { kinds: ['guide', 'config', 'catalog', 'snapshot'], limit: 2 });
   if (!hits.length) {
     return {
-      reply: 'No encontré una guía exacta. Prueba preguntar por ejemplo:\n• Cómo cerrar caja\n• Cómo mover un pedido\n• Cómo generar un requerimiento\n• Cómo cargar una carta al auto pedido\n• Cómo crear un usuario\n• Cómo configurar impresora\n• Cómo configurar salones',
+      reply: 'No encontré una guía exacta. Prueba preguntar con más detalle, por ejemplo: «cómo crear un área de producción» o «cómo cerrar caja».',
       sources: [],
     };
   }
   const best = hits[0];
   const body = String(best.body || '').replace(/\n*\(Palabras clave:[\s\S]*$/, '').trim();
-  let reply = `**${best.title}**\n\n${body}`;
-  if (hits.length > 1) {
-    reply += `\n\n---\nTambién relacionado: ${hits.slice(1).map((h) => h.title).join(' · ')}`;
-  }
   return {
-    reply,
-    sources: hits.map((h) => ({ kind: h.kind, title: h.title })),
+    reply: `**${best.title}**\n\n${body}`,
+    sources: [{ kind: best.kind, title: best.title }],
   };
 }
 
@@ -113,15 +109,14 @@ function heuristicToolPrefetch(message, user) {
   const m = String(message || '').toLowerCase();
   const sources = [];
   const chunks = [];
-  const isHowTo = /c[oó]mo |como |paso a paso|dónde |donde |explicame|explícame|ayuda/.test(m)
-    || /cerrar caja|abrir caja|requerimiento|recepci[oó]n|auto.?pedido|carta|usuario|impresora|sal[oó]n|liberar mesa|asistencia|cobrar|área|area de producci|mover|traslad|transfer/.test(m);
+  const isHowTo = /c[oó]mo |como |paso a paso|dónde |donde |explicame|explícame|ayuda|creo |crear /.test(m)
+    || /cerrar caja|abrir caja|requerimiento|recepci[oó]n|auto.?pedido|carta|usuario|impresora|sal[oó]n|liberar mesa|asistencia|cobrar|área|area|producci|mover|traslad|transfer/.test(m);
 
   if (isHowTo) {
     const r = runTool('search_guides', { query: message }, user);
     if (r.ok && r.hits?.length) {
       const best = r.hits[0];
       chunks.push(`**${best.title}**\n${best.body}`);
-      if (r.hits[1]) chunks.push(`Relacionado: ${r.hits[1].title}`);
       sources.push({ kind: 'tool', title: 'search_guides' });
       return { chunks, sources };
     }

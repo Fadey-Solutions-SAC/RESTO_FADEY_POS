@@ -10,14 +10,15 @@ const {
 } = require('../staffChatService');
 
 const router = express.Router();
-const STAFF_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
+const STAFF_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion', 'master_admin']);
 const MAX_BODY = 2000;
 
 function staffOnly(req, res, next) {
-  if (req.user?.type === 'customer' || req.user?.role === 'master_admin') {
+  if (req.user?.type === 'customer') {
     return res.status(403).json({ error: 'Mensajería solo para personal del restaurante' });
   }
-  if (!STAFF_ROLES.has(req.user?.role)) {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (!STAFF_ROLES.has(role)) {
     return res.status(403).json({ error: 'No autorizado' });
   }
   next();

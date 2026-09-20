@@ -168,7 +168,7 @@ export default function Layout() {
               </div>
             ) : null}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             {user?.role === 'master_admin' && (
               <Link
                 to="/master"
@@ -179,13 +179,13 @@ export default function Layout() {
               </Link>
             )}
             {isMozoBlocked && (
-              <span className="flex items-center gap-1.5 px-3 py-1 bg-[var(--ui-sidebar-active-bg)] text-[var(--ui-body-text)] text-xs rounded-full font-medium border border-[color:var(--ui-border)]">
-                <MdLock className="text-sm" /> {t('layout.registerClosed')}
+              <span className="flex items-center gap-1.5 px-2 sm:px-3 py-1 bg-[var(--ui-sidebar-active-bg)] text-[var(--ui-body-text)] text-xs rounded-full font-medium border border-[color:var(--ui-border)]">
+                <MdLock className="text-sm" /> <span className="hidden xs:inline">{t('layout.registerClosed')}</span>
               </span>
             )}
             {!hideNotificationsInKitchenBar && <NotificationCenter />}
             {!isMobile && <div className="h-8 w-px bg-[color:var(--ui-border)]" />}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <div className="w-8 h-8 bg-[var(--ui-sidebar-active-bg)] rounded-full flex items-center justify-center border border-[color:var(--ui-border)]">
                 <span className="text-[var(--ui-body-text)] text-xs font-bold">{user?.full_name?.[0] || 'U'}</span>
               </div>

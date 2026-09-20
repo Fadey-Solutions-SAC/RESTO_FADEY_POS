@@ -355,10 +355,10 @@ io.on('connection', (socket) => {
       const token = payload?.token;
       if (!token) return;
       const decoded = jwt.verify(token, JWT_SECRET);
-      if (decoded.type === 'customer' || decoded.role === 'master_admin') return;
+      if (decoded.type === 'customer') return;
       if (!decoded.id) return;
       const role = String(decoded.role || '').toLowerCase();
-      const staffRoles = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
+      const staffRoles = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion', 'master_admin']);
       if (role && !staffRoles.has(role)) return;
       socket.join(`staff-${decoded.id}`);
       socket.join('staff-broadcast');

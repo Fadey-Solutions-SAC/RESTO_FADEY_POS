@@ -66,15 +66,14 @@ function showIncomingMessageToast(msg) {
 export default function NotificationCenter({ className = '' }) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const showAvisosBtn = Boolean(user);
-  const canUseStaffChat = Boolean(user?.id)
-    && user?.role !== 'master_admin'
+  const showAvisosBtn = Boolean(user) && user?.type !== 'customer';
+  const roleLc = String(user?.role || '').toLowerCase();
+  const isRestaurantStaff = Boolean(user?.id)
     && user?.type !== 'customer'
-    && (!user?.role || STAFF_CHAT_ROLES.has(String(user.role).toLowerCase()));
-  const canUseFadeyAi = Boolean(user?.id)
-    && user?.type !== 'customer'
-    && Boolean(user?.fadey_ai_enabled)
-    && (user?.role === 'master_admin' || STAFF_CHAT_ROLES.has(String(user.role || '').toLowerCase()));
+    && (roleLc === 'master_admin' || STAFF_CHAT_ROLES.has(roleLc) || !roleLc);
+  /** Siempre visible en shell del local (incl. master viendo el POS). */
+  const canUseStaffChat = isRestaurantStaff;
+  const canUseFadeyAi = isRestaurantStaff && Boolean(user?.fadey_ai_enabled);
 
   const seesPagoUsoAviso = user?.role === 'admin' || user?.role === 'master_admin';
 
@@ -245,7 +244,7 @@ export default function NotificationCenter({ className = '' }) {
             />
             <div
               ref={panelRef}
-              className="fixed z-[100] top-[var(--ui-shell-header-h,3.5rem)] right-3 sm:right-6 w-[min(100vw-1.5rem,420px)] h-[min(72vh,580px)] flex flex-col rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-2xl overflow-hidden text-[var(--ui-body-text)]"
+              className="fixed z-[100] top-[var(--ui-shell-header-h,3.5rem)] left-2 right-2 sm:left-auto sm:right-6 w-auto sm:w-[min(100vw-1.5rem,420px)] h-[min(78dvh,620px)] sm:h-[min(72vh,580px)] flex flex-col rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-2xl overflow-hidden text-[var(--ui-body-text)]"
               role="dialog"
               aria-label={panelTitle}
             >
@@ -383,12 +382,14 @@ export default function NotificationCenter({ className = '' }) {
       : null;
 
   const btnClass = (active) =>
-    `relative p-2 rounded-lg transition-colors ${
+    `relative shrink-0 p-1.5 sm:p-2 rounded-lg transition-colors ${
       active ? 'bg-[var(--ui-sidebar-hover)]' : 'hover:bg-[var(--ui-sidebar-hover)]'
     }`;
 
+  if (!user || user?.type === 'customer') return null;
+
   return (
-    <div ref={rootRef} className={`relative flex items-center gap-0.5 ${className}`}>
+    <div ref={rootRef} className={`relative flex items-center gap-0 shrink-0 ${className}`}>
       {canUseFadeyAi ? (
         <button
           type="button"
@@ -398,7 +399,7 @@ export default function NotificationCenter({ className = '' }) {
           aria-expanded={open && tab === 'ia'}
           aria-label="IA Fadey"
         >
-          <MdPsychology className="text-xl text-[var(--ui-body-text)]" />
+          <MdPsychology className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
         </button>
       ) : null}
 
@@ -411,7 +412,7 @@ export default function NotificationCenter({ className = '' }) {
           aria-expanded={open && tab === 'avisos'}
           aria-label="Notificaciones"
         >
-          <MdCampaign className="text-xl text-[var(--ui-body-text)]" />
+          <MdCampaign className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
           {visibleAdminNotifications.length > 0 ? (
             <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
               {visibleAdminNotifications.length > 99 ? '99+' : visibleAdminNotifications.length}
@@ -429,7 +430,7 @@ export default function NotificationCenter({ className = '' }) {
           aria-expanded={open && tab === 'chat'}
           aria-label="Mensajes"
         >
-          <MdChat className="text-xl text-[var(--ui-body-text)]" />
+          <MdChat className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
           {unreadChat > 0 ? (
             <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
               {unreadChat > 99 ? '99+' : unreadChat}

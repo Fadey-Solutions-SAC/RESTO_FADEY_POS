@@ -199,16 +199,16 @@ function toolActiveStaff(user) {
 
 function toolSearchGuides(args = {}) {
   const hits = searchMemory(args.query || args.q || '', {
-    kinds: ['guide', 'config', 'catalog', 'snapshot'],
-    limit: 5,
+    kinds: ['guide'],
+    limit: 3,
   });
   return {
     ok: true,
     hits: hits.map((h) => ({
       kind: h.kind,
       title: h.title,
-      // Quitar bloque de keywords del final al mostrar al usuario
       body: String(h.body || '').replace(/\n*\(Palabras clave:[\s\S]*$/, '').trim().slice(0, 2500),
+      score: h.score,
     })),
   };
 }

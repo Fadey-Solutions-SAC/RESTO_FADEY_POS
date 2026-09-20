@@ -113,6 +113,24 @@ El cliente abre el enlace público del QR de la mesa y ve cartas y/o productos s
 Así controlas si se prioriza la carta visual o el listado de productos.`,
   },
   {
+    id: 'guide-crear-area-produccion',
+    title: 'Cómo crear un área de producción',
+    keywords: [
+      'crear area', 'crear área', 'nueva area', 'nueva área', 'area de produccion',
+      'área de producción', 'agregar area', 'añadir area', 'creo un area', 'creo un área',
+    ],
+    body: `Paso a paso — Crear un área de producción:
+1. Inicia sesión como administrador.
+2. Ve a Configuración (menú lateral).
+3. Abre la sección Áreas de producción (suele estar cerca de Cajas).
+4. Pulsa Agregar / Nueva área.
+5. Escribe el nombre (ej. Parrilla, Postres, Barra 2).
+6. Guarda. El área aparece en el listado y como opción al editar productos y usuarios.
+7. Opcional: asigna usuarios candidatos o vincula productos a esa área.
+8. Quienes tengan esa área asignada verán su panel en Producción / Cocina / Bar según corresponda.
+Nota: crear el área ≠ asignarla. Para vincularla a un usuario o producto, edita el usuario (rol producción + área) o el producto (campo área de producción).`,
+  },
+  {
     id: 'guide-crear-usuario',
     title: 'Cómo crear un usuario',
     keywords: ['crear usuario', 'nuevo usuario', 'alta personal', 'empleado usuario', 'usuarios'],
@@ -129,19 +147,17 @@ Así controlas si se prioriza la carta visual o el listado de productos.`,
   {
     id: 'guide-area-produccion',
     title: 'Cómo vincular un área de producción a un usuario o producto',
-    keywords: ['area produccion', 'área de producción', 'vincular cocina', 'vincular bar', 'production area'],
-    body: `Paso a paso — Áreas de producción:
-A) Definir áreas:
-1. Configuración → Áreas de producción (o desde Productos / producción).
-2. Crea áreas (ej. Cocina, Bar, Parrilla) con nombre visible.
-B) Vincular a un usuario:
+    keywords: ['vincular area', 'vincular área', 'asignar area', 'asignar cocina', 'vincular cocina', 'vincular bar', 'production area id'],
+    body: `Paso a paso — Vincular un área ya existente:
+A) A un usuario:
 1. Configuración → Usuarios → editar el usuario.
-2. Rol producción / cocina / bar y elige production_area_id (su área).
-3. Guarda. Al entrar irá a ese módulo (y a Asistencia QR si está activa).
-C) Vincular a un producto:
+2. Rol producción / cocina / bar y elige el área de producción.
+3. Guarda. Al entrar irá a ese módulo.
+B) A un producto:
 1. Productos → editar plato.
-2. Campo área de producción: cocina, bar u otra área.
-3. Al pedir ese producto, la comanda llega al panel de esa área.`,
+2. Campo área de producción: cocina, bar u otra área creada.
+3. Al pedir ese producto, la comanda llega al panel de esa área.
+Para crear un área nueva, pregunta «cómo crear un área de producción».`,
   },
   {
     id: 'guide-impresora',
