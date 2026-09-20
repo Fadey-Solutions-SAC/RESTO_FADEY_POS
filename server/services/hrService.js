@@ -1162,6 +1162,28 @@ function openAttendance(employeeId) {
   );
 }
 
+/** True si el usuario tiene check-in QR sin salida (jornada activa). */
+function hasOpenQrJornadaForUser(userId) {
+  const uid = String(userId || '').trim();
+  if (!uid) return false;
+  try {
+    if (!isAsistenciaQrActiva()) return false;
+  } catch (_) {
+    /* continuar */
+  }
+  const rid = restaurantIdOf({ id: uid });
+  if (!rid) return false;
+  let emp;
+  try {
+    emp = employeeByUser(rid, uid);
+  } catch (_) {
+    return false;
+  }
+  if (!emp?.id) return false;
+  const open = openAttendance(emp.id);
+  return Boolean(open?.check_in_at && !open?.check_out_at);
+}
+
 function approvedLeaveToday(employeeId, date) {
   return queryOne(
     `SELECT id, type FROM hr_leave_requests
@@ -1903,6 +1925,7 @@ module.exports = {
   absences,
   meToday,
   adjustmentsOf,
+  hasOpenQrJornadaForUser,
   calc,
   computePayrollDue,
   scheduleOfEmployee,

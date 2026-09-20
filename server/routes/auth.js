@@ -303,11 +303,16 @@ router.post('/login', async (req, res) => {
   }
   if (!Array.isArray(production_area_ids)) production_area_ids = [];
   let asistencia_qr_activa = true;
+  let jornada_qr_abierta = false;
   try {
     const hr = require('../services/hrService');
     asistencia_qr_activa = hr.isAsistenciaQrActiva();
+    if (asistencia_qr_activa) {
+      jornada_qr_abierta = Boolean(hr.hasOpenQrJornadaForUser(user.id));
+    }
   } catch (_) {
     asistencia_qr_activa = true;
+    jornada_qr_abierta = false;
   }
   res.json({
     token,
@@ -325,6 +330,7 @@ router.post('/login', async (req, res) => {
       production_area_id: String(user.production_area_id || '').trim(),
       production_area_ids,
       asistencia_qr_activa,
+      jornada_qr_abierta,
       ...readUiAppearanceFromStoredSettings(),
       ...cajaMeta,
     },
@@ -465,6 +471,18 @@ router.get('/me', authenticateToken, async (req, res) => {
     production_area_ids = [];
   }
   if (!Array.isArray(production_area_ids)) production_area_ids = [];
+  let asistencia_qr_activa = true;
+  let jornada_qr_abierta = false;
+  try {
+    const hr = require('../services/hrService');
+    asistencia_qr_activa = hr.isAsistenciaQrActiva();
+    if (asistencia_qr_activa) {
+      jornada_qr_abierta = Boolean(hr.hasOpenQrJornadaForUser(user.id));
+    }
+  } catch (_) {
+    asistencia_qr_activa = true;
+    jornada_qr_abierta = false;
+  }
   const payload = {
     ...user,
     production_area_ids,
@@ -474,6 +492,8 @@ router.get('/me', authenticateToken, async (req, res) => {
     service_plan: plan,
     type: 'staff',
     caja_name: caja?.name || '',
+    asistencia_qr_activa,
+    jornada_qr_abierta,
     ...readUiAppearanceFromStoredSettings(),
   };
   if (shouldRefreshStaffToken(req.user)) {

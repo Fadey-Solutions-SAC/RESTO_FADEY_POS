@@ -110,6 +110,21 @@ export function canAccessStaffModule(user, { moduleId, roles } = {}) {
   return !moduleId;
 }
 
+export function getProductionStaffPath(user) {
+  if (!user) return '/';
+  if (user.role === 'produccion') {
+    const area = String(user.production_area_id || '').trim() || 'cocina';
+    return hasModulePermission(user, 'produccion') ? `/admin/produccion/${area}` : '/';
+  }
+  if (user.role === 'cocina') {
+    return hasModulePermission(user, 'cocina') ? '/admin/produccion/cocina' : '/';
+  }
+  if (user.role === 'bar') {
+    return hasModulePermission(user, 'bar') ? '/admin/produccion/bar' : '/';
+  }
+  return '/admin';
+}
+
 export function getDefaultStaffPath(user, opts = {}) {
   if (!user) return '/';
   if (user.role === 'master_admin') {
@@ -118,17 +133,13 @@ export function getDefaultStaffPath(user, opts = {}) {
   const qrOn = opts.asistenciaQrActiva != null
     ? Boolean(opts.asistenciaQrActiva)
     : (user.asistencia_qr_activa == null ? true : Boolean(user.asistencia_qr_activa));
-  // Áreas de producción: si QR activo → marcar primero; si no → ir al área a operar.
+  const jornadaAbierta = opts.jornadaQrAbierta != null
+    ? Boolean(opts.jornadaQrAbierta)
+    : Boolean(user.jornada_qr_abierta);
+  // Áreas de producción: QR on y sin jornada → marcar; si ya activo → ir al módulo.
   if (user.role === 'produccion' || user.role === 'cocina' || user.role === 'bar') {
-    if (qrOn) return '/admin/asistencia';
-    if (user.role === 'produccion') {
-      const area = String(user.production_area_id || '').trim() || 'cocina';
-      return hasModulePermission(user, 'produccion') ? `/admin/produccion/${area}` : '/';
-    }
-    if (user.role === 'cocina') {
-      return hasModulePermission(user, 'cocina') ? '/admin/produccion/cocina' : '/';
-    }
-    return hasModulePermission(user, 'bar') ? '/admin/produccion/bar' : '/';
+    if (qrOn && !jornadaAbierta) return '/admin/asistencia';
+    return getProductionStaffPath(user);
   }
   if (user.role === 'delivery') return hasModulePermission(user, 'delivery') ? '/delivery' : '/';
   if (!['admin', 'cajero', 'mozo'].includes(user.role)) return '/admin';

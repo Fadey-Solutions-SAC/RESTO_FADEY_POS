@@ -1,18 +1,40 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../../utils/api';
 import HrQrScanner from '../../components/hr/HrQrScanner';
 import { formatMinutes, formatSqlTime, getHrDeviceId } from '../../components/hr/hrFormat';
-import { MdCheckCircle, MdLogout } from 'react-icons/md';
-import { Link } from 'react-router-dom';
+import { MdCheckCircle, MdLogout, MdWarningAmber } from 'react-icons/md';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { getProductionStaffPath } from '../../utils/staffModuleAccess';
 
 export default function HrAttendanceKiosk() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [qrActiva, setQrActiva] = useState(true);
   const [modeLoading, setModeLoading] = useState(true);
+  const [meLoading, setMeLoading] = useState(true);
+  const [openAttendance, setOpenAttendance] = useState(null);
+
+  const productionPath = useMemo(() => getProductionStaffPath(user), [user]);
+  const isProductionStaff = ['produccion', 'cocina', 'bar'].includes(String(user?.role || '').toLowerCase());
+  const jornadaActiva = Boolean(openAttendance?.check_in_at && !openAttendance?.check_out_at);
+
+  const loadMyStatus = useCallback(async () => {
+    setMeLoading(true);
+    try {
+      const me = await api.get('/hr/me');
+      setOpenAttendance(me?.open || null);
+    } catch (_) {
+      setOpenAttendance(null);
+    } finally {
+      setMeLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -26,6 +48,11 @@ export default function HrAttendanceKiosk() {
     }).finally(() => setModeLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (modeLoading || !qrActiva) return;
+    void loadMyStatus();
+  }, [modeLoading, qrActiva, loadMyStatus]);
+
   const onScan = useCallback(async (token) => {
     if (busy || !qrActiva) return;
     setBusy(true);
@@ -37,13 +64,18 @@ export default function HrAttendanceKiosk() {
       });
       setResult(data);
       toast.success(data.title || 'Marcación registrada');
+      await loadMyStatus();
+      if (data.action === 'check_in' && isProductionStaff && productionPath && productionPath !== '/') {
+        toast.success('Jornada activa. Entrando al módulo…');
+        setTimeout(() => navigate(productionPath, { replace: true }), 900);
+      }
     } catch (err) {
       toast.error(err.message);
       setResult({ error: err.message });
     } finally {
       setBusy(false);
     }
-  }, [busy, branchId, qrActiva]);
+  }, [busy, branchId, qrActiva, loadMyStatus, isProductionStaff, productionPath, navigate]);
 
   if (modeLoading) {
     return <p className="text-center text-sm text-[var(--ui-muted)] py-12">Cargando…</p>;
@@ -69,6 +101,41 @@ export default function HrAttendanceKiosk() {
           Escanea el QR del local con la cámara. Debe tener su sesión iniciada.
         </p>
       </div>
+
+      {!meLoading ? (
+        <div
+          className={`rounded-xl border px-4 py-3 flex flex-wrap items-center justify-between gap-3 ${
+            jornadaActiva
+              ? 'border-emerald-500/40 bg-emerald-500/10'
+              : 'border-amber-500/40 bg-amber-500/10'
+          }`}
+        >
+          <div className="min-w-0 flex items-start gap-2">
+            {jornadaActiva ? (
+              <MdCheckCircle className="text-emerald-600 text-xl shrink-0 mt-0.5" />
+            ) : (
+              <MdWarningAmber className="text-amber-600 text-xl shrink-0 mt-0.5" />
+            )}
+            <div className="min-w-0">
+              <p className={`text-sm font-semibold ${jornadaActiva ? 'text-emerald-800 dark:text-emerald-200' : 'text-amber-900 dark:text-amber-100'}`}>
+                {jornadaActiva ? 'Jornada activa' : 'Falta activar jornada'}
+              </p>
+              <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                {jornadaActiva
+                  ? `Ingreso: ${formatSqlTime(openAttendance.check_in_at)}. Escanee de nuevo para registrar salida.`
+                  : 'Escanee el QR del local para marcar ingreso y empezar a trabajar.'}
+              </p>
+            </div>
+          </div>
+          {jornadaActiva && isProductionStaff && productionPath && productionPath !== '/' ? (
+            <Link to={productionPath} className="btn-primary text-sm shrink-0">
+              Ir al módulo
+            </Link>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-center text-xs text-[var(--ui-muted)]">Comprobando su jornada…</p>
+      )}
 
       {branches.length > 1 ? (
         <label className="flex items-center gap-2 text-sm justify-center">
@@ -101,6 +168,9 @@ export default function HrAttendanceKiosk() {
               ) : (
                 <p className="text-emerald-600 font-medium">A tiempo</p>
               )}
+              {isProductionStaff && productionPath && productionPath !== '/' ? (
+                <Link to={productionPath} className="btn-primary text-sm mt-2 inline-flex">Ir al módulo</Link>
+              ) : null}
             </>
           ) : (
             <>
