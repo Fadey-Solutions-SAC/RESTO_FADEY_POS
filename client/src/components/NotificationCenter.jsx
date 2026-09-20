@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { api, resolveMediaUrl, formatDateTime } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { getSocket } from '../hooks/useSocket';
+import StaffTeamChat from './StaffTeamChat';
 import FadeyAiChatPanel from './FadeyAiChatPanel';
 import toast from 'react-hot-toast';
 import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload } from 'react-icons/md';
@@ -60,8 +61,7 @@ function showIncomingMessageToast(msg) {
 }
 
 /**
- * Botones: IA Fadey (PIX) y Notificaciones (megáfono).
- * El chat de PIX vive solo en el panel de notificaciones / IA.
+ * Tres botones: IA Fadey (PIX), Notificaciones (megáfono) y Mensajes (chat del equipo).
  */
 export default function NotificationCenter({ className = '' }) {
   const { user } = useAuth();
@@ -71,14 +71,14 @@ export default function NotificationCenter({ className = '' }) {
   const isRestaurantStaff = Boolean(user?.id)
     && user?.type !== 'customer'
     && (roleLc === 'master_admin' || STAFF_CHAT_ROLES.has(roleLc) || !roleLc);
-  /** Siempre visible en shell del local (incl. master viendo el POS). */
   const canUseStaffChat = isRestaurantStaff;
   const canUseFadeyAi = isRestaurantStaff && Boolean(user?.fadey_ai_enabled);
 
   const seesPagoUsoAviso = user?.role === 'admin' || user?.role === 'master_admin';
 
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState(showAvisosBtn ? 'avisos' : (canUseFadeyAi ? 'ia' : 'avisos'));
+  const [tab, setTab] = useState(showAvisosBtn ? 'avisos' : (canUseFadeyAi ? 'ia' : 'chat'));
+  const [unreadChat, setUnreadChat] = useState(0);
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [sessionReservaAvisos, setSessionReservaAvisos] = useState(() => getSessionReservationCajaAvisos());
   const [dismissedAvisoIds, setDismissedAvisoIds] = useState(loadDismissedAvisoIds);
@@ -86,6 +86,7 @@ export default function NotificationCenter({ className = '' }) {
 
   const rootRef = useRef(null);
   const panelRef = useRef(null);
+  const chatActiveRef = useRef(false);
 
   const visibleAdminNotifications = useMemo(() => {
     let list = [
@@ -98,17 +99,20 @@ export default function NotificationCenter({ className = '' }) {
     return list;
   }, [adminNotifications, dismissedAvisoIds, seesPagoUsoAviso, sessionReservaAvisos]);
 
+  const isChatActive = open && tab === 'chat';
+  chatActiveRef.current = isChatActive;
+
   useEffect(() => {
     if (!showAvisosBtn && tab === 'avisos') {
-      setTab(canUseFadeyAi ? 'ia' : 'avisos');
+      setTab(canUseFadeyAi ? 'ia' : 'chat');
     }
   }, [showAvisosBtn, tab, canUseFadeyAi]);
 
   useEffect(() => {
     if (!canUseFadeyAi && tab === 'ia') {
-      setTab('avisos');
+      setTab(showAvisosBtn ? 'avisos' : 'chat');
     }
-  }, [canUseFadeyAi, tab]);
+  }, [canUseFadeyAi, tab, showAvisosBtn]);
 
   useEffect(() => {
     const openIa = () => {
@@ -143,6 +147,10 @@ export default function NotificationCenter({ className = '' }) {
     };
   }, []);
 
+  const onUnreadDelta = useCallback((n) => {
+    setUnreadChat((u) => u + n);
+  }, []);
+
   useEffect(() => {
     if (!canUseStaffChat) return undefined;
     const s = getSocket();
@@ -165,6 +173,8 @@ export default function NotificationCenter({ className = '' }) {
       if (msg.recipient_id != null && String(msg.recipient_id) !== '' && String(msg.recipient_id) !== me) {
         return;
       }
+      if (chatActiveRef.current) return;
+      setUnreadChat((u) => u + 1);
       showIncomingMessageToast(msg);
     };
 
@@ -174,6 +184,10 @@ export default function NotificationCenter({ className = '' }) {
       s.off('staff-chat-message', onMsg);
     };
   }, [canUseStaffChat, user?.id]);
+
+  useEffect(() => {
+    if (isChatActive) setUnreadChat(0);
+  }, [isChatActive]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -223,7 +237,7 @@ export default function NotificationCenter({ className = '' }) {
     setTab(nextTab);
   };
 
-  const panelTitle = tab === 'avisos' ? 'Notificaciones' : 'IA Fadey';
+  const panelTitle = tab === 'avisos' ? 'Notificaciones' : tab === 'ia' ? 'IA Fadey' : 'Mensajes';
 
   const panel =
     open && typeof document !== 'undefined'
@@ -264,7 +278,7 @@ export default function NotificationCenter({ className = '' }) {
                       <span className="rf-fadey-ai-header-sub">{FADEY_AI_TAGLINE}</span>
                     </div>
                   </div>
-                ) : (
+                ) : tab === 'avisos' ? (
                   <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2 min-w-0">
                     <img
                       src={getFadeyAiAvatarSrc('saludo')}
@@ -273,6 +287,11 @@ export default function NotificationCenter({ className = '' }) {
                       draggable={false}
                     />
                     <span className="truncate">{panelTitle}</span>
+                  </p>
+                ) : (
+                  <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
+                    <MdChat className="text-lg text-[var(--ui-accent)]" />
+                    {panelTitle}
                   </p>
                 )}
                 <button
@@ -364,6 +383,19 @@ export default function NotificationCenter({ className = '' }) {
                     <FadeyAiChatPanel isActive={open && tab === 'ia'} />
                   </div>
                 ) : null}
+                {canUseStaffChat ? (
+                  <div className={tab === 'chat' ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
+                    <StaffTeamChat
+                      isActive={isChatActive}
+                      onUnreadDelta={onUnreadDelta}
+                      suppressExternalNotify
+                    />
+                  </div>
+                ) : tab === 'chat' ? (
+                  <p className="text-sm text-[var(--ui-muted)] text-center py-8">
+                    El chat interno es solo para personal del restaurante.
+                  </p>
+                ) : null}
                 </div>
 
                 {avisoToDismiss ? (
@@ -450,6 +482,22 @@ export default function NotificationCenter({ className = '' }) {
           ) : null}
         </button>
       ) : null}
+
+      <button
+        type="button"
+        onClick={() => openWithTab('chat')}
+        className={btnClass(open && tab === 'chat')}
+        title="Mensajes"
+        aria-expanded={open && tab === 'chat'}
+        aria-label="Mensajes"
+      >
+        <MdChat className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
+        {unreadChat > 0 ? (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
+            {unreadChat > 99 ? '99+' : unreadChat}
+          </span>
+        ) : null}
+      </button>
 
       {panel}
     </div>
