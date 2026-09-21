@@ -217,6 +217,10 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const sendTextRef = useRef(null);
+  const pendingPromptRef = useRef('');
+  const loadingRef = useRef(true);
+  const busyRef = useRef(false);
 
   useImperativeHandle(ref, () => ({
     focusInput: () => {
@@ -225,6 +229,15 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
       } catch (_) {
         /* noop */
       }
+    },
+    sendPrompt: (raw) => {
+      const msg = String(raw || '').trim();
+      if (!msg) return;
+      if (loadingRef.current || busyRef.current) {
+        pendingPromptRef.current = msg;
+        return;
+      }
+      void sendTextRef.current?.(msg);
     },
   }));
 
@@ -324,6 +337,21 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
       requestAnimationFrame(() => inputRef.current?.focus?.());
     }
   };
+
+  sendTextRef.current = sendText;
+  loadingRef.current = loading;
+  busyRef.current = busy;
+
+  useEffect(() => {
+    if (loading || busy) return undefined;
+    const pending = String(pendingPromptRef.current || '').trim();
+    if (!pending) return undefined;
+    pendingPromptRef.current = '';
+    const t = setTimeout(() => {
+      void sendTextRef.current?.(pending);
+    }, 50);
+    return () => clearTimeout(t);
+  }, [loading, busy]);
 
   if (loading) {
     return <p className="text-sm text-[#64748b] text-center py-8">Cargando…</p>;

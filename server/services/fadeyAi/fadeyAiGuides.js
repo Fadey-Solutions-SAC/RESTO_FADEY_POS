@@ -587,14 +587,15 @@ Si un ítem no aparece: falta permiso o el plan/maestro lo desactivó.`,
   {
     id: 'guide-rrhh',
     title: 'Cómo usar Recursos humanos',
-    keywords: ['rrhh', 'recursos humanos', 'tiempo trabajado', 'empleados', 'horario', 'plantilla horario'],
-    body: `Paso a paso — RRHH / Tiempo trabajado:
+    keywords: ['rrhh', 'recursos humanos', 'tiempo trabajado', 'empleados', 'horario', 'plantilla horario', 'productividad pos', 'ia fadey rrhh'],
+    body: `Paso a paso — RRHH / Productividad POS:
 1. Admin → Recursos humanos.
 2. Activa o desactiva jornada por QR.
 3. Personal: alta, horarios (plantilla o personalizado).
 4. Genera/regenera el QR compartido de asistencia.
-5. Productividad: activos, horas y alertas.
-6. Tras reset de fábrica, los datos HR también se limpian.`,
+5. Productividad POS: panel, jornadas, productividad, áreas, rankings y alertas.
+6. IA Fadey (PIX): insights del equipo (demoras de cocina, hora pico, baja productividad, quién está en jornada).
+7. Tras reset de fábrica, los datos HR también se limpian.`,
   },
 
   /* —— Mi empresa —— */
@@ -684,8 +685,9 @@ Nota: sin habilitación del maestro o plan básico, la opción no aparece.`,
     body: `Soy PIX, la IA Fadey de este local. Puedo:
 - Explicar paso a paso cómo operar el POS (caja, mesas, almacén, QR, usuarios, informes…).
 - Analizar datos en vivo: ventas, ticket, productos top y variación vs periodos.
-- Generar resúmenes / “informes” hablados con insights del negocio.
-- Dar recomendaciones inteligentes (stock, hora pico, delivery, margen…).
+- En Recursos humanos / Productividad POS: jornadas, productividad, demoras de cocina, rankings y alertas del equipo.
+- Generar resúmenes / “informes” hablados con insights del negocio o del personal.
+- Dar recomendaciones inteligentes (stock, hora pico, delivery, margen, refuerzo de turnos…).
 - Consultar stock bajo y personal en jornada (según tu rol).
 - Avisar en segundo plano demoras o stock bajo (tras el periodo de aprendizaje).
 No puedo cobrar, anular ni cambiar precios por ti: te indico cómo hacerlo en el sistema.

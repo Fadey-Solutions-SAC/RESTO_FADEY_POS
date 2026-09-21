@@ -205,6 +205,7 @@ function toolSearchGuides(args = {}) {
   return {
     ok: true,
     hits: hits.map((h) => ({
+      id: h.id,
       kind: h.kind,
       title: h.title,
       body: String(h.body || '').replace(/\n*\(Palabras clave:[\s\S]*$/, '').trim().slice(0, 2500),
@@ -290,6 +291,20 @@ const TOOL_DEFS = [
       parameters: { type: 'object', properties: {} },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'hr_insights',
+      description: 'Análisis de recursos humanos / productividad POS: personal en jornada, cocina, rankings, alertas laborales e insights.',
+      parameters: {
+        type: 'object',
+        properties: {
+          from: { type: 'string', description: 'YYYY-MM-DD' },
+          to: { type: 'string', description: 'YYYY-MM-DD' },
+        },
+      },
+    },
+  },
 ];
 
 function toolBusinessInsights(user) {
@@ -336,6 +351,81 @@ function toolBusinessInsights(user) {
   }
 }
 
+function toolHrInsights(args = {}, user) {
+  if (!canSeeHr(user)) {
+    return { ok: false, error: 'Solo administración consulta el análisis de personal y productividad.' };
+  }
+  try {
+    const { buildAnalyticsBundle } = require('../workProductivityService');
+    const from = parseDateKey(args.from);
+    const to = parseDateKey(args.to);
+    const hub = buildAnalyticsBundle({
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    });
+    const dash = hub.dashboard || {};
+    const ops = dash.operations || {};
+    const today = dash.today || {};
+    const areas = hub.areas || {};
+    const rankings = hub.rankings || {};
+    const insights = Array.isArray(hub.insights) ? hub.insights : [];
+    const alerts = Array.isArray(hub.alerts) ? hub.alerts : [];
+    const productivity = Array.isArray(hub.productivity) ? hub.productivity : [];
+    const topProd = [...productivity]
+      .sort((a, b) => Number(b.productivity_per_hour || 0) - Number(a.productivity_per_hour || 0))
+      .slice(0, 3);
+
+    const lines = [
+      '**IA Fadey · Recursos humanos / Productividad POS**',
+      `Personal en jornada ahora: ${ops.staff_online ?? 0}.`,
+      `Hoy: ${today.sessions ?? 0} marcación(es) · ${Number(today.worked_minutes || 0)} min laborables · ${today.orders_paid ?? 0} cuenta(s).`,
+      `Operación activa: cocina ${ops.kitchen_preparing ?? 0} · delivery ${ops.delivery_active ?? 0}.`,
+    ];
+
+    if (areas.cocina) {
+      lines.push(
+        `Cocina (período): ${areas.cocina.orders_tracked ?? 0} pedido(s), promedio ${areas.cocina.avg_kitchen_minutes ?? 0} min, retrasos ahora ${areas.cocina.delayed_now ?? 0}.`,
+      );
+    }
+    if (areas.caja) {
+      lines.push(
+        `Caja: ${areas.caja.tickets_paid ?? 0} cobro(s), velocidad ~${areas.caja.avg_checkout_minutes ?? 0} min.`,
+      );
+    }
+    if (rankings.best_seller?.full_name) {
+      lines.push(`Más ventas: ${rankings.best_seller.full_name}.`);
+    }
+    if (rankings.most_productive?.full_name) {
+      lines.push(`Más productivo/h: ${rankings.most_productive.full_name}.`);
+    }
+    if (topProd.length) {
+      lines.push('', 'Top productividad:');
+      topProd.forEach((p, i) => {
+        lines.push(`${i + 1}. ${p.full_name} (${p.role}) · ${p.productivity_per_hour} pts/h · ${p.orders_paid} cuenta(s)`);
+      });
+    }
+    if (insights.length) {
+      lines.push('', '**Insights del equipo:**');
+      insights.slice(0, 6).forEach((ins, i) => {
+        const msg = typeof ins === 'string' ? ins : (ins.message || '');
+        if (msg) lines.push(`${i + 1}. ${msg}`);
+      });
+    }
+    if (alerts.length) {
+      lines.push('', `Alertas laborales: ${alerts.length}. Revisa Productividad POS → Alertas.`);
+    }
+    lines.push('', 'Puedes preguntarme por quién está en turno, demoras de cocina, rankings o cómo marcar asistencia QR.');
+    return {
+      ok: true,
+      text: lines.join('\n'),
+      insights_count: insights.length,
+      alerts_count: alerts.length,
+    };
+  } catch (err) {
+    return { ok: false, error: err.message || 'No se pudo armar el análisis de RRHH.' };
+  }
+}
+
 function toolsForUser(user) {
   const r = roleLc(user);
   return TOOL_DEFS.filter((t) => {
@@ -346,6 +436,7 @@ function toolsForUser(user) {
     if (name === 'kitchen_open_orders') return canSeeKitchenOps(user);
     if (name === 'active_staff') return canSeeHr(user);
     if (name === 'business_insights') return canSeeFinancials(user);
+    if (name === 'hr_insights') return canSeeHr(user);
     return true;
   });
 }
@@ -366,6 +457,8 @@ function runTool(name, args, user) {
       return toolSearchGuides(args || {});
     case 'business_insights':
       return toolBusinessInsights(user);
+    case 'hr_insights':
+      return toolHrInsights(args || {}, user);
     default:
       return { ok: false, error: `Herramienta desconocida: ${name}` };
   }

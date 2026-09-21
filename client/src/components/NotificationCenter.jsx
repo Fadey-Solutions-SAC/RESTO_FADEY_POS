@@ -19,6 +19,11 @@ import {
   removeSessionReservationCajaAviso,
   RESERVA_CAJA_AVISOS_EVENT,
 } from '../utils/reservationCajaAvisosSession';
+import {
+  playNotificationSound,
+  preloadNotificationSound,
+  unlockNotificationAudio,
+} from '../utils/playNotificationSound';
 
 const DISMISSED_AVISOS_STORAGE_KEY = 'admin_avisos_descartados_v1';
 const STAFF_CHAT_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
@@ -83,10 +88,14 @@ export default function NotificationCenter({ className = '' }) {
   const [sessionReservaAvisos, setSessionReservaAvisos] = useState(() => getSessionReservationCajaAvisos());
   const [dismissedAvisoIds, setDismissedAvisoIds] = useState(loadDismissedAvisoIds);
   const [avisoToDismiss, setAvisoToDismiss] = useState(null);
+  const [pendingAiPrompt, setPendingAiPrompt] = useState('');
 
   const rootRef = useRef(null);
   const panelRef = useRef(null);
   const chatActiveRef = useRef(false);
+  const fadeyAiChatRef = useRef(null);
+  const knownAdminNotifIdsRef = useRef(null);
+  const knownReservaAvisoIdsRef = useRef(null);
 
   const visibleAdminNotifications = useMemo(() => {
     let list = [
@@ -115,8 +124,10 @@ export default function NotificationCenter({ className = '' }) {
   }, [canUseFadeyAi, tab, showAvisosBtn]);
 
   useEffect(() => {
-    const openIa = () => {
+    const openIa = (event) => {
       if (!canUseFadeyAi) return;
+      const prompt = String(event?.detail?.prompt || '').trim();
+      if (prompt) setPendingAiPrompt(prompt);
       setTab('ia');
       setOpen(true);
     };
@@ -125,10 +136,37 @@ export default function NotificationCenter({ className = '' }) {
   }, [canUseFadeyAi]);
 
   useEffect(() => {
+    if (!open || tab !== 'ia' || !pendingAiPrompt) return undefined;
+    const prompt = pendingAiPrompt;
+    const t = setTimeout(() => {
+      fadeyAiChatRef.current?.sendPrompt?.(prompt);
+      setPendingAiPrompt('');
+      fadeyAiChatRef.current?.focusInput?.();
+    }, 350);
+    return () => clearTimeout(t);
+  }, [open, tab, pendingAiPrompt]);
+  useEffect(() => {
+    preloadNotificationSound('message');
+    preloadNotificationSound('system');
+  }, []);
+
+  useEffect(() => {
     if (!showAvisosBtn) return;
     const load = () => {
       api.get('/master-admin/admin-notifications')
-        .then((data) => setAdminNotifications(Array.isArray(data) ? data : []))
+        .then((data) => {
+          const list = Array.isArray(data) ? data : [];
+          const ids = new Set(list.map((n) => String(n?.id || '')).filter(Boolean));
+          const known = knownAdminNotifIdsRef.current;
+          if (known) {
+            const fresh = list.find((n) => n?.id != null && !known.has(String(n.id)));
+            if (fresh) {
+              playNotificationSound('system', `admin-${fresh.id}`);
+            }
+          }
+          knownAdminNotifIdsRef.current = ids;
+          setAdminNotifications(list);
+        })
         .catch(() => setAdminNotifications([]));
     };
     load();
@@ -137,7 +175,19 @@ export default function NotificationCenter({ className = '' }) {
   }, [showAvisosBtn]);
 
   useEffect(() => {
-    const refresh = () => setSessionReservaAvisos(getSessionReservationCajaAvisos());
+    const refresh = () => {
+      const list = getSessionReservationCajaAvisos();
+      const ids = new Set(list.map((n) => String(n?.id || '')).filter(Boolean));
+      const known = knownReservaAvisoIdsRef.current;
+      if (known) {
+        const fresh = list.find((n) => n?.id != null && !known.has(String(n.id)));
+        if (fresh) {
+          playNotificationSound('system', `reserva-${fresh.id}`);
+        }
+      }
+      knownReservaAvisoIdsRef.current = ids;
+      setSessionReservaAvisos(list);
+    };
     refresh();
     window.addEventListener(RESERVA_CAJA_AVISOS_EVENT, refresh);
     window.addEventListener('storage', refresh);
@@ -173,6 +223,7 @@ export default function NotificationCenter({ className = '' }) {
       if (msg.recipient_id != null && String(msg.recipient_id) !== '' && String(msg.recipient_id) !== me) {
         return;
       }
+      playNotificationSound('message', `chat-${msg.id}`);
       if (chatActiveRef.current) return;
       setUnreadChat((u) => u + 1);
       showIncomingMessageToast(msg);
@@ -230,6 +281,7 @@ export default function NotificationCenter({ className = '' }) {
   };
 
   const openWithTab = (nextTab) => {
+    void unlockNotificationAudio();
     setOpen((prev) => {
       if (prev && tab === nextTab) return false;
       return true;
@@ -380,7 +432,17 @@ export default function NotificationCenter({ className = '' }) {
                 )}
                 {canUseFadeyAi ? (
                   <div className={tab === 'ia' ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
-                    <FadeyAiChatPanel isActive={open && tab === 'ia'} />
+                    <FadeyAiChatPanel
+                      ref={fadeyAiChatRef}
+                      isActive={open && tab === 'ia'}
+                      suggested={[
+                        '¿Quién está en jornada ahora?',
+                        '¿Cómo va la productividad del equipo?',
+                        '¿Hay demoras en cocina?',
+                        '¿Cómo marcar asistencia con QR?',
+                        '¿Cómo cerrar caja?',
+                      ]}
+                    />
                   </div>
                 ) : null}
                 {canUseStaffChat ? (

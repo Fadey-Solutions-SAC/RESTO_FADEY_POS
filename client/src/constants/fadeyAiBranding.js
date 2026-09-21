@@ -21,9 +21,12 @@ export const FADEY_AI_EXPRESSIONS = {
 
 const ANALYTICS_TOOLS = new Set([
   'business_insights',
+  'hr_insights',
   'sales_summary',
   'top_products',
   'low_stock',
+  'active_staff',
+  'kitchen_open_orders',
 ]);
 
 /**
@@ -41,11 +44,12 @@ export function resolveFadeyAiMood(opts = {}) {
 
   const text = String(opts.content || '').toLowerCase();
   const wantsAdvise =
-    /recomend|suger|te conviene|deber[ií]as|mejora|oportunidad|alerta/.test(text)
-    || toolTitles.includes('business_insights');
+    /recomend|suger|te conviene|deber[ií]as|mejora|oportunidad|alerta|baja productividad/.test(text)
+    || toolTitles.includes('business_insights')
+    || toolTitles.includes('hr_insights');
   const wantsAnalyze =
     toolTitles.some((t) => ANALYTICS_TOOLS.has(t))
-    || /ventas|ticket|producto|stock|indicador|resumen|informe|dato/.test(text);
+    || /ventas|ticket|producto|stock|indicador|resumen|informe|dato|productividad|cocina|personal|jornada|ranking/.test(text);
 
   if (wantsAdvise && (wantsAnalyze || /recomend|suger/.test(text))) return 'asesorando';
   if (wantsAnalyze) return 'analizando';

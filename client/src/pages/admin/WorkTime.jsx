@@ -8,13 +8,13 @@ import {
   MdStore,
   MdEmojiEvents,
   MdNotificationsActive,
-  MdPsychology,
   MdHistory,
   MdDownload,
 } from 'react-icons/md';
 import WorkTimeReportTab from '../../components/workTime/WorkTimeReportTab';
 import WorkTimeAnalyticsPanel from '../../components/workTime/WorkTimeAnalyticsPanel';
 import { InlineDateField } from '../../components/DateFilterControls';
+import { getFadeyAiAvatarSrc } from '../../constants/fadeyAiBranding';
 
 const MAIN_TABS = [
   { id: 'panel', label: 'Panel', icon: MdDashboard },
@@ -23,7 +23,7 @@ const MAIN_TABS = [
   { id: 'areas', label: 'Por área', icon: MdStore },
   { id: 'rankings', label: 'Rankings', icon: MdEmojiEvents },
   { id: 'alertas', label: 'Alertas', icon: MdNotificationsActive },
-  { id: 'ia', label: 'IA operativa', icon: MdPsychology },
+  { id: 'ia', label: 'IA Fadey', pix: true },
 ];
 
 export default function WorkTime() {
@@ -188,7 +188,16 @@ export default function WorkTime() {
                 : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
             }`}
           >
-            <t.icon className="text-lg shrink-0" />
+            {t.pix ? (
+              <img
+                src={getFadeyAiAvatarSrc(mainTab === t.id ? 'asesorando' : 'saludo')}
+                alt=""
+                className="w-5 h-5 rounded-full object-cover shrink-0 border border-white/30"
+                draggable={false}
+              />
+            ) : (
+              <t.icon className="text-lg shrink-0" />
+            )}
             <span className="flex-1 min-w-0 truncate">{t.label}</span>
             {t.id === 'alertas' && alertCount > 0 ? (
               <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] leading-none">

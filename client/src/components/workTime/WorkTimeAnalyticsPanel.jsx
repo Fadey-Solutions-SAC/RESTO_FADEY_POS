@@ -1,5 +1,23 @@
-import { MdDashboard, MdNotificationsActive, MdPsychology, MdStars } from 'react-icons/md';
+import { MdDashboard, MdNotificationsActive, MdCheckCircle, MdStars } from 'react-icons/md';
 import { formatMinutes, formatMoney, formatRankingValue, severityBadge, ROLE_LABEL } from './workTimeUtils';
+import { getFadeyAiAvatarSrc, OPEN_FADEY_AI_EVENT } from '../../constants/fadeyAiBranding';
+
+const HR_CHAT_PROMPTS = [
+  '¿Quién está en jornada ahora?',
+  '¿Cómo va la productividad del equipo?',
+  '¿Hay demoras en cocina?',
+  '¿Qué me recomiendas para el personal?',
+];
+
+function openHrChat(prompt) {
+  try {
+    window.dispatchEvent(new CustomEvent(OPEN_FADEY_AI_EVENT, {
+      detail: prompt ? { prompt } : { prompt: 'Resumen de productividad y personal' },
+    }));
+  } catch (_) {
+    /* noop */
+  }
+}
 
 function StatCard({ label, value, sub, accent = 'gold' }) {
   const ring = accent === 'emerald' ? 'border-emerald-500/30' : accent === 'amber' ? 'border-amber-500/30' : 'border-gold-500/30';
@@ -286,16 +304,97 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
   }
 
   if (subTab === 'ia') {
+    const list = Array.isArray(insights) ? insights : [];
+    const staffOnline = data?.dashboard?.operations?.staff_online ?? 0;
+    const kitchenAvg = data?.areas?.cocina?.avg_kitchen_minutes;
+    const delayed = data?.areas?.cocina?.delayed_now ?? 0;
     return (
-      <ul className="space-y-3">
-        {(insights || []).map((ins, i) => (
-          <li key={i} className="card flex gap-3 items-start border-l-4 border-l-gold-500">
-            <MdPsychology className="text-2xl text-gold-600 shrink-0" />
-            <p className="text-sm text-[var(--ui-body-text)]">{ins.message}</p>
-          </li>
-        ))}
-        {(insights || []).length === 0 ? <p className="text-sm text-[var(--ui-muted)]">Aún no hay recomendaciones para el período.</p> : null}
-      </ul>
+      <div className="space-y-4 animate-in fade-in duration-300">
+        <section className="rounded-2xl border border-[color:var(--ui-border)] bg-gradient-to-br from-[#0b1b34] via-[#123056] to-[#1d4ed8] text-white p-4 sm:p-5 flex flex-col sm:flex-row gap-4 items-start">
+          <button
+            type="button"
+            onClick={() => openHrChat()}
+            className="w-16 h-16 rounded-full overflow-hidden bg-[#0b1b34] border border-white/20 shrink-0 shadow-lg"
+            title="Abrir chat con PIX"
+            aria-label="Abrir chat con PIX"
+          >
+            <img src={getFadeyAiAvatarSrc('asesorando')} alt="" className="w-full h-full object-contain object-bottom" draggable={false} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-extrabold tracking-tight m-0">Hola, soy PIX · IA Fadey</h2>
+            <p className="text-sm text-sky-100/90 mt-1 mb-3">
+              En Recursos humanos te ayudo con productividad, jornadas, cocina, rankings y alertas del equipo.
+            </p>
+            <ul className="grid gap-1.5 text-sm m-0 p-0 list-none">
+              <li className="flex items-center gap-2"><MdCheckCircle className="text-emerald-300 shrink-0" /> Quién está en turno y tiempos de jornada</li>
+              <li className="flex items-center gap-2"><MdCheckCircle className="text-emerald-300 shrink-0" /> Productividad por empleado y por área</li>
+              <li className="flex items-center gap-2"><MdCheckCircle className="text-emerald-300 shrink-0" /> Demoras de cocina y hora pico operativa</li>
+              <li className="flex items-center gap-2"><MdCheckCircle className="text-emerald-300 shrink-0" /> Recomendaciones para reforzar el personal</li>
+            </ul>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {HR_CHAT_PROMPTS.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => openHrChat(q)}
+                  className="text-xs px-2.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 transition"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard label="En jornada" value={staffOnline} sub="Personal activo ahora" />
+          <StatCard
+            label="Cocina promedio"
+            value={kitchenAvg != null ? `${kitchenAvg} min` : '—'}
+            sub={delayed > 0 ? `${delayed} retraso(s) ahora` : 'Sin retrasos críticos'}
+            accent="amber"
+          />
+          <StatCard
+            label="Cuentas hoy"
+            value={data?.dashboard?.today?.orders_paid ?? 0}
+            sub={formatMoney(data?.dashboard?.today?.sales_total)}
+            accent="emerald"
+          />
+          <StatCard
+            label="Horas hoy"
+            value={formatMinutes(data?.dashboard?.today?.worked_minutes)}
+            sub={`${data?.dashboard?.today?.sessions ?? 0} marcaciones`}
+          />
+        </div>
+
+        <section className="card">
+          <h3 className="font-bold text-[var(--ui-body-text)] mb-3 flex items-center gap-2">
+            <img src={getFadeyAiAvatarSrc('analizando')} alt="" className="w-7 h-7 rounded-full object-cover border border-[color:var(--ui-border)]" draggable={false} />
+            Insights del equipo
+          </h3>
+          {list.length === 0 ? (
+            <p className="text-sm text-[var(--ui-muted)]">Aún no hay recomendaciones para el período. Ajusta las fechas o espera movimiento operativo.</p>
+          ) : (
+            <ul className="space-y-2.5">
+              {list.map((ins, i) => {
+                const priority = String(ins.priority || 'info');
+                const mood = priority === 'high' || priority === 'medium' ? 'asesorando' : 'feliz';
+                return (
+                  <li key={`${priority}-${i}`} className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 flex gap-3 items-start">
+                    <img
+                      src={getFadeyAiAvatarSrc(mood)}
+                      alt=""
+                      className="w-9 h-9 rounded-full object-cover border border-[color:var(--ui-border)] shrink-0"
+                      draggable={false}
+                    />
+                    <p className="text-sm text-[var(--ui-body-text)] m-0 leading-snug">{ins.message}</p>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
     );
   }
 

@@ -1,7 +1,11 @@
 const SOUND_FILES = {
   kitchen: '/sounds/kitchen-notification.wav',
   bar: '/sounds/bar-notification.wav',
+  message: '/sounds/message-notification.wav',
+  system: '/sounds/system-notification.wav',
 };
+
+const SOUND_TYPES = Object.keys(SOUND_FILES);
 
 const preloadedAudio = {};
 const playingKeys = new Set();
@@ -17,6 +21,10 @@ function normalizeType(type) {
   const key = String(type || '').trim().toLowerCase();
   if (key === 'kitchen' || key === 'cocina') return 'kitchen';
   if (key === 'bar') return 'bar';
+  if (key === 'message' || key === 'chat' || key === 'mensaje' || key === 'mensajes') return 'message';
+  if (key === 'system' || key === 'notification' || key === 'notif' || key === 'aviso' || key === 'avisos') {
+    return 'system';
+  }
   return '';
 }
 
@@ -92,8 +100,7 @@ export async function unlockNotificationAudio() {
     /* noop */
   }
 
-  const types = ['kitchen', 'bar'];
-  for (const type of types) {
+  for (const type of SOUND_TYPES) {
     const audio = getPreloadedAudio(type);
     if (!audio) continue;
     try {
@@ -128,7 +135,11 @@ function playFallbackBeep(type) {
     const ctx = getSharedAudioContext();
     if (!ctx) return;
     const start = () => {
-      const freqs = type === 'bar' ? [990, 1320] : [660, 880, 1100];
+      const freqs =
+        type === 'bar' ? [990, 1320]
+          : type === 'message' ? [740, 980]
+            : type === 'system' ? [520, 700, 880]
+              : [660, 880, 1100];
       let t0 = ctx.currentTime + 0.01;
       freqs.forEach((freq, idx) => {
         const oscillator = ctx.createOscillator();
@@ -172,7 +183,7 @@ function getPreloadedAudio(type) {
   return audio;
 }
 
-/** Precarga el audio de la estación (cocina o bar). */
+/** Precarga el audio de un tipo (cocina, bar, mensaje o sistema). */
 export function preloadNotificationSound(type) {
   const normalized = normalizeType(type);
   if (!normalized) return;
@@ -180,9 +191,9 @@ export function preloadNotificationSound(type) {
 }
 
 /**
- * Reproduce una notificación sonora para cocina o bar.
- * @param {'kitchen'|'bar'|'cocina'} type
- * @param {string} [orderKey] Id del pedido para evitar duplicados simultáneos.
+ * Reproduce una notificación sonora.
+ * @param {'kitchen'|'bar'|'cocina'|'message'|'system'|'chat'|'notification'} type
+ * @param {string} [orderKey] Id del evento para evitar duplicados simultáneos.
  * @param {{ force?: boolean }} [opts]
  */
 export function playNotificationSound(type, orderKey = '', opts = {}) {

@@ -1,5 +1,5 @@
 /**
- * Genera WAV audibles para notificaciones de cocina/bar (sin dependencias).
+ * Genera WAV audibles para notificaciones (sin dependencias).
  * Ejecutar: node scripts/seed-notification-sounds.js
  */
 const fs = require('fs');
@@ -76,5 +76,23 @@ const barSamples = concat(
   tone(1320, 0.32, 0.55),
 );
 
+/** Mensajes del equipo: dos tonos suaves. */
+const messageSamples = concat(
+  tone(740, 0.12, 0.42),
+  silence(0.04),
+  tone(980, 0.2, 0.48),
+);
+
+/** Avisos / notificaciones del sistema: tres tonos cortos. */
+const systemSamples = concat(
+  tone(520, 0.1, 0.45),
+  silence(0.035),
+  tone(700, 0.1, 0.45),
+  silence(0.035),
+  tone(880, 0.22, 0.5),
+);
+
 writeWav(path.join(OUT_DIR, 'kitchen-notification.wav'), kitchenSamples);
 writeWav(path.join(OUT_DIR, 'bar-notification.wav'), barSamples);
+writeWav(path.join(OUT_DIR, 'message-notification.wav'), messageSamples);
+writeWav(path.join(OUT_DIR, 'system-notification.wav'), systemSamples);

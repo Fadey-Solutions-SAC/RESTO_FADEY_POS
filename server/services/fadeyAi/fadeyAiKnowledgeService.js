@@ -134,6 +134,8 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
   if (Array.isArray(kinds) && kinds.length) {
     const set = new Set(kinds.map(String));
     rows = rows.filter((r) => set.has(String(r.kind)));
+  } else {
+    rows = rows.filter((r) => String(r.kind) !== 'user_phrase');
   }
   if (!q) return rows.slice(0, limit);
 
@@ -148,6 +150,30 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
   const wantsQr = /qr|auto\s*pedido/.test(q);
   const wantsEncuesta = /encuesta|satisfaccion|calificacion\s+(?:de\s+)?clientes|opinion/.test(q);
   const wantsCredito = /credito|fiado|abono/.test(q) && !wantsEncuesta;
+
+  const learnedBoost = new Map();
+  try {
+    const phraseRows = queryAll(
+      `SELECT title, meta_json FROM fadey_ai_memory WHERE kind = 'user_phrase' LIMIT 120`
+    ) || [];
+    for (const pr of phraseRows) {
+      let meta = {};
+      try {
+        meta = pr.meta_json ? JSON.parse(pr.meta_json) : {};
+      } catch (_) {
+        meta = {};
+      }
+      const n = normalizeText(meta.normalized || '');
+      const intent = String(meta.intent || pr.title || '');
+      if (!n || !intent) continue;
+      if (q.includes(n) || n.includes(q) || tokenizeQuery(q).filter((t) => n.includes(t)).length >= 2) {
+        const boost = Math.min(80, 20 + Number(meta.count || 1) * 5);
+        learnedBoost.set(intent, Math.max(learnedBoost.get(intent) || 0, boost));
+      }
+    }
+  } catch (_) {
+    /* opcional */
+  }
 
   const scored = rows.map((r) => {
     let metaKw = [];
@@ -205,6 +231,9 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
     }
     if (wantsCredito && id === 'guide-creditos') score += 70;
     if (wantsCredito && id === 'guide-encuesta-clientes') score -= 40;
+
+    if (learnedBoost.has(id)) score += learnedBoost.get(id);
+    if (learnedBoost.has(`guide:${id}`)) score += learnedBoost.get(`guide:${id}`);
 
     return { ...r, score };
   }).filter((r) => r.score > 0);
@@ -334,6 +363,97 @@ function saveDailySnapshot(summaryText, meta = {}) {
   );
 }
 
+function phraseId(normalized) {
+  let h = 0;
+  const s = String(normalized || '');
+  for (let i = 0; i < s.length; i += 1) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return `phrase-${(h >>> 0).toString(16)}`;
+}
+
+/**
+ * Aprende cómo escribe el cliente: asocia su frase → intent (tool o guía)
+ * para no confundir pedidos similares la próxima vez.
+ */
+function learnUserPhrase(rawPhrase, intent, extra = {}) {
+  const normalized = normalizeText(rawPhrase);
+  const intentKey = String(intent || '').trim();
+  if (!intentKey || normalized.length < 4 || normalized.length > 160) return null;
+  ensureFadeyAiSchema();
+  const id = phraseId(`${intentKey}:${normalized}`);
+  const existing = queryOne('SELECT id, body, meta_json FROM fadey_ai_memory WHERE id = ?', [id]);
+  let count = 1;
+  let examples = [String(rawPhrase || '').trim().slice(0, 160)];
+  if (existing) {
+    try {
+      const meta = existing.meta_json ? JSON.parse(existing.meta_json) : {};
+      count = Math.min(999, Number(meta.count || 1) + 1);
+      const prev = Array.isArray(meta.examples) ? meta.examples : [];
+      examples = [...new Set([String(rawPhrase || '').trim().slice(0, 160), ...prev])].filter(Boolean).slice(0, 8);
+    } catch (_) {
+      /* noop */
+    }
+  }
+  upsertMemory({
+    id,
+    kind: 'user_phrase',
+    title: intentKey,
+    body: examples.join('\n'),
+    meta: {
+      intent: intentKey,
+      normalized,
+      count,
+      examples,
+      ...extra,
+    },
+  });
+  return id;
+}
+
+/**
+ * Resuelve intent aprendido a partir de cómo suele escribir el cliente.
+ * @returns {{ intent: string, score: number, count: number }|null}
+ */
+function resolveLearnedIntent(message) {
+  ensureFadeyAiSchema();
+  const q = normalizeText(message);
+  if (q.length < 3) return null;
+  const rows = queryAll(
+    `SELECT id, title, body, meta_json FROM fadey_ai_memory WHERE kind = 'user_phrase' ORDER BY datetime(updated_at) DESC LIMIT 200`
+  ) || [];
+  let best = null;
+  for (const r of rows) {
+    let meta = {};
+    try {
+      meta = r.meta_json ? JSON.parse(r.meta_json) : {};
+    } catch (_) {
+      meta = {};
+    }
+    const n = normalizeText(meta.normalized || r.body || '');
+    const intent = String(meta.intent || r.title || '').trim();
+    if (!intent || !n) continue;
+    let score = 0;
+    if (q === n) score = 100;
+    else if (q.includes(n) && n.length >= 6) score = 70 + Math.min(20, n.length);
+    else if (n.includes(q) && q.length >= 6) score = 55 + Math.min(15, q.length);
+    else {
+      const qt = tokenizeQuery(q);
+      const nt = tokenizeQuery(n);
+      if (!qt.length || !nt.length) continue;
+      const set = new Set(nt);
+      const overlap = qt.filter((t) => set.has(t)).length;
+      const ratio = overlap / Math.max(qt.length, 1);
+      if (ratio < 0.6 || overlap < 2) continue;
+      score = Math.round(40 * ratio) + Math.min(15, Number(meta.count || 1));
+    }
+    score += Math.min(25, Number(meta.count || 1) * 2);
+    if (!best || score > best.score) {
+      best = { intent, score, count: Number(meta.count || 1) };
+    }
+  }
+  if (!best || best.score < 55) return null;
+  return best;
+}
+
 module.exports = {
   LEARNING_DAYS,
   ensureFadeyAiSchema,
@@ -344,5 +464,8 @@ module.exports = {
   bootstrapRestaurantProfile,
   isLearningPeriod,
   saveDailySnapshot,
+  learnUserPhrase,
+  resolveLearnedIntent,
+  normalizeText,
   businessNow,
 };
