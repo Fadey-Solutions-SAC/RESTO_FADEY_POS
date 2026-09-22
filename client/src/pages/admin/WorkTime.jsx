@@ -23,7 +23,7 @@ const MAIN_TABS = [
   { id: 'areas', label: 'Por área', icon: MdStore },
   { id: 'rankings', label: 'Rankings', icon: MdEmojiEvents },
   { id: 'alertas', label: 'Alertas', icon: MdNotificationsActive },
-  { id: 'ia', label: 'IA Fadey', pix: true },
+  { id: 'ia', label: 'IA Operativa', pix: true },
 ];
 
 export default function WorkTime() {
@@ -209,45 +209,59 @@ export default function WorkTime() {
       </nav>
 
       <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-4 w-full">
-        <div className="shrink-0 flex flex-wrap items-end justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <InlineDateField
-              label="Desde"
-              value={filters.from}
-              onChange={(from) => setFilters((p) => ({ ...p, from }))}
-              roundedNone={false}
-              className="!rounded-lg"
+        {mainTab === 'ia' ? (
+          <div className="shrink-0 flex items-center gap-2 min-w-0">
+            <img
+              src={getFadeyAiAvatarSrc('saludo')}
+              alt=""
+              className="w-7 h-7 rounded-full object-cover border border-[color:var(--ui-border)] shrink-0"
+              draggable={false}
             />
-            <InlineDateField
-              label="Hasta"
-              value={filters.to}
-              onChange={(to) => setFilters((p) => ({ ...p, to }))}
-              roundedNone={false}
-              className="!rounded-lg"
-            />
-            <label className="flex items-center gap-1.5 h-9 px-2 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] bg-[var(--ui-surface)] min-w-[10rem]">
-              <span className="text-[var(--ui-muted)] shrink-0">Usuario</span>
-              <select
-                value={filters.user_id}
-                onChange={(e) => setFilters((p) => ({ ...p, user_id: e.target.value }))}
-                className="bg-transparent border-0 p-0 text-xs outline-none text-[var(--ui-body-text)] flex-1 min-w-0"
-              >
-                <option value="all">Todos</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.full_name}</option>
-                ))}
-              </select>
-            </label>
+            <h2 className="text-lg sm:text-xl font-bold text-[var(--ui-body-text)] truncate leading-tight m-0">
+              IA Operativa
+            </h2>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn-secondary text-sm flex items-center gap-1" onClick={() => { loadReport(); loadAnalytics(); }} disabled={loading || analyticsLoading}>
-              Actualizar
-            </button>
-            <button type="button" className="btn-secondary text-sm flex items-center gap-1" onClick={exportCsv}>
-              <MdDownload /> Exportar
-            </button>
+        ) : (
+          <div className="shrink-0 flex flex-wrap items-end justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <InlineDateField
+                label="Desde"
+                value={filters.from}
+                onChange={(from) => setFilters((p) => ({ ...p, from }))}
+                roundedNone={false}
+                className="!rounded-lg"
+              />
+              <InlineDateField
+                label="Hasta"
+                value={filters.to}
+                onChange={(to) => setFilters((p) => ({ ...p, to }))}
+                roundedNone={false}
+                className="!rounded-lg"
+              />
+              <label className="flex items-center gap-1.5 h-9 px-2 rounded-lg text-xs font-medium border border-[color:var(--ui-border)] bg-[var(--ui-surface)] min-w-[10rem]">
+                <span className="text-[var(--ui-muted)] shrink-0">Usuario</span>
+                <select
+                  value={filters.user_id}
+                  onChange={(e) => setFilters((p) => ({ ...p, user_id: e.target.value }))}
+                  className="bg-transparent border-0 p-0 text-xs outline-none text-[var(--ui-body-text)] flex-1 min-w-0"
+                >
+                  <option value="all">Todos</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.full_name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn-secondary text-sm flex items-center gap-1" onClick={() => { loadReport(); loadAnalytics(); }} disabled={loading || analyticsLoading}>
+                Actualizar
+              </button>
+              <button type="button" className="btn-secondary text-sm flex items-center gap-1" onClick={exportCsv}>
+                <MdDownload /> Exportar
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin pr-0.5">
           {mainTab === 'reporte' ? (

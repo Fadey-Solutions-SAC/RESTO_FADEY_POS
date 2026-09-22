@@ -1,6 +1,7 @@
 import { MdDashboard, MdNotificationsActive, MdCheckCircle, MdStars } from 'react-icons/md';
 import { formatMinutes, formatMoney, formatRankingValue, severityBadge, ROLE_LABEL } from './workTimeUtils';
 import { getFadeyAiAvatarSrc, OPEN_FADEY_AI_EVENT } from '../../constants/fadeyAiBranding';
+import '../indicadores/FadeyAiHomePanel.css';
 
 const HR_CHAT_PROMPTS = [
   '¿Quién está en jornada ahora?',
@@ -309,91 +310,123 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
     const kitchenAvg = data?.areas?.cocina?.avg_kitchen_minutes;
     const delayed = data?.areas?.cocina?.delayed_now ?? 0;
     return (
-      <div className="space-y-4 animate-in fade-in duration-300">
-        <section className="rounded-2xl border border-[color:var(--ui-border)] bg-gradient-to-br from-[#0b1b34] via-[#123056] to-[#1d4ed8] text-white p-4 sm:p-5 flex flex-col sm:flex-row gap-4 items-start">
-          <button
-            type="button"
-            onClick={() => openHrChat()}
-            className="w-16 h-16 rounded-full overflow-hidden bg-[#0b1b34] border border-white/20 shrink-0 shadow-lg"
-            title="Abrir chat con PIX"
-            aria-label="Abrir chat con PIX"
-          >
-            <img src={getFadeyAiAvatarSrc('asesorando')} alt="" className="w-full h-full object-contain object-bottom" draggable={false} />
-          </button>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-extrabold tracking-tight m-0">Hola, soy PIX · IA Fadey</h2>
-            <p className="text-sm text-sky-100/90 mt-1 mb-3">
-              En Recursos humanos te ayudo con productividad, jornadas, cocina, rankings y alertas del equipo.
-            </p>
-            <ul className="grid gap-1.5 text-sm m-0 p-0 list-none">
-              <li className="flex items-center gap-2"><MdCheckCircle className="text-emerald-300 shrink-0" /> Quién está en turno y tiempos de jornada</li>
-              <li className="flex items-center gap-2"><MdCheckCircle className="text-emerald-300 shrink-0" /> Productividad por empleado y por área</li>
-              <li className="flex items-center gap-2"><MdCheckCircle className="text-emerald-300 shrink-0" /> Demoras de cocina y hora pico operativa</li>
-              <li className="flex items-center gap-2"><MdCheckCircle className="text-emerald-300 shrink-0" /> Recomendaciones para reforzar el personal</li>
-            </ul>
-            <div className="mt-3 flex flex-wrap gap-2">
+      <div className="rf-ai-home animate-in fade-in duration-300">
+        <div className="rf-ai-home__main">
+          <section className="rf-ai-home__hero">
+            <button
+              type="button"
+              onClick={() => openHrChat()}
+              className="rf-ai-home__bot rf-ai-home__bot--photo"
+              title="Abrir chat con PIX"
+              aria-label="Abrir chat con PIX"
+            >
+              <img src={getFadeyAiAvatarSrc('asesorando')} alt="" draggable={false} />
+            </button>
+            <div className="rf-ai-home__hero-copy">
+              <div className="rf-ai-home__hero-head">
+                <h2>Hola, soy PIX</h2>
+                <button
+                  type="button"
+                  className="rf-ai-home__msg-btn"
+                  onClick={() => openHrChat()}
+                  title="Abrir chat"
+                >
+                  Mensaje
+                </button>
+              </div>
+              <p className="rf-ai-home__tagline">IA Fadey · Recursos humanos</p>
+              <p>Te ayudo con productividad, jornadas, cocina, rankings y alertas del equipo.</p>
+              <ul>
+                <li><MdCheckCircle /> Quién está en turno y tiempos de jornada</li>
+                <li><MdCheckCircle /> Productividad por empleado y por área</li>
+                <li><MdCheckCircle /> Demoras de cocina y hora pico operativa</li>
+                <li><MdCheckCircle /> Recomendaciones para reforzar el personal</li>
+              </ul>
+            </div>
+          </section>
+
+          <section className="rf-ai-home__kpis">
+            <article className="rf-ai-home__kpi">
+              <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--blue"><MdDashboard /></span>
+              <div>
+                <p>En jornada</p>
+                <strong>{staffOnline}</strong>
+                <em>Personal activo ahora</em>
+              </div>
+            </article>
+            <article className="rf-ai-home__kpi">
+              <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--sky"><MdNotificationsActive /></span>
+              <div>
+                <p>Cocina promedio</p>
+                <strong>{kitchenAvg != null ? `${kitchenAvg} min` : '—'}</strong>
+                <em>{delayed > 0 ? `${delayed} retraso(s) ahora` : 'Sin retrasos críticos'}</em>
+              </div>
+            </article>
+            <article className="rf-ai-home__kpi">
+              <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--navy"><MdStars /></span>
+              <div>
+                <p>Cuentas hoy</p>
+                <strong>{data?.dashboard?.today?.orders_paid ?? 0}</strong>
+                <em>{formatMoney(data?.dashboard?.today?.sales_total)}</em>
+              </div>
+            </article>
+            <article className="rf-ai-home__kpi">
+              <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--cyan"><MdCheckCircle /></span>
+              <div>
+                <p>Horas hoy</p>
+                <strong>{formatMinutes(data?.dashboard?.today?.worked_minutes)}</strong>
+                <em>{`${data?.dashboard?.today?.sessions ?? 0} marcaciones`}</em>
+              </div>
+            </article>
+          </section>
+
+          <section className="card rf-ai-home__recs">
+            <h3>
+              <img src={getFadeyAiAvatarSrc('analizando')} alt="" className="rf-ai-home__inline-pix" draggable={false} />
+              Insights del equipo
+            </h3>
+            {list.length === 0 ? (
+              <p className="rf-ai-home__empty">Aún no hay recomendaciones para el período. Ajusta las fechas o espera movimiento operativo.</p>
+            ) : (
+              <ul>
+                {list.map((ins, i) => {
+                  const priority = String(ins.priority || 'info');
+                  const dot =
+                    priority === 'high' ? 'rf-ai-home__dot rf-ai-home__dot--high'
+                      : priority === 'medium' ? 'rf-ai-home__dot rf-ai-home__dot--medium'
+                        : 'rf-ai-home__dot rf-ai-home__dot--info';
+                  return (
+                    <li key={`${priority}-${i}`}>
+                      <span className={dot} aria-hidden />
+                      <p>{ins.message}</p>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        <aside className="rf-ai-home__side">
+          <section className="card rf-ai-home__actions">
+            <h3>
+              <img src={getFadeyAiAvatarSrc('saludo')} alt="" className="rf-ai-home__inline-pix" draggable={false} />
+              Acciones rápidas
+            </h3>
+            <div className="rf-ai-home__action-grid" style={{ gridTemplateColumns: '1fr' }}>
               {HR_CHAT_PROMPTS.map((q) => (
                 <button
                   key={q}
                   type="button"
+                  className="rf-ai-home__action-btn"
                   onClick={() => openHrChat(q)}
-                  className="text-xs px-2.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 transition"
                 >
                   {q}
                 </button>
               ))}
             </div>
-          </div>
-        </section>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard label="En jornada" value={staffOnline} sub="Personal activo ahora" />
-          <StatCard
-            label="Cocina promedio"
-            value={kitchenAvg != null ? `${kitchenAvg} min` : '—'}
-            sub={delayed > 0 ? `${delayed} retraso(s) ahora` : 'Sin retrasos críticos'}
-            accent="amber"
-          />
-          <StatCard
-            label="Cuentas hoy"
-            value={data?.dashboard?.today?.orders_paid ?? 0}
-            sub={formatMoney(data?.dashboard?.today?.sales_total)}
-            accent="emerald"
-          />
-          <StatCard
-            label="Horas hoy"
-            value={formatMinutes(data?.dashboard?.today?.worked_minutes)}
-            sub={`${data?.dashboard?.today?.sessions ?? 0} marcaciones`}
-          />
-        </div>
-
-        <section className="card">
-          <h3 className="font-bold text-[var(--ui-body-text)] mb-3 flex items-center gap-2">
-            <img src={getFadeyAiAvatarSrc('analizando')} alt="" className="w-7 h-7 rounded-full object-cover border border-[color:var(--ui-border)]" draggable={false} />
-            Insights del equipo
-          </h3>
-          {list.length === 0 ? (
-            <p className="text-sm text-[var(--ui-muted)]">Aún no hay recomendaciones para el período. Ajusta las fechas o espera movimiento operativo.</p>
-          ) : (
-            <ul className="space-y-2.5">
-              {list.map((ins, i) => {
-                const priority = String(ins.priority || 'info');
-                const mood = priority === 'high' || priority === 'medium' ? 'asesorando' : 'feliz';
-                return (
-                  <li key={`${priority}-${i}`} className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 flex gap-3 items-start">
-                    <img
-                      src={getFadeyAiAvatarSrc(mood)}
-                      alt=""
-                      className="w-9 h-9 rounded-full object-cover border border-[color:var(--ui-border)] shrink-0"
-                      draggable={false}
-                    />
-                    <p className="text-sm text-[var(--ui-body-text)] m-0 leading-snug">{ins.message}</p>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+          </section>
+        </aside>
       </div>
     );
   }
