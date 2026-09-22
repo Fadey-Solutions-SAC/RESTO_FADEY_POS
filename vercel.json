@@ -12,5 +12,8 @@
       "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
     }
   ],
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/fadey-link.json", "destination": "/fadey-link.json" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

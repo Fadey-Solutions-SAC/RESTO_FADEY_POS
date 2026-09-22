@@ -45,6 +45,20 @@ export default defineConfig(() => {
           } catch (e) {
             console.warn('[inject-sw-version]', e.message);
           }
+          const api = String(process.env.VITE_API_URL || '')
+            .trim()
+            .replace(/\/+$/, '')
+            .replace(/\/api$/i, '');
+          if (api && !/\.vercel\.app/i.test(api)) {
+            try {
+              writeFileSync(
+                resolve(__dirname, 'dist/fadey-link.json'),
+                `${JSON.stringify({ apiUrl: api, product: 'resto-fadey' })}\n`,
+              );
+            } catch (e) {
+              console.warn('[fadey-link]', e.message);
+            }
+          }
         },
       },
     ],
