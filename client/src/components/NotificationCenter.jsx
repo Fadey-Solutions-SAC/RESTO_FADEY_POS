@@ -439,8 +439,8 @@ export default function NotificationCenter({ className = '' }) {
                         '¿Quién está en jornada ahora?',
                         '¿Cómo va la productividad del equipo?',
                         '¿Hay demoras en cocina?',
+                        '¿Cuánto vendí esta semana?',
                         '¿Cómo marcar asistencia con QR?',
-                        '¿Cómo cerrar caja?',
                       ]}
                     />
                   </div>

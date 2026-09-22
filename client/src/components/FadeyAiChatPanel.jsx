@@ -35,10 +35,21 @@ function stripMd(s) {
   return String(s || '').replace(/\*\*/g, '').trim();
 }
 
-/** Parsea respuesta de guía → título + pasos numerados (estilo referencia). */
-function parseGuideContent(text) {
+/** Parsea respuesta de guía → título + pasos numerados (solo si es guía real). */
+function parseGuideContent(text, sources = null) {
   const raw = String(text || '').trim();
   if (!raw) return { title: null, steps: [], notes: [], plain: '' };
+
+  const srcList = Array.isArray(sources) ? sources : [];
+  const isGuideSource = srcList.some(
+    (s) => s && (s.title === 'search_guides' || s.kind === 'guide' || s.kind === 'config'),
+  );
+  const hasPasoHeader = /^paso a paso\b/im.test(raw) || /\npaso a paso\b/i.test(raw);
+
+  // Datos operativos (ventas, HR, demoras) NUNCA van como "Paso a paso".
+  if (!isGuideSource && !hasPasoHeader) {
+    return { title: null, steps: [], notes: [], plain: raw };
+  }
 
   const lines = raw.split(/\n/).map((l) => l.trimEnd());
   let title = null;
@@ -153,8 +164,8 @@ function parseGuideContent(text) {
   return { title, steps, notes, plain: null };
 }
 
-function AssistantCard({ content }) {
-  const parsed = parseGuideContent(content);
+function AssistantCard({ content, sources = null }) {
+  const parsed = parseGuideContent(content, sources);
   if (parsed.plain) {
     return (
       <div className="rf-fadey-ai-card">
@@ -413,7 +424,7 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
                 <div className="rf-fadey-ai-avatar-sm rf-fadey-ai-avatar-sm--photo" aria-hidden>
                   <PixAvatar size="sm" mood={mood} />
                 </div>
-                <AssistantCard content={m.content} />
+                <AssistantCard content={m.content} sources={m.sources} />
               </div>
             );
           })

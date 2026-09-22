@@ -42,11 +42,36 @@ function toolSalesSummary(args = {}, user) {
   const ps = getPaidSalesEventSql();
   const today = getBusinessTodayDateKey(queryOne);
   const month = getBusinessMonthKey(queryOne);
-  const from = parseDateKey(args.from) || (args.scope === 'today' ? today : `${month}-01`);
-  const to = parseDateKey(args.to) || (args.scope === 'today' ? today : today);
+  const scope = String(args.scope || '').toLowerCase();
+
+  let from = parseDateKey(args.from);
+  let to = parseDateKey(args.to) || today;
+
+  if (!from) {
+    if (scope === 'today') {
+      from = today;
+      to = today;
+    } else if (scope === 'week') {
+      // Últimos 7 días inclusive (hoy y 6 anteriores).
+      from = (() => {
+        try {
+          const d = new Date(`${today}T12:00:00`);
+          d.setDate(d.getDate() - 6);
+          return d.toISOString().slice(0, 10);
+        } catch (_) {
+          return today;
+        }
+      })();
+      to = today;
+    } else {
+      from = `${month}-01`;
+      to = today;
+    }
+  }
+
   const parts = [];
   const params = [];
-  if (args.scope === 'month' || (!args.from && !args.to && args.scope !== 'today')) {
+  if (scope === 'month' && !args.from && !args.to) {
     parts.push(`${ps.ORDER_MONTH} = ?`);
     params.push(month);
   } else {
@@ -59,9 +84,9 @@ function toolSalesSummary(args = {}, user) {
   const metrics = metricsFromPaidOrdersWhere(where, params);
   return {
     ok: true,
-    scope: args.scope || 'range',
-    from: args.scope === 'month' ? `${month}-01` : from,
-    to: args.scope === 'month' ? today : to,
+    scope: scope || 'range',
+    from: scope === 'month' && !args.from ? `${month}-01` : from,
+    to: scope === 'month' && !args.to ? today : to,
     month,
     orders: metrics.orders,
     sales: Number(metrics.sales || 0),
@@ -223,7 +248,7 @@ const TOOL_DEFS = [
       parameters: {
         type: 'object',
         properties: {
-          scope: { type: 'string', enum: ['today', 'month', 'range'] },
+          scope: { type: 'string', enum: ['today', 'week', 'month', 'range'] },
           from: { type: 'string', description: 'YYYY-MM-DD' },
           to: { type: 'string', description: 'YYYY-MM-DD' },
         },
@@ -400,15 +425,15 @@ function toolHrInsights(args = {}, user) {
     }
     if (topProd.length) {
       lines.push('', 'Top productividad:');
-      topProd.forEach((p, i) => {
-        lines.push(`${i + 1}. ${p.full_name} (${p.role}) · ${p.productivity_per_hour} pts/h · ${p.orders_paid} cuenta(s)`);
+      topProd.forEach((p) => {
+        lines.push(`- ${p.full_name} (${p.role}) · ${p.productivity_per_hour} pts/h · ${p.orders_paid} cuenta(s)`);
       });
     }
     if (insights.length) {
       lines.push('', '**Insights del equipo:**');
-      insights.slice(0, 6).forEach((ins, i) => {
+      insights.slice(0, 6).forEach((ins) => {
         const msg = typeof ins === 'string' ? ins : (ins.message || '');
-        if (msg) lines.push(`${i + 1}. ${msg}`);
+        if (msg) lines.push(`- ${msg}`);
       });
     }
     if (alerts.length) {

@@ -151,7 +151,13 @@ function applyLearnedIntent(message, user, chunks, sources) {
   const toolName = intent.replace(/^tool:/, '');
   if (['business_insights', 'hr_insights', 'sales_summary', 'top_products', 'low_stock', 'active_staff', 'kitchen_open_orders'].includes(toolName)) {
     const args = toolName === 'sales_summary'
-      ? { scope: /hoy|dia|día/.test(String(message || '').toLowerCase()) ? 'today' : 'month' }
+      ? {
+        scope: /hoy|dia|día/.test(String(message || '').toLowerCase())
+          ? 'today'
+          : /(semana|7\s*d[ií]as|últimos?\s*7)/.test(String(message || '').toLowerCase())
+            ? 'week'
+            : 'month',
+      }
       : {};
     const r = runTool(toolName, args, user);
     if (r.ok) {
@@ -187,35 +193,69 @@ function heuristicToolPrefetch(message, user) {
     return { chunks, sources };
   }
 
-  const wantsHr =
-    /productividad|personal en (turno|jornada)|qui[eé]n est[aá] (trabajando|en turno)|emplead|rr\.?\s*hh|recursos humanos|ranking (de )?(mozo|cajero|cocina)|tiempo (promedio )?en cocina|hora pico operativa|baja productividad|jornada|asistencia|calificaci[oó]n de mozo/.test(m)
-    || /qui[eé]n (vende|atiende|cobra) m[aá]s|demora(s)? (en )?cocina|personal (activo|online)/.test(m);
-  const wantsAnalytics = !wantsHr && (
+  // Guías explícitas ("cómo cerrar caja", "cómo marcar asistencia") van primero.
+  // No confundir con datos: "cómo va la productividad", "cuánto vendí", "hay demoras".
+  const isExplicitHowTo =
+    /^(c[oó]mo|como)\s+(marcar|cerrar|abrir|crear|configurar|registrar|cambiar|usar|hacer|poner|activar|desactivar|generar|imprimir|liberar|mover|anular|cobrar|pagar)/.test(m.trim())
+    || /\b(c[oó]mo|como)\s+(marcar|cerrar|abrir|crear|configurar|registrar|cambiar|usar)\b/.test(m)
+    || (/cerrar\s+caja|abrir\s+caja/.test(m) && !/cu[aá]nto|vend[ií]|venta|demora|productividad|jornada|qui[eé]n/.test(m));
+
+  const wantsHrData =
+    !isExplicitHowTo && (
+      /productividad|personal en (turno|jornada)|qui[eé]n est[aá] (trabajando|en turno|en jornada)|emplead|rr\.?\s*hh|recursos humanos|ranking (de )?(mozo|cajero|cocina)|tiempo (promedio )?en cocina|hora pico operativa|baja productividad|calificaci[oó]n de mozo/.test(m)
+      || /qui[eé]n (vende|atiende|cobra) m[aá]s|demora(s)? (en )?cocina|personal (activo|online)|c[oó]mo va (la )?productividad|hay demoras/.test(m)
+      || (/\bjornada\b/.test(m) && !/marcar|asistencia|qr/.test(m))
+    );
+
+  const wantsAnalytics = !isExplicitHowTo && !wantsHrData && (
     /recomienda|recomendaci[oó]n|analiz|decisi[oó]n|vendimos|qu[eé]\s+vend|resumen de ventas|genera un resumen|informe de ventas|reporte de ventas|indicador|proyecci|alerta|datos en (vivo|tiempo)/.test(m)
     || /qu[eé] me recomiendas|mejorar (ventas|negocio)|qu[eé] hago/.test(m)
   );
-  const isHowTo = !wantsAnalytics && !wantsHr && (
-    /c[oó]mo |como |paso a paso|dónde |donde |explicame|explícame|ayuda|creo |crear |configurar |registrar /.test(m)
-    || /cerrar caja|abrir caja|requerimiento|recepci[oó]n|auto.?pedido|carta|usuario|impresora|sal[oó]n|liberar mesa|asistencia|cobrar|área|area|producci|mover|traslad|transfer/.test(m)
-    || /descuento|cortes[ií]a|oferta|cr[eé]dito|fideliz|encuesta|cliente|delivery|reserva|inventario|kardex|egreso|ingreso|permiso|qr|mensaje|notificaci|almac[eé]n|gasto|offline|sunat|comprobante|plan/.test(m)
-  );
 
-  if (wantsHr) {
+  const wantsSales =
+    !isExplicitHowTo && !wantsHrData && /venta|vend[ií]|facturaci[oó]n|recaud|cu[aá]nto\s+(vend|factur|hago|hice)/.test(m);
+
+  if (isExplicitHowTo) {
+    const r = runTool('search_guides', { query: message }, user);
+    if (r.ok && r.hits?.length) {
+      const best = r.hits[0];
+      chunks.push(`**${best.title}**\n${best.body}`);
+      sources.push({ kind: 'tool', title: 'search_guides', guideId: best.id || null });
+      return { chunks, sources };
+    }
+  }
+
+  if (wantsHrData) {
+    // Preguntas puntuales de cocina / jornada: respuesta directa sin lista numerada de guía.
+    if (/demora(s)? (en )?cocina|retraso(s)? (en )?cocina|cocina.*(lenta|demor)/.test(m)) {
+      const r = runTool('hr_insights', {}, user);
+      if (r.ok && r.text) {
+        const kitchenLine = String(r.text).split('\n').find((l) => /cocina \(per[ií]odo\)/i.test(l));
+        chunks.push(
+          kitchenLine
+            || 'Sin datos de demoras de cocina en este momento. Revisa Productividad POS → Por área.',
+        );
+        sources.push({ kind: 'tool', title: 'hr_insights' });
+        return { chunks, sources };
+      }
+    }
+    if (/qui[eé]n est[aá] (en )?(jornada|turno)|personal (en jornada|activo|online)/.test(m)) {
+      const staff = runTool('active_staff', {}, user);
+      if (staff.ok && Array.isArray(staff.staff)) {
+        const names = staff.staff.slice(0, 12).map((s) => s.name || s.full_name).filter(Boolean);
+        chunks.push(
+          names.length
+            ? `Personal en jornada ahora: ${names.join(', ')}.`
+            : 'Nadie con jornada abierta en este momento.',
+        );
+        sources.push({ kind: 'tool', title: 'active_staff' });
+        return { chunks, sources };
+      }
+    }
     const r = runTool('hr_insights', {}, user);
     if (r.ok && r.text) {
       chunks.push(r.text);
       sources.push({ kind: 'tool', title: 'hr_insights' });
-      return { chunks, sources };
-    }
-    const staff = runTool('active_staff', {}, user);
-    if (staff.ok && Array.isArray(staff.staff)) {
-      const names = staff.staff.slice(0, 12).map((s) => s.name || s.full_name).filter(Boolean);
-      chunks.push(
-        names.length
-          ? `Personal en jornada ahora (${staff.source || 'session'}): ${names.join(', ')}.`
-          : 'Nadie con jornada abierta en este momento.',
-      );
-      sources.push({ kind: 'tool', title: 'active_staff' });
       return { chunks, sources };
     }
   }
@@ -229,24 +269,21 @@ function heuristicToolPrefetch(message, user) {
     }
   }
 
-  if (isHowTo) {
-    const r = runTool('search_guides', { query: message }, user);
-    if (r.ok && r.hits?.length) {
-      const best = r.hits[0];
-      chunks.push(`**${best.title}**\n${best.body}`);
-      sources.push({ kind: 'tool', title: 'search_guides', guideId: best.id || null });
+  if (wantsSales) {
+    const scope = /hoy|dia|día/.test(m)
+      ? 'today'
+      : /(semana|7\s*d[ií]as|últimos?\s*7)/.test(m)
+        ? 'week'
+        : 'month';
+    const r = runTool('sales_summary', { scope }, user);
+    if (r.ok) {
+      chunks.push(`Ventas: S/ ${Number(r.sales || 0).toFixed(2)} · ${r.orders} cuenta(s) (${r.from} → ${r.to}).`);
+      sources.push({ kind: 'tool', title: 'sales_summary' });
       return { chunks, sources };
     }
   }
 
-  if (/venta|vend[ií]|facturaci[oó]n|recaud|resumen/.test(m) && !isHowTo && !wantsHr) {
-    const r = runTool('sales_summary', { scope: /hoy/.test(m) ? 'today' : 'month' }, user);
-    if (r.ok) {
-      chunks.push(`Ventas: S/ ${Number(r.sales || 0).toFixed(2)} · ${r.orders} cuenta(s) (${r.from} → ${r.to}).`);
-      sources.push({ kind: 'tool', title: 'sales_summary' });
-    }
-  }
-  if (/plato|producto.*m[aá]s|m[aá]s vend|top/.test(m) && !/c[oó]mo/.test(m) && !wantsHr) {
+  if (/plato|producto.*m[aá]s|m[aá]s vend|top/.test(m) && !/c[oó]mo/.test(m) && !wantsHrData) {
     const dateMatch = m.match(/(\d{4}-\d{2}-\d{2})/);
     const r = runTool('top_products', dateMatch ? { date: dateMatch[1] } : { scope: /mes/.test(m) ? 'month' : 'day' }, user);
     if (r.ok && r.items?.length) {
@@ -255,7 +292,7 @@ function heuristicToolPrefetch(message, user) {
       sources.push({ kind: 'tool', title: 'top_products' });
     }
   }
-  if (/stock|agotad|inventario/.test(m) && !isHowTo) {
+  if (/stock|agotad|inventario/.test(m) && !isExplicitHowTo) {
     const r = runTool('low_stock', {}, user);
     if (r.ok) {
       chunks.push(r.count ? `Stock bajo (${r.count}): ${r.items.slice(0, 5).map((i) => i.name).join(', ')}` : 'No hay productos en umbral de stock bajo.');
