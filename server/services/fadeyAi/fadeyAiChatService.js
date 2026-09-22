@@ -130,6 +130,92 @@ function guidesOnlyReply(message) {
   };
 }
 
+function displayUserName(user) {
+  const uname = String(user?.username || '').trim();
+  if (uname) return uname;
+  const full = String(user?.full_name || '').trim();
+  if (full && !/^administrador maestro$/i.test(full)) return full.split(/\s+/)[0] || full;
+  return 'usuario';
+}
+
+function staffHelpOptions(user) {
+  const role = String(user?.role || '').toLowerCase();
+  const common = [
+    '¿Cuánto vendí hoy?',
+    '¿Hay demoras en cocina?',
+    '¿Quién está en jornada ahora?',
+    '¿Cómo marcar asistencia con QR?',
+  ];
+  if (role === 'cajero') {
+    return [
+      '¿Cómo cerrar caja?',
+      '¿Cuánto vendí hoy?',
+      '¿Cómo cobrar una mesa?',
+      '¿Hay stock bajo?',
+    ];
+  }
+  if (role === 'mozo') {
+    return [
+      '¿Cómo mover un pedido de mesa?',
+      '¿Cómo liberar una mesa?',
+      '¿Hay demoras en cocina?',
+      '¿Cómo marcar asistencia con QR?',
+    ];
+  }
+  if (role === 'cocina' || role === 'bar' || role === 'produccion') {
+    return [
+      '¿Hay demoras en cocina?',
+      '¿Cómo marcar asistencia con QR?',
+      '¿Quién está en jornada ahora?',
+      '¿Cómo funciona mi área de producción?',
+    ];
+  }
+  if (role === 'admin' || role === 'master_admin') {
+    return [
+      '¿Cuánto se vendió esta semana?',
+      '¿Cómo va la productividad del equipo?',
+      '¿Hay demoras en cocina?',
+      '¿Quién está en jornada ahora?',
+      '¿Hay stock bajo?',
+    ];
+  }
+  return common;
+}
+
+function isGreetingMessage(message) {
+  const m = String(message || '').toLowerCase().trim();
+  return /^(hola|hola!|holaa+|buenas|buenos d[ií]as|buenas tardes|buenas noches|hey|saludos)(\s+[a-záéíóúñ.!?]*)?$/i.test(m)
+    || /^(hola|buenas|buenos d[ií]as|buenas tardes|buenas noches)\s+(pix|ia|fadey)\b/.test(m);
+}
+
+/**
+ * Saludo personalizado con nombre + opciones de ayuda (usuarios del sistema).
+ */
+function tryStaffGreetingAnswer(message, user) {
+  if (!isGreetingMessage(message)) return null;
+  if (isMasterCreator(user)) {
+    // El saludo del creador ya lo atiende tryMasterCreatorAnswer.
+    return null;
+  }
+
+  const name = displayUserName(user);
+  const options = staffHelpOptions(user);
+  const lines = [
+    `¡Hola, ${name}! Soy PIX, tu asistente IA Fadey.`,
+    'Puedo ayudarte con ventas, personal en jornada, demoras de cocina, stock, asistencia QR y guías de cómo operar el POS.',
+    '',
+    'Opciones rápidas:',
+    ...options.map((o, i) => `${i + 1}. ${o}`),
+    '',
+    'Elige una opción o escríbeme tu consulta.',
+  ];
+  return {
+    chunks: [lines.join('\n')],
+    sources: [{ kind: 'tool', title: 'greeting' }],
+    options,
+  };
+}
+
 function isMasterCreator(user) {
   return String(user?.role || '').toLowerCase() === 'master_admin';
 }
@@ -152,11 +238,21 @@ function tryMasterCreatorAnswer(message, user) {
   }
 
   if (/estado del sistema|c[oó]mo est[aá]s|todo bien|hola pix|buenas|buenos d[ií]as|buenas tardes|buenas noches|^hola\b/.test(m.trim())) {
+    const options = staffHelpOptions(user);
     return {
       chunks: [
-        'Hola, Sr. Romero. Estoy operativa y a sus órdenes. ¿En qué puedo ayudarlo?',
+        [
+          'Hola, Sr. Romero. Estoy operativa y a sus órdenes.',
+          'Puedo ayudarlo con el negocio, el equipo, demoras, stock y el control del sistema.',
+          '',
+          'Opciones rápidas:',
+          ...options.map((o, i) => `${i + 1}. ${o}`),
+          '',
+          '¿En qué puedo ayudarlo?',
+        ].join('\n'),
       ],
       sources: [{ kind: 'tool', title: 'creator_mode' }],
+      options,
     };
   }
 
@@ -321,6 +417,12 @@ function heuristicToolPrefetch(message, user) {
     return creator;
   }
 
+  // Saludo personalizado con nombre + opciones (resto del personal).
+  const greeting = tryStaffGreetingAnswer(message, user);
+  if (greeting?.chunks?.length) {
+    return greeting;
+  }
+
   // 1) Datos directos primero (demoras, jornada, ventas…) — nunca como guía de módulos.
   const direct = tryDirectDataAnswer(message, user);
   if (direct?.chunks?.length) {
@@ -449,7 +551,11 @@ async function chat(user, message) {
   const prefetch = heuristicToolPrefetch(text, user);
   let result;
   if (prefetch.chunks.length) {
-    result = { reply: prefetch.chunks.join('\n\n'), sources: prefetch.sources };
+    result = {
+      reply: prefetch.chunks.join('\n\n'),
+      sources: prefetch.sources,
+      options: Array.isArray(prefetch.options) ? prefetch.options : undefined,
+    };
   } else {
     result = guidesOnlyReply(text);
     if (isMasterCreator(user) && result?.reply && /no encontr[eé] una gu[ií]a/i.test(result.reply)) {

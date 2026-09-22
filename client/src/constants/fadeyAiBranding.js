@@ -19,8 +19,66 @@ export const FADEY_AI_CREATOR_MODE = {
     '¿Cuánto se vendió esta semana?',
     '¿Hay demoras en cocina?',
     '¿Quién está en jornada ahora?',
+    '¿Cómo va la productividad del equipo?',
+    '¿Hay stock bajo?',
+    '¿Qué me recomiendas hoy?',
   ],
 };
+
+/** Pool completo de sugerencias fijas (se rotan de a 5 en el chat). */
+export const FADEY_AI_SUGGESTION_POOL = [
+  '¿Cuánto vendí hoy?',
+  '¿Cuánto se vendió esta semana?',
+  '¿Qué vendimos hoy?',
+  '¿Qué productos se venden más?',
+  'Genera un resumen de ventas',
+  '¿Qué me recomiendas hoy?',
+  '¿Hay demoras en cocina?',
+  '¿Quién está en jornada ahora?',
+  '¿Cómo va la productividad del equipo?',
+  '¿Quiénes lideran el ranking de productividad?',
+  '¿Hay stock bajo?',
+  '¿Cómo está el stock e inventario?',
+  '¿Hay alertas de inventario o stock bajo?',
+  '¿Cómo marcar asistencia con QR?',
+  '¿Cómo cerrar caja?',
+  '¿Cómo cobrar una mesa?',
+  '¿Cómo mover un pedido de mesa?',
+  '¿Cómo liberar una mesa?',
+  '¿Cómo registrar una venta?',
+  '¿Cómo cambiar una mesa?',
+  'Analiza los clientes del período',
+  '¿Qué me recomiendas según la demanda y hora pico?',
+  'Resumen de jornadas y horas del equipo',
+  '¿Qué me recomiendas para el personal?',
+];
+
+/** Cuántas sugerencias fijas se muestran a la vez. */
+export const FADEY_AI_SUGGESTION_VISIBLE = 5;
+
+/** Intervalo de rotación de chips (ms). */
+export const FADEY_AI_SUGGESTION_ROTATE_MS = 6500;
+
+/**
+ * Toma exactamente `count` sugerencias del pool con wrap-around desde `offset`.
+ * @param {string[]} pool
+ * @param {number} offset
+ * @param {number} [count]
+ */
+export function pickRotatingSuggestions(pool, offset = 0, count = FADEY_AI_SUGGESTION_VISIBLE) {
+  const list = (Array.isArray(pool) ? pool : [])
+    .map((q) => String(q || '').trim())
+    .filter(Boolean);
+  if (!list.length) return [];
+  const n = Math.min(count, list.length);
+  if (list.length <= n) return list.slice();
+  const start = ((Number(offset) || 0) % list.length + list.length) % list.length;
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    out.push(list[(start + i) % list.length]);
+  }
+  return out;
+}
 
 /** Evento global para abrir el chat PIX desde otros paneles. */
 export const OPEN_FADEY_AI_EVENT = 'rf-open-fadey-ai';

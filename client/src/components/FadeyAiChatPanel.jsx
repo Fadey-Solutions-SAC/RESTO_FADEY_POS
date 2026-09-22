@@ -5,16 +5,14 @@ import { useAuth } from '../context/AuthContext';
 import {
   FADEY_AI_TAGLINE,
   FADEY_AI_CREATOR_MODE,
+  FADEY_AI_SUGGESTION_POOL,
+  FADEY_AI_SUGGESTION_VISIBLE,
+  FADEY_AI_SUGGESTION_ROTATE_MS,
   getFadeyAiAvatarSrc,
   resolveFadeyAiMood,
   isFadeyAiCreatorMode,
+  pickRotatingSuggestions,
 } from '../constants/fadeyAiBranding';
-
-const SUGGESTED = [
-  '¿Cómo cerrar caja?',
-  '¿Cómo cambiar una mesa?',
-  '¿Cómo registrar una venta?',
-];
 
 function PixAvatar({ className = '', size = 'sm', mood = 'saludo' }) {
   return (
@@ -26,13 +24,6 @@ function PixAvatar({ className = '', size = 'sm', mood = 'saludo' }) {
     />
   );
 }
-
-const HOME_SUGGESTED = [
-  '¿Qué vendimos hoy?',
-  '¿Qué productos se venden más?',
-  'Genera un resumen de ventas',
-  '¿Qué me recomiendas hoy?',
-];
 
 function stripMd(s) {
   return String(s || '').replace(/\*\*/g, '').trim();
@@ -223,11 +214,20 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
 }, ref) {
   const { user } = useAuth();
   const creatorMode = isFadeyAiCreatorMode(user);
-  const chips = useMemo(() => {
-    if (Array.isArray(suggested) && suggested.length) return suggested;
-    if (creatorMode) return FADEY_AI_CREATOR_MODE.suggested;
-    return variant === 'home' ? HOME_SUGGESTED : SUGGESTED;
-  }, [suggested, creatorMode, variant]);
+  const suggestionPool = useMemo(() => {
+    const fromProp = Array.isArray(suggested)
+      ? suggested.map((q) => String(q || '').trim()).filter(Boolean)
+      : [];
+    const base = creatorMode
+      ? [...(FADEY_AI_CREATOR_MODE.suggested || []), ...FADEY_AI_SUGGESTION_POOL]
+      : FADEY_AI_SUGGESTION_POOL;
+    return [...new Set([...fromProp, ...base])];
+  }, [suggested, creatorMode]);
+  const [suggestOffset, setSuggestOffset] = useState(0);
+  const chips = useMemo(
+    () => pickRotatingSuggestions(suggestionPool, suggestOffset, FADEY_AI_SUGGESTION_VISIBLE),
+    [suggestionPool, suggestOffset],
+  );
   const isHome = variant === 'home';
   const emptyGreeting = creatorMode
     ? FADEY_AI_CREATOR_MODE.greeting
@@ -239,6 +239,8 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  /** Opciones rápidas del saludo (aparte de chips de sugerencias fijas). */
+  const [replyOptions, setReplyOptions] = useState([]);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const sendTextRef = useRef(null);
@@ -295,6 +297,15 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
 
   useEffect(() => {
     if (!isActive) return undefined;
+    if (suggestionPool.length <= FADEY_AI_SUGGESTION_VISIBLE) return undefined;
+    const id = setInterval(() => {
+      setSuggestOffset((prev) => (prev + 1) % suggestionPool.length);
+    }, FADEY_AI_SUGGESTION_ROTATE_MS);
+    return () => clearInterval(id);
+  }, [isActive, suggestionPool.length]);
+
+  useEffect(() => {
+    if (!isActive) return undefined;
     void load();
     return undefined;
   }, [isActive, load]);
@@ -325,6 +336,7 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
     setInput('');
     setBusy(true);
     setError('');
+    setReplyOptions([]);
     const optimistic = {
       id: `local-${Date.now()}`,
       role: 'user',
@@ -334,6 +346,9 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
     setMessages((prev) => [...prev, optimistic]);
     try {
       const res = await api.post('/fadey-ai/chat', { message: msg });
+      const opts = Array.isArray(res?.options)
+        ? res.options.map((o) => String(o || '').trim()).filter(Boolean)
+        : [];
       setMessages((prev) => [
         ...prev,
         {
@@ -341,12 +356,15 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
           role: 'assistant',
           content: res?.reply || 'Sin respuesta',
           sources: res?.sources || null,
+          options: opts.length ? opts : null,
           created_at: new Date().toISOString(),
         },
       ]);
+      setReplyOptions(opts);
       if (res?.status) setStatus(res.status);
     } catch (err) {
       setError(err.message || 'No se pudo enviar');
+      setReplyOptions([]);
       setMessages((prev) => [
         ...prev,
         {
@@ -464,16 +482,37 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
       </div>
 
       <div className="rf-fadey-ai-footer shrink-0">
+        {replyOptions.length > 0 ? (
+          <div className="rf-fadey-ai-suggest rf-fadey-ai-suggest--options">
+            <p className="rf-fadey-ai-suggest-label">
+              <MdAutoAwesome className="rf-fadey-ai-suggest-star" />
+              En qué puedo ayudarte
+            </p>
+            <div className="rf-fadey-ai-suggest-chips">
+              {replyOptions.map((q) => (
+                <button
+                  key={`opt-${q}`}
+                  type="button"
+                  className="rf-fadey-ai-chip rf-fadey-ai-chip--option"
+                  disabled={busy}
+                  onClick={() => void sendText(q)}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {(!isHome || messages.length === 0) ? (
           <div className="rf-fadey-ai-suggest">
             <p className="rf-fadey-ai-suggest-label">
               <MdAutoAwesome className="rf-fadey-ai-suggest-star" />
               Preguntas sugeridas
             </p>
-            <div className="rf-fadey-ai-suggest-chips">
-              {chips.map((q) => (
+            <div className="rf-fadey-ai-suggest-chips" aria-live="polite">
+              {chips.map((q, idx) => (
                 <button
-                  key={q}
+                  key={`${suggestOffset}-${idx}-${q}`}
                   type="button"
                   className="rf-fadey-ai-chip"
                   disabled={busy}

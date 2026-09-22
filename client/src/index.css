@@ -2063,6 +2063,21 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   gap: 0.4rem;
   margin-bottom: 0.65rem;
 }
+.rf-fadey-ai-assistant-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  flex: 1;
+}
+.rf-fadey-ai-reply-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.rf-fadey-ai-suggest--options .rf-fadey-ai-suggest-label {
+  color: #0f766e;
+}
 .rf-fadey-ai-chip {
   border: 1px solid #bfdbfe;
   background: #eff6ff;
@@ -2073,6 +2088,19 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   border-radius: 999px;
   line-height: 1.2;
   white-space: nowrap;
+  animation: rf-fadey-ai-chip-in 0.35s ease;
+}
+@keyframes rf-fadey-ai-chip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rf-fadey-ai-chip--option {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+  color: #0f766e;
+}
+.rf-fadey-ai-chip--option:not(:disabled):hover {
+  background: #ccfbf1;
 }
 .rf-fadey-ai-chip:disabled {
   opacity: 0.5;
