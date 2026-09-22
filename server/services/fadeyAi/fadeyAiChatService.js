@@ -130,6 +130,39 @@ function guidesOnlyReply(message) {
   };
 }
 
+function isMasterCreator(user) {
+  return String(user?.role || '').toLowerCase() === 'master_admin';
+}
+
+/**
+ * Respuestas solo visibles/activas para Admin Maestro (creador de PIX).
+ * Otros roles nunca reciben este tono ni reconocimiento.
+ */
+function tryMasterCreatorAnswer(message, user) {
+  if (!isMasterCreator(user)) return null;
+  const m = String(message || '').toLowerCase();
+
+  if (/qui[eé]n (te |me )?(cre[oó]|hizo|dise[nñ][oó]|program)|tu creador|soy tu creador|qui[eé]n eres|c[oó]mo te llamas|para qui[eé]n trabajas/.test(m)) {
+    return {
+      chunks: [
+        'Sí, Sr. Romero: usted es mi creador. Soy PIX, la IA Fadey del POS Resto Fadey. Estoy a sus órdenes.',
+      ],
+      sources: [{ kind: 'tool', title: 'creator_mode' }],
+    };
+  }
+
+  if (/estado del sistema|c[oó]mo est[aá]s|todo bien|hola pix|buenas|buenos d[ií]as|buenas tardes|buenas noches|^hola\b/.test(m.trim())) {
+    return {
+      chunks: [
+        'Hola, Sr. Romero. Estoy operativa y a sus órdenes. ¿En qué puedo ayudarlo?',
+      ],
+      sources: [{ kind: 'tool', title: 'creator_mode' }],
+    };
+  }
+
+  return null;
+}
+
 function hrFocusForMessage(message) {
   const m = String(message || '').toLowerCase();
   if (/demora(s)?|retraso(s)?|cocina.*(lenta|demor)|hay demoras/.test(m)) return 'kitchen';
@@ -282,9 +315,19 @@ function heuristicToolPrefetch(message, user) {
   const sources = [];
   const chunks = [];
 
+  // Modo creador (solo master_admin): reconocimiento / saludo especial.
+  const creator = tryMasterCreatorAnswer(message, user);
+  if (creator?.chunks?.length) {
+    return creator;
+  }
+
   // 1) Datos directos primero (demoras, jornada, ventas…) — nunca como guía de módulos.
   const direct = tryDirectDataAnswer(message, user);
   if (direct?.chunks?.length) {
+    // Si es el creador, un toque de respeto sin cambiar el dato.
+    if (isMasterCreator(user) && direct.chunks[0] && !/Sr\. Romero/i.test(direct.chunks[0])) {
+      direct.chunks[0] = `${direct.chunks[0]}`;
+    }
     return direct;
   }
 
@@ -409,10 +452,21 @@ async function chat(user, message) {
     result = { reply: prefetch.chunks.join('\n\n'), sources: prefetch.sources };
   } else {
     result = guidesOnlyReply(text);
+    if (isMasterCreator(user) && result?.reply && /no encontr[eé] una gu[ií]a/i.test(result.reply)) {
+      result = {
+        reply: 'Sr. Romero, no encontré una guía exacta para eso. ¿Puede darme más detalle o pedirme un dato del negocio?',
+        sources: [{ kind: 'tool', title: 'creator_mode' }],
+      };
+    }
   }
   rememberSuccessfulIntent(text, result.sources);
   saveMessage(user.id, 'assistant', result.reply, result.sources);
-  return { ...result, mode: 'local', status: getStatus() };
+  return {
+    ...result,
+    mode: 'local',
+    status: getStatus(),
+    creator_mode: isMasterCreator(user),
+  };
 }
 
 module.exports = {

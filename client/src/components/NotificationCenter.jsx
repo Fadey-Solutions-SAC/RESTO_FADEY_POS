@@ -8,7 +8,7 @@ import StaffTeamChat from './StaffTeamChat';
 import FadeyAiChatPanel from './FadeyAiChatPanel';
 import toast from 'react-hot-toast';
 import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload } from 'react-icons/md';
-import { FADEY_AI_TAGLINE, getFadeyAiAvatarSrc, OPEN_FADEY_AI_EVENT } from '../constants/fadeyAiBranding';
+import { FADEY_AI_TAGLINE, FADEY_AI_CREATOR_MODE, getFadeyAiAvatarSrc, OPEN_FADEY_AI_EVENT, isFadeyAiCreatorMode } from '../constants/fadeyAiBranding';
 import {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   PAGO_PLAN_MODULE_PATH,
@@ -89,7 +89,8 @@ export default function NotificationCenter({ className = '' }) {
     && user?.type !== 'customer'
     && (roleLc === 'master_admin' || STAFF_CHAT_ROLES.has(roleLc) || !roleLc);
   const canUseStaffChat = isRestaurantStaff;
-  const canUseFadeyAi = isRestaurantStaff && Boolean(user?.fadey_ai_enabled);
+  const canUseFadeyAi = isRestaurantStaff && (roleLc === 'master_admin' || Boolean(user?.fadey_ai_enabled));
+  const creatorMode = isFadeyAiCreatorMode(user);
 
   const seesPagoUsoAviso = user?.role === 'admin' || user?.role === 'master_admin';
 
@@ -373,7 +374,9 @@ export default function NotificationCenter({ className = '' }) {
                     </div>
                     <div className="rf-fadey-ai-header-text">
                       <span className="rf-fadey-ai-header-name">IA Fadey</span>
-                      <span className="rf-fadey-ai-header-sub">{FADEY_AI_TAGLINE}</span>
+                      <span className="rf-fadey-ai-header-sub">
+                        {creatorMode ? FADEY_AI_CREATOR_MODE.tagline : FADEY_AI_TAGLINE}
+                      </span>
                     </div>
                   </div>
                 ) : tab === 'avisos' ? (
@@ -481,13 +484,17 @@ export default function NotificationCenter({ className = '' }) {
                     <FadeyAiChatPanel
                       ref={fadeyAiChatRef}
                       isActive={open && tab === 'ia'}
-                      suggested={[
-                        '¿Quién está en jornada ahora?',
-                        '¿Cómo va la productividad del equipo?',
-                        '¿Hay demoras en cocina?',
-                        '¿Cuánto vendí esta semana?',
-                        '¿Cómo marcar asistencia con QR?',
-                      ]}
+                      suggested={
+                        creatorMode
+                          ? FADEY_AI_CREATOR_MODE.suggested
+                          : [
+                            '¿Quién está en jornada ahora?',
+                            '¿Cómo va la productividad del equipo?',
+                            '¿Hay demoras en cocina?',
+                            '¿Cuánto vendí esta semana?',
+                            '¿Cómo marcar asistencia con QR?',
+                          ]
+                      }
                     />
                   </div>
                 ) : null}

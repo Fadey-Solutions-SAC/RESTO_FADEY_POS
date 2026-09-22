@@ -1,8 +1,26 @@
 /** Avatar PIX de IA Fadey (público) — Saludo por defecto. */
 export const FADEY_AI_AVATAR_SRC = '/branding/pix-ai-avatar.png';
 
-/** Frase al abrir el chat. */
+/** Frase al abrir el chat (personal del restaurante). */
 export const FADEY_AI_TAGLINE = 'Conectado con tu negocio';
+
+/**
+ * Modo exclusivo Admin Maestro (creador de la IA).
+ * Solo master_admin debe ver este saludo / tagline.
+ */
+export const FADEY_AI_CREATOR_MODE = {
+  honorific: 'Sr. Romero',
+  tagline: 'A sus órdenes, Sr. Romero',
+  greeting:
+    'Hola, soy PIX. Dígame, ¿en qué puedo ayudarlo, Sr. Romero?\n\nSé que usted es mi creador. Estoy lista para lo que necesite.',
+  suggested: [
+    '¿Quién te creó?',
+    'Estado del sistema',
+    '¿Cuánto se vendió esta semana?',
+    '¿Hay demoras en cocina?',
+    '¿Quién está en jornada ahora?',
+  ],
+};
 
 /** Evento global para abrir el chat PIX desde otros paneles. */
 export const OPEN_FADEY_AI_EVENT = 'rf-open-fadey-ai';
@@ -42,6 +60,8 @@ export function resolveFadeyAiMood(opts = {}) {
     .filter((s) => s && (s.kind === 'tool' || ANALYTICS_TOOLS.has(String(s.title || ''))))
     .map((s) => String(s.title || '').toLowerCase());
 
+  if (sources.some((s) => s && s.title === 'creator_mode')) return 'saludo';
+
   const text = String(opts.content || '').toLowerCase();
   const wantsAdvise =
     /recomend|suger|te conviene|deber[ií]as|mejora|oportunidad|alerta|baja productividad/.test(text)
@@ -61,4 +81,9 @@ export function resolveFadeyAiMood(opts = {}) {
 /** Src del avatar según mood (fallback a Saludo). */
 export function getFadeyAiAvatarSrc(mood = 'saludo') {
   return FADEY_AI_EXPRESSIONS[mood] || FADEY_AI_EXPRESSIONS.saludo || FADEY_AI_AVATAR_SRC;
+}
+
+/** Solo Admin Maestro ve el modo creador. */
+export function isFadeyAiCreatorMode(user) {
+  return String(user?.role || '').toLowerCase() === 'master_admin';
 }

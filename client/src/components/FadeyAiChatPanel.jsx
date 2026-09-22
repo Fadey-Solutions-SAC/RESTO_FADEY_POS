@@ -1,10 +1,13 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { MdSend, MdChatBubbleOutline, MdAutoAwesome, MdPerson } from 'react-icons/md';
 import { api } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import {
   FADEY_AI_TAGLINE,
+  FADEY_AI_CREATOR_MODE,
   getFadeyAiAvatarSrc,
   resolveFadeyAiMood,
+  isFadeyAiCreatorMode,
 } from '../constants/fadeyAiBranding';
 
 const SUGGESTED = [
@@ -218,8 +221,18 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
   suggested,
   introMessage = '',
 }, ref) {
-  const chips = suggested || (variant === 'home' ? HOME_SUGGESTED : SUGGESTED);
+  const { user } = useAuth();
+  const creatorMode = isFadeyAiCreatorMode(user);
+  const chips = useMemo(() => {
+    if (Array.isArray(suggested) && suggested.length) return suggested;
+    if (creatorMode) return FADEY_AI_CREATOR_MODE.suggested;
+    return variant === 'home' ? HOME_SUGGESTED : SUGGESTED;
+  }, [suggested, creatorMode, variant]);
   const isHome = variant === 'home';
+  const emptyGreeting = creatorMode
+    ? FADEY_AI_CREATOR_MODE.greeting
+    : (introMessage || '');
+  const emptyTagline = creatorMode ? FADEY_AI_CREATOR_MODE.tagline : FADEY_AI_TAGLINE;
   const [status, setStatus] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -389,18 +402,24 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
               <PixAvatar size="lg" mood="saludo" />
             </div>
             <p className="text-sm font-semibold text-[#0f172a]">PIX</p>
-            <p className="text-sm font-medium text-[#2563eb]">{FADEY_AI_TAGLINE}</p>
-            <p className="text-xs text-[#64748b] max-w-[16rem]">
-              Pregunta cómo hacer algo en el POS o elige una sugerencia.
-            </p>
+            <p className="text-sm font-medium text-[#2563eb]">{emptyTagline}</p>
+            {creatorMode ? (
+              <p className="text-sm text-[#0f172a] max-w-[18rem] whitespace-pre-wrap leading-snug">
+                {FADEY_AI_CREATOR_MODE.greeting}
+              </p>
+            ) : (
+              <p className="text-xs text-[#64748b] max-w-[16rem]">
+                Pregunta cómo hacer algo en el POS o elige una sugerencia.
+              </p>
+            )}
           </div>
-        ) : messages.length === 0 && isHome && introMessage ? (
+        ) : messages.length === 0 && (isHome ? emptyGreeting : false) ? (
           <div className="rf-fadey-ai-row rf-fadey-ai-row--assistant">
             <div className="rf-fadey-ai-avatar-sm rf-fadey-ai-avatar-sm--photo" aria-hidden>
               <PixAvatar size="sm" mood="asesorando" />
             </div>
             <div className="rf-fadey-ai-card">
-              <p className="rf-fadey-ai-card-plain whitespace-pre-wrap">{introMessage}</p>
+              <p className="rf-fadey-ai-card-plain whitespace-pre-wrap">{emptyGreeting}</p>
             </div>
           </div>
         ) : messages.length === 0 ? (
