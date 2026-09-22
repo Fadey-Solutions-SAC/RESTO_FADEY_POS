@@ -13,6 +13,8 @@ const {
   addNotification,
   updateNotification,
   deleteNotification,
+  dismissAdminNotification,
+  dismissAdminNotificationsBulk,
   evaluateAutomaticBillingRules,
   buildPagoUsoComprobanteUiState,
   getLockState,
@@ -38,6 +40,26 @@ router.get('/admin-notifications', (req, res) => {
     list = list.filter((n) => String(n.title || '').trim() !== PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
   }
   return res.json(list);
+});
+
+/** Quitar aviso: queda eliminado en el servidor (no solo en este navegador). */
+router.post('/admin-notifications/:id/dismiss', (req, res) => {
+  try {
+    const result = dismissAdminNotification(req.params.id);
+    return res.json(result);
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'No se pudo quitar el aviso' });
+  }
+});
+
+/** Migrar descartes viejos de localStorage → servidor. */
+router.post('/admin-notifications/dismiss-bulk', (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    return res.json(dismissAdminNotificationsBulk(ids));
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'No se pudo migrar descartes' });
+  }
 });
 
 /** Misma configuración que edita el maestro en «Fecha de facturación»; el admin del restaurante solo la consulta. */

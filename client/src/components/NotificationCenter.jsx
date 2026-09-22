@@ -40,7 +40,19 @@ function loadDismissedAvisoIds() {
 }
 
 function saveDismissedAvisoIds(ids) {
-  localStorage.setItem(DISMISSED_AVISOS_STORAGE_KEY, JSON.stringify([...new Set(ids.map(String))]));
+  try {
+    localStorage.setItem(DISMISSED_AVISOS_STORAGE_KEY, JSON.stringify([...new Set(ids.map(String))]));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function clearDismissedAvisoIdsStorage() {
+  try {
+    localStorage.removeItem(DISMISSED_AVISOS_STORAGE_KEY);
+  } catch {
+    /* noop */
+  }
 }
 
 function showIncomingMessageToast(msg) {
@@ -86,9 +98,9 @@ export default function NotificationCenter({ className = '' }) {
   const [unreadChat, setUnreadChat] = useState(0);
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [sessionReservaAvisos, setSessionReservaAvisos] = useState(() => getSessionReservationCajaAvisos());
-  const [dismissedAvisoIds, setDismissedAvisoIds] = useState(loadDismissedAvisoIds);
   const [avisoToDismiss, setAvisoToDismiss] = useState(null);
   const [pendingAiPrompt, setPendingAiPrompt] = useState('');
+  const [dismissBusy, setDismissBusy] = useState(false);
 
   const rootRef = useRef(null);
   const panelRef = useRef(null);
@@ -96,17 +108,18 @@ export default function NotificationCenter({ className = '' }) {
   const fadeyAiChatRef = useRef(null);
   const knownAdminNotifIdsRef = useRef(null);
   const knownReservaAvisoIdsRef = useRef(null);
+  const migratedDismissalsRef = useRef(false);
 
   const visibleAdminNotifications = useMemo(() => {
     let list = [
       ...sessionReservaAvisos,
-      ...adminNotifications.filter((n) => !dismissedAvisoIds.includes(String(n.id))),
+      ...adminNotifications,
     ];
     if (!seesPagoUsoAviso) {
       list = list.filter((n) => n.title !== PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
     }
     return list;
-  }, [adminNotifications, dismissedAvisoIds, seesPagoUsoAviso, sessionReservaAvisos]);
+  }, [adminNotifications, seesPagoUsoAviso, sessionReservaAvisos]);
 
   const isChatActive = open && tab === 'chat';
   chatActiveRef.current = isChatActive;
@@ -151,10 +164,13 @@ export default function NotificationCenter({ className = '' }) {
   }, []);
 
   useEffect(() => {
-    if (!showAvisosBtn) return;
+    if (!showAvisosBtn) return undefined;
+    let cancelled = false;
+
     const load = () => {
       api.get('/master-admin/admin-notifications')
         .then((data) => {
+          if (cancelled) return;
           const list = Array.isArray(data) ? data : [];
           const ids = new Set(list.map((n) => String(n?.id || '')).filter(Boolean));
           const known = knownAdminNotifIdsRef.current;
@@ -167,11 +183,33 @@ export default function NotificationCenter({ className = '' }) {
           knownAdminNotifIdsRef.current = ids;
           setAdminNotifications(list);
         })
-        .catch(() => setAdminNotifications([]));
+        .catch(() => {
+          if (!cancelled) setAdminNotifications([]);
+        });
     };
+
+    const migrateLocalDismissals = async () => {
+      if (migratedDismissalsRef.current) return;
+      migratedDismissalsRef.current = true;
+      const localIds = loadDismissedAvisoIds().filter((id) => id && !String(id).startsWith('reserva_caja_'));
+      if (!localIds.length) return;
+      try {
+        await api.post('/master-admin/admin-notifications/dismiss-bulk', { ids: localIds });
+        clearDismissedAvisoIdsStorage();
+        load();
+      } catch (_) {
+        /* si falla, se reintenta en la próxima sesión */
+        migratedDismissalsRef.current = false;
+      }
+    };
+
     load();
+    void migrateLocalDismissals();
     const interval = setInterval(load, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [showAvisosBtn]);
 
   useEffect(() => {
@@ -266,18 +304,26 @@ export default function NotificationCenter({ className = '' }) {
     };
   }, [open, avisoToDismiss]);
 
-  const confirmDismissAviso = () => {
-    if (!avisoToDismiss?.id) return;
+  const confirmDismissAviso = async () => {
+    if (!avisoToDismiss?.id || dismissBusy) return;
     const id = String(avisoToDismiss.id);
     if (avisoToDismiss.source === 'reservation_caja' || String(id).startsWith('reserva_caja_')) {
       removeSessionReservationCajaAviso(id);
       setAvisoToDismiss(null);
       return;
     }
-    const next = [...new Set([...dismissedAvisoIds, id])];
-    setDismissedAvisoIds(next);
-    saveDismissedAvisoIds(next);
-    setAvisoToDismiss(null);
+    setDismissBusy(true);
+    try {
+      await api.post(`/master-admin/admin-notifications/${encodeURIComponent(id)}/dismiss`);
+      setAdminNotifications((prev) => prev.filter((n) => String(n.id) !== id));
+      const local = loadDismissedAvisoIds().filter((x) => String(x) !== id);
+      saveDismissedAvisoIds(local);
+      setAvisoToDismiss(null);
+    } catch (err) {
+      toast.error(err?.message || 'No se pudo quitar el aviso');
+    } finally {
+      setDismissBusy(false);
+    }
   };
 
   const openWithTab = (nextTab) => {
@@ -479,15 +525,17 @@ export default function NotificationCenter({ className = '' }) {
                           type="button"
                           className="btn-secondary flex-1 text-sm py-2"
                           onClick={() => setAvisoToDismiss(null)}
+                          disabled={dismissBusy}
                         >
                           Cancelar
                         </button>
                         <button
                           type="button"
-                          className="flex-1 text-sm py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700"
-                          onClick={confirmDismissAviso}
+                          className="flex-1 text-sm py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-60"
+                          onClick={() => void confirmDismissAviso()}
+                          disabled={dismissBusy}
                         >
-                          Borrar
+                          {dismissBusy ? 'Borrando…' : 'Borrar'}
                         </button>
                       </div>
                     </div>

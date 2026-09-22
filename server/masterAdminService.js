@@ -415,6 +415,54 @@ function deleteNotification(id) {
   return { success: true };
 }
 
+/**
+ * Quitar aviso del panel de notificaciones (persistente en servidor).
+ * Así no reaparece al cambiar de navegador o dispositivo.
+ * Soft-delete: deleted_at; getActiveNotifications ya lo filtra.
+ */
+function dismissAdminNotification(id) {
+  const nid = String(id || '').trim();
+  if (!nid) throw new Error('Id de notificación requerido');
+  if (nid.startsWith('reserva_caja_')) {
+    return { success: true, skipped: true };
+  }
+  const notifications = getNotifications();
+  const idx = notifications.findIndex((n) => String(n.id) === nid);
+  if (idx < 0) {
+    // Ya no está (o id viejo): éxito idempotente para limpiar UI.
+    return { success: true, missing: true };
+  }
+  if (notifications[idx].deleted_at) {
+    return { success: true, already: true };
+  }
+  notifications[idx] = {
+    ...notifications[idx],
+    deleted_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  saveNotifications(notifications);
+  return { success: true, id: nid };
+}
+
+/**
+ * Migra descartes que solo vivían en localStorage del navegador.
+ * @param {string[]} ids
+ */
+function dismissAdminNotificationsBulk(ids) {
+  const list = Array.isArray(ids) ? ids.map((x) => String(x || '').trim()).filter(Boolean) : [];
+  let dismissed = 0;
+  for (const id of list) {
+    try {
+      const r = dismissAdminNotification(id);
+      if (r?.success && !r.skipped && !r.missing && !r.already) dismissed += 1;
+      else if (r?.already) dismissed += 1;
+    } catch (_) {
+      /* seguir con el resto */
+    }
+  }
+  return { success: true, dismissed };
+}
+
 function isoDateKeyNow() {
   return getBusinessTodayDateKey(queryOne);
 }
@@ -1040,6 +1088,8 @@ module.exports = {
   clearNotificationsByTitle,
   updateNotification,
   deleteNotification,
+  dismissAdminNotification,
+  dismissAdminNotificationsBulk,
   evaluateAutomaticBillingRules,
   getLockState,
   applyCentralPolicySuspensionLock,
