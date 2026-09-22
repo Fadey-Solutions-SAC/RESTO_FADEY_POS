@@ -1,23 +1,43 @@
-import { MdDashboard, MdNotificationsActive, MdCheckCircle, MdStars } from 'react-icons/md';
+import { useRef, useState } from 'react';
+import {
+  MdDashboard,
+  MdNotificationsActive,
+  MdCheckCircle,
+  MdStars,
+  MdChat,
+  MdArrowBack,
+  MdBolt,
+  MdPeople,
+  MdRestaurant,
+  MdTrendingUp,
+  MdEmojiEvents,
+  MdHistory,
+} from 'react-icons/md';
+import { Cell, Pie, PieChart, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { Link } from 'react-router-dom';
 import { formatMinutes, formatMoney, formatRankingValue, severityBadge, ROLE_LABEL } from './workTimeUtils';
-import { getFadeyAiAvatarSrc, OPEN_FADEY_AI_EVENT } from '../../constants/fadeyAiBranding';
+import { getFadeyAiAvatarSrc } from '../../constants/fadeyAiBranding';
+import FadeyAiChatPanel from '../FadeyAiChatPanel';
 import '../indicadores/FadeyAiHomePanel.css';
 
-const HR_CHAT_PROMPTS = [
-  '¿Quién está en jornada ahora?',
-  '¿Cómo va la productividad del equipo?',
-  '¿Hay demoras en cocina?',
-  '¿Qué me recomiendas para el personal?',
+const PIE_COLORS = ['#2563eb', '#38bdf8', '#93c5fd', '#1d4ed8', '#7dd3fc', '#64748b'];
+
+const HR_QUICK_ACTIONS = [
+  { id: 'jornada', label: 'Quién en jornada', icon: MdPeople, prompt: '¿Quién está en jornada ahora?' },
+  { id: 'prod', label: 'Productividad', icon: MdTrendingUp, prompt: '¿Cómo va la productividad del equipo?' },
+  { id: 'cocina', label: 'Demoras cocina', icon: MdRestaurant, prompt: '¿Hay demoras en cocina?' },
+  { id: 'recomienda', label: 'Recomendaciones', icon: MdStars, prompt: '¿Qué me recomiendas para el personal?' },
+  { id: 'rankings', label: 'Rankings', icon: MdEmojiEvents, prompt: '¿Quiénes lideran el ranking de productividad?' },
+  { id: 'jornadas', label: 'Jornadas', icon: MdHistory, prompt: 'Resumen de jornadas y horas del equipo' },
 ];
 
-function openHrChat(prompt) {
-  try {
-    window.dispatchEvent(new CustomEvent(OPEN_FADEY_AI_EVENT, {
-      detail: prompt ? { prompt } : { prompt: 'Resumen de productividad y personal' },
-    }));
-  } catch (_) {
-    /* noop */
-  }
+const HR_CHAT_SUGGESTED = HR_QUICK_ACTIONS.map((a) => a.prompt);
+
+function formatShortDate(key) {
+  if (!key) return '';
+  const [y, m, d] = String(key).split('-');
+  if (!d) return key;
+  return `${d}/${m}/${y}`;
 }
 
 function StatCard({ label, value, sub, accent = 'gold' }) {
@@ -94,10 +114,14 @@ function WaiterRatingsBlock({ waiterRatings = [] }) {
   );
 }
 
-export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [] }) {
+export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [], filters = {}, onExport }) {
   if (!data) return <p className="text-sm text-[var(--ui-muted)]">Cargando analítica…</p>;
 
   const { dashboard, productivity, areas, rankings, alerts, insights, shifts, hours } = data;
+
+  if (subTab === 'ia') {
+    return <HrAiOperativaPanel data={data} filters={filters} onExport={onExport} />;
+  }
 
   if (subTab === 'panel') {
     return (
@@ -304,132 +328,257 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
     );
   }
 
-  if (subTab === 'ia') {
-    const list = Array.isArray(insights) ? insights : [];
-    const staffOnline = data?.dashboard?.operations?.staff_online ?? 0;
-    const kitchenAvg = data?.areas?.cocina?.avg_kitchen_minutes;
-    const delayed = data?.areas?.cocina?.delayed_now ?? 0;
-    return (
-      <div className="rf-ai-home animate-in fade-in duration-300">
-        <div className="rf-ai-home__main">
-          <section className="rf-ai-home__hero">
-            <button
-              type="button"
-              onClick={() => openHrChat()}
-              className="rf-ai-home__bot rf-ai-home__bot--photo"
-              title="Abrir chat con PIX"
-              aria-label="Abrir chat con PIX"
-            >
-              <img src={getFadeyAiAvatarSrc('asesorando')} alt="" draggable={false} />
-            </button>
-            <div className="rf-ai-home__hero-copy">
-              <div className="rf-ai-home__hero-head">
-                <h2>Hola, soy PIX</h2>
+  return null;
+}
+
+/** Panel IA Operativa: mismo patrón de chat in-panel que IA analítica (Indicadores). */
+function HrAiOperativaPanel({ data, filters = {}, onExport }) {
+  const [heroMode, setHeroMode] = useState('hello'); // hello | chat
+  const chatRef = useRef(null);
+  const insights = Array.isArray(data?.insights) ? data.insights : [];
+  const productivity = Array.isArray(data?.productivity) ? data.productivity : [];
+  const shifts = Array.isArray(data?.shifts) ? data.shifts : [];
+  const staffOnline = data?.dashboard?.operations?.staff_online ?? 0;
+  const kitchenAvg = data?.areas?.cocina?.avg_kitchen_minutes;
+  const delayed = data?.areas?.cocina?.delayed_now ?? 0;
+  const from = filters?.from;
+  const to = filters?.to;
+
+  const openChat = (prompt = '') => {
+    setHeroMode('chat');
+    const msg = String(prompt || '').trim();
+    if (!msg) {
+      requestAnimationFrame(() => chatRef.current?.focusInput?.());
+      return;
+    }
+    setTimeout(() => {
+      chatRef.current?.sendPrompt?.(msg);
+      chatRef.current?.focusInput?.();
+    }, 120);
+  };
+
+  const intro = [
+    'Puedo analizar jornadas, productividad, cocina y alertas del equipo en esta misma pantalla.',
+    `Ahora: ${staffOnline} en jornada · cocina ${kitchenAvg != null ? `${kitchenAvg} min` : '—'}.`,
+    'Elige una acción rápida o escríbeme aquí.',
+  ].join(' ');
+
+  const prodPie = productivity
+    .filter((p) => Number(p.worked_minutes) > 0)
+    .slice(0, 5)
+    .map((p) => ({
+      name: String(p.full_name || 'Empleado').slice(0, 18),
+      value: Number(p.worked_minutes) || 0,
+    }));
+  const pieTotal = prodPie.reduce((s, r) => s + r.value, 0);
+  const shiftBars = shifts.map((sh) => ({
+    name: String(sh.shift_label || 'turno').slice(0, 10),
+    minutos: Number(sh.total_minutes) || 0,
+  }));
+
+  return (
+    <div className="rf-ai-home animate-in fade-in duration-300">
+      <div className="rf-ai-home__main">
+        <section className={`rf-ai-home__hero ${heroMode === 'chat' ? 'rf-ai-home__hero--chat' : ''}`}>
+          {heroMode === 'chat' ? (
+            <div className="rf-ai-home__hero-chat">
+              <div className="rf-ai-home__hero-chat-bar">
                 <button
                   type="button"
-                  className="rf-ai-home__msg-btn"
-                  onClick={() => openHrChat()}
-                  title="Abrir chat"
+                  className="rf-ai-home__hero-clear"
+                  onClick={() => setHeroMode('hello')}
+                  aria-label="Volver"
                 >
-                  Mensaje
+                  <MdArrowBack />
                 </button>
+                <img src={getFadeyAiAvatarSrc('chat')} alt="" className="rf-ai-home__hero-chat-pix" draggable={false} />
+                <div className="rf-ai-home__hero-chat-titles">
+                  <strong>PIX · Chat</strong>
+                  <span>Pregúntame sobre jornadas, productividad o el equipo</span>
+                </div>
               </div>
-              <p className="rf-ai-home__tagline">IA Fadey · Recursos humanos</p>
-              <p>Te ayudo con productividad, jornadas, cocina, rankings y alertas del equipo.</p>
-              <ul>
-                <li><MdCheckCircle /> Quién está en turno y tiempos de jornada</li>
-                <li><MdCheckCircle /> Productividad por empleado y por área</li>
-                <li><MdCheckCircle /> Demoras de cocina y hora pico operativa</li>
-                <li><MdCheckCircle /> Recomendaciones para reforzar el personal</li>
-              </ul>
+              <div className="rf-ai-home__hero-chat-body">
+                <FadeyAiChatPanel
+                  ref={chatRef}
+                  isActive
+                  variant="home"
+                  introMessage={intro}
+                  suggested={HR_CHAT_SUGGESTED}
+                />
+              </div>
             </div>
-          </section>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => openChat()}
+                className="rf-ai-home__bot rf-ai-home__bot--photo"
+                title="Abrir chat con PIX"
+                aria-label="Abrir chat con PIX"
+              >
+                <img src={getFadeyAiAvatarSrc('saludo')} alt="" draggable={false} />
+              </button>
+              <div className="rf-ai-home__hero-copy">
+                <div className="rf-ai-home__hero-head">
+                  <h2>Hola, soy PIX</h2>
+                  <button
+                    type="button"
+                    className="rf-ai-home__msg-btn"
+                    onClick={() => openChat()}
+                    title="Abrir chat"
+                  >
+                    <MdChat /> Mensaje
+                  </button>
+                </div>
+                <p>Estoy aquí para ayudarte con productividad, jornadas y el equipo del restaurante.</p>
+                <ul>
+                  <li><MdCheckCircle /> Analizo jornadas y personal en tiempo real</li>
+                  <li><MdCheckCircle /> Miro productividad por empleado y área</li>
+                  <li><MdCheckCircle /> Detecto demoras de cocina y hora pico</li>
+                  <li><MdCheckCircle /> Te doy recomendaciones para el personal</li>
+                </ul>
+              </div>
+            </>
+          )}
+        </section>
 
-          <section className="rf-ai-home__kpis">
-            <article className="rf-ai-home__kpi">
-              <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--blue"><MdDashboard /></span>
-              <div>
-                <p>En jornada</p>
-                <strong>{staffOnline}</strong>
-                <em>Personal activo ahora</em>
-              </div>
-            </article>
-            <article className="rf-ai-home__kpi">
-              <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--sky"><MdNotificationsActive /></span>
-              <div>
-                <p>Cocina promedio</p>
-                <strong>{kitchenAvg != null ? `${kitchenAvg} min` : '—'}</strong>
-                <em>{delayed > 0 ? `${delayed} retraso(s) ahora` : 'Sin retrasos críticos'}</em>
-              </div>
-            </article>
-            <article className="rf-ai-home__kpi">
-              <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--navy"><MdStars /></span>
-              <div>
-                <p>Cuentas hoy</p>
-                <strong>{data?.dashboard?.today?.orders_paid ?? 0}</strong>
-                <em>{formatMoney(data?.dashboard?.today?.sales_total)}</em>
-              </div>
-            </article>
-            <article className="rf-ai-home__kpi">
-              <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--cyan"><MdCheckCircle /></span>
-              <div>
-                <p>Horas hoy</p>
-                <strong>{formatMinutes(data?.dashboard?.today?.worked_minutes)}</strong>
-                <em>{`${data?.dashboard?.today?.sessions ?? 0} marcaciones`}</em>
-              </div>
-            </article>
-          </section>
+        <section className="rf-ai-home__kpis">
+          <article className="rf-ai-home__kpi">
+            <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--blue"><MdPeople /></span>
+            <div>
+              <p>En jornada</p>
+              <strong>{staffOnline}</strong>
+              <em>Personal activo ahora</em>
+            </div>
+          </article>
+          <article className="rf-ai-home__kpi">
+            <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--sky"><MdRestaurant /></span>
+            <div>
+              <p>Cocina promedio</p>
+              <strong>{kitchenAvg != null ? `${kitchenAvg} min` : '—'}</strong>
+              <em>{delayed > 0 ? `${delayed} retraso(s) ahora` : 'Sin retrasos críticos'}</em>
+            </div>
+          </article>
+          <article className="rf-ai-home__kpi">
+            <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--navy"><MdStars /></span>
+            <div>
+              <p>Cuentas hoy</p>
+              <strong>{data?.dashboard?.today?.orders_paid ?? 0}</strong>
+              <em>{formatMoney(data?.dashboard?.today?.sales_total)}</em>
+            </div>
+          </article>
+          <article className="rf-ai-home__kpi">
+            <span className="rf-ai-home__kpi-icon rf-ai-home__kpi-icon--cyan"><MdHistory /></span>
+            <div>
+              <p>Horas hoy</p>
+              <strong>{formatMinutes(data?.dashboard?.today?.worked_minutes)}</strong>
+              <em>{`${data?.dashboard?.today?.sessions ?? 0} marcaciones`}</em>
+            </div>
+          </article>
+        </section>
 
-          <section className="card rf-ai-home__recs">
+        <section className="rf-ai-home__charts">
+          <div className="card rf-ai-home__chart">
             <h3>
               <img src={getFadeyAiAvatarSrc('analizando')} alt="" className="rf-ai-home__inline-pix" draggable={false} />
-              Insights del equipo
+              Horas por empleado
             </h3>
-            {list.length === 0 ? (
-              <p className="rf-ai-home__empty">Aún no hay recomendaciones para el período. Ajusta las fechas o espera movimiento operativo.</p>
-            ) : (
-              <ul>
-                {list.map((ins, i) => {
-                  const priority = String(ins.priority || 'info');
-                  const dot =
-                    priority === 'high' ? 'rf-ai-home__dot rf-ai-home__dot--high'
-                      : priority === 'medium' ? 'rf-ai-home__dot rf-ai-home__dot--medium'
-                        : 'rf-ai-home__dot rf-ai-home__dot--info';
-                  return (
-                    <li key={`${priority}-${i}`}>
-                      <span className={dot} aria-hidden />
-                      <p>{ins.message}</p>
+            {prodPie.length ? (
+              <div className="rf-ai-home__pie-wrap">
+                <ResponsiveContainer width="100%" height={96}>
+                  <PieChart>
+                    <Pie data={prodPie} dataKey="value" nameKey="name" innerRadius={24} outerRadius={38}>
+                      {prodPie.map((entry, i) => (
+                        <Cell key={entry.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => formatMinutes(v)} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <ul>
+                  {prodPie.map((row, i) => (
+                    <li key={row.name}>
+                      <i style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                      <span>{row.name}</span>
+                      <b>{pieTotal ? Math.round((row.value / pieTotal) * 100) : 0}%</b>
                     </li>
-                  );
-                })}
-              </ul>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="rf-ai-home__empty">Aún no hay horas registradas en este período.</p>
             )}
-          </section>
-        </div>
-
-        <aside className="rf-ai-home__side">
-          <section className="card rf-ai-home__actions">
+          </div>
+          <div className="card rf-ai-home__chart">
             <h3>
-              <img src={getFadeyAiAvatarSrc('saludo')} alt="" className="rf-ai-home__inline-pix" draggable={false} />
-              Acciones rápidas
+              <img src={getFadeyAiAvatarSrc('reportes')} alt="" className="rf-ai-home__inline-pix" draggable={false} />
+              Horas por turno
             </h3>
-            <div className="rf-ai-home__action-grid" style={{ gridTemplateColumns: '1fr' }}>
-              {HR_CHAT_PROMPTS.map((q) => (
+            {shiftBars.length ? (
+              <ResponsiveContainer width="100%" height={96}>
+                <BarChart data={shiftBars} margin={{ top: 2, right: 4, left: -6, bottom: -4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="name" tick={{ fontSize: 9 }} />
+                  <YAxis tick={{ fontSize: 9 }} width={24} />
+                  <Tooltip formatter={(v) => formatMinutes(v)} />
+                  <Bar dataKey="minutos" fill="#2563eb" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="rf-ai-home__empty">Sin movimiento por turno en este período.</p>
+            )}
+          </div>
+        </section>
+
+        <div className="rf-ai-home__exports">
+          <span>{from && to ? `Período ${formatShortDate(from)} — ${formatShortDate(to)}` : 'Período actual'}</span>
+          <button type="button" className="rf-ai-home__export" onClick={() => onExport?.()}>
+            Exportar productividad
+          </button>
+          <Link to="/admin/indicadores?tab=ia" className="rf-ai-home__export">
+            Ver IA analítica
+          </Link>
+        </div>
+      </div>
+
+      <aside className="rf-ai-home__side">
+        <section className="card rf-ai-home__recs">
+          <h3>
+            <img src={getFadeyAiAvatarSrc('asesorando')} alt="" className="rf-ai-home__inline-pix" draggable={false} />
+            Recomendaciones de la IA
+          </h3>
+          <ul>
+            {insights.slice(0, 5).map((ins, i) => (
+              <li key={`${ins.priority}-${i}`}>
+                <span className={`rf-ai-home__dot rf-ai-home__dot--${ins.priority || 'info'}`} />
+                <p>{ins.message}</p>
+              </li>
+            ))}
+            {insights.length === 0 ? (
+              <li><p>Cuando haya movimiento, aquí verás recomendaciones automáticas del equipo.</p></li>
+            ) : null}
+          </ul>
+        </section>
+
+        <section className="card rf-ai-home__actions">
+          <h3><MdBolt /> Acciones rápidas</h3>
+          <div className="rf-ai-home__action-grid">
+            {HR_QUICK_ACTIONS.map((a) => {
+              const Icon = a.icon;
+              return (
                 <button
-                  key={q}
+                  key={a.id}
                   type="button"
                   className="rf-ai-home__action-btn"
-                  onClick={() => openHrChat(q)}
+                  onClick={() => openChat(a.prompt)}
                 >
-                  {q}
+                  <Icon /> {a.label}
                 </button>
-              ))}
-            </div>
-          </section>
-        </aside>
-      </div>
-    );
-  }
-
-  return null;
+              );
+            })}
+          </div>
+        </section>
+      </aside>
+    </div>
+  );
 }
