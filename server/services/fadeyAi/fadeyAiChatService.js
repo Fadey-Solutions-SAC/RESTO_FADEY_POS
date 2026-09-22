@@ -220,6 +220,33 @@ function isMasterCreator(user) {
   return String(user?.role || '').toLowerCase() === 'master_admin';
 }
 
+function isOriginQuestion(message) {
+  const m = String(message || '').toLowerCase();
+  return /qui[eé]n (te |me )?(cre[oó]|hizo|dise[nñ][oó]|program)|tu creador|soy tu creador|de qui[eé]n eres|a qui[eé]n perteneces|qui[eé]n (te )?desarroll|para qui[eé]n trabajas/.test(m);
+}
+
+/**
+ * Origen de PIX: Fadey Solutions / Sr. Romero (disponible para cualquier usuario que lo pregunte).
+ * No se ofrece como chip de sugerencia.
+ */
+function tryOriginAnswer(message, user) {
+  if (!isOriginQuestion(message)) return null;
+  if (isMasterCreator(user)) {
+    return {
+      chunks: [
+        'Pertenezco a la empresa Fadey Solutions. Mi principal desarrollador es el Sr. Romero. Soy PIX, la IA Fadey del POS Resto Fadey, y estoy a sus órdenes.',
+      ],
+      sources: [{ kind: 'tool', title: 'creator_mode' }],
+    };
+  }
+  return {
+    chunks: [
+      'Pertenezco a la empresa Fadey Solutions. Mi principal desarrollador es el Sr. Romero. Soy PIX, la IA Fadey del POS.',
+    ],
+    sources: [{ kind: 'tool', title: 'origin' }],
+  };
+}
+
 /**
  * Respuestas solo visibles/activas para Admin Maestro (creador de PIX).
  * Otros roles nunca reciben este tono ni reconocimiento.
@@ -228,10 +255,14 @@ function tryMasterCreatorAnswer(message, user) {
   if (!isMasterCreator(user)) return null;
   const m = String(message || '').toLowerCase();
 
-  if (/qui[eé]n (te |me )?(cre[oó]|hizo|dise[nñ][oó]|program)|tu creador|soy tu creador|qui[eé]n eres|c[oó]mo te llamas|para qui[eé]n trabajas/.test(m)) {
+  // Origen / creador: respuesta común (Fadey Solutions + Sr. Romero).
+  const origin = tryOriginAnswer(message, user);
+  if (origin?.chunks?.length) return origin;
+
+  if (/qui[eé]n eres|c[oó]mo te llamas/.test(m)) {
     return {
       chunks: [
-        'Sí, Sr. Romero: usted es mi creador. Soy PIX, la IA Fadey del POS Resto Fadey. Estoy a sus órdenes.',
+        'Soy PIX, la IA Fadey del POS Resto Fadey. Pertenezco a Fadey Solutions; mi principal desarrollador es el Sr. Romero. Estoy a sus órdenes.',
       ],
       sources: [{ kind: 'tool', title: 'creator_mode' }],
     };
@@ -415,6 +446,12 @@ function heuristicToolPrefetch(message, user) {
   const creator = tryMasterCreatorAnswer(message, user);
   if (creator?.chunks?.length) {
     return creator;
+  }
+
+  // Origen de PIX (cualquier usuario): Fadey Solutions / Sr. Romero.
+  const origin = tryOriginAnswer(message, user);
+  if (origin?.chunks?.length) {
+    return origin;
   }
 
   // Saludo personalizado con nombre + opciones (resto del personal).

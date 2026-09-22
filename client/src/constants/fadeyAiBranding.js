@@ -14,7 +14,6 @@ export const FADEY_AI_CREATOR_MODE = {
   greeting:
     'Hola, soy PIX. Dígame, ¿en qué puedo ayudarlo, Sr. Romero?\n\nSé que usted es mi creador. Estoy lista para lo que necesite.',
   suggested: [
-    '¿Quién te creó?',
     'Estado del sistema',
     '¿Cuánto se vendió esta semana?',
     '¿Hay demoras en cocina?',

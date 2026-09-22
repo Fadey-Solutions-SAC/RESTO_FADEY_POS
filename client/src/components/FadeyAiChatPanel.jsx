@@ -215,13 +215,14 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
   const { user } = useAuth();
   const creatorMode = isFadeyAiCreatorMode(user);
   const suggestionPool = useMemo(() => {
+    const blocked = /qui[eé]n te cre[oó]/i;
     const fromProp = Array.isArray(suggested)
       ? suggested.map((q) => String(q || '').trim()).filter(Boolean)
       : [];
     const base = creatorMode
       ? [...(FADEY_AI_CREATOR_MODE.suggested || []), ...FADEY_AI_SUGGESTION_POOL]
       : FADEY_AI_SUGGESTION_POOL;
-    return [...new Set([...fromProp, ...base])];
+    return [...new Set([...fromProp, ...base])].filter((q) => !blocked.test(q));
   }, [suggested, creatorMode]);
   const [suggestOffset, setSuggestOffset] = useState(0);
   const chips = useMemo(
