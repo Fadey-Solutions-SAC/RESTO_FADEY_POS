@@ -320,12 +320,13 @@ const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'hr_insights',
-      description: 'Análisis de recursos humanos / productividad POS: personal en jornada, cocina, rankings, alertas laborales e insights.',
+      description: 'Datos directos de RRHH/productividad: personal, cocina, demoras, rankings. Usar focus para respuestas puntuales.',
       parameters: {
         type: 'object',
         properties: {
           from: { type: 'string', description: 'YYYY-MM-DD' },
           to: { type: 'string', description: 'YYYY-MM-DD' },
+          focus: { type: 'string', enum: ['full', 'kitchen', 'demoras', 'staff', 'jornada', 'productivity', 'productividad'] },
         },
       },
     },
@@ -366,10 +367,9 @@ function toolBusinessInsights(user) {
     }
 
     if (alerts.length) {
-      lines.push('', `Alertas activas: ${alerts.length}. Revisa Indicadores → Alertas o inventario.`);
+      lines.push('', `Alertas activas: ${alerts.length}.`);
     }
 
-    lines.push('', 'También puedes preguntarme por ventas del día, top productos, stock bajo o cómo operar el POS.');
     return { ok: true, text: lines.join('\n'), insights_count: insights.length, alerts_count: alerts.length };
   } catch (err) {
     return { ok: false, error: err.message || 'No se pudo armar el análisis.' };
@@ -384,6 +384,7 @@ function toolHrInsights(args = {}, user) {
     const { buildAnalyticsBundle } = require('../workProductivityService');
     const from = parseDateKey(args.from);
     const to = parseDateKey(args.to);
+    const focus = String(args.focus || 'full').toLowerCase();
     const hub = buildAnalyticsBundle({
       ...(from ? { from } : {}),
       ...(to ? { to } : {}),
@@ -396,25 +397,71 @@ function toolHrInsights(args = {}, user) {
     const insights = Array.isArray(hub.insights) ? hub.insights : [];
     const alerts = Array.isArray(hub.alerts) ? hub.alerts : [];
     const productivity = Array.isArray(hub.productivity) ? hub.productivity : [];
+    const cocina = areas.cocina || {};
+    const delayed = Number(cocina.delayed_now || 0);
+    const avgMin = cocina.avg_kitchen_minutes;
+    const tracked = Number(cocina.orders_tracked || 0);
     const topProd = [...productivity]
       .sort((a, b) => Number(b.productivity_per_hour || 0) - Number(a.productivity_per_hour || 0))
       .slice(0, 3);
 
+    if (focus === 'kitchen' || focus === 'demoras') {
+      const text = delayed > 0
+        ? `Sí: hay ${delayed} pedido(s) con retraso en cocina ahora. Promedio del período: ${avgMin != null ? `${avgMin} min` : '—'} (${tracked} pedido(s) seguidos).`
+        : `No: sin retrasos críticos en cocina ahora. Promedio del período: ${avgMin != null ? `${avgMin} min` : '—'} (${tracked} pedido(s) seguidos).`;
+      return {
+        ok: true,
+        text,
+        focus,
+        delayed_now: delayed,
+        avg_kitchen_minutes: avgMin,
+        orders_tracked: tracked,
+      };
+    }
+
+    if (focus === 'staff' || focus === 'jornada') {
+      const n = Number(ops.staff_online || 0);
+      return {
+        ok: true,
+        text: n > 0
+          ? `Hay ${n} persona(s) en jornada ahora.`
+          : 'Nadie con jornada abierta en este momento.',
+        focus,
+        staff_online: n,
+      };
+    }
+
+    if (focus === 'productivity' || focus === 'productividad') {
+      const lines = [
+        `Productividad del equipo: ${today.orders_paid ?? 0} cuenta(s) hoy · ${Number(today.worked_minutes || 0)} min laborables.`,
+      ];
+      if (rankings.most_productive?.full_name) {
+        lines.push(`Más productivo/h: ${rankings.most_productive.full_name}.`);
+      }
+      if (topProd.length) {
+        lines.push('Top: ' + topProd.map((p) => `${p.full_name} (${p.productivity_per_hour} pts/h)`).join('; ') + '.');
+      }
+      if (insights.length) {
+        const tip = typeof insights[0] === 'string' ? insights[0] : insights[0]?.message;
+        if (tip) lines.push(String(tip));
+      }
+      return { ok: true, text: lines.join(' '), focus };
+    }
+
     const lines = [
-      '**IA Fadey · Recursos humanos / Productividad POS**',
       `Personal en jornada ahora: ${ops.staff_online ?? 0}.`,
-      `Hoy: ${today.sessions ?? 0} marcación(es) · ${Number(today.worked_minutes || 0)} min laborables · ${today.orders_paid ?? 0} cuenta(s).`,
-      `Operación activa: cocina ${ops.kitchen_preparing ?? 0} · delivery ${ops.delivery_active ?? 0}.`,
+      `Hoy: ${today.sessions ?? 0} marcación(es) · ${Number(today.worked_minutes || 0)} min · ${today.orders_paid ?? 0} cuenta(s).`,
+      `Operación: cocina ${ops.kitchen_preparing ?? 0} · delivery ${ops.delivery_active ?? 0}.`,
     ];
 
     if (areas.cocina) {
       lines.push(
-        `Cocina (período): ${areas.cocina.orders_tracked ?? 0} pedido(s), promedio ${areas.cocina.avg_kitchen_minutes ?? 0} min, retrasos ahora ${areas.cocina.delayed_now ?? 0}.`,
+        `Cocina: ${tracked} pedido(s), promedio ${avgMin ?? 0} min, retrasos ahora ${delayed}.`,
       );
     }
     if (areas.caja) {
       lines.push(
-        `Caja: ${areas.caja.tickets_paid ?? 0} cobro(s), velocidad ~${areas.caja.avg_checkout_minutes ?? 0} min.`,
+        `Caja: ${areas.caja.tickets_paid ?? 0} cobro(s), ~${areas.caja.avg_checkout_minutes ?? 0} min.`,
       );
     }
     if (rankings.best_seller?.full_name) {
@@ -424,25 +471,21 @@ function toolHrInsights(args = {}, user) {
       lines.push(`Más productivo/h: ${rankings.most_productive.full_name}.`);
     }
     if (topProd.length) {
-      lines.push('', 'Top productividad:');
-      topProd.forEach((p) => {
-        lines.push(`- ${p.full_name} (${p.role}) · ${p.productivity_per_hour} pts/h · ${p.orders_paid} cuenta(s)`);
-      });
+      lines.push('Top productividad: ' + topProd.map((p) => `${p.full_name} (${p.productivity_per_hour} pts/h)`).join('; ') + '.');
     }
     if (insights.length) {
-      lines.push('', '**Insights del equipo:**');
-      insights.slice(0, 6).forEach((ins) => {
+      insights.slice(0, 4).forEach((ins) => {
         const msg = typeof ins === 'string' ? ins : (ins.message || '');
         if (msg) lines.push(`- ${msg}`);
       });
     }
     if (alerts.length) {
-      lines.push('', `Alertas laborales: ${alerts.length}. Revisa Productividad POS → Alertas.`);
+      lines.push(`Alertas laborales activas: ${alerts.length}.`);
     }
-    lines.push('', 'Puedes preguntarme por quién está en turno, demoras de cocina, rankings o cómo marcar asistencia QR.');
     return {
       ok: true,
       text: lines.join('\n'),
+      focus: 'full',
       insights_count: insights.length,
       alerts_count: alerts.length,
     };

@@ -351,7 +351,7 @@ export default function NotificationCenter({ className = '' }) {
             />
             <div
               ref={panelRef}
-              className={`fixed z-[100] top-[var(--ui-shell-header-h,3.5rem)] left-2 right-2 sm:left-auto sm:right-6 w-auto sm:w-[min(100vw-1.5rem,420px)] h-[min(78dvh,620px)] sm:h-[min(72vh,580px)] flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${
+              className={`fixed z-[100] top-[calc(var(--ui-shell-header-h,3.5rem)+0.35rem)] bottom-3 left-2 right-2 sm:left-auto sm:right-6 w-auto sm:w-[min(100vw-1.5rem,420px)] h-auto max-h-none flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${
                 tab === 'ia'
                   ? 'rf-fadey-ai-shell'
                   : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)]'
