@@ -244,7 +244,7 @@ function splitOrderItemsForPartialCheckoutTx(tx, sourceOrderId, selectedItemIds)
  * (divide cantidad parcial y/o pedidos parciales en uno nuevo).
  */
 function prepareCheckoutOrderIdsFromItemLinesTx(tx, orderItemIdsRaw, quantitiesByItemId = {}) {
-  const uniq = [...new Set((orderItemIdsRaw || []).map((x) => String(x || '').trim()).filter(Boolean))];
+  let uniq = [...new Set((orderItemIdsRaw || []).map((x) => String(x || '').trim()).filter(Boolean))];
   if (!uniq.length) throw new Error('Debes enviar al menos una línea de producto para cobrar');
 
   const ph = uniq.map(() => '?').join(',');
@@ -256,8 +256,15 @@ function prepareCheckoutOrderIdsFromItemLinesTx(tx, orderItemIdsRaw, quantitiesB
      WHERE oi.id IN (${ph})`,
     uniq
   );
+  // Sync offline: tras eliminar productos, pueden quedar IDs viejos en la cola.
+  // Cobramos solo las líneas que aún existen; no bloqueamos toda la sincronización.
+  if (!rows.length) {
+    const err = new Error('Una o más líneas de pedido no existen o no coinciden');
+    err.code = 'STALE_ORDER_ITEMS';
+    throw err;
+  }
   if (rows.length !== uniq.length) {
-    throw new Error('Una o más líneas de pedido no existen o no coinciden');
+    uniq = rows.map((r) => String(r.item_id));
   }
 
   const byOrder = new Map();
@@ -738,7 +745,26 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       let discountsByOrder = { ...discountsByOrderInput };
 
       if (orderItemIds.length) {
-        effectiveOrderIds = prepareCheckoutOrderIdsFromItemLinesTx(tx, orderItemIds, orderItemQuantities);
+        try {
+          effectiveOrderIds = prepareCheckoutOrderIdsFromItemLinesTx(tx, orderItemIds, orderItemQuantities);
+        } catch (prepErr) {
+          // Cola offline: líneas eliminadas / IDs regenerados → cobrar pedidos enteros si vinieron.
+          if (prepErr?.code === 'STALE_ORDER_ITEMS' && orderIdsFromBody.length) {
+            effectiveOrderIds = orderIdsFromBody;
+          } else if (prepErr?.code === 'STALE_ORDER_ITEMS') {
+            // Nada que cobrar con esos IDs: no bloquear sync (efecto ya aplicado en cliente o líneas borradas).
+            return {
+              chargedOrderIds: [],
+              discountsAppliedByOrder: {},
+              skipped_stale_items: true,
+            };
+          } else {
+            throw prepErr;
+          }
+        }
+        if ((!effectiveOrderIds || !effectiveOrderIds.length) && orderIdsFromBody.length) {
+          effectiveOrderIds = orderIdsFromBody;
+        }
         discountsByOrder = buildExtraDiscountsByOrderTx(
           tx,
           effectiveOrderIds,
@@ -883,7 +909,15 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       return { chargedOrderIds, discountsAppliedByOrder };
     });
 
-    const { chargedOrderIds, discountsAppliedByOrder, replayed } = txResult;
+    const { chargedOrderIds, discountsAppliedByOrder, replayed, skipped_stale_items: skippedStale } = txResult;
+    if (skippedStale && !(chargedOrderIds || []).length) {
+      return res.json({
+        success: true,
+        orders: [],
+        discounts_applied_by_order: {},
+        skipped_stale_items: true,
+      });
+    }
     const courtesyIds = new Set(
       chargedOrderIds.filter((id) => {
         const row = queryOne('SELECT payment_method FROM orders WHERE id = ?', [id]);
@@ -980,9 +1014,13 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       discounts_applied_by_order: discountsAppliedByOrder,
       charged_to_customer_account: chargeToCustomerAccount,
       customer_id: chargeToCustomerAccount ? customerIdForAccount : null,
+      skipped_stale_items: Boolean(txResult?.skipped_stale_items),
     });
   } catch (err) {
-    res.status(400).json({ error: err.message || 'No se pudo cobrar la mesa' });
+    res.status(400).json({
+      error: err.message || 'No se pudo cobrar la mesa',
+      ...(err.code ? { code: err.code } : {}),
+    });
   }
 });
 

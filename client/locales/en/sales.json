@@ -3,7 +3,7 @@
   "tabs": {
     "active": "Active sales",
     "voided": "Voided sales",
-    "ai": "Fadey AI"
+    "ai": "AI"
   },
   "totals": {
     "totalSales": "Total sales",

@@ -527,8 +527,11 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     const itemSubtotal = unitPrice * qty;
     subtotal += itemSubtotal;
     const composedNotes = [itemNote, modifierName && modifierOption ? `${modifierName}: ${modifierOption}` : ''].filter(Boolean).join(' | ');
+    const clientLineId = String(item.id || item.order_item_id || '').trim();
     return {
-      id: uuidv4(),
+      id: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientLineId)
+        ? clientLineId
+        : uuidv4(),
       order_id: orderId,
       product_id: product.id,
       product_name: product.name,
@@ -767,8 +770,11 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
     const itemSubtotal = unitPrice * qty;
     subtotal += itemSubtotal;
     const composedNotes = [itemNote, modifierName && modifierOption ? `${modifierName}: ${modifierOption}` : ''].filter(Boolean).join(' | ');
+    const clientLineId = String(item.id || item.order_item_id || '').trim();
     return {
-      id: uuidv4(),
+      id: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientLineId)
+        ? clientLineId
+        : uuidv4(),
       order_id: orderId,
       product_id: product.id,
       product_name: product.name,

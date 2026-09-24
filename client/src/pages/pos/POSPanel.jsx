@@ -2199,6 +2199,8 @@ export default function POSPanel() {
 
       if (useLineSplit) {
         checkoutBody.order_item_ids = selectedOrderItemIds;
+        // Fallback para sync offline: si alguna línea se eliminó, el servidor cobra estos pedidos.
+        checkoutBody.order_ids = payableOrders.map((o) => o.id).filter(Boolean);
         const qtysPayload = {};
         for (const id of selectedOrderItemIds) {
           const q = selectedOrderItemQtys[id];
@@ -3008,7 +3010,9 @@ export default function POSPanel() {
             const qty = Number(x.quantity || 1);
             const unit = Number(x.price ?? x.unit_price ?? 0);
             const name = String(x.name || x.product_name || '').trim();
+            const lineId = String(x.id || x.order_item_id || '').trim();
             return {
+              ...(lineId ? { id: lineId, order_item_id: lineId } : {}),
               product_id: x.product_id,
               quantity: qty,
               modifier_id: x.modifier_id || '',

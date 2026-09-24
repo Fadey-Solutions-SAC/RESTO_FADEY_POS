@@ -469,6 +469,25 @@ export function prepareMutation(method, endpoint, bodyText) {
   if (m === 'POST' && p === '/orders') {
     if (!body.id) body.id = uuid();
     body.offline_force_new = true;
+    body.items = (Array.isArray(body.items) ? body.items : []).map((it) => ({
+      ...it,
+      id: String(it?.id || it?.order_item_id || '').trim() || uuid(),
+    }));
+  }
+  if (m === 'PUT' && /^\/orders\/[^/]+\/lines$/.test(p)) {
+    body.items = (Array.isArray(body.items) ? body.items : []).map((it) => {
+      const lineId = String(it?.id || it?.order_item_id || '').trim();
+      return lineId ? { ...it, id: lineId, order_item_id: lineId } : { ...it };
+    });
+  }
+  if (m === 'POST' && p === '/pos/checkout-table') {
+    // Asegurar order_ids de respaldo cuando solo vienen líneas (sync tras borrados offline).
+    const itemIds = (Array.isArray(body.order_item_ids) ? body.order_item_ids : []).map(String).filter(Boolean);
+    let orderIds = (Array.isArray(body.order_ids) ? body.order_ids : []).map(String).filter(Boolean);
+    if (itemIds.length && !orderIds.length) {
+      orderIds = resolveOrderIdsForItemIds(itemIds);
+      if (orderIds.length) body.order_ids = orderIds;
+    }
   }
   return {
     id: uuid(),
@@ -479,10 +498,104 @@ export function prepareMutation(method, endpoint, bodyText) {
   };
 }
 
+function resolveOrderIdsForItemIds(itemIds) {
+  const want = new Set((itemIds || []).map(String));
+  if (!want.size) return [];
+  const found = new Set();
+  const scan = (orders) => {
+    for (const o of orders || []) {
+      if ((o.items || []).some((it) => want.has(String(it.id)))) {
+        found.add(String(o.id));
+      }
+    }
+  };
+  for (const t of findTablesInCache()) scan(t.orders);
+  scan(readGetCache('/orders?limit=600') || readGetCache('/orders') || []);
+  return [...found];
+}
+
+/** Reescribe cobros en cola tras editar/borrar líneas offline. */
+export function compactMutationQueue(queue) {
+  const list = Array.isArray(queue) ? queue : [];
+  const linesTouched = new Set();
+  const createdOrderIds = [];
+  const out = [];
+  for (const job of list) {
+    const p = pathOf(job.endpoint);
+    const body = parseBody(job.body);
+    if (job.method === 'POST' && p === '/orders') {
+      const oid = String(body.id || '').trim();
+      if (oid) createdOrderIds.push(oid);
+      out.push(job);
+      continue;
+    }
+    if (job.method === 'PUT' && /^\/orders\/[^/]+\/lines$/.test(p)) {
+      linesTouched.add(String(p.split('/')[2] || ''));
+      out.push(job);
+      continue;
+    }
+    if (job.method === 'PUT' && /^\/orders\/[^/]+\/status$/.test(p)) {
+      const oid = String(p.split('/')[2] || '');
+      if (oid && String(body.status || '') === 'cancelled') linesTouched.add(oid);
+      out.push(job);
+      continue;
+    }
+    if (job.method === 'POST' && p === '/pos/checkout-table') {
+      const itemIds = (Array.isArray(body.order_item_ids) ? body.order_item_ids : []).map(String).filter(Boolean);
+      let orderIds = (Array.isArray(body.order_ids) ? body.order_ids : []).map(String).filter(Boolean);
+      if (itemIds.length) {
+        const resolved = resolveOrderIdsForItemIds(itemIds);
+        orderIds = [...new Set([...orderIds, ...resolved])].filter(Boolean);
+        // Si no hay pedidos en el body/caché, usar el último pedido creado o el único editado en esta cola.
+        if (!orderIds.length && linesTouched.size === 1) {
+          orderIds = [...linesTouched];
+        }
+        if (!orderIds.length && createdOrderIds.length === 1) {
+          orderIds = [createdOrderIds[0]];
+        }
+        if (!orderIds.length && createdOrderIds.length > 1) {
+          orderIds = [createdOrderIds[createdOrderIds.length - 1]];
+        }
+        if (orderIds.length) {
+          const nextBody = { ...body, order_ids: orderIds };
+          delete nextBody.order_item_ids;
+          delete nextBody.order_item_quantities;
+          delete nextBody.checkout_discount_anchor_order_item_id;
+          out.push({ ...job, body: JSON.stringify(nextBody) });
+          continue;
+        }
+        out.push({ ...job, _staleCheckout: true });
+        continue;
+      }
+    }
+    out.push(job);
+  }
+  return out;
+}
+
+/** Quita cobros offline irrecuperables (líneas que ya no existen). */
+export function discardStaleCheckoutJobs() {
+  const q = getMutationQueue().filter((job) => {
+    if (job?._staleCheckout) return false;
+    const p = pathOf(job.endpoint);
+    if (job.method !== 'POST' || p !== '/pos/checkout-table') return true;
+    const body = parseBody(job.body);
+    const itemIds = Array.isArray(body.order_item_ids) ? body.order_item_ids : [];
+    const orderIds = Array.isArray(body.order_ids) ? body.order_ids : [];
+    // Cobro solo por líneas, sin pedidos: suele ser el bloqueo tras borrar producto offline.
+    if (itemIds.length && !orderIds.length) return false;
+    return true;
+  });
+  setMutationQueue(compactMutationQueue(q));
+  lastError = '';
+  emitOfflinePos();
+  return getOfflinePosStatus();
+}
+
 export function enqueueMutation(job) {
   const q = getMutationQueue();
   q.push(job);
-  setMutationQueue(q);
+  setMutationQueue(compactMutationQueue(q));
   return job;
 }
 
@@ -535,6 +648,7 @@ export function optimisticMutationResult(job) {
 
 export async function flushOfflineQueue(sendFn) {
   if (syncing) return { flushed: 0 };
+  setMutationQueue(compactMutationQueue(getMutationQueue()).filter((j) => !j?._staleCheckout));
   const queue = getMutationQueue();
   if (!queue.length) {
     lastError = '';
@@ -546,9 +660,12 @@ export async function flushOfflineQueue(sendFn) {
   lastError = '';
   emitOfflinePos();
   let flushed = 0;
+  let skipped = 0;
   try {
     while (getMutationQueue().length) {
+      setMutationQueue(compactMutationQueue(getMutationQueue()).filter((j) => !j?._staleCheckout));
       const [job, ...rest] = getMutationQueue();
+      if (!job) break;
       try {
         await sendFn(job);
         setMutationQueue(rest);
@@ -559,21 +676,62 @@ export async function flushOfflineQueue(sendFn) {
           lastError = err.message || 'Sesión inválida al sincronizar';
           break;
         }
-        lastError = err.message || 'No se pudo sincronizar';
+        const msg = String(err?.message || err?.apiError || '');
+        const code = String(err?.code || '');
+        const p = pathOf(job.endpoint);
+        const isStaleLines = (
+          job.method === 'POST'
+          && p === '/pos/checkout-table'
+          && (
+            code === 'STALE_ORDER_ITEMS'
+            || /l[ií]neas de pedido no existen|no coinciden|STALE_ORDER_ITEMS/i.test(msg)
+          )
+        );
+        if (isStaleLines) {
+          const body = parseBody(job.body);
+          let orderIds = (Array.isArray(body.order_ids) ? body.order_ids : []).map(String).filter(Boolean);
+          if (!orderIds.length) {
+            orderIds = resolveOrderIdsForItemIds(body.order_item_ids || []);
+          }
+          if (orderIds.length) {
+            const retryBody = { ...body, order_ids: orderIds };
+            delete retryBody.order_item_ids;
+            delete retryBody.order_item_quantities;
+            delete retryBody.checkout_discount_anchor_order_item_id;
+            try {
+              await sendFn({ ...job, body: JSON.stringify(retryBody) });
+              setMutationQueue(rest);
+              flushed += 1;
+              continue;
+            } catch (_) {
+              /* omitir y seguir con el resto de la cola */
+            }
+          }
+          // No bloquear los demás cambios pendientes.
+          setMutationQueue(rest);
+          skipped += 1;
+          continue;
+        }
+        lastError = msg || 'No se pudo sincronizar';
         break;
       }
     }
   } finally {
     syncing = false;
+    if (skipped && !lastError) {
+      lastError = skipped === 1
+        ? 'Se omitió 1 cobro con líneas ya eliminadas; el resto se sincronizó.'
+        : `Se omitieron ${skipped} cobros con líneas ya eliminadas; el resto se sincronizó.`;
+    }
     emitOfflinePos();
     writeJson(META_KEY, { lastFlush: Date.now(), lastError });
-    if (flushed > 0 && typeof window !== 'undefined') {
+    if ((flushed > 0 || skipped > 0) && typeof window !== 'undefined') {
       try {
         window.dispatchEvent(new Event('rf-offline-synced'));
       } catch { /* ignore */ }
     }
   }
-  return { flushed, pending: getMutationQueue().length, lastError };
+  return { flushed, skipped, pending: getMutationQueue().length, lastError };
 }
 
 export function startOfflinePosListeners(flushFn) {

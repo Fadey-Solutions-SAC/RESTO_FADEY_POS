@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatDateTime, formatDate, parseApiDate, isDateKeyInInclusiveRange, toLocalDateKey } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
-import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel, MdSmartToy } from 'react-icons/md';
+import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
 import { buildVentasDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch, parseProductRemovalNotesFromOrder, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
@@ -14,6 +14,7 @@ import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButt
 import { InlineDateField } from '../../components/DateFilterControls';
 import VentasCuentasTable, { getOrderDocument, getAccountDocument, docLabel, getAccountAuditStatusBadge } from '../../components/admin/VentasCuentasTable';
 import VentasAiPanel from '../../components/ventas/VentasAiPanel';
+import { getFadeyAiAvatarSrc } from '../../constants/fadeyAiBranding';
 import {
   mapAccountToDetalleVentaRow,
   buildDetalleVentasExcelHtml,
@@ -644,7 +645,14 @@ export default function Ventas() {
                   : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
               }`}
             >
-              {tab.icon ? <MdSmartToy className="text-base" /> : null}
+              {tab.icon ? (
+                <img
+                  src={getFadeyAiAvatarSrc('saludo')}
+                  alt=""
+                  className="w-5 h-5 rounded-full object-cover object-top shrink-0"
+                  draggable={false}
+                />
+              ) : null}
               {tab.label}
             </button>
           ))}
@@ -652,7 +660,15 @@ export default function Ventas() {
       </div>
       ) : (
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
-        <p className="text-sm font-semibold text-[var(--ui-body-text)]">IA Fadey · Ventas</p>
+        <p className="text-sm font-semibold text-[var(--ui-body-text)] inline-flex items-center gap-2">
+          <img
+            src={getFadeyAiAvatarSrc('saludo')}
+            alt=""
+            className="w-6 h-6 rounded-full object-cover object-top"
+            draggable={false}
+          />
+          IA · Ventas
+        </p>
         <div className="flex items-center gap-1.5 shrink-0">
           {[
             { id: 'activas', label: t('tabs.active') },
@@ -669,7 +685,14 @@ export default function Ventas() {
                   : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
               }`}
             >
-              {tab.icon ? <MdSmartToy className="text-base" /> : null}
+              {tab.icon ? (
+                <img
+                  src={getFadeyAiAvatarSrc('saludo')}
+                  alt=""
+                  className="w-5 h-5 rounded-full object-cover object-top shrink-0"
+                  draggable={false}
+                />
+              ) : null}
               {tab.label}
             </button>
           ))}

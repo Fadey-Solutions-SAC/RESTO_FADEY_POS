@@ -150,8 +150,15 @@ function attachExistingLineIdentity(existingRows, builtLines) {
   const pool = (existingRows || []).map((row) => ({ row, taken: false }));
   const addedLines = [];
   for (const line of builtLines || []) {
-    const k = orderLineStaffKeyFromBuiltRow(line);
-    const hit = pool.find((p) => !p.taken && orderLineStaffKeyFromDbRow(p.row) === k);
+    const explicitId = String(line.id || '').trim();
+    let hit = null;
+    if (explicitId) {
+      hit = pool.find((p) => !p.taken && String(p.row.id) === explicitId) || null;
+    }
+    if (!hit) {
+      const k = orderLineStaffKeyFromBuiltRow(line);
+      hit = pool.find((p) => !p.taken && orderLineStaffKeyFromDbRow(p.row) === k) || null;
+    }
     if (!hit) {
       addedLines.push(line);
       continue;
