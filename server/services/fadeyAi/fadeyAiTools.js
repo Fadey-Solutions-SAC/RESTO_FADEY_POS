@@ -9,24 +9,29 @@ const {
 } = require('../../utils/salesAccountGrouping');
 const { getBusinessTodayDateKey, getBusinessMonthKey, shiftBusinessDateKey, startOfBusinessWeekMonday } = require('../../utils/appDateTime');
 const { searchMemory } = require('./fadeyAiKnowledgeService');
+const {
+  canUseTool,
+  deniedToolMessage,
+  filterGuideHitsForUser,
+  hasAnyModule,
+  hasModule,
+  isFullAccess,
+} = require('./fadeyAiAccess');
 
 function roleLc(user) {
   return String(user?.role || '').toLowerCase();
 }
 
 function canSeeFinancials(user) {
-  const r = roleLc(user);
-  return r === 'admin' || r === 'master_admin' || r === 'cajero';
+  return canUseTool(user, 'sales_summary');
 }
 
 function canSeeHr(user) {
-  const r = roleLc(user);
-  return r === 'admin' || r === 'master_admin';
+  return hasModule(user, 'tiempo_trabajado') || isFullAccess(user);
 }
 
 function canSeeKitchenOps(user) {
-  const r = roleLc(user);
-  return ['admin', 'master_admin', 'cocina', 'bar', 'produccion', 'cajero', 'mozo'].includes(r);
+  return canUseTool(user, 'kitchen_open_orders');
 }
 
 function parseDateKey(input) {
@@ -413,14 +418,15 @@ function toolActiveStaff(user) {
   return { ok: true, source: 'session', staff: rows };
 }
 
-function toolSearchGuides(args = {}) {
+function toolSearchGuides(args = {}, user = null) {
   const hits = searchMemory(args.query || args.q || '', {
     kinds: ['guide'],
-    limit: 3,
+    limit: 8,
   });
+  const allowed = filterGuideHitsForUser(user, hits).slice(0, 3);
   return {
     ok: true,
-    hits: hits.map((h) => ({
+    hits: allowed.map((h) => ({
       id: h.id,
       kind: h.kind,
       title: h.title,
@@ -584,14 +590,19 @@ function toolBusinessInsights(user) {
 }
 
 function toolHrInsights(args = {}, user) {
-  if (!canSeeHr(user)) {
-    return { ok: false, error: 'Solo administración consulta el análisis de personal y productividad.' };
+  const focus = String(args.focus || 'full').toLowerCase();
+  const kitchenFocus = focus === 'kitchen' || focus === 'demoras';
+  if (kitchenFocus) {
+    if (!hasAnyModule(user, ['tiempo_trabajado', 'cocina', 'bar', 'produccion']) && !isFullAccess(user)) {
+      return { ok: false, error: deniedToolMessage('hr_insights'), denied: true };
+    }
+  } else if (!canSeeHr(user)) {
+    return { ok: false, error: 'Solo quien tiene Recursos humanos puede consultar personal y productividad.', denied: true };
   }
   try {
     const { buildAnalyticsBundle } = require('../workProductivityService');
     const from = parseDateKey(args.from);
     const to = parseDateKey(args.to);
-    const focus = String(args.focus || 'full').toLowerCase();
     const hub = buildAnalyticsBundle({
       ...(from ? { from } : {}),
       ...(to ? { to } : {}),
@@ -612,7 +623,7 @@ function toolHrInsights(args = {}, user) {
       .sort((a, b) => Number(b.productivity_per_hour || 0) - Number(a.productivity_per_hour || 0))
       .slice(0, 3);
 
-    if (focus === 'kitchen' || focus === 'demoras') {
+    if (kitchenFocus) {
       const text = delayed > 0
         ? `Sí: hay ${delayed} pedido(s) con retraso en cocina ahora. Promedio del período: ${avgMin != null ? `${avgMin} min` : '—'} (${tracked} pedido(s) seguidos).`
         : `No: sin retrasos críticos en cocina ahora. Promedio del período: ${avgMin != null ? `${avgMin} min` : '—'} (${tracked} pedido(s) seguidos).`;
@@ -702,23 +713,15 @@ function toolHrInsights(args = {}, user) {
 }
 
 function toolsForUser(user) {
-  const r = roleLc(user);
-  return TOOL_DEFS.filter((t) => {
-    const name = t.function.name;
-    if (name === 'sales_summary') return canSeeFinancials(user);
-    if (name === 'sales_desk') return canSeeFinancials(user);
-    if (name === 'top_products') return canSeeFinancials(user) || r === 'mozo' || r === 'cocina' || r === 'bar' || r === 'produccion';
-    if (name === 'low_stock') return canSeeFinancials(user);
-    if (name === 'kitchen_open_orders') return canSeeKitchenOps(user);
-    if (name === 'active_staff') return canSeeHr(user);
-    if (name === 'business_insights') return canSeeFinancials(user);
-    if (name === 'hr_insights') return canSeeHr(user);
-    return true;
-  });
+  return TOOL_DEFS.filter((t) => canUseTool(user, t.function.name));
 }
 
 function runTool(name, args, user) {
-  switch (String(name || '')) {
+  const toolName = String(name || '');
+  if (!canUseTool(user, toolName)) {
+    return { ok: false, error: deniedToolMessage(toolName), denied: true };
+  }
+  switch (toolName) {
     case 'sales_summary':
       return toolSalesSummary(args || {}, user);
     case 'sales_desk':
@@ -732,7 +735,7 @@ function runTool(name, args, user) {
     case 'active_staff':
       return toolActiveStaff(user);
     case 'search_guides':
-      return toolSearchGuides(args || {});
+      return toolSearchGuides(args || {}, user);
     case 'business_insights':
       return toolBusinessInsights(user);
     case 'hr_insights':

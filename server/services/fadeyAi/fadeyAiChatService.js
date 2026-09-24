@@ -16,6 +16,14 @@ const {
   resolveLearnedIntent,
 } = require('./fadeyAiKnowledgeService');
 const { runTool, resolveSalesPeriod } = require('./fadeyAiTools');
+const {
+  suggestionOptionsForUser,
+  accessIntroForUser,
+  whatCanIDoAnswer,
+  filterGuideHitsForUser,
+  deniedGuideMessage,
+  guideAllowedForUser,
+} = require('./fadeyAiAccess');
 
 const RATE = new Map();
 const MAX_PER_MIN = 20;
@@ -114,11 +122,21 @@ function getHistory(userId, limit = 40) {
   }));
 }
 
-function guidesOnlyReply(message) {
-  const hits = searchMemory(message, { kinds: ['guide', 'config', 'catalog', 'snapshot'], limit: 2 });
+function guidesOnlyReply(message, user) {
+  const hits = filterGuideHitsForUser(
+    user,
+    searchMemory(message, { kinds: ['guide', 'config', 'catalog', 'snapshot'], limit: 6 }),
+  ).slice(0, 2);
   if (!hits.length) {
+    const raw = searchMemory(message, { kinds: ['guide'], limit: 1 });
+    if (raw[0] && !guideAllowedForUser(user, raw[0].id)) {
+      return {
+        reply: deniedGuideMessage(user, raw[0].id),
+        sources: [{ kind: 'tool', title: 'permission_denied' }],
+      };
+    }
     return {
-      reply: 'No encontré una guía exacta. Prueba preguntar con más detalle.',
+      reply: 'No encontré una guía exacta dentro de tus módulos. Prueba preguntar con más detalle o escribe «¿qué puedo hacer?».',
       sources: [],
     };
   }
@@ -138,48 +156,9 @@ function displayUserName(user) {
   return 'usuario';
 }
 
+/** Opciones rápidas según módulos ya asignados en Usuarios. */
 function staffHelpOptions(user) {
-  const role = String(user?.role || '').toLowerCase();
-  const common = [
-    '¿Cuánto vendí hoy?',
-    '¿Hay demoras en cocina?',
-    '¿Quién está en jornada ahora?',
-    '¿Cómo marcar asistencia con QR?',
-  ];
-  if (role === 'cajero') {
-    return [
-      '¿Cómo cerrar caja?',
-      '¿Cuánto vendí hoy?',
-      '¿Cómo cobrar una mesa?',
-      '¿Hay stock bajo?',
-    ];
-  }
-  if (role === 'mozo') {
-    return [
-      '¿Cómo mover un pedido de mesa?',
-      '¿Cómo liberar una mesa?',
-      '¿Hay demoras en cocina?',
-      '¿Cómo marcar asistencia con QR?',
-    ];
-  }
-  if (role === 'cocina' || role === 'bar' || role === 'produccion') {
-    return [
-      '¿Hay demoras en cocina?',
-      '¿Cómo marcar asistencia con QR?',
-      '¿Quién está en jornada ahora?',
-      '¿Cómo funciona mi área de producción?',
-    ];
-  }
-  if (role === 'admin' || role === 'master_admin') {
-    return [
-      '¿Cuánto se vendió esta semana?',
-      '¿Cómo va la productividad del equipo?',
-      '¿Hay demoras en cocina?',
-      '¿Quién está en jornada ahora?',
-      '¿Hay stock bajo?',
-    ];
-  }
-  return common;
+  return suggestionOptionsForUser(user);
 }
 
 function isGreetingMessage(message) {
@@ -194,7 +173,6 @@ function isGreetingMessage(message) {
 function tryStaffGreetingAnswer(message, user) {
   if (!isGreetingMessage(message)) return null;
   if (isMasterCreator(user)) {
-    // El saludo del creador ya lo atiende tryMasterCreatorAnswer.
     return null;
   }
 
@@ -202,7 +180,8 @@ function tryStaffGreetingAnswer(message, user) {
   const options = staffHelpOptions(user);
   const lines = [
     `¡Hola, ${name}! Soy PIX, tu asistente IA Fadey.`,
-    'Puedo ayudarte con ventas, personal en jornada, demoras de cocina, stock, asistencia QR y guías de cómo operar el POS.',
+    accessIntroForUser(user),
+    'Solo te guío en los módulos y acciones que tienes permitidos en el POS.',
     '',
     'Opciones rápidas:',
     ...options.map((o, i) => `${i + 1}. ${o}`),
@@ -320,15 +299,35 @@ function tryDirectDataAnswer(message, user) {
   const m = String(message || '').toLowerCase();
   if (isExplicitHowToMessage(m)) return null;
 
+  if (/qu[eé] puedo (hacer|ver|usar)|mis (m[oó]dulos|permisos)|a qu[eé] tengo acceso/.test(m)) {
+    return {
+      chunks: [whatCanIDoAnswer(user)],
+      sources: [{ kind: 'tool', title: 'permissions_scope' }],
+      options: staffHelpOptions(user),
+    };
+  }
+
+  const denyOrOk = (r, title, focus = null) => {
+    if (r?.denied && r?.error) {
+      return { chunks: [r.error], sources: [{ kind: 'tool', title: 'permission_denied' }] };
+    }
+    if (r?.ok && r.text) {
+      return { chunks: [r.text], sources: [{ kind: 'tool', title, focus }] };
+    }
+    return null;
+  };
+
   if (/demora(s)?|retraso(s)? (en )?cocina|hay demoras|cocina.*(lenta|demor)/.test(m)) {
     const r = runTool('hr_insights', { focus: 'kitchen' }, user);
-    if (r.ok && r.text) {
-      return { chunks: [r.text], sources: [{ kind: 'tool', title: 'hr_insights', focus: 'kitchen' }] };
-    }
+    const out = denyOrOk(r, 'hr_insights', 'kitchen');
+    if (out) return out;
   }
 
   if (/qui[eé]n est[aá] (en )?(jornada|turno)|personal (en jornada|activo|online)/.test(m)) {
     const staff = runTool('active_staff', {}, user);
+    if (staff?.denied && staff?.error) {
+      return { chunks: [staff.error], sources: [{ kind: 'tool', title: 'permission_denied' }] };
+    }
     if (staff.ok && Array.isArray(staff.staff)) {
       const names = staff.staff.slice(0, 12).map((s) => s.name || s.full_name).filter(Boolean);
       const text = names.length
@@ -337,37 +336,32 @@ function tryDirectDataAnswer(message, user) {
       return { chunks: [text], sources: [{ kind: 'tool', title: 'active_staff' }] };
     }
     const r = runTool('hr_insights', { focus: 'staff' }, user);
-    if (r.ok && r.text) {
-      return { chunks: [r.text], sources: [{ kind: 'tool', title: 'hr_insights', focus: 'staff' }] };
-    }
+    const out = denyOrOk(r, 'hr_insights', 'staff');
+    if (out) return out;
   }
 
   if (/c[oó]mo va (la )?productividad|productividad del equipo|ranking (de )?(mozo|cajero|cocina|equipo)/.test(m)) {
     const r = runTool('hr_insights', { focus: 'productivity' }, user);
-    if (r.ok && r.text) {
-      return { chunks: [r.text], sources: [{ kind: 'tool', title: 'hr_insights', focus: 'productivity' }] };
-    }
+    const out = denyOrOk(r, 'hr_insights', 'productivity');
+    if (out) return out;
   }
 
   if (/pendiente(s)?( de )?cobro|por cobrar|sin cobrar|cu[aá]nto.*pendiente|hay pendiente/.test(m)) {
     const r = runTool('sales_desk', { focus: 'pending', message }, user);
-    if (r.ok && r.text) {
-      return { chunks: [r.text], sources: [{ kind: 'tool', title: 'sales_desk', focus: 'pending' }] };
-    }
+    const out = denyOrOk(r, 'sales_desk', 'pending');
+    if (out) return out;
   }
 
   if (/forma(s)? de pago|reparti.*(pago|yape|efectivo)|yape.*efectivo|efectivo.*yape|pagos \(yape|c[oó]mo se (pagan|cobran|repartieron)/.test(m)) {
     const r = runTool('sales_desk', { focus: 'payments', message }, user);
-    if (r.ok && r.text) {
-      return { chunks: [r.text], sources: [{ kind: 'tool', title: 'sales_desk', focus: 'payments' }] };
-    }
+    const out = denyOrOk(r, 'sales_desk', 'payments');
+    if (out) return out;
   }
 
   if (/mesero.*(m[aá]s|vend)|qui[eé]n vend[ií][oó] m[aá]s|top mesero|ranking (de )?mesero|ventas por mesero/.test(m)) {
     const r = runTool('sales_desk', { focus: 'waiters', message }, user);
-    if (r.ok && r.text) {
-      return { chunks: [r.text], sources: [{ kind: 'tool', title: 'sales_desk', focus: 'waiters' }] };
-    }
+    const out = denyOrOk(r, 'sales_desk', 'waiters');
+    if (out) return out;
   }
 
   if (/venta|vend[ií]|facturaci[oó]n|recaud|cu[aá]nto\s+(vend|factur|hago|hice)/.test(m)) {
@@ -378,6 +372,9 @@ function tryDirectDataAnswer(message, user) {
       to: period.to,
       label: period.label,
     }, user);
+    if (r?.denied && r?.error) {
+      return { chunks: [r.error], sources: [{ kind: 'tool', title: 'permission_denied' }] };
+    }
     if (r.ok) {
       return {
         chunks: [formatSalesReply(r)],
@@ -394,6 +391,9 @@ function tryDirectDataAnswer(message, user) {
 
   if (/stock|agotad|inventario bajo/.test(m)) {
     const r = runTool('low_stock', {}, user);
+    if (r?.denied && r?.error) {
+      return { chunks: [r.error], sources: [{ kind: 'tool', title: 'permission_denied' }] };
+    }
     if (r.ok) {
       return {
         chunks: [r.count ? `Stock bajo (${r.count}): ${r.items.slice(0, 5).map((i) => i.name).join(', ')}.` : 'No hay productos en umbral de stock bajo.'],
@@ -423,7 +423,12 @@ function applyLearnedIntent(message, user, chunks, sources) {
   if (intent.startsWith('guide-') || intent.startsWith('guide:') || intent.includes('guide')) {
     if (!isExplicitHowToMessage(message)) return false;
     const guideId = intent.replace(/^guide:/, '');
-    const hits = searchMemory(message, { kinds: ['guide', 'config'], limit: 3 });
+    if (guideId && !guideAllowedForUser(user, guideId)) {
+      chunks.push(deniedGuideMessage(user, guideId));
+      sources.push({ kind: 'tool', title: 'permission_denied', learned: true });
+      return true;
+    }
+    const hits = filterGuideHitsForUser(user, searchMemory(message, { kinds: ['guide', 'config'], limit: 3 }));
     const byId = hits.find((h) => String(h.id || '') === guideId || String(h.id || '').includes(guideId));
     const best = byId || hits[0];
     if (best) {
@@ -455,6 +460,11 @@ function applyLearnedIntent(message, user, chunks, sources) {
         ? { focus: focusFromIntent || hrFocusForMessage(message) }
         : {};
     const r = runTool(toolName, args, user);
+    if (r?.denied && r?.error) {
+      chunks.push(r.error);
+      sources.push({ kind: 'tool', title: 'permission_denied', learned: true });
+      return true;
+    }
     if (r.ok) {
       if (r.text) chunks.push(r.text);
       else if (toolName === 'sales_summary') {
@@ -538,10 +548,22 @@ function heuristicToolPrefetch(message, user) {
       sources.push({ kind: 'tool', title: 'search_guides', guideId: best.id || null });
       return { chunks, sources };
     }
+    // Guía existe pero fuera de permisos del usuario
+    const rawHits = searchMemory(message, { kinds: ['guide'], limit: 1 });
+    if (rawHits[0] && !guideAllowedForUser(user, rawHits[0].id)) {
+      chunks.push(deniedGuideMessage(user, rawHits[0].id));
+      sources.push({ kind: 'tool', title: 'permission_denied', guideId: rawHits[0].id });
+      return { chunks, sources };
+    }
   }
 
   if (wantsHrData) {
     const r = runTool('hr_insights', { focus: hrFocusForMessage(m) }, user);
+    if (r?.denied && r?.error) {
+      chunks.push(r.error);
+      sources.push({ kind: 'tool', title: 'permission_denied' });
+      return { chunks, sources };
+    }
     if (r.ok && r.text) {
       chunks.push(r.text);
       sources.push({ kind: 'tool', title: 'hr_insights', focus: hrFocusForMessage(m) });
@@ -551,6 +573,11 @@ function heuristicToolPrefetch(message, user) {
 
   if (wantsAnalytics) {
     const r = runTool('business_insights', {}, user);
+    if (r?.denied && r?.error) {
+      chunks.push(r.error);
+      sources.push({ kind: 'tool', title: 'permission_denied' });
+      return { chunks, sources };
+    }
     if (r.ok && r.text) {
       chunks.push(r.text);
       sources.push({ kind: 'tool', title: 'business_insights' });
@@ -561,6 +588,11 @@ function heuristicToolPrefetch(message, user) {
   if (/plato|producto.*m[aá]s|m[aá]s vend|top/.test(m) && !/c[oó]mo/.test(m) && !wantsHrData) {
     const dateMatch = m.match(/(\d{4}-\d{2}-\d{2})/);
     const r = runTool('top_products', dateMatch ? { date: dateMatch[1] } : { scope: /mes/.test(m) ? 'month' : 'day' }, user);
+    if (r?.denied && r?.error) {
+      chunks.push(r.error);
+      sources.push({ kind: 'tool', title: 'permission_denied' });
+      return { chunks, sources };
+    }
     if (r.ok && r.items?.length) {
       const top = r.items[0];
       chunks.push(`Más vendido (${r.date}): ${top.name} (${top.qty} uds${top.revenue != null ? `, S/ ${Number(top.revenue).toFixed(2)}` : ''}).`);
@@ -636,7 +668,7 @@ async function chat(user, message) {
       options: Array.isArray(prefetch.options) ? prefetch.options : undefined,
     };
   } else {
-    result = guidesOnlyReply(text);
+    result = guidesOnlyReply(text, user);
     if (isMasterCreator(user) && result?.reply && /no encontr[eé] una gu[ií]a/i.test(result.reply)) {
       result = {
         reply: 'Sr. Romero, no encontré una guía exacta para eso. ¿Puede darme más detalle o pedirme un dato del negocio?',
