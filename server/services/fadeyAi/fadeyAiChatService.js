@@ -15,7 +15,7 @@ const {
   learnUserPhrase,
   resolveLearnedIntent,
 } = require('./fadeyAiKnowledgeService');
-const { runTool } = require('./fadeyAiTools');
+const { runTool, resolveSalesPeriod } = require('./fadeyAiTools');
 
 const RATE = new Map();
 const MAX_PER_MIN = 20;
@@ -299,10 +299,13 @@ function hrFocusForMessage(message) {
 }
 
 function salesScopeForMessage(message) {
-  const m = String(message || '').toLowerCase();
-  if (/hoy|dia|día/.test(m)) return 'today';
-  if (/(semana|7\s*d[ií]as|últimos?\s*7)/.test(m)) return 'week';
-  return 'month';
+  return resolveSalesPeriod(message).scope;
+}
+
+function formatSalesReply(r) {
+  const label = r.label || (r.from === r.to ? r.from : `${r.from} → ${r.to}`);
+  const range = r.from === r.to ? r.from : `${r.from} → ${r.to}`;
+  return `Ventas ${label}: S/ ${Number(r.sales || 0).toFixed(2)} · ${r.orders} cuenta(s) (${range}).`;
 }
 
 function isExplicitHowToMessage(message) {
@@ -346,12 +349,44 @@ function tryDirectDataAnswer(message, user) {
     }
   }
 
+  if (/pendiente(s)?( de )?cobro|por cobrar|sin cobrar|cu[aá]nto.*pendiente|hay pendiente/.test(m)) {
+    const r = runTool('sales_desk', { focus: 'pending', message }, user);
+    if (r.ok && r.text) {
+      return { chunks: [r.text], sources: [{ kind: 'tool', title: 'sales_desk', focus: 'pending' }] };
+    }
+  }
+
+  if (/forma(s)? de pago|reparti.*(pago|yape|efectivo)|yape.*efectivo|efectivo.*yape|pagos \(yape|c[oó]mo se (pagan|cobran|repartieron)/.test(m)) {
+    const r = runTool('sales_desk', { focus: 'payments', message }, user);
+    if (r.ok && r.text) {
+      return { chunks: [r.text], sources: [{ kind: 'tool', title: 'sales_desk', focus: 'payments' }] };
+    }
+  }
+
+  if (/mesero.*(m[aá]s|vend)|qui[eé]n vend[ií][oó] m[aá]s|top mesero|ranking (de )?mesero|ventas por mesero/.test(m)) {
+    const r = runTool('sales_desk', { focus: 'waiters', message }, user);
+    if (r.ok && r.text) {
+      return { chunks: [r.text], sources: [{ kind: 'tool', title: 'sales_desk', focus: 'waiters' }] };
+    }
+  }
+
   if (/venta|vend[ií]|facturaci[oó]n|recaud|cu[aá]nto\s+(vend|factur|hago|hice)/.test(m)) {
-    const scope = salesScopeForMessage(m);
-    const r = runTool('sales_summary', { scope }, user);
+    const period = resolveSalesPeriod(message);
+    const r = runTool('sales_summary', {
+      scope: period.scope,
+      from: period.from,
+      to: period.to,
+      label: period.label,
+    }, user);
     if (r.ok) {
       return {
-        chunks: [`Ventas: S/ ${Number(r.sales || 0).toFixed(2)} · ${r.orders} cuenta(s) (${r.from} → ${r.to}).`],
+        chunks: [formatSalesReply(r)],
+        sources: [{ kind: 'tool', title: 'sales_summary' }],
+      };
+    }
+    if (r?.error) {
+      return {
+        chunks: [r.error],
         sources: [{ kind: 'tool', title: 'sales_summary' }],
       };
     }
@@ -406,9 +441,16 @@ function applyLearnedIntent(message, user, chunks, sources) {
     toolName = 'hr_insights';
     focusFromIntent = hrFocusMatch[1];
   }
-  if (['business_insights', 'hr_insights', 'sales_summary', 'top_products', 'low_stock', 'active_staff', 'kitchen_open_orders'].includes(toolName)) {
+  if (['business_insights', 'hr_insights', 'sales_summary', 'sales_desk', 'top_products', 'low_stock', 'active_staff', 'kitchen_open_orders'].includes(toolName)) {
     const args = toolName === 'sales_summary'
-      ? { scope: salesScopeForMessage(message) }
+      ? (() => {
+        const period = resolveSalesPeriod(message);
+        return { scope: period.scope, from: period.from, to: period.to, label: period.label };
+      })()
+      : toolName === 'sales_desk'
+        ? { focus: /pendiente|cobro/.test(String(message || '').toLowerCase()) ? 'pending'
+          : /pago|yape|efectivo|tarjeta/.test(String(message || '').toLowerCase()) ? 'payments'
+            : /mesero/.test(String(message || '').toLowerCase()) ? 'waiters' : 'full', message }
       : toolName === 'hr_insights'
         ? { focus: focusFromIntent || hrFocusForMessage(message) }
         : {};
@@ -416,7 +458,7 @@ function applyLearnedIntent(message, user, chunks, sources) {
     if (r.ok) {
       if (r.text) chunks.push(r.text);
       else if (toolName === 'sales_summary') {
-        chunks.push(`Ventas: S/ ${Number(r.sales || 0).toFixed(2)} · ${r.orders} cuenta(s) (${r.from} → ${r.to}).`);
+        chunks.push(formatSalesReply(r));
       } else if (toolName === 'top_products' && r.items?.length) {
         const top = r.items[0];
         chunks.push(`Más vendido (${r.date}): ${top.name} (${top.qty} uds).`);

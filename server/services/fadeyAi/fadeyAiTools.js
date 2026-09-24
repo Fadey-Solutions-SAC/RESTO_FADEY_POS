@@ -7,7 +7,7 @@ const {
   queryPaidSalesOrders,
   metricsFromPaidOrdersWhere,
 } = require('../../utils/salesAccountGrouping');
-const { getBusinessTodayDateKey, getBusinessMonthKey } = require('../../utils/appDateTime');
+const { getBusinessTodayDateKey, getBusinessMonthKey, shiftBusinessDateKey, startOfBusinessWeekMonday } = require('../../utils/appDateTime');
 const { searchMemory } = require('./fadeyAiKnowledgeService');
 
 function roleLc(user) {
@@ -35,6 +35,46 @@ function parseDateKey(input) {
   return '';
 }
 
+/**
+ * Resuelve período de ventas desde lenguaje natural.
+ * @returns {{ scope: string, from: string, to: string, label: string }}
+ */
+function resolveSalesPeriod(message, queryOneFn = queryOne) {
+  const m = String(message || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const today = getBusinessTodayDateKey(queryOneFn);
+  const month = getBusinessMonthKey(queryOneFn);
+
+  if (/\bayer\b/.test(m)) {
+    const day = shiftBusinessDateKey(today, -1);
+    return { scope: 'yesterday', from: day, to: day, label: 'ayer' };
+  }
+
+  // "ultimos 7 dias" / "ultima semana" / "semana pasada" ANTES que "dia".
+  if (
+    /ultim[oa]s?\s+7\s*dias|7\s*dias|ultimos?\s+siete\s+dias/.test(m)
+    || /ultim[oa]\s+semana|semana\s+pasada|la\s+semana\s+anterior/.test(m)
+  ) {
+    const from = shiftBusinessDateKey(today, -6);
+    return { scope: 'week', from, to: today, label: 'última semana (últimos 7 días)' };
+  }
+
+  if (/esta\s+semana|semana\s+actual|de\s+la\s+semana\b/.test(m) || (/\bsemana\b/.test(m) && !/\bmes\b/.test(m))) {
+    const from = startOfBusinessWeekMonday(today);
+    return { scope: 'week', from, to: today, label: 'esta semana' };
+  }
+
+  if (/\b(este\s+)?mes\b|del\s+mes|mes\s+actual|lo\s+que\s+va\s+del\s+mes/.test(m)) {
+    return { scope: 'month', from: `${month}-01`, to: today, label: 'este mes' };
+  }
+
+  if (/\bhoy\b|\bdel\s+dia\b|\bde\s+hoy\b|\bel\s+dia\b/.test(m)) {
+    return { scope: 'today', from: today, to: today, label: 'hoy' };
+  }
+
+  // Sin período explícito: hoy (más útil en el POS).
+  return { scope: 'today', from: today, to: today, label: 'hoy' };
+}
+
 function toolSalesSummary(args = {}, user) {
   if (!canSeeFinancials(user)) {
     return { ok: false, error: 'Tu rol no puede consultar totales de ventas.' };
@@ -46,47 +86,50 @@ function toolSalesSummary(args = {}, user) {
 
   let from = parseDateKey(args.from);
   let to = parseDateKey(args.to) || today;
+  let label = String(args.label || '').trim();
 
   if (!from) {
     if (scope === 'today') {
       from = today;
       to = today;
+      label = label || 'hoy';
+    } else if (scope === 'yesterday') {
+      from = shiftBusinessDateKey(today, -1);
+      to = from;
+      label = label || 'ayer';
     } else if (scope === 'week') {
-      // Últimos 7 días inclusive (hoy y 6 anteriores).
-      from = (() => {
-        try {
-          const d = new Date(`${today}T12:00:00`);
-          d.setDate(d.getDate() - 6);
-          return d.toISOString().slice(0, 10);
-        } catch (_) {
-          return today;
-        }
-      })();
+      from = shiftBusinessDateKey(today, -6);
       to = today;
-    } else {
+      label = label || 'última semana (últimos 7 días)';
+    } else if (scope === 'month') {
       from = `${month}-01`;
       to = today;
+      label = label || 'este mes';
+    } else {
+      from = today;
+      to = today;
+      label = label || 'hoy';
     }
+  } else if (!label) {
+    if (from === to && from === today) label = 'hoy';
+    else if (from === to) label = from;
+    else label = `${from} → ${to}`;
   }
 
   const parts = [];
   const params = [];
-  if (scope === 'month' && !args.from && !args.to) {
-    parts.push(`${ps.ORDER_MONTH} = ?`);
-    params.push(month);
-  } else {
-    parts.push(`${ps.ORDER_DATE} >= date(?)`);
-    params.push(from);
-    parts.push(`${ps.ORDER_DATE} <= date(?)`);
-    params.push(to);
-  }
+  parts.push(`${ps.ORDER_DATE} >= date(?)`);
+  params.push(from);
+  parts.push(`${ps.ORDER_DATE} <= date(?)`);
+  params.push(to);
   const where = parts.join(' AND ');
   const metrics = metricsFromPaidOrdersWhere(where, params);
   return {
     ok: true,
     scope: scope || 'range',
-    from: scope === 'month' && !args.from ? `${month}-01` : from,
-    to: scope === 'month' && !args.to ? today : to,
+    from,
+    to,
+    label,
     month,
     orders: metrics.orders,
     sales: Number(metrics.sales || 0),
@@ -137,6 +180,154 @@ function toolTopProducts(args = {}, user) {
       qty: Number(r.qty || 0),
       ...(showMoney ? { revenue: Number(r.revenue || 0) } : {}),
     })),
+  };
+}
+
+const PAY_METHOD_LABELS = {
+  efectivo: 'Efectivo',
+  yape: 'Yape',
+  plin: 'Plin',
+  tarjeta: 'Tarjeta',
+  online: 'Online',
+  transferencia: 'Transferencia',
+};
+
+/** Escritorio de ventas: pendiente, pagos y meseros (datos del módulo Ventas). */
+function toolSalesDesk(args = {}, user) {
+  if (!canSeeFinancials(user)) {
+    return { ok: false, error: 'Tu rol no puede consultar el escritorio de ventas.' };
+  }
+  const period = resolveSalesPeriod(
+    args.message || args.query || '',
+    queryOne,
+  );
+  const focus = String(args.focus || 'full').toLowerCase();
+  const today = getBusinessTodayDateKey(queryOne);
+  const msg = String(args.message || args.query || '').toLowerCase();
+  const hasExplicitPeriod = /\bhoy\b|\bayer\b|semana|mes|dias?\b|\d{4}-\d{2}-\d{2}/.test(msg);
+  let from = parseDateKey(args.from) || period.from;
+  let to = parseDateKey(args.to) || period.to;
+  // Pendiente/pagos/meseros sin período → mes en curso (más útil en el módulo Ventas).
+  if (!args.from && !hasExplicitPeriod && (focus === 'pending' || focus === 'payments' || focus === 'waiters' || focus === 'full')) {
+    const month = getBusinessMonthKey(queryOne);
+    from = `${month}-01`;
+    to = today;
+  }
+  const ps = getPaidSalesEventSql();
+
+  const pendingRow = queryOne(
+    `SELECT COUNT(*) AS cnt, IFNULL(SUM(o.total), 0) AS total
+     FROM orders o
+     WHERE o.status != 'cancelled'
+       AND o.payment_status = 'pending'
+       AND IFNULL(o.payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')
+       AND ${ps.ORDER_DATE} >= date(?)
+       AND ${ps.ORDER_DATE} <= date(?)`,
+    [from, to],
+  ) || { cnt: 0, total: 0 };
+
+  const payRows = queryAll(
+    `SELECT lower(IFNULL(NULLIF(trim(o.payment_method), ''), 'efectivo')) AS method,
+            COUNT(*) AS cnt,
+            IFNULL(SUM(o.total), 0) AS total
+     FROM orders o
+     WHERE o.status != 'cancelled'
+       AND o.payment_status = 'paid'
+       AND IFNULL(o.payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')
+       AND ${ps.ORDER_DATE} >= date(?)
+       AND ${ps.ORDER_DATE} <= date(?)
+     GROUP BY lower(IFNULL(NULLIF(trim(o.payment_method), ''), 'efectivo'))
+     ORDER BY total DESC
+     LIMIT 8`,
+    [from, to],
+  ) || [];
+
+  const waiterRows = queryAll(
+    `SELECT COALESCE(NULLIF(trim(o.created_by_user_name), ''), 'Sin mesero') AS name,
+            COUNT(*) AS cnt,
+            IFNULL(SUM(o.total), 0) AS total
+     FROM orders o
+     WHERE o.status != 'cancelled'
+       AND o.payment_status = 'paid'
+       AND IFNULL(o.payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')
+       AND ${ps.ORDER_DATE} >= date(?)
+       AND ${ps.ORDER_DATE} <= date(?)
+     GROUP BY COALESCE(NULLIF(trim(o.created_by_user_name), ''), 'Sin mesero')
+     ORDER BY total DESC
+     LIMIT 8`,
+    [from, to],
+  ) || [];
+
+  const voidRow = queryOne(
+    `SELECT COUNT(*) AS cnt
+     FROM orders o
+     WHERE o.status = 'cancelled'
+       AND ${ps.ORDER_DATE} >= date(?)
+       AND ${ps.ORDER_DATE} <= date(?)`,
+    [from, to],
+  ) || { cnt: 0 };
+
+  const paid = metricsFromPaidOrdersWhere(
+    `${ps.ORDER_DATE} >= date(?) AND ${ps.ORDER_DATE} <= date(?)`,
+    [from, to],
+  );
+
+  const lines = [];
+  const range = from === to ? from : `${from} → ${to}`;
+  const label = hasExplicitPeriod ? (period.label || range) : `este mes (${range})`;
+  lines.push(`**Escritorio de ventas** (${label})`);
+
+  if (focus === 'pending' || focus === 'full') {
+    lines.push(
+      `Pendiente de cobro: S/ ${Number(pendingRow.total || 0).toFixed(2)} · ${Number(pendingRow.cnt || 0)} cuenta(s).`,
+    );
+  }
+  if (focus === 'payments' || focus === 'full') {
+    if (payRows.length) {
+      lines.push('Formas de pago (cobrado):');
+      payRows.forEach((r, i) => {
+        const label = PAY_METHOD_LABELS[r.method] || r.method;
+        lines.push(`${i + 1}. ${label}: S/ ${Number(r.total || 0).toFixed(2)} (${Number(r.cnt || 0)} cobro(s))`);
+      });
+    } else {
+      lines.push('Sin cobros con forma de pago en este período.');
+    }
+  }
+  if (focus === 'waiters' || focus === 'full') {
+    if (waiterRows.length) {
+      lines.push('Top meseros:');
+      waiterRows.slice(0, 5).forEach((r, i) => {
+        lines.push(`${i + 1}. ${r.name}: S/ ${Number(r.total || 0).toFixed(2)} (${Number(r.cnt || 0)} cuenta(s))`);
+      });
+    } else {
+      lines.push('Sin ventas por mesero en este período.');
+    }
+  }
+  if (focus === 'full') {
+    lines.push(
+      `Cobrado: S/ ${Number(paid.sales || 0).toFixed(2)} · ${paid.orders} cuenta(s). Anuladas: ${Number(voidRow.cnt || 0)}.`,
+    );
+  }
+
+  return {
+    ok: true,
+    from,
+    to,
+    label: period.label,
+    focus,
+    pending: { count: Number(pendingRow.cnt || 0), total: Number(pendingRow.total || 0) },
+    payments: payRows.map((r) => ({
+      method: r.method,
+      label: PAY_METHOD_LABELS[r.method] || r.method,
+      count: Number(r.cnt || 0),
+      total: Number(r.total || 0),
+    })),
+    waiters: waiterRows.map((r) => ({
+      name: r.name,
+      count: Number(r.cnt || 0),
+      total: Number(r.total || 0),
+    })),
+    text: lines.join('\n'),
   };
 }
 
@@ -248,9 +439,25 @@ const TOOL_DEFS = [
       parameters: {
         type: 'object',
         properties: {
-          scope: { type: 'string', enum: ['today', 'week', 'month', 'range'] },
+          scope: { type: 'string', enum: ['today', 'yesterday', 'week', 'month', 'range'] },
           from: { type: 'string', description: 'YYYY-MM-DD' },
           to: { type: 'string', description: 'YYYY-MM-DD' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'sales_desk',
+      description: 'Escritorio del módulo Ventas: pendiente de cobro, formas de pago y ranking de meseros.',
+      parameters: {
+        type: 'object',
+        properties: {
+          focus: { type: 'string', enum: ['full', 'pending', 'payments', 'waiters'] },
+          message: { type: 'string' },
+          from: { type: 'string' },
+          to: { type: 'string' },
         },
       },
     },
@@ -499,6 +706,7 @@ function toolsForUser(user) {
   return TOOL_DEFS.filter((t) => {
     const name = t.function.name;
     if (name === 'sales_summary') return canSeeFinancials(user);
+    if (name === 'sales_desk') return canSeeFinancials(user);
     if (name === 'top_products') return canSeeFinancials(user) || r === 'mozo' || r === 'cocina' || r === 'bar' || r === 'produccion';
     if (name === 'low_stock') return canSeeFinancials(user);
     if (name === 'kitchen_open_orders') return canSeeKitchenOps(user);
@@ -513,6 +721,8 @@ function runTool(name, args, user) {
   switch (String(name || '')) {
     case 'sales_summary':
       return toolSalesSummary(args || {}, user);
+    case 'sales_desk':
+      return toolSalesDesk(args || {}, user);
     case 'top_products':
       return toolTopProducts(args || {}, user);
     case 'low_stock':
@@ -536,5 +746,6 @@ module.exports = {
   toolsForUser,
   runTool,
   canSeeFinancials,
+  resolveSalesPeriod,
   TOOL_DEFS,
 };

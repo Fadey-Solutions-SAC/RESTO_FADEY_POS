@@ -2,7 +2,8 @@
   "title": "Ventas",
   "tabs": {
     "active": "Ventas activas",
-    "voided": "Ventas anuladas"
+    "voided": "Ventas anuladas",
+    "ai": "IA Fadey"
   },
   "totals": {
     "totalSales": "Total ventas",

@@ -12,7 +12,7 @@ export const FADEY_AI_CREATOR_MODE = {
   honorific: 'Sr. Romero',
   tagline: 'A sus órdenes, Sr. Romero',
   greeting:
-    'Hola, soy PIX. Dígame, ¿en qué puedo ayudarlo, Sr. Romero?\n\nSé que usted es mi creador. Estoy lista para lo que necesite.',
+    'Hola, soy PIX. Dígame, ¿en qué puedo ayudarlo, Sr. Romero? Estoy lista para lo que necesite.',
   suggested: [
     'Estado del sistema',
     '¿Cuánto se vendió esta semana?',
@@ -27,6 +27,7 @@ export const FADEY_AI_CREATOR_MODE = {
 /** Pool completo de sugerencias fijas (se rotan de a 5 en el chat). */
 export const FADEY_AI_SUGGESTION_POOL = [
   '¿Cuánto vendí hoy?',
+  '¿Cuánto vendí la última semana?',
   '¿Cuánto se vendió esta semana?',
   '¿Qué vendimos hoy?',
   '¿Qué productos se venden más?',

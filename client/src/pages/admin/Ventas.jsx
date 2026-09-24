@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatDateTime, formatDate, parseApiDate, isDateKeyInInclusiveRange, toLocalDateKey } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
-import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel } from 'react-icons/md';
+import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel, MdSmartToy } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
 import { buildVentasDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch, parseProductRemovalNotesFromOrder, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
@@ -13,6 +13,7 @@ import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
 import { InlineDateField } from '../../components/DateFilterControls';
 import VentasCuentasTable, { getOrderDocument, getAccountDocument, docLabel, getAccountAuditStatusBadge } from '../../components/admin/VentasCuentasTable';
+import VentasAiPanel from '../../components/ventas/VentasAiPanel';
 import {
   mapAccountToDetalleVentaRow,
   buildDetalleVentasExcelHtml,
@@ -257,7 +258,7 @@ export default function Ventas() {
   const [waiterFilter, setWaiterFilter] = useState('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  /** activas | anuladas | todas */
+  /** activas | anuladas | ia */
   const [saleTab, setSaleTab] = useState('activas');
   const [voidModalOrder, setVoidModalOrder] = useState(null);
   const [voidReason, setVoidReason] = useState('');
@@ -339,7 +340,7 @@ export default function Ventas() {
       f = f.filter((o) => isDateKeyInInclusiveRange(o.updated_at || o.created_at, fromDate, toDate));
     }
     if (saleTab === 'activas') f = f.filter((o) => o.status !== 'cancelled');
-    else f = f.filter((o) => o.status === 'cancelled');
+    else if (saleTab === 'anuladas') f = f.filter((o) => o.status === 'cancelled');
     setFiltered(f);
   }, [search, statusFilter, typeFilter, waiterFilter, fromDate, toDate, saleTab, orders]);
 
@@ -348,6 +349,43 @@ export default function Ventas() {
   }, [showDeliveryUi, typeFilter]);
 
   const isVoidedTab = saleTab === 'anuladas';
+  const isAiTab = saleTab === 'ia';
+
+  /** Para la pestaña IA usamos ventas no anuladas (o el filtro de fechas/mesero aplicado). */
+  const aiOrdersSource = useMemo(() => {
+    let f = orders.filter((o) => !isCourtesyOrder(o) && o.status !== 'cancelled');
+    if (search) {
+      const q = search.trim();
+      const qLower = q.toLowerCase();
+      f = f.filter(
+        (o) =>
+          String(o.order_number || '').includes(q) ||
+          (o.customer_name || '').toLowerCase().includes(qLower) ||
+          orderMatchesMesaSearch(o, q),
+      );
+    }
+    if (statusFilter !== 'all') f = f.filter((o) => o.payment_status === statusFilter);
+    if (typeFilter !== 'all') f = f.filter((o) => o.type === typeFilter);
+    if (waiterFilter !== 'all') {
+      f = f.filter((o) => (o.created_by_user_name || o.customer_name || '-').toLowerCase() === waiterFilter.toLowerCase());
+    }
+    if (fromDate || toDate) {
+      f = f.filter((o) => isDateKeyInInclusiveRange(o.updated_at || o.created_at, fromDate, toDate));
+    }
+    return f;
+  }, [orders, search, statusFilter, typeFilter, waiterFilter, fromDate, toDate]);
+
+  const aiTotals = useMemo(() => {
+    const paidAccounts = summarizePaidSalesAccounts(
+      aiOrdersSource.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o)),
+    );
+    return {
+      total: aiOrdersSource.reduce((s, o) => s + (o.total || 0), 0),
+      paid: aiOrdersSource.filter((o) => o.payment_status === 'paid').reduce((s, o) => s + (o.total || 0), 0),
+      pending: aiOrdersSource.filter((o) => o.payment_status === 'pending').reduce((s, o) => s + (o.total || 0), 0),
+      count: paidAccounts.length,
+    };
+  }, [aiOrdersSource]);
 
   const toggleSort = useCallback((key) => {
     if (sortKey === key) {
@@ -554,6 +592,7 @@ export default function Ventas() {
 
   return (
     <div className="-mt-1 sm:-mt-3">
+      {!isAiTab ? (
       <div className="flex flex-wrap items-stretch gap-2 mb-2 min-w-0">
         {isVoidedTab ? (
           <>
@@ -593,23 +632,61 @@ export default function Ventas() {
           {[
             { id: 'activas', label: t('tabs.active') },
             { id: 'anuladas', label: t('tabs.voided') },
+            { id: 'ia', label: t('tabs.ai'), icon: true },
           ].map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => handleSaleTabChange(tab.id)}
-              className={`h-full min-h-[2.5rem] px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors border ${
+              className={`h-full min-h-[2.5rem] px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors border inline-flex items-center gap-1.5 ${
                 saleTab === tab.id
                   ? 'bg-[var(--ui-accent)] text-white border-[color:var(--ui-accent)] shadow-md'
                   : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
               }`}
             >
+              {tab.icon ? <MdSmartToy className="text-base" /> : null}
               {tab.label}
             </button>
           ))}
         </div>
       </div>
+      ) : (
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
+        <p className="text-sm font-semibold text-[var(--ui-body-text)]">IA Fadey · Ventas</p>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {[
+            { id: 'activas', label: t('tabs.active') },
+            { id: 'anuladas', label: t('tabs.voided') },
+            { id: 'ia', label: t('tabs.ai'), icon: true },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => handleSaleTabChange(tab.id)}
+              className={`min-h-[2.5rem] px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors border inline-flex items-center gap-1.5 ${
+                saleTab === tab.id
+                  ? 'bg-[var(--ui-accent)] text-white border-[color:var(--ui-accent)] shadow-md'
+                  : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
+              }`}
+            >
+              {tab.icon ? <MdSmartToy className="text-base" /> : null}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      )}
 
+      {isAiTab ? (
+        <VentasAiPanel
+          orders={orders}
+          filtered={aiOrdersSource}
+          totals={aiTotals}
+          fromDate={fromDate}
+          toDate={toDate}
+          onExport={() => downloadDetalleVentas('excel')}
+        />
+      ) : (
       <div className="rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3">
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <div className="relative flex-1 min-w-[220px]">
@@ -726,6 +803,7 @@ export default function Ventas() {
           )}
         />
       </div>
+      )}
 
       <Modal
         isOpen={!!selected}

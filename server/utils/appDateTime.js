@@ -96,6 +96,41 @@ function getBusinessMonthKey(queryOneFn) {
   return `${p.year}-${p.month}`;
 }
 
+/**
+ * Suma/resta días a una clave YYYY-MM-DD (calendario, sin desfase UTC).
+ * @param {string} dateKey
+ * @param {number} deltaDays
+ */
+function shiftBusinessDateKey(dateKey, deltaDays) {
+  const key = String(dateKey || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return key;
+  const [y, m, d] = key.split('-').map((n) => Number(n));
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  dt.setUTCDate(dt.getUTCDate() + Number(deltaDays || 0));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+/**
+ * Lunes (inicio de semana laboral) de la semana que contiene dateKey.
+ * @param {string} dateKey YYYY-MM-DD
+ */
+function startOfBusinessWeekMonday(dateKey) {
+  const key = String(dateKey || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return key;
+  const [y, m, d] = key.split('-').map((n) => Number(n));
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  const dow = dt.getUTCDay(); // 0=dom … 1=lun
+  const back = dow === 0 ? 6 : dow - 1;
+  dt.setUTCDate(dt.getUTCDate() - back);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
 /** Convierte timestamp UTC naive (Render) a hora del restaurante en SQL. */
 function sqlBusinessTimestamp(columnExpr, queryOneFn) {
   const tz = resolveRegionalTimezone(queryOneFn);
@@ -129,6 +164,8 @@ module.exports = {
   utcOffsetForTimezone,
   getBusinessTodayDateKey,
   getBusinessMonthKey,
+  shiftBusinessDateKey,
+  startOfBusinessWeekMonday,
   sqlBusinessTimestamp,
   sqlBusinessNow,
   sqlBusinessNowExpr,
