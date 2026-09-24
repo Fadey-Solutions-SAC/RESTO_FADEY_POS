@@ -176,6 +176,28 @@ export function salesOrderLocalDateKey(order) {
   return toLocalDateKey(order?.updated_at || order?.created_at);
 }
 
+/** Normaliza mesa ("10", "01", "M10" → "10") para agrupar cuentas. */
+function normalizeTableKey(value) {
+  const s = String(value ?? '').trim();
+  if (!s) return '';
+  const noM = /^m\d+$/i.test(s) ? s.slice(1) : s;
+  if (/^\d+$/.test(noM)) return String(Number.parseInt(noM, 10));
+  if (/^\d+$/.test(s)) return String(Number.parseInt(s, 10));
+  return s.toLowerCase();
+}
+
+function isMesaSalesOrder(order) {
+  const table = normalizeTableKey(order?.table_number);
+  if (!table) return false;
+  const type = String(order?.type || 'dine_in').toLowerCase();
+  return type !== 'delivery' && type !== 'pickup';
+}
+
+function salesAccountPaidAtMs(order) {
+  const d = parseApiDate(order?.paid_at || order?.updated_at || order?.created_at || '');
+  return d ? d.getTime() : 0;
+}
+
 function salesAccountPaidAtBucket(order) {
   const raw = order?.paid_at || order?.updated_at || order?.created_at || '';
   const d = parseApiDate(raw);
@@ -193,38 +215,87 @@ function salesAccountPaidAtBucket(order) {
   return `${map.year}-${map.month}-${map.day}T${map.hour}:${map.minute}`;
 }
 
+/** Ventana para unir comandas del mismo cobro partidas en varios N.º de venta. */
+const MESA_ACCOUNT_MERGE_WINDOW_MS = 120000;
+
 /**
  * Agrupa comandas ya cobradas en cuentas de venta (1 cobro de mesa = 1 cuenta = 1 comprobante).
- * Si hay N.º de venta, esa es la cuenta. Si no, salón: mesa + caja + minuto de cobro.
+ * Salón: misma mesa + caja, mismo sale_number o cobros casi simultáneos (no 1 fila por comanda).
+ * Delivery/otros: N.º de venta o cliente + minuto.
  */
 export function groupPaidOrdersBySalesAccount(orders = []) {
-  const buckets = new Map();
-  for (const order of orders) {
+  const mesaByTableReg = new Map();
+  const otherBuckets = new Map();
+
+  for (const order of orders || []) {
     if (!order) continue;
+    if (isMesaSalesOrder(order)) {
+      const table = normalizeTableKey(order.table_number);
+      const registerId = String(order.cash_register_id || '');
+      const key = `${table}|${registerId}`;
+      if (!mesaByTableReg.has(key)) mesaByTableReg.set(key, []);
+      mesaByTableReg.get(key).push(order);
+      continue;
+    }
     const saleNum = Number(order.sale_number || 0);
     let key;
     if (saleNum > 0) {
       key = `venta:${saleNum}`;
     } else {
-      const table = String(order.table_number || '').trim();
-      const isMesa = order.type === 'dine_in' && table;
-      if (isMesa) {
-        const registerId = String(order.cash_register_id || '');
-        key = `mesa:${table}:${registerId}:${salesAccountPaidAtBucket(order)}`;
+      const customerId = String(order.customer_id || '').trim();
+      const registerId = String(order.cash_register_id || '');
+      if (customerId) {
+        key = `cliente:${customerId}:${registerId}:${salesAccountPaidAtBucket(order)}`;
       } else {
-        const customerId = String(order.customer_id || '').trim();
-        const registerId = String(order.cash_register_id || '');
-        if (customerId) {
-          key = `cliente:${customerId}:${registerId}:${salesAccountPaidAtBucket(order)}`;
-        } else {
-          key = `pedido:${order.id || ''}`;
-        }
+        key = `pedido:${order.id || ''}`;
       }
     }
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(order);
+    if (!otherBuckets.has(key)) otherBuckets.set(key, []);
+    otherBuckets.get(key).push(order);
   }
-  return [...buckets.values()];
+
+  const groups = [...otherBuckets.values()];
+
+  for (const list of mesaByTableReg.values()) {
+    const bySale = new Map();
+    const withoutSale = [];
+    for (const o of list) {
+      const sn = Number(o.sale_number || 0);
+      if (sn > 0) {
+        if (!bySale.has(sn)) bySale.set(sn, []);
+        bySale.get(sn).push(o);
+      } else {
+        withoutSale.push(o);
+      }
+    }
+    const seedGroups = [...bySale.values(), ...withoutSale.map((o) => [o])];
+    const enriched = seedGroups.map((g) => {
+      const times = g.map(salesAccountPaidAtMs).filter((t) => t > 0);
+      const minT = times.length ? Math.min(...times) : 0;
+      const maxT = times.length ? Math.max(...times) : 0;
+      return { orders: [...g], minT, maxT };
+    }).sort((a, b) => a.minT - b.minT);
+
+    const merged = [];
+    for (const g of enriched) {
+      const prev = merged[merged.length - 1];
+      if (
+        prev
+        && g.minT > 0
+        && prev.maxT > 0
+        && g.minT - prev.maxT <= MESA_ACCOUNT_MERGE_WINDOW_MS
+      ) {
+        prev.orders.push(...g.orders);
+        prev.maxT = Math.max(prev.maxT, g.maxT);
+        prev.minT = Math.min(prev.minT, g.minT);
+      } else {
+        merged.push(g);
+      }
+    }
+    for (const g of merged) groups.push(g.orders);
+  }
+
+  return groups;
 }
 
 export function summarizePaidSalesAccounts(orders = []) {
@@ -534,14 +605,13 @@ export function buildSalesDisplayGroups(orders = [], { groupOpenMesaByTableOnly 
 
 export function getSalesAccountKey(order) {
   if (!order) return '';
-  const saleNum = Number(order.sale_number || 0);
-  if (saleNum > 0) return `venta:${saleNum}`;
-  const table = String(order.table_number || '').trim();
-  const isMesa = order.type === 'dine_in' && table;
-  if (isMesa) {
+  const table = normalizeTableKey(order.table_number);
+  if (isMesaSalesOrder(order) && table) {
     const registerId = String(order.cash_register_id || '');
     return `mesa:${table}:${registerId}:${salesAccountPaidAtBucket(order)}`;
   }
+  const saleNum = Number(order.sale_number || 0);
+  if (saleNum > 0) return `venta:${saleNum}`;
   const customerId = String(order.customer_id || '').trim();
   const registerId = String(order.cash_register_id || '');
   if (customerId) {
@@ -694,8 +764,8 @@ export function buildPaidSalesAccountDisplayGroups(orders = [], adjustmentRows =
         - new Date(String(a?.paid_at || a?.updated_at || 0)).getTime(),
     );
     const primary = sorted[0];
-    const table = String(primary?.table_number || '').trim();
-    const isMesa = primary?.type === 'dine_in' && Boolean(table);
+    const table = normalizeTableKey(primary?.table_number);
+    const isMesa = isMesaSalesOrder(primary) && Boolean(table);
     const salesOrders = sorted.filter((o) => !isCourtesyOrder(o));
     const courtesyOrders = sorted.filter(isCourtesyOrder);
     const allItems = sorted.flatMap((o) => o.items || []);

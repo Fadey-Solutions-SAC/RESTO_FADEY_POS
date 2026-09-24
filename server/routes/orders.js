@@ -1219,8 +1219,9 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
         }
         kardexInventory.aplicarSalidasVentaPedido(tx, req.params.id, req.user.id);
         if (nextPayEffective === 'paid' && !wasPaid && String(docPm || '') !== 'cuenta_cliente') {
-          const { assignSaleNumberToOrderIdsTx } = require('../services/saleNumberService');
+          const { assignSaleNumberToOrderIdsTx, unifyTableSaleNumbersTx } = require('../services/saleNumberService');
           assignSaleNumberToOrderIdsTx(tx, [req.params.id]);
+          unifyTableSaleNumbersTx(tx, [req.params.id]);
         }
       });
     } catch (err) {
@@ -1236,8 +1237,9 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
     }
     if (nextPayEffective === 'paid' && !wasPaid && String(docPm || '') !== 'cuenta_cliente') {
       withTransaction((tx) => {
-        const { assignSaleNumberToOrderIdsTx } = require('../services/saleNumberService');
+        const { assignSaleNumberToOrderIdsTx, unifyTableSaleNumbersTx } = require('../services/saleNumberService');
         assignSaleNumberToOrderIdsTx(tx, [req.params.id]);
+        unifyTableSaleNumbersTx(tx, [req.params.id]);
       });
     }
   }

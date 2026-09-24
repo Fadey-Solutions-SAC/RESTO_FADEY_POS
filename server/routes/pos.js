@@ -772,7 +772,9 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
           checkoutDiscountAnchorOrderItemId
         );
       } else {
-        effectiveOrderIds = orderIdsFromBody;
+        // Cobro de cuenta de mesa completa: incluir todas las comandas pendientes de esa mesa.
+        const { expandPendingTableOrderIdsTx } = require('../services/saleNumberService');
+        effectiveOrderIds = expandPendingTableOrderIdsTx(tx, orderIdsFromBody);
       }
 
       const chargedRows = [];
@@ -818,8 +820,9 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
           return String(o?.payment_status || '').toLowerCase() === 'paid';
         });
         if (replayIds.length === [...new Set(effectiveOrderIds)].length) {
-          const { assignSaleNumberToOrderIdsTx } = require('../services/saleNumberService');
+          const { assignSaleNumberToOrderIdsTx, unifyTableSaleNumbersTx } = require('../services/saleNumberService');
           assignSaleNumberToOrderIdsTx(tx, replayIds);
+          unifyTableSaleNumbersTx(tx, replayIds);
           return { chargedOrderIds: replayIds, discountsAppliedByOrder, replayed: true };
         }
       }
@@ -892,8 +895,9 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       });
 
       if (!chargeToCustomerAccount && chargedOrderIds.length) {
-        const { assignSaleNumberToOrderIdsTx } = require('../services/saleNumberService');
+        const { assignSaleNumberToOrderIdsTx, unifyTableSaleNumbersTx } = require('../services/saleNumberService');
         const saleN = assignSaleNumberToOrderIdsTx(tx, chargedOrderIds);
+        unifyTableSaleNumbersTx(tx, chargedOrderIds);
         if (saleN > 0) {
           const docNum = `001-${String(saleN).padStart(8, '0')}`;
           const ph = chargedOrderIds.map(() => '?').join(',');

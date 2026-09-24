@@ -2081,7 +2081,15 @@ export default function POSPanel() {
       }
     }
 
-    const payableOrders = tableOrders;
+    const payableOrders = (tableOrders || []).filter((o) => {
+      if (!o) return false;
+      if (String(o.status || '') === 'cancelled') return false;
+      return String(o.payment_status || 'pending').toLowerCase() !== 'paid';
+    });
+    if (!useLineSplit && !payableOrders.length) {
+      return toast.error('No hay pedidos pendientes por cobrar en esta mesa');
+    }
+
     const isCourtesyCheckout = discountConfig.applied && isCourtesyDiscountReason(discountConfig.reason);
 
     let checkoutPaymentMethod = paymentMethod;

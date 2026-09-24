@@ -486,8 +486,12 @@ export function prepareMutation(method, endpoint, bodyText) {
     let orderIds = (Array.isArray(body.order_ids) ? body.order_ids : []).map(String).filter(Boolean);
     if (itemIds.length && !orderIds.length) {
       orderIds = resolveOrderIdsForItemIds(itemIds);
-      if (orderIds.length) body.order_ids = orderIds;
     }
+    // Cobro de mesa completa (sin líneas): todas las comandas pendientes de esa mesa.
+    if (!itemIds.length && orderIds.length) {
+      orderIds = expandCheckoutOrderIdsToTable(orderIds);
+    }
+    if (orderIds.length) body.order_ids = orderIds;
   }
   return {
     id: uuid(),
@@ -512,6 +516,41 @@ function resolveOrderIdsForItemIds(itemIds) {
   for (const t of findTablesInCache()) scan(t.orders);
   scan(readGetCache('/orders?limit=600') || readGetCache('/orders') || []);
   return [...found];
+}
+
+/** Amplía order_ids a todas las comandas pendientes de la misma mesa (cobro de cuenta completa). */
+function expandCheckoutOrderIdsToTable(orderIds) {
+  const ids = [...new Set((orderIds || []).map(String).filter(Boolean))];
+  if (!ids.length) return ids;
+  const expanded = new Set(ids);
+  const tables = findTablesInCache();
+  const allOrders = [
+    ...tables.flatMap((t) => t.orders || []),
+    ...(readGetCache('/orders?limit=600') || readGetCache('/orders') || []),
+  ];
+  const byId = new Map();
+  for (const o of allOrders) {
+    if (o?.id) byId.set(String(o.id), o);
+  }
+  const seeds = ids.map((id) => byId.get(id)).filter(Boolean);
+  for (const seed of seeds) {
+    const type = String(seed.type || 'dine_in').toLowerCase();
+    if (type === 'delivery' || type === 'pickup') continue;
+    const tnum = String(seed.table_number || '').trim();
+    const tid = String(seed.table_id || '').trim();
+    if (!tnum && !tid) continue;
+    for (const o of allOrders) {
+      if (!o?.id) continue;
+      if (String(o.payment_status || 'pending').toLowerCase() === 'paid') continue;
+      if (String(o.status || '') === 'cancelled' || String(o.status || '') === 'delivered') continue;
+      const ot = String(o.type || 'dine_in').toLowerCase();
+      if (ot === 'delivery' || ot === 'pickup') continue;
+      const sameTable = (tnum && String(o.table_number || '').trim() === tnum)
+        || (tid && String(o.table_id || '').trim() === tid);
+      if (sameTable) expanded.add(String(o.id));
+    }
+  }
+  return [...expanded];
 }
 
 /** Reescribe cobros en cola tras editar/borrar líneas offline. */
@@ -565,6 +604,11 @@ export function compactMutationQueue(queue) {
           continue;
         }
         out.push({ ...job, _staleCheckout: true });
+        continue;
+      }
+      if (orderIds.length) {
+        orderIds = expandCheckoutOrderIdsToTable(orderIds);
+        out.push({ ...job, body: JSON.stringify({ ...body, order_ids: orderIds }) });
         continue;
       }
     }
