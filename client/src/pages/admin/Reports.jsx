@@ -1793,6 +1793,7 @@ export default function Reports() {
               groups={dailySalesAccounts}
               emptyMessage="No hay cuentas cobradas en este día"
               onStatusClick={goToDescuentosHighlight}
+              onAccountPurged={() => void loadDaily(salesDailyDate)}
             />
           </div>
         </div>
@@ -1861,6 +1862,7 @@ export default function Reports() {
               groups={monthlySalesAccounts}
               emptyMessage="No hay cuentas cobradas en este mes"
               onStatusClick={goToDescuentosHighlight}
+              onAccountPurged={() => void loadMonthly(salesMonth)}
             />
           </div>
 

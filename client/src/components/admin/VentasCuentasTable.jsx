@@ -1,6 +1,10 @@
-import { formatCurrency, formatDate, formatTime, parseApiDate } from '../../utils/api';
+import { useState, useCallback } from 'react';
+import toast from 'react-hot-toast';
+import { formatCurrency, formatDate, formatTime, parseApiDate, api } from '../../utils/api';
 import { salesAccountClienteLabel } from '../../utils/salesReportExport';
 import { UI_BADGE } from '../../utils/uiBadges';
+import { useAuth } from '../../context/AuthContext';
+import ContextMenu from '../ContextMenu';
 import i18n from '../../i18n';
 
 export function getAccountAuditStatusBadge(group) {
@@ -97,11 +101,50 @@ export default function VentasCuentasTable({
   showActions = false,
   renderActions,
   onStatusClick,
+  onAccountPurged,
   sortKey,
   sortDir,
   onSort,
 }) {
+  const { user } = useAuth();
+  const isMasterAdmin = String(user?.role || '').toLowerCase() === 'master_admin';
+  const [ctx, setCtx] = useState(null);
+  const [purging, setPurging] = useState(false);
   const colSpan = (isVoidedTab ? 8 : 9) + (showActions ? 1 : 0);
+
+  const openMasterMenu = useCallback((e, group) => {
+    if (!isMasterAdmin) return;
+    if (group?.isPendingAccount) return;
+    const orderIds = (group?.orders || []).map((o) => o?.id).filter(Boolean);
+    if (!orderIds.length) return;
+    e.preventDefault();
+    setCtx({ x: e.clientX, y: e.clientY, group, orderIds });
+  }, [isMasterAdmin]);
+
+  const purgeAccount = useCallback(async () => {
+    if (!ctx?.orderIds?.length || purging) return;
+    const doc = getAccountDocument(ctx.group);
+    const total = formatCurrency(ctx.group?.total || 0);
+    const ok = window.confirm(
+      `Eliminar esta cuenta del sistema sin dejar rastro?\n\n`
+      + `${docLabel(doc.doc_type)} ${doc.full_number || ''}\n`
+      + `Monto: ${total}\n`
+      + `Comandas: ${ctx.orderIds.length}\n\n`
+      + `Se restará de ventas, stock/kardex e informes. No se puede deshacer.`,
+    );
+    if (!ok) return;
+    setPurging(true);
+    try {
+      await api.post('/orders/purge-from-system', { order_ids: ctx.orderIds });
+      toast.success('Cuenta eliminada del sistema');
+      setCtx(null);
+      onAccountPurged?.(ctx.orderIds);
+    } catch (err) {
+      toast.error(err?.message || 'No se pudo eliminar la cuenta');
+    } finally {
+      setPurging(false);
+    }
+  }, [ctx, purging, onAccountPurged]);
 
   return (
     <div className="overflow-x-auto">
@@ -140,7 +183,12 @@ export default function VentasCuentasTable({
             const sameDay = comandaCount === 1
               || (latest && earliest && formatDate(group.latestAt) === formatDate(group.earliestAt));
             return (
-              <tr key={group.key} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
+              <tr
+                key={group.key}
+                className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]"
+                onContextMenu={(e) => openMasterMenu(e, group)}
+                title={isMasterAdmin && !isPendingMesa ? 'Clic derecho: opciones de admin maestro' : undefined}
+              >
                 <td className="py-2.5">
                   {isPendingMesa ? (
                     <p className="font-medium text-[var(--ui-muted)]">—</p>
@@ -210,6 +258,21 @@ export default function VentasCuentasTable({
           )}
         </tbody>
       </table>
+
+      <ContextMenu
+        open={Boolean(ctx)}
+        x={ctx?.x || 0}
+        y={ctx?.y || 0}
+        onClose={() => !purging && setCtx(null)}
+        items={[
+          {
+            id: 'purge',
+            label: purging ? 'Eliminando…' : 'Eliminar venta (sin rastro)',
+            disabled: purging,
+            onClick: () => { void purgeAccount(); },
+          },
+        ]}
+      />
     </div>
   );
 }

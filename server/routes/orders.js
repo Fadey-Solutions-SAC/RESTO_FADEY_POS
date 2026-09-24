@@ -25,7 +25,6 @@ const { userCanEliminarLiberarMesa, userCanAjusteBarAutoDismiss } = require('../
 const { orderHasBarItems, orderHasKitchenItems, stripKitchenItemMeta, filterItemsForKitchenStation } = require('../utils/productionArea');
 const { getOrderItemsWithProductionArea, enrichOrderItemsWithComboAreas } = require('../services/orderItemsProductionService');
 const { ensureOrdersSchema } = require('../utils/ensureOrdersSchema');
-const { verifySalePurgePin } = require('../utils/salePurgePin');
 const { purgeOrdersFromSystem, loadOrdersByIds } = require('../utils/purgeOrderFromSystem');
 const { upsertOrderStationState } = require('../services/productionAreasService');
 const {
@@ -310,11 +309,8 @@ router.put('/bar-station-settings', authenticateToken, (req, res) => {
   }
 });
 
-/** Elimina ventas (p. ej. observadas) de todo el sistema. Requiere PIN 2546. */
-router.post('/purge-from-system', authenticateToken, requireRole('admin', 'master_admin'), (req, res) => {
-  if (!verifySalePurgePin(req.body?.pin)) {
-    return res.status(403).json({ error: 'Contraseña incorrecta' });
-  }
+/** Admin maestro: elimina una cuenta de venta sin dejar rastro (corrige errores de datos). */
+router.post('/purge-from-system', authenticateToken, requireRole('master_admin'), (req, res) => {
   const ids = Array.isArray(req.body?.order_ids) ? req.body.order_ids : [];
   const orders = loadOrdersByIds(ids);
   if (!orders.length) {
@@ -322,23 +318,13 @@ router.post('/purge-from-system', authenticateToken, requireRole('admin', 'maste
   }
   try {
     const result = purgeOrdersFromSystem(orders, { userId: req.user?.id || '' });
-    logAudit({
-      actorUserId: req.user?.id || '',
-      actorName: req.user?.full_name || req.user?.username || '',
-      action: 'order.purge_system',
-      resourceType: 'order',
-      resourceId: result.deleted.join(','),
-      details: {
-        order_ids: result.deleted,
-        order_numbers: orders.map((o) => o.order_number),
-      },
-    });
     const io = req.app.get('io');
     if (io) {
       for (const order of orders) {
         io.emit('order-update', { id: order.id, deleted: true, order_number: order.order_number });
       }
       io.emit('inventory-update', {});
+      io.emit('sales-update', { purged: result.deleted });
     }
     emitInventoryUpdate({});
     res.json({ success: true, deleted: result.deleted });

@@ -51,54 +51,33 @@ function assignSaleNumberToOrderIdsTx(tx, orderIds) {
 }
 
 /**
- * Si varias comandas de la misma mesa se cobraron casi juntas con N.º distintos
- * (p. ej. sync offline por comanda), unifica al menor sale_number / comprobante.
+ * Unifica sale_number solo entre las comandas de ESTE cobro (orderIds).
+ * No toca otros cobros de la misma mesa.
  */
-function unifyTableSaleNumbersTx(tx, orderIds, windowSeconds = 180) {
+function unifyTableSaleNumbersTx(tx, orderIds) {
   const ids = [...new Set((orderIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
-  if (!ids.length) return;
+  if (ids.length < 2) return;
   const ph = ids.map(() => '?').join(',');
-  const seeds = tx.queryAll(
-    `SELECT id, table_number, table_id, cash_register_id, sale_number, paid_at, updated_at
-     FROM orders WHERE id IN (${ph}) AND type = 'dine_in' AND payment_status = 'paid'`,
+  const rows = tx.queryAll(
+    `SELECT id, sale_number, sale_document_type, sale_document_number
+     FROM orders WHERE id IN (${ph}) AND payment_status = 'paid'`,
     ids,
   ) || [];
-  const seenTables = new Set();
-  for (const seed of seeds) {
-    const table = String(seed.table_number || '').trim();
-    if (!table || seenTables.has(table)) continue;
-    seenTables.add(table);
-    const paidRef = seed.paid_at || seed.updated_at;
-    const sibs = tx.queryAll(
-      `SELECT id, sale_number, sale_document_type, sale_document_number
-       FROM orders
-       WHERE type = 'dine_in'
-         AND payment_status = 'paid'
-         AND status != 'cancelled'
-         AND IFNULL(payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')
-         AND TRIM(CAST(table_number AS TEXT)) = ?
-         AND ABS(
-           strftime('%s', COALESCE(paid_at, updated_at, created_at))
-           - strftime('%s', COALESCE(?, updated_at, created_at))
-         ) <= ?`,
-      [table, paidRef, Number(windowSeconds) || 180],
-    ) || [];
-    if (sibs.length < 2) continue;
-    const nums = sibs.map((s) => Number(s.sale_number || 0)).filter((n) => n > 0);
-    if (!nums.length) continue;
-    const keep = Math.min(...nums);
-    const docNum = `001-${String(keep).padStart(8, '0')}`;
-    for (const s of sibs) {
-      tx.run(
-        `UPDATE orders SET sale_number = ?,
-          sale_document_number = CASE
-            WHEN IFNULL(NULLIF(trim(sale_document_type), ''), 'nota_venta') = 'nota_venta' THEN ?
-            ELSE COALESCE(NULLIF(trim(sale_document_number), ''), ?)
-          END
-         WHERE id = ?`,
-        [keep, docNum, docNum, s.id],
-      );
-    }
+  if (rows.length < 2) return;
+  const nums = rows.map((s) => Number(s.sale_number || 0)).filter((n) => n > 0);
+  if (!nums.length) return;
+  const keep = Math.min(...nums);
+  const docNum = `001-${String(keep).padStart(8, '0')}`;
+  for (const s of rows) {
+    tx.run(
+      `UPDATE orders SET sale_number = ?,
+        sale_document_number = CASE
+          WHEN IFNULL(NULLIF(trim(sale_document_type), ''), 'nota_venta') = 'nota_venta' THEN ?
+          ELSE COALESCE(NULLIF(trim(sale_document_number), ''), ?)
+        END
+       WHERE id = ?`,
+      [keep, docNum, docNum, s.id],
+    );
   }
 }
 
@@ -143,56 +122,8 @@ function groupPaidAtMs(orders) {
   return valid.length ? Math.min(...valid) : 0;
 }
 
-/**
- * Corrige cobros históricos partidos en varios sale_number (una fila por comanda).
- * Unifica al menor N.º y actualiza nota de venta 001-########.
- */
-function unifyHistoricalMesaSaleNumbers() {
-  ensureSaleNumberSchema();
-  const { groupPaidOrdersBySalesAccount } = require('../utils/salesAccountGrouping');
-  const orders = queryAll(`
-    SELECT id, type, table_number, table_id, cash_register_id, sale_number,
-           sale_document_type, sale_document_number, paid_at, updated_at, created_at, total
-    FROM orders
-    WHERE payment_status = 'paid'
-      AND status != 'cancelled'
-      AND IFNULL(payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')
-      AND IFNULL(type, 'dine_in') = 'dine_in'
-      AND TRIM(CAST(IFNULL(table_number, '') AS TEXT)) != ''
-  `) || [];
-  if (!orders.length) return;
-  const groups = groupPaidOrdersBySalesAccount(orders);
-  withTransaction((tx) => {
-    for (const group of groups) {
-      if (!group || group.length < 2) continue;
-      const nums = group.map((o) => Number(o.sale_number || 0)).filter((x) => x > 0);
-      if (nums.length < 2) continue;
-      const uniq = new Set(nums);
-      if (uniq.size < 2) continue;
-      const keep = Math.min(...nums);
-      const docNum = `001-${String(keep).padStart(8, '0')}`;
-      for (const o of group) {
-        tx.run(
-          `UPDATE orders SET sale_number = ?,
-            sale_document_number = CASE
-              WHEN IFNULL(NULLIF(trim(sale_document_type), ''), 'nota_venta') = 'nota_venta' THEN ?
-              ELSE COALESCE(NULLIF(trim(sale_document_number), ''), ?)
-            END
-           WHERE id = ?`,
-          [keep, docNum, docNum, o.id],
-        );
-      }
-    }
-  });
-}
-
 function backfillSaleNumbers() {
   ensureSaleNumberSchema();
-  try {
-    unifyHistoricalMesaSaleNumbers();
-  } catch (err) {
-    console.warn('[sale_number] unify mesa:', err?.message || err);
-  }
 
   const missing = queryOne(`
     SELECT COUNT(*) AS c FROM orders

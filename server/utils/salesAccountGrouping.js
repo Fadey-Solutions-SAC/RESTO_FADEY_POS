@@ -101,11 +101,6 @@ function isMesaSalesOrder(order) {
   return type !== 'delivery' && type !== 'pickup';
 }
 
-function salesAccountPaidAtMs(order) {
-  const d = parseOrderDate(order?.paid_at || order?.updated_at || order?.created_at || '');
-  return d ? d.getTime() : 0;
-}
-
 function salesAccountPaidAtBucket(order, timeZone) {
   const raw = order?.paid_at || order?.updated_at || order?.created_at || '';
   const d = parseOrderDate(raw);
@@ -116,14 +111,15 @@ function salesAccountPaidAtBucket(order, timeZone) {
 
 function salesAccountKey(order, timeZone = resolveRegionalTimezone(queryOne)) {
   if (!order) return '';
-  const table = normalizeTableKey(order.table_number);
-  // Cuenta de mesa = 1 cobro (mesa + caja + minuto), no 1 fila por comanda.
-  if (isMesaSalesOrder(order) && table) {
-    const registerId = String(order.cash_register_id || '');
-    return `mesa:${table}:${registerId}:${salesAccountPaidAtBucket(order, timeZone)}`;
-  }
+  // Un cobro = un sale_number = una cuenta (aunque la mesa se reutilice después).
   const saleNum = Number(order.sale_number || 0);
   if (saleNum > 0) return `venta:${saleNum}`;
+
+  const table = normalizeTableKey(order.table_number);
+  if (isMesaSalesOrder(order) && table) {
+    // Sin N.º aún: no mezclar cobros distintos; cada comanda queda aparte hasta tener sale_number.
+    return `pedido:${order.id || ''}`;
+  }
   const customerId = String(order.customer_id || '').trim();
   const registerId = String(order.cash_register_id || '');
   if (customerId) {
@@ -132,74 +128,16 @@ function salesAccountKey(order, timeZone = resolveRegionalTimezone(queryOne)) {
   return `pedido:${order.id || ''}`;
 }
 
-/** Ventana para unir comandas del mismo cobro con sale_number distintos (sync / bugs). */
-const MESA_ACCOUNT_MERGE_WINDOW_MS = 120000;
-
 function groupPaidOrdersBySalesAccount(orders = [], queryOneFn = queryOne) {
   const tz = resolveRegionalTimezone(queryOneFn);
-  const mesaByTableReg = new Map();
-  const otherBuckets = new Map();
-
+  const buckets = new Map();
   for (const order of orders || []) {
     if (!order) continue;
-    if (isMesaSalesOrder(order)) {
-      const table = normalizeTableKey(order.table_number);
-      const registerId = String(order.cash_register_id || '');
-      const key = `${table}|${registerId}`;
-      if (!mesaByTableReg.has(key)) mesaByTableReg.set(key, []);
-      mesaByTableReg.get(key).push(order);
-      continue;
-    }
     const key = salesAccountKey(order, tz);
-    if (!otherBuckets.has(key)) otherBuckets.set(key, []);
-    otherBuckets.get(key).push(order);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(order);
   }
-
-  const groups = [...otherBuckets.values()];
-
-  for (const list of mesaByTableReg.values()) {
-    // 1) Agrupar por sale_number compartido (cobro correcto).
-    const bySale = new Map();
-    const withoutSale = [];
-    for (const o of list) {
-      const sn = Number(o.sale_number || 0);
-      if (sn > 0) {
-        if (!bySale.has(sn)) bySale.set(sn, []);
-        bySale.get(sn).push(o);
-      } else {
-        withoutSale.push(o);
-      }
-    }
-    const seedGroups = [...bySale.values(), ...withoutSale.map((o) => [o])];
-
-    // 2) Fusionar grupos de la misma mesa cobrados casi juntos (comandas con N.º distintos).
-    const enriched = seedGroups.map((g) => {
-      const times = g.map(salesAccountPaidAtMs).filter((t) => t > 0);
-      const minT = times.length ? Math.min(...times) : 0;
-      const maxT = times.length ? Math.max(...times) : 0;
-      return { orders: [...g], minT, maxT };
-    }).sort((a, b) => a.minT - b.minT);
-
-    const merged = [];
-    for (const g of enriched) {
-      const prev = merged[merged.length - 1];
-      if (
-        prev
-        && g.minT > 0
-        && prev.maxT > 0
-        && g.minT - prev.maxT <= MESA_ACCOUNT_MERGE_WINDOW_MS
-      ) {
-        prev.orders.push(...g.orders);
-        prev.maxT = Math.max(prev.maxT, g.maxT);
-        prev.minT = Math.min(prev.minT, g.minT);
-      } else {
-        merged.push(g);
-      }
-    }
-    for (const g of merged) groups.push(g.orders);
-  }
-
-  return groups;
+  return [...buckets.values()];
 }
 
 function countSalesAccounts(orders = [], queryOneFn = queryOne) {

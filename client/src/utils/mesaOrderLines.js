@@ -193,11 +193,6 @@ function isMesaSalesOrder(order) {
   return type !== 'delivery' && type !== 'pickup';
 }
 
-function salesAccountPaidAtMs(order) {
-  const d = parseApiDate(order?.paid_at || order?.updated_at || order?.created_at || '');
-  return d ? d.getTime() : 0;
-}
-
 function salesAccountPaidAtBucket(order) {
   const raw = order?.paid_at || order?.updated_at || order?.created_at || '';
   const d = parseApiDate(raw);
@@ -215,32 +210,21 @@ function salesAccountPaidAtBucket(order) {
   return `${map.year}-${map.month}-${map.day}T${map.hour}:${map.minute}`;
 }
 
-/** Ventana para unir comandas del mismo cobro partidas en varios N.º de venta. */
-const MESA_ACCOUNT_MERGE_WINDOW_MS = 120000;
-
 /**
- * Agrupa comandas ya cobradas en cuentas de venta (1 cobro de mesa = 1 cuenta = 1 comprobante).
- * Salón: misma mesa + caja, mismo sale_number o cobros casi simultáneos (no 1 fila por comanda).
- * Delivery/otros: N.º de venta o cliente + minuto.
+ * Agrupa comandas cobradas en cuentas de venta.
+ * Solo une comandas del mismo cobro (mismo sale_number).
+ * Cobros distintos de la misma mesa = cuentas distintas (historial separado).
  */
 export function groupPaidOrdersBySalesAccount(orders = []) {
-  const mesaByTableReg = new Map();
-  const otherBuckets = new Map();
-
+  const buckets = new Map();
   for (const order of orders || []) {
     if (!order) continue;
-    if (isMesaSalesOrder(order)) {
-      const table = normalizeTableKey(order.table_number);
-      const registerId = String(order.cash_register_id || '');
-      const key = `${table}|${registerId}`;
-      if (!mesaByTableReg.has(key)) mesaByTableReg.set(key, []);
-      mesaByTableReg.get(key).push(order);
-      continue;
-    }
     const saleNum = Number(order.sale_number || 0);
     let key;
     if (saleNum > 0) {
       key = `venta:${saleNum}`;
+    } else if (isMesaSalesOrder(order)) {
+      key = `pedido:${order.id || ''}`;
     } else {
       const customerId = String(order.customer_id || '').trim();
       const registerId = String(order.cash_register_id || '');
@@ -250,52 +234,10 @@ export function groupPaidOrdersBySalesAccount(orders = []) {
         key = `pedido:${order.id || ''}`;
       }
     }
-    if (!otherBuckets.has(key)) otherBuckets.set(key, []);
-    otherBuckets.get(key).push(order);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(order);
   }
-
-  const groups = [...otherBuckets.values()];
-
-  for (const list of mesaByTableReg.values()) {
-    const bySale = new Map();
-    const withoutSale = [];
-    for (const o of list) {
-      const sn = Number(o.sale_number || 0);
-      if (sn > 0) {
-        if (!bySale.has(sn)) bySale.set(sn, []);
-        bySale.get(sn).push(o);
-      } else {
-        withoutSale.push(o);
-      }
-    }
-    const seedGroups = [...bySale.values(), ...withoutSale.map((o) => [o])];
-    const enriched = seedGroups.map((g) => {
-      const times = g.map(salesAccountPaidAtMs).filter((t) => t > 0);
-      const minT = times.length ? Math.min(...times) : 0;
-      const maxT = times.length ? Math.max(...times) : 0;
-      return { orders: [...g], minT, maxT };
-    }).sort((a, b) => a.minT - b.minT);
-
-    const merged = [];
-    for (const g of enriched) {
-      const prev = merged[merged.length - 1];
-      if (
-        prev
-        && g.minT > 0
-        && prev.maxT > 0
-        && g.minT - prev.maxT <= MESA_ACCOUNT_MERGE_WINDOW_MS
-      ) {
-        prev.orders.push(...g.orders);
-        prev.maxT = Math.max(prev.maxT, g.maxT);
-        prev.minT = Math.min(prev.minT, g.minT);
-      } else {
-        merged.push(g);
-      }
-    }
-    for (const g of merged) groups.push(g.orders);
-  }
-
-  return groups;
+  return [...buckets.values()];
 }
 
 export function summarizePaidSalesAccounts(orders = []) {
@@ -605,13 +547,9 @@ export function buildSalesDisplayGroups(orders = [], { groupOpenMesaByTableOnly 
 
 export function getSalesAccountKey(order) {
   if (!order) return '';
-  const table = normalizeTableKey(order.table_number);
-  if (isMesaSalesOrder(order) && table) {
-    const registerId = String(order.cash_register_id || '');
-    return `mesa:${table}:${registerId}:${salesAccountPaidAtBucket(order)}`;
-  }
   const saleNum = Number(order.sale_number || 0);
   if (saleNum > 0) return `venta:${saleNum}`;
+  if (isMesaSalesOrder(order)) return `pedido:${order.id || ''}`;
   const customerId = String(order.customer_id || '').trim();
   const registerId = String(order.cash_register_id || '');
   if (customerId) {
