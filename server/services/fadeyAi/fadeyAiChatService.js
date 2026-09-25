@@ -103,7 +103,7 @@ function getHistory(userId, limit = 40) {
      FROM fadey_ai_chat_messages
      WHERE user_id = ?
        AND substr(created_at, 1, 10) = ?
-     ORDER BY datetime(created_at) DESC
+     ORDER BY datetime(created_at) DESC, rowid DESC
      LIMIT ?`,
     [userId, today, Math.min(100, Math.max(1, Number(limit) || 40))]
   ) || [];
@@ -294,6 +294,56 @@ function isExplicitHowToMessage(message) {
     || (/cerrar\s+caja|abrir\s+caja/.test(m) && !/cu[aá]nto|vend[ií]|venta|demora|productividad|jornada|qui[eé]n/.test(m));
 }
 
+function formatLowStockReply(r) {
+  if (!r.count) return 'No hay productos no transformables (bebidas, envasados, etc.) bajo su stock mínimo.';
+  const lines = r.items.slice(0, 8).map((i) => `- ${i.name}: ${i.stock} (mín. ${i.min_stock})`);
+  const more = r.count > lines.length ? `\n…y ${r.count - lines.length} más en Inventario.` : '';
+  return `Stock bajo en productos no transformables (${r.count}):\n${lines.join('\n')}${more}`;
+}
+
+function isTopProductsQuestion(m) {
+  if (/mesero|mozo|cajero/.test(m)) return false;
+  return /(producto|plato|bebida|item|art[ií]culo)s?\b.*(m[aá]s\s+vend|se\s+vend\w*\s+m[aá]s|vend\w*\s+m[aá]s|m[aá]s\s+pedid|m[aá]s\s+sal|top)/.test(m)
+    || /(qu[eé]|cu[aá]l(es)?)\s+(es\s+lo\s+que\s+)?se\s+vende\w*\s+m[aá]s|lo\s+m[aá]s\s+vendido|m[aá]s\s+vendid[oa]s?|top\s+(de\s+)?(producto|plato|venta)s?/.test(m);
+}
+
+function formatTopProductsList(r) {
+  const lines = r.items.slice(0, 5).map((it, i) => {
+    const money = it.revenue != null ? ` · S/ ${Number(it.revenue).toFixed(2)}` : '';
+    return `${i + 1}. ${it.name} — ${it.qty} uds${money}`;
+  });
+  return lines.join('\n');
+}
+
+function topProductsAnswer(m, user) {
+  const dateMatch = m.match(/(\d{4}-\d{2}-\d{2})/);
+  const wantsMonth = /\bmes\b|mensual/.test(m);
+  const args = dateMatch ? { date: dateMatch[1], limit: 5 } : { scope: wantsMonth ? 'month' : 'day', limit: 5 };
+  let r = runTool('top_products', args, user);
+  if (r?.denied && r?.error) {
+    return { chunks: [r.error], sources: [{ kind: 'tool', title: 'permission_denied' }] };
+  }
+  let label = dateMatch ? r?.date : wantsMonth ? `del mes (${r?.date})` : `de hoy (${r?.date})`;
+  if (r?.ok && !r.items?.length && !dateMatch && !wantsMonth) {
+    const monthly = runTool('top_products', { scope: 'month', limit: 5 }, user);
+    if (monthly?.ok && monthly.items?.length) {
+      r = monthly;
+      label = `del mes (${monthly.date}) — hoy aún no hay ventas cobradas`;
+    }
+  }
+  if (!r?.ok) return null;
+  if (!r.items?.length) {
+    return {
+      chunks: [`Aún no hay ventas cobradas ${label} para calcular los productos más vendidos.`],
+      sources: [{ kind: 'tool', title: 'top_products' }],
+    };
+  }
+  return {
+    chunks: [`Productos más vendidos ${label}:\n${formatTopProductsList(r)}`],
+    sources: [{ kind: 'tool', title: 'top_products' }],
+  };
+}
+
 /** Respuestas cortas a datos en vivo (sin guiar a módulos). */
 function tryDirectDataAnswer(message, user) {
   const m = String(message || '').toLowerCase();
@@ -358,6 +408,10 @@ function tryDirectDataAnswer(message, user) {
     if (out) return out;
   }
 
+  if (isTopProductsQuestion(m)) {
+    return topProductsAnswer(m, user);
+  }
+
   if (/mesero.*(m[aá]s|vend)|qui[eé]n vend[ií][oó] m[aá]s|top mesero|ranking (de )?mesero|ventas por mesero/.test(m)) {
     const r = runTool('sales_desk', { focus: 'waiters', message }, user);
     const out = denyOrOk(r, 'sales_desk', 'waiters');
@@ -396,7 +450,7 @@ function tryDirectDataAnswer(message, user) {
     }
     if (r.ok) {
       return {
-        chunks: [r.count ? `Stock bajo (${r.count}): ${r.items.slice(0, 5).map((i) => i.name).join(', ')}.` : 'No hay productos en umbral de stock bajo.'],
+        chunks: [formatLowStockReply(r)],
         sources: [{ kind: 'tool', title: 'low_stock' }],
       };
     }
@@ -473,7 +527,7 @@ function applyLearnedIntent(message, user, chunks, sources) {
         const top = r.items[0];
         chunks.push(`Más vendido (${r.date}): ${top.name} (${top.qty} uds).`);
       } else if (toolName === 'low_stock') {
-        chunks.push(r.count ? `Stock bajo (${r.count}): ${r.items.slice(0, 5).map((i) => i.name).join(', ')}.` : 'No hay productos en umbral de stock bajo.');
+        chunks.push(formatLowStockReply(r));
       } else if (toolName === 'active_staff') {
         const names = (r.staff || []).slice(0, 12).map((s) => s.name || s.full_name).filter(Boolean);
         chunks.push(names.length ? `Personal en jornada: ${names.join(', ')}.` : 'Nadie con jornada abierta.');

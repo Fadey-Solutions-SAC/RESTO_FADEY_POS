@@ -9,6 +9,7 @@ const {
 } = require('../../utils/salesAccountGrouping');
 const { getBusinessTodayDateKey, getBusinessMonthKey, shiftBusinessDateKey, startOfBusinessWeekMonday } = require('../../utils/appDateTime');
 const { searchMemory } = require('./fadeyAiKnowledgeService');
+const { isNonTransformedLowStockSql, effectiveMinStock } = require('../../utils/productStockThreshold');
 const {
   canUseTool,
   deniedToolMessage,
@@ -340,20 +341,24 @@ function toolLowStock(user) {
   if (!canSeeFinancials(user) && !['admin', 'master_admin', 'cajero'].includes(roleLc(user))) {
     return { ok: false, error: 'Tu rol no consulta stock.' };
   }
+  const where = `IFNULL(p.is_active, 1) = 1
+       AND p.process_type = 'non_transformed'
+       AND ${isNonTransformedLowStockSql('p')}`;
+  const total = Number(queryOne(`SELECT COUNT(*) AS n FROM products p WHERE ${where}`)?.n || 0);
   const low = queryAll(
-    `SELECT name, stock
-     FROM products
-     WHERE IFNULL(is_active, 1) = 1
-       AND IFNULL(stock, 0) <= 10
-     ORDER BY stock ASC
+    `SELECT p.name, p.stock, p.min_stock
+     FROM products p
+     WHERE ${where}
+     ORDER BY IFNULL(p.stock, 0) ASC, p.name ASC
      LIMIT 15`
   ) || [];
   return {
     ok: true,
-    count: low.length,
+    count: total,
     items: low.map((p) => ({
       name: p.name,
       stock: Number(p.stock || 0),
+      min_stock: effectiveMinStock(p.min_stock),
     })),
   };
 }
