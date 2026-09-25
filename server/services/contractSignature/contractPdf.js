@@ -6,6 +6,15 @@ const path = require('path');
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const { getUploadsRoot, ensureUploadsRoot } = require('../../uploadsPath');
+const { formatDisplayDateKey, formatLimaSqlDateTime } = require('../../utils/appDateTime');
+
+function signedAtLabel(value) {
+  if (!value) return '—';
+  const raw = String(value);
+  const d = /[TZ]|[+-]\d{2}:\d{2}$/.test(raw) ? new Date(raw) : null;
+  if (d && !Number.isNaN(d.getTime())) return formatDisplayDateKey(formatLimaSqlDateTime(d));
+  return formatDisplayDateKey(raw);
+}
 
 function contractsDir() {
   const root = ensureUploadsRoot();
@@ -121,7 +130,7 @@ function writeSignedContractPdf({ originalPath, version, firmas = [] }) {
       doc.font('Helvetica').fontSize(9);
       doc.text(`Firmante: ${f.signer_name || '—'}`);
       doc.text(`Documento: ${f.document_number || '—'}`);
-      doc.text(`Fecha: ${f.signed_at || '—'}`);
+      doc.text(`Fecha: ${signedAtLabel(f.signed_at)}`);
       doc.text(`Certificado: ${f.certificate_serial || '—'}`);
       doc.text(`Algoritmo: ${f.signature_algorithm || '—'}`);
       doc.text(`Validación: ${f.validation_status || '—'}`);

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { api } from '../../utils/api';
+import { api, formatDate } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { MdAdd, MdDelete, MdLocalOffer, MdCalendarToday, MdSearch } from 'react-icons/md';
 import Modal from '../../components/Modal';
@@ -213,7 +213,7 @@ export default function Ofertas() {
                 <p className="text-sm ui-text-muted mb-2">{o.description}</p>
                 <p className="text-xs text-[var(--ui-muted)]">
                   <MdCalendarToday className="inline mr-1" />
-                  {o.start_date} al {o.end_date}
+                  {formatDate(o.start_date)} al {formatDate(o.end_date)}
                 </p>
                 <p className="text-xs ui-text-muted mt-2 break-words">
                   <span className="font-medium text-[var(--ui-muted)]">Productos vinculados: </span>

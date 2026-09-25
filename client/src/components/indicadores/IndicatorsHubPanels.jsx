@@ -25,7 +25,9 @@ import {
   Area,
 } from 'recharts';
 import { useState } from 'react';
-import { formatCurrency, formatDateTime } from '../../utils/api';
+import { formatCurrency, formatDateKey, formatDateTime } from '../../utils/api';
+
+const dayTick = (v) => formatDateKey(v) || v;
 import IndicatorStatCard from './IndicatorStatCard';
 import Modal from '../Modal';
 import FadeyAiHomePanel from './FadeyAiHomePanel';
@@ -541,9 +543,9 @@ export function IndicatorsChartsPanel({ data }) {
         <ResponsiveContainer width="100%" height={250}>
           <AreaChart data={last7.length ? last7 : ch.sales_by_day}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+            <XAxis dataKey="name" tick={{ fontSize: 10 }} tickFormatter={dayTick} />
             <YAxis tick={{ fontSize: 10 }} />
-            <Tooltip formatter={(v) => formatCurrency(v)} />
+            <Tooltip formatter={(v) => formatCurrency(v)} labelFormatter={dayTick} />
             <Area type="monotone" dataKey="ventas" stroke="#de3024" fill="#de3024" fillOpacity={0.2} />
           </AreaChart>
         </ResponsiveContainer>
@@ -575,9 +577,9 @@ export function IndicatorsChartsPanel({ data }) {
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={last7.length ? last7 : ch.sales_by_day}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+            <XAxis dataKey="name" tick={{ fontSize: 10 }} tickFormatter={dayTick} />
             <YAxis />
-            <Tooltip />
+            <Tooltip labelFormatter={dayTick} />
             <Line type="monotone" dataKey="pedidos" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
           </LineChart>
         </ResponsiveContainer>

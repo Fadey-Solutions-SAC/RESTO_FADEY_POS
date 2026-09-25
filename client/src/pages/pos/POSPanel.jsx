@@ -112,6 +112,7 @@ import {
   checkPrintingHealth,
   electronPrinting,
   formatCurrency,
+  formatDate,
   formatPeDateTimeLine,
   formatPeDateTimeParts,
   getPaymentMethodOptions,
@@ -4430,7 +4431,7 @@ export default function POSPanel() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="font-semibold rf-section-title">{entry.reservation.client_name}</p>
-                      <p className="text-xs ui-text-muted">{entry.reservation.date} · {entry.reservation.time} · {entry.reservation.guests} comensales</p>
+                      <p className="text-xs ui-text-muted">{formatDate(entry.reservation.date)} · {entry.reservation.time} · {entry.reservation.guests} comensales</p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs ui-text-muted">Total pedido</p>

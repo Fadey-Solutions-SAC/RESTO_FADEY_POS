@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { api, getApiBase } from '../../utils/api';
+import { api, getApiBase, formatDate } from '../../utils/api';
 import { InlineDateField } from '../DateFilterControls';
 import { attendanceStatusLabel, formatMinutes } from './hrFormat';
 
@@ -111,7 +111,7 @@ export default function HrReportsTab() {
               <h3 className="font-semibold text-sm mb-2">Inasistencias (día fin del período)</h3>
               <ul className="text-sm space-y-1">
                 {report.absences.map((a) => (
-                  <li key={`${a.employee_id}-${a.date}`}>{a.full_name} · {a.date} · {attendanceStatusLabel(a.status)}</li>
+                  <li key={`${a.employee_id}-${a.date}`}>{a.full_name} · {formatDate(a.date)} · {attendanceStatusLabel(a.status)}</li>
                 ))}
               </ul>
             </div>

@@ -16,6 +16,7 @@ const {
   resolveLearnedIntent,
 } = require('./fadeyAiKnowledgeService');
 const { runTool, resolveSalesPeriod } = require('./fadeyAiTools');
+const { formatDisplayDateKey } = require('../../utils/appDateTime');
 const {
   suggestionOptionsForUser,
   accessIntroForUser,
@@ -282,8 +283,10 @@ function salesScopeForMessage(message) {
 }
 
 function formatSalesReply(r) {
-  const label = r.label || (r.from === r.to ? r.from : `${r.from} → ${r.to}`);
-  const range = r.from === r.to ? r.from : `${r.from} → ${r.to}`;
+  const range = r.from === r.to
+    ? formatDisplayDateKey(r.from)
+    : `${formatDisplayDateKey(r.from)} → ${formatDisplayDateKey(r.to)}`;
+  const label = r.label || range;
   return `Ventas ${label}: S/ ${Number(r.sales || 0).toFixed(2)} · ${r.orders} cuenta(s) (${range}).`;
 }
 
@@ -323,12 +326,13 @@ function topProductsAnswer(m, user) {
   if (r?.denied && r?.error) {
     return { chunks: [r.error], sources: [{ kind: 'tool', title: 'permission_denied' }] };
   }
-  let label = dateMatch ? r?.date : wantsMonth ? `del mes (${r?.date})` : `de hoy (${r?.date})`;
+  const shown = formatDisplayDateKey(r?.date);
+  let label = dateMatch ? `del ${shown}` : wantsMonth ? `del mes (${shown})` : `de hoy (${shown})`;
   if (r?.ok && !r.items?.length && !dateMatch && !wantsMonth) {
     const monthly = runTool('top_products', { scope: 'month', limit: 5 }, user);
     if (monthly?.ok && monthly.items?.length) {
       r = monthly;
-      label = `del mes (${monthly.date}) — hoy aún no hay ventas cobradas`;
+      label = `del mes (${formatDisplayDateKey(monthly.date)}) — hoy aún no hay ventas cobradas`;
     }
   }
   if (!r?.ok) return null;
@@ -525,7 +529,7 @@ function applyLearnedIntent(message, user, chunks, sources) {
         chunks.push(formatSalesReply(r));
       } else if (toolName === 'top_products' && r.items?.length) {
         const top = r.items[0];
-        chunks.push(`Más vendido (${r.date}): ${top.name} (${top.qty} uds).`);
+        chunks.push(`Más vendido (${formatDisplayDateKey(r.date)}): ${top.name} (${top.qty} uds).`);
       } else if (toolName === 'low_stock') {
         chunks.push(formatLowStockReply(r));
       } else if (toolName === 'active_staff') {
@@ -649,7 +653,7 @@ function heuristicToolPrefetch(message, user) {
     }
     if (r.ok && r.items?.length) {
       const top = r.items[0];
-      chunks.push(`Más vendido (${r.date}): ${top.name} (${top.qty} uds${top.revenue != null ? `, S/ ${Number(top.revenue).toFixed(2)}` : ''}).`);
+      chunks.push(`Más vendido (${formatDisplayDateKey(r.date)}): ${top.name} (${top.qty} uds${top.revenue != null ? `, S/ ${Number(top.revenue).toFixed(2)}` : ''}).`);
       sources.push({ kind: 'tool', title: 'top_products' });
     }
   }

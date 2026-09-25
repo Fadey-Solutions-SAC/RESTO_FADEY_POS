@@ -154,8 +154,19 @@ function sqlBusinessNowExpr(queryOneFn, ...modifiers) {
   return `datetime(${base}, ${mods})`;
 }
 
+/** Clave `YYYY-MM-DD` → `dd/mm/aaaa`; `YYYY-MM` → `mm/aaaa`; con hora conserva `HH:MM`. */
+function formatDisplayDateKey(value) {
+  const raw = String(value || '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?(?:[ T](\d{2}:\d{2}))?/);
+  if (!m) return raw;
+  const [, y, mo, d, hm] = m;
+  if (!d) return `${mo}/${y}`;
+  return hm ? `${d}/${mo}/${y} ${hm}` : `${d}/${mo}/${y}`;
+}
+
 module.exports = {
   DEFAULT_TIMEZONE,
+  formatDisplayDateKey,
   DEFAULT_UTC_OFFSET,
   partsFromDate,
   resolveRegionalTimezone,

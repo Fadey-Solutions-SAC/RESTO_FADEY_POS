@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const { queryOne } = require('../database');
 const calc = require('./hrAttendanceCalc');
+const { formatDisplayDateKey: fd } = require('../utils/appDateTime');
 
 function restaurantHeader() {
   const r = queryOne('SELECT name, address, phone FROM restaurants LIMIT 1');
@@ -44,9 +45,9 @@ function buildCsv(report, absences = []) {
       escapeCsv(r.full_name),
       escapeCsv(r.position),
       escapeCsv(r.department),
-      escapeCsv(r.work_date),
-      escapeCsv(r.check_in_at || ''),
-      escapeCsv(r.check_out_at || ''),
+      escapeCsv(fd(r.work_date)),
+      escapeCsv(fd(r.check_in_at)),
+      escapeCsv(fd(r.check_out_at)),
       Number(r.worked_minutes || 0),
       Number(r.late_minutes || 0),
       Number(r.overtime_minutes || 0),
@@ -58,7 +59,7 @@ function buildCsv(report, absences = []) {
     lines.push('=== Inasistencias ===');
     lines.push('Trabajador,Fecha,Estado');
     for (const a of absences) {
-      lines.push([escapeCsv(a.full_name), escapeCsv(a.date), escapeCsv(statusLabel(a.status))].join(','));
+      lines.push([escapeCsv(a.full_name), escapeCsv(fd(a.date)), escapeCsv(statusLabel(a.status))].join(','));
     }
   }
   lines.push('');
@@ -85,14 +86,14 @@ function buildExcelXml(report, absences = []) {
     .replace(/</g, '&lt;')}</Data></Cell>`;
   const add = (arr) => rows.push(`<Row>${arr.map(cell).join('')}</Row>`);
   add(['Empresa', h.name]);
-  add(['Desde', report.from]);
-  add(['Hasta', report.to]);
+  add(['Desde', fd(report.from)]);
+  add(['Hasta', fd(report.to)]);
   add([]);
   add(['Trabajador', 'Cargo', 'Área', 'Fecha', 'Ingreso', 'Salida', 'Horas min', 'Tardanza', 'Extras', 'Estado']);
   for (const r of report.records || []) {
     add([
-      r.full_name, r.position || '', r.department || '', r.work_date,
-      r.check_in_at || '', r.check_out_at || '',
+      r.full_name, r.position || '', r.department || '', fd(r.work_date),
+      fd(r.check_in_at), fd(r.check_out_at),
       Number(r.worked_minutes || 0), Number(r.late_minutes || 0), Number(r.overtime_minutes || 0),
       statusLabel(r.status),
     ]);
@@ -100,7 +101,7 @@ function buildExcelXml(report, absences = []) {
   if (absences.length) {
     add([]);
     add(['Inasistencias']);
-    for (const a of absences) add([a.full_name, a.date, statusLabel(a.status)]);
+    for (const a of absences) add([a.full_name, fd(a.date), statusLabel(a.status)]);
   }
   return `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
@@ -124,9 +125,9 @@ function buildPdf(report, absences = []) {
     doc.moveDown(0.3);
     doc.fontSize(10).fillColor('#333')
       .text(`${h.name}`)
-      .text(`Período: ${report.from} — ${report.to}`)
+      .text(`Período: ${fd(report.from)} — ${fd(report.to)}`)
       .text(`Tipo: ${report.kind}`)
-      .text(`Generado: ${calc.jsNowSql(new Date(), 'America/Lima')}`);
+      .text(`Generado: ${fd(calc.jsNowSql(new Date(), 'America/Lima'))}`);
     doc.moveDown();
 
     doc.fontSize(11).fillColor('#000').text('Resumen por trabajador');
@@ -145,7 +146,7 @@ function buildPdf(report, absences = []) {
       doc.fontSize(8);
       for (const r of (report.records || []).slice(0, 80)) {
         doc.text(
-          `${r.work_date} | ${r.full_name} | ${r.check_in_at || '—'} → ${r.check_out_at || '—'} | ${calc.minutesToHm(r.worked_minutes)} | ${statusLabel(r.status)}`,
+          `${fd(r.work_date)} | ${r.full_name} | ${fd(r.check_in_at) || '—'} → ${fd(r.check_out_at) || '—'} | ${calc.minutesToHm(r.worked_minutes)} | ${statusLabel(r.status)}`,
         );
       }
       if (report.records.length > 80) doc.text(`… y ${report.records.length - 80} filas más (exporte CSV/Excel).`);
@@ -156,7 +157,7 @@ function buildPdf(report, absences = []) {
       doc.fontSize(11).text('Inasistencias');
       doc.fontSize(9);
       for (const a of absences.slice(0, 60)) {
-        doc.text(`${a.date} · ${a.full_name}`);
+        doc.text(`${fd(a.date)} · ${a.full_name}`);
       }
     }
 

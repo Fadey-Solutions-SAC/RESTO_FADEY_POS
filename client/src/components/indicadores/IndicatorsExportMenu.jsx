@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MdDownload, MdClose } from 'react-icons/md';
 import { downloadIndicatorsExport, exportHubJsonClient } from '../../utils/indicatorsExport';
+import { formatDateKey } from '../../utils/api';
 
 const FORMATS = [
   { id: 'csv', label: 'Excel' },
@@ -61,7 +62,7 @@ export default function IndicatorsExportMenu({ open, onClose, hub, filters, acti
           <p className="text-xs text-[var(--ui-muted)] mb-3">Empresa: {hub.export_meta.company}</p>
         ) : null}
         <p className="text-xs text-[var(--ui-muted)] mb-4">
-          Período: {filters.from} — {filters.to}
+          Período: {formatDateKey(filters.from)} — {formatDateKey(filters.to)}
         </p>
         <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Formato</label>
         <div className="flex flex-wrap gap-2 mb-4">

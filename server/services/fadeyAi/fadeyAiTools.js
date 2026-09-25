@@ -7,7 +7,13 @@ const {
   queryPaidSalesOrders,
   metricsFromPaidOrdersWhere,
 } = require('../../utils/salesAccountGrouping');
-const { getBusinessTodayDateKey, getBusinessMonthKey, shiftBusinessDateKey, startOfBusinessWeekMonday } = require('../../utils/appDateTime');
+const {
+  getBusinessTodayDateKey,
+  getBusinessMonthKey,
+  shiftBusinessDateKey,
+  startOfBusinessWeekMonday,
+  formatDisplayDateKey,
+} = require('../../utils/appDateTime');
 const { searchMemory } = require('./fadeyAiKnowledgeService');
 const { isNonTransformedLowStockSql, effectiveMinStock } = require('../../utils/productStockThreshold');
 const {
@@ -118,8 +124,8 @@ function toolSalesSummary(args = {}, user) {
     }
   } else if (!label) {
     if (from === to && from === today) label = 'hoy';
-    else if (from === to) label = from;
-    else label = `${from} → ${to}`;
+    else if (from === to) label = formatDisplayDateKey(from);
+    else label = `${formatDisplayDateKey(from)} → ${formatDisplayDateKey(to)}`;
   }
 
   const parts = [];
@@ -279,7 +285,9 @@ function toolSalesDesk(args = {}, user) {
   );
 
   const lines = [];
-  const range = from === to ? from : `${from} → ${to}`;
+  const range = from === to
+    ? formatDisplayDateKey(from)
+    : `${formatDisplayDateKey(from)} → ${formatDisplayDateKey(to)}`;
   const label = hasExplicitPeriod ? (period.label || range) : `este mes (${range})`;
   lines.push(`**Escritorio de ventas** (${label})`);
 

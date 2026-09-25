@@ -13,7 +13,7 @@ const {
   reservationKitchenReleaseSqlExpr,
 } = require('./reservationDateTime');
 const { scheduleKitchenBarAutoPrint } = require('./kitchenBarAutoPrintService');
-const { sqlBusinessNowExpr } = require('../utils/appDateTime');
+const { sqlBusinessNowExpr, formatDisplayDateKey } = require('../utils/appDateTime');
 const { getTableDisplayLabel } = require('../utils/tableDisplayLabel');
 
 let schedulerTimer = null;
@@ -317,7 +317,7 @@ function buildReservationCajaAlert(reservation) {
     title: hasAssignedTable(reservation)
       ? 'Reserva próxima — verificar preparativos'
       : 'Reserva — asigne mesa y preparativos',
-    message: `${reservation.client_name} · ${reservation.date} ${timeLabel} · ${Number(reservation.guests || 0)} persona(s).${tableAction}${orderHint}${notesHint}`,
+    message: `${reservation.client_name} · ${formatDisplayDateKey(reservation.date)} ${timeLabel} · ${Number(reservation.guests || 0)} persona(s).${tableAction}${orderHint}${notesHint}`,
     linkTo: '/admin/reservas',
     linkLabel: 'Ver reservas',
   };

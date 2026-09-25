@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { api } from '../../utils/api';
+import { api, formatDate } from '../../utils/api';
 import { attendanceStatusLabel, formatMinutes, formatSqlTime, leaveStatusLabel, leaveTypeLabel } from './hrFormat';
 
 export default function HrMyDayTab() {
@@ -82,7 +82,7 @@ export default function HrMyDayTab() {
           <tbody>
             {(data.history || []).map((r) => (
               <tr key={r.id} className="border-t border-[color:var(--ui-border)]/50">
-                <td className="p-3">{r.work_date}</td>
+                <td className="p-3">{formatDate(r.work_date)}</td>
                 <td className="p-3">{formatSqlTime(r.check_in_at)}</td>
                 <td className="p-3">{formatSqlTime(r.check_out_at)}</td>
                 <td className="p-3">{formatMinutes(r.worked_minutes)}</td>
@@ -99,7 +99,7 @@ export default function HrMyDayTab() {
           <h3 className="font-semibold text-sm mb-2">Permisos</h3>
           <ul className="text-sm space-y-1">
             {data.leaves.map((l) => (
-              <li key={l.id}>{leaveTypeLabel(l.type)} · {l.start_date} → {l.end_date} · {leaveStatusLabel(l.status)}</li>
+              <li key={l.id}>{leaveTypeLabel(l.type)} · {formatDate(l.start_date)} → {formatDate(l.end_date)} · {leaveStatusLabel(l.status)}</li>
             ))}
           </ul>
         </div>

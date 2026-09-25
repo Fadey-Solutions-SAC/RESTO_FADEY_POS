@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { api, formatCurrency, toLocalDateKey } from '../../utils/api';
+import { api, formatCurrency, formatDate, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
@@ -358,7 +358,7 @@ export default function Reservas() {
                     <p className="font-bold rf-section-title truncate">{r.client_name}</p>
                     <p className="text-sm ui-text-muted break-words">
                       <MdCalendarToday className="inline text-xs mr-1" />
-                      {r.date} · <MdAccessTime className="inline text-xs mr-1" />
+                      {formatDate(r.date)} · <MdAccessTime className="inline text-xs mr-1" />
                       {r.time} · {r.guests} personas
                     </p>
                     {r.phone && (

@@ -1372,6 +1372,14 @@ export function formatDateKey(dateKey) {
   return `${d}/${m}/${y}`;
 }
 
+/** Clave yyyy-MM → mm/aaaa. */
+export function formatMonthKey(monthKey) {
+  const ym = String(monthKey || '').trim().slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(ym)) return String(monthKey || '');
+  const [y, m] = ym.split('-');
+  return `${m}/${y}`;
+}
+
 export const formatDate = (dateStr) => {
   if (!dateStr) return '';
   const raw = String(dateStr).trim();

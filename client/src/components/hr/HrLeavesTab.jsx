@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { api } from '../../utils/api';
+import { api, formatDate } from '../../utils/api';
 import Modal from '../Modal';
 import { leaveStatusLabel, leaveTypeLabel } from './hrFormat';
 
@@ -90,8 +90,8 @@ export default function HrLeavesTab({ employees }) {
               <tr key={r.id} className="border-b border-[color:var(--ui-border)]/50">
                 <td className="p-3">{r.full_name}</td>
                 <td className="p-3">{leaveTypeLabel(r.type)}</td>
-                <td className="p-3">{r.start_date}</td>
-                <td className="p-3">{r.end_date}</td>
+                <td className="p-3">{formatDate(r.start_date)}</td>
+                <td className="p-3">{formatDate(r.end_date)}</td>
                 <td className="p-3">{r.reason || '—'}</td>
                 <td className="p-3">{leaveStatusLabel(r.status)}</td>
                 <td className="p-3 whitespace-nowrap">

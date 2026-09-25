@@ -5,6 +5,7 @@
 const PDFDocument = require('pdfkit');
 const { queryOne } = require('../database');
 const { buildIndicatorsHub } = require('./indicatorsHubService');
+const { formatDisplayDateKey: fd, formatLimaSqlDateTime } = require('../utils/appDateTime');
 
 function getRestaurantHeader() {
   const r = queryOne('SELECT name, address, phone FROM restaurants LIMIT 1');
@@ -26,8 +27,8 @@ function buildCsv(hub, tab) {
   const lines = [];
   const h = getRestaurantHeader();
   lines.push(`Empresa,${escapeCsv(h.name)}`);
-  lines.push(`Período,${hub.filters?.from || ''} — ${hub.filters?.to || ''}`);
-  lines.push(`Generado,${hub.generated_at || ''}`);
+  lines.push(`Período,${fd(hub.filters?.from)} — ${fd(hub.filters?.to)}`);
+  lines.push(`Generado,${hub.generated_at ? fd(formatLimaSqlDateTime(new Date(hub.generated_at))) : ''}`);
   lines.push('');
 
   const g = hub.general || {};
@@ -88,7 +89,7 @@ function streamPdf(hub, tab, res) {
 
   doc.fontSize(18).text(h.name, { align: 'center' });
   doc.fontSize(10).fillColor('#666').text(h.address || '', { align: 'center' });
-  doc.text(`Indicadores · ${hub.filters?.from} — ${hub.filters?.to}`, { align: 'center' });
+  doc.text(`Indicadores · ${fd(hub.filters?.from)} — ${fd(hub.filters?.to)}`, { align: 'center' });
   doc.moveDown();
   doc.fillColor('#000').fontSize(12);
 

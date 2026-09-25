@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { api, formatCurrency, formatDate, formatDateKey, formatDateTime, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
+import { api, formatCurrency, formatDate, formatDateKey, formatDateTime, formatMonthKey, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import {
@@ -1873,9 +1873,9 @@ export default function Reports() {
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={[...monthlyData.dailySales].reverse()}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" tickFormatter={(v) => formatDateKey(v) || v} />
                     <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip formatter={(v) => formatCurrency(v)} />
+                    <Tooltip formatter={(v) => formatCurrency(v)} labelFormatter={(v) => formatDateKey(v) || v} />
                     <Line type="monotone" dataKey="total" stroke="#f04438" strokeWidth={2} dot={{ fill: '#f04438', r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1888,9 +1888,9 @@ export default function Reports() {
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={[...monthlyData.monthlySales].reverse()}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} tickFormatter={formatMonthKey} />
                     <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip formatter={(v) => formatCurrency(v)} />
+                    <Tooltip formatter={(v) => formatCurrency(v)} labelFormatter={formatMonthKey} />
                     <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -2604,7 +2604,7 @@ export default function Reports() {
                   </div>
                 </div>
                 <p className="text-xs text-[var(--ui-muted)]">
-                  Rango: {financeOverview.filters?.from} — {financeOverview.filters?.to}. Todos los recuadros de este resumen usan esas fechas.
+                  Rango: {formatDate(financeOverview.filters?.from)} — {formatDate(financeOverview.filters?.to)}. Todos los recuadros de este resumen usan esas fechas.
                   Inversión = compras de productos de almacén + insumos. Gastos operativos = precio de compra e insumos de cada producto vendido + pérdidas + egresos + pagos. Utilidad neta = ventas − gastos operativos.
                 </p>
               </>

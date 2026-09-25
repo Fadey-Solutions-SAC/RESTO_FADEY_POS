@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { api } from '../../utils/api';
+import { api, formatDate } from '../../utils/api';
 import Modal from '../Modal';
 import { InlineDateField } from '../DateFilterControls';
 import { attendanceStatusLabel, formatMinutes, formatSqlTime } from './hrFormat';
@@ -162,7 +162,7 @@ export default function HrHistoryTab({ employees, branches }) {
               {(data.items || []).map((r) => (
                 <tr key={r.id} className="border-b border-[color:var(--ui-border)]/50">
                   <td className="p-3">{r.full_name}</td>
-                  <td className="p-3">{r.work_date}</td>
+                  <td className="p-3">{formatDate(r.work_date)}</td>
                   <td className="p-3">{formatSqlTime(r.check_in_at)}</td>
                   <td className="p-3">{formatSqlTime(r.check_out_at)}</td>
                   <td className="p-3">{formatMinutes(r.worked_minutes)}</td>

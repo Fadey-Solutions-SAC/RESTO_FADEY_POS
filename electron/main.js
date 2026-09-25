@@ -11,6 +11,8 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, shel
 /** Audio de cocina/bar sin gesto manual; permisos de cámara/mic se conceden al arrancar. */
 try {
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+  // Calendarios <input type="date"> en dd/mm/aaaa aunque Windows esté en inglés.
+  app.commandLine.appendSwitch('lang', 'es-PE');
 } catch (_) {
   /* noop */
 }
