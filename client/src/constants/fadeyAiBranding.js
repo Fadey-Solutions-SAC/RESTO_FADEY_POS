@@ -9,10 +9,10 @@ export const FADEY_AI_TAGLINE = 'Conectado con tu negocio';
  * Solo master_admin debe ver este saludo / tagline.
  */
 export const FADEY_AI_CREATOR_MODE = {
-  honorific: 'Sr. Romero',
-  tagline: 'A sus órdenes, Sr. Romero',
+  honorific: 'Sr. Deyvi',
+  tagline: 'A sus órdenes, Sr. Deyvi',
   greeting:
-    'Hola, soy PIX. Dígame, ¿en qué puedo ayudarlo, Sr. Romero? Estoy lista para lo que necesite.',
+    'Hola, soy PIX. Dígame, ¿en qué puedo ayudarlo, Sr. Deyvi? Estoy lista para lo que necesite.',
   suggested: [
     'Estado del sistema',
     '¿Cuánto se vendió esta semana?',
