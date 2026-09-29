@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import {
   MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline, MdEdit,
-  MdViewInAr, MdMonetizationOn, MdSwapHoriz, MdWarningAmber, MdInventory2,
+  MdViewInAr, MdMonetizationOn, MdSwapHoriz, MdInventory2,
   MdStorefront, MdWarehouse, MdChevronRight, MdExpandMore,
 } from 'react-icons/md';
 import { FaCoins } from 'react-icons/fa';
@@ -285,7 +285,6 @@ function isAllWarehousesView(view) {
 const STAT_ICON_TONES = {
   blue: 'bg-blue-50 text-blue-600',
   green: 'bg-emerald-50 text-emerald-600',
-  red: 'bg-red-50 text-red-500',
 };
 
 function MovimientoInternoStatCard({ label, value, icon: Icon, tone = 'blue', valueClassName = 'text-slate-900' }) {
@@ -770,7 +769,6 @@ export default function Almacen() {
     (s, i) => s + insumoValorInventario(i),
     0
   );
-  const insumosLowCount = insumosPorVista.filter((i) => insumoEstaBajoMinimo(i)).length;
   const insumosTotalUnits = insumosPorVista.reduce((s, i) => s + insumoStockEnUnidades(i), 0);
   const totalValue = selectedIsInsumosWarehouse
     ? insumosTotalValue
@@ -2081,7 +2079,7 @@ export default function Almacen() {
 
   return (
     <div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-3 mb-5">
         <MovimientoInternoStatCard
           label="Total ítems"
           icon={MdViewInAr}
@@ -2100,19 +2098,6 @@ export default function Almacen() {
           icon={MdSwapHoriz}
           value={formatCurrency(totalInventoryInvestment)}
           valueClassName="text-blue-600"
-        />
-        <MovimientoInternoStatCard
-          label="Stock bajo"
-          icon={MdWarningAmber}
-          tone="red"
-          value={
-            selectedIsInsumosWarehouse
-              ? insumosLowCount
-              : isAllWarehousesView(selectedWarehouseView)
-                ? lowFromWarehouse.length + insumosActivos.filter((i) => insumoEstaBajoMinimo(i)).length
-                : lowStock.length
-          }
-          valueClassName="text-red-600"
         />
         <MovimientoInternoStatCard
           label="Unidades totales"
