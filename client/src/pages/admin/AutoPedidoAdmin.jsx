@@ -510,14 +510,15 @@ export default function AutoPedidoAdmin() {
 
   return (
     <div>
-      <div className="card mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-[color:var(--ui-accent)]/35 bg-[var(--ui-surface)]">
+      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="card flex flex-col justify-between gap-3 border border-[color:var(--ui-accent)]/35 bg-[var(--ui-surface)]">
         <div className="min-w-0">
           <p className="font-semibold text-[var(--ui-body-text)]">Productos e imágenes del menú</p>
           <p className="text-xs text-[var(--ui-muted)] mt-1">
             Elija una carpeta con fotos nombradas igual que el producto (ej. «Lomo saltado.jpg») y se asignan solas. Las que no coincidan puede asignarlas a mano eligiendo el producto.
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 w-full">
           {canSave ? (
             <>
               <input
@@ -560,15 +561,15 @@ export default function AutoPedidoAdmin() {
         </div>
       </div>
 
-      <div className="card mb-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="card border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+        <div className="flex h-full flex-col justify-between gap-3">
           <div className="min-w-0">
             <p className="font-semibold text-[var(--ui-body-text)]">Al escanear el QR mostrar primero</p>
             <p className="text-xs text-[var(--ui-muted)] mt-1">
               Define qué ve el cliente al abrir el enlace de la mesa: productos, cartas o ambos.
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-2 w-full sm:w-auto sm:min-w-[320px]">
+          <div className="grid grid-cols-3 gap-2 w-full">
             {[
               { id: 'productos', label: 'Productos' },
               { id: 'cartas', label: 'Cartas' },
@@ -593,6 +594,7 @@ export default function AutoPedidoAdmin() {
             })}
           </div>
         </div>
+      </div>
       </div>
 
       {showProductCatalog ? (
