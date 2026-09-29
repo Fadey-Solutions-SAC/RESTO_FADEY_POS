@@ -185,7 +185,11 @@ export default function Layout() {
             )}
             {!hideNotificationsInKitchenBar && <NotificationCenter />}
             {!isMobile && <div className="h-8 w-px bg-[color:var(--ui-border)]" />}
-            <div className="flex items-center gap-2 shrink-0">
+            <Link
+              to="/admin/perfil"
+              title="Mi perfil"
+              className="flex items-center gap-2 shrink-0 rounded-xl px-1.5 py-1 -mx-1.5 hover:bg-[var(--ui-sidebar-hover)] transition-colors"
+            >
               <div className="w-8 h-8 bg-[var(--ui-sidebar-active-bg)] rounded-full flex items-center justify-center border border-[color:var(--ui-border)]">
                 <span className="text-[var(--ui-body-text)] text-xs font-bold">{user?.full_name?.[0] || 'U'}</span>
               </div>
@@ -193,7 +197,7 @@ export default function Layout() {
                 <p className="text-sm font-medium text-[var(--ui-body-text)] leading-tight">{user?.full_name || user?.username}</p>
                 <p className="text-xs text-[var(--ui-muted)] capitalize">{t(`roles.${user?.role}`, { defaultValue: user?.role })}</p>
               </div>
-            </div>
+            </Link>
           </div>
         </header>
         <div className="shrink-0">

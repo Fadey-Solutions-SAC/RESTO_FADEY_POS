@@ -287,7 +287,36 @@ function formatSalesReply(r) {
     ? formatDisplayDateKey(r.from)
     : `${formatDisplayDateKey(r.from)} → ${formatDisplayDateKey(r.to)}`;
   const label = r.label || range;
-  return `Ventas ${label}: S/ ${Number(r.sales || 0).toFixed(2)} · ${r.orders} cuenta(s) (${range}).`;
+  const suffix = label.includes(formatDisplayDateKey(r.from)) ? '' : ` (${range})`;
+  const head = `Ventas ${label}: S/ ${Number(r.sales || 0).toFixed(2)} · ${r.orders} cuenta(s)${suffix}.`;
+  if (!r.orders) return `${head}\nNo hay cuentas cobradas en esa fecha.`;
+  return `${head}\nTicket promedio: S/ ${(Number(r.sales || 0) / r.orders).toFixed(2)}.`;
+}
+
+function isCustomerAnalysisQuestion(m) {
+  return /\bclientes?\b/.test(m)
+    && /analiz|an[aá]lisis|recurrent|frecuent|fiel|mejores|top|qui[eé]n|cu[aá]nt|per[ií]odo|comportamiento|vuelven|nuevos|perfil|ticket|informe|resumen/.test(m)
+    && !/c[oó]mo (registr|crea|agreg|a[nñ]ad)/.test(m);
+}
+
+function isCostAnalysisQuestion(m) {
+  return /costo|coste|food\s*cost|margen|m[aá]rgenes|rentab|precio de compra|insumos? (de|por|en) (cada )?(producto|plato)|receta|maximizar (la )?ganancia|ganancias? por (plato|producto)|calidad de (los )?(plato|platillo)|ingenier[ií]a de men[uú]|mejorar (los )?(plato|platillo)|bajar costos|reducir costos/.test(m)
+    && !/c[oó]mo (registr|crea|agreg|a[nñ]ad|vincul|configur)/.test(m);
+}
+
+/** Mensaje que es básicamente solo una fecha o período ("20/09", "el domingo", "ayer"). */
+function isBarePeriodMessage(message) {
+  const period = resolveSalesPeriod(message);
+  if (!period.explicit) return null;
+  const rest = String(message || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\d{1,4}([/.-]\d{1,2}){1,2}/g, ' ')
+    .replace(/\b(y|el|la|los|las|del|de|al|a|en|dia|fecha|ultimo|ultima|penultimo|pasado|pasada|anterior|este|esta|hoy|ayer|anteayer|antier|hace|dias?|semanas?|mes(es)?|ano|fin|que|tal|como|fue|paso|me|dame|dime|muestra|ver|informe|reporte|resumen|domingo|lunes|martes|miercoles|jueves|viernes|sabado|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|entre|desde|hasta|\d+)\b/g, ' ')
+    .replace(/[¿?¡!.,;:]/g, ' ')
+    .trim();
+  return rest.length === 0 ? period : null;
 }
 
 function isExplicitHowToMessage(message) {
@@ -319,16 +348,16 @@ function formatTopProductsList(r) {
 }
 
 function topProductsAnswer(m, user) {
-  const dateMatch = m.match(/(\d{4}-\d{2}-\d{2})/);
-  const wantsMonth = /\bmes\b|mensual/.test(m);
-  const args = dateMatch ? { date: dateMatch[1], limit: 5 } : { scope: wantsMonth ? 'month' : 'day', limit: 5 };
+  const period = resolveSalesPeriod(m);
+  const explicit = Boolean(period.explicit) && period.scope !== 'today';
+  const args = explicit ? { from: period.from, to: period.to, limit: 5 } : { scope: 'day', limit: 5 };
   let r = runTool('top_products', args, user);
   if (r?.denied && r?.error) {
     return { chunks: [r.error], sources: [{ kind: 'tool', title: 'permission_denied' }] };
   }
   const shown = formatDisplayDateKey(r?.date);
-  let label = dateMatch ? `del ${shown}` : wantsMonth ? `del mes (${shown})` : `de hoy (${shown})`;
-  if (r?.ok && !r.items?.length && !dateMatch && !wantsMonth) {
+  let label = explicit ? `(${period.label})` : `de hoy (${shown})`;
+  if (r?.ok && !r.items?.length && !explicit) {
     const monthly = runTool('top_products', { scope: 'month', limit: 5 }, user);
     if (monthly?.ok && monthly.items?.length) {
       r = monthly;
@@ -412,6 +441,18 @@ function tryDirectDataAnswer(message, user) {
     if (out) return out;
   }
 
+  if (isCostAnalysisQuestion(m)) {
+    const r = runTool('cost_insights', { message }, user);
+    const out = denyOrOk(r, 'cost_insights');
+    if (out) return out;
+  }
+
+  if (isCustomerAnalysisQuestion(m)) {
+    const r = runTool('customer_insights', { message }, user);
+    const out = denyOrOk(r, 'customer_insights');
+    if (out) return out;
+  }
+
   if (isTopProductsQuestion(m)) {
     return topProductsAnswer(m, user);
   }
@@ -460,6 +501,31 @@ function tryDirectDataAnswer(message, user) {
     }
   }
 
+  const barePeriod = isBarePeriodMessage(message);
+  if (barePeriod) {
+    const r = runTool('sales_summary', {
+      scope: barePeriod.scope,
+      from: barePeriod.from,
+      to: barePeriod.to,
+      label: barePeriod.label,
+    }, user);
+    if (r?.ok) {
+      const chunks = [formatSalesReply(r)];
+      const top = runTool('top_products', { from: barePeriod.from, to: barePeriod.to, limit: 3 }, user);
+      if (top?.ok && top.items?.length) chunks.push(`Lo más vendido:\n${formatTopProductsList(top)}`);
+      return { chunks: [chunks.join('\n\n')], sources: [{ kind: 'tool', title: 'sales_summary' }] };
+    }
+    const top = runTool('top_products', { from: barePeriod.from, to: barePeriod.to, limit: 5 }, user);
+    if (top?.ok) {
+      return {
+        chunks: [top.items?.length
+          ? `Lo más vendido (${barePeriod.label}):\n${formatTopProductsList(top)}`
+          : `No hay ventas cobradas (${barePeriod.label}).`],
+        sources: [{ kind: 'tool', title: 'top_products' }],
+      };
+    }
+  }
+
   return null;
 }
 
@@ -503,6 +569,19 @@ function applyLearnedIntent(message, user, chunks, sources) {
   if (hrFocusMatch) {
     toolName = 'hr_insights';
     focusFromIntent = hrFocusMatch[1];
+  }
+  if (['customer_insights', 'cost_insights'].includes(toolName)) {
+    const r = runTool(toolName, { message }, user);
+    if (r?.denied && r?.error) {
+      chunks.push(r.error);
+      sources.push({ kind: 'tool', title: 'permission_denied', learned: true });
+      return true;
+    }
+    if (r?.ok && r.text) {
+      chunks.push(r.text);
+      sources.push({ kind: 'tool', title: toolName, learned: true });
+      return true;
+    }
   }
   if (['business_insights', 'hr_insights', 'sales_summary', 'sales_desk', 'top_products', 'low_stock', 'active_staff', 'kitchen_open_orders'].includes(toolName)) {
     const args = toolName === 'sales_summary'

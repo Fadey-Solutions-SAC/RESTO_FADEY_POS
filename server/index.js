@@ -278,6 +278,7 @@ app.use('/api/production-areas', require('./routes/productionAreas'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/profile', require('./routes/profile'));
 app.use('/api/hr', require('./routes/hr'));
 app.use('/api/staff-chat', require('./routes/staffChat'));
 app.use('/api/fadey-ai', require('./routes/fadeyAi'));

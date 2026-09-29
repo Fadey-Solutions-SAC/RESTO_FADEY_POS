@@ -29,7 +29,7 @@ const PIE_COLORS = ['#2563eb', '#38bdf8', '#93c5fd', '#1d4ed8', '#7dd3fc', '#647
 const QUICK_ACTIONS = [
   { id: 'ventas', label: 'Informe de ventas', icon: MdAssessment, mood: 'reportes', prompt: 'Genera un resumen de ventas del período' },
   { id: 'clientes', label: 'Análisis de clientes', icon: MdPeople, mood: 'analizando', prompt: 'Analiza los clientes del período' },
-  { id: 'menu', label: 'Sugerencias de menú', icon: MdRestaurantMenu, mood: 'asesorando', prompt: '¿Qué productos se venden más y qué me sugieres para el menú?' },
+  { id: 'menu', label: 'Sugerencias de menú', icon: MdRestaurantMenu, mood: 'asesorando', prompt: 'Analiza costos de producción, márgenes e insumos de mis platos y sugiere mejoras' },
   { id: 'almacen', label: 'Estado de almacén', icon: MdInventory, mood: 'analizando', prompt: '¿Cómo está el stock e inventario?' },
   { id: 'alertas', label: 'Alertas de inventario', icon: MdNotificationsActive, mood: 'asesorando', prompt: '¿Hay alertas de inventario o stock bajo?' },
   { id: 'demanda', label: 'Predicción de demanda', icon: MdTrendingUp, mood: 'analizando', prompt: '¿Qué me recomiendas según la demanda y hora pico?' },

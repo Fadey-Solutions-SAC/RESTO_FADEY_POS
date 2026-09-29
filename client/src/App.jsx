@@ -10,6 +10,7 @@ import Login from './pages/Login';
 import LoginComprobanteUnlock from './pages/LoginComprobanteUnlock';
 import RestoFadeyEntrySplash from './components/RestoFadeyEntrySplash';
 import Escritorio from './pages/admin/Escritorio';
+import MiPerfil from './pages/admin/MiPerfil';
 import Ventas from './pages/admin/Ventas';
 import POSPanel from './pages/pos/POSPanel';
 import Tables from './pages/admin/Tables';
@@ -225,6 +226,7 @@ function AppRoutes({ user }) {
         <Route path="caja" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="caja"><POSPanel /></ProtectedRoute>} />
         <Route path="tiempo-trabajado" element={<ProtectedRoute roles={['admin']} moduleId="tiempo_trabajado"><HrModule /></ProtectedRoute>} />
         <Route path="asistencia" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar']}><HrAttendanceKiosk /></ProtectedRoute>} />
+        <Route path="perfil" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar', 'master_admin']}><MiPerfil /></ProtectedRoute>} />
         <Route path="mesas" element={<ProtectedRoute roles={['admin', 'mozo']} moduleId="mesas"><Tables /></ProtectedRoute>} />
         <Route path="reservas" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo']} moduleId="reservas"><Reservas /></ProtectedRoute>} />
         <Route path="auto-pedido" element={<AdminOnlyAutoPedido />} />

@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
 import EndShiftModal from '../../components/EndShiftModal';
-import { MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings, MdHistory } from 'react-icons/md';
+import { MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings, MdHistory, MdPerson } from 'react-icons/md';
 import { getProductionAreaIcon } from '../../utils/productionAreaUi';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
@@ -736,6 +736,15 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
               {t('panel.backToOps')}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => navigate('/admin/perfil')}
+            className="shrink-0 px-2 py-1 sm:px-3 sm:py-2 rounded-md sm:rounded-lg text-[11px] sm:text-sm font-medium inline-flex items-center gap-1 sm:gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
+            title="Mi perfil"
+          >
+            <MdPerson className="text-sm sm:text-lg" />
+            <span className="hidden sm:inline">Mi perfil</span>
+          </button>
           <button
             type="button"
             onClick={() => setEndShiftOpen(true)}

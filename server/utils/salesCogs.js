@@ -207,4 +207,5 @@ module.exports = {
   sumSalesCogsForMonth,
   sumSalesCogsSinceDaysAgo,
   productHasInsumoLink,
+  insumoNeedForLine,
 };

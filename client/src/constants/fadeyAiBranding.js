@@ -48,6 +48,9 @@ export const FADEY_AI_SUGGESTION_POOL = [
   '¿Cómo registrar una venta?',
   '¿Cómo cambiar una mesa?',
   'Analiza los clientes del período',
+  'Analiza costos de producción e insumos',
+  '¿Qué platos dejan más margen?',
+  'Ventas del último domingo',
   '¿Qué me recomiendas según la demanda y hora pico?',
   'Resumen de jornadas y horas del equipo',
   '¿Qué me recomiendas para el personal?',
@@ -97,6 +100,8 @@ export const FADEY_AI_EXPRESSIONS = {
 
 const ANALYTICS_TOOLS = new Set([
   'business_insights',
+  'customer_insights',
+  'cost_insights',
   'hr_insights',
   'sales_summary',
   'top_products',

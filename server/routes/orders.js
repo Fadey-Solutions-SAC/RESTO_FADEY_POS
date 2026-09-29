@@ -1012,6 +1012,16 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
         [req.params.id],
       );
     }
+    if (isKitchenFlow) {
+      const sentAt = String(order.kitchen_release_at || order.created_at || '').trim();
+      const sentMs = sentAt ? Date.parse(`${sentAt.replace(' ', 'T')}Z`) : NaN;
+      const minutes = Number.isFinite(sentMs) ? Math.max(0, Math.round((Date.now() - sentMs) / 60000)) : null;
+      recordWorkActivityEvent(req.user?.id, 'station_ready', {
+        module: st || 'cocina',
+        refId: req.params.id,
+        meta: { station: st || '', order_item_id: orderItemId || '', minutes },
+      });
+    }
   } else {
     runSql("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?", [status, req.params.id]);
     if (order.type === 'delivery' && status === 'delivered') {
@@ -1250,6 +1260,13 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
   if (io) io.emit('order-update', fresh);
   if (applyKardexAfter) emitInventoryUpdate({});
   if (nextPayEffective === 'paid' && !wasPaid) {
+    if (String(docPm || '') !== 'cuenta_cliente') {
+      recordWorkActivityEvent(req.user?.id, 'sale_closed', {
+        module: 'caja',
+        refId: req.params.id,
+        meta: { order_count: 1, comanda_count: 1 },
+      });
+    }
     try {
       const { markProductsSoldOnPaidOrder } = require('../services/productSalesTrackingService');
       markProductsSoldOnPaidOrder(req.params.id);

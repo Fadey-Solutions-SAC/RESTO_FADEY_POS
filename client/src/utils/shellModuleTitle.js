@@ -65,6 +65,7 @@ export function resolveAlmacenSection(search) {
 }
 
 export function getShellModuleTitle(pathname, search, t) {
+  if (String(pathname || '').replace(/\/+$/, '') === '/admin/perfil') return 'Mi perfil';
   const key = getShellModuleTitleKey(pathname);
   if (!key || typeof t !== 'function') return '';
   const base = t(key);

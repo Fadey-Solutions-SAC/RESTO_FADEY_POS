@@ -79,6 +79,8 @@ const TOOL_MODULES = {
   kitchen_open_orders: ['cocina', 'bar', 'produccion'],
   active_staff: ['tiempo_trabajado'],
   business_insights: ['ventas', 'informes', 'indicadores', 'escritorio'],
+  customer_insights: ['ventas', 'informes', 'indicadores', 'escritorio', 'clientes'],
+  cost_insights: ['productos', 'almacen', 'informes', 'indicadores'],
   hr_insights: ['tiempo_trabajado', 'cocina', 'bar', 'produccion'],
   search_guides: null,
 };

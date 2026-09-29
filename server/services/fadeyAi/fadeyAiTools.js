@@ -15,6 +15,7 @@ const {
   formatDisplayDateKey,
 } = require('../../utils/appDateTime');
 const { searchMemory } = require('./fadeyAiKnowledgeService');
+const { resolveNaturalPeriod } = require('./fadeyAiDateParse');
 const { isNonTransformedLowStockSql, effectiveMinStock } = require('../../utils/productStockThreshold');
 const {
   canUseTool,
@@ -51,40 +52,9 @@ function parseDateKey(input) {
  * Resuelve período de ventas desde lenguaje natural.
  * @returns {{ scope: string, from: string, to: string, label: string }}
  */
-function resolveSalesPeriod(message, queryOneFn = queryOne) {
-  const m = String(message || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+function resolveSalesPeriod(message, queryOneFn = queryOne, opts = {}) {
   const today = getBusinessTodayDateKey(queryOneFn);
-  const month = getBusinessMonthKey(queryOneFn);
-
-  if (/\bayer\b/.test(m)) {
-    const day = shiftBusinessDateKey(today, -1);
-    return { scope: 'yesterday', from: day, to: day, label: 'ayer' };
-  }
-
-  // "ultimos 7 dias" / "ultima semana" / "semana pasada" ANTES que "dia".
-  if (
-    /ultim[oa]s?\s+7\s*dias|7\s*dias|ultimos?\s+siete\s+dias/.test(m)
-    || /ultim[oa]\s+semana|semana\s+pasada|la\s+semana\s+anterior/.test(m)
-  ) {
-    const from = shiftBusinessDateKey(today, -6);
-    return { scope: 'week', from, to: today, label: 'última semana (últimos 7 días)' };
-  }
-
-  if (/esta\s+semana|semana\s+actual|de\s+la\s+semana\b/.test(m) || (/\bsemana\b/.test(m) && !/\bmes\b/.test(m))) {
-    const from = startOfBusinessWeekMonday(today);
-    return { scope: 'week', from, to: today, label: 'esta semana' };
-  }
-
-  if (/\b(este\s+)?mes\b|del\s+mes|mes\s+actual|lo\s+que\s+va\s+del\s+mes/.test(m)) {
-    return { scope: 'month', from: `${month}-01`, to: today, label: 'este mes' };
-  }
-
-  if (/\bhoy\b|\bdel\s+dia\b|\bde\s+hoy\b|\bel\s+dia\b/.test(m)) {
-    return { scope: 'today', from: today, to: today, label: 'hoy' };
-  }
-
-  // Sin período explícito: hoy (más útil en el POS).
-  return { scope: 'today', from: today, to: today, label: 'hoy' };
+  return resolveNaturalPeriod(message, today, opts);
 }
 
 function toolSalesSummary(args = {}, user) {
@@ -160,7 +130,12 @@ function toolTopProducts(args = {}, user) {
   const limit = Math.min(20, Math.max(1, Number(args.limit) || 10));
   let dateSql;
   const params = [];
-  if (args.scope === 'month') {
+  const rangeFrom = parseDateKey(args.from);
+  const rangeTo = parseDateKey(args.to) || rangeFrom;
+  if (rangeFrom) {
+    dateSql = `${ps.ORDER_DATE} >= date(?) AND ${ps.ORDER_DATE} <= date(?)`;
+    params.push(rangeFrom, rangeTo);
+  } else if (args.scope === 'month') {
     const month = getBusinessMonthKey(queryOne);
     dateSql = `${ps.ORDER_MONTH} = ?`;
     params.push(month);
@@ -186,7 +161,9 @@ function toolTopProducts(args = {}, user) {
   ) || [];
   return {
     ok: true,
-    date: args.scope === 'month' ? getBusinessMonthKey(queryOne) : day,
+    date: rangeFrom || (args.scope === 'month' ? getBusinessMonthKey(queryOne) : day),
+    from: rangeFrom || null,
+    to: rangeFrom ? rangeTo : null,
     items: rows.map((r) => ({
       name: r.name,
       qty: Number(r.qty || 0),
@@ -215,8 +192,7 @@ function toolSalesDesk(args = {}, user) {
   );
   const focus = String(args.focus || 'full').toLowerCase();
   const today = getBusinessTodayDateKey(queryOne);
-  const msg = String(args.message || args.query || '').toLowerCase();
-  const hasExplicitPeriod = /\bhoy\b|\bayer\b|semana|mes|dias?\b|\d{4}-\d{2}-\d{2}/.test(msg);
+  const hasExplicitPeriod = Boolean(period.explicit);
   let from = parseDateKey(args.from) || period.from;
   let to = parseDateKey(args.to) || period.to;
   // Pendiente/pagos/meseros sin período → mes en curso (más útil en el módulo Ventas).
@@ -545,6 +521,36 @@ const TOOL_DEFS = [
   {
     type: 'function',
     function: {
+      name: 'customer_insights',
+      description: 'Análisis de clientes del período: cuentas, ticket, recurrencia, mejores clientes, días/horas pico y encuestas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string' },
+          from: { type: 'string', description: 'YYYY-MM-DD' },
+          to: { type: 'string', description: 'YYYY-MM-DD' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cost_insights',
+      description: 'Costos de producción, precio de compra e insumos por producto; márgenes e ingeniería de menú con sugerencias.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string' },
+          from: { type: 'string', description: 'YYYY-MM-DD' },
+          to: { type: 'string', description: 'YYYY-MM-DD' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'hr_insights',
       description: 'Datos directos de RRHH/productividad: personal, cocina, demoras, rankings. Usar focus para respuestas puntuales.',
       parameters: {
@@ -751,6 +757,10 @@ function runTool(name, args, user) {
       return toolSearchGuides(args || {}, user);
     case 'business_insights':
       return toolBusinessInsights(user);
+    case 'customer_insights':
+      return require('./fadeyAiBusinessAnalysis').toolCustomerInsights(args || {});
+    case 'cost_insights':
+      return require('./fadeyAiBusinessAnalysis').toolCostInsights(args || {});
     case 'hr_insights':
       return toolHrInsights(args || {}, user);
     default:
