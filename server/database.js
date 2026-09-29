@@ -1590,6 +1590,7 @@ async function initDatabase() {
     addProductColIfMissing('idle_sales_days', 'ALTER TABLE products ADD COLUMN idle_sales_days INTEGER NOT NULL DEFAULT 0');
     addProductColIfMissing('min_stock', 'ALTER TABLE products ADD COLUMN min_stock INTEGER NOT NULL DEFAULT 0');
     addProductColIfMissing('image_source', "ALTER TABLE products ADD COLUMN image_source TEXT DEFAULT ''");
+    addProductColIfMissing('hide_in_self_order', 'ALTER TABLE products ADD COLUMN hide_in_self_order INTEGER NOT NULL DEFAULT 0');
     try {
       const { backfillProductSalesTracking } = require('./services/productSalesTrackingService');
       backfillProductSalesTracking();

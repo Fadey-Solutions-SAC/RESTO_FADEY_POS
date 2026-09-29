@@ -75,7 +75,7 @@ export default function Modal({
         onClick={onClose}
       />
       <div
-        className={`rf-modal-panel relative z-10 rounded-2xl w-full min-w-0 max-w-[calc(100vw-1rem)] ${sizeClass} ${maxHeightClass} flex flex-col overflow-hidden ${panelClass} ${dialogClassName}`.trim()}
+        className={`rf-modal-panel relative z-10 rounded-2xl w-full min-w-0 ${sizeClass} ${maxHeightClass} flex flex-col overflow-hidden ${panelClass} ${dialogClassName}`.trim()}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

@@ -97,7 +97,7 @@ const {
 
 function loadProductsMenu() {
   const query =
-    'SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.is_active = 1 AND COALESCE(TRIM(p.category_id), \'\') <> \'\' ORDER BY c.sort_order, p.name';
+    'SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.is_active = 1 AND COALESCE(p.hide_in_self_order, 0) = 0 AND COALESCE(TRIM(p.category_id), \'\') <> \'\' ORDER BY c.sort_order, p.name';
   const restaurant = queryOne('SELECT schedule FROM restaurants LIMIT 1');
   const restaurantSchedule = parseRestaurantSchedule(restaurant?.schedule);
   const now = new Date();
@@ -120,7 +120,7 @@ function loadProductsMenu() {
 function loadCategoriesActive() {
   return queryAll(
     `SELECT c.*, COUNT(p.id) as product_count FROM categories c
-     LEFT JOIN products p ON p.category_id = c.id AND p.is_active = 1
+     LEFT JOIN products p ON p.category_id = c.id AND p.is_active = 1 AND COALESCE(p.hide_in_self_order, 0) = 0
      WHERE c.is_active = 1 GROUP BY c.id ORDER BY c.sort_order ASC`
   );
 }
@@ -262,6 +262,17 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'El pedido debe tener al menos un producto' });
+  }
+
+  const requestedProductIds = [...new Set(items.map((it) => String(it?.product_id || '').trim()).filter(Boolean))];
+  if (requestedProductIds.length) {
+    const hidden = queryOne(
+      `SELECT name FROM products WHERE id IN (${requestedProductIds.map(() => '?').join(',')}) AND COALESCE(hide_in_self_order, 0) = 1 LIMIT 1`,
+      requestedProductIds
+    );
+    if (hidden) {
+      return res.status(400).json({ error: `«${hidden.name}» no está disponible para pedido QR` });
+    }
   }
 
   const requestedPaymentMethod = String(payment_method || '').trim().toLowerCase();

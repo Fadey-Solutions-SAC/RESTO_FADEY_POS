@@ -119,6 +119,7 @@ const EMPTY_PRODUCT_FORM = {
   tax_type: 'inafecto',
   modifier_id: '',
   note_required: 0,
+  hide_in_self_order: 0,
   kardex_insumos: [{ insumo_id: '', qty: '' }],
   schedule_enabled: 0,
   available_from: '',
@@ -613,6 +614,7 @@ export default function Productos() {
         : 'igv',
       modifier_id: p.modifier_id || '',
       note_required: Number(p.note_required || 0) === 1 ? 1 : 0,
+      hide_in_self_order: Number(p.hide_in_self_order || 0) === 1 ? 1 : 0,
       kardex_insumos: kardexLinesFromProduct(p),
       schedule_enabled: Number(p.schedule_enabled || 0) === 1 ? 1 : 0,
       available_from: p.available_from || '',
@@ -732,13 +734,6 @@ export default function Productos() {
         }
         if (created?.schedule_warnings?.length) {
           created.schedule_warnings.forEach((w) => toast(w, { icon: '⚠️' }));
-        }
-        if (created?.image_generation?.status === 'ok') {
-          toast.success('Imagen del menú generada automáticamente');
-        } else if (created?.image_generation?.status === 'ambiguous') {
-          toast(created.image_generation.message || 'Nombre poco claro para generar imagen', { icon: '⚠️', duration: 6000 });
-        } else if (created?.image_generation?.status === 'error') {
-          toast.error(created.image_generation.message || 'No se pudo generar la imagen');
         }
         toast.success(t('toast.productCreated'));
       }
@@ -1485,6 +1480,20 @@ export default function Productos() {
                 </option>
                 {visibleCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              <label className="mt-3 flex items-start gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Number(productForm.hide_in_self_order || 0) === 1}
+                  onChange={e => setProductForm({ ...productForm, hide_in_self_order: e.target.checked ? 1 : 0 })}
+                  className="mt-0.5 rounded text-gold-500"
+                />
+                <span>
+                  <span className="font-medium text-[var(--ui-body-text)]">Ocultar en pedido QR</span>
+                  <span className="block text-xs ui-text-muted">
+                    Se sigue vendiendo en caja y mozo, pero el cliente no lo ve al escanear el QR (ej. alquiler de parrilla).
+                  </span>
+                </span>
+              </label>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

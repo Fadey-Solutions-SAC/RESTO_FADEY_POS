@@ -198,6 +198,7 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
     tax_type,
     modifier_id,
     note_required,
+    hide_in_self_order,
     purchase_price,
     schedule_enabled,
     available_from,
@@ -242,6 +243,7 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
     : 'inafecto';
   const safeModifierId = String(modifier_id || '').trim();
   const safeNoteRequired = Number(note_required) === 1 ? 1 : 0;
+  const safeHideInSelfOrder = Number(hide_in_self_order) === 1 ? 1 : 0;
   const kardexPersist = buildKardexPersistFromRequest(req.body, null, safeProcessType);
   runSql(
     `INSERT INTO products (
@@ -251,8 +253,8 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
       kardex_insumos,
       purchase_price,
       schedule_enabled, available_from, available_to, available_days, schedule_type,
-      catalog_listed_at, idle_sales_days, min_stock
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, ?)`,
+      catalog_listed_at, idle_sales_days, min_stock, hide_in_self_order
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, ?, ?)`,
     [
       id,
       productName,
@@ -281,6 +283,7 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
       scheduleFields.available_days,
       scheduleFields.schedule_type,
       safeMinStock,
+      safeHideInSelfOrder,
     ]
   );
   if (safeProcessType === 'non_transformed') {
@@ -291,27 +294,13 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
     variants.forEach(v => runSql('INSERT INTO product_variants (id, product_id, name, price_modifier) VALUES (?, ?, ?, ?)', [uuidv4(), id, v.name, v.price_modifier || 0]));
   }
 
-  let product = queryOne('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?', [id]);
+  const product = queryOne('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?', [id]);
   product.variants = queryAll('SELECT * FROM product_variants WHERE product_id = ?', [id]);
   normalizeProductForClient(product);
-
-  let imageGeneration = null;
-  const wantsAutoImage = req.body.auto_generate_image !== false;
-  const hasManualImage = Boolean(String(image || '').trim());
-  const hasOpenAiKey = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
-  if (wantsAutoImage && !hasManualImage && catPost.id && hasOpenAiKey) {
-    imageGeneration = await generateProductMenuImage(product, { onlyMissing: true });
-    if (imageGeneration.status === 'ok') {
-      product = queryOne('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?', [id]);
-      product.variants = queryAll('SELECT * FROM product_variants WHERE product_id = ?', [id]);
-      normalizeProductForClient(product);
-    }
-  }
 
   const payload = {
     ...product,
     schedule_warnings: scheduleValidation.warnings || [],
-    image_generation: imageGeneration,
   };
   if (safeProcessType === 'non_transformed') {
     emitInventoryUpdate({ productId: id });
@@ -336,6 +325,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     tax_type,
     modifier_id,
     note_required,
+    hide_in_self_order,
     purchase_price,
     schedule_enabled,
     available_from,
@@ -400,6 +390,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       : 'igv');
   const safeModifierId = modifier_id === undefined ? null : String(modifier_id || '').trim();
   const safeNoteRequired = note_required === undefined ? null : (Number(note_required) === 1 ? 1 : 0);
+  const safeHideInSelfOrder = hide_in_self_order === undefined ? null : (Number(hide_in_self_order) === 1 ? 1 : 0);
   const safeName = name === undefined ? null : normalizeCatalogDisplayName(name);
   const safeDescription = description === undefined ? null : description;
   const safePrice = price === undefined ? null : price;
@@ -444,6 +435,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       tax_type = COALESCE(?, tax_type),
       modifier_id = COALESCE(?, modifier_id),
       note_required = COALESCE(?, note_required),
+      hide_in_self_order = COALESCE(?, hide_in_self_order),
       kardex_insumo_id = ?,
       kardex_insumo_num = ?,
       kardex_insumo_den = ?,
@@ -474,6 +466,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       safeTaxType,
       safeModifierId,
       safeNoteRequired,
+      safeHideInSelfOrder,
       kardexPersist.kardex_insumo_id,
       kardexPersist.kardex_insumo_num,
       kardexPersist.kardex_insumo_den,
