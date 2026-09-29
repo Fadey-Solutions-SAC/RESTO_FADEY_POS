@@ -289,13 +289,13 @@ const STAT_ICON_TONES = {
 
 function MovimientoInternoStatCard({ label, value, icon: Icon, tone = 'blue', valueClassName = 'text-slate-900' }) {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3 shadow-sm flex items-center gap-3 min-w-0">
+    <div className="flex-auto rounded-2xl border border-slate-100 bg-white px-3 py-3 shadow-sm flex items-center gap-3">
       {Icon && (
         <span className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${STAT_ICON_TONES[tone] || STAT_ICON_TONES.blue}`}>
           <Icon className="text-xl" />
         </span>
       )}
-      <div className="min-w-0">
+      <div>
         <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide text-slate-500 leading-tight whitespace-nowrap">
           {label}
         </p>
@@ -2079,7 +2079,7 @@ export default function Almacen() {
 
   return (
     <div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] gap-2 sm:gap-3 mb-5">
+      <div className="flex flex-wrap gap-2 sm:gap-3 mb-5">
         <MovimientoInternoStatCard
           label="Total ítems"
           icon={MdViewInAr}
