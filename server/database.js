@@ -9,6 +9,8 @@ const {
   writeFileAtomic,
   writeSnapshotBackup,
   ensureDailyBackup,
+  ensureMonthlyBackup,
+  getBackupMirrorDir,
   getPersistentBackupsDir,
   getLastGoodPath,
 } = require('./sqlitePersist');
@@ -38,12 +40,39 @@ let lastAutoBackupAt = 0;
 /** true si sql.js no pudo abrir el .db y se arranca vacío para restaurar. */
 let allowEmptyPersist = false;
 
+let lastIntegrity = { ok: true, checkedAt: null, detail: '' };
+
+/** PRAGMA quick_check: detecta páginas dañadas antes de que una copia buena se pise con datos rotos. */
+function checkDatabaseIntegrity() {
+  if (!db) return lastIntegrity;
+  try {
+    const row = queryOne('PRAGMA quick_check');
+    const detail = String(row ? Object.values(row)[0] : 'ok');
+    lastIntegrity = { ok: detail.toLowerCase() === 'ok', checkedAt: new Date().toISOString(), detail };
+  } catch (err) {
+    lastIntegrity = { ok: false, checkedAt: new Date().toISOString(), detail: err?.message || String(err) };
+  }
+  if (!lastIntegrity.ok) {
+    console.error('[sqlite] INTEGRIDAD: quick_check falló →', lastIntegrity.detail);
+  }
+  return lastIntegrity;
+}
+
+/** OneDrive/Dropbox/Drive sincronizan el .db sin su -wal y pueden bloquearlo o revertirlo. */
+function isInsideCloudSyncFolder(filePath) {
+  return /[\\/](onedrive[^\\/]*|dropbox|google drive|googledrive|icloud ?drive)[\\/]/i.test(String(filePath || ''));
+}
+
 function getDatabasePersistenceInfo() {
   return {
     path: DB_PATH,
     fileExistedBeforeInit: dbFileExistedBeforeInit,
     dbPathFromEnv: !!process.env.DB_PATH,
     engine: isNativeDb(db) ? 'native-wal' : 'sqljs',
+    integrity: lastIntegrity,
+    backupsDir: getPersistentBackupsDir(DB_PATH),
+    backupMirrorDir: getBackupMirrorDir() || null,
+    cloudSyncFolder: isInsideCloudSyncFolder(DB_PATH),
   };
 }
 
@@ -175,6 +204,10 @@ function createSafetyBackup({ force = false } = {}) {
   const usersCount = countTableRows('users');
   const productsCount = countTableRows('products');
   if (usersCount === 0 && productsCount === 0) return null;
+  if (!checkDatabaseIntegrity().ok) {
+    console.error('[sqlite-backup] OMITIDA: la base no pasa quick_check; se conservan las copias buenas anteriores.');
+    return null;
+  }
   let buffer;
   if (isNativeDb(db)) {
     const lastGood = getLastGoodPath(DB_PATH);
@@ -187,6 +220,7 @@ function createSafetyBackup({ force = false } = {}) {
   }
   const autoPath = writeSnapshotBackup(DB_PATH, buffer, 'restaurant_auto');
   ensureDailyBackup(DB_PATH, buffer);
+  ensureMonthlyBackup(DB_PATH, buffer);
   lastAutoBackupAt = now;
   console.info(`[sqlite-backup] Copia en ${getPersistentBackupsDir(DB_PATH)} (${usersCount} usuario(s))`);
   return autoPath;
@@ -1915,10 +1949,13 @@ async function initDatabase() {
 
     const usersTableSql = queryOne("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'");
     if (usersTableSql?.sql && !usersTableSql.sql.includes("'bar'")) {
+      /** Crear nueva → copiar → borrar vieja → renombrar: renombrar `users` primero rompe las FK de otras tablas. */
       db.run('PRAGMA foreign_keys = OFF');
-      db.run('ALTER TABLE users RENAME TO users_legacy');
+      db.run('BEGIN IMMEDIATE');
+      try {
+      db.run('DROP TABLE IF EXISTS users_legacy_new');
       db.run(`
-        CREATE TABLE users (
+        CREATE TABLE users_legacy_new (
           id TEXT PRIMARY KEY,
           username TEXT UNIQUE NOT NULL,
           email TEXT UNIQUE NOT NULL,
@@ -1934,13 +1971,21 @@ async function initDatabase() {
         )
       `);
       db.run(`
-        INSERT INTO users (id, username, email, password_hash, full_name, role, restaurant_id, is_active, phone, avatar, created_at, caja_station_id)
+        INSERT INTO users_legacy_new (id, username, email, password_hash, full_name, role, restaurant_id, is_active, phone, avatar, created_at, caja_station_id)
         SELECT id, username, email, password_hash, full_name, role, restaurant_id, is_active, phone, avatar, created_at, ''
-        FROM users_legacy
+        FROM users
       `);
-      db.run('DROP TABLE users_legacy');
-      db.run('PRAGMA foreign_keys = ON');
+      db.run('DROP TABLE users');
+      db.run('ALTER TABLE users_legacy_new RENAME TO users');
+      db.run('COMMIT');
+      } catch (legacyErr) {
+        try { db.run('ROLLBACK'); } catch { /* ignore */ }
+        console.error('[migration] users legacy (revertido):', legacyErr.message || legacyErr);
+      } finally {
+        db.run('PRAGMA foreign_keys = ON');
+      }
     }
+    repairDanglingUserForeignKeys();
 
     const userColsCaja = queryAll('PRAGMA table_info(users)');
     const userColNamesCaja = new Set((userColsCaja || []).map((c) => c.name));
@@ -2638,7 +2683,7 @@ async function initDatabase() {
     db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-02-professionalization-indexes-audit']);
 
     try {
-      const { ensureTableUnionsSchema } = require('../services/tableUnionService');
+      const { ensureTableUnionsSchema } = require('./services/tableUnionService');
       ensureTableUnionsSchema();
     } catch (e) {
       console.warn('[migration] table_unions:', e.message || e);
@@ -3064,6 +3109,70 @@ function probeUsersRoleAllowsProduccion() {
   return usersCreateSqlAllowsProduccionRole(readUsersTableCreateSql());
 }
 
+/** Tablas temporales de migraciones antiguas de `users` que quedaron como destino de FK tras renombrar. */
+const DANGLING_USER_FK_TARGETS = ['users_legacy', 'users_role_mig'];
+
+/**
+ * Migraciones antiguas renombraron `users` y SQLite reescribió las FK de otras tablas hacia la temporal
+ * (luego borrada). Resultado: «no such table: main.users_legacy» al insertar. Se reconstruye cada tabla
+ * afectada con la FK apuntando otra vez a `users`, conservando todas las filas.
+ */
+function repairDanglingUserForeignKeys() {
+  if (!db) return 0;
+  const existing = new Set(
+    (queryAll("SELECT name FROM sqlite_master WHERE type = 'table'") || []).map((r) => String(r.name)),
+  );
+  const targets = DANGLING_USER_FK_TARGETS.filter((t) => !existing.has(t));
+  if (!targets.length) return 0;
+  const refRe = new RegExp(`REFERENCES\\s+["'\`\\[]?(${targets.join('|')})["'\`\\]]?`, 'gi');
+  const broken = (queryAll("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND sql IS NOT NULL") || [])
+    .filter((r) => {
+      refRe.lastIndex = 0;
+      return refRe.test(String(r.sql || ''));
+    });
+  let repaired = 0;
+  for (const row of broken) {
+    const table = String(row.name);
+    const tmp = `${table}__fkfix`;
+    refRe.lastIndex = 0;
+    const fixedSql = String(row.sql)
+      .replace(refRe, 'REFERENCES users')
+      .replace(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`[]?[^\s("'`\]]+["'`\]]?/i, `CREATE TABLE "${tmp}"`);
+    const indexes = (queryAll(
+      "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+      [table],
+    ) || []).map((r) => String(r.sql || '')).filter(Boolean);
+    const cols = (queryAll(`PRAGMA table_info("${table}")`) || []).map((c) => `"${c.name}"`).join(', ');
+    const before = Number(queryOne(`SELECT COUNT(*) AS c FROM "${table}"`)?.c || 0);
+    db.run('PRAGMA foreign_keys = OFF');
+    try {
+      db.run('BEGIN IMMEDIATE');
+      try {
+        db.run(`DROP TABLE IF EXISTS "${tmp}"`);
+        db.run(fixedSql);
+        db.run(`INSERT INTO "${tmp}" (${cols}) SELECT ${cols} FROM "${table}"`);
+        const after = Number(queryOne(`SELECT COUNT(*) AS c FROM "${tmp}"`)?.c || 0);
+        if (after !== before) throw new Error(`copia incompleta (${after} de ${before})`);
+        db.run(`DROP TABLE "${table}"`);
+        db.run(`ALTER TABLE "${tmp}" RENAME TO "${table}"`);
+        indexes.forEach((idxSql) => db.run(idxSql));
+        db.run('COMMIT');
+        repaired += 1;
+        console.info(`[migration] FK reparada: ${table} → users (${before} fila(s))`);
+      } catch (err) {
+        try { db.run('ROLLBACK'); } catch { /* ignore */ }
+        console.error(`[migration] no se pudo reparar FK de ${table}:`, err.message || err);
+      }
+    } finally {
+      try { db.run('PRAGMA foreign_keys = ON'); } catch { /* ignore */ }
+    }
+  }
+  if (repaired) {
+    try { flushSaveDb(); } catch { /* ignore */ }
+  }
+  return repaired;
+}
+
 /** El CHECK antiguo no incluye `produccion`; SQLite no deja ALTER CHECK, hay que recrear la tabla. */
 function ensureUsersRoleAllowsProduccion() {
   if (!db) return false;
@@ -3082,7 +3191,8 @@ function ensureUsersRoleAllowsProduccion() {
     let piece = `${name} ${type}`;
     if (Number(c.notnull) === 1) piece += ' NOT NULL';
     if (c.dflt_value !== null && c.dflt_value !== undefined && String(c.dflt_value).trim() !== '') {
-      piece += ` DEFAULT ${c.dflt_value}`;
+      /** PRAGMA devuelve expresiones sin paréntesis (datetime('now')); DEFAULT las exige entre paréntesis. */
+      piece += ` DEFAULT (${c.dflt_value})`;
     }
     return piece;
   });
@@ -3090,43 +3200,44 @@ function ensureUsersRoleAllowsProduccion() {
   const indexes = (queryAll(
     "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'users' AND sql IS NOT NULL",
   ) || []).filter((idx) => String(idx.sql || idx.SQL || '').trim());
+  const beforeCount = Number(queryOne('SELECT COUNT(*) AS c FROM users')?.c || 0);
 
+  /**
+   * Procedimiento oficial de SQLite para cambiar un CHECK: crear tabla nueva, copiar, borrar la vieja
+   * y renombrar la nueva. Renombrar `users` primero reescribiría las FK de otras tablas hacia la temporal.
+   * foreign_keys debe cambiarse fuera de la transacción.
+   */
   db.run('PRAGMA foreign_keys = OFF');
   try {
-    db.run('DROP TABLE IF EXISTS users_role_mig');
-    db.run('ALTER TABLE users RENAME TO users_role_mig');
-    db.run(`CREATE TABLE users (\n${ddlParts.join(',\n')}\n)`);
-    const destCols = (queryAll('PRAGMA table_info(users)') || []).map((c) => String(c.name));
-    const srcCols = (queryAll('PRAGMA table_info(users_role_mig)') || []).map((c) => String(c.name));
-    const copy = destCols.filter((n) => srcCols.includes(n));
-    db.run(`INSERT INTO users (${copy.join(', ')}) SELECT ${copy.join(', ')} FROM users_role_mig`);
-    db.run('DROP TABLE users_role_mig');
-    for (const idx of indexes) {
-      const idxSql = String(idx.sql || idx.SQL || '').trim();
-      if (!idxSql) continue;
-      try {
-        db.run(idxSql);
-      } catch (idxErr) {
-        console.warn('[migration] recrear índice users:', idxErr.message || idxErr);
-      }
-    }
-    db.run('PRAGMA foreign_keys = ON');
-    console.info('[migration] users: CHECK de rol incluye produccion');
-    try { flushSaveDb(); } catch { /* ignore */ }
-    return true;
-  } catch (err) {
+    db.run('BEGIN IMMEDIATE');
     try {
-      const oldCols = queryAll('PRAGMA table_info(users_role_mig)') || [];
-      if (oldCols.length) {
-        db.run('DROP TABLE IF EXISTS users');
-        db.run('ALTER TABLE users_role_mig RENAME TO users');
+      db.run('DROP TABLE IF EXISTS users_role_new');
+      db.run(`CREATE TABLE users_role_new (\n${ddlParts.join(',\n')}\n)`);
+      const destCols = (queryAll('PRAGMA table_info(users_role_new)') || []).map((c) => String(c.name));
+      const srcCols = cols.map((c) => String(c.name || c.NAME || ''));
+      const copy = destCols.filter((n) => srcCols.includes(n));
+      db.run(`INSERT INTO users_role_new (${copy.join(', ')}) SELECT ${copy.join(', ')} FROM users`);
+      const copied = Number(queryOne('SELECT COUNT(*) AS c FROM users_role_new')?.c || 0);
+      if (copied !== beforeCount) {
+        throw new Error(`copia incompleta de usuarios (${copied} de ${beforeCount})`);
       }
-    } catch {
-      /* ignore */
+      db.run('DROP TABLE users');
+      db.run('ALTER TABLE users_role_new RENAME TO users');
+      for (const idx of indexes) {
+        const idxSql = String(idx.sql || idx.SQL || '').trim();
+        if (idxSql) db.run(idxSql);
+      }
+      db.run('COMMIT');
+    } catch (err) {
+      try { db.run('ROLLBACK'); } catch { /* ignore */ }
+      throw err;
     }
+  } finally {
     try { db.run('PRAGMA foreign_keys = ON'); } catch { /* ignore */ }
-    throw err;
   }
+  console.info('[migration] users: CHECK de rol incluye produccion');
+  try { flushSaveDb(); } catch { /* ignore */ }
+  return true;
 }
 
 function productionRoleFallback(areaId) {
@@ -3560,6 +3671,7 @@ module.exports = {
   saveDb,
   flushSaveDb,
   createSafetyBackup,
+  checkDatabaseIntegrity,
   getDbPath,
   createBackupFile,
   restoreDbFromBuffer,

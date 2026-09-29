@@ -906,6 +906,39 @@ function stopEmbeddedRestaurantApi() {
   embeddedApiListenPort = null;
 }
 
+/**
+ * En Windows `kill()` termina el proceso sin señales: la API no llega a su copia final.
+ * Se pide cierre ordenado por IPC y se espera a que salga (con tope) antes de forzar.
+ */
+function stopEmbeddedRestaurantApiGracefully(timeoutMs = 6000) {
+  const child = restaurantApiChild;
+  if (!child) return Promise.resolve();
+  embeddedApiHealthGeneration += 1;
+  embeddedApiStopIntentional = true;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      restaurantApiChild = null;
+      embeddedApiListenPort = null;
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch (_) { /* noop */ }
+      finish();
+    }, timeoutMs);
+    child.once('exit', finish);
+    try {
+      if (child.connected) child.send({ type: 'resto-shutdown' });
+      else child.kill();
+    } catch (_) {
+      try { child.kill(); } catch (__) { /* noop */ }
+    }
+  });
+}
+
 function waitForEmbeddedApiHealthz(port, maxMs, callback) {
   const deadline = Date.now() + maxMs;
   const probe = () => {
@@ -1085,7 +1118,7 @@ function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
     restaurantApiChild = spawn(execPath, [serverEntry], {
       env,
       cwd,
-      stdio: ['ignore', 'ignore', 'pipe'],
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
       windowsHide: true,
     });
     restaurantApiChild.on('error', (err) => {
@@ -1487,10 +1520,19 @@ if (!acquiredSingleInstance) {
     else wakePrintingServicesFromProtocol();
   });
 
-  app.on('will-quit', () => {
+  let embeddedApiGracefulStopDone = false;
+  app.on('will-quit', (event) => {
     if (embeddedApiWatchdogTimer) {
       clearInterval(embeddedApiWatchdogTimer);
       embeddedApiWatchdogTimer = null;
+    }
+    if (restaurantApiChild && !embeddedApiGracefulStopDone) {
+      event.preventDefault();
+      stopEmbeddedRestaurantApiGracefully().finally(() => {
+        embeddedApiGracefulStopDone = true;
+        app.quit();
+      });
+      return;
     }
     stopEmbeddedRestaurantApi();
   });

@@ -27,7 +27,14 @@ const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
 const crypto = require('crypto');
-const { initDatabase, getDbPath, getDatabasePersistenceInfo, flushSaveDb, createSafetyBackup } = require('./database');
+const {
+  initDatabase,
+  getDbPath,
+  getDatabasePersistenceInfo,
+  flushSaveDb,
+  createSafetyBackup,
+  checkDatabaseIntegrity,
+} = require('./database');
 const { ensureUploadsRoot } = require('./uploadsPath');
 const jwt = require('jsonwebtoken');
 const { authenticateToken, authenticateTokenAllowLoopback, requireRole, JWT_SECRET } = require('./middleware/auth');
@@ -565,6 +572,25 @@ async function start() {
   } catch (err) {
     console.warn('[fadey-ai] monitor no iniciado:', err.message || err);
   }
+  try {
+    const persist = getDatabasePersistenceInfo();
+    if (persist.cloudSyncFolder) {
+      console.warn(
+        `[sqlite] ATENCIÓN: la base está dentro de una carpeta sincronizada (${persist.path}). `
+        + 'OneDrive/Dropbox pueden bloquear o revertir el archivo. Use DB_PATH fuera de esa carpeta.',
+      );
+    }
+    checkDatabaseIntegrity();
+  } catch (err) {
+    console.warn('[sqlite] verificación inicial:', err.message || err);
+  }
+  setTimeout(() => {
+    try {
+      createSafetyBackup({ force: true });
+    } catch (err) {
+      console.warn('[sqlite-backup] copia inicial:', err.message || err);
+    }
+  }, 60 * 1000);
   setInterval(() => {
     try {
       createSafetyBackup();
@@ -583,6 +609,13 @@ async function start() {
   };
   process.on('SIGTERM', () => flushSqliteOnExit('SIGTERM'));
   process.on('SIGINT', () => flushSqliteOnExit('SIGINT'));
+  /** App de escritorio (Windows no entrega SIGTERM): Electron pide el cierre por IPC. */
+  if (typeof process.send === 'function') {
+    process.on('message', (msg) => {
+      if (msg && msg.type === 'resto-shutdown') flushSqliteOnExit('ipc');
+    });
+    process.on('disconnect', () => flushSqliteOnExit('ipc-disconnect'));
+  }
   process.on('beforeExit', () => {
     try {
       flushSaveDb();

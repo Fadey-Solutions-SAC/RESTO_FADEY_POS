@@ -7,7 +7,8 @@ const fs = require('fs');
 const path = require('path');
 
 const AUTO_KEEP = 48;
-const DAILY_KEEP = 14;
+const DAILY_KEEP = 30;
+const MONTHLY_KEEP = 36;
 
 function getPersistentBackupsDir(dbPath) {
   return path.join(path.dirname(dbPath), 'backups');
@@ -152,21 +153,59 @@ function writeSnapshotBackup(dbPath, buffer, prefix) {
   return dest;
 }
 
-function ensureDailyBackup(dbPath, buffer) {
+/** Segundo destino opcional (otro disco, USB, NAS): `BACKUP_MIRROR_DIR`. */
+function getBackupMirrorDir() {
+  const raw = String(process.env.BACKUP_MIRROR_DIR || '').trim();
+  return raw ? path.resolve(raw) : '';
+}
+
+function mirrorBackupFile(srcPath, prefix, keep) {
+  const mirror = getBackupMirrorDir();
+  if (!mirror || !srcPath) return '';
+  try {
+    if (!fs.existsSync(mirror)) fs.mkdirSync(mirror, { recursive: true });
+    const dest = path.join(mirror, path.basename(srcPath));
+    writeFileAtomic(dest, fs.readFileSync(srcPath));
+    rotateBackups(mirror, prefix, keep);
+    return dest;
+  } catch (err) {
+    console.warn('[sqlite-backup] copia espejo falló:', err.message || err);
+    return '';
+  }
+}
+
+function ensurePeriodBackup(dbPath, buffer, prefix, stamp, keep) {
   const dir = getPersistentBackupsDir(dbPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const dest = path.join(dir, `restaurant_daily_${day}.db`);
+  const dest = path.join(dir, `${prefix}_${stamp}.db`);
+  const mirror = getBackupMirrorDir();
   if (fs.existsSync(dest)) {
     try {
-      if (fs.statSync(dest).size > 512) return dest;
+      if (fs.statSync(dest).size > 512) {
+        if (mirror && !fs.existsSync(path.join(mirror, path.basename(dest)))) {
+          mirrorBackupFile(dest, prefix, keep);
+        }
+        return { path: dest, created: false };
+      }
     } catch {
       /* rewrite */
     }
   }
   writeFileAtomic(dest, buffer);
-  rotateBackups(dir, 'restaurant_daily', DAILY_KEEP);
-  return dest;
+  rotateBackups(dir, prefix, keep);
+  mirrorBackupFile(dest, prefix, keep);
+  return { path: dest, created: true };
+}
+
+function ensureDailyBackup(dbPath, buffer) {
+  const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  return ensurePeriodBackup(dbPath, buffer, 'restaurant_daily', day, DAILY_KEEP).path;
+}
+
+/** Una copia por mes, conservada 3 años: permite recuperar datos antiguos aunque se detecte tarde. */
+function ensureMonthlyBackup(dbPath, buffer) {
+  const month = new Date().toISOString().slice(0, 7).replace(/-/g, '');
+  return ensurePeriodBackup(dbPath, buffer, 'restaurant_monthly', month, MONTHLY_KEEP).path;
 }
 
 function hasPersistentBackup(dbPath) {
@@ -220,8 +259,11 @@ module.exports = {
   writeFileAtomic,
   writeSnapshotBackup,
   ensureDailyBackup,
+  ensureMonthlyBackup,
+  getBackupMirrorDir,
   hasPersistentBackup,
   leftoverTmpCandidates,
   AUTO_KEEP,
   DAILY_KEEP,
+  MONTHLY_KEEP,
 };

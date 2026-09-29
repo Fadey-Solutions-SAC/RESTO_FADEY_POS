@@ -5,7 +5,12 @@ import { api, formatCurrency, formatDate, formatDateKey, formatInsumoQty, format
 import { UI_BADGE } from '../../utils/uiBadges';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
-import { MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline, MdEdit } from 'react-icons/md';
+import {
+  MdSearch, MdWarning, MdAdd, MdRemove, MdDownload, MdDeleteOutline, MdEdit,
+  MdViewInAr, MdMonetizationOn, MdSwapHoriz, MdWarningAmber, MdInventory2,
+  MdStorefront, MdWarehouse, MdChevronRight, MdExpandMore,
+} from 'react-icons/md';
+import { FaCoins } from 'react-icons/fa';
 import Modal from '../../components/Modal';
 import LogisticaKardexModule from '../../components/LogisticaKardexModule';
 import InsumoCreateModal from '../../components/InsumoCreateModal';
@@ -277,21 +282,38 @@ function isAllWarehousesView(view) {
   return !view || view === ALL_WAREHOUSES_VIEW;
 }
 
-function MovimientoInternoStatCard({ label, value, valueClassName = '', valueStyle }) {
+const STAT_ICON_TONES = {
+  blue: 'bg-blue-50 text-blue-600',
+  green: 'bg-emerald-50 text-emerald-600',
+  red: 'bg-red-50 text-red-500',
+};
+
+function MovimientoInternoStatCard({ label, value, icon: Icon, tone = 'blue', valueClassName = 'text-slate-900' }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-center min-w-0">
-      <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide text-[var(--ui-muted)] leading-tight whitespace-nowrap">
-        {label}
-      </p>
-      <p
-        className={`text-base sm:text-lg font-bold mt-1 whitespace-nowrap tabular-nums leading-none ${valueClassName}`}
-        style={valueStyle}
-      >
-        {value}
-      </p>
+    <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3 shadow-sm flex items-center gap-3 min-w-0">
+      {Icon && (
+        <span className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${STAT_ICON_TONES[tone] || STAT_ICON_TONES.blue}`}>
+          <Icon className="text-xl" />
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide text-slate-500 leading-tight whitespace-nowrap">
+          {label}
+        </p>
+        <p className={`text-base sm:text-lg font-bold mt-1 whitespace-nowrap tabular-nums leading-none ${valueClassName}`}>
+          {value}
+        </p>
+      </div>
     </div>
   );
 }
+
+const WAREHOUSE_CARD_TONES = [
+  { card: 'bg-emerald-50/60 border-emerald-100', icon: 'bg-emerald-100 text-emerald-600', title: 'text-slate-800', action: 'text-emerald-600 hover:text-emerald-700', ring: 'border-emerald-400 ring-2 ring-emerald-200' },
+  { card: 'bg-violet-50/60 border-violet-100', icon: 'bg-violet-100 text-violet-600', title: 'text-violet-700', action: 'text-violet-600 hover:text-violet-700', ring: 'border-violet-400 ring-2 ring-violet-200' },
+  { card: 'bg-amber-50/60 border-amber-100', icon: 'bg-amber-100 text-amber-600', title: 'text-slate-800', action: 'text-amber-600 hover:text-amber-700', ring: 'border-amber-400 ring-2 ring-amber-200' },
+  { card: 'bg-sky-50/60 border-sky-100', icon: 'bg-sky-100 text-sky-600', title: 'text-slate-800', action: 'text-sky-600 hover:text-sky-700', ring: 'border-sky-400 ring-2 ring-sky-200' },
+];
 
 function downloadGastoGroup(group, format = 'excel', { usuario } = {}) {
   if (!group?.items?.length) {
@@ -339,6 +361,7 @@ export default function Almacen() {
   const [activeView, setActiveView] = useState(searchParams.get('view') || 'movimiento_interno');
   const [selectedWarehouseView, setSelectedWarehouseView] = useState(ALL_WAREHOUSES_VIEW);
   const [search, setSearch] = useState('');
+  const [showLowStockList, setShowLowStockList] = useState(false);
   const [stockModal, setStockModal] = useState(null);
   const [stockChange, setStockChange] = useState('');
   const [stockReason, setStockReason] = useState('');
@@ -2061,6 +2084,7 @@ export default function Almacen() {
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3 mb-5">
         <MovimientoInternoStatCard
           label="Total ítems"
+          icon={MdViewInAr}
           value={
             selectedIsInsumosWarehouse
               ? insumosPorVista.length
@@ -2069,15 +2093,18 @@ export default function Almacen() {
                 : productsForSelectedWarehouse.length
           }
         />
-        <MovimientoInternoStatCard label="Valor del inventario" value={formatCurrency(totalValue)} valueClassName="ui-text-success" />
-        <MovimientoInternoStatCard label="Valor de insumos" value={formatCurrency(insumosTotalValueAll)} valueClassName="ui-text-success" />
+        <MovimientoInternoStatCard label="Valor del inventario" icon={MdMonetizationOn} value={formatCurrency(totalValue)} />
+        <MovimientoInternoStatCard label="Valor de insumos" icon={FaCoins} tone="green" value={formatCurrency(insumosTotalValueAll)} />
         <MovimientoInternoStatCard
           label="Inversión de inventario"
+          icon={MdSwapHoriz}
           value={formatCurrency(totalInventoryInvestment)}
-          valueStyle={{ color: 'var(--ui-accent)' }}
+          valueClassName="text-blue-600"
         />
         <MovimientoInternoStatCard
           label="Stock bajo"
+          icon={MdWarningAmber}
+          tone="red"
           value={
             selectedIsInsumosWarehouse
               ? insumosLowCount
@@ -2085,10 +2112,11 @@ export default function Almacen() {
                 ? lowFromWarehouse.length + insumosActivos.filter((i) => insumoEstaBajoMinimo(i)).length
                 : lowStock.length
           }
-          valueClassName="ui-text-danger"
+          valueClassName="text-red-600"
         />
         <MovimientoInternoStatCard
           label="Unidades totales"
+          icon={MdInventory2}
           value={
             selectedIsInsumosWarehouse
               ? insumosTotalUnits
@@ -2099,39 +2127,7 @@ export default function Almacen() {
         />
       </div>
 
-      <div className="mb-5 space-y-3">
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setWarehouseForm({ name: '', description: '', linkedInsumos: false });
-              setShowWarehouseModal(true);
-            }}
-            className="btn-secondary flex items-center justify-center gap-2 text-sm h-10 px-4"
-          >
-            <MdAdd className="shrink-0" /> Nuevo almacén
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (selectedIsInsumosWarehouse) {
-                setEditingInsumo(null);
-                setShowInsumoModal(true);
-                return;
-              }
-              setItemForm(prev => ({
-                ...prev,
-                category_id: '',
-                stock_warehouse: getDefaultCreateWarehouseId(),
-                note_required: 0,
-              }));
-              setShowCreateModal(true);
-            }}
-            className="btn-primary flex items-center justify-center gap-2 text-sm h-10 px-4"
-          >
-            <MdAdd className="shrink-0" /> Nuevo producto
-          </button>
-        </div>
+      <div className="mb-5 space-y-4">
         <div className="flex flex-wrap items-stretch gap-3">
           <div
             onClick={() => setSelectedWarehouseView(ALL_WAREHOUSES_VIEW)}
@@ -2144,25 +2140,34 @@ export default function Almacen() {
             }}
             role="button"
             tabIndex={0}
-            className={`scroll-mt-[calc(var(--ui-shell-header-h)+0.75rem)] bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
+            className={`scroll-mt-[calc(var(--ui-shell-header-h)+0.75rem)] cursor-pointer rounded-2xl border p-4 flex flex-col min-h-32 min-w-[16rem] flex-1 text-left transition-all bg-blue-50/60 ${
               isAllWarehousesView(selectedWarehouseView)
-                ? 'border-gold-500 ring-2 ring-gold-200'
-                : 'border-slate-200 hover:border-gold-300'
+                ? 'border-blue-400 ring-2 ring-blue-200'
+                : 'border-blue-100 hover:border-blue-300'
             }`}
           >
-            <p className="font-semibold text-[var(--ui-body-text)]">Todos</p>
-            <p className="text-xs text-[var(--ui-body-text)] mt-1">Vista consolidada de todos los almacenes</p>
-            <p className="text-xs text-[var(--ui-body-text)] mt-2">
-              Productos: <strong>{products.length}</strong>
+            <div className="flex items-center gap-3">
+              <span className="shrink-0 w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                <MdStorefront className="text-xl" />
+              </span>
+              <p className="font-semibold text-slate-800 flex-1 min-w-0 truncate">Todos</p>
+              <MdChevronRight className="shrink-0 text-xl text-slate-400" />
+            </div>
+            <p className="text-sm text-slate-600 mt-3">Vista consolidada de todos los almacenes</p>
+            <p className="text-sm text-slate-600 mt-3">
+              Productos: <strong className="text-blue-700">{products.length}</strong>
               {' · '}
-              Insumos: <strong>{insumosActivos.length}</strong>
+              Insumos: <strong className="text-blue-700">{insumosActivos.length}</strong>
             </p>
           </div>
-          {warehouses.map(w => {
+          {warehouses.map((w, idx) => {
             const linkedProducts = isInsumosWarehouse(w)
               ? insumosActivos.length
               : (warehouseUsageMap[w.id] || 0);
             const canDelete = linkedProducts === 0;
+            const tone = isInsumosWarehouse(w)
+              ? WAREHOUSE_CARD_TONES[1]
+              : WAREHOUSE_CARD_TONES[[0, 2, 3][idx % 3]];
             return (
               <div
                 key={w.id}
@@ -2176,29 +2181,33 @@ export default function Almacen() {
                 }}
                 role="button"
                 tabIndex={0}
-                className={`scroll-mt-[calc(var(--ui-shell-header-h)+0.75rem)] bg-white rounded-xl border p-3 flex flex-col min-h-28 min-w-[16rem] flex-1 max-w-sm text-left transition-colors ${
-                  sameWarehouseId(selectedWarehouseView, w.id)
-                    ? 'border-gold-500 ring-2 ring-gold-200'
-                    : 'border-slate-200 hover:border-gold-300'
+                className={`scroll-mt-[calc(var(--ui-shell-header-h)+0.75rem)] cursor-pointer rounded-2xl border p-4 flex flex-col min-h-32 min-w-[16rem] flex-1 text-left transition-all ${tone.card} ${
+                  sameWarehouseId(selectedWarehouseView, w.id) ? tone.ring : 'hover:shadow-sm'
                 }`}
               >
-                <p className="font-semibold text-[var(--ui-body-text)]">{w.name}</p>
-                {w.description && <p className="text-xs text-[var(--ui-body-text)] mt-1">{w.description}</p>}
-                <p className="text-xs text-[var(--ui-body-text)] mt-2">
+                <div className="flex items-center gap-3">
+                  <span className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${tone.icon}`}>
+                    <MdWarehouse className="text-xl" />
+                  </span>
+                  <p className={`font-semibold flex-1 min-w-0 truncate ${tone.title}`}>{w.name}</p>
+                  <MdChevronRight className="shrink-0 text-xl text-slate-400" />
+                </div>
+                {w.description && <p className="text-sm text-slate-600 mt-3">{w.description}</p>}
+                <p className="text-sm text-slate-600 mt-3">
                   {isInsumosWarehouse(w) ? 'Insumos vinculados: ' : 'Productos con stock: '}
-                  <strong>{linkedProducts}</strong>
+                  <strong className="text-slate-800">{linkedProducts}</strong>
                 </p>
-                <div className="mt-auto flex justify-end">
+                <div className="mt-auto pt-2 flex justify-end">
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDeleteWarehouse(w);
                     }}
                     disabled={!canDelete}
-                    className={`text-xs px-3 py-1.5 rounded-lg ${
-                      canDelete
-                        ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                        : 'bg-slate-100 text-[var(--ui-muted)] cursor-not-allowed'
+                    title={canDelete ? undefined : 'El almacén tiene productos con stock'}
+                    className={`text-sm font-medium ${
+                      canDelete ? tone.action : 'text-slate-400 cursor-not-allowed'
                     }`}
                   >
                     Eliminar almacén
@@ -2208,17 +2217,70 @@ export default function Almacen() {
             );
           })}
         </div>
-      </div>
-      {lowStock.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
-          <p className="font-bold text-red-700 flex items-center gap-2 mb-2"><MdWarning /> Productos con stock bajo</p>
-          <div className="flex flex-wrap gap-2">
-            {lowStock.map(p => (
-              <span key={p.id} className="px-3 py-1 bg-white rounded-full text-sm border border-red-200 text-red-700">{p.name}: <strong>{p.stock}</strong></span>
-            ))}
+
+        <div className="flex flex-wrap items-center gap-3">
+          {lowStock.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowLowStockList((v) => !v)}
+              className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-left hover:bg-red-100/70 transition-colors min-w-[16rem] flex-1 sm:flex-none sm:w-96"
+            >
+              <MdWarning className="shrink-0 text-2xl text-red-500" />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-bold text-red-700">Productos con bajo stock</span>
+                <span className="block text-xs text-red-600/80">
+                  {lowStock.length} {lowStock.length === 1 ? 'producto requiere' : 'productos requieren'} reposición
+                </span>
+              </span>
+              {showLowStockList
+                ? <MdExpandMore className="shrink-0 text-xl text-red-400" />
+                : <MdChevronRight className="shrink-0 text-xl text-red-400" />}
+            </button>
+          )}
+          <div className="flex flex-wrap gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedIsInsumosWarehouse) {
+                  setEditingInsumo(null);
+                  setShowInsumoModal(true);
+                  return;
+                }
+                setItemForm(prev => ({
+                  ...prev,
+                  category_id: '',
+                  stock_warehouse: getDefaultCreateWarehouseId(),
+                  note_required: 0,
+                }));
+                setShowCreateModal(true);
+              }}
+              className="flex items-center justify-center gap-2 text-sm font-semibold h-11 px-5 rounded-xl bg-blue-600 text-white shadow-sm hover:bg-blue-700 transition-colors"
+            >
+              <MdAdd className="shrink-0 text-lg" /> Nuevo producto
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setWarehouseForm({ name: '', description: '', linkedInsumos: false });
+                setShowWarehouseModal(true);
+              }}
+              className="flex items-center justify-center gap-2 text-sm font-medium h-11 px-5 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
+            >
+              <MdAdd className="shrink-0 text-lg" /> Nuevo almacén
+            </button>
           </div>
         </div>
-      )}
+
+        {lowStock.length > 0 && showLowStockList && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="flex flex-wrap gap-2">
+              {lowStock.map(p => (
+                <span key={p.id} className="px-3 py-1 bg-white rounded-full text-sm border border-red-200 text-red-700">{p.name}: <strong>{p.stock}</strong></span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
         <div className="relative mb-4">
