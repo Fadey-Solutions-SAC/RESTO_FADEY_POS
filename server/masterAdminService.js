@@ -478,8 +478,14 @@ function resolveComprobanteGraceDays(pago = {}) {
   return Math.max(1, Math.min(14, Number(pago?.comprobante_grace_days_after_due ?? 3)));
 }
 
+/** Sin fecha de facturación configurada por el maestro no hay ciclo de cobro: nunca se bloquea por pago. */
+function hasBillingDateConfigured(control) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(control?.billing_date || '').trim());
+}
+
 /** Último día inclusive con acceso: fecha_proxima_facturación + días de gracia. */
 function resolvePaymentLockDeadlineKey(control, pago = null) {
+  if (!hasBillingDateConfigured(control)) return '';
   const billing = pago || readSetting(PAGO_USO_APP_KEY, {});
   const grace = resolveComprobanteGraceDays(billing);
   const nextDue = String(billing.fecha_proxima_facturacion || '').trim();
@@ -620,6 +626,22 @@ function evaluatePagoUsoComprobanteWindow() {
   const hasUrl = Boolean(String(pago.comprobante_pago_url || '').trim());
   let controlChanged = false;
   let pagoChanged = false;
+
+  if (!hasBillingDateConfigured(control)) {
+    if (
+      Number(control.pago_uso_comprobante_lock_auto || 0) === 1
+      && Number(control.central_policy_lock_auto || 0) !== 1
+    ) {
+      control.global_lock_enabled = 0;
+      control.pago_uso_comprobante_lock_auto = 0;
+      control.global_lock_reason = '';
+      control.lock_enabled_at = new Date().toISOString();
+      control.lock_enabled_by = 'Sistema automático';
+      clearAutoSystemLockNotification();
+      upsertSetting(MASTER_SETTING_KEY, control);
+    }
+    return;
+  }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDue)) {
     if (hasUrl && Number(control.pago_uso_comprobante_lock_auto || 0) === 1) {
