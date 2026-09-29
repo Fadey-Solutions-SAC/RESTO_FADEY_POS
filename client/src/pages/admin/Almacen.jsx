@@ -2079,7 +2079,7 @@ export default function Almacen() {
 
   return (
     <div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-[minmax(0,0.7fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] gap-2 sm:gap-3 mb-5">
         <MovimientoInternoStatCard
           label="Total ítems"
           icon={MdViewInAr}
