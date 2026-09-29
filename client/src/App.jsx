@@ -157,6 +157,7 @@ export default function App() {
     return [
       '/encuesta',
       '/firmar-contrato',
+      '/auto-pedido',
       '/auto-pedido-cliente',
       '/desbloquear-pago',
       '/customer',
@@ -207,6 +208,7 @@ function AppRoutes({ user }) {
   return (
     <>
       <Routes>
+      <Route path="/auto-pedido" element={<SelfOrder />} />
       <Route path="/encuesta" element={<EncuestaPublica />} />
       <Route path="/firmar-contrato" element={<FirmarContratoMovil />} />
       <Route path="/auto-pedido-cliente" element={<SelfOrderCliente />} />
