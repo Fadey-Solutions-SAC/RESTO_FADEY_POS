@@ -572,6 +572,16 @@ router.get('/attendance-gallery/:userId', authenticateToken, requireRole('admin'
 
 /** Sesiones del día con asistencia pendiente de clasificar (solo admin). */
 router.get('/attendance-review/today', authenticateToken, requireRole('admin'), (req, res) => {
+  /** Con asistencia QR el tiempo trabajado sale de hr_attendance; las sesiones de login no se clasifican. */
+  let qrActiva = false;
+  try {
+    qrActiva = require('../services/hrService').isAsistenciaQrActiva();
+  } catch (_) {
+    qrActiva = false;
+  }
+  if (qrActiva) {
+    return res.json({ pending: [], complete: true, jornada_source: 'qr' });
+  }
   const rows = queryAll(
     `SELECT s.id, s.user_id, s.login_at, s.logout_at,
             COALESCE(s.attendance_status, 'pending') AS attendance_status,

@@ -228,6 +228,13 @@ function mesaSortValue(group) {
   return 99999;
 }
 
+function monthLabelEs(monthKey) {
+  const [y, m] = String(monthKey || '').split('-').map(Number);
+  if (!y || !m) return String(monthKey || '');
+  const name = new Date(y, m - 1, 1).toLocaleDateString('es-PE', { month: 'long' });
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${y}`;
+}
+
 function sortVentasGroups(groups, sortKey, sortDir) {
   const dir = sortDir === 'asc' ? 1 : -1;
   return [...groups].sort((a, b) => {
@@ -401,6 +408,27 @@ export default function Ventas() {
     const groups = buildVentasDisplayGroups(filtered, adjustmentRows, { voidedTab: isVoidedTab });
     return sortVentasGroups(groups, sortKey, sortDir);
   }, [filtered, adjustmentRows, isVoidedTab, sortKey, sortDir]);
+
+  /** Mes en curso venta por venta; meses cerrados comprimidos en un recuadro. */
+  const { currentMonthGroups, pastMonths } = useMemo(() => {
+    const currentKey = String(toLocalDateKey(new Date()) || '').slice(0, 7);
+    const current = [];
+    const byMonth = new Map();
+    displayGroups.forEach((g) => {
+      const monthKey = String(toLocalDateKey(g.latestAt) || '').slice(0, 7);
+      if (!monthKey || monthKey >= currentKey) {
+        current.push(g);
+        return;
+      }
+      if (!byMonth.has(monthKey)) byMonth.set(monthKey, []);
+      byMonth.get(monthKey).push(g);
+    });
+    const months = [...byMonth.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([key, groups]) => ({ key, label: monthLabelEs(key), groups }));
+    return { currentMonthGroups: current, pastMonths: months };
+  }, [displayGroups]);
+  const [openMonthKey, setOpenMonthKey] = useState('');
   const paidSalesAccounts = useMemo(
     () => summarizePaidSalesAccounts(filtered.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o))),
     [filtered],
@@ -589,6 +617,59 @@ export default function Ventas() {
     }
   };
 
+  const renderSaleActions = (group, o) => (
+            <div className="flex items-center gap-1 relative">
+              <button
+                type="button"
+                onClick={onPrimaryClick(() => openGroupDetail(group))}
+                onDoubleClick={(event) => event.preventDefault()}
+                className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700"
+                title="Ver detalle"
+              >
+                <MdVisibility />
+              </button>
+              <button type="button" onClick={onPrimaryClick(() => openReceipt(o, group))} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
+              <button
+                type="button"
+                onClick={onPrimaryClick(() => {
+                  if (group.comprobanteCount === 1) downloadExcel({ ...o, local_name: restaurantName });
+                  else group.orders.forEach((ord) => downloadExcel({ ...ord, local_name: restaurantName }));
+                })}
+                className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700"
+                title="Excel"
+              >
+                <MdTableChart />
+              </button>
+              {!isVoidedTab ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={onPrimaryClick(() => {
+                      if (group.comprobanteCount === 1) startEdit(o);
+                      else openGroupDetail(group);
+                    })}
+                    className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600"
+                    title="Editar"
+                  >
+                    <MdEdit />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onPrimaryClick(() => {
+                      if (group.comprobanteCount === 1) openVoidModal(o);
+                      else openGroupDetail(group);
+                    })}
+                    disabled={group.orders.every((ord) => ord.status === 'cancelled')}
+                    className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700 disabled:opacity-50"
+                    title="Anular venta"
+                  >
+                    <MdCancel />
+                  </button>
+                </>
+              ) : null}
+            </div>
+  );
+
   if (loading) return <div className="flex justify-center py-16"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>;
 
   return (
@@ -764,68 +845,67 @@ export default function Ventas() {
         </div>
 
         <VentasCuentasTable
-          groups={displayGroups}
+          groups={currentMonthGroups}
           isVoidedTab={isVoidedTab}
-          emptyMessage={isVoidedTab ? 'Sin ventas anuladas' : 'Sin ventas encontradas'}
+          emptyMessage={
+            pastMonths.length
+              ? 'Sin ventas este mes'
+              : (isVoidedTab ? 'Sin ventas anuladas' : 'Sin ventas encontradas')
+          }
           onStatusClick={goToDescuentosHighlight}
           onAccountPurged={() => void load()}
           sortKey={sortKey}
           sortDir={sortDir}
           onSort={toggleSort}
           showActions
-          renderActions={(group, o) => (
-            <div className="flex items-center gap-1 relative">
-              <button
-                type="button"
-                onClick={onPrimaryClick(() => openGroupDetail(group))}
-                onDoubleClick={(event) => event.preventDefault()}
-                className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700"
-                title="Ver detalle"
-              >
-                <MdVisibility />
-              </button>
-              <button type="button" onClick={onPrimaryClick(() => openReceipt(o, group))} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
-              <button
-                type="button"
-                onClick={onPrimaryClick(() => {
-                  if (group.comprobanteCount === 1) downloadExcel({ ...o, local_name: restaurantName });
-                  else group.orders.forEach((ord) => downloadExcel({ ...ord, local_name: restaurantName }));
-                })}
-                className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700"
-                title="Excel"
-              >
-                <MdTableChart />
-              </button>
-              {!isVoidedTab ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={onPrimaryClick(() => {
-                      if (group.comprobanteCount === 1) startEdit(o);
-                      else openGroupDetail(group);
-                    })}
-                    className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600"
-                    title="Editar"
-                  >
-                    <MdEdit />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onPrimaryClick(() => {
-                      if (group.comprobanteCount === 1) openVoidModal(o);
-                      else openGroupDetail(group);
-                    })}
-                    disabled={group.orders.every((ord) => ord.status === 'cancelled')}
-                    className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700 disabled:opacity-50"
-                    title="Anular venta"
-                  >
-                    <MdCancel />
-                  </button>
-                </>
-              ) : null}
-            </div>
-          )}
+          renderActions={renderSaleActions}
         />
+
+        {pastMonths.length ? (
+          <div className="mt-4 space-y-3">
+            {pastMonths.map((month) => {
+              const open = openMonthKey === month.key;
+              return (
+                <div
+                  key={month.key}
+                  className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]"
+                >
+                  <div className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)]">
+                        Ventas del mes
+                      </p>
+                      <p className="text-base font-bold text-[var(--ui-body-text)]">{month.label}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOpenMonthKey(open ? '' : month.key)}
+                      className={open ? 'btn-secondary text-sm px-4 py-2' : 'btn-primary text-sm px-4 py-2'}
+                    >
+                      {open ? 'Ocultar' : 'Inspeccionar'}
+                    </button>
+                  </div>
+                  {open ? (
+                    <div className="border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-2 rounded-b-xl">
+                      <VentasCuentasTable
+                        groups={month.groups}
+                        isVoidedTab={isVoidedTab}
+                        emptyMessage="Sin ventas en este mes"
+                        onStatusClick={goToDescuentosHighlight}
+                        onAccountPurged={() => void load()}
+                        sortKey={sortKey}
+                        sortDir={sortDir}
+                        onSort={toggleSort}
+                        showActions
+                        renderActions={renderSaleActions}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
       )}
 

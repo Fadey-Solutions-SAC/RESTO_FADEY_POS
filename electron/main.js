@@ -440,6 +440,10 @@ function printUsbGdi(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
       return 80;
     })();
     const logoUrl = String(gdiOpts.logoUrl || '').trim();
+    const logoMaxMm = Number(gdiOpts.logoMaxMm) > 0 ? Math.min(paperMm - 6, Number(gdiOpts.logoMaxMm)) : 0;
+    const logoSizeCss = logoMaxMm
+      ? `width:${logoMaxMm}mm;height:${logoMaxMm}mm;image-rendering:pixelated`
+      : 'max-width:92%;max-height:24mm';
     const restaurantBrand = String(gdiOpts.restaurantBrand || '').trim();
     const plain = bufferToThermalPlain(buffer);
     const { banner, body } = splitBrandFromThermalPlain(plain, restaurantBrand);
@@ -450,7 +454,7 @@ function printUsbGdi(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
     const brandPx = Math.min(42, Math.round(fontPx * brandMult));
     const pageW = Math.round(paperMm * 1000);
     const logoBlock = logoUrl
-      ? `<div style="text-align:center;margin:0 auto 5px;width:100%"><img src="${escapeHtmlAttr(logoUrl)}" alt="" style="display:block;margin:0 auto;max-width:92%;max-height:24mm;object-fit:contain;image-orientation:from-image"/></div>`
+      ? `<div style="text-align:center;margin:0 auto 5px;width:100%"><img src="${escapeHtmlAttr(logoUrl)}" alt="" style="display:block;margin:0 auto;${logoSizeCss};object-fit:contain;image-orientation:from-image"/></div>`
       : '';
     const brandBlock = banner
       ? `<div style="text-align:center;font-weight:700;font-size:${brandPx}px;line-height:1.2;margin:0 auto 6px;padding:0;width:100%;font-family:Consolas,'Courier New',monospace">${escapeHtmlPre(banner)}</div>`
@@ -602,6 +606,7 @@ async function printByModule(moduleKey, payload = {}) {
     console.log(`[electron-printing] imprimir ${key} usb: ${cfg.nombre}`);
     return printUSB(cfg.nombre, ticket, pw, {
       logoUrl: useGdiUsbFallback ? String(payload.logoUrl || payload.logo || '').trim() : '',
+      logoMaxMm: Number(payload.logoMaxMm) || 0,
       restaurantBrand: String(payload.restaurantBrand || '').trim(),
     });
   }

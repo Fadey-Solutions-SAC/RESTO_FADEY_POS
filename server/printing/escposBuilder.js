@@ -177,7 +177,9 @@ async function buildTicket(moduleName, data = {}, options = {}) {
         String(process.env.RESTO_THERMAL_LOGO || '') === '1');
     const embedRaster = wantLogo && !data.omitRasterForGdi;
     if (embedRaster) {
-      const raster = await logoToEscPosRaster(String(logoUrl).trim(), paperW);
+      const raster = await logoToEscPosRaster(String(logoUrl).trim(), paperW, {
+        maxDots: Number(data.logoMaxDots) || 0,
+      });
       if (raster && raster.length) {
         chunks.push(ALIGN_CENTER);
         chunks.push(raster);

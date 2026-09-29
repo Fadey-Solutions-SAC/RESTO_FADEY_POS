@@ -109,9 +109,10 @@ async function loadJimpImage(logoUrl) {
 /**
  * @param {string} logoUrl — URL absoluta, o ruta `/uploads/...` / relativa bajo uploads
  * @param {number} paperWidthMm — 58 u 80
+ * @param {{ maxDots?: number }} [opts] — lado máximo en puntos (p. ej. QR de mesa); por defecto alto 220
  * @returns {Promise<Buffer|null>}
  */
-async function logoToEscPosRaster(logoUrl, paperWidthMm) {
+async function logoToEscPosRaster(logoUrl, paperWidthMm, opts = {}) {
   const image = await loadJimpImage(logoUrl);
   if (!image) return null;
   const Jimp = getJimp();
@@ -121,9 +122,21 @@ async function logoToEscPosRaster(logoUrl, paperWidthMm) {
     if (typeof image.exifRotate === 'function') {
       image.exifRotate();
     }
-    const maxW = maxLogoWidthDots(paperWidthMm);
-    const maxH = 220;
-    image.contain(maxW, maxH);
+    const paperMaxW = maxLogoWidthDots(paperWidthMm);
+    const customMax = Math.floor(Number(opts.maxDots) || 0);
+    const maxW = customMax > 0 ? Math.min(paperMaxW, customMax) : paperMaxW;
+    const maxH = customMax > 0 ? maxW : 220;
+    if (customMax <= 0) {
+      image.contain(maxW, maxH);
+    } else if (image.getWidth() !== maxW || image.getHeight() !== maxH) {
+      /** Vecino más cercano: el QR conserva bordes nítidos al escalar. */
+      image.contain(
+        maxW,
+        maxH,
+        Jimp.HORIZONTAL_ALIGN_CENTER | Jimp.VERTICAL_ALIGN_MIDDLE,
+        Jimp.RESIZE_NEAREST_NEIGHBOR,
+      );
+    }
     image.greyscale();
     const w = image.getWidth();
     const h = image.getHeight();

@@ -3,7 +3,8 @@ import { api, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
-import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen } from 'react-icons/md';
+import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen, MdDownload, MdPrint } from 'react-icons/md';
+import { downloadTableQrPng, printTableQrThermal } from '../../utils/tableQrPrint';
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import {
@@ -102,6 +103,7 @@ export default function AutoPedidoAdmin() {
   const [folderImportResult, setFolderImportResult] = useState(null);
   const [showFolderImportModal, setShowFolderImportModal] = useState(false);
   const [assigningPendingKey, setAssigningPendingKey] = useState('');
+  const [printingQrTableId, setPrintingQrTableId] = useState('');
   const [qrHome, setQrHome] = useState('productos');
   const [savingQrHome, setSavingQrHome] = useState(false);
   const cartasDirtyRef = useRef(false);
@@ -333,6 +335,36 @@ export default function AutoPedidoAdmin() {
   const copyLink = (num) => {
     const url = selfOrderUrlForTable(num);
     navigator.clipboard.writeText(url).then(() => toast.success('Enlace copiado')).catch(() => toast.error('No se pudo copiar'));
+  };
+
+  const downloadTableQr = async (table) => {
+    try {
+      await downloadTableQrPng({
+        url: selfOrderUrlForTable(table.number),
+        title: table.name || `Mesa ${table.number}`,
+        subtitle: `Mesa ${table.number}`,
+      });
+    } catch (err) {
+      toast.error(err.message || 'No se pudo descargar el QR');
+    }
+  };
+
+  const printTableQr = async (table) => {
+    if (printingQrTableId) return;
+    setPrintingQrTableId(table.id);
+    const tid = toast.loading('Imprimiendo QR…');
+    try {
+      await printTableQrThermal({
+        url: selfOrderUrlForTable(table.number),
+        title: table.name || `Mesa ${table.number}`,
+        subtitle: `Mesa ${table.number}`,
+      });
+      toast.success(`QR de ${table.name || `Mesa ${table.number}`} impreso`, { id: tid });
+    } catch (err) {
+      toast.error(err.message || 'No se pudo imprimir el QR', { id: tid });
+    } finally {
+      setPrintingQrTableId('');
+    }
   };
 
   const filteredProducts = products.filter((p) => {
@@ -777,13 +809,34 @@ export default function AutoPedidoAdmin() {
                 <p className="font-semibold rf-section-title">{t.name}</p>
                 <p className="text-xs ui-text-muted mb-2">Mesa {t.number}</p>
                 <img src={qrSrc} alt="" className="w-40 h-40 mb-2 bg-white p-1 rounded" />
-                <button
-                  type="button"
-                  onClick={() => copyLink(t.number)}
-                  className="text-xs text-[var(--ui-accent)] inline-flex items-center gap-1 hover:underline"
-                >
-                  <MdContentCopy /> Copiar enlace
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => copyLink(t.number)}
+                    className="text-xs text-[var(--ui-accent)] inline-flex items-center gap-1 hover:underline"
+                  >
+                    <MdContentCopy /> Copiar enlace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void downloadTableQr(t)}
+                    className="w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)]"
+                    title="Descargar QR (PNG)"
+                    aria-label={`Descargar QR de ${t.name}`}
+                  >
+                    <MdDownload className="text-lg" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void printTableQr(t)}
+                    disabled={Boolean(printingQrTableId)}
+                    className="w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)] disabled:opacity-50"
+                    title="Imprimir QR en ticketera (Caja)"
+                    aria-label={`Imprimir QR de ${t.name}`}
+                  >
+                    <MdPrint className="text-lg" />
+                  </button>
+                </div>
               </div>
             );
           })}
