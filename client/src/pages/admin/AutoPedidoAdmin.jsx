@@ -83,7 +83,7 @@ function selfOrderUrlForTable(number) {
 
 export default function AutoPedidoAdmin() {
   const { user } = useAuth();
-  const canSave = user?.role === 'admin';
+  const canSave = user?.role === 'admin' || user?.role === 'master_admin';
   const [cartas, setCartas] = useState([]);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);

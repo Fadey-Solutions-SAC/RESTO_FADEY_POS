@@ -142,10 +142,12 @@ function LegacyTrackingRedirect() {
   return <Navigate to={`/customer/orders/${id}`} replace />;
 }
 
-/** Configuración de cartas y QR: solo rol `admin` (vista pública del QR en `/auto-pedido`). */
+/** Configuración de cartas y QR (vista pública del QR en `/auto-pedido`). Misma regla que el menú lateral. */
 function AdminOnlyAutoPedido() {
   const { user } = useAuth();
-  if (user?.role !== 'admin') return <Navigate to="/admin" replace />;
+  if (!canAccessStaffModule(user, { moduleId: 'auto_pedido', roles: ['admin'] })) {
+    return <Navigate to="/admin" replace />;
+  }
   return <AutoPedidoAdmin />;
 }
 
