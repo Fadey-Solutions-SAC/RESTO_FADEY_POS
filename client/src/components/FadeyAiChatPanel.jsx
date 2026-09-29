@@ -406,8 +406,8 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
         <div className="rf-fadey-ai-avatar-lg rf-fadey-ai-avatar-lg--photo">
           <PixAvatar size="lg" mood="saludo" />
         </div>
-        <p className="text-sm font-semibold text-[#0f172a]">IA Fadey desactivada</p>
-        <p className="text-xs text-[#64748b]">Actívala en Admin Maestro → control del plan.</p>
+        <p className="text-sm font-semibold text-[#0f172a]">IA Fadey no disponible</p>
+        <p className="text-xs text-[#64748b]">Mejora tu plan para obtener el beneficio.</p>
       </div>
     );
   }
@@ -428,7 +428,7 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
               </p>
             ) : (
               <p className="text-xs text-[#64748b] max-w-[16rem]">
-                Pregunta cómo hacer algo en el POS o elige una sugerencia.
+                Pregunta cómo hacer algo en el sistema o elige una sugerencia.
               </p>
             )}
           </div>
@@ -565,7 +565,7 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
 
         {!isHome ? (
           <p className="rf-fadey-ai-disclaimer">
-            IA Fadey puede cometer errores. Verifica la información importante.
+            IA Fadey puede cometer errores. Verifica la información importante en el modulo correspondiente.
           </p>
         ) : null}
       </div>

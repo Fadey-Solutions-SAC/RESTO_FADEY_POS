@@ -13,6 +13,10 @@ export default function CartasHorizontalCarousel({ cartas = [], className = '', 
   const scrollerRef = useRef(null);
   const [index, setIndex] = useState(0);
   const scrollTimeoutRef = useRef(null);
+  const [brokenUrls, setBrokenUrls] = useState(() => new Set());
+  const markBroken = useCallback((url) => {
+    setBrokenUrls((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
+  }, []);
 
   const len = cartas.length;
   const active = len ? cartas[Math.min(index, len - 1)] : null;
@@ -107,10 +111,16 @@ export default function CartasHorizontalCarousel({ cartas = [], className = '', 
                   src={resolveMediaUrl(c.url)}
                   className="w-full h-full min-h-[280px] rounded-lg border border-[#334155] bg-white"
                 />
+              ) : c.url && brokenUrls.has(c.url) ? (
+                <div className="flex flex-col items-center justify-center gap-1 text-center text-sm text-[var(--ui-muted)] p-6 rounded-lg border border-dashed border-[#334155]">
+                  <span className="font-semibold text-[var(--ui-body-text)]">{c.name}</span>
+                  <span>Archivo no disponible o no es una imagen válida</span>
+                </div>
               ) : c.url ? (
                 <img
                   src={resolveMediaUrl(c.url)}
                   alt={c.name}
+                  onError={() => markBroken(c.url)}
                   className="max-h-full max-w-full w-auto h-auto object-contain rounded-lg border border-[#334155]"
                 />
               ) : null}

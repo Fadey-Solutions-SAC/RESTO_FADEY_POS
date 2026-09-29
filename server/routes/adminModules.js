@@ -123,12 +123,16 @@ function mergeSettingsBlob(prevParsed, incoming) {
   const prev = prevParsed && typeof prevParsed === 'object' && !Array.isArray(prevParsed) ? prevParsed : {};
   const next = incoming && typeof incoming === 'object' && !Array.isArray(incoming) ? incoming : {};
   const merged = { ...prev, ...next };
-  /** Cartas QR: solo se editan en Auto pedido; Configuración no debe borrarlas al guardar. */
-  if (!Object.prototype.hasOwnProperty.call(next, 'auto_pedido_cartas') && Array.isArray(prev.auto_pedido_cartas)) {
+  /** Cartas QR: solo se editan en Auto pedido; una copia vieja de Configuración no debe borrarlas ni restaurarlas. */
+  if (Object.prototype.hasOwnProperty.call(prev, 'auto_pedido_cartas')) {
     merged.auto_pedido_cartas = prev.auto_pedido_cartas;
+  } else {
+    delete merged.auto_pedido_cartas;
   }
-  if (!Object.prototype.hasOwnProperty.call(next, 'auto_pedido_qr_home') && prev.auto_pedido_qr_home != null) {
+  if (prev.auto_pedido_qr_home != null) {
     merged.auto_pedido_qr_home = prev.auto_pedido_qr_home;
+  } else {
+    delete merged.auto_pedido_qr_home;
   }
   try {
     const { shouldKeepPreviousCatalog } = require('../services/settingsCatalogRecover');

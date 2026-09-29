@@ -3,7 +3,7 @@ import { api, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
-import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdAutoAwesome, MdWarning } from 'react-icons/md';
+import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen } from 'react-icons/md';
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import {
@@ -13,7 +13,7 @@ import {
   normalizeHex,
 } from '../../utils/generateMenuCartaSvg';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
-import { isLikelyAmbiguousProductImageName } from '../../utils/productImageAmbiguous';
+import { isImageFile, matchImageFilesToProducts } from '../../utils/productImageFolderMatch';
 import {
   extractPdfPageImages,
   buildCartasFromPdfPages,
@@ -98,9 +98,10 @@ export default function AutoPedidoAdmin() {
   const [genPreviewUrl, setGenPreviewUrl] = useState('');
   const [genColors, setGenColors] = useState(() => ({ ...DEFAULT_MENU_CARTA_COLORS }));
   const [showProductCatalog, setShowProductCatalog] = useState(false);
-  const [generatingImages, setGeneratingImages] = useState(false);
-  const [imageGenWarnings, setImageGenWarnings] = useState([]);
-  const [showImageGenWarnings, setShowImageGenWarnings] = useState(false);
+  const [importingFolder, setImportingFolder] = useState(false);
+  const [folderImportResult, setFolderImportResult] = useState(null);
+  const [showFolderImportModal, setShowFolderImportModal] = useState(false);
+  const [assigningPendingKey, setAssigningPendingKey] = useState('');
   const [qrHome, setQrHome] = useState('productos');
   const [savingQrHome, setSavingQrHome] = useState(false);
   const cartasDirtyRef = useRef(false);
@@ -181,9 +182,20 @@ export default function AutoPedidoAdmin() {
     setCartas((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
   };
 
-  const removeRow = (index) => {
+  const removeRow = async (index) => {
+    const target = cartas[index];
+    if (!target || !canSave) return;
+    const isPersisted = !String(target.id || '').startsWith('tmp-');
+    if (isPersisted && !window.confirm(`¿Eliminar «${target.name || 'esta carta'}»?`)) return;
+    const next = cartas.filter((_, i) => i !== index);
     markCartasEdited();
-    setCartas((prev) => prev.filter((_, i) => i !== index));
+    setCartas(next);
+    if (!isPersisted) return;
+    if (next.some((c) => !String(c.url || '').trim())) {
+      toast('Carta quitada. Complete las demás y pulse Guardar para confirmar.');
+      return;
+    }
+    await persistCartas(next, 'Carta eliminada');
   };
 
   const openGenerator = (index) => {
@@ -262,11 +274,13 @@ export default function AutoPedidoAdmin() {
     }
   };
 
-  const save = async () => {
+  const save = () => persistCartas(cartas, 'Cartas guardadas');
+
+  const persistCartas = async (list, successMessage) => {
     if (!canSave) return;
     const tid = toast.loading('Guardando…');
     try {
-      const normalized = cartas.map((c, i) => ({
+      const normalized = list.map((c, i) => ({
         id: String(c.id || '').startsWith('tmp-') ? '' : c.id,
         name: c.name || `Carta ${i + 1}`,
         url: String(c.url || '').trim(),
@@ -281,7 +295,7 @@ export default function AutoPedidoAdmin() {
       loadSeqRef.current += 1;
       cartasDirtyRef.current = false;
       setCartas(data.cartas || normalized);
-      toast.success('Cartas guardadas', { id: tid });
+      toast.success(successMessage, { id: tid });
     } catch (e) {
       toast.error(e.message || 'No se pudo guardar', { id: tid });
     }
@@ -375,74 +389,116 @@ export default function AutoPedidoAdmin() {
     }
   };
 
-  const showImageGenerationSummary = (data) => {
-    const { summary, results } = data || {};
-    const ambiguous = (results || []).filter((r) => r.status === 'ambiguous');
-    if (summary?.generated) {
-      toast.success(`${summary.generated} imagen(es) generada(s) automáticamente`);
-    } else if (!ambiguous.length && !summary?.errors) {
-      toast('No había productos pendientes de imagen en esta selección');
+  const importImagesFromFolder = async (event) => {
+    const files = Array.from(event.target.files || []).filter(isImageFile);
+    event.target.value = '';
+    if (!canSave || importingFolder) return;
+    if (!files.length) {
+      toast.error('La carpeta no tiene imágenes (jpg, png, webp…)');
+      return;
     }
-    if (summary?.errors) {
-      toast.error(`${summary.errors} producto(s) con error al generar`);
+    const { matches, unmatched, ambiguous } = matchImageFilesToProducts(files, products);
+    if (!matches.length) {
+      openFolderImportResult({ assigned: [], failed: [], unmatched, ambiguous });
+      return;
     }
-    if (ambiguous.length) {
-      setImageGenWarnings(ambiguous);
-      setShowImageGenWarnings(true);
-      toast(
-        `${ambiguous.length} producto(s): el sistema no asimila el nombre. Revise el aviso.`,
-        { icon: '⚠️', duration: 6000 },
-      );
+    setImportingFolder(true);
+    const tid = toast.loading(`Asignando ${matches.length} imagen(es)…`);
+    const assigned = [];
+    const failed = [];
+    for (let i = 0; i < matches.length; i += 1) {
+      const { file, product } = matches[i];
+      toast.loading(`Asignando imágenes ${i + 1}/${matches.length}…`, { id: tid });
+      try {
+        const { url } = await api.upload(file);
+        await api.put(`/products/${product.id}`, { image: url || '', image_source: 'manual' });
+        assigned.push({ file, product });
+      } catch (err) {
+        failed.push({ file, product, error: err.message || 'Error al subir' });
+      }
     }
+    toast.dismiss(tid);
+    setImportingFolder(false);
+    openFolderImportResult({ assigned, failed, unmatched, ambiguous });
     load();
   };
 
-  const generateMissingImages = async () => {
-    if (!canSave || generatingImages) return;
-    const missingCount = filteredProducts.filter((p) => !String(p.image || '').trim() && p.image_source !== 'manual').length;
-    if (!missingCount) {
-      toast('Todos los productos visibles ya tienen imagen o imagen manual');
-      return;
-    }
-    if (!confirm(`¿Generar imágenes automáticas para hasta ${missingCount} producto(s) sin imagen?`)) return;
-    setGeneratingImages(true);
-    const tid = toast.loading('Generando imágenes… puede tardar varios minutos');
+  const openFolderImportResult = ({ assigned, failed, unmatched, ambiguous }) => {
+    const toPending = (file, reason, extra = {}) => ({
+      key: `${reason}:${file.webkitRelativePath || file.name}:${file.size}`,
+      file,
+      reason,
+      previewUrl: URL.createObjectURL(file),
+      candidates: extra.candidates || [],
+      productId: extra.productId || (extra.candidates?.[0]?.id ?? ''),
+    });
+    setFolderImportResult((prev) => {
+      prev?.pending?.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return {
+        assigned,
+        pending: [
+          ...ambiguous.map(({ file, candidates }) => toPending(file, 'ambiguous', { candidates })),
+          ...failed.map(({ file, product, error }) => ({ ...toPending(file, 'failed', { productId: product?.id }), error })),
+          ...unmatched.map((file) => toPending(file, 'unmatched')),
+        ],
+      };
+    });
+    setShowFolderImportModal(true);
+  };
+
+  const closeFolderImportModal = () => {
+    setShowFolderImportModal(false);
+    setFolderImportResult((prev) => {
+      if (prev?.pending?.length) return prev;
+      return null;
+    });
+  };
+
+  const setPendingProduct = (key, productId) => {
+    setFolderImportResult((prev) => (prev ? {
+      ...prev,
+      pending: prev.pending.map((item) => (item.key === key ? { ...item, productId } : item)),
+    } : prev));
+  };
+
+  const discardPendingImage = (key) => {
+    setFolderImportResult((prev) => {
+      if (!prev) return prev;
+      const item = prev.pending.find((p) => p.key === key);
+      if (item) URL.revokeObjectURL(item.previewUrl);
+      return { ...prev, pending: prev.pending.filter((p) => p.key !== key) };
+    });
+  };
+
+  const assignPendingImage = async (key) => {
+    const item = folderImportResult?.pending.find((p) => p.key === key);
+    const product = products.find((p) => p.id === item?.productId);
+    if (!item || !product || !canSave || assigningPendingKey) return;
+    setAssigningPendingKey(key);
     try {
-      const data = await api.post('/products/generate-menu-images', {
-        only_missing: true,
-        category_id: selectedCategory !== 'all' ? selectedCategory : undefined,
-      });
-      showImageGenerationSummary(data);
+      const { url } = await api.upload(item.file);
+      await api.put(`/products/${product.id}`, { image: url || '', image_source: 'manual' });
+      URL.revokeObjectURL(item.previewUrl);
+      setFolderImportResult((prev) => (prev ? {
+        assigned: [...prev.assigned, { file: item.file, product }],
+        pending: prev.pending.filter((p) => p.key !== key),
+      } : prev));
+      toast.success(`Imagen asignada a ${product.name}`);
+      load();
     } catch (err) {
-      toast.error(err.message || 'No se pudieron generar imágenes', { id: tid });
+      toast.error(err.message || 'No se pudo asignar la imagen');
     } finally {
-      setGeneratingImages(false);
-      toast.dismiss(tid);
+      setAssigningPendingKey('');
     }
   };
 
-  const generateProductImage = async (productId) => {
-    if (!canSave || generatingImages) return;
-    setGeneratingImages(true);
-    const tid = toast.loading('Generando imagen…');
-    try {
-      const result = await api.post(`/products/${productId}/generate-menu-image`, { only_missing: true });
-      if (result.status === 'ok') {
-        toast.success('Imagen generada', { id: tid });
-        load();
-      } else if (result.status === 'ambiguous') {
-        toast.error(result.message || 'El sistema no asimila el nombre. Agregue la imagen manualmente.', { id: tid });
-      } else if (result.status === 'skipped') {
-        toast(result.message || 'No se generó imagen', { id: tid });
-      } else {
-        toast.error(result.message || 'No se pudo generar', { id: tid });
-      }
-    } catch (err) {
-      toast.error(err.message || 'No se pudo generar imagen', { id: tid });
-    } finally {
-      setGeneratingImages(false);
-    }
-  };
+  const productsForManualAssign = [...products].sort((a, b) => {
+    const aHas = a.image ? 1 : 0;
+    const bHas = b.image ? 1 : 0;
+    if (aHas !== bHas) return aHas - bHas;
+    return String(a.name || '').localeCompare(String(b.name || ''), 'es');
+  });
+  const pendingFolderCount = folderImportResult?.pending?.length || 0;
 
   if (loading) {
     return (
@@ -458,20 +514,40 @@ export default function AutoPedidoAdmin() {
         <div className="min-w-0">
           <p className="font-semibold text-[var(--ui-body-text)]">Productos e imágenes del menú</p>
           <p className="text-xs text-[var(--ui-muted)] mt-1">
-            Las imágenes subidas manualmente tienen prioridad sobre las generadas automáticamente.
+            Elija una carpeta con fotos nombradas igual que el producto (ej. «Lomo saltado.jpg») y se asignan solas. Las que no coincidan puede asignarlas a mano eligiendo el producto.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
           {canSave ? (
-            <button
-              type="button"
-              onClick={generateMissingImages}
-              disabled={generatingImages}
-              className="btn-secondary text-sm inline-flex items-center justify-center gap-2 px-4 py-2.5"
-            >
-              <MdAutoAwesome className="text-lg" />
-              {generatingImages ? 'Generando…' : 'Generar imágenes faltantes'}
-            </button>
+            <>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                webkitdirectory=""
+                directory=""
+                id="auto-pedido-image-folder"
+                className="sr-only"
+                onChange={(e) => void importImagesFromFolder(e)}
+                disabled={importingFolder}
+              />
+              <label
+                htmlFor="auto-pedido-image-folder"
+                className={`btn-secondary text-sm inline-flex items-center justify-center gap-2 px-4 py-2.5 ${importingFolder ? 'opacity-60 pointer-events-none' : 'cursor-pointer'}`}
+              >
+                <MdFolderOpen className="text-lg" />
+                {importingFolder ? 'Asignando…' : 'Cargar carpeta de imágenes'}
+              </label>
+              {pendingFolderCount && !showFolderImportModal ? (
+                <button
+                  type="button"
+                  onClick={() => setShowFolderImportModal(true)}
+                  className="btn-secondary text-sm inline-flex items-center justify-center gap-2 px-4 py-2.5 border-amber-400 text-amber-800"
+                >
+                  Asignar pendientes ({pendingFolderCount})
+                </button>
+              ) : null}
+            </>
           ) : null}
           <button
             type="button"
@@ -555,12 +631,6 @@ export default function AutoPedidoAdmin() {
                 )}
               </div>
               <p className="text-sm font-semibold text-[var(--ui-body-text)] truncate">{p.name}</p>
-              {isLikelyAmbiguousProductImageName(p.name, p.description) && !p.image ? (
-                <p className="text-[11px] text-amber-600 flex items-center gap-1 mt-0.5">
-                  <MdWarning className="shrink-0" />
-                  Nombre poco claro para imagen automática
-                </p>
-              ) : null}
               <p className="text-sm text-[var(--ui-accent)]">S/ {Number(p.price || 0).toFixed(2)}</p>
               {p.image_source === 'auto' ? (
                 <p className="text-[10px] text-[var(--ui-muted)] mt-0.5">Imagen automática</p>
@@ -582,36 +652,15 @@ export default function AutoPedidoAdmin() {
                 >
                   Subir imagen
                 </label>
-                {canSave && !p.image && p.image_source !== 'manual' ? (
-                  <button
-                    type="button"
-                    onClick={() => generateProductImage(p.id)}
-                    disabled={generatingImages}
-                    className="text-xs py-1.5 rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center justify-center gap-1"
-                  >
-                    <MdAutoAwesome className="text-sm" />
-                    Generar
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openEditProduct(p)}
-                    className="text-xs py-1.5 rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center justify-center gap-1"
-                    disabled={!canSave}
-                  >
-                    <MdEdit /> Editar
-                  </button>
-                )}
-              </div>
-              {canSave && (p.image || p.image_source === 'manual') ? (
                 <button
                   type="button"
                   onClick={() => openEditProduct(p)}
-                  className="mt-2 w-full text-xs py-1.5 rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center justify-center gap-1"
+                  className="text-xs py-1.5 rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center justify-center gap-1"
+                  disabled={!canSave}
                 >
-                  <MdEdit /> Editar producto
+                  <MdEdit /> Editar
                 </button>
-              ) : null}
+              </div>
             </div>
           ))}
         </div>
@@ -689,7 +738,7 @@ export default function AutoPedidoAdmin() {
                   <div className="md:col-span-1 flex justify-end">
                     <button
                       type="button"
-                      onClick={() => removeRow(i)}
+                      onClick={() => void removeRow(i)}
                       className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
                       disabled={!canSave}
                       aria-label="Eliminar"
@@ -741,29 +790,112 @@ export default function AutoPedidoAdmin() {
       </div>
 
       <Modal
-        isOpen={showImageGenWarnings}
-        onClose={() => setShowImageGenWarnings(false)}
-        title="Imágenes no generadas"
-        size="md"
+        isOpen={showFolderImportModal && Boolean(folderImportResult)}
+        onClose={closeFolderImportModal}
+        title="Imágenes desde carpeta"
+        size="lg"
       >
-        <div className="space-y-3">
-          <p className="text-sm text-[var(--ui-muted)]">
-            El sistema no asimila estos nombres. Agregue la imagen manualmente o complete la descripción del producto y vuelva a generar.
-          </p>
-          <ul className="text-sm space-y-2 max-h-64 overflow-y-auto">
-            {imageGenWarnings.map((w) => (
-              <li key={w.product_id} className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-amber-900">
-                <p className="font-semibold">{w.product_name}</p>
-                <p className="text-xs mt-0.5">{w.message}</p>
-              </li>
-            ))}
-          </ul>
-          <div className="flex justify-end">
-            <button type="button" className="btn-primary text-sm" onClick={() => setShowImageGenWarnings(false)}>
-              Entendido
-            </button>
+        {folderImportResult ? (
+          <div className="space-y-3 text-sm">
+            <p className="text-emerald-700 font-semibold">
+              {folderImportResult.assigned.length} imagen(es) asignada(s) a su producto.
+            </p>
+            {folderImportResult.assigned.length ? (
+              <ul className="max-h-32 overflow-y-auto space-y-1 text-xs text-[var(--ui-muted)]">
+                {folderImportResult.assigned.map(({ file, product }) => (
+                  <li key={`${product.id}:${file.name}`}>{file.name} → <span className="font-medium text-[var(--ui-body-text)]">{product.name}</span></li>
+                ))}
+              </ul>
+            ) : null}
+            {folderImportResult.pending.length ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
+                <p className="font-semibold text-amber-900">
+                  Asignar manualmente ({folderImportResult.pending.length})
+                </p>
+                <p className="text-xs text-amber-900/80 mt-0.5">
+                  Estas imágenes no coincidieron con un producto. Elija el producto y pulse «Asignar».
+                </p>
+                <ul className="mt-2 space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+                  {folderImportResult.pending.map((item) => {
+                    const busy = assigningPendingKey === item.key;
+                    const candidateIds = new Set(item.candidates.map((c) => c.id));
+                    return (
+                      <li
+                        key={item.key}
+                        className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 sm:w-56 shrink-0">
+                          <img
+                            src={item.previewUrl}
+                            alt=""
+                            className="w-14 h-14 rounded-md object-cover border border-[color:var(--ui-border)] shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-[var(--ui-body-text)] truncate" title={item.file.name}>
+                              {item.file.name}
+                            </p>
+                            <p className="text-[11px] text-[var(--ui-muted)]">
+                              {item.reason === 'ambiguous' && 'Coincide con varios productos'}
+                              {item.reason === 'unmatched' && 'Sin producto con ese nombre'}
+                              {item.reason === 'failed' && `Error: ${item.error || 'no se pudo subir'}`}
+                            </p>
+                          </div>
+                        </div>
+                        <select
+                          className="input-field text-sm flex-1 min-w-0"
+                          value={item.productId}
+                          onChange={(e) => setPendingProduct(item.key, e.target.value)}
+                          disabled={busy}
+                        >
+                          <option value="">Elegir producto…</option>
+                          {item.candidates.length ? (
+                            <optgroup label="Sugeridos">
+                              {item.candidates.map((c) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </optgroup>
+                          ) : null}
+                          <optgroup label="Todos los productos">
+                            {productsForManualAssign
+                              .filter((p) => !candidateIds.has(p.id))
+                              .map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}{p.image ? ' (ya tiene imagen)' : ''}
+                                </option>
+                              ))}
+                          </optgroup>
+                        </select>
+                        <div className="flex gap-2 shrink-0">
+                          <button
+                            type="button"
+                            className="btn-primary text-xs px-3 py-2"
+                            disabled={!item.productId || Boolean(assigningPendingKey)}
+                            onClick={() => void assignPendingImage(item.key)}
+                          >
+                            {busy ? 'Asignando…' : 'Asignar'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary text-xs px-3 py-2"
+                            disabled={busy}
+                            onClick={() => discardPendingImage(item.key)}
+                          >
+                            Omitir
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+            <div className="flex justify-end">
+              <button type="button" className="btn-primary text-sm" onClick={closeFolderImportModal}>
+                {folderImportResult.pending.length ? 'Cerrar (asignar luego)' : 'Entendido'}
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
       </Modal>
 
       <Modal

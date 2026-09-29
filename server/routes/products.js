@@ -15,8 +15,6 @@ const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 const { parseProductMinStock } = require('../utils/productStockThreshold');
 const { resolveProductProductionAreaId } = require('../services/productionAreasService');
 const { attachKardexInsumos, buildKardexPersistFromRequest } = require('../utils/productKardexInsumos');
-const { batchGenerateProductMenuImages, generateProductMenuImage } = require('../services/productImageGenerateService');
-
 const router = express.Router();
 
 function ensureWarehouseInfrastructure() {
@@ -175,39 +173,6 @@ router.get('/', (req, res) => {
     products = filterAvailableProducts(products, now, restaurantSchedule);
   }
   res.json(products);
-});
-
-router.post('/generate-menu-images', authenticateToken, requireRole('admin'), async (req, res) => {
-  try {
-    const { product_ids: productIds, only_missing: onlyMissing, category_id: categoryId } = req.body || {};
-    const data = await batchGenerateProductMenuImages({
-      productIds: Array.isArray(productIds) ? productIds : undefined,
-      onlyMissing: onlyMissing !== false,
-      categoryId,
-    });
-    emitStaffDataUpdate({ domain: 'catalog' });
-    res.json(data);
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'Error al generar imágenes' });
-  }
-});
-
-router.post('/:id/generate-menu-image', authenticateToken, requireRole('admin'), async (req, res) => {
-  try {
-    const product = queryOne(
-      'SELECT p.*, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?',
-      [req.params.id],
-    );
-    if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
-    const onlyMissing = req.body?.only_missing !== false;
-    const result = await generateProductMenuImage(product, { onlyMissing });
-    if (result.status === 'ok') {
-      emitStaffDataUpdate({ domain: 'catalog' });
-    }
-    res.json(result);
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'Error al generar imagen' });
-  }
 });
 
 router.get('/:id', (req, res) => {

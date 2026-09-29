@@ -4181,9 +4181,9 @@ export default function POSPanel() {
             </button>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-4 lg:p-5">
-            <div className="flex w-full max-w-full flex-col gap-3">
-              <div className="flex items-start justify-between gap-3 border-b border-[color:var(--ui-border)] pb-3">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 sm:p-4 lg:p-5">
+            <div className="flex min-h-0 w-full max-w-full flex-1 flex-col gap-3">
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[color:var(--ui-border)] pb-3">
                 <div className="min-w-0">
                   <p className="text-xs text-[var(--ui-muted)]">
                     {isDeliveryCheckoutTable(tableDetail)
@@ -4202,8 +4202,8 @@ export default function POSPanel() {
                 </p>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 text-[var(--ui-body-text)]">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)] mb-2">Productos en la mesa</p>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 text-[var(--ui-body-text)]">
+                <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)] mb-2">Productos en la mesa</p>
                 {(() => {
                   const lines = mergedProductsOnTable(tableDetail, productsById);
                   const totalMesa = (tableDetail.orders || []).reduce((s, o) => s + getOrderChargeTotal(o), 0);
@@ -4212,7 +4212,7 @@ export default function POSPanel() {
                   }
                   return (
                     <>
-                      <ul className="space-y-1.5 text-sm">
+                      <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain pr-1 text-sm">
                         {lines.map((row) => (
                           <li
                             key={row.key}
@@ -4230,7 +4230,7 @@ export default function POSPanel() {
                           </li>
                         ))}
                       </ul>
-                      <div className="flex justify-between border-t border-[color:var(--ui-border)] pt-3 mt-3 text-base font-bold text-[var(--ui-body-text)]">
+                      <div className="flex shrink-0 justify-between border-t border-[color:var(--ui-border)] pt-3 mt-3 text-base font-bold text-[var(--ui-body-text)]">
                         <span>Total</span>
                         <span className="text-[var(--ui-accent-muted)]">{formatCurrency(totalMesa)}</span>
                       </div>
