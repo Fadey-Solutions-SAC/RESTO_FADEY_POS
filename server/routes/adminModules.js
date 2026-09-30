@@ -119,10 +119,11 @@ function persistRegionalFromSettings(settingsRegional) {
   );
 }
 
-function mergeSettingsBlob(prevParsed, incoming) {
+function mergeSettingsBlob(prevParsed, incoming, { catalogEdits = [] } = {}) {
   const prev = prevParsed && typeof prevParsed === 'object' && !Array.isArray(prevParsed) ? prevParsed : {};
   const next = incoming && typeof incoming === 'object' && !Array.isArray(incoming) ? incoming : {};
   const merged = { ...prev, ...next };
+  const edited = new Set((Array.isArray(catalogEdits) ? catalogEdits : []).map(String));
   /** Cartas QR: solo se editan en Auto pedido; una copia vieja de Configuración no debe borrarlas ni restaurarlas. */
   if (Object.prototype.hasOwnProperty.call(prev, 'auto_pedido_cartas')) {
     merged.auto_pedido_cartas = prev.auto_pedido_cartas;
@@ -136,12 +137,17 @@ function mergeSettingsBlob(prevParsed, incoming) {
   }
   try {
     const { shouldKeepPreviousCatalog } = require('../services/settingsCatalogRecover');
-    if (shouldKeepPreviousCatalog(prev.cajas, next.cajas, 'cajas')) {
-      merged.cajas = prev.cajas;
+    const confirmed = {
+      ...(prev.catalog_confirmed && typeof prev.catalog_confirmed === 'object' ? prev.catalog_confirmed : {}),
+    };
+    for (const kind of ['cajas', 'salones']) {
+      if (edited.has(kind) && Array.isArray(next[kind])) {
+        confirmed[kind] = true;
+      } else if (shouldKeepPreviousCatalog(prev[kind], next[kind], kind)) {
+        merged[kind] = prev[kind];
+      }
     }
-    if (shouldKeepPreviousCatalog(prev.salones, next.salones, 'salones')) {
-      merged.salones = prev.salones;
-    }
+    merged.catalog_confirmed = confirmed;
   } catch (_) {
     /* recover opcional */
   }
@@ -666,7 +672,9 @@ router.put('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
     const previous = queryOne('SELECT value FROM app_settings WHERE key = ?', [key]);
     const prevParsed = parseJsonSafe(previous?.value, {});
     const incoming = payload[key] || {};
-    const nextParsed = key === 'settings' ? mergeSettingsBlob(prevParsed, incoming) : incoming;
+    const nextParsed = key === 'settings'
+      ? mergeSettingsBlob(prevParsed, incoming, { catalogEdits: req.body?.catalog_edits })
+      : incoming;
     if (JSON.stringify(prevParsed) !== JSON.stringify(nextParsed)) {
       changedKeys.push(key);
     }

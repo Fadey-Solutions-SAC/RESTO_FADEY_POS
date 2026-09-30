@@ -88,8 +88,11 @@ function recoverCajasAndSalonesIfResetToDefaults() {
   const current = parseJsonSafe(row?.value, {});
   const cajas = Array.isArray(current.cajas) ? current.cajas : [];
   const salones = Array.isArray(current.salones) ? current.salones : [];
-  const cajasReset = looksLikeFactoryCajas(cajas);
-  const salonesReset = looksLikeFactorySalones(salones);
+  const confirmed = current.catalog_confirmed && typeof current.catalog_confirmed === 'object'
+    ? current.catalog_confirmed
+    : {};
+  const cajasReset = !confirmed.cajas && looksLikeFactoryCajas(cajas);
+  const salonesReset = !confirmed.salones && looksLikeFactorySalones(salones);
   if (!cajasReset && !salonesReset) return false;
 
   const recovered = findBestCatalogFromHistory();

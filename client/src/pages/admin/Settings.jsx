@@ -488,6 +488,11 @@ export default function Settings() {
   const autoSaveTimerRef = useRef(null);
   const appearanceSaveTimerRef = useRef(null);
   const pendingAppSettingsSaveRef = useRef(null);
+  /** Catálogos editados a mano por el usuario: el servidor no debe "recuperarlos" como si fueran un reset. */
+  const catalogEditsRef = useRef(new Set());
+  const markCatalogEdit = (section) => {
+    if (section === 'cajas' || section === 'salones') catalogEditsRef.current.add(section);
+  };
   const appSettingsReadyRef = useRef(false);
   const historySearchTimerRef = useRef(null);
   const appSettingsRef = useRef(appSettings);
@@ -1159,10 +1164,13 @@ export default function Settings() {
     try {
       setIsSavingAppSettings(true);
       skipConfigReloadUntilRef.current = Date.now() + 4000;
+      const catalogEdits = [...catalogEditsRef.current];
       const saved = await api.put('/admin-modules/config/app', {
         settings: payloadSettings,
         regional: payloadSettings.regional || {},
+        ...(catalogEdits.length ? { catalog_edits: catalogEdits } : {}),
       });
+      catalogEdits.forEach((k) => catalogEditsRef.current.delete(k));
       const normalized = mergeSavedAppSettings(normalizeConfigPayload(saved), source);
       setAppSettings(normalized);
       setAppSettingsSnapshot(serializeAppSettings(normalized));
@@ -1176,11 +1184,7 @@ export default function Settings() {
       }
       if (activeSection === 'config_historial') loadAppSettingsHistory();
       if (!silent) {
-        toast.success(
-          uiLang === 'en'
-            ? 'Settings saved. Interface language: English.'
-            : 'Configuración guardada. Idioma de interfaz: Español.',
-        );
+        toast.success(uiLang === 'en' ? 'Settings saved.' : 'Configuración guardada.');
       }
     } catch (err) {
       if (!silent) toast.error(err.message);
@@ -1273,6 +1277,7 @@ export default function Settings() {
       }
       row[field] = row[field] ? 0 : 1;
       list[index] = row;
+      markCatalogEdit(section);
       return { ...prev, [section]: list };
     });
   };
@@ -1293,6 +1298,7 @@ export default function Settings() {
       }
     }
     if (!window.confirm(`¿Eliminar ${label}? Esta acción no se puede deshacer.`)) return;
+    markCatalogEdit(section);
     setAppSettings(prev => {
       if (section === 'categoria_anular') {
         return { ...prev, categoria_anular: (prev.categoria_anular || []).filter((_, idx) => idx !== index) };
@@ -1376,6 +1382,7 @@ export default function Settings() {
         payload.id = existingId || newLocalCajaId();
       }
     }
+    markCatalogEdit(section);
     setAppSettings(prev => {
       const list = Array.isArray(prev[section]) ? [...prev[section]] : [];
       if (index === null) list.push(payload);
