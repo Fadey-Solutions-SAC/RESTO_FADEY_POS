@@ -20,6 +20,7 @@ const PAGO_USO_WHATSAPP_SUPPORT = '934029719';
 const PAGO_USO_WHATSAPP_URL = `https://wa.me/51${PAGO_USO_WHATSAPP_SUPPORT}?text=${encodeURIComponent('Hola, necesito soporte sobre el pago por uso del sistema.')}`;
 
 const PLAN_PAYMENT_BENEFICIARY = 'Deyvi Renan Romero';
+const PLAN_PAYMENT_TITULAR = 'FADEY SOLUTIONS SAC';
 
 const PLAN_PAYMENT_QRS = [
   { id: 'yape', label: 'Yape', color: '#7c3aed', src: '/payment-qr/yape.png' },
@@ -1470,33 +1471,9 @@ export default function MiRestaurant() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-end">
-                <div className="rounded-xl border border-[color:var(--ui-border)] p-4 space-y-3">
-                  <div>
-                    <p className="text-xs font-medium text-[var(--ui-muted)] mb-0.5">Titular / a nombre de</p>
-                    <p className="text-sm font-semibold text-[var(--ui-body-text)]">{PLAN_PAYMENT_BENEFICIARY}</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">N° de cuenta</label>
-                      <input
-                        className="input-field text-sm tabular-nums"
-                        placeholder="CCI o número de cuenta"
-                        value={appConfig.pago_uso_sistema?.numero_cuenta || ''}
-                        onChange={(e) => updateAppCfg('pago_uso_sistema', 'numero_cuenta', e.target.value)}
-                        disabled={!canEditBillingMaster}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Número de teléfono</label>
-                      <input
-                        className="input-field text-sm tabular-nums"
-                        placeholder="Ej. 934029719"
-                        value={appConfig.pago_uso_sistema?.numero_telefono || ''}
-                        onChange={(e) => updateAppCfg('pago_uso_sistema', 'numero_telefono', e.target.value)}
-                        disabled={!canEditBillingMaster}
-                      />
-                    </div>
-                  </div>
+                <div className="rounded-xl border border-[color:var(--ui-border)] p-4">
+                  <p className="text-xs font-medium text-[var(--ui-muted)] mb-0.5">Titular / a nombre de</p>
+                  <p className="text-base font-bold text-[var(--ui-body-text)]">{PLAN_PAYMENT_TITULAR}</p>
                 </div>
 
                 <div className="flex flex-col items-stretch gap-2 min-w-[12rem]">
