@@ -16,6 +16,9 @@ const {
   resolveLearnedIntent,
 } = require('./fadeyAiKnowledgeService');
 const { runTool, resolveSalesPeriod } = require('./fadeyAiTools');
+const { buildSupportAnswer } = require('./fadeyAiSupport');
+const { buildReportAnswer } = require('./fadeyAiReports');
+const { detectLanguage, toSpanishQuery, translateResult } = require('./fadeyAiI18n');
 const { formatDisplayDateKey } = require('../../utils/appDateTime');
 const {
   suggestionOptionsForUser,
@@ -137,7 +140,7 @@ function guidesOnlyReply(message, user) {
       };
     }
     return {
-      reply: 'No encontré una guía exacta dentro de tus módulos. Prueba preguntar con más detalle o escribe «¿qué puedo hacer?».',
+      reply: 'No encontré una guía exacta dentro de tus módulos. Prueba preguntar con más detalle o escribe «¿qué puedo hacer?».\n\nSi es un error del sistema, descríbelo (por ejemplo «error al imprimir») o escribe «soporte» y te preparo el mensaje para el equipo técnico.',
       sources: [],
     };
   }
@@ -743,6 +746,7 @@ function rememberSuccessfulIntent(message, sources) {
   try {
     const src = Array.isArray(sources) && sources[0] ? sources[0] : null;
     if (!src) return;
+    if (['support_contact', 'report', 'report_hint'].includes(src.title)) return;
     // No aprender guías para preguntas de datos (evita volver a “paso a paso” / menús).
     if (!isExplicitHowToMessage(message) && (src.title === 'search_guides' || src.kind === 'guide')) {
       return;
@@ -764,7 +768,7 @@ function rememberSuccessfulIntent(message, sources) {
   }
 }
 
-async function chat(user, message) {
+async function chat(user, message, context = {}) {
   if (!isFeatureEnabled()) {
     const err = new Error('El asistente IA Fadey está desactivado en este plan.');
     err.status = 403;
@@ -796,27 +800,45 @@ async function chat(user, message) {
 
   saveMessage(user.id, 'user', text);
 
-  const prefetch = heuristicToolPrefetch(text, user);
+  const lang = detectLanguage(text);
+  const query = lang === 'en' ? toSpanishQuery(text) : text;
+
+  const report = buildReportAnswer(query, user);
+  const support = report ? null : buildSupportAnswer(query, user, context, { originalMessage: text, lang });
+  const prefetch = report || support ? { chunks: [] } : heuristicToolPrefetch(query, user);
   let result;
-  if (prefetch.chunks.length) {
+  if (report) {
+    result = report;
+  } else if (support) {
+    result = support;
+  } else if (prefetch.chunks.length) {
     result = {
       reply: prefetch.chunks.join('\n\n'),
       sources: prefetch.sources,
       options: Array.isArray(prefetch.options) ? prefetch.options : undefined,
     };
   } else {
-    result = guidesOnlyReply(text, user);
+    result = guidesOnlyReply(query, user);
     if (isMasterCreator(user) && result?.reply && /no encontr[eé] una gu[ií]a/i.test(result.reply)) {
       result = {
-        reply: 'Sr. Romero, no encontré una guía exacta para eso. ¿Puede darme más detalle o pedirme un dato del negocio?',
+        reply:
+          lang === 'en'
+            ? "Mr. Romero, I couldn't find an exact guide for that. Could you give me more detail or ask me for a business figure?"
+            : 'Sr. Romero, no encontré una guía exacta para eso. ¿Puede darme más detalle o pedirme un dato del negocio?',
         sources: [{ kind: 'tool', title: 'creator_mode' }],
       };
     }
   }
-  rememberSuccessfulIntent(text, result.sources);
+  rememberSuccessfulIntent(query, result.sources);
+  if (lang === 'en') {
+    const src = Array.isArray(result.sources) ? result.sources[0] : null;
+    const isGuide = !!src && (src.kind === 'guide' || src.kind === 'config' || src.title === 'search_guides');
+    result = translateResult(result, { isGuide });
+  }
   saveMessage(user.id, 'assistant', result.reply, result.sources);
   return {
     ...result,
+    lang,
     mode: 'local',
     status: getStatus(),
     creator_mode: isMasterCreator(user),

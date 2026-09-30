@@ -460,4 +460,14 @@ function toolCostInsights(args = {}) {
 module.exports = {
   toolCustomerInsights,
   toolCostInsights,
+  PAID_WHERE,
+  CHANNEL_LABELS,
+  WEEKDAY_LABELS,
+  daysBetween,
+  periodHeading,
+  safeAll,
+  customerKey,
+  customerStats,
+  loadPaidOrderRows,
+  unitCostBreakdown,
 };

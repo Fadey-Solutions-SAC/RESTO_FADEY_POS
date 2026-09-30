@@ -1,6 +1,12 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { MdSend, MdChatBubbleOutline, MdAutoAwesome, MdPerson } from 'react-icons/md';
+import { useTranslation } from 'react-i18next';
+import { MdSend, MdChatBubbleOutline, MdAutoAwesome, MdPerson, MdSupportAgent } from 'react-icons/md';
 import { api } from '../utils/api';
+import { getShellModuleTitle } from '../utils/shellModuleTitle';
+import FadeyAiReportView from './FadeyAiReportView';
+import { exportReportExcel, exportReportPdf } from '../utils/fadeyReportExport';
+
+const REPORT_DOWNLOAD_RE = /^(descargar?\s*|download\s*)?(en\s*|in\s*|as\s*)?(excel|pdf)[.!]*$/i;
 import { useAuth } from '../context/AuthContext';
 import {
   FADEY_AI_TAGLINE,
@@ -158,12 +164,49 @@ function parseGuideContent(text, sources = null) {
   return { title, steps, notes, plain: null };
 }
 
-function AssistantCard({ content, sources = null }) {
+function SupportContactBlock({ support }) {
+  const en = support.lang === 'en';
+  return (
+    <div className="mt-3 space-y-2">
+      <a
+        href={support.whatsapp_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-3 py-2 text-sm font-semibold text-white hover:bg-[#1ebe5a]"
+      >
+        <MdSupportAgent className="text-lg" aria-hidden />
+        {en ? 'Send to support on WhatsApp' : 'Enviar a soporte por WhatsApp'} ({support.whatsapp_number})
+      </a>
+      {support.whatsapp_message ? (
+        <details className="text-xs text-[#475569]">
+          <summary className="cursor-pointer select-none">{en ? 'View prepared message' : 'Ver mensaje preparado'}</summary>
+          <pre className="mt-1 whitespace-pre-wrap rounded-md bg-slate-50 p-2 font-sans">{support.whatsapp_message.replace(/\*/g, '')}</pre>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function findReport(sources) {
+  return Array.isArray(sources) ? sources.find((s) => s?.title === 'report' && s?.report)?.report || null : null;
+}
+
+function AssistantCard({ content, sources = null, onExportReport, exporting = '' }) {
+  const support = Array.isArray(sources) ? sources.find((s) => s?.title === 'support_contact' && s?.whatsapp_url) : null;
+  const report = findReport(sources);
   const parsed = parseGuideContent(content, sources);
-  if (parsed.plain) {
+  if (parsed.plain || support || report) {
     return (
       <div className="rf-fadey-ai-card">
-        <p className="rf-fadey-ai-card-plain whitespace-pre-wrap">{parsed.plain.replace(/\*\*/g, '')}</p>
+        <p className="rf-fadey-ai-card-plain whitespace-pre-wrap">{String(parsed.plain || content || '').replace(/\*\*/g, '')}</p>
+        {support ? <SupportContactBlock support={support} /> : null}
+        {report ? (
+          <FadeyAiReportView
+            report={report}
+            exporting={exporting}
+            onExport={onExportReport ? (format) => onExportReport(report, format) : null}
+          />
+        ) : null}
       </div>
     );
   }
@@ -213,6 +256,7 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
   introMessage = '',
 }, ref) {
   const { user } = useAuth();
+  const { t: td } = useTranslation('dashboard');
   const creatorMode = isFadeyAiCreatorMode(user);
   const suggestionPool = useMemo(() => {
     const blocked = /qui[eé]n te cre[oó]/i;
@@ -238,6 +282,7 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   /** Opciones rápidas del saludo (aparte de chips de sugerencias fijas). */
@@ -331,9 +376,51 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
     if (isActive) scrollBottom();
   }, [messages, isActive, busy]);
 
+  const exportReport = async (report, format) => {
+    if (!report || exporting) return;
+    setExporting(format);
+    setError('');
+    try {
+      if (format === 'pdf') exportReportPdf(report);
+      else await exportReportExcel(report);
+    } catch (err) {
+      setError(err?.message || (report.lang === 'en' ? 'Could not generate the file' : 'No se pudo generar el archivo'));
+    } finally {
+      setExporting('');
+    }
+  };
+
   const sendText = async (raw) => {
     const msg = String(raw || '').trim();
     if (!msg || busy) return;
+    const downloadMatch = msg.normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(REPORT_DOWNLOAD_RE);
+    const lastReport = downloadMatch
+      ? [...messages].reverse().map((m) => (m.role === 'assistant' ? findReport(m.sources) : null)).find(Boolean)
+      : null;
+    if (downloadMatch && lastReport) {
+      const format = downloadMatch[3].toLowerCase();
+      setInput('');
+      setReplyOptions([]);
+      const now = Date.now();
+      setMessages((prev) => [
+        ...prev,
+        { id: `local-${now}`, role: 'user', content: msg, created_at: new Date().toISOString() },
+        {
+          id: `asst-${now}`,
+          role: 'assistant',
+          content: lastReport.lang === 'en'
+            ? (format === 'pdf'
+              ? `Done. I opened “${lastReport.title}” (${lastReport.subtitle}) with all charts and tables in a new page: use “Print / Save as PDF” and choose “Save as PDF”.`
+              : `Done. I'm downloading “${lastReport.title}” (${lastReport.subtitle}) in Excel: a “Summary” sheet with indicators and charts, plus one sheet per detail table.`)
+            : (format === 'pdf'
+              ? `Listo. Abrí «${lastReport.title}» (${lastReport.subtitle}) con todos los gráficos y tablas en una página nueva: usa «Imprimir / Guardar como PDF» y elige «Guardar como PDF».`
+              : `Listo. Estoy descargando «${lastReport.title}» (${lastReport.subtitle}) en Excel: hoja «Resumen» con indicadores y gráficos, y una hoja por cada tabla de detalle.`),
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      void exportReport(lastReport, format);
+      return;
+    }
     setInput('');
     setBusy(true);
     setError('');
@@ -346,7 +433,16 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
     };
     setMessages((prev) => [...prev, optimistic]);
     try {
-      const res = await api.post('/fadey-ai/chat', { message: msg });
+      const res = await api.post('/fadey-ai/chat', {
+        message: msg,
+        context: {
+          host: typeof window !== 'undefined' ? window.location.host : '',
+          path: typeof window !== 'undefined' ? window.location.pathname : '',
+          module_title: typeof window !== 'undefined'
+            ? getShellModuleTitle(window.location.pathname, window.location.search, td)
+            : '',
+        },
+      });
       const opts = Array.isArray(res?.options)
         ? res.options.map((o) => String(o || '').trim()).filter(Boolean)
         : [];
@@ -462,7 +558,7 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
                 <div className="rf-fadey-ai-avatar-sm rf-fadey-ai-avatar-sm--photo" aria-hidden>
                   <PixAvatar size="sm" mood={mood} />
                 </div>
-                <AssistantCard content={m.content} sources={m.sources} />
+                <AssistantCard content={m.content} sources={m.sources} onExportReport={exportReport} exporting={exporting} />
               </div>
             );
           })

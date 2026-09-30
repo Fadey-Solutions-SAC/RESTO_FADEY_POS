@@ -47,7 +47,12 @@ router.get('/history', (req, res) => {
 
 router.post('/chat', async (req, res) => {
   try {
-    const result = await chat(req.user, req.body?.message || req.body?.text || '');
+    const ctx = req.body?.context && typeof req.body.context === 'object' ? req.body.context : {};
+    const result = await chat(req.user, req.body?.message || req.body?.text || '', {
+      host: ctx.host || req.get('x-forwarded-host') || req.get('host') || '',
+      path: ctx.path || '',
+      module_title: ctx.module_title || '',
+    });
     res.json(result);
   } catch (err) {
     const status = err.status || 500;

@@ -2947,35 +2947,35 @@ export default function Reports() {
 
       {reportSection === 'inventario' && (
         <div className="card">
-          <h3 className="font-bold rf-section-title mb-4">Movimientos de inventario</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <h3 className="font-bold rf-section-title mb-3 sm:mb-4">Movimientos de inventario</h3>
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
             <button
               type="button"
               onClick={() => setInventoryMovementsTab('stock_minimo')}
-              className={`rounded-xl px-5 py-5 text-left border transition-colors h-full min-h-[132px] flex flex-col justify-center gap-2 ${
+              className={`min-w-0 rounded-xl px-3 py-3 sm:px-5 sm:py-5 text-left border transition-colors h-full min-h-[104px] sm:min-h-[132px] flex flex-col justify-center gap-1 sm:gap-2 ${
                 inventoryMovementsTab === 'stock_minimo'
                   ? 'bg-red-50 border-red-300 ring-2 ring-red-200'
                   : 'bg-white border-slate-200 hover:border-red-200'
               }`}
             >
-              <p className="text-lg font-bold text-red-700 rf-section-title leading-tight">Stock mínimo</p>
-              <p className="text-4xl font-bold text-red-700 tabular-nums">{inventoryAlerts.length}</p>
-              <p className="text-sm text-[var(--ui-muted)]">Productos bajo el mínimo</p>
+              <p className="text-sm sm:text-lg font-bold text-red-700 rf-section-title leading-tight">Stock mínimo</p>
+              <p className="text-3xl sm:text-4xl font-bold text-red-700 tabular-nums">{inventoryAlerts.length}</p>
+              <p className="text-[11px] sm:text-sm text-[var(--ui-muted)] leading-tight">Productos bajo el mínimo</p>
             </button>
             <button
               type="button"
               onClick={() => setInventoryMovementsTab('cuadres')}
-              className={`rounded-xl px-5 py-5 text-left border transition-colors h-full min-h-[132px] flex flex-col justify-center gap-2 ${
+              className={`min-w-0 rounded-xl px-3 py-3 sm:px-5 sm:py-5 text-left border transition-colors h-full min-h-[104px] sm:min-h-[132px] flex flex-col justify-center gap-1 sm:gap-2 ${
                 inventoryMovementsTab === 'cuadres'
                   ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-200'
                   : 'bg-white border-slate-200 hover:border-sky-200'
               }`}
             >
-              <p className="text-lg font-bold text-sky-700 rf-section-title leading-tight">Cuadres de inventario</p>
-              <p className="text-4xl font-bold text-sky-700 tabular-nums">
+              <p className="text-sm sm:text-lg font-bold text-sky-700 rf-section-title leading-tight">Cuadres de inventario</p>
+              <p className="text-3xl sm:text-4xl font-bold text-sky-700 tabular-nums">
                 {inventoryMovementsTab === 'cuadres' ? inventoryCuadreCountFiltered : inventoryCuadreCount}
               </p>
-              <p className="text-sm text-[var(--ui-muted)]">
+              <p className="text-[11px] sm:text-sm text-[var(--ui-muted)] leading-tight">
                 {inventoryMovementsTab === 'cuadres' ? inventoryCuadreLinesFiltered : inventoryCuadreLines} ajuste(s) registrado(s)
               </p>
             </button>
@@ -3005,7 +3005,7 @@ export default function Reports() {
             )
           ) : (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
                 <InlineDateField
                   label="Desde"
                   value={cuadresFrom}
@@ -3014,7 +3014,8 @@ export default function Reports() {
                     if (v || cuadresTo) setCuadresPeriod('custom');
                   }}
                   roundedNone={false}
-                  className="!rounded-lg"
+                  widthClass="w-full sm:w-[11.5rem]"
+                  className="!rounded-lg min-w-0"
                 />
                 <InlineDateField
                   label="Hasta"
@@ -3024,8 +3025,10 @@ export default function Reports() {
                     if (v || cuadresFrom) setCuadresPeriod('custom');
                   }}
                   roundedNone={false}
-                  className="!rounded-lg"
+                  widthClass="w-full sm:w-[11.5rem]"
+                  className="!rounded-lg min-w-0"
                 />
+                <div className="col-span-2 grid grid-cols-3 gap-2 sm:contents">
                 {[
                   ['ultima', 'Último'],
                   ['mes', 'Mes'],
@@ -3044,40 +3047,40 @@ export default function Reports() {
                     {label}
                   </DateFilterPeriodButton>
                 ))}
+                </div>
               </div>
 
               {inventoryCuadreGroupsFiltered.length > 0 ? (
                 <div className="space-y-6">
                   {inventoryCuadreGroupsFiltered.map((group) => (
                     <div key={group.dateKey} className="space-y-3">
-                      <div className="flex items-center justify-between gap-3 flex-wrap border-b border-sky-200 pb-2">
-                        <div>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 border-b border-sky-200 pb-2">
+                        <div className="min-w-0">
                           <p className="font-bold text-sky-800 rf-section-title">{group.dateLabel}</p>
                           <p className="text-xs text-[var(--ui-muted)] mt-0.5">
                             {group.sessions.length} cuadre(s) · {group.lineCount} ajuste(s)
                           </p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <DownloadExcelTxtButtons
-                            onExcel={() => downloadInventoryCuadresByDate(group, 'excel')}
-                            onTxt={() => downloadInventoryCuadresByDate(group, 'txt')}
-                            excelTitle={`Descargar todos los cuadres del ${group.dateLabel}`}
-                            txtTitle={`Descargar todos los cuadres del ${group.dateLabel}`}
-                            excelLabel="Fecha Excel"
-                            txtLabel="Fecha TXT"
-                          />
-                        </div>
+                        <DownloadExcelTxtButtons
+                          onExcel={() => downloadInventoryCuadresByDate(group, 'excel')}
+                          onTxt={() => downloadInventoryCuadresByDate(group, 'txt')}
+                          excelTitle={`Descargar todos los cuadres del ${group.dateLabel}`}
+                          txtTitle={`Descargar todos los cuadres del ${group.dateLabel}`}
+                          excelLabel="Fecha Excel"
+                          txtLabel="Fecha TXT"
+                          className="!grid grid-cols-2 w-full sm:!flex sm:w-auto [&>button]:justify-center"
+                        />
                       </div>
 
                       <div className="space-y-3">
                         {group.sessions.map((session) => (
-                          <div key={session.id} className="border border-slate-200 rounded-lg p-3 bg-white">
-                            <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-                              <div>
+                          <div key={session.id} className="border border-slate-200 rounded-lg p-2.5 sm:p-3 bg-white">
+                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3 mb-3">
+                              <div className="min-w-0">
                                 <p className="font-semibold rf-section-title">
                                   Cuadre {String(session.id || '').slice(0, 8)}
                                 </p>
-                                <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+                                <p className="text-xs text-[var(--ui-muted)] mt-0.5 break-words">
                                   {formatDateTime(session.created_at)} · {session.warehouse_name}
                                 </p>
                                 <p className="text-xs text-[var(--ui-muted)] mt-0.5">
@@ -3086,26 +3089,25 @@ export default function Reports() {
                                   {Number(session.total_surplus) > 0 ? ` · Sobrante: ${session.total_surplus}` : ''}
                                 </p>
                               </div>
-                              <div className="flex flex-wrap gap-2">
-                                <DownloadExcelTxtButtons
-                                  onExcel={() => downloadInventoryCuadreSession(session, group, 'excel')}
-                                  onTxt={() => downloadInventoryCuadreSession(session, group, 'txt')}
-                                  excelTitle="Descargar este cuadre en Excel"
-                                  txtTitle="Descargar este cuadre en TXT"
-                                />
-                              </div>
+                              <DownloadExcelTxtButtons
+                                onExcel={() => downloadInventoryCuadreSession(session, group, 'excel')}
+                                onTxt={() => downloadInventoryCuadreSession(session, group, 'txt')}
+                                excelTitle="Descargar este cuadre en Excel"
+                                txtTitle="Descargar este cuadre en TXT"
+                                className="!grid grid-cols-2 w-full sm:!flex sm:w-auto shrink-0 [&>button]:justify-center"
+                              />
                             </div>
                             <div className="space-y-1">
                               {session.lines.map((line) => (
                                 <div
                                   key={line.id}
-                                  className="text-sm flex items-center justify-between border-b border-slate-100 py-1.5 last:border-b-0"
+                                  className="text-sm grid grid-cols-[minmax(0,1fr)_auto_2.75rem] items-center gap-x-2 sm:gap-x-3 border-b border-slate-100 py-1.5 last:border-b-0"
                                 >
-                                  <span className="font-medium pr-3">{line.product_name}</span>
-                                  <span className="text-xs text-[var(--ui-muted)] whitespace-nowrap mr-3">
+                                  <span className="font-medium min-w-0 break-words leading-tight">{line.product_name}</span>
+                                  <span className="text-xs text-[var(--ui-muted)] whitespace-nowrap">
                                     Contado: {line.counted_stock}
                                   </span>
-                                  <span className={`font-semibold tabular-nums whitespace-nowrap ${
+                                  <span className={`text-right font-semibold tabular-nums whitespace-nowrap ${
                                     line.difference > 0 ? 'text-sky-600' : 'text-red-600'
                                   }`}
                                   >
