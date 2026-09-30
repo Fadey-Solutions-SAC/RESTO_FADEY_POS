@@ -43,6 +43,8 @@ function pagoHistorialItemKey(item) {
   return `${item?.fecha || ''}|${item?.referencia || ''}|${String(item?.comprobante_pago_url || item?.voucher || '').trim()}`;
 }
 
+const IZIPAY_PASO_STORAGE_KEY = 'rf_pago_plan_izipay_paso';
+
 const PLAN_LABELS = {
   basico: 'Básico',
   emprendedor: 'Emprendedor',
@@ -157,7 +159,23 @@ export default function MiRestaurant() {
   }, [pagoUsoComprobanteUi]);
   const [centralResyncBusy, setCentralResyncBusy] = useState(false);
   const [enviarComprobanteBusy, setEnviarComprobanteBusy] = useState(false);
-  const [comprobanteListoParaEnviar, setComprobanteListoParaEnviar] = useState(false);
+  const [izipayPaso, setIzipayPasoState] = useState(() => {
+    try {
+      return localStorage.getItem(IZIPAY_PASO_STORAGE_KEY) === 'enviar' ? 'enviar' : 'pagar';
+    } catch (_) {
+      return 'pagar';
+    }
+  });
+  const [showIzipayModal, setShowIzipayModal] = useState(false);
+  const setIzipayPaso = useCallback((paso) => {
+    setIzipayPasoState(paso);
+    try {
+      if (paso === 'enviar') localStorage.setItem(IZIPAY_PASO_STORAGE_KEY, 'enviar');
+      else localStorage.removeItem(IZIPAY_PASO_STORAGE_KEY);
+    } catch (_) {
+      /* almacenamiento no disponible */
+    }
+  }, []);
   const [comprobanteUploadBusy, setComprobanteUploadBusy] = useState(false);
   const [showPagarQrModal, setShowPagarQrModal] = useState(false);
   const [cargarComprobanteModal, setCargarComprobanteModal] = useState(null);
@@ -293,7 +311,7 @@ export default function MiRestaurant() {
       if (res?.ok === false) {
         toast.error(res.central_user_message || 'No se pudo enviar el comprobante al panel. Intente de nuevo.');
       } else {
-        setComprobanteListoParaEnviar(false);
+        setIzipayPaso('pagar');
         toast.success(res?.central_user_message || 'Comprobante enviado. Pendiente de aprobación.');
       }
     } catch (err) {
@@ -307,6 +325,7 @@ export default function MiRestaurant() {
     appConfig.pago_uso_sistema?.monto_comprobante,
     refreshPagoUsoComprobanteSchedule,
     syncPagoUsoAppConfigFromServer,
+    setIzipayPaso,
   ]);
 
   const loadInitialData = useCallback(() => {
@@ -787,9 +806,34 @@ export default function MiRestaurant() {
       }
       const saved = await api.put('/admin-modules/config/app', body);
       setAppConfig((prev) => ({ ...prev, ...saved }));
-      await refreshPagoUsoComprobanteSchedule();
-      setComprobanteListoParaEnviar(true);
-      toast.success('Comprobante cargado. Revíselo y presione «Enviar comprobante».');
+
+      if (!Number.isFinite(montoRaw) || montoRaw <= 0) {
+        await refreshPagoUsoComprobanteSchedule();
+        toast.error('Comprobante cargado, pero falta el monto pagado para enviarlo.');
+        return;
+      }
+      setEnviarComprobanteBusy(true);
+      try {
+        const result = await api.post('/platform-payments/submit', {
+          comprobanteUrl: url,
+          monto: Math.round(montoRaw * 100) / 100,
+        });
+        if (result?.payment) {
+          setPagoUsoComprobanteUi((prev) => ({ ...(prev || {}), platform_payment: result.payment }));
+        }
+        await syncPagoUsoAppConfigFromServer();
+        await refreshPagoUsoComprobanteSchedule();
+        if (result?.ok === false) {
+          toast.error(result.central_user_message || 'Comprobante cargado, pero no se pudo enviar. Use «Reintentar envío».');
+        } else {
+          setIzipayPaso('pagar');
+          toast.success(result?.central_user_message || 'Comprobante enviado. Pendiente de aprobación.');
+        }
+      } catch (sendErr) {
+        toast.error(sendErr.message || 'Comprobante cargado, pero no se pudo enviar. Use «Reintentar envío».');
+      } finally {
+        setEnviarComprobanteBusy(false);
+      }
     } catch (err) {
       toast.error(err.message || 'No se pudo subir el comprobante');
     } finally {
@@ -814,6 +858,13 @@ export default function MiRestaurant() {
       return;
     }
     const sugerido = Number(appConfig.pago_uso_sistema?.precio_plan);
+    if (Number.isFinite(sugerido) && sugerido > 0) {
+      const rounded = Math.round(sugerido * 100) / 100;
+      updateAppCfg('pago_uso_sistema', 'monto_comprobante', rounded);
+      cargarMontoPendingRef.current = rounded;
+      comprobanteUsoInputRef.current?.click();
+      return;
+    }
     setCargarMontoDraft(
       Number.isFinite(sugerido) && sugerido > 0
         ? String(sugerido)
@@ -1408,45 +1459,74 @@ export default function MiRestaurant() {
                       void uploadComprobantePagoUso(file, monto);
                     }}
                   />
-                  {String(appConfig.pago_uso_sistema?.link_pago || '').trim() ? (
-                    <a
-                      href={String(appConfig.pago_uso_sistema.link_pago).trim()}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-2 text-sm px-4 py-3 rounded-lg font-semibold bg-emerald-600 text-white hover:bg-emerald-700"
-                    >
-                      <MdOpenInNew />
-                      1. Pagar
-                    </a>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn-primary inline-flex items-center justify-center gap-2 text-sm px-4 py-3 disabled:opacity-60"
-                    disabled={!canEditPagoUsoComprobante || comprobanteUploadBusy || enviarComprobanteBusy}
-                    onClick={abrirCargaComprobante}
-                  >
-                    <MdUpload />
-                    {comprobanteUploadBusy
-                      ? 'Cargando…'
-                      : `${String(appConfig.pago_uso_sistema?.link_pago || '').trim() ? '2. ' : ''}Cargar comprobante`}
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center gap-2 text-sm px-4 py-3 rounded-lg font-semibold bg-[var(--ui-accent)] text-white hover:opacity-90 disabled:opacity-50"
-                    disabled={
-                      !canEditPagoUsoComprobante
-                      || comprobanteUploadBusy
-                      || enviarComprobanteBusy
-                      || !String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim()
-                      || !(comprobanteListoParaEnviar || pagoUsoComprobanteUi?.platform_payment?.last_central_sync_ok === false)
+                  {(() => {
+                    const linkIzipay = String(appConfig.pago_uso_sistema?.link_pago || '').trim();
+                    const ppUi = pagoUsoComprobanteUi?.platform_payment;
+                    const estadoPp = String(ppUi?.estado || '').toLowerCase();
+                    const urlActual = String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim();
+                    const syncFallo = Boolean(urlActual) && ppUi?.last_central_sync_ok === false;
+                    const enRevision = (estadoPp === 'pendiente' || estadoPp === 'pending')
+                      && Boolean(urlActual)
+                      && !syncFallo;
+                    const busy = comprobanteUploadBusy || enviarComprobanteBusy;
+                    const mostrarPagar = Boolean(linkIzipay) && izipayPaso !== 'enviar' && !enRevision;
+
+                    if (enRevision) {
+                      return (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-semibold text-amber-800">
+                          Comprobante en revisión
+                        </div>
+                      );
                     }
-                    onClick={() => void enviarComprobanteAlPanel()}
-                  >
-                    <MdSend />
-                    {enviarComprobanteBusy
-                      ? 'Enviando…'
-                      : `${String(appConfig.pago_uso_sistema?.link_pago || '').trim() ? '3. ' : ''}Enviar comprobante`}
-                  </button>
+                    return (
+                      <>
+                        {mostrarPagar ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-white shadow-md shadow-rose-500/30 bg-gradient-to-r from-[#ff4d5e] to-[#e0182d] hover:from-[#ff3b4e] hover:to-[#c9142a] transition disabled:opacity-60"
+                            disabled={!canEditPagoUsoComprobante}
+                            onClick={() => setShowIzipayModal(true)}
+                          >
+                            <span className="text-sm">Pagar con</span>
+                            <span className="text-lg font-black italic tracking-tight lowercase leading-none">izipay</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn-primary inline-flex items-center justify-center gap-2 text-sm px-4 py-3 disabled:opacity-60"
+                            disabled={!canEditPagoUsoComprobante || busy}
+                            onClick={abrirCargaComprobante}
+                          >
+                            <MdSend />
+                            {comprobanteUploadBusy ? 'Cargando…' : enviarComprobanteBusy ? 'Enviando…' : 'Enviar comprobante'}
+                          </button>
+                        )}
+                        {!mostrarPagar && linkIzipay ? (
+                          <p className="text-[11px] text-center text-[var(--ui-muted)]">
+                            Seleccione el PDF descargado (carpeta Descargas).{' '}
+                            <button
+                              type="button"
+                              className="text-blue-600 hover:underline"
+                              disabled={busy}
+                              onClick={() => setIzipayPaso('pagar')}
+                            >
+                              Volver a pagar
+                            </button>
+                          </p>
+                        ) : null}
+                        {syncFallo ? (
+                          <button
+                            type="button"
+                            className="text-xs text-amber-700 hover:underline disabled:opacity-60"
+                            disabled={busy}
+                            onClick={() => void enviarComprobanteAlPanel()}
+                          >
+                            Reintentar envío del comprobante cargado
+                          </button>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   <button
                     type="button"
                     className="inline-flex items-center justify-center gap-2 text-sm px-4 py-3 rounded-lg font-semibold border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
@@ -1583,6 +1663,66 @@ export default function MiRestaurant() {
 
       <Modal
         variant="light"
+        isOpen={showIzipayModal}
+        onClose={() => {
+          setShowIzipayModal(false);
+          setIzipayPaso('enviar');
+        }}
+        title={(
+          <span className="inline-flex items-center gap-2">
+            Pagar con
+            <span className="rounded-md bg-gradient-to-r from-[#ff4d5e] to-[#e0182d] px-2 py-0.5 text-base font-black italic lowercase tracking-tight text-white">
+              izipay
+            </span>
+          </span>
+        )}
+        size="xl"
+        maxHeightClass="max-h-[96vh]"
+        bodyClassName="!p-0 flex flex-col"
+      >
+        <div className="flex flex-col h-[min(80vh,760px)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-xs text-[var(--ui-muted)]">
+            <span>
+              Complete el pago
+              {Number(appConfig.pago_uso_sistema?.precio_plan) > 0
+                ? ` de S/ ${Number(appConfig.pago_uso_sistema.precio_plan).toFixed(2)}`
+                : ''}
+              {' '}y descargue su comprobante en PDF.
+            </span>
+            <a
+              href={String(appConfig.pago_uso_sistema?.link_pago || '').trim()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+            >
+              <MdOpenInNew /> ¿No carga? Abrir en pestaña nueva
+            </a>
+          </div>
+          {showIzipayModal ? (
+            <iframe
+              src={String(appConfig.pago_uso_sistema?.link_pago || '').trim()}
+              title="Pago Izipay"
+              className="flex-1 w-full border-0 bg-white"
+              allow="payment *; clipboard-write"
+            />
+          ) : null}
+          <div className="flex justify-end gap-2 px-4 py-3 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+            <button
+              type="button"
+              className="btn-primary inline-flex items-center gap-2 text-sm"
+              onClick={() => {
+                setShowIzipayModal(false);
+                setIzipayPaso('enviar');
+              }}
+            >
+              <MdSend /> Ya pagué y descargué el comprobante
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        variant="light"
         isOpen={showPagarQrModal}
         onClose={() => setShowPagarQrModal(false)}
         title="Pagar a QR"
@@ -1634,12 +1774,12 @@ export default function MiRestaurant() {
             setCargarMontoDraft('');
           }
         }}
-        title="Cargar comprobante"
+        title="Enviar comprobante"
         size="sm"
       >
         <div className="space-y-4">
           <p className="text-sm text-[var(--ui-muted)]">
-            Primero indique la cantidad pagada. En el siguiente paso seleccionará la imagen o PDF.
+            Indique la cantidad pagada. En el siguiente paso seleccione el PDF o la imagen del comprobante (normalmente en la carpeta Descargas); se enviará al instante.
           </p>
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Cantidad (S/)</label>
