@@ -56,6 +56,22 @@ export const FADEY_AI_SUGGESTION_POOL = [
   '¿Qué me recomiendas para el personal?',
 ];
 
+/** Sugerencias cuando la conversación está en inglés (el servidor las entiende). */
+export const FADEY_AI_SUGGESTION_POOL_EN = [
+  'How much did I sell today?',
+  'How much did I sell this week?',
+  'What are the best-selling products?',
+  'Sales report this month',
+  'Are there kitchen delays?',
+  'Who is on shift now?',
+  'Is there low stock?',
+  'Customers report this month',
+  'Costs report this month',
+  'Sales last Sunday',
+  'How do I close the cash register?',
+  'What can I do in the POS?',
+];
+
 /** Cuántas sugerencias fijas se muestran a la vez. */
 export const FADEY_AI_SUGGESTION_VISIBLE = 5;
 

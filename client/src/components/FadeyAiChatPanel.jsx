@@ -12,6 +12,7 @@ import {
   FADEY_AI_TAGLINE,
   FADEY_AI_CREATOR_MODE,
   FADEY_AI_SUGGESTION_POOL,
+  FADEY_AI_SUGGESTION_POOL_EN,
   FADEY_AI_SUGGESTION_VISIBLE,
   FADEY_AI_SUGGESTION_ROTATE_MS,
   getFadeyAiAvatarSrc,
@@ -258,7 +259,9 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
   const { user } = useAuth();
   const { t: td } = useTranslation('dashboard');
   const creatorMode = isFadeyAiCreatorMode(user);
+  const [chatLang, setChatLang] = useState('es');
   const suggestionPool = useMemo(() => {
+    if (chatLang === 'en') return FADEY_AI_SUGGESTION_POOL_EN;
     const blocked = /qui[eé]n te cre[oó]/i;
     const fromProp = Array.isArray(suggested)
       ? suggested.map((q) => String(q || '').trim()).filter(Boolean)
@@ -267,7 +270,7 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
       ? [...(FADEY_AI_CREATOR_MODE.suggested || []), ...FADEY_AI_SUGGESTION_POOL]
       : FADEY_AI_SUGGESTION_POOL;
     return [...new Set([...fromProp, ...base])].filter((q) => !blocked.test(q));
-  }, [suggested, creatorMode]);
+  }, [suggested, creatorMode, chatLang]);
   const [suggestOffset, setSuggestOffset] = useState(0);
   const chips = useMemo(
     () => pickRotatingSuggestions(suggestionPool, suggestOffset, FADEY_AI_SUGGESTION_VISIBLE),
@@ -458,6 +461,10 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
         },
       ]);
       setReplyOptions(opts);
+      if (res?.lang === 'en' || res?.lang === 'es') {
+        if (res.lang !== chatLang) setSuggestOffset(0);
+        setChatLang(res.lang);
+      }
       if (res?.status) setStatus(res.status);
     } catch (err) {
       setError(err.message || 'No se pudo enviar');
@@ -580,17 +587,17 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
 
       <div className="rf-fadey-ai-footer shrink-0">
         {replyOptions.length > 0 ? (
-          <div className="rf-fadey-ai-suggest rf-fadey-ai-suggest--options">
+          <div className="rf-fadey-ai-suggest">
             <p className="rf-fadey-ai-suggest-label">
               <MdAutoAwesome className="rf-fadey-ai-suggest-star" />
-              En qué puedo ayudarte
+              {chatLang === 'en' ? 'Suggested questions' : 'Preguntas sugeridas'}
             </p>
             <div className="rf-fadey-ai-suggest-chips">
               {replyOptions.map((q) => (
                 <button
                   key={`opt-${q}`}
                   type="button"
-                  className="rf-fadey-ai-chip rf-fadey-ai-chip--option"
+                  className="rf-fadey-ai-chip"
                   disabled={busy}
                   onClick={() => void sendText(q)}
                 >
@@ -599,12 +606,11 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
               ))}
             </div>
           </div>
-        ) : null}
-        {(!isHome || messages.length === 0) ? (
+        ) : (!isHome || messages.length === 0) ? (
           <div className="rf-fadey-ai-suggest">
             <p className="rf-fadey-ai-suggest-label">
               <MdAutoAwesome className="rf-fadey-ai-suggest-star" />
-              Preguntas sugeridas
+              {chatLang === 'en' ? 'Suggested questions' : 'Preguntas sugeridas'}
             </p>
             <div className="rf-fadey-ai-suggest-chips" aria-live="polite">
               {chips.map((q, idx) => (
