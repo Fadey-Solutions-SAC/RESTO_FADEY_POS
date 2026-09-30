@@ -324,8 +324,8 @@ function buildReservationCajaAlert(reservation) {
 }
 
 /**
- * Alertas operativas para caja: ventana [T−20 min, T+2 h],
- * más reservas con pedido activo sin mesa asignada.
+ * Alertas operativas para caja: solo en la ventana [T−20 min, T+2 h],
+ * tenga o no mesa asignada.
  */
 function getReservationCajaOperationalAlerts() {
   try {
@@ -347,32 +347,11 @@ function getReservationCajaOperationalAlerts() {
      LIMIT 30`
   );
 
-  const noTableWithOrder = queryAll(
-    `SELECT r.* FROM reservations r
-     WHERE r.status IN ('confirmed','pending')
-       AND (r.table_id IS NULL OR trim(r.table_id) = '')
-       AND ${resExpr} > ${sqlBusinessNowExpr(queryOne, `-${maxAfterHours} hours`)}
-       AND ${resExpr} <= ${sqlBusinessNowExpr(queryOne, '+1 day')}
-       AND EXISTS (
-         SELECT 1 FROM orders o
-         WHERE o.notes LIKE ('%' || 'RESERVA_ID:' || r.id || '%')
-           AND o.status IN ('pending','preparing','ready')
-       )
-     ORDER BY r.date ASC, r.time ASC
-     LIMIT 20`
-  );
-
-  const byId = new Map();
-  for (const r of [...rows, ...noTableWithOrder]) {
-    if (r?.id) byId.set(r.id, r);
-  }
-
   const now = new Date();
   const active = [];
-  for (const reservation of byId.values()) {
+  for (const reservation of rows) {
     const noTable = !hasAssignedTable(reservation);
-    const inPrepWindow = isReservationCajaAlertActive(reservation, now);
-    if (!inPrepWindow && !noTable) continue;
+    if (!isReservationCajaAlertActive(reservation, now)) continue;
 
     if (!String(reservation.caja_verify_sent_at || '').trim()) {
       markCajaVerifySent(reservation.id);

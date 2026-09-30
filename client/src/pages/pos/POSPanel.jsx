@@ -1172,8 +1172,7 @@ export default function POSPanel() {
 
       for (const id of reservationAlertToastIdsRef.current) {
         if (!nextIds.has(id)) {
-          // Ya no aplica (p. ej. mesa asignada / ventana cerrada): quitar toast flotante.
-          dismissReservationCajaToast(id);
+          // Fuera de la ventana T−20: se oculta sin marcarlo cerrado, para que vuelva a tiempo.
           toast.dismiss(id);
         }
       }
