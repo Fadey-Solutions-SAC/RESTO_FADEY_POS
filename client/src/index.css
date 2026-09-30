@@ -2063,6 +2063,37 @@ html[data-ui-color-scheme='dark'] .rf-staff-order-catalog-row--btn {
   gap: 0.4rem;
   margin-bottom: 0.65rem;
 }
+.rf-fadey-ai-marquee {
+  overflow: hidden;
+  margin-bottom: 0.65rem;
+  padding: 2px 0;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent);
+}
+.rf-fadey-ai-marquee-track {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  padding-left: 100%;
+  white-space: nowrap;
+  animation: rf-fadey-ai-marquee var(--rf-marquee-duration, 16s) linear 1 forwards;
+}
+.rf-fadey-ai-marquee:hover .rf-fadey-ai-marquee-track,
+.rf-fadey-ai-marquee:focus-within .rf-fadey-ai-marquee-track {
+  animation-play-state: paused;
+}
+.rf-fadey-ai-marquee-track .rf-fadey-ai-chip {
+  flex-shrink: 0;
+  animation: none;
+}
+@keyframes rf-fadey-ai-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-fadey-ai-marquee { overflow-x: auto; -webkit-mask-image: none; mask-image: none; }
+  .rf-fadey-ai-marquee-track { padding-left: 0; animation: none; }
+}
 .rf-fadey-ai-assistant-stack {
   display: flex;
   flex-direction: column;

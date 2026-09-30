@@ -2987,14 +2987,15 @@ export default function Reports() {
                 <p className="font-bold text-red-700 flex items-center gap-2 mb-3">
                   <MdWarning /> Productos con stock bajo
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="bg-white rounded-lg border border-red-200 divide-y divide-red-100">
                   {inventoryAlerts.map((item) => (
-                    <span
+                    <div
                       key={item.id}
-                      className="px-3 py-1 bg-white rounded-full text-sm border border-red-200 text-red-700"
+                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-red-700"
                     >
-                      {item.name}: <strong>{item.stock}</strong>
-                    </span>
+                      <span className="min-w-0 break-words leading-tight">{item.name}</span>
+                      <strong className="shrink-0 tabular-nums text-right">{item.stock}</strong>
+                    </div>
                   ))}
                 </div>
               </div>

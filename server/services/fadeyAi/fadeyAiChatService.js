@@ -18,6 +18,7 @@ const {
 const { runTool, resolveSalesPeriod } = require('./fadeyAiTools');
 const { buildSupportAnswer } = require('./fadeyAiSupport');
 const { buildReportAnswer } = require('./fadeyAiReports');
+const { buildPurchaseAnswer } = require('./fadeyAiPurchase');
 const { detectLanguage, toSpanishQuery, translateResult } = require('./fadeyAiI18n');
 const { formatDisplayDateKey } = require('../../utils/appDateTime');
 const {
@@ -746,7 +747,7 @@ function rememberSuccessfulIntent(message, sources) {
   try {
     const src = Array.isArray(sources) && sources[0] ? sources[0] : null;
     if (!src) return;
-    if (['support_contact', 'report', 'report_hint'].includes(src.title)) return;
+    if (['support_contact', 'report', 'report_hint', 'purchase_plan'].includes(src.title)) return;
     // No aprender guías para preguntas de datos (evita volver a “paso a paso” / menús).
     if (!isExplicitHowToMessage(message) && (src.title === 'search_guides' || src.kind === 'guide')) {
       return;
@@ -803,7 +804,7 @@ async function chat(user, message, context = {}) {
   const lang = detectLanguage(text);
   const query = lang === 'en' ? toSpanishQuery(text) : text;
 
-  const report = buildReportAnswer(query, user);
+  const report = buildPurchaseAnswer(query, user) || buildReportAnswer(query, user);
   const support = report ? null : buildSupportAnswer(query, user, context, { originalMessage: text, lang });
   const prefetch = report || support ? { chunks: [] } : heuristicToolPrefetch(query, user);
   let result;

@@ -68,6 +68,9 @@ const OPTION_PAIRS = [
 /* ───────────── Inglés → consulta en español ───────────── */
 
 const EN_TO_ES_QUERY = [
+  [/\bshopping list|purchase list|buying list\b/g, 'lista de compras'],
+  [/\b(should|do|must|need to) (i|we) (buy|order|restock|purchase|reorder)\b/g, 'debo comprar'],
+  [/\bto (buy|restock|reorder|purchase)\b/g, 'por comprar'],
   [/\bhow much did (i|we) (sell|make)\b/g, 'cuanto vendi'],
   [/\bhow much\b/g, 'cuanto'],
   [/\bhow many\b/g, 'cuantos'],
@@ -149,6 +152,7 @@ const EN_TO_ES_QUERY = [
   [/\bmove\b/g, 'mover'],
   [/\bdownload\b/g, 'descargar'],
   [/^(hello|hi|hey|good (morning|afternoon|evening))\b/g, 'hola'],
+  [/\b(what|which)\b/g, 'que'],
 ];
 
 function toSpanishQuery(message) {
@@ -311,6 +315,36 @@ const ES_TO_EN = [
   ['No hay productos ni insumos por debajo del mínimo.', 'No products or ingredients are below minimum.'],
   ['Reponer pronto:', 'Restock soon:'],
   ['Insumos bajo mínimo:', 'Ingredients below minimum:'],
+
+  // Compras sugeridas
+  ['Lista de compras sugerida', 'Suggested shopping list'],
+  ['Productos por comprar', 'Products to buy'],
+  ['Insumos por comprar', 'Ingredients to buy'],
+  ['Inversión estimada:', 'Estimated spend:'],
+  ['Inversión estimada', 'Estimated spend'],
+  ['Cantidad sugerida a comprar', 'Suggested quantity to buy'],
+  ['Stock actual vs mínimo', 'Current stock vs minimum'],
+  ['Venta diaria', 'Daily sales'],
+  ['Prioridad', 'Priority'],
+  ['Comprar', 'Buy'],
+  ['Agotados, comprar primero:', 'Out of stock, buy first:'],
+  ['Agotados', 'Out of stock'],
+  ['Agotado', 'Out of stock'],
+  ['Bajo mínimo', 'Below minimum'],
+  ['Se agota pronto', 'Running out soon'],
+  ['artículo(s) sin costo registrado: la inversión estimada sale incompleta.', 'item(s) without a recorded cost: the estimated spend is incomplete.'],
+  ['Cantidades calculadas para cubrir', 'Quantities calculated to cover'],
+  ['días de venta más el stock mínimo, según lo vendido en los últimos', 'days of sales plus the minimum stock, based on sales over the last'],
+  ['Cálculo: cubre', 'Calculation: covers'],
+  ['días de venta más el stock mínimo (según los últimos', 'days of sales plus the minimum stock (based on the last'],
+  ['días).', 'days).'],
+  ['días.', 'days.'],
+  ['más en el detalle.', 'more in the detail.'],
+  ['vendes ~', 'you sell ~'],
+  ['/día', '/day'],
+  ['→ comprar', '→ buy'],
+  ['stock al', 'stock as of'],
+  ['No necesitas comprar nada por ahora: ningún producto ni insumo está bajo su mínimo ni se agota en los próximos 3 días', "You don't need to buy anything for now: no product or ingredient is below its minimum or running out in the next 3 days"],
 
   // Soporte
   ['Incidencia detectada — soporte técnico', 'Issue detected — technical support'],

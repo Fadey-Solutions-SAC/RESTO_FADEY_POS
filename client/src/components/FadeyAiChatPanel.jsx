@@ -14,7 +14,6 @@ import {
   FADEY_AI_SUGGESTION_POOL,
   FADEY_AI_SUGGESTION_POOL_EN,
   FADEY_AI_SUGGESTION_VISIBLE,
-  FADEY_AI_SUGGESTION_ROTATE_MS,
   getFadeyAiAvatarSrc,
   resolveFadeyAiMood,
   isFadeyAiCreatorMode,
@@ -165,6 +164,38 @@ function parseGuideContent(text, sources = null) {
   return { title, steps, notes, plain: null };
 }
 
+const MARQUEE_PX_PER_SEC = 70;
+
+/** Una sola fila: el grupo de sugerencias cruza de derecha a izquierda y al salir entra el siguiente grupo. */
+function SuggestionMarquee({ items, cycleKey, busy, onPick, onCycle }) {
+  const approxWidth = items.reduce((s, q) => s + String(q).length * 6.6 + 34, 0) + 360;
+  const duration = Math.max(8, Math.round(approxWidth / MARQUEE_PX_PER_SEC));
+  return (
+    <div className="rf-fadey-ai-marquee" aria-live="polite">
+      <div
+        key={cycleKey}
+        className="rf-fadey-ai-marquee-track"
+        style={{ '--rf-marquee-duration': `${duration}s` }}
+        onAnimationEnd={(e) => {
+          if (e.target === e.currentTarget) onCycle();
+        }}
+      >
+        {items.map((q, idx) => (
+          <button
+            key={`${cycleKey}-${idx}-${q}`}
+            type="button"
+            className="rf-fadey-ai-chip"
+            disabled={busy}
+            onClick={() => onPick(q)}
+          >
+            {q}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SupportContactBlock({ support }) {
   const en = support.lang === 'en';
   return (
@@ -290,6 +321,11 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
   const [loading, setLoading] = useState(true);
   /** Opciones rápidas del saludo (aparte de chips de sugerencias fijas). */
   const [replyOptions, setReplyOptions] = useState([]);
+  const [optionsOffset, setOptionsOffset] = useState(0);
+  const optionChips = useMemo(
+    () => pickRotatingSuggestions(replyOptions, optionsOffset, FADEY_AI_SUGGESTION_VISIBLE),
+    [replyOptions, optionsOffset],
+  );
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const sendTextRef = useRef(null);
@@ -343,15 +379,6 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (!isActive) return undefined;
-    if (suggestionPool.length <= FADEY_AI_SUGGESTION_VISIBLE) return undefined;
-    const id = setInterval(() => {
-      setSuggestOffset((prev) => (prev + 1) % suggestionPool.length);
-    }, FADEY_AI_SUGGESTION_ROTATE_MS);
-    return () => clearInterval(id);
-  }, [isActive, suggestionPool.length]);
 
   useEffect(() => {
     if (!isActive) return undefined;
@@ -461,6 +488,7 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
         },
       ]);
       setReplyOptions(opts);
+      setOptionsOffset(0);
       if (res?.lang === 'en' || res?.lang === 'es') {
         if (res.lang !== chatLang) setSuggestOffset(0);
         setChatLang(res.lang);
@@ -586,45 +614,29 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
       </div>
 
       <div className="rf-fadey-ai-footer shrink-0">
-        {replyOptions.length > 0 ? (
+        {replyOptions.length > 0 || !isHome || messages.length === 0 ? (
           <div className="rf-fadey-ai-suggest">
             <p className="rf-fadey-ai-suggest-label">
               <MdAutoAwesome className="rf-fadey-ai-suggest-star" />
               {chatLang === 'en' ? 'Suggested questions' : 'Preguntas sugeridas'}
             </p>
-            <div className="rf-fadey-ai-suggest-chips">
-              {replyOptions.map((q) => (
-                <button
-                  key={`opt-${q}`}
-                  type="button"
-                  className="rf-fadey-ai-chip"
-                  disabled={busy}
-                  onClick={() => void sendText(q)}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (!isHome || messages.length === 0) ? (
-          <div className="rf-fadey-ai-suggest">
-            <p className="rf-fadey-ai-suggest-label">
-              <MdAutoAwesome className="rf-fadey-ai-suggest-star" />
-              {chatLang === 'en' ? 'Suggested questions' : 'Preguntas sugeridas'}
-            </p>
-            <div className="rf-fadey-ai-suggest-chips" aria-live="polite">
-              {chips.map((q, idx) => (
-                <button
-                  key={`${suggestOffset}-${idx}-${q}`}
-                  type="button"
-                  className="rf-fadey-ai-chip"
-                  disabled={busy}
-                  onClick={() => void sendText(q)}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
+            {replyOptions.length > 0 ? (
+              <SuggestionMarquee
+                items={optionChips}
+                cycleKey={`opt-${optionsOffset}-${replyOptions.join('|')}`}
+                busy={busy}
+                onPick={(q) => void sendText(q)}
+                onCycle={() => setOptionsOffset((prev) => prev + FADEY_AI_SUGGESTION_VISIBLE)}
+              />
+            ) : (
+              <SuggestionMarquee
+                items={chips}
+                cycleKey={`sug-${chatLang}-${suggestOffset}`}
+                busy={busy}
+                onPick={(q) => void sendText(q)}
+                onCycle={() => setSuggestOffset((prev) => (prev + FADEY_AI_SUGGESTION_VISIBLE) % Math.max(1, suggestionPool.length))}
+              />
+            )}
           </div>
         ) : null}
 
