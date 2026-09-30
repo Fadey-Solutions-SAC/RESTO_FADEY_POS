@@ -48,8 +48,14 @@ function mapCentralSyncError(result) {
   if (raw.includes('26 values for 25 columns') || raw.includes('values for') && raw.includes('columns')) {
     return 'Error en el servidor del panel al guardar el pago (columnas SQL incorrectas). Redespliegue la plataforma central o corrija la API de pagos en Vercel/Supabase.';
   }
+  if (raw.includes('comprobante debe ser') || raw.includes('página web') || raw.includes('pdf')) {
+    return 'El panel no pudo leer el archivo del comprobante. Vuelva a enviarlo; si persiste, cargue el PDF otra vez.';
+  }
+  if (raw.includes('413') || raw.includes('too large') || raw.includes('supera')) {
+    return 'El comprobante es demasiado grande. Envíe un PDF o imagen de menos de 12 MB.';
+  }
   if (raw) {
-    return `No se pudo enviar el comprobante (${String(result.error || result.last_central_sync_error).slice(0, 120)}). Revise variables en Render o contacte soporte.`;
+    return `No se pudo enviar el comprobante (${String(result.error || result.data?.error || result.last_central_sync_error).slice(0, 120)}). Use «Reintentar envío» o contacte soporte.`;
   }
   return 'No se pudo enviar el comprobante. Use «Reintentar envío» o intente más tarde.';
 }

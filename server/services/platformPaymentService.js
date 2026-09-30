@@ -821,7 +821,8 @@ function getPublicPlatformPaymentState() {
   const centralOn = isCentralSyncConfigured();
   const hasActiveComprobante = Boolean(String(pago.comprobante_pago_url || '').trim());
   const approved = estado === PAYMENT_STATUSES.APPROVED;
-  const pending = estado === PAYMENT_STATUSES.PENDING && hasActiveComprobante;
+  const syncFailed = hasActiveComprobante && pp.last_central_sync_ok === false;
+  const pending = estado === PAYMENT_STATUSES.PENDING && hasActiveComprobante && !syncFailed;
   const rejected = estado === PAYMENT_STATUSES.REJECTED;
   const showApprovalNotice = isApprovalNoticeActive(pp);
   const oculto = hasActiveComprobante && (Boolean(pp.comprobante_oculto_ui) || approved);
@@ -855,7 +856,7 @@ function getPublicPlatformPaymentState() {
           last_central_sync_error: pp.last_central_sync_error,
         })
       : '',
-    show_resync_hint: pending && pp.last_central_sync_ok === false,
+    show_resync_hint: syncFailed,
     last_central_sync_at: pp.last_central_sync_at || null,
     central_payment_id: pp.central_payment_id || null,
   };

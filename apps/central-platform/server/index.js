@@ -25,6 +25,7 @@ app.use(
     credentials: true,
   })
 );
+app.use('/api/payments', express.json({ limit: '20mb' }));
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'restofadey-central' }));

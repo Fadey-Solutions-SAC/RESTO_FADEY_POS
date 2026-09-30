@@ -2,7 +2,10 @@
  * Puente SaaS hacia el panel central: solo comprobantes y licencia por defecto.
  * Sync extendido (login, planes, eventos) requiere CENTRAL_SYNC_EXTENDED=1.
  */
+const fs = require('fs');
+const path = require('path');
 const { queryOne } = require('../database');
+const { getUploadsRoot } = require('../uploadsPath');
 const { getControlConfig } = require('../masterAdminService');
 const { normalizePlan, formatPlanForSaas } = require('../servicePlan');
 const {
@@ -35,6 +38,40 @@ function resolvePublicVoucherUrl(relativeUrl) {
   ).replace(/\/$/, '');
   if (!base) return url;
   return `${base}${url.startsWith('/') ? url : `/${url}`}`;
+}
+
+const VOUCHER_INLINE_MAX_BYTES = 12 * 1024 * 1024;
+const VOUCHER_MIME_BY_EXT = {
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
+
+/** Archivo del comprobante en el disco del POS, para enviarlo dentro del payload (no depende de la URL pública). */
+function readLocalVoucherFile(relativeUrl) {
+  const url = String(relativeUrl || '').trim().split('?')[0];
+  const m = url.match(/^(?:https?:\/\/[^/]+)?\/uploads\/([^/\\]+)$/i);
+  if (!m) return null;
+  const fileName = path.basename(decodeURIComponent(m[1]));
+  const ext = path.extname(fileName).toLowerCase();
+  const mimeType = VOUCHER_MIME_BY_EXT[ext];
+  if (!mimeType) return null;
+  try {
+    const abs = path.join(getUploadsRoot(), fileName);
+    const stat = fs.statSync(abs);
+    if (!stat.isFile() || stat.size <= 0 || stat.size > VOUCHER_INLINE_MAX_BYTES) return null;
+    return { fileName, mimeType, base64: fs.readFileSync(abs).toString('base64') };
+  } catch (_) {
+    return null;
+  }
+}
+
+function withoutInlineVoucher(payload) {
+  const { voucherBase64, ...rest } = payload || {};
+  return rest;
 }
 
 function getRestaurantContext() {
@@ -138,7 +175,15 @@ async function buildMinimalPaymentPayload({ comprobanteUrl, reference = '', amou
   const voucherAbsolute = resolvePublicVoucherUrl(comprobanteUrl);
   const operationNumber = String(reference || '').trim() || `pago-uso-${Date.now()}`;
   const resolvedAmount = resolveComprobanteAmount(amount, ctx.pagoUso || {});
+  const localFile = readLocalVoucherFile(comprobanteUrl);
   return {
+    ...(localFile
+      ? {
+          voucherBase64: localFile.base64,
+          voucherMimeType: localFile.mimeType,
+          voucherFileName: localFile.fileName,
+        }
+      : {}),
     clientId: identity.clientId,
     licenseKey: identity.licenseKey || identity.clientId,
     webServiceId: identity.webServiceId || identity.clientId,
@@ -166,7 +211,7 @@ function syncVoucherPayment(opts) {
     const c = getClient();
     await c.syncMinimalPayment(payload);
     if (isExtendedCentralSyncConfigured()) {
-      await c.syncEvent(SYNC_EVENT_TYPES.VOUCHER, payload);
+      await c.syncEvent(SYNC_EVENT_TYPES.VOUCHER, withoutInlineVoucher(payload));
     }
   });
 }
@@ -185,7 +230,7 @@ async function syncVoucherPaymentNow(opts) {
   const c = getClient();
   const payRes = await c.syncMinimalPayment(payload);
   if (isExtendedCentralSyncConfigured() && payRes?.ok) {
-    await c.syncEvent(SYNC_EVENT_TYPES.VOUCHER, payload);
+    await c.syncEvent(SYNC_EVENT_TYPES.VOUCHER, withoutInlineVoucher(payload));
   }
   return payRes;
 }
