@@ -3151,7 +3151,12 @@ export default function POSPanel() {
     const amount = parseFloat(movementForm.amount);
     if (Number.isNaN(amount) || amount <= 0) return toast.error('Monto inválido');
     try {
-      await api.post('/pos/movements', { type, amount, concept: movementForm.concept, ...posRegisterBody() });
+      await api.post('/pos/movements', {
+        type,
+        amount,
+        concept: movementForm.concept,
+        register_id: posRegisterBody().register_id || register?.id || undefined,
+      });
       toast.success(type === 'income' ? 'Ingreso registrado' : 'Egreso registrado');
       setMovementForm({ amount: '', concept: '' });
       await Promise.all([loadData(), loadCajaExtras()]);
@@ -3164,7 +3169,12 @@ export default function POSPanel() {
     const amount = parseFloat(noteForm.amount);
     if (Number.isNaN(amount) || amount <= 0) return toast.error('Monto inválido');
     try {
-      await api.post('/pos/notes', { note_type: noteType, amount, reason: noteForm.reason, ...posRegisterBody() });
+      await api.post('/pos/notes', {
+        note_type: noteType,
+        amount,
+        reason: noteForm.reason,
+        register_id: posRegisterBody().register_id || register?.id || undefined,
+      });
       toast.success(noteType === 'credit' ? 'Nota de crédito registrada' : 'Nota de débito registrada');
       setNoteForm({ amount: '', reason: '' });
       loadCajaExtras();
@@ -3283,11 +3293,12 @@ export default function POSPanel() {
   const totalYape = Number(register?.total_yape || 0) > 0 ? Number(register.total_yape || 0) : registerLiveSales.total_yape;
   const totalPlin = Number(register?.total_plin || 0) > 0 ? Number(register.total_plin || 0) : registerLiveSales.total_plin;
   const totalCard = Number(register?.total_card || 0) > 0 ? Number(register.total_card || 0) : registerLiveSales.total_card;
-  const totalIncome = register?.total_income || 0;
-  const totalExpense = register?.total_expense || 0;
+  const cashFlowSource = closingData && String(closingData.id || '') === String(register?.id || '') ? closingData : register;
+  const totalIncome = Number(cashFlowSource?.total_income || 0);
+  const totalExpense = Number(cashFlowSource?.total_expense || 0);
   const totalTips = Number(register?.total_tips || 0) > 0 ? Number(register.total_tips || 0) : registerLiveSales.total_tips;
-  const notesCredit = register?.notes_credit || 0;
-  const notesDebit = register?.notes_debit || 0;
+  const notesCredit = Number(cashFlowSource?.notes_credit || 0);
+  const notesDebit = Number(cashFlowSource?.notes_debit || 0);
   const useLiveRegisterSales = !(Number(register?.total_sales || 0) > 0) && registerLiveSales.total_sales > 0;
   const expectedCash = useLiveRegisterSales
     ? roundMoneySoles(
@@ -5946,6 +5957,11 @@ export default function POSPanel() {
                 </>
               )}
               <div className="sep"></div>
+              {totalTips > 0 && <div className="row"><span>Propinas</span><span>{formatCurrency(totalTips)}</span></div>}
+              <div className="row"><span>Ingresos de caja</span><span>+{formatCurrency(totalIncome)}</span></div>
+              <div className="row"><span>Egresos de caja</span><span>−{formatCurrency(totalExpense)}</span></div>
+              {notesCredit > 0 && <div className="row"><span>Notas de crédito</span><span>+{formatCurrency(notesCredit)}</span></div>}
+              {notesDebit > 0 && <div className="row"><span>Notas de débito</span><span>−{formatCurrency(notesDebit)}</span></div>}
               <div className="row bold"><span>EFECTIVO ESPERADO</span><span>{formatCurrency(expectedRounded)}</span></div>
               <div className="row"><span className="arqueo-hint">(Apertura + efectivo + propinas + ingresos − egresos ± notas de caja)</span></div>
               <div className="sep"></div>

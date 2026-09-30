@@ -731,6 +731,15 @@ export async function flushOfflineQueue(sendFn) {
             || /l[ií]neas de pedido no existen|no coinciden|STALE_ORDER_ITEMS/i.test(msg)
           )
         );
+        const isRejectedCashFlow = job.method === 'POST'
+          && (p === '/pos/movements' || p === '/pos/notes')
+          && status >= 400 && status < 500;
+        if (isRejectedCashFlow) {
+          setMutationQueue(rest);
+          skipped += 1;
+          lastError = `Movimiento de caja no sincronizado: ${msg || 'turno cerrado'}`;
+          continue;
+        }
         if (isStaleLines) {
           const body = parseBody(job.body);
           let orderIds = (Array.isArray(body.order_ids) ? body.order_ids : []).map(String).filter(Boolean);

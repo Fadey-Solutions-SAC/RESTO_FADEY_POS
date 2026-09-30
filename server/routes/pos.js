@@ -377,6 +377,23 @@ function resolvePosRegister(req) {
   return getOpenRegister(user.id) || null;
 }
 
+/**
+ * Ingresos/egresos/notas: si el cliente indica el turno (register_id) y ya no es el abierto
+ * (p. ej. cola offline sincronizada tras el cierre), se rechaza para no cargarlo a otro turno.
+ */
+function resolveCashFlowRegister(req) {
+  const register = resolvePosRegister(req);
+  const rid = pickRegisterId(req);
+  if (rid && (!register || String(register.id) !== rid)) {
+    return {
+      register: null,
+      error: 'El turno de caja indicado ya no está abierto. Registre el movimiento en el turno actual.',
+    };
+  }
+  if (!register) return { register: null, error: 'No tienes una caja abierta' };
+  return { register, error: null };
+}
+
 function buildRegisterSnapshot(register) {
   const sales = queryRegisterSessionSales(register);
   const movements = getMovementTotals(register.id);
@@ -1085,8 +1102,8 @@ router.post('/movements', authenticateToken, requireRole('admin', 'cajero'), (re
   if (amount === undefined || amount === null || Number.isNaN(Number(amount)) || Number(amount) <= 0) {
     return res.status(400).json({ error: 'Monto inválido' });
   }
-  const register = resolvePosRegister(req);
-  if (!register) return res.status(400).json({ error: 'No tienes una caja abierta' });
+  const { register, error: registerError } = resolveCashFlowRegister(req);
+  if (!register) return res.status(400).json({ error: registerError });
   const id = uuidv4();
   runSql(
     'INSERT INTO cash_movements (id, register_id, user_id, type, amount, concept) VALUES (?, ?, ?, ?, ?, ?)',
@@ -1121,8 +1138,8 @@ router.post('/notes', authenticateToken, requireRole('admin', 'cajero'), (req, r
   if (amount === undefined || amount === null || Number.isNaN(Number(amount)) || Number(amount) <= 0) {
     return res.status(400).json({ error: 'Monto inválido' });
   }
-  const register = resolvePosRegister(req);
-  if (!register) return res.status(400).json({ error: 'No tienes una caja abierta' });
+  const { register, error: registerError } = resolveCashFlowRegister(req);
+  if (!register) return res.status(400).json({ error: registerError });
   const id = uuidv4();
   runSql(
     'INSERT INTO cash_notes (id, register_id, user_id, note_type, amount, reason) VALUES (?, ?, ?, ?, ?, ?)',

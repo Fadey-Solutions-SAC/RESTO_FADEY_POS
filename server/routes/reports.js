@@ -1055,6 +1055,15 @@ router.get('/closed-registers/:id', authenticateToken, requireRole('admin', 'caj
     "SELECT cn.*, u.full_name as user_name FROM cash_notes cn LEFT JOIN users u ON u.id = cn.user_id WHERE cn.register_id = ? ORDER BY cn.created_at ASC",
     [register.id]
   );
+  const sumBy = (rows, key, value) => rows
+    .filter((r) => r[key] === value)
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  register.cash_flow = {
+    income: Math.round(sumBy(register.movements, 'type', 'income') * 100) / 100,
+    expense: Math.round(sumBy(register.movements, 'type', 'expense') * 100) / 100,
+    notes_credit: Math.round(sumBy(register.notes_list, 'note_type', 'credit') * 100) / 100,
+    notes_debit: Math.round(sumBy(register.notes_list, 'note_type', 'debit') * 100) / 100,
+  };
   const { querySoldProductsBetween } = require('../services/productSalesReportService');
   const { queryRegisterSessionOrderRows } = require('../services/registerSessionSales');
   const sold_products = querySoldProductsBetween(

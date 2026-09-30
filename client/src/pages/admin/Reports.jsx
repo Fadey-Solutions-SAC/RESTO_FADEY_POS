@@ -353,8 +353,23 @@ function buildSoldProductsPrintTable(soldProducts = []) {
     </table>`;
 }
 
+function closedRegisterCashFlow(register) {
+  const arqueo = register?.arqueo || {};
+  const live = register?.cash_flow;
+  return {
+    opening: Number(arqueo.opening_amount ?? register?.opening_amount ?? 0),
+    cashSales: Number(arqueo.payment_breakdown?.efectivo ?? register?.total_cash ?? 0),
+    tips: Number(arqueo.total_tips || 0),
+    income: Number(live?.income ?? arqueo.cash_movements?.income ?? 0),
+    expense: Number(live?.expense ?? arqueo.cash_movements?.expense ?? 0),
+    notesCredit: Number(live?.notes_credit ?? arqueo.cash_notes?.credit ?? 0),
+    notesDebit: Number(live?.notes_debit ?? arqueo.cash_notes?.debit ?? 0),
+  };
+}
+
 function buildClosedRegisterPrintHtml(register) {
   if (!register) return '';
+  const flow = closedRegisterCashFlow(register);
   const arqueo = register.arqueo || {};
   const diff = Number(arqueo.difference ?? 0);
   const diffClass = diff >= 0 ? 'diff-pos' : 'diff-neg';
@@ -382,6 +397,10 @@ function buildClosedRegisterPrintHtml(register) {
   parts.push(row('Propinas', formatCurrency(arqueo.total_tips || 0)));
   parts.push(buildSoldProductsPrintTable(register.sold_products));
   parts.push('<div class="sep"></div>');
+  parts.push(row('Ingresos de caja', `+${formatCurrency(flow.income)}`));
+  parts.push(row('Egresos de caja', `-${formatCurrency(flow.expense)}`));
+  if (flow.notesCredit > 0) parts.push(row('Notas de crédito', `+${formatCurrency(flow.notesCredit)}`));
+  if (flow.notesDebit > 0) parts.push(row('Notas de débito', `-${formatCurrency(flow.notesDebit)}`));
   parts.push(row('EFECTIVO ESPERADO', formatCurrency(arqueo.expected_cash || 0), 'row bold'));
   parts.push('<div class="sep"></div>');
   parts.push(row('DETALLE ARQUEO', '', 'row bold'));
@@ -1426,6 +1445,11 @@ export default function Reports() {
     lines.push(`Tarjeta: ${formatCurrency(register.total_card || 0)}`);
     const onlineAmt = Number(register.arqueo?.payment_breakdown?.online ?? 0);
     if (onlineAmt > 0) lines.push(`Online: ${formatCurrency(onlineAmt)}`);
+    const flow = closedRegisterCashFlow(register);
+    lines.push(`Ingresos de caja: +${formatCurrency(flow.income)}`);
+    lines.push(`Egresos de caja: -${formatCurrency(flow.expense)}`);
+    if (flow.notesCredit > 0) lines.push(`Notas de crédito: +${formatCurrency(flow.notesCredit)}`);
+    if (flow.notesDebit > 0) lines.push(`Notas de débito: -${formatCurrency(flow.notesDebit)}`);
     lines.push(`Efectivo esperado: ${formatCurrency(register.arqueo?.expected_cash || 0)}`);
     lines.push(`Efectivo contado: ${formatCurrency(register.arqueo?.counted_cash ?? register.closing_amount ?? 0)}`);
     lines.push(`Diferencia: ${diff >= 0 ? '+' : ''}${formatCurrency(diff)}`);
@@ -1488,6 +1512,10 @@ export default function Reports() {
       ['Yape', Number(register.total_yape || 0).toFixed(2)],
       ['Plin', Number(register.total_plin || 0).toFixed(2)],
       ['Tarjeta', Number(register.total_card || 0).toFixed(2)],
+      ['Ingresos de caja', closedRegisterCashFlow(register).income.toFixed(2)],
+      ['Egresos de caja', closedRegisterCashFlow(register).expense.toFixed(2)],
+      ['Notas de crédito', closedRegisterCashFlow(register).notesCredit.toFixed(2)],
+      ['Notas de débito', closedRegisterCashFlow(register).notesDebit.toFixed(2)],
       ['Efectivo esperado', Number(register.arqueo?.expected_cash || 0).toFixed(2)],
       ['Efectivo contado', Number(register.arqueo?.counted_cash ?? register.closing_amount ?? 0).toFixed(2)],
       ['Diferencia', Number(register.arqueo?.difference ?? 0).toFixed(2)],
@@ -3203,6 +3231,30 @@ export default function Reports() {
 
             <div className="bg-white border border-slate-200 rounded-lg p-3">
               <p className="text-sm font-semibold rf-section-title mb-2">Arqueo</p>
+              {(() => {
+                const flow = closedRegisterCashFlow(selectedClosedRegister);
+                const rows = [
+                  { label: 'Apertura', value: flow.opening, sign: '' },
+                  { label: 'Ventas en efectivo', value: flow.cashSales, sign: '+' },
+                  ...(flow.tips > 0 ? [{ label: 'Propinas', value: flow.tips, sign: '+' }] : []),
+                  { label: 'Ingresos de caja', value: flow.income, sign: '+', cls: 'text-emerald-600' },
+                  { label: 'Egresos de caja', value: flow.expense, sign: '−', cls: 'text-red-600' },
+                  ...(flow.notesCredit > 0 ? [{ label: 'Notas de crédito', value: flow.notesCredit, sign: '+' }] : []),
+                  ...(flow.notesDebit > 0 ? [{ label: 'Notas de débito', value: flow.notesDebit, sign: '−' }] : []),
+                ];
+                return (
+                  <div className="mb-3 space-y-1 text-sm">
+                    {rows.map((r) => (
+                      <div key={r.label} className="flex justify-between border-b border-slate-100 pb-1">
+                        <span className="text-[var(--ui-muted)]">{r.label}</span>
+                        <span className={`font-medium tabular-nums ${r.cls || ''}`}>
+                          {r.sign}{formatCurrency(r.value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                 <div>
                   <p className="text-xs text-[var(--ui-muted)]">Efectivo esperado</p>
