@@ -167,6 +167,7 @@ export default function MiRestaurant() {
     }
   });
   const [showIzipayModal, setShowIzipayModal] = useState(false);
+  const izipayPopupRef = useRef(null);
   const setIzipayPaso = useCallback((paso) => {
     setIzipayPasoState(paso);
     try {
@@ -284,6 +285,63 @@ export default function MiRestaurant() {
       toast.error(err.message || 'No se pudo quitar el comprobante.');
     }
   }, [canEditPagoUsoComprobante, refreshPagoUsoComprobanteSchedule]);
+
+  const finalizarPagoIzipay = useCallback(() => {
+    const w = izipayPopupRef.current;
+    izipayPopupRef.current = null;
+    try {
+      if (w && !w.closed) w.close();
+    } catch (_) {
+      /* ventana de otro origen */
+    }
+    setShowIzipayModal(false);
+    setIzipayPaso('enviar');
+  }, [setIzipayPaso]);
+
+  const abrirPagoIzipay = useCallback(() => {
+    const link = String(appConfig.pago_uso_sistema?.link_pago || '').trim();
+    if (!link) return;
+    const width = Math.min(560, window.screen?.availWidth || 560);
+    const height = Math.min(820, (window.screen?.availHeight || 820) - 40);
+    const left = Math.max(0, Math.round((window.screenX || 0) + ((window.outerWidth || width) - width) / 2));
+    const top = Math.max(0, Math.round((window.screenY || 0) + ((window.outerHeight || height) - height) / 2));
+    let popup = null;
+    try {
+      popup = window.open(
+        link,
+        'rf_pago_izipay',
+        `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`,
+      );
+    } catch (_) {
+      popup = null;
+    }
+    if (!popup) {
+      window.open(link, '_blank', 'noopener,noreferrer');
+    } else {
+      try { popup.focus(); } catch (_) { /* sin foco */ }
+    }
+    izipayPopupRef.current = popup;
+    setShowIzipayModal(true);
+  }, [appConfig.pago_uso_sistema?.link_pago]);
+
+  useEffect(() => {
+    if (!showIzipayModal) return undefined;
+    const timer = setInterval(() => {
+      const w = izipayPopupRef.current;
+      if (!w) return;
+      let closed = false;
+      try {
+        closed = w.closed;
+      } catch (_) {
+        closed = false;
+      }
+      if (closed) {
+        finalizarPagoIzipay();
+        toast.success('Ahora presione «Enviar comprobante» y seleccione el PDF descargado.');
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [showIzipayModal, finalizarPagoIzipay]);
 
   const enviarComprobanteAlPanel = useCallback(async () => {
     if (!canEditPagoUsoComprobante) {
@@ -1485,7 +1543,7 @@ export default function MiRestaurant() {
                             type="button"
                             className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-white shadow-md shadow-rose-500/30 bg-gradient-to-r from-[#ff4d5e] to-[#e0182d] hover:from-[#ff3b4e] hover:to-[#c9142a] transition disabled:opacity-60"
                             disabled={!canEditPagoUsoComprobante}
-                            onClick={() => setShowIzipayModal(true)}
+                            onClick={abrirPagoIzipay}
                           >
                             <span className="text-sm">Pagar con</span>
                             <span className="text-lg font-black italic tracking-tight lowercase leading-none">izipay</span>
@@ -1664,10 +1722,7 @@ export default function MiRestaurant() {
       <Modal
         variant="light"
         isOpen={showIzipayModal}
-        onClose={() => {
-          setShowIzipayModal(false);
-          setIzipayPaso('enviar');
-        }}
+        onClose={finalizarPagoIzipay}
         title={(
           <span className="inline-flex items-center gap-2">
             Pagar con
@@ -1676,44 +1731,36 @@ export default function MiRestaurant() {
             </span>
           </span>
         )}
-        size="xl"
-        maxHeightClass="max-h-[96vh]"
-        bodyClassName="!p-0 flex flex-col"
+        size="md"
       >
-        <div className="flex flex-col h-[min(80vh,760px)]">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-xs text-[var(--ui-muted)]">
-            <span>
-              Complete el pago
-              {Number(appConfig.pago_uso_sistema?.precio_plan) > 0
-                ? ` de S/ ${Number(appConfig.pago_uso_sistema.precio_plan).toFixed(2)}`
-                : ''}
-              {' '}y descargue su comprobante en PDF.
-            </span>
-            <a
-              href={String(appConfig.pago_uso_sistema?.link_pago || '').trim()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-            >
-              <MdOpenInNew /> ¿No carga? Abrir en pestaña nueva
-            </a>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+            <span className="h-3 w-3 shrink-0 rounded-full bg-[#e0182d] animate-pulse" />
+            <p className="text-sm text-rose-900">
+              Se abrió la ventana segura de Izipay. Complete el pago
+              {Number(appConfig.pago_uso_sistema?.precio_plan) > 0 ? (
+                <strong className="tabular-nums"> de S/ {Number(appConfig.pago_uso_sistema.precio_plan).toFixed(2)}</strong>
+              ) : null}
+              {' '}ahí.
+            </p>
           </div>
-          {showIzipayModal ? (
-            <iframe
-              src={String(appConfig.pago_uso_sistema?.link_pago || '').trim()}
-              title="Pago Izipay"
-              className="flex-1 w-full border-0 bg-white"
-              allow="payment *; clipboard-write"
-            />
-          ) : null}
-          <div className="flex justify-end gap-2 px-4 py-3 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+          <ol className="list-decimal pl-5 space-y-1.5 text-sm text-[var(--ui-body-text)]">
+            <li>Pague con su tarjeta o billetera en la ventana de Izipay.</li>
+            <li>Descargue el comprobante en PDF (se guarda en la carpeta Descargas).</li>
+            <li>Cierre la ventana de Izipay: el botón cambiará a <strong>Enviar comprobante</strong>.</li>
+          </ol>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+              onClick={abrirPagoIzipay}
+            >
+              <MdOpenInNew /> ¿No ve la ventana? Abrir de nuevo
+            </button>
             <button
               type="button"
               className="btn-primary inline-flex items-center gap-2 text-sm"
-              onClick={() => {
-                setShowIzipayModal(false);
-                setIzipayPaso('enviar');
-              }}
+              onClick={finalizarPagoIzipay}
             >
               <MdSend /> Ya pagué y descargué el comprobante
             </button>
