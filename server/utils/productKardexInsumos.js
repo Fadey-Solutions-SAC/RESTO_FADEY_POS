@@ -183,7 +183,68 @@ function unlinkInsumoFromProducts(tx, insumoId) {
   }
 }
 
+/** Cantidad por plato en la U.M. de stock del insumo (kg/L para masa; g/ml en la línea del producto). */
+function lineQtyToRecetaCantidad(line, insumo) {
+  const { isMasaOrLitrajeUm, recipeQtyToStock } = require('./insumoUnidadMedida');
+  const um = insumo?.unidad_medida;
+  if (isMasaOrLitrajeUm(um)) return recipeQtyToStock(line.qty, um);
+  return Number(line.qty) || 0;
+}
+
+/**
+ * La receta es la única fuente de descuento: pasa los insumos guardados en productos a su receta.
+ * Si el producto ya tiene receta con insumos, se conserva la receta. Idempotente.
+ * @returns {{ created: number, cleared: number }}
+ */
+function migrateProductInsumosToRecetas({ queryAll, withTransaction }) {
+  const { v4: uuidv4 } = require('uuid');
+  const rows = queryAll(
+    `SELECT id, name, kardex_insumos, kardex_insumo_id, kardex_insumo_num, kardex_insumo_den, kardex_insumo_modo, kardex_insumo_gramos
+     FROM products
+     WHERE TRIM(IFNULL(kardex_insumo_id, '')) != ''
+        OR (TRIM(IFNULL(kardex_insumos, '')) != '' AND TRIM(kardex_insumos) NOT IN ('[]', 'null'))`,
+  ) || [];
+  let created = 0;
+  let cleared = 0;
+  for (const product of rows) {
+    const lines = resolveKardexInsumoLines(product);
+    withTransaction((tx) => {
+      const rec = tx.queryOne('SELECT id FROM recetas WHERE product_id = ? ORDER BY activo DESC, created_at ASC LIMIT 1', [product.id]);
+      const detCount = rec ? Number(tx.queryOne('SELECT COUNT(*) AS n FROM receta_detalle WHERE receta_id = ?', [rec.id])?.n || 0) : 0;
+      if (lines.length && detCount === 0) {
+        const recetaId = rec?.id || uuidv4();
+        if (!rec) {
+          tx.run('INSERT INTO recetas (id, nombre_plato, product_id, activo) VALUES (?, ?, ?, 1)', [recetaId, String(product.name || 'Receta').trim(), product.id]);
+        } else {
+          tx.run('UPDATE recetas SET activo = 1 WHERE id = ?', [recetaId]);
+        }
+        for (const line of lines) {
+          const ins = tx.queryOne('SELECT id, unidad_medida FROM insumos WHERE id = ?', [line.insumo_id]);
+          if (!ins) continue;
+          const cantidad = lineQtyToRecetaCantidad(line, ins);
+          if (!(cantidad > 0)) continue;
+          tx.run('INSERT INTO receta_detalle (id, receta_id, insumo_id, cantidad_usada) VALUES (?, ?, ?, ?)', [uuidv4(), recetaId, ins.id, cantidad]);
+        }
+        created += 1;
+      }
+      clearProductKardexLines(tx, product.id);
+      cleared += 1;
+    });
+  }
+  return { created, cleared };
+}
+
+function clearProductKardexLines(tx, productId) {
+  const persist = persistFromLines([]);
+  tx.run(
+    `UPDATE products SET kardex_insumos = ?, kardex_insumo_id = ?, kardex_insumo_num = ?, kardex_insumo_den = ?, kardex_insumo_modo = ?, kardex_insumo_gramos = ? WHERE id = ?`,
+    [persist.kardex_insumos, persist.kardex_insumo_id, persist.kardex_insumo_num, persist.kardex_insumo_den, persist.kardex_insumo_modo, persist.kardex_insumo_gramos, productId],
+  );
+}
+
 module.exports = {
+  migrateProductInsumosToRecetas,
+  clearProductKardexLines,
   emptyLegacyKardex,
   normalizeKardexInsumoLines,
   resolveKardexInsumoLines,

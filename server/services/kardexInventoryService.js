@@ -354,9 +354,14 @@ function salidaInsumosPorProducto(tx, { productId, quantity, referencia, referen
   const qtyLine = Number(quantity || 0);
   if (!pid || qtyLine <= 0) return { skipped: true, reason: 'sin_producto' };
 
-  const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [pid]);
-  const kardexLines = resolveKardexInsumoLines(product || {});
-  if (kardexLines.length) {
+  const rec = tx.queryOne(
+    `SELECT * FROM recetas WHERE product_id = ? AND activo = 1 LIMIT 1`,
+    [pid],
+  );
+  if (!rec) {
+    const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [pid]);
+    const kardexLines = resolveKardexInsumoLines(product || {});
+    if (!kardexLines.length) return { skipped: true, reason: 'sin_receta' };
     let any = false;
     for (const line of kardexLines) {
       const result = salidaUnKardexLine(tx, line, qtyLine, { referenciaId, userId, eventAt });
@@ -364,12 +369,6 @@ function salidaInsumosPorProducto(tx, { productId, quantity, referencia, referen
     }
     return any ? { skipped: false } : { skipped: true, reason: 'sin_cantidad' };
   }
-
-  const rec = tx.queryOne(
-    `SELECT * FROM recetas WHERE product_id = ? AND activo = 1 LIMIT 1`,
-    [pid],
-  );
-  if (!rec) return { skipped: true, reason: 'sin_receta' };
 
   const dets = tx.queryAll('SELECT * FROM receta_detalle WHERE receta_id = ?', [rec.id]);
   for (const d of dets) {

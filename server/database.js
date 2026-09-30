@@ -2632,6 +2632,14 @@ async function initDatabase() {
       }
     }
 
+    try {
+      const { migrateProductInsumosToRecetas } = require('./utils/productKardexInsumos');
+      const r = migrateProductInsumosToRecetas({ queryAll, withTransaction });
+      if (r.cleared) console.log('[migration] insumos de productos → recetas:', JSON.stringify(r));
+    } catch (e) {
+      console.error('[migration] insumos de productos → recetas:', e.message || e);
+    }
+
     const ordersRegisterColDone = queryOne(
       'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
       ['2026-07-orders-cash-register-v1'],

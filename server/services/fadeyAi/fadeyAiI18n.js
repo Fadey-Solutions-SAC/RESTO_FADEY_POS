@@ -68,7 +68,41 @@ const OPTION_PAIRS = [
 /* ───────────── Inglés → consulta en español ───────────── */
 
 const EN_TO_ES_QUERY = [
+  [/\b(is not|isn'?t|does not|doesn'?t|won'?t|will not|can'?t|cannot|not) (print|printing)\b/g, 'no imprime'],
+  [/\b(is not|isn'?t|does not|doesn'?t|won'?t|not) (work|working|load|loading|open|opening)\b/g, 'no funciona'],
+  [/\bwhat (is|are)\b/g, 'que es'],
+  [/\bwhat does (.+?) mean\b/g, 'que significa $1'],
+  [/\bhow (do|can|should) (i|we|you) calculate\b/g, 'como calcular'],
+  [/\bhow is (.+?) calculated\b/g, 'como se calcula $1'],
+  [/\bcalculat\w*\b/g, 'calcular'],
+  [/\bformula\b/g, 'formula'],
+  [/\bbreak[- ]?even( point)?\b/g, 'punto de equilibrio'],
+  [/\bfixed (costs?|expenses)\b/g, 'costos fijos'],
+  [/\bcontribution margin\b/g, 'margen de contribucion'],
+  [/\baverage (ticket|check|spend)\b/g, 'ticket promedio'],
+  [/\bnet sales\b/g, 'ventas netas'],
+  [/\bgross sales\b/g, 'ventas brutas'],
+  [/\bcancel+ation rate\b/g, 'tasa de cancelacion'],
+  [/\blabou?r cost\b/g, 'costo laboral'],
+  [/\binventory turnover\b/g, 'rotacion de inventario'],
+  [/\b(days of inventory|inventory days)\b/g, 'dias de inventario'],
+  [/\breorder point\b/g, 'punto de reposicion'],
+  [/\bsafety stock\b/g, 'stock de seguridad'],
+  [/\binventory (difference|variance)\b/g, 'diferencia de inventario'],
+  [/\btable (occupancy|turnover)\b/g, 'ocupacion de mesas'],
+  [/\bcash flow\b/g, 'flujo de caja'],
+  [/\bmenu engineering\b/g, 'ingenieria de menu'],
+  [/\brecipe cost(ing)?\b/g, 'costo de receta'],
+  [/\bmarkup\b/g, 'recargo'],
+  [/\b(upsell\w*|cross[- ]?sell\w*)\b/g, 'venta complementaria'],
+  [/\bpercentage change\b/g, 'variacion porcentual'],
   [/\bshopping list|purchase list|buying list\b/g, 'lista de compras'],
+  [/\bsell more\b/g, 'vender mas'],
+  [/\b(make|earn) more( money)?\b/g, 'ganar mas'],
+  [/\b(improve|boost|increase|grow|raise|maximize)\b/g, 'mejorar'],
+  [/\b(profits?|earnings|income|revenue)\b/g, 'ganancias'],
+  [/\b(tips|ideas|advice|strategy|strategies)\b/g, 'consejos'],
+  [/\bbusiness\b/g, 'negocio'],
   [/\b(should|do|must|need to) (i|we) (buy|order|restock|purchase|reorder)\b/g, 'debo comprar'],
   [/\bto (buy|restock|reorder|purchase)\b/g, 'por comprar'],
   [/\bhow much did (i|we) (sell|make)\b/g, 'cuanto vendi'],
@@ -335,6 +369,8 @@ const ES_TO_EN = [
   ['artículo(s) sin costo registrado: la inversión estimada sale incompleta.', 'item(s) without a recorded cost: the estimated spend is incomplete.'],
   ['Cantidades calculadas para cubrir', 'Quantities calculated to cover'],
   ['días de venta más el stock mínimo, según lo vendido en los últimos', 'days of sales plus the minimum stock, based on sales over the last'],
+  ['Limitaciones: se basa en el stock registrado en el sistema; no considera compras en camino ni el tiempo de entrega del proveedor. Verifica el stock físico antes de comprar.', 'Limitations: based on the stock recorded in the system; it does not consider purchases in transit or supplier lead time. Check the physical stock before buying.'],
+  ['Si algo no aparece como se describe, puede que tu usuario no tenga permiso para ese módulo o que la opción esté desactivada en la configuración; consúltalo con el administrador.', 'If something does not appear as described, your user may not have permission for that module or the option may be disabled in the settings; check with the administrator.'],
   ['Cálculo: cubre', 'Calculation: covers'],
   ['días de venta más el stock mínimo (según los últimos', 'days of sales plus the minimum stock (based on the last'],
   ['días).', 'days).'],
@@ -462,7 +498,7 @@ function translateCell(value) {
 }
 
 function translateReport(report) {
-  if (!report) return report;
+  if (!report || report.lang === 'en') return report;
   return {
     ...report,
     lang: 'en',
@@ -489,6 +525,7 @@ function translateReport(report) {
 /** Traduce el resultado completo del chat (texto, opciones y fuentes con informe). */
 function translateResult(result, { isGuide = false } = {}) {
   if (!result) return result;
+  if (result.translated) return result;
   let reply = translateToEnglish(result.reply);
   if (isGuide) reply = `(This guide is written in Spanish.)\n\n${result.reply}`;
   return {

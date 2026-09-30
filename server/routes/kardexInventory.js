@@ -8,7 +8,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../database');
 const kx = require('../services/kardexInventoryService');
 const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
-const { unlinkInsumoFromProducts } = require('../utils/productKardexInsumos');
+const { unlinkInsumoFromProducts, clearProductKardexLines } = require('../utils/productKardexInsumos');
 const { emitInventoryUpdate, emitStaffDataUpdate } = require('../socketBroadcast');
 const { resolvePurchaseDate } = require('../utils/inventoryPurchaseDate');
 const { insumoEstaBajoMinimo } = require('../utils/insumoUnidadMedida');
@@ -301,11 +301,15 @@ router.post('/compras', (req, res) => {
 /** GET /recetas */
 router.get('/recetas', (req, res) => {
   try {
+    const productId = String(req.query.product_id || '').trim();
     const rows = queryAll(
-      `SELECT r.*, p.name as product_name
+      `SELECT r.*, p.name as product_name,
+              (SELECT COUNT(*) FROM receta_detalle rd WHERE rd.receta_id = r.id) AS insumos_count
        FROM recetas r
        LEFT JOIN products p ON p.id = r.product_id
-       ORDER BY r.nombre_plato ASC`
+       ${productId ? 'WHERE r.product_id = ?' : ''}
+       ORDER BY r.nombre_plato ASC`,
+      productId ? [productId] : [],
     );
     res.json(rows);
   } catch (err) {
@@ -319,13 +323,21 @@ router.post('/recetas', (req, res) => {
     const { nombre_plato, product_id, activo, detalles } = req.body || {};
     const n = String(nombre_plato || '').trim();
     if (!n) return res.status(400).json({ error: 'nombre_plato requerido' });
-    if (!String(product_id || '').trim()) return res.status(400).json({ error: 'product_id requerido para vincular a un plato del menú' });
-    const id = uuidv4();
+    const pid = String(product_id || '').trim();
+    if (!pid) return res.status(400).json({ error: 'product_id requerido para vincular a un plato del menú' });
+    const existing = queryOne('SELECT id FROM recetas WHERE product_id = ? ORDER BY activo DESC, created_at ASC LIMIT 1', [pid]);
+    const id = existing?.id || uuidv4();
     withTransaction((tx) => {
-      tx.run(
-        `INSERT INTO recetas (id, nombre_plato, product_id, activo) VALUES (?, ?, ?, ?)`,
-        [id, n, String(product_id).trim(), activo === false ? 0 : 1]
-      );
+      if (existing) {
+        tx.run('UPDATE recetas SET nombre_plato = ?, activo = ? WHERE id = ?', [n, activo === false ? 0 : 1, id]);
+        tx.run('DELETE FROM receta_detalle WHERE receta_id = ?', [id]);
+      } else {
+        tx.run(
+          `INSERT INTO recetas (id, nombre_plato, product_id, activo) VALUES (?, ?, ?, ?)`,
+          [id, n, pid, activo === false ? 0 : 1]
+        );
+      }
+      clearProductKardexLines(tx, pid);
       if (Array.isArray(detalles)) {
         detalles.forEach((d) => {
           if (!d.insumo_id || d.cantidad_usada == null) return;
@@ -336,7 +348,7 @@ router.post('/recetas', (req, res) => {
         });
       }
     });
-    res.status(201).json(queryOne('SELECT * FROM recetas WHERE id = ?', [id]));
+    res.status(existing ? 200 : 201).json(queryOne('SELECT * FROM recetas WHERE id = ?', [id]));
   } catch (err) {
     res.status(400).json({ error: err.message || 'Error al crear receta' });
   }
@@ -376,6 +388,7 @@ router.put('/recetas/:id', (req, res) => {
           req.params.id,
         ]
       );
+      clearProductKardexLines(tx, product_id != null ? String(product_id).trim() : cur.product_id);
       if (Array.isArray(detalles)) {
         tx.run('DELETE FROM receta_detalle WHERE receta_id = ?', [req.params.id]);
         detalles.forEach((d) => {
@@ -390,6 +403,21 @@ router.put('/recetas/:id', (req, res) => {
     res.json(queryOne('SELECT * FROM recetas WHERE id = ?', [req.params.id]));
   } catch (err) {
     res.status(500).json({ error: err.message || 'Error al actualizar receta' });
+  }
+});
+
+/** DELETE /recetas/:id */
+router.delete('/recetas/:id', (req, res) => {
+  try {
+    const cur = queryOne('SELECT id FROM recetas WHERE id = ?', [req.params.id]);
+    if (!cur) return res.status(404).json({ error: 'Receta no encontrada' });
+    withTransaction((tx) => {
+      tx.run('DELETE FROM receta_detalle WHERE receta_id = ?', [req.params.id]);
+      tx.run('DELETE FROM recetas WHERE id = ?', [req.params.id]);
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Error al eliminar receta' });
   }
 });
 

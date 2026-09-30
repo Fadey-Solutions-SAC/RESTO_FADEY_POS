@@ -19,6 +19,8 @@ const { runTool, resolveSalesPeriod } = require('./fadeyAiTools');
 const { buildSupportAnswer } = require('./fadeyAiSupport');
 const { buildReportAnswer } = require('./fadeyAiReports');
 const { buildPurchaseAnswer } = require('./fadeyAiPurchase');
+const { buildAdvisorAnswer, analyze: analyzeBusiness, resolveAdvicePeriod } = require('./fadeyAiAdvisor');
+const { buildConceptAnswer } = require('./fadeyAiConcepts');
 const { detectLanguage, toSpanishQuery, translateResult } = require('./fadeyAiI18n');
 const { formatDisplayDateKey } = require('../../utils/appDateTime');
 const {
@@ -148,7 +150,9 @@ function guidesOnlyReply(message, user) {
   const best = hits[0];
   const body = String(best.body || '').replace(/\n*\(Palabras clave:[\s\S]*$/, '').trim();
   return {
-    reply: `**${best.title}**\n\n${body}`,
+    reply: best.kind === 'guide'
+      ? `**${best.title}**\n\n${body}\n\nSi algo no aparece como se describe, puede que tu usuario no tenga permiso para ese módulo o que la opción esté desactivada en la configuración; consúltalo con el administrador.`
+      : `**${best.title}**\n\n${body}`,
     sources: [{ kind: best.kind, title: best.title, id: best.id || null }],
   };
 }
@@ -747,7 +751,7 @@ function rememberSuccessfulIntent(message, sources) {
   try {
     const src = Array.isArray(sources) && sources[0] ? sources[0] : null;
     if (!src) return;
-    if (['support_contact', 'report', 'report_hint', 'purchase_plan'].includes(src.title)) return;
+    if (['support_contact', 'report', 'report_hint', 'purchase_plan', 'business_advice', 'business_concept'].includes(src.title)) return;
     // No aprender guías para preguntas de datos (evita volver a “paso a paso” / menús).
     if (!isExplicitHowToMessage(message) && (src.title === 'search_guides' || src.kind === 'guide')) {
       return;
@@ -804,7 +808,10 @@ async function chat(user, message, context = {}) {
   const lang = detectLanguage(text);
   const query = lang === 'en' ? toSpanishQuery(text) : text;
 
-  const report = buildPurchaseAnswer(query, user) || buildReportAnswer(query, user);
+  const report = buildConceptAnswer(query, user, { lang, analyzeFn: analyzeBusiness, periodFn: resolveAdvicePeriod })
+    || buildPurchaseAnswer(query, user)
+    || buildAdvisorAnswer(query, user, { lang })
+    || buildReportAnswer(query, user);
   const support = report ? null : buildSupportAnswer(query, user, context, { originalMessage: text, lang });
   const prefetch = report || support ? { chunks: [] } : heuristicToolPrefetch(query, user);
   let result;

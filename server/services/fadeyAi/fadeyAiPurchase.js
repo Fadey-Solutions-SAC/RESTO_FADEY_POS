@@ -218,6 +218,7 @@ function buildPurchaseAnswer(message, user) {
   const total = report.kpis.find((k) => k.format === 'money')?.value || 0;
   if (total > 0) lines.push(`Inversión estimada: **${money(total)}**`);
   lines.push(`Cálculo: cubre ${COVER_DAYS} días de venta más el stock mínimo (según los últimos ${SALES_WINDOW_DAYS} días).`);
+  lines.push('Limitaciones: se basa en el stock registrado en el sistema; no considera compras en camino ni el tiempo de entrega del proveedor. Verifica el stock físico antes de comprar.');
   lines.push('¿Deseas descargar el informe? Elige **Excel** o **PDF** (incluye gráficos y todo el detalle).');
   return {
     reply: lines.join('\n'),

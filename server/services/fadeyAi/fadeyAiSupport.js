@@ -284,8 +284,12 @@ function buildSupportAnswer(message, user, context = {}, { originalMessage, lang
     `*Local:* ${localName}`,
     `*Número de contacto:* ${contact}`,
     `*Dominio:* ${domain}`,
+    '*Desde cuándo ocurre / hora aproximada:* ______',
+    '*Mensaje de error exacto (o captura):* ______',
+    '*¿Afecta a un usuario o a varios? ¿Un equipo o varios?:* ______',
+    '*¿Hubo cambios recientes (equipo, impresora, internet, configuración)?:* ______',
+    '*N° de pedido / comprobante afectado (si aplica):* ______',
     '*¿Usan AnyDesk?:* Sí / No — ID AnyDesk: ______',
-    '*Hora aproximada del error:* ______',
     '*Detalle adicional:* ______',
   ];
   const waMessage = waLines.join('\n');
@@ -301,8 +305,10 @@ function buildSupportAnswer(message, user, context = {}, { originalMessage, lang
     'Try this first:',
     ...catEn.checks.map((c) => `• ${c}`),
     '',
-    `If the problem continues, contact support on WhatsApp at ${SUPPORT_WHATSAPP_DISPLAY}.`,
-    'I left the message almost ready (person in charge, location, contact and domain). Just fill in whether you use AnyDesk (and its ID), the time of the error and any extra detail. The message is in Spanish for the support team.',
+    'To diagnose it, note: since when it happens, the exact error message (or a screenshot), whether it affects one or several users/devices, any recent changes, and the order/receipt number if there is one.',
+    'Did it get solved with these checks? If not:',
+    `contact support on WhatsApp at ${SUPPORT_WHATSAPP_DISPLAY}. I left the message almost ready (person in charge, location, contact and domain); just fill in the blanks. The message is in Spanish for the support team.`,
+    'Never share passwords or verification codes, not even with support.',
   ].join('\n') : [
     '**Incidencia detectada — soporte técnico**',
     '',
@@ -313,8 +319,10 @@ function buildSupportAnswer(message, user, context = {}, { originalMessage, lang
     'Prueba primero:',
     ...cat.checks.map((c) => `• ${c}`),
     '',
-    `Si el problema continúa, contacta a soporte por WhatsApp al ${SUPPORT_WHATSAPP_DISPLAY}.`,
-    'Te dejé el mensaje casi listo (encargado, local, contacto y dominio). Solo completa si usan AnyDesk (y su ID), la hora del error y cualquier detalle adicional.',
+    'Para diagnosticarlo anota: desde cuándo ocurre, el mensaje de error exacto (o una captura), si afecta a uno o varios usuarios/equipos, si hubo cambios recientes y el N° de pedido o comprobante si existe.',
+    '¿Se resolvió con estas comprobaciones? Si no:',
+    `contacta a soporte por WhatsApp al ${SUPPORT_WHATSAPP_DISPLAY}. Te dejé el mensaje casi listo (encargado, local, contacto y dominio); solo completa los espacios en blanco.`,
+    'Nunca compartas contraseñas ni códigos de verificación, ni siquiera con soporte.',
   ].join('\n');
 
   return {

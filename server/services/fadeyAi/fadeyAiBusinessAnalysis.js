@@ -420,7 +420,7 @@ function toolCostInsights(args = {}) {
     if (groups.estrella.length) lines.push(`Estrellas (se venden y dejan margen, cuídalos): ${groups.estrella.slice(0, 5).join(', ')}.`);
     if (groups.caballo.length) lines.push(`Populares con poco margen (sube precio poco a poco o ajusta porción/insumos): ${groups.caballo.slice(0, 5).join(', ')}.`);
     if (groups.enigma.length) lines.push(`Buen margen pero se venden poco (destácalos en la carta o que el mozo los recomiende): ${groups.enigma.slice(0, 5).join(', ')}.`);
-    if (groups.perro.length) lines.push(`Poco vendidos y poco margen (evalúa rediseñarlos o retirarlos): ${groups.perro.slice(0, 5).join(', ')}.`);
+    if (groups.perro.length) lines.push(`Poco vendidos y poco margen (antes de retirarlos revisa si cumplen otro rol: complemento, opción para un público o insumo compartido; prueba rediseño, porción o precio): ${groups.perro.slice(0, 5).join(', ')}.`);
   }
 
   const spendSorted = [...insumoSpend.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
@@ -470,4 +470,5 @@ module.exports = {
   customerStats,
   loadPaidOrderRows,
   unitCostBreakdown,
+  insumoPriceTrends,
 };

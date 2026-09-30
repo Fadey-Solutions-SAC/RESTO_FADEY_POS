@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { api, formatCurrency, formatInsumoQty, formatInsumoWithUnit } from '../../utils/api';
+import { api, formatCurrency } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { showStockInOrderingUI, isProductLowStock, productStockStatus } from '../../utils/productStockDisplay';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
-import { isUnidadUm, kardexRecipeInputUnit, normalizeInsumoUm, insumoStockEnUnidades } from '../../utils/insumoUnidadMedida';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
+import RecetaEditor from '../../components/RecetaEditor';
 import ContextMenu from '../../components/ContextMenu';
 import {
   MdAdd, MdEdit, MdDelete, MdSearch, MdRestaurantMenu, MdLunchDining,
@@ -51,59 +51,6 @@ function isProductInactive(p) {
   return Number(p?.is_active ?? 1) === 0;
 }
 
-function emptyKardexLine() {
-  return { insumo_id: '', qty: '' };
-}
-
-function kardexLinesFromProduct(p) {
-  const raw = Array.isArray(p?.kardex_insumos) ? p.kardex_insumos : [];
-  const mapped = raw
-    .map((row) => ({
-      insumo_id: String(row?.insumo_id || '').trim(),
-      qty: row?.qty != null && Number(row.qty) > 0 ? String(row.qty) : '',
-    }))
-    .filter((row) => row.insumo_id);
-  if (mapped.length) return mapped;
-  const id = String(p?.kardex_insumo_id || '').trim();
-  if (!id) return [emptyKardexLine()];
-  const modo = String(p.kardex_insumo_modo || 'unidad').toLowerCase() === 'peso' ? 'peso' : 'unidad';
-  const qty = modo === 'peso'
-    ? (Number(p.kardex_insumo_gramos) > 0 ? String(p.kardex_insumo_gramos) : '')
-    : (() => {
-      const n = Number(p.kardex_insumo_num);
-      const d = Number(p.kardex_insumo_den) > 0 ? Number(p.kardex_insumo_den) : 1;
-      return n > 0 ? String(n / d) : '';
-    })();
-  return [{ insumo_id: id, qty }];
-}
-
-function payloadFromKardexLines(lines, insumosKardex) {
-  const cleaned = [];
-  for (const row of Array.isArray(lines) ? lines : []) {
-    const insumo_id = String(row?.insumo_id || '').trim();
-    if (!insumo_id) continue;
-    const qty = parseFloat(row.qty);
-    if (!(qty > 0) || !Number.isFinite(qty)) {
-      return { error: 'qty' };
-    }
-    const ins = insumosKardex.find((i) => String(i.id) === String(insumo_id));
-    cleaned.push({
-      insumo_id,
-      qty,
-      modo: isUnidadUm(ins?.unidad_medida) ? 'unidad' : 'peso',
-    });
-  }
-  const first = cleaned[0];
-  return {
-    kardex_insumos: cleaned,
-    kardex_insumo_id: first?.insumo_id || '',
-    kardex_insumo_num: first && first.modo === 'unidad' ? first.qty : 1,
-    kardex_insumo_den: 1,
-    kardex_insumo_modo: first?.modo || 'unidad',
-    kardex_insumo_gramos: first && first.modo === 'peso' ? first.qty : 0,
-  };
-}
-
 const EMPTY_PRODUCT_FORM = {
   name: '',
   description: '',
@@ -120,7 +67,6 @@ const EMPTY_PRODUCT_FORM = {
   modifier_id: '',
   note_required: 0,
   hide_in_self_order: 0,
-  kardex_insumos: [{ insumo_id: '', qty: '' }],
   schedule_enabled: 0,
   available_from: '',
   available_to: '',
@@ -178,6 +124,9 @@ export default function Productos() {
   const [showModModal, setShowModModal] = useState(false);
   const [modForm, setModForm] = useState({ name: '', options: '', required: false });
   const [insumosKardex, setInsumosKardex] = useState([]);
+  const [recetaByProduct, setRecetaByProduct] = useState(new Map());
+  const [showRecipeModal, setShowRecipeModal] = useState(false);
+  const [recipeOpening, setRecipeOpening] = useState(false);
   const [productionAreas, setProductionAreas] = useState([
     { id: 'cocina', name: 'Cocina' },
     { id: 'bar', name: 'Bar' },
@@ -203,9 +152,15 @@ export default function Productos() {
       api.get('/restaurant').catch(() => ({})),
       api.get('/reports/slow-moving-products').catch(() => ({ product_ids: [], days: 14 })),
       api.get('/production-areas/active').catch(() => []),
+      api.get('/kardex-inventory/recetas').catch(() => []),
     ])
-      .then(([p, c, w, combosData, modifiersData, ins, restaurant, slowMoving, areas]) => {
+      .then(([p, c, w, combosData, modifiersData, ins, restaurant, slowMoving, areas, recetas]) => {
         setProducts(p);
+        setRecetaByProduct(new Map(
+          (Array.isArray(recetas) ? recetas : [])
+            .filter((r) => r.product_id)
+            .map((r) => [String(r.product_id), r]),
+        ));
         setRestaurantSchedule(restaurant?.schedule || {});
         setCategories(c);
         setWarehouses(w || []);
@@ -615,7 +570,6 @@ export default function Productos() {
       modifier_id: p.modifier_id || '',
       note_required: Number(p.note_required || 0) === 1 ? 1 : 0,
       hide_in_self_order: Number(p.hide_in_self_order || 0) === 1 ? 1 : 0,
-      kardex_insumos: kardexLinesFromProduct(p),
       schedule_enabled: Number(p.schedule_enabled || 0) === 1 ? 1 : 0,
       available_from: p.available_from || '',
       available_to: p.available_to || '',
@@ -661,8 +615,8 @@ export default function Productos() {
     setProductForm(prev => ({ ...prev, stock_warehouse_id: defaultWarehouseId }));
   }, [showProductModal, productForm.process_type, productForm.stock_warehouse_id, defaultWarehouseId]);
 
-  const handleProductSubmit = async (e) => {
-    e.preventDefault();
+  const handleProductSubmit = async (e, { keepOpen = false } = {}) => {
+    e?.preventDefault?.();
     try {
       const isNonTransformed = productForm.process_type === 'non_transformed';
       const stockAmount = Math.max(0, Number(productForm.stock || 0));
@@ -676,14 +630,6 @@ export default function Productos() {
         toast.error(t('validation.selectCategory'));
         return;
       }
-      const kardexPayload = isNonTransformed
-        ? payloadFromKardexLines([], insumosKardex)
-        : payloadFromKardexLines(productForm.kardex_insumos, insumosKardex);
-      if (kardexPayload.error === 'qty') {
-        toast.error(t('products.kardexQtyPositive'));
-        return;
-      }
-
       const rawPurchase = isNonTransformed ? String(productForm.purchase_price ?? '').trim() : '';
       if (isNonTransformed && rawPurchase !== '') {
         const pp = parseFloat(rawPurchase);
@@ -708,8 +654,8 @@ export default function Productos() {
         stock: isNonTransformed ? stockAmount : 0,
         min_stock: isNonTransformed ? Math.max(0, Math.floor(Number(productForm.min_stock || 0))) : 0,
         stock_warehouse_id: isNonTransformed ? warehouseId : '',
-        ...kardexPayload,
       };
+      let saved;
       if (editProduct) {
         const updated = await api.put(`/products/${editProduct.id}`, payload);
         if (isNonTransformed) {
@@ -723,6 +669,7 @@ export default function Productos() {
           updated.schedule_warnings.forEach((w) => toast(w, { icon: '⚠️' }));
         }
         toast.success(t('toast.productUpdated'));
+        saved = updated;
       } else {
         const created = await api.post('/products', payload);
         if (isNonTransformed) {
@@ -736,10 +683,38 @@ export default function Productos() {
           created.schedule_warnings.forEach((w) => toast(w, { icon: '⚠️' }));
         }
         toast.success(t('toast.productCreated'));
+        saved = created;
       }
-      setShowProductModal(false);
+      if (keepOpen) {
+        setEditProduct(saved);
+      } else {
+        setShowProductModal(false);
+      }
       load();
-    } catch (err) { toast.error(err.message); }
+      return saved;
+    } catch (err) {
+      toast.error(err.message);
+      return null;
+    }
+  };
+
+  /** La receta necesita el producto guardado: si es nuevo, se guarda primero y el formulario sigue abierto. */
+  const openRecipeForProduct = async () => {
+    if (!String(productForm.name || '').trim() || String(productForm.price ?? '').trim() === '') {
+      toast.error('Escribe primero el nombre y el precio del producto.');
+      return;
+    }
+    if (editProduct?.id) {
+      setShowRecipeModal(true);
+      return;
+    }
+    setRecipeOpening(true);
+    try {
+      const saved = await handleProductSubmit(null, { keepOpen: true });
+      if (saved?.id) setShowRecipeModal(true);
+    } finally {
+      setRecipeOpening(false);
+    }
   };
 
   const toggleProductActive = async (p) => {
@@ -1246,6 +1221,29 @@ export default function Productos() {
         </div>
       )}
 
+      <Modal
+        isOpen={showRecipeModal && Boolean(editProduct?.id)}
+        onClose={() => setShowRecipeModal(false)}
+        title={`Receta — ${productForm.name || editProduct?.name || ''}`}
+        size="lg"
+        containerClassName="!z-[60]"
+      >
+        {showRecipeModal && editProduct?.id ? (
+          <RecetaEditor
+            productId={editProduct.id}
+            productName={productForm.name || editProduct.name}
+            productPrice={productForm.price}
+            productionArea={productForm.production_area}
+            insumos={insumosKardex}
+            onSaved={() => {
+              setShowRecipeModal(false);
+              load();
+            }}
+            onCancel={() => setShowRecipeModal(false)}
+          />
+        ) : null}
+      </Modal>
+
       <Modal isOpen={showProductModal} onClose={() => setShowProductModal(false)} title={editProduct ? t('products.editTitle') : t('products.newTitle')} size="lg">
         <form onSubmit={handleProductSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -1261,9 +1259,6 @@ export default function Productos() {
                 min_stock: '',
                 stock_warehouse_id: '',
                 purchase_price: '',
-                kardex_insumos: productForm.kardex_insumos?.length
-                  ? productForm.kardex_insumos
-                  : [emptyKardexLine()],
               })}
               className={`py-2 rounded-lg border text-sm font-medium ${
                 productForm.process_type === 'transformed'
@@ -1279,7 +1274,6 @@ export default function Productos() {
                 ...productForm,
                 process_type: 'non_transformed',
                 stock_warehouse_id: productForm.stock_warehouse_id || defaultWarehouseId,
-                kardex_insumos: [emptyKardexLine()],
               })}
               className={`py-2 rounded-lg border text-sm font-medium ${
                 productForm.process_type === 'non_transformed'
@@ -1317,129 +1311,28 @@ export default function Productos() {
               </div>
             ) : (
               <div className="space-y-2">
-                {(productForm.kardex_insumos?.length ? productForm.kardex_insumos : [emptyKardexLine()]).map((line, idx, lines) => {
-                  const ins = insumosKardex.find((i) => String(i.id) === String(line.insumo_id));
-                  const inputUm = kardexRecipeInputUnit(ins?.unidad_medida);
-                  const taken = new Set(
-                    lines
-                      .map((row, i) => (i === idx ? '' : String(row.insumo_id || '').trim()))
-                      .filter(Boolean)
-                  );
-                  const options = insumosKardex.filter((i) => {
-                    if (Number(i.activo) === 0) return false;
-                    const area = String(i.insumo_area || 'cocina').toLowerCase() === 'bar' ? 'bar' : 'cocina';
-                    const prodArea = String(productForm.production_area || 'cocina').toLowerCase() === 'bar' ? 'bar' : 'cocina';
-                    if (area !== prodArea) return false;
-                    if (taken.has(String(i.id))) return false;
-                    return true;
-                  });
-                  const setLine = (patch) => {
-                    const next = [...lines];
-                    next[idx] = { ...next[idx], ...patch };
-                    setProductForm({ ...productForm, kardex_insumos: next });
-                  };
-                  return (
-                    <div key={`${line.insumo_id || 'new'}-${idx}`} className="grid grid-cols-[minmax(0,1fr)_5.5rem_auto] gap-2 items-end">
-                      <div className="min-w-0">
-                        {idx === 0 && (
-                          <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">
-                            {t('products.kardexInsumoLabel')}
-                          </label>
-                        )}
-                        <select
-                          className="input-field text-sm"
-                          value={line.insumo_id}
-                          onChange={(e) => setLine({ insumo_id: e.target.value })}
-                        >
-                          <option value="">{t('products.kardexInsumoChoose')}</option>
-                          {options.map((i) => {
-                            const um = kardexRecipeInputUnit(i.unidad_medida);
-                            const stockUm = normalizeInsumoUm(i.unidad_medida);
-                            if (isUnidadUm(stockUm)) {
-                              return (
-                                <option key={i.id} value={i.id}>
-                                  {i.nombre} (U.M. {um}) — {formatInsumoQty(insumoStockEnUnidades(i))} U
-                                </option>
-                              );
-                            }
-                            return (
-                              <option key={i.id} value={i.id}>
-                                {i.nombre} (U.M. {stockUm}) — {formatInsumoWithUnit(i.stock_actual, stockUm)}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                      <div>
-                        {idx === 0 && (
-                          <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">
-                            {ins
-                              ? t('products.kardexQtyPerDish', { unit: inputUm || 'U' })
-                              : t('products.kardexQtyLabel')}
-                          </label>
-                        )}
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={line.qty}
-                          onChange={(e) => setLine({ qty: e.target.value })}
-                          className="input-field text-sm py-1.5 w-full"
-                          placeholder={inputUm === 'ml' ? '50' : inputUm === 'g' ? '250' : inputUm === 'unidad' ? '3' : '1'}
-                          title={
-                            inputUm === 'g'
-                              ? 'Gramos a descontar por cada plato vendido'
-                              : undefined
-                          }
-                        />
-                      </div>
-                      {lines.length > 1 ? (
-                        <button
-                          type="button"
-                          className="mb-0.5 p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                          onClick={() => {
-                            const next = lines.filter((_, i) => i !== idx);
-                            setProductForm({
-                              ...productForm,
-                              kardex_insumos: next.length ? next : [emptyKardexLine()],
-                            });
-                          }}
-                          aria-label={t('products.kardexInsumoRemove')}
-                        >
-                          <MdClose className="text-lg" />
-                        </button>
-                      ) : (
-                        <span className="w-8" />
-                      )}
-                    </div>
-                  );
-                })}
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:text-emerald-800"
-                  onClick={() => {
-                    const lines = productForm.kardex_insumos?.length
-                      ? productForm.kardex_insumos
-                      : [emptyKardexLine()];
-                    setProductForm({ ...productForm, kardex_insumos: [...lines, emptyKardexLine()] });
-                  }}
-                >
-                  <MdAdd className="text-base" />
-                  {t('products.kardexInsumoAdd')}
-                </button>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Receta</label>
                 {(() => {
-                  const first = (productForm.kardex_insumos || []).find((row) => String(row?.insumo_id || '').trim());
-                  const ins = insumosKardex.find((i) => String(i.id) === String(first?.insumo_id));
-                  if (!ins) return null;
-                  const stockUm = normalizeInsumoUm(ins.unidad_medida);
-                  const inputUm = kardexRecipeInputUnit(ins.unidad_medida);
-                  if (stockUm === 'kg') {
-                    return <p className="text-xs ui-text-muted">{t('products.kardexQtyHintKg')}</p>;
-                  }
-                  if (stockUm === 'L') {
-                    return <p className="text-xs ui-text-muted">{t('products.kardexQtyHintL')}</p>;
-                  }
-                  return <p className="text-xs ui-text-muted">{t('products.kardexQtyHintExact', { unit: inputUm })}</p>;
+                  const rec = editProduct ? recetaByProduct.get(String(editProduct.id)) : null;
+                  const count = Number(rec?.insumos_count || 0);
+                  return (
+                    <>
+                      <p className={`text-xs ${rec && count ? 'ui-text-muted' : 'text-amber-600'}`}>
+                        {rec && count
+                          ? `${count} insumo(s)${Number(rec.activo) === 1 ? ' · se descuentan al vender' : ' · receta inactiva, no descuenta'}`
+                          : 'Sin receta: al venderlo no se descuentan insumos del almacén.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={openRecipeForProduct}
+                        disabled={recipeOpening}
+                        className="w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-600 text-emerald-700 text-sm font-medium hover:bg-emerald-50 disabled:opacity-60"
+                      >
+                        {rec ? <MdEdit className="text-base" /> : <MdAdd className="text-base" />}
+                        {rec ? 'Editar receta' : 'Agregar receta'}
+                      </button>
+                    </>
+                  );
                 })()}
               </div>
             )}

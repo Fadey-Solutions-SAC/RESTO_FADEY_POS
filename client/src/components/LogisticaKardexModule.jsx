@@ -26,6 +26,7 @@ import {
 import toast from 'react-hot-toast';
 import { MdWarning, MdInventory2, MdAdd, MdList, MdExpandMore, MdExpandLess } from 'react-icons/md';
 import Modal from './Modal';
+import RecetaEditor from './RecetaEditor';
 
 const TABS = [
   { id: 'dashboard', label: 'Resumen' },
@@ -131,10 +132,8 @@ export default function LogisticaKardexModule() {
   const [insumoForm, setInsumoForm] = useState(EMPTY_INSUMO_FORM);
   const [editingInsumoId, setEditingInsumoId] = useState('');
   const [compraLines, setCompraLines] = useState([{ insumo_id: '', cantidad: '', costo_unitario: '', unidades: '' }]);
-  const [recetaForm, setRecetaForm] = useState({
-    nombre_plato: '', product_id: '', activo: true, detalles: [{ insumo_id: '', cantidad_usada: '' }],
-  });
   const [editingRecetaId, setEditingRecetaId] = useState('');
+  const [recetaEditorKey, setRecetaEditorKey] = useState(0);
 
   const [kardexInsumo, setKardexInsumo] = useState('');
   const [kardexFrom, setKardexFrom] = useState('');
@@ -201,16 +200,6 @@ export default function LogisticaKardexModule() {
   const insumosCompraFiltrados = compraAreaTab === 'bar' ? insumosBar : insumosCocina;
   const insumosInvFisicoFiltrados = invFisicoAreaTab === 'bar' ? insumosBar : insumosCocina;
   const insumosAjusteFiltrados = ajusteAreaTab === 'bar' ? insumosBar : insumosCocina;
-
-  const selectedProductForReceta = useMemo(
-    () => products.find((p) => String(p.id) === String(recetaForm.product_id)),
-    [products, recetaForm.product_id]
-  );
-  const insumosParaReceta = useMemo(() => {
-    if (!recetaForm.product_id) return insumos;
-    const pa = String(selectedProductForReceta?.production_area || '').toLowerCase() === 'bar' ? 'bar' : 'cocina';
-    return insumos.filter((i) => (i.insumo_area || 'cocina') === pa);
-  }, [insumos, recetaForm.product_id, selectedProductForReceta]);
 
   const loadWhData = useCallback(async () => {
     const data = await api.get('/inventory/warehouse-stock');
@@ -403,63 +392,6 @@ export default function LogisticaKardexModule() {
       loadCore();
     } catch (err) {
       toast.error(err.message);
-    }
-  };
-
-  const saveReceta = async (e) => {
-    e.preventDefault();
-    if (!recetaForm.nombre_plato.trim() || !recetaForm.product_id) {
-      toast.error('Nombre de plato y producto del menú son obligatorios');
-      return;
-    }
-    const detalles = [];
-    for (const d of recetaForm.detalles) {
-      if (!d.insumo_id || d.cantidad_usada === '') continue;
-      const q = parseLocaleNumber(d.cantidad_usada);
-      if (!Number.isFinite(q) || q < 0) {
-        toast.error('Revisa la cantidad usada en recetas (número en la U.M. del insumo, ej. 0,1 o 0.1).');
-        return;
-      }
-      detalles.push({ insumo_id: d.insumo_id, cantidad_usada: q });
-    }
-    const body = {
-      nombre_plato: recetaForm.nombre_plato.trim(),
-      product_id: recetaForm.product_id,
-      activo: recetaForm.activo,
-      detalles,
-    };
-    try {
-      if (editingRecetaId) {
-        await api.put(`${BASE}/recetas/${editingRecetaId}`, body);
-        toast.success('Receta actualizada');
-      } else {
-        await api.post(`${BASE}/recetas`, body);
-        toast.success('Receta creada');
-      }
-      setEditingRecetaId('');
-      setRecetaForm({
-        nombre_plato: '', product_id: '', activo: true, detalles: [{ insumo_id: '', cantidad_usada: '' }],
-      });
-      loadCore();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  };
-
-  const loadRecetaEdit = async (id) => {
-    try {
-      const r = await api.get(`${BASE}/recetas/${id}`);
-      setEditingRecetaId(id);
-      setRecetaForm({
-        nombre_plato: r.nombre_plato || '',
-        product_id: r.product_id || '',
-        activo: Number(r.activo) === 1,
-        detalles: (r.detalles && r.detalles.length
-          ? r.detalles.map((d) => ({ insumo_id: d.insumo_id, cantidad_usada: String(d.cantidad_usada) }))
-          : [{ insumo_id: '', cantidad_usada: '' }]),
-      });
-    } catch (e) {
-      toast.error(e.message);
     }
   };
 
@@ -1190,114 +1122,23 @@ export default function LogisticaKardexModule() {
 
       {tab === 'recetas' && (
         <div className="space-y-4">
-          <p className="text-[var(--ui-body-text)] text-sm">
-            Vincula un plato al menú. Cada <strong>cantidad usada</strong> es en la U.M. del insumo (kg, L, ml). Con pollo
-            o carnes, si el insumo tiene promedio kg / U, al vender se descuentan <strong>kg y unidades en proporción</strong> (p. ej. 0,5 kg
-            = 0,2 U si 1 U = 2,5 kg).
-            {recetaForm.product_id ? (
-              <span className="block mt-1 text-sky-300/90 text-xs">
-                Solo se listan insumos de{' '}
-                <strong>{String(selectedProductForReceta?.production_area || '').toLowerCase() === 'bar' ? 'bar' : 'cocina'}</strong>
-                {' '}(según el área de preparación del producto elegido).
-              </span>
-            ) : null}
-          </p>
-          <form onSubmit={saveReceta} className="bg-[var(--ui-surface-2)] p-4 rounded-xl border border-[color:var(--ui-border)] space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <div>
-                <label className="block text-xs ui-text-muted">Nombre receta / plato</label>
-                <input
-                  className="input-field text-sm py-1.5 w-48"
-                  value={recetaForm.nombre_plato}
-                  onChange={(e) => setRecetaForm((f) => ({ ...f, nombre_plato: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="block text-xs ui-text-muted">Producto menú</label>
-                <select
-                  className="input-field text-sm py-1.5 min-w-[200px]"
-                  value={recetaForm.product_id}
-                  onChange={(e) => setRecetaForm((f) => ({ ...f, product_id: e.target.value }))}
-                >
-                  <option value="">— Seleccionar —</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <label className="flex items-end gap-2 h-full pb-1 text-sm">
-                <input
-                  type="checkbox"
-                  checked={recetaForm.activo}
-                  onChange={(e) => setRecetaForm((f) => ({ ...f, activo: e.target.checked }))}
-                />
-                Activo
-              </label>
-            </div>
-            <div className="space-y-2">
-              <p className="ui-text-muted text-xs">Insumos por unidad de plato (1 servicio)</p>
-              {recetaForm.detalles.map((d, di) => (
-                <div key={di} className="flex flex-wrap gap-2 items-center">
-                  <select
-                    className="input-field text-sm py-1.5"
-                    value={d.insumo_id}
-                    onChange={(e) => {
-                      const n = [...recetaForm.detalles];
-                      n[di] = { ...n[di], insumo_id: e.target.value };
-                      setRecetaForm((f) => ({ ...f, detalles: n }));
-                    }}
-                  >
-                    <option value="">— Insumo —</option>
-                    {insumosParaReceta.map((i) => (
-                      <option key={i.id} value={i.id}>{insumoOptionStockLabel(i)}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    min="0.0001"
-                    step="0.0001"
-                    placeholder="Cant. usada"
-                    className="input-field text-sm py-1.5 w-32"
-                    value={d.cantidad_usada}
-                    onChange={(e) => {
-                      const n = [...recetaForm.detalles];
-                      n[di] = { ...n[di], cantidad_usada: e.target.value };
-                      setRecetaForm((f) => ({ ...f, detalles: n }));
-                    }}
-                  />
-                </div>
-              ))}
-              <button
-                type="button"
-                className="text-amber-400/90 text-sm"
-                onClick={() => setRecetaForm((f) => ({
-                  ...f,
-                  detalles: [...f.detalles, { insumo_id: '', cantidad_usada: '' }],
-                }))}
-              >
-                + Insumo
-              </button>
-            </div>
-            <div className="flex gap-2">
-              {editingRecetaId && (
-                <button
-                  type="button"
-                  className="px-3 py-1.5 border border-slate-500 rounded-lg text-[var(--ui-muted)]"
-                  onClick={() => {
-                    setEditingRecetaId('');
-                    setRecetaForm({
-                      nombre_plato: '', product_id: '', activo: true, detalles: [{ insumo_id: '', cantidad_usada: '' }],
-                    });
-                  }}
-                >
-                  Cancelar edición
-                </button>
-              )}
-              <button type="submit" className="btn-primary">
-                {editingRecetaId ? 'Guardar receta' : 'Crear receta'}
-              </button>
-            </div>
-          </form>
+          <div className="bg-[var(--ui-surface-2)] p-4 rounded-xl border border-[color:var(--ui-border)]">
+            <p className="text-sm font-semibold text-[var(--ui-body-text)] mb-3">
+              {editingRecetaId ? 'Editar receta' : 'Nueva receta'}
+            </p>
+            <RecetaEditor
+              key={`${editingRecetaId || 'new'}-${recetaEditorKey}`}
+              recetaId={editingRecetaId}
+              products={products.filter((p) => p.process_type !== 'non_transformed')}
+              insumos={insumos}
+              onSaved={() => {
+                setEditingRecetaId('');
+                setRecetaEditorKey((k) => k + 1);
+                loadCore();
+              }}
+              onCancel={editingRecetaId ? () => setEditingRecetaId('') : undefined}
+            />
+          </div>
           <div className="border border-slate-600/50 rounded-lg overflow-hidden">
             {recetas.map((r) => (
               <div
@@ -1307,13 +1148,16 @@ export default function LogisticaKardexModule() {
                 <div>
                   <span className="font-medium">{r.nombre_plato}</span>
                   <span className="ui-text-muted text-sm ml-2">· {r.product_name || r.product_id}</span>
+                  <span className="ui-text-muted text-xs ml-2">
+                    · {Number(r.insumos_count || 0)} insumo(s){Number(r.activo) === 1 ? '' : ' · inactiva'}
+                  </span>
                 </div>
-                <button type="button" className="text-amber-400/90 text-sm" onClick={() => loadRecetaEdit(r.id)}>
+                <button type="button" className="text-amber-400/90 text-sm" onClick={() => { setEditingRecetaId(r.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
                   Editar
                 </button>
               </div>
             ))}
-            {!recetas.length && <p className="p-4 ui-text-muted text-sm">No hay recetas. Crea una y vincúlala a un plato.</p>}
+            {!recetas.length && <p className="p-4 ui-text-muted text-sm">No hay recetas. Crea una aquí o desde Productos → Editar producto → Agregar receta.</p>}
           </div>
         </div>
       )}
