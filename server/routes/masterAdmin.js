@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { queryAll, queryOne, resetOperationalData } = require('../database');
 const { authenticateToken } = require('../middleware/auth');
 const { buildPlanModuleTrees } = require('../planModuleCatalog');
+const { PLAN_KEYS, PLAN_INFO } = require('../servicePlan');
 const {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
   clearPaymentCycleReminderNotifications,
@@ -99,6 +100,10 @@ router.get('/dashboard', (req, res) => {
     admin_users: adminUsers,
     master_credentials: getMasterCredentialsPublic(),
     plan_module_trees: buildPlanModuleTrees(),
+    plan_catalog: PLAN_KEYS.map((key) => ({ key, ...PLAN_INFO[key] })),
+    active_users_count: Number(queryOne(
+      `SELECT COUNT(*) AS n FROM users WHERE IFNULL(is_active, 1) = 1 AND role != 'master_admin'`,
+    )?.n || 0),
   });
 });
 

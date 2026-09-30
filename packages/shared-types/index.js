@@ -35,8 +35,10 @@ const LICENSE_STATUSES = Object.freeze({
 
 const SERVICE_PLANS = Object.freeze({
   BASICO: 'basico',
-  INTERMEDIO: 'intermedio',
+  EMPRENDEDOR: 'emprendedor',
   PROFESIONAL: 'profesional',
+  NEGOCIO: 'negocio',
+  PREMIUM: 'premium',
 });
 
 module.exports = {

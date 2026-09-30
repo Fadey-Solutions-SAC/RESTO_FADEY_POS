@@ -14,7 +14,7 @@ import { defaultBillingPanel, defaultBillingPanelPresence } from '../../data/sun
 import { defaultMiRestaurantProfile, mergeMiRestaurantProfile } from '../../data/miRestaurantProfileDefaults';
 import MiRestaurantEmpresaHub from '../../components/miRestaurant/MiRestaurantEmpresaHub';
 import { isDeliveryEnabledValue, notifyDeliveryEnabledChanged } from '../../hooks/useDeliveryEnabled';
-import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory, MdDelete, MdSupportAgent, MdQrCode2 } from 'react-icons/md';
+import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory, MdDelete, MdSupportAgent, MdQrCode2, MdOpenInNew, MdSend } from 'react-icons/md';
 
 const PAGO_USO_WHATSAPP_SUPPORT = '934029719';
 const PAGO_USO_WHATSAPP_URL = `https://wa.me/51${PAGO_USO_WHATSAPP_SUPPORT}?text=${encodeURIComponent('Hola, necesito soporte sobre el pago por uso del sistema.')}`;
@@ -43,6 +43,14 @@ function pagoHistorialItemKey(item) {
   return `${item?.fecha || ''}|${item?.referencia || ''}|${String(item?.comprobante_pago_url || item?.voucher || '').trim()}`;
 }
 
+const PLAN_LABELS = {
+  basico: 'Básico',
+  emprendedor: 'Emprendedor',
+  profesional: 'Profesional',
+  negocio: 'Negocio',
+  premium: 'Premium',
+};
+
 const MI_RESTAURANT_VIEWS = [
   { id: 'mi_empresa', label: 'Mi empresa' },
   { id: 'facturacion_electronica', label: 'Facturación electrónica' },
@@ -57,7 +65,7 @@ export default function MiRestaurant() {
   const isMasterAdmin = user?.role === 'master_admin';
   const subMr = user?.sub_permissions?.mi_restaurant || {};
   const planAllowsSunatView =
-    isMasterAdmin || (user?.service_plan === 'profesional' && subMr.facturacion_electronica !== false);
+    isMasterAdmin || subMr.facturacion_electronica === true;
   const miRestaurantViewsForPlan = (() => {
     let v = planAllowsSunatView
       ? MI_RESTAURANT_VIEWS
@@ -149,6 +157,7 @@ export default function MiRestaurant() {
   }, [pagoUsoComprobanteUi]);
   const [centralResyncBusy, setCentralResyncBusy] = useState(false);
   const [enviarComprobanteBusy, setEnviarComprobanteBusy] = useState(false);
+  const [comprobanteListoParaEnviar, setComprobanteListoParaEnviar] = useState(false);
   const [comprobanteUploadBusy, setComprobanteUploadBusy] = useState(false);
   const [showPagarQrModal, setShowPagarQrModal] = useState(false);
   const [cargarComprobanteModal, setCargarComprobanteModal] = useState(null);
@@ -276,10 +285,15 @@ export default function MiRestaurant() {
     setEnviarComprobanteBusy(true);
     try {
       const res = await api.post('/platform-payments/submit', { comprobanteUrl: url, monto });
+      if (res?.payment) {
+        setPagoUsoComprobanteUi((prev) => ({ ...(prev || {}), platform_payment: res.payment }));
+      }
+      await syncPagoUsoAppConfigFromServer();
       await refreshPagoUsoComprobanteSchedule();
-      if (res?.central_user_message && !res?.ok) {
-        toast.error(res.central_user_message);
+      if (res?.ok === false) {
+        toast.error(res.central_user_message || 'No se pudo enviar el comprobante al panel. Intente de nuevo.');
       } else {
+        setComprobanteListoParaEnviar(false);
         toast.success(res?.central_user_message || 'Comprobante enviado. Pendiente de aprobación.');
       }
     } catch (err) {
@@ -292,6 +306,7 @@ export default function MiRestaurant() {
     appConfig.pago_uso_sistema?.comprobante_pago_url,
     appConfig.pago_uso_sistema?.monto_comprobante,
     refreshPagoUsoComprobanteSchedule,
+    syncPagoUsoAppConfigFromServer,
   ]);
 
   const loadInitialData = useCallback(() => {
@@ -511,6 +526,7 @@ export default function MiRestaurant() {
               numero_cuenta: String(raw.numero_cuenta || '').trim(),
               numero_telefono: String(raw.numero_telefono || '').trim().slice(0, 40),
               nombre_empresa_cobro: String(raw.nombre_empresa_cobro || '').trim(),
+              link_pago: String(raw.link_pago || '').trim(),
               comprobante_grace_days_after_due: grace,
               ...(Number.isFinite(Number(raw.precio_plan)) && Number(raw.precio_plan) >= 0
                 ? { precio_plan: Math.round(Number(raw.precio_plan) * 100) / 100 }
@@ -772,35 +788,8 @@ export default function MiRestaurant() {
       const saved = await api.put('/admin-modules/config/app', body);
       setAppConfig((prev) => ({ ...prev, ...saved }));
       await refreshPagoUsoComprobanteSchedule();
-
-      if (Number.isFinite(montoRaw) && montoRaw > 0) {
-        setEnviarComprobanteBusy(true);
-        try {
-          const result = await api.post('/platform-payments/submit', {
-            comprobanteUrl: url,
-            monto: Math.round(montoRaw * 100) / 100,
-          });
-          if (result?.payment) {
-            setPagoUsoComprobanteUi((prev) => ({
-              ...(prev || {}),
-              platform_payment: result.payment,
-            }));
-          }
-          await syncPagoUsoAppConfigFromServer();
-          await refreshPagoUsoComprobanteSchedule();
-          if (result?.ok === false) {
-            toast.error(result.central_user_message || 'Comprobante cargado, pero no se pudo enviar al panel.');
-          } else {
-            toast.success(result?.central_user_message || 'Comprobante enviado. Pendiente de aprobación.');
-          }
-        } catch (sendErr) {
-          toast.error(sendErr.message || 'Comprobante cargado; use Enviar si hace falta.');
-        } finally {
-          setEnviarComprobanteBusy(false);
-        }
-      } else {
-        toast.success('Comprobante cargado. Indique el monto y envíelo al panel.');
-      }
+      setComprobanteListoParaEnviar(true);
+      toast.success('Comprobante cargado. Revíselo y presione «Enviar comprobante».');
     } catch (err) {
       toast.error(err.message || 'No se pudo subir el comprobante');
     } finally {
@@ -1356,6 +1345,18 @@ export default function MiRestaurant() {
                       disabled={!canEditBillingMaster}
                     />
                   </div>
+                  {canEditBillingMaster ? (
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Link de pago Izipay</label>
+                      <input
+                        type="url"
+                        className="input-field"
+                        placeholder="https://pagolink.izipay.pe/..."
+                        value={appConfig.pago_uso_sistema?.link_pago || ''}
+                        onChange={(e) => updateAppCfg('pago_uso_sistema', 'link_pago', e.target.value)}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -1407,6 +1408,17 @@ export default function MiRestaurant() {
                       void uploadComprobantePagoUso(file, monto);
                     }}
                   />
+                  {String(appConfig.pago_uso_sistema?.link_pago || '').trim() ? (
+                    <a
+                      href={String(appConfig.pago_uso_sistema.link_pago).trim()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-2 text-sm px-4 py-3 rounded-lg font-semibold bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      <MdOpenInNew />
+                      1. Pagar
+                    </a>
+                  ) : null}
                   <button
                     type="button"
                     className="btn-primary inline-flex items-center justify-center gap-2 text-sm px-4 py-3 disabled:opacity-60"
@@ -1414,7 +1426,26 @@ export default function MiRestaurant() {
                     onClick={abrirCargaComprobante}
                   >
                     <MdUpload />
-                    {comprobanteUploadBusy || enviarComprobanteBusy ? 'Procesando…' : 'Cargar comprobante'}
+                    {comprobanteUploadBusy
+                      ? 'Cargando…'
+                      : `${String(appConfig.pago_uso_sistema?.link_pago || '').trim() ? '2. ' : ''}Cargar comprobante`}
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center gap-2 text-sm px-4 py-3 rounded-lg font-semibold bg-[var(--ui-accent)] text-white hover:opacity-90 disabled:opacity-50"
+                    disabled={
+                      !canEditPagoUsoComprobante
+                      || comprobanteUploadBusy
+                      || enviarComprobanteBusy
+                      || !String(appConfig.pago_uso_sistema?.comprobante_pago_url || '').trim()
+                      || !(comprobanteListoParaEnviar || pagoUsoComprobanteUi?.platform_payment?.last_central_sync_ok === false)
+                    }
+                    onClick={() => void enviarComprobanteAlPanel()}
+                  >
+                    <MdSend />
+                    {enviarComprobanteBusy
+                      ? 'Enviando…'
+                      : `${String(appConfig.pago_uso_sistema?.link_pago || '').trim() ? '3. ' : ''}Enviar comprobante`}
                   </button>
                   <button
                     type="button"
@@ -1426,6 +1457,7 @@ export default function MiRestaurant() {
                   </button>
                   {Number(appConfig.pago_uso_sistema?.precio_plan) > 0 ? (
                     <p className="text-[11px] text-center text-[var(--ui-muted)] tabular-nums">
+                      {PLAN_LABELS[user?.service_plan] ? `Plan ${PLAN_LABELS[user.service_plan]} · ` : ''}
                       Monto del plan: S/ {Number(appConfig.pago_uso_sistema.precio_plan).toFixed(2)}
                     </p>
                   ) : null}

@@ -254,6 +254,7 @@ export default function MasterRestaurantBillingWorkspace({ active }) {
         nombre_empresa_cobro: String(raw.nombre_empresa_cobro || '').trim(),
         comprobante_pago_url: String(raw.comprobante_pago_url || '').trim(),
         comprobante_grace_days_after_due: grace,
+        link_pago: String(raw.link_pago || '').trim(),
         ...(Number.isFinite(Number(raw.precio_plan)) && Number(raw.precio_plan) >= 0
           ? { precio_plan: Math.round(Number(raw.precio_plan) * 100) / 100 }
           : { precio_plan: '' }),
@@ -480,6 +481,16 @@ export default function MasterRestaurantBillingWorkspace({ active }) {
                 placeholder="Monto a cobrar por el periodo"
                 value={appConfig.pago_uso_sistema?.precio_plan ?? ''}
                 onChange={(e) => updateAppCfg('pago_uso_sistema', 'precio_plan', e.target.value)}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Link de pago Izipay</label>
+              <input
+                type="url"
+                className="input-field"
+                placeholder="https://pagolink.izipay.pe/..."
+                value={appConfig.pago_uso_sistema?.link_pago || ''}
+                onChange={(e) => updateAppCfg('pago_uso_sistema', 'link_pago', e.target.value)}
               />
             </div>
             <div className="md:col-span-2">

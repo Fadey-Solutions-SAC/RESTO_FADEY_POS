@@ -51,10 +51,12 @@ const DEFAULT_CONTROL = {
   pago_uso_comprobante_lock_auto: 0,
   /** 1 si el bloqueo lo impuso la central (usuario desactivado en panel Fadey) */
   central_policy_lock_auto: 0,
-  /** basico | intermedio | profesional — limita módulos para admin y personal */
-  service_plan: 'profesional',
-  /** { "caja": false, "caja:cobrar": true } — solo claves válidas para el plan; ausente = habilitado por defecto */
+  /** basico | emprendedor | profesional | negocio | premium — limita módulos para admin y personal */
+  service_plan: 'premium',
+  /** { "caja": false, "delivery": true } — diferencias respecto al plan: true agrega, false quita */
   service_plan_module_overrides: {},
+  /** undefined = límite del plan; null = sin límite; entero > 0 = máximo de usuarios activos */
+  service_plan_max_users: undefined,
   /** 1 = alertas de stock crítico activas en Escritorio / Dashboard / Productos */
   stock_alerts_enabled: 1,
   /** 1 = asistente IA Fadey (chat en notificaciones + monitoreo del local). Activada por defecto. */
@@ -917,11 +919,16 @@ function setControlConfig(patch = {}, actorName = '') {
   if (patch.service_plan !== undefined) {
     const { normalizePlan } = require('./servicePlan');
     const raw = String(patch.service_plan || '').trim().toLowerCase();
-    const norm = normalizePlan(raw);
-    if (!['basico', 'intermedio', 'profesional'].includes(norm)) {
-      throw new Error('Plan inválido: use plan basico, plan pro o plan premium');
+    next.service_plan = normalizePlan(raw);
+  }
+  if (patch.service_plan_max_users !== undefined) {
+    const raw = patch.service_plan_max_users;
+    if (raw === null || raw === '' || raw === 'unlimited') {
+      next.service_plan_max_users = null;
+    } else {
+      const n = Math.floor(Number(raw));
+      next.service_plan_max_users = Number.isFinite(n) && n > 0 ? Math.min(n, 9999) : null;
     }
-    next.service_plan = norm;
   }
   if (patch.stock_alerts_enabled !== undefined) {
     next.stock_alerts_enabled = Number(patch.stock_alerts_enabled) === 0 ? 0 : 1;
@@ -976,6 +983,33 @@ function setControlConfig(patch = {}, actorName = '') {
     }
   }
   return next;
+}
+
+/**
+ * Una vez: planes de 3 a 5. `profesional` antes incluía todo → premium; `intermedio` → negocio.
+ * Así ningún restaurante pierde módulos al actualizar.
+ */
+function migrateServicePlanKeysV2() {
+  const FLAG = 'service_plan_keys_v2';
+  if (readSetting(FLAG, null)) return;
+  const current = readSetting(MASTER_SETTING_KEY, {}) || {};
+  const raw = String(current.service_plan || '').trim().toLowerCase();
+  let next = null;
+  if (!raw || raw === 'profesional' || raw === 'plan premium' || raw === 'premium') next = 'premium';
+  else if (raw === 'intermedio' || raw === 'plan pro') next = 'negocio';
+  if (next) {
+    upsertSetting(MASTER_SETTING_KEY, { ...current, service_plan: next });
+  }
+  upsertSetting(FLAG, { at: new Date().toISOString(), from: raw || null, to: next });
+}
+
+/** Límite de usuarios activos del plan (null = ilimitado). */
+function getServicePlanMaxUsers(control = getControlConfig()) {
+  if (control.service_plan_max_users === null) return null;
+  const n = Number(control.service_plan_max_users);
+  if (Number.isFinite(n) && n > 0) return n;
+  const { getPlanInfo } = require('./servicePlan');
+  return getPlanInfo(control.service_plan).max_users;
 }
 
 /** Una vez: activa IA Fadey en instalaciones que aún tenían el default anterior (apagado). */
@@ -1104,6 +1138,8 @@ module.exports = {
   getPadronQuotaPublic,
   setControlConfig,
   ensureFadeyAiEnabledByDefault,
+  migrateServicePlanKeysV2,
+  getServicePlanMaxUsers,
   getNotifications,
   getActiveNotifications,
   addNotification,

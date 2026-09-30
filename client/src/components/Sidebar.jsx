@@ -320,18 +320,15 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const filtered = allLinks
     .filter(hasLinkPermission)
     .filter((link) => link.moduleId !== 'delivery' || showDeliveryUi);
-  const planAllowsAlmacenAvanzado = user?.service_plan !== 'basico';
   const subAlmacen = user?.sub_permissions?.almacen || {};
   const almacenSubOptions = ALMACEN_SUB_IDS.filter((id) => {
-    if (!planAllowsAlmacenAvanzado && ['requerimiento', 'recepcion'].includes(id)) return false;
     if (subAlmacen[id] === false) return false;
     return true;
   }).map((id) => ({ id, label: t(`almacenSub.${id}`) }));
   const informesSubOptions = INFORMES_SUB_IDS.map((id) => ({ id, label: t(`informesSub.${id}`) }));
-  const planProfesional = user?.service_plan === 'profesional';
   const subMi = user?.sub_permissions?.mi_restaurant || {};
   const miRestaurantSubOptionsByPlan = MI_RESTAURANT_SUB_IDS.filter((id) => {
-    if (!planProfesional && id === 'facturacion_electronica') return false;
+    if (id === 'facturacion_electronica' && subMi[id] !== true && user?.role !== 'master_admin') return false;
     if (subMi[id] === false) return false;
     return true;
   }).map((id) => ({ id, label: t(`miRestaurantSub.${id}`) }));

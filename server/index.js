@@ -137,11 +137,22 @@ app.use('/uploads', express.static(uploadsDir));
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
+    const mime = String(file.mimetype || '').toLowerCase();
+    let ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ext && uploadExtByMime[mime]) ext = uploadExtByMime[mime];
     cb(null, `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${ext}`);
   }
 });
-const uploadImageExtOk = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.heic', '.heif', '.avif', '.bmp']);
+const uploadExtByMime = {
+  'application/pdf': '.pdf',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/pjpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+const uploadImageExtOk = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.heic', '.heif', '.avif', '.bmp', '.pdf']);
 const uploadWordExtOk = new Set(['.doc', '.docx']);
 const upload = multer({
   storage,
@@ -463,6 +474,11 @@ async function start() {
     ensureFadeyAiSchema();
   } catch (err) {
     console.warn('[db] fadey-ai schema (startup):', err.message || err);
+  }
+  try {
+    require('./masterAdminService').migrateServicePlanKeysV2();
+  } catch (err) {
+    console.warn('[plan] migración de planes:', err.message || err);
   }
   try {
     const { ensureFadeyAiEnabledByDefault } = require('./masterAdminService');

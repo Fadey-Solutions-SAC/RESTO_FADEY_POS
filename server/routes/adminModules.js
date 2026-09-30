@@ -653,6 +653,13 @@ router.put('/config/app', requireRole('admin', 'master_admin'), (req, res) => {
     if (merged.numero_telefono !== undefined) {
       merged.numero_telefono = String(merged.numero_telefono || '').trim().slice(0, 40);
     }
+    if (merged.link_pago !== undefined) {
+      const link = String(merged.link_pago || '').trim().slice(0, 500);
+      if (link && !/^https:\/\/\S+$/i.test(link)) {
+        return res.status(400).json({ error: 'El link de pago debe empezar con https://' });
+      }
+      merged.link_pago = link;
+    }
     const prevUrlMaster = String(prevParsed.comprobante_pago_url || '').trim();
     const nextUrlMaster = String(merged.comprobante_pago_url || '').trim();
     if (nextUrlMaster && nextUrlMaster !== prevUrlMaster) {

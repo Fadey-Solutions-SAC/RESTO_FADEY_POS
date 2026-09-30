@@ -3,7 +3,9 @@
  * Claves: módulo (`caja`) o compuesto `caja:cobrar`, `mi_restaurant:facturacion_electronica`.
  */
 
-const { MODULE_IDS, normalizePlan, getModuleSetForPlan } = require('./servicePlan');
+const {
+  MODULE_IDS, PLAN_KEYS, getModuleSetForPlan, isSubInPlan,
+} = require('./servicePlan');
 
 const MODULE_LABELS = {
   escritorio: 'Escritorio',
@@ -94,78 +96,80 @@ function parseModuleOverrides(raw) {
   return out;
 }
 
-function getSubmoduleListForPlan(planKey, parentId) {
-  const p = normalizePlan(planKey);
+/** Lista completa de submódulos (el plan decide cuáles vienen activos por defecto). */
+function getSubmoduleListForPlan(_planKey, parentId) {
   if (parentId === 'caja') return CAJA_SUBS;
-  if (parentId === 'mi_restaurant') {
-    if (p === 'profesional') return MI_RESTAURANT_SUBS;
-    return MI_RESTAURANT_SUBS.filter((x) => x.id !== 'facturacion_electronica');
-  }
-  if (parentId === 'almacen') {
-    if (p === 'basico') return ALMACEN_SUBS.filter((x) => !['requerimiento', 'recepcion'].includes(x.id));
-    return ALMACEN_SUBS;
-  }
+  if (parentId === 'mi_restaurant') return MI_RESTAURANT_SUBS;
+  if (parentId === 'almacen') return ALMACEN_SUBS;
   return [];
 }
 
+const MODULE_ORDER = [
+  'escritorio', 'ventas', 'caja', 'mesas', 'produccion', 'cocina', 'bar', 'delivery', 'reservas', 'auto_pedido',
+  'clientes', 'fidelizacion', 'creditos', 'ofertas', 'descuentos', 'almacen', 'productos', 'informes', 'indicadores',
+  'mi_restaurant', 'tiempo_trabajado', 'configuracion',
+];
+
 /**
- * Orden de visualización alineado al menú lateral.
+ * Todos los módulos con `included` = viene en el plan por defecto. Orden del menú lateral.
  * @param {string} planKey
  */
 function buildPlanModuleTreeForPlan(planKey) {
   const planSet = getModuleSetForPlan(planKey);
-  const order = [
-    'escritorio', 'ventas', 'caja', 'mesas', 'produccion', 'cocina', 'bar', 'delivery', 'reservas', 'auto_pedido',
-    'clientes', 'fidelizacion', 'creditos', 'ofertas', 'descuentos', 'almacen', 'productos', 'informes', 'indicadores',
-    'mi_restaurant', 'tiempo_trabajado', 'configuracion',
-  ];
   const tree = [];
-  for (const id of order) {
-    if (!MODULE_IDS.includes(id) || !planSet.has(id)) continue;
-    const label = MODULE_LABELS[id] || id;
+  for (const id of MODULE_ORDER) {
+    if (!MODULE_IDS.includes(id)) continue;
+    const node = { id, label: MODULE_LABELS[id] || id, included: planSet.has(id) };
     const children = getSubmoduleListForPlan(planKey, id);
     if (children.length) {
-      tree.push({ id, label, children: children.map((c) => ({ id: c.id, label: c.label })) });
-    } else {
-      tree.push({ id, label });
+      node.children = children
+        .filter((c) => !(id === 'caja' && CAJA_USER_OPT_IN_SUBS.has(c.id)))
+        .map((c) => ({ id: c.id, label: c.label, included: isSubInPlan(planKey, `${id}:${c.id}`) }));
     }
+    tree.push(node);
   }
   return tree;
 }
 
 function buildPlanModuleTrees() {
-  return {
-    basico: buildPlanModuleTreeForPlan('basico'),
-    intermedio: buildPlanModuleTreeForPlan('intermedio'),
-    profesional: buildPlanModuleTreeForPlan('profesional'),
-  };
+  return Object.fromEntries(PLAN_KEYS.map((k) => [k, buildPlanModuleTreeForPlan(k)]));
 }
 
 function collectAllowedOverrideKeys(planKey) {
-  const tree = buildPlanModuleTreeForPlan(planKey);
   const keys = new Set();
-  for (const node of tree) {
+  for (const node of buildPlanModuleTreeForPlan(planKey)) {
     keys.add(node.id);
-    for (const ch of node.children || []) {
-      keys.add(`${node.id}:${ch.id}`);
-    }
-  }
-  // Siempre permitir apagar control de recursos aunque el plan base no los liste.
-  for (const id of ALMACEN_RESOURCE_CONTROL_SUBS) {
-    keys.add(`almacen:${id}`);
+    for (const ch of node.children || []) keys.add(`${node.id}:${ch.id}`);
   }
   return keys;
 }
 
+/** Solo guarda lo que difiere del plan: `true` agrega algo fuera del plan, `false` lo quita. */
 function sanitizeModuleOverridesForPlan(planKey, rawOverrides) {
   const parsed = parseModuleOverrides(rawOverrides);
   const allowed = collectAllowedOverrideKeys(planKey);
+  const planSet = getModuleSetForPlan(planKey);
   const out = {};
   for (const [k, v] of Object.entries(parsed)) {
     if (!allowed.has(k)) continue;
-    out[k] = v;
+    const included = k.includes(':') ? isSubInPlan(planKey, k) : planSet.has(k);
+    if (v !== included) out[k] = v;
   }
   return out;
+}
+
+function isModuleEnabledForPlan(planKey, moduleId, overrides) {
+  const ov = parseModuleOverrides(overrides);
+  if (ov[moduleId] === true) return true;
+  if (ov[moduleId] === false) return false;
+  return getModuleSetForPlan(planKey).has(moduleId);
+}
+
+function isSubEnabledForPlan(planKey, compositeKey, overrides) {
+  const ov = parseModuleOverrides(overrides);
+  if (ov[compositeKey] === true) return true;
+  if (ov[compositeKey] === false) return false;
+  return isSubInPlan(planKey, compositeKey);
 }
 
 function isPermissionEnabled(value) {
@@ -179,7 +183,6 @@ function isPermissionEnabled(value) {
  * @param {Record<string, boolean>} moduleOverrides
  */
 function getEffectivePermissions(planKey, role, rawPerms = {}, moduleOverrides = {}) {
-  const planSet = getModuleSetForPlan(planKey);
   const r = String(role || '').toLowerCase();
   const ov = parseModuleOverrides(moduleOverrides);
   return MODULE_IDS.reduce((acc, id) => {
@@ -187,13 +190,12 @@ function getEffectivePermissions(planKey, role, rawPerms = {}, moduleOverrides =
       acc[id] = false;
       return acc;
     }
-    const inPlan = planSet.has(id);
+    const inPlan = isModuleEnabledForPlan(planKey, id, ov);
     const userGranted = isPermissionEnabled(rawPerms[id]);
     if (r === 'admin') {
       acc[id] = inPlan;
     } else {
-      /** Permiso explícito en Usuarios prevalece sobre el plan SaaS (salvo bloqueo maestro). */
-      acc[id] = userGranted;
+      acc[id] = userGranted && inPlan;
     }
     return acc;
   }, {});
@@ -207,25 +209,17 @@ function getEffectivePermissions(planKey, role, rawPerms = {}, moduleOverrides =
 function buildSubPermissions(planKey, moduleOverrides, topLevelPermissions, rawUserPerms = {}) {
   const ov = parseModuleOverrides(moduleOverrides);
   const out = { caja: {}, mi_restaurant: {}, almacen: {} };
-  const p = normalizePlan(planKey);
   for (const parent of PARENTS_WITH_SUBS) {
     const parentOn = Boolean(topLevelPermissions[parent]);
     const children = getSubmoduleListForPlan(planKey, parent);
     for (const ch of children) {
       const key = `${parent}:${ch.id}`;
-      let subOn = parentOn && ov[key] !== false;
+      let subOn = parentOn && isSubEnabledForPlan(planKey, key, ov);
       if (parent === 'caja' && CAJA_USER_OPT_IN_SUBS.has(ch.id)) {
         subOn = parentOn && isPermissionEnabled(rawUserPerms[cajaSubPermissionKey(ch.id)]);
       }
       out[parent][ch.id] = subOn;
     }
-  }
-  // Asegurar claves de control de recursos aunque el plan básico no las liste en el árbol.
-  const almacenOn = Boolean(topLevelPermissions.almacen);
-  for (const id of ALMACEN_RESOURCE_CONTROL_SUBS) {
-    if (out.almacen[id] !== undefined) continue;
-    const planAllows = p !== 'basico' || id === 'ir_modulo_gastos';
-    out.almacen[id] = almacenOn && planAllows && ov[`almacen:${id}`] !== false;
   }
   return out;
 }
@@ -245,4 +239,6 @@ module.exports = {
   buildSubPermissions,
   getSubmoduleListForPlan,
   isPermissionEnabled,
+  isModuleEnabledForPlan,
+  isSubEnabledForPlan,
 };

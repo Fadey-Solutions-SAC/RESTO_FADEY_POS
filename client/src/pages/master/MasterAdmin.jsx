@@ -33,6 +33,20 @@ import {
 import MasterRestaurantBillingWorkspace from '../../components/master/MasterRestaurantBillingWorkspace';
 import { setMasterViewAsOwner } from '../../utils/masterViewMode';
 
+const PLAN_BADGES = {
+  profesional: 'Más popular',
+  premium: 'Mejor valor',
+};
+
+function resolveMaxUsersDraft(control, catalog) {
+  const raw = control?.service_plan_max_users;
+  if (raw === null) return '';
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return String(n);
+  const info = (catalog || []).find((p) => p.key === control?.service_plan);
+  return info?.max_users ? String(info.max_users) : '';
+}
+
 const TABS = [
   { id: 'usuarios', label: 'Usuario administrador', icon: MdAdminPanelSettings },
   { id: 'plan', label: 'Plan comercial', icon: MdLayers },
@@ -80,6 +94,8 @@ export default function MasterAdmin() {
   const [planModuleDraft, setPlanModuleDraft] = useState({});
   const [planPrecioDraft, setPlanPrecioDraft] = useState('');
   const [planPrecioSaving, setPlanPrecioSaving] = useState(false);
+  const [planMaxUsersDraft, setPlanMaxUsersDraft] = useState('');
+  const [planLinkPagoDraft, setPlanLinkPagoDraft] = useState('');
   const [stockAlertsEnabled, setStockAlertsEnabled] = useState(true);
   const [fadeyAiEnabled, setFadeyAiEnabled] = useState(true);
 
@@ -88,6 +104,7 @@ export default function MasterAdmin() {
       const data = await api.get('/master-admin/dashboard');
       setDashboard(data);
       setPlanModuleDraft({ ...(data?.control?.service_plan_module_overrides || {}) });
+      setPlanMaxUsersDraft(resolveMaxUsersDraft(data?.control, data?.plan_catalog));
       setStockAlertsEnabled(Number(data?.control?.stock_alerts_enabled) !== 0);
       setFadeyAiEnabled(Number(data?.control?.fadey_ai_enabled) === 1);
     } catch (err) {
@@ -112,6 +129,7 @@ export default function MasterAdmin() {
             ? ''
             : String(precio),
         );
+        setPlanLinkPagoDraft(String(appCfg?.pago_uso_sistema?.link_pago || ''));
       } catch (_) {
         /* ignore */
       }
@@ -411,7 +429,7 @@ export default function MasterAdmin() {
   }
 
   const control = dashboard?.control || {};
-  const planModuleTrees = dashboard?.plan_module_trees || { basico: [], intermedio: [], profesional: [] };
+  const planModuleTrees = dashboard?.plan_module_trees || {};
   const notifications = dashboard?.notifications || [];
   const adminUsers = dashboard?.admin_users || [];
   const creds = dashboard?.master_credentials || { username: 'Romero25879' };
@@ -506,216 +524,267 @@ export default function MasterAdmin() {
           </div>
         )}
 
-        {tab === 'plan' && (
-          <div className="card">
-            <h2 className="font-semibold rf-section-title mb-2">Plan comercial del restaurante</h2>
-            <p className="text-sm ui-text-muted mb-4">
-              Elija el plan y active o desactive módulos y submódulos incluidos en ese plan. Los cambios aplican al guardar; el personal debe{' '}
-              <strong>volver a iniciar sesión</strong> o recargar la página.
-            </p>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Plan activo</label>
-                  <select
-                    className="input-field"
-                    value={
-                      control.service_plan === 'basico' || control.service_plan === 'básico'
-                        ? 'basico'
-                        : control.service_plan === 'intermedio'
-                          ? 'intermedio'
-                          : 'profesional'
-                    }
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setDashboard((p) => ({
-                        ...(p || {}),
-                        control: { ...(p?.control || {}), service_plan: v },
-                      }));
-                      setPlanModuleDraft((draft) => {
-                        const tree = planModuleTrees[v] || [];
-                        const allowed = new Set();
-                        for (const n of tree) {
-                          allowed.add(n.id);
-                          for (const ch of n.children || []) {
-                            allowed.add(`${n.id}:${ch.id}`);
-                          }
-                        }
-                        const next = {};
-                        for (const [k, val] of Object.entries(draft || {})) {
-                          if (allowed.has(k)) next[k] = val;
-                        }
-                        return next;
-                      });
-                    }}
-                  >
-                    <option value="basico">plan basico</option>
-                    <option value="intermedio">plan pro</option>
-                    <option value="profesional">plan premium</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Precio del plan (S/)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="input-field tabular-nums"
-                    placeholder="Ej. 99.00"
-                    value={planPrecioDraft}
-                    onChange={(e) => setPlanPrecioDraft(e.target.value)}
-                  />
-                  <p className="text-xs text-[var(--ui-muted)] mt-1">
-                    Este monto se sugiere al cargar el comprobante de pago del plan.
-                  </p>
-                </div>
-                <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-[var(--ui-muted)]">
-                  Desactivar un módulo oculta su entrada en el menú. Desactivar un submódulo (p. ej. una vista de Caja) oculta solo esa opción si el módulo
-                  padre sigue activo.
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
-                  <h3 className="text-sm font-semibold text-slate-800">Controles del plan</h3>
-                  <label className="flex items-center justify-between gap-3 cursor-pointer">
-                    <span className="text-sm text-slate-700">Alertas de stock</span>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                      checked={stockAlertsEnabled}
-                      onChange={(e) => setStockAlertsEnabled(e.target.checked)}
-                    />
-                  </label>
-                  <p className="text-[11px] text-slate-500 -mt-1">Escritorio, Dashboard y avisos de stock bajo / agotado.</p>
-                  <label className="flex items-center justify-between gap-3 cursor-pointer">
-                    <span className="text-sm text-slate-700">Asistente IA Fadey</span>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                      checked={fadeyAiEnabled}
-                      onChange={(e) => setFadeyAiEnabled(e.target.checked)}
-                    />
-                  </label>
-                  <p className="text-[11px] text-slate-500 -mt-1">
-                    Chat en Notificaciones para el personal, aprendizaje del local y monitoreo en segundo plano.
-                  </p>
-                  <div className="border-t border-slate-100 pt-2 space-y-2">
-                    <p className="text-xs font-medium text-slate-600">Control de recursos</p>
-                    {[
-                      { key: 'almacen:requerimiento', label: 'Requerimientos' },
-                      { key: 'almacen:recepcion', label: 'Recepción' },
-                      { key: 'almacen:ir_modulo_gastos', label: 'Gastos' },
-                    ].map((row) => (
-                      <label key={row.key} className="flex items-center justify-between gap-3 cursor-pointer">
-                        <span className="text-sm text-slate-700">{row.label}</span>
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                          checked={planModuleDraft[row.key] !== false}
-                          onChange={(e) => {
-                            setPlanModuleDraft((prev) => {
-                              const next = { ...prev };
-                              if (e.target.checked) delete next[row.key];
-                              else next[row.key] = false;
-                              return next;
-                            });
-                          }}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    className="btn-primary flex items-center gap-2"
-                    disabled={planPrecioSaving}
-                    onClick={async () => {
-                      try {
-                        setPlanPrecioSaving(true);
-                        await updateControl(
-                          {
-                            service_plan: control.service_plan || 'profesional',
-                            service_plan_module_overrides: planModuleDraft,
-                            stock_alerts_enabled: stockAlertsEnabled ? 1 : 0,
-                            fadey_ai_enabled: fadeyAiEnabled ? 1 : 0,
-                          },
-                          null,
-                        );
-                        const precioNum = Number(planPrecioDraft);
-                        const precioPayload = Number.isFinite(precioNum) && precioNum >= 0
-                          ? Math.round(precioNum * 100) / 100
-                          : '';
-                        await api.put('/admin-modules/config/app', {
-                          pago_uso_sistema: { precio_plan: precioPayload },
-                        });
-                        setPlanPrecioDraft(precioPayload === '' ? '' : String(precioPayload));
-                        toast.success('Plan comercial actualizado');
-                      } catch (err) {
-                        toast.error(err.message || 'No se pudo guardar el plan');
-                      } finally {
-                        setPlanPrecioSaving(false);
-                      }
-                    }}
-                  >
-                    <MdSave /> {planPrecioSaving ? 'Guardando…' : 'Guardar plan y módulos'}
-                  </button>
+        {tab === 'plan' && (() => {
+          const catalog = dashboard?.plan_catalog || [];
+          const planKey = catalog.some((p) => p.key === control.service_plan) ? control.service_plan : 'premium';
+          const planInfo = catalog.find((p) => p.key === planKey) || {};
+          const tree = planModuleTrees[planKey] || [];
+          const activeUsers = Number(dashboard?.active_users_count || 0);
+          const maxUsersNum = Number(planMaxUsersDraft);
+          const hasUserLimit = String(planMaxUsersDraft).trim() !== '' && Number.isFinite(maxUsersNum) && maxUsersNum > 0;
+          const changesCount = Object.keys(planModuleDraft || {}).length;
+          const isOn = (key, included) => (
+            planModuleDraft[key] !== undefined ? planModuleDraft[key] !== false : !!included
+          );
+          const setToggle = (key, enabled, included) => {
+            setPlanModuleDraft((prev) => {
+              const next = { ...prev };
+              if (enabled === !!included) delete next[key];
+              else next[key] = enabled;
+              return next;
+            });
+          };
+          const selectPlan = (p) => {
+            setDashboard((prev) => ({
+              ...(prev || {}),
+              control: { ...(prev?.control || {}), service_plan: p.key },
+            }));
+            setPlanModuleDraft({});
+            setPlanPrecioDraft(p.price != null ? String(p.price) : '');
+            setPlanMaxUsersDraft(p.max_users ? String(p.max_users) : '');
+            setFadeyAiEnabled(!!p.fadey_ai);
+          };
+          const savePlan = async () => {
+            const link = String(planLinkPagoDraft || '').trim();
+            if (link && !/^https:\/\/\S+$/i.test(link)) {
+              toast.error('El link de pago debe empezar con https://');
+              return;
+            }
+            try {
+              setPlanPrecioSaving(true);
+              await updateControl(
+                {
+                  service_plan: planKey,
+                  service_plan_module_overrides: planModuleDraft,
+                  service_plan_max_users: hasUserLimit ? Math.floor(maxUsersNum) : null,
+                  stock_alerts_enabled: stockAlertsEnabled ? 1 : 0,
+                  fadey_ai_enabled: fadeyAiEnabled ? 1 : 0,
+                },
+                null,
+              );
+              const precioNum = Number(planPrecioDraft);
+              const precioPayload = String(planPrecioDraft).trim() !== '' && Number.isFinite(precioNum) && precioNum >= 0
+                ? Math.round(precioNum * 100) / 100
+                : '';
+              await api.put('/admin-modules/config/app', {
+                pago_uso_sistema: { precio_plan: precioPayload, link_pago: link },
+              });
+              setPlanPrecioDraft(precioPayload === '' ? '' : String(precioPayload));
+              setPlanLinkPagoDraft(link);
+              toast.success('Plan comercial actualizado');
+            } catch (err) {
+              toast.error(err.message || 'No se pudo guardar el plan');
+            } finally {
+              setPlanPrecioSaving(false);
+            }
+          };
+          return (
+            <div className="space-y-4">
+              <div className="card">
+                <h2 className="font-semibold rf-section-title mb-1">Plan comercial del restaurante</h2>
+                <p className="text-sm ui-text-muted mb-4">
+                  Cada plan activa por defecto solo los módulos que incluye. Puede marcar o desmarcar módulos y fijar un precio distinto; el personal debe{' '}
+                  <strong>volver a iniciar sesión</strong> o recargar la página para ver los cambios.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+                  {catalog.map((p) => {
+                    const selected = p.key === planKey;
+                    const moduleCount = (planModuleTrees[p.key] || []).filter((n) => n.included).length;
+                    const badge = PLAN_BADGES[p.key];
+                    return (
+                      <button
+                        key={p.key}
+                        type="button"
+                        onClick={() => selectPlan(p)}
+                        className={`relative text-left rounded-2xl border-2 p-4 transition ${
+                          selected
+                            ? 'border-[color:var(--ui-accent)] bg-[var(--ui-surface)] shadow-md'
+                            : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] hover:border-[color:var(--ui-accent)]'
+                        }`}
+                      >
+                        {badge && (
+                          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--ui-accent)] px-3 py-0.5 text-[11px] font-semibold text-white">
+                            {badge}
+                          </span>
+                        )}
+                        <p className="text-base font-bold text-[var(--ui-body-text)]">{p.label}</p>
+                        <p className="mt-1">
+                          <span className="text-2xl font-extrabold text-[var(--ui-body-text)] tabular-nums">S/{p.price}</span>
+                          <span className="text-sm ui-text-muted">/mes</span>
+                        </p>
+                        <p className="mt-2 text-xs ui-text-muted">
+                          {p.max_users ? `Hasta ${p.max_users} usuarios` : 'Usuarios ilimitados'}
+                        </p>
+                        <p className="text-xs ui-text-muted">{moduleCount} módulos · IA Fadey {p.fadey_ai ? 'incluida' : 'no incluida'}</p>
+                        {selected && (
+                          <span className="mt-2 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                            Seleccionado
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 max-h-[min(70vh,560px)] overflow-y-auto">
-                <h3 className="text-sm font-semibold rf-section-title mb-3">Módulos del plan seleccionado</h3>
-                {(() => {
-                  const planKey =
-                    control.service_plan === 'basico' || control.service_plan === 'básico'
-                      ? 'basico'
-                      : control.service_plan === 'intermedio'
-                        ? 'intermedio'
-                        : 'profesional';
-                  const tree = planModuleTrees[planKey] || [];
-                  const setToggle = (key, enabled) => {
-                    setPlanModuleDraft((prev) => {
-                      const next = { ...prev };
-                      if (enabled) delete next[key];
-                      else next[key] = false;
-                      return next;
-                    });
-                  };
-                  const isOn = (key) => planModuleDraft[key] !== false;
-                  return tree.length === 0 ? (
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <div className="card space-y-3">
+                  <h3 className="text-sm font-semibold rf-section-title">Condiciones del plan {planInfo.label || ''}</h3>
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Precio mensual (S/)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="input-field tabular-nums"
+                      placeholder={planInfo.price != null ? String(planInfo.price) : 'Ej. 99.00'}
+                      value={planPrecioDraft}
+                      onChange={(e) => setPlanPrecioDraft(e.target.value)}
+                    />
+                    <p className="text-xs text-[var(--ui-muted)] mt-1">
+                      Precio de lista: S/{planInfo.price ?? '—'}. Este monto se sugiere al cliente al enviar su comprobante.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Límite de usuarios activos</label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      className="input-field tabular-nums"
+                      placeholder="Vacío = ilimitado"
+                      value={planMaxUsersDraft}
+                      onChange={(e) => setPlanMaxUsersDraft(e.target.value)}
+                    />
+                    <p className={`text-xs mt-1 ${hasUserLimit && activeUsers > maxUsersNum ? 'text-rose-600' : 'text-[var(--ui-muted)]'}`}>
+                      Usuarios activos hoy: {activeUsers}
+                      {hasUserLimit ? ` de ${Math.floor(maxUsersNum)}` : ' (sin límite)'}
+                      {hasUserLimit && activeUsers > maxUsersNum ? ' — no se podrán crear ni reactivar usuarios hasta bajar del límite.' : ''}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Link de pago Izipay</label>
+                    <input
+                      type="url"
+                      className="input-field"
+                      placeholder="https://pagolink.izipay.pe/..."
+                      value={planLinkPagoDraft}
+                      onChange={(e) => setPlanLinkPagoDraft(e.target.value)}
+                    />
+                    <p className="text-xs text-[var(--ui-muted)] mt-1">
+                      El cliente verá el botón <strong>Pagar</strong> en Mi restaurante → Pago de plan, pagará en Izipay, descargará su comprobante y lo enviará desde el sistema.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-[color:var(--ui-border)] p-3 space-y-3">
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-[var(--ui-body-text)]">Asistente IA Fadey</span>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                        checked={fadeyAiEnabled}
+                        onChange={(e) => setFadeyAiEnabled(e.target.checked)}
+                      />
+                    </label>
+                    <p className="text-[11px] text-[var(--ui-muted)] -mt-1">
+                      {planInfo.fadey_ai ? 'Incluida en este plan.' : 'No incluida en este plan (puede activarla como extra).'}
+                    </p>
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-[var(--ui-body-text)]">Alertas de stock</span>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                        checked={stockAlertsEnabled}
+                        onChange={(e) => setStockAlertsEnabled(e.target.checked)}
+                      />
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="btn-secondary text-sm"
+                      disabled={changesCount === 0}
+                      onClick={() => setPlanModuleDraft({})}
+                    >
+                      Restablecer módulos del plan
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary flex items-center gap-2"
+                      disabled={planPrecioSaving}
+                      onClick={() => void savePlan()}
+                    >
+                      <MdSave /> {planPrecioSaving ? 'Guardando…' : 'Guardar plan y módulos'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="card max-h-[min(75vh,680px)] overflow-y-auto">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <h3 className="text-sm font-semibold rf-section-title">Módulos del plan {planInfo.label || ''}</h3>
+                    {changesCount > 0 && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                        {changesCount} cambio{changesCount === 1 ? '' : 's'} sobre el plan
+                      </span>
+                    )}
+                  </div>
+                  {tree.length === 0 ? (
                     <p className="text-sm ui-text-muted">No hay datos de catálogo. Recargue la página.</p>
                   ) : (
-                    <ul className="space-y-3">
+                    <ul className="space-y-2">
                       {tree.map((node) => {
                         const parentKey = node.id;
-                        const parentOn = isOn(parentKey);
+                        const parentOn = isOn(parentKey, node.included);
+                        const tag = node.included
+                          ? (parentOn ? null : { text: 'Quitado', cls: 'bg-rose-100 text-rose-700' })
+                          : (parentOn ? { text: 'Extra', cls: 'bg-sky-100 text-sky-700' } : { text: 'No incluido', cls: 'bg-slate-100 text-slate-500' });
                         return (
-                          <li key={parentKey} className="border border-slate-200 rounded-lg bg-white px-3 py-2">
+                          <li
+                            key={parentKey}
+                            className={`border rounded-lg px-3 py-2 ${parentOn ? 'border-[color:var(--ui-border)] bg-[var(--ui-surface)]' : 'border-dashed border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]'}`}
+                          >
                             <label className="flex items-center justify-between gap-2 cursor-pointer">
-                              <span className="text-sm font-medium text-slate-800">{node.label}</span>
+                              <span className={`text-sm font-medium ${parentOn ? 'text-[var(--ui-body-text)]' : 'text-[var(--ui-muted)]'}`}>
+                                {node.label}
+                                {tag && (
+                                  <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${tag.cls}`}>{tag.text}</span>
+                                )}
+                              </span>
                               <input
                                 type="checkbox"
                                 className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                                 checked={parentOn}
-                                onChange={(e) => setToggle(parentKey, e.target.checked)}
+                                onChange={(e) => setToggle(parentKey, e.target.checked, node.included)}
                               />
                             </label>
-                            {(node.children || []).length > 0 && (
-                              <ul className="mt-2 ml-2 space-y-1.5 border-t border-slate-100 pt-2">
+                            {parentOn && (node.children || []).length > 0 && (
+                              <ul className="mt-2 ml-2 space-y-1.5 border-t border-[color:var(--ui-border)] pt-2">
                                 {(node.children || []).map((ch) => {
                                   const ck = `${parentKey}:${ch.id}`;
-                                  const subOn = parentOn && isOn(ck);
+                                  const subOn = isOn(ck, ch.included);
                                   return (
                                     <li key={ck}>
-                                      <label
-                                        className={`flex items-center justify-between gap-2 text-sm ${
-                                          parentOn ? 'cursor-pointer text-slate-700' : 'text-[var(--ui-muted)] cursor-not-allowed'
-                                        }`}
-                                      >
-                                        <span>{ch.label}</span>
+                                      <label className="flex items-center justify-between gap-2 text-sm cursor-pointer text-[var(--ui-body-text)]">
+                                        <span className={subOn ? '' : 'text-[var(--ui-muted)]'}>
+                                          {ch.label}
+                                          {!ch.included && subOn && (
+                                            <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">Extra</span>
+                                          )}
+                                        </span>
                                         <input
                                           type="checkbox"
                                           className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                                           checked={subOn}
-                                          disabled={!parentOn}
-                                          onChange={(e) => setToggle(ck, e.target.checked)}
+                                          onChange={(e) => setToggle(ck, e.target.checked, ch.included)}
                                         />
                                       </label>
                                     </li>
@@ -727,12 +796,12 @@ export default function MasterAdmin() {
                         );
                       })}
                     </ul>
-                  );
-                })()}
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {tab === 'contrato' && (
           <div className="flex flex-col gap-2 min-h-0 h-[calc(100dvh-7.5rem)]">

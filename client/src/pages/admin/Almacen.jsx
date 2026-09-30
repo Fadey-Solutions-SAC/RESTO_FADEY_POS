@@ -342,15 +342,11 @@ function downloadGastoGroup(group, format = 'excel', { usuario } = {}) {
 export default function Almacen() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const planAllowsAlmacenAvanzado = user?.service_plan !== 'basico';
+  const planAllowsAlmacenAvanzado = user?.sub_permissions?.almacen?.ir_modulo_logistica !== false;
   const almacenViewsForPlan = useMemo(() => {
     const subAlmacen = user?.sub_permissions?.almacen || {};
-    return ALMACEN_VIEWS.filter((v) => {
-      if (!planAllowsAlmacenAvanzado && ['requerimiento', 'recepcion'].includes(v.id)) return false;
-      if (subAlmacen[v.id] === false) return false;
-      return true;
-    });
-  }, [planAllowsAlmacenAvanzado, user?.sub_permissions?.almacen]);
+    return ALMACEN_VIEWS.filter((v) => subAlmacen[v.id] !== false);
+  }, [user?.sub_permissions?.almacen]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);

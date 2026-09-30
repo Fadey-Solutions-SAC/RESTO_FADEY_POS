@@ -177,6 +177,21 @@ function listUsersRows() {
   throw lastErr || new Error('No se pudieron listar usuarios');
 }
 
+/** Mensaje de error si ya se alcanzó el máximo de usuarios activos del plan; null si hay cupo. */
+function planUserLimitError(excludeUserId = '') {
+  const { getServicePlanMaxUsers, getControlConfig } = require('../masterAdminService');
+  const { getPlanInfo } = require('../servicePlan');
+  const control = getControlConfig();
+  const max = getServicePlanMaxUsers(control);
+  if (max == null) return null;
+  const row = queryOne(
+    `SELECT COUNT(*) AS n FROM users WHERE IFNULL(is_active, 1) = 1 AND role != 'master_admin' AND id != ?`,
+    [String(excludeUserId || '')],
+  );
+  if (Number(row?.n || 0) < max) return null;
+  return `Tu plan ${getPlanInfo(control.service_plan).label} permite hasta ${max} usuarios activos. Desactiva un usuario o mejora tu plan.`;
+}
+
 router.get('/', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     res.json(listUsersRows().map(withPublicEmail));
@@ -210,6 +225,11 @@ router.post('/', authenticateToken, requireRole('admin'), (req, res) => {
     if (emailRaw && !isNoEmailPlaceholder(emailRaw)) {
       const existingEmail = queryOne('SELECT id FROM users WHERE email = ?', [email]);
       if (existingEmail) return res.status(400).json({ error: 'El email ya está en uso' });
+    }
+
+    if (isActive) {
+      const limitError = planUserLimitError();
+      if (limitError) return res.status(400).json({ error: limitError });
     }
 
     const cajaNorm = normalizeCajaStationId(role, req.body?.caja_station_id, { excludeUserId: '' });
@@ -322,6 +342,10 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     const role = req.body?.role === undefined ? current.role : String(req.body.role || '').trim().toLowerCase();
     const phone = req.body?.phone === undefined ? current.phone : String(req.body.phone || '').trim();
     const isActive = req.body?.is_active === undefined ? current.is_active : (Number(req.body.is_active || 0) === 1 ? 1 : 0);
+    if (Number(isActive) === 1 && Number(current.is_active) !== 1 && current.role !== 'master_admin') {
+      const limitError = planUserLimitError(current.id);
+      if (limitError) return res.status(400).json({ error: limitError });
+    }
     const password = String(req.body?.password || '').trim();
     const rawCaja =
       req.body?.caja_station_id === undefined ? current.caja_station_id : req.body.caja_station_id;
