@@ -22,6 +22,23 @@ import {
   MdSettings,
   MdStars,
   MdVisibility,
+  MdAutoAwesome,
+  MdBarChart,
+  MdCalendarToday,
+  MdChevronRight,
+  MdFavorite,
+  MdForum,
+  MdGroups,
+  MdHome,
+  MdLocalOffer,
+  MdMenuBook,
+  MdPerson,
+  MdRestaurant,
+  MdSentimentSatisfiedAlt,
+  MdStar,
+  MdThumbUp,
+  MdTrackChanges,
+  MdTrendingUp,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import LoyaltySurveyFilledSheet from '../../components/loyalty/LoyaltySurveyFilledSheet';
@@ -31,6 +48,23 @@ const VIEWS = [
   { id: 'panel', label: 'Panel', icon: MdDashboard },
   { id: 'configuracion', label: 'Configuración', icon: MdSettings },
 ];
+
+const EXPERIENCE_META = [
+  { match: /comida|bebida|plato|sabor/, Icon: MdRestaurant, bubble: 'bg-emerald-100 text-emerald-600', bar: 'bg-emerald-500' },
+  { match: /variedad|men[uú]|carta/, Icon: MdMenuBook, bubble: 'bg-blue-100 text-blue-600', bar: 'bg-blue-500' },
+  { match: /atenci[oó]n|personal|mozo|servicio/, Icon: MdPerson, bubble: 'bg-violet-100 text-violet-600', bar: 'bg-violet-500' },
+  { match: /ambiente|instalaci|local/, Icon: MdHome, bubble: 'bg-teal-100 text-teal-600', bar: 'bg-teal-500' },
+  { match: /limpieza|higiene/, Icon: MdAutoAwesome, bubble: 'bg-sky-100 text-sky-600', bar: 'bg-sky-500' },
+  { match: /precio|calidad\s*-\s*precio|costo/, Icon: MdLocalOffer, bubble: 'bg-orange-100 text-orange-500', bar: 'bg-orange-400' },
+  { match: /general|experiencia/, Icon: MdSentimentSatisfiedAlt, bubble: 'bg-purple-100 text-purple-600', bar: 'bg-purple-500' },
+];
+
+function experienceMeta(label) {
+  const text = String(label || '').toLowerCase();
+  if (/relaci[oó]n.*precio/.test(text)) return EXPERIENCE_META[5];
+  return EXPERIENCE_META.find((m) => m.match.test(text))
+    || { Icon: MdStars, bubble: 'bg-amber-100 text-amber-600', bar: 'bg-amber-400' };
+}
 
 function surveyUrl() {
   const base = typeof window !== 'undefined' ? window.location.origin : '';
@@ -326,73 +360,126 @@ export default function Fidelizacion() {
   const improveSummary = Array.isArray(data?.improve_summary) ? data.improve_summary : [];
   const responses = Array.isArray(data?.responses) ? data.responses : [];
   const withComment = responses.filter((r) => String(r.comment || '').trim());
+  const todayLabel = new Date().toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
-        {VIEWS.map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setView(t.id)}
-              className={`rf-tab-btn inline-flex items-center gap-1.5 ${view === t.id ? 'rf-tab-btn--active' : ''}`}
-            >
-              <Icon className="text-lg" />
-              {t.label}
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {VIEWS.map((t) => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setView(t.id)}
+                className={`rf-tab-btn inline-flex items-center gap-1.5 ${view === t.id ? 'rf-tab-btn--active' : ''}`}
+              >
+                <Icon className="text-lg" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+        {view === 'panel' ? (
+          <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm">
+            <MdCalendarToday className="text-slate-500" />
+            {todayLabel}
+          </div>
+        ) : null}
       </div>
 
       {view === 'panel' ? (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="card p-5 flex flex-col items-center text-center !bg-[#fff8eb] !border-[#eadfc4]">
-              <p className="text-sm ui-text-muted mb-1">Promedio general</p>
-              <div className="flex items-center gap-2 text-4xl font-semibold rf-section-title">
-                <MdStars className="text-amber-500/80" />
-                {loading ? '—' : avg.toFixed(1)}
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Resumen de fidelización</h1>
+            <p className="text-sm text-slate-500">Lo que opinan tus clientes en las encuestas</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              {
+                key: 'avg',
+                title: 'Promedio general',
+                value: loading ? '—' : avg.toFixed(1),
+                hint: `sobre 5 · ${count} encuesta${count === 1 ? '' : 's'}`,
+                Icon: MdStar,
+                Deco: MdTrendingUp,
+                wrap: 'from-emerald-50 to-white border-emerald-200/80',
+                bubble: 'from-emerald-400 to-emerald-600 shadow-emerald-500/30',
+                deco: 'text-emerald-400/70',
+              },
+              {
+                key: 'count',
+                title: 'Respuestas',
+                value: loading ? '—' : count,
+                hint: 'clientes que opinaron',
+                Icon: MdPeople,
+                Deco: MdGroups,
+                wrap: 'from-sky-50 to-white border-sky-200/80',
+                bubble: 'from-sky-400 to-blue-600 shadow-blue-500/30',
+                deco: 'text-sky-300/80',
+              },
+              {
+                key: 'comments',
+                title: 'Con comentario',
+                value: loading ? '—' : withComment.length,
+                hint: 'mensajes de clientes',
+                Icon: MdChatBubbleOutline,
+                Deco: MdForum,
+                wrap: 'from-violet-50 to-white border-violet-200/80',
+                bubble: 'from-violet-400 to-purple-600 shadow-purple-500/30',
+                deco: 'text-violet-300/80',
+              },
+            ].map((k) => (
+              <div
+                key={k.key}
+                className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br ${k.wrap} p-5 shadow-sm`}
+              >
+                <k.Deco className={`pointer-events-none absolute right-4 top-4 text-5xl ${k.deco}`} />
+                <div className="pointer-events-none absolute -bottom-10 -right-6 h-28 w-48 rounded-full bg-white/50" />
+                <div className="relative flex items-start gap-4">
+                  <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-full bg-gradient-to-br text-white shadow-lg ${k.bubble}`}>
+                    <k.Icon className="text-2xl" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">{k.title}</p>
+                    <p className="mt-1 text-4xl font-bold leading-none text-slate-900 tabular-nums">{k.value}</p>
+                    <p className="mt-2 text-xs text-slate-500">{k.hint}</p>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs ui-text-muted mt-1">sobre 5 · {count} encuesta{count === 1 ? '' : 's'}</p>
-            </div>
-            <div className="card p-5 flex flex-col items-center text-center !bg-[#eef4fa] !border-[#d5e2ef]">
-              <p className="text-sm ui-text-muted mb-1">Respuestas</p>
-              <div className="flex items-center gap-2 text-4xl font-semibold rf-section-title">
-                <MdPeople className="text-sky-600/70" />
-                {loading ? '—' : count}
-              </div>
-              <p className="text-xs ui-text-muted mt-1">clientes que opinaron</p>
-            </div>
-            <div className="card p-5 flex flex-col items-center text-center !bg-[#f4f0f8] !border-[#e2d8ec]">
-              <p className="text-sm ui-text-muted mb-1">Con comentario</p>
-              <div className="flex items-center gap-2 text-4xl font-semibold rf-section-title">
-                <MdChatBubbleOutline className="text-violet-500/70" />
-                {loading ? '—' : withComment.length}
-              </div>
-              <p className="text-xs ui-text-muted mt-1">mensajes de clientes</p>
-            </div>
+            ))}
           </div>
 
           {questionsAvg.length > 0 && (
-            <div className="card p-5 !bg-[#eef7f3] !border-[#d4e8df]">
-              <h2 className="text-lg font-semibold rf-section-title mb-3">Promedio por experiencia</h2>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="mb-4 flex items-center gap-2.5 text-lg font-semibold text-slate-900">
+                <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-700">
+                  <MdBarChart className="text-xl" />
+                </span>
+                Promedio por experiencia
+              </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {questionsAvg.map((q, i) => {
-                  const tint = [
-                    '!bg-[#f7fbf9] !border-[#dceee6]',
-                    '!bg-[#f8f6fb] !border-[#e5dff0]',
-                    '!bg-[#f7f9fc] !border-[#dce6f0]',
-                    '!bg-[#fbf8f2] !border-[#eee4d4]',
-                    '!bg-[#f8f4f4] !border-[#eadfdf]',
-                    '!bg-[#f3f8f8] !border-[#d7e8e8]',
-                    '!bg-[#f6f5fa] !border-[#e1dde9]',
-                  ][i % 7];
+                {questionsAvg.map((q) => {
+                  const meta = experienceMeta(q.label);
+                  const value = Number(q.average || 0);
                   return (
-                    <div key={q.id} className={`rounded-xl border p-3 ${tint}`}>
-                      <p className="text-xs ui-text-muted mb-1">{q.label}</p>
-                      <p className="text-xl font-semibold rf-section-title">{Number(q.average || 0).toFixed(1)}</p>
+                    <div
+                      key={q.id}
+                      className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5 transition hover:border-slate-300 hover:shadow-md"
+                    >
+                      <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${meta.bubble}`}>
+                        <meta.Icon className="text-2xl" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs leading-tight text-slate-600">{q.label}</p>
+                        <p className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">{value.toFixed(1)}</p>
+                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                          <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${Math.min(100, (value / 5) * 100)}%` }} />
+                        </div>
+                      </div>
+                      <MdChevronRight className="shrink-0 text-xl text-slate-300 transition group-hover:text-slate-500" />
                     </div>
                   );
                 })}
@@ -402,57 +489,117 @@ export default function Fidelizacion() {
 
           {(likedSummary.length > 0 || improveSummary.length > 0) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="card p-5 !bg-[#eef6ef] !border-[#d5e6d7]">
-                <h2 className="text-lg font-semibold rf-section-title mb-3">Lo que más gustó</h2>
-                <ul className="space-y-2 text-sm">
-                  {likedSummary.map((o) => (
-                    <li key={o.id} className="flex justify-between gap-2 border-b border-[#d5e6d7]/70 py-1.5 last:border-0">
-                      <span>{o.label}</span>
-                      <span className="font-semibold">{o.count}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="card p-5 !bg-[#faf3f1] !border-[#eaded9]">
-                <h2 className="text-lg font-semibold rf-section-title mb-3">Aspectos a mejorar</h2>
-                <ul className="space-y-2 text-sm">
-                  {improveSummary.map((o) => (
-                    <li key={o.id} className="flex justify-between gap-2 border-b border-[#eaded9]/70 py-1.5 last:border-0">
-                      <span>{o.label}</span>
-                      <span className="font-semibold">{o.count}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {[
+                {
+                  key: 'liked',
+                  title: 'Lo que más gustó',
+                  items: likedSummary,
+                  Icon: MdFavorite,
+                  Deco: MdThumbUp,
+                  wrap: 'from-sky-50 to-blue-50/40 border-sky-200/80',
+                  bubble: 'from-sky-400 to-blue-600 shadow-blue-500/30',
+                  deco: 'text-blue-500',
+                  bar: 'bg-blue-500',
+                },
+                {
+                  key: 'improve',
+                  title: 'Aspectos a mejorar',
+                  items: improveSummary,
+                  Icon: MdTrendingUp,
+                  Deco: MdTrackChanges,
+                  wrap: 'from-emerald-50 to-teal-50/40 border-emerald-200/80',
+                  bubble: 'from-emerald-400 to-emerald-600 shadow-emerald-500/30',
+                  deco: 'text-emerald-600',
+                  bar: 'bg-emerald-500',
+                },
+              ].map((block) => {
+                const sorted = [...block.items].sort((a, b) => Number(b.count || 0) - Number(a.count || 0));
+                const top = sorted[0];
+                const rest = sorted.slice(1);
+                const max = Math.max(1, ...sorted.map((o) => Number(o.count || 0)));
+                return (
+                  <div
+                    key={block.key}
+                    className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br ${block.wrap} p-5 shadow-sm`}
+                  >
+                    <div className="pointer-events-none absolute -bottom-12 -right-8 h-32 w-56 rounded-full bg-white/50" />
+                    <div className="relative flex items-start gap-4">
+                      <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gradient-to-br text-white shadow-lg ${block.bubble}`}>
+                        <block.Icon className="text-2xl" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <h2 className="text-lg font-semibold text-slate-900">{block.title}</h2>
+                        {top ? (
+                          <div className="mt-1 flex items-end justify-between gap-3">
+                            <p className="text-sm text-slate-600">{top.label}</p>
+                            <p className="text-3xl font-bold text-slate-900 tabular-nums">{top.count}</p>
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-sm text-slate-500">Sin respuestas todavía.</p>
+                        )}
+                      </div>
+                    </div>
+                    {rest.length > 0 ? (
+                      <ul className="relative mt-4 space-y-2.5 border-t border-white/80 pt-3">
+                        {rest.map((o) => (
+                          <li key={o.id} className="text-sm">
+                            <div className="flex justify-between gap-2 text-slate-700">
+                              <span>{o.label}</span>
+                              <span className="font-semibold tabular-nums">{o.count}</span>
+                            </div>
+                            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/80">
+                              <div
+                                className={`h-full rounded-full ${block.bar}`}
+                                style={{ width: `${(Number(o.count || 0) / max) * 100}%` }}
+                              />
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <block.Deco className={`relative mt-3 text-3xl ${block.deco}`} />
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          <div className="card p-5 !bg-[#eef5f9] !border-[#d5e4ee]">
-            <h2 className="text-lg font-semibold rf-section-title mb-3">Calificación por mozo</h2>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="mb-4 flex items-center gap-2.5 text-lg font-semibold text-slate-900">
+              <span className="grid h-9 w-9 place-items-center rounded-lg bg-amber-50 text-amber-600">
+                <MdPerson className="text-xl" />
+              </span>
+              Calificación por mozo
+            </h2>
             {loading ? (
-              <p className="text-sm ui-text-muted">Cargando…</p>
+              <p className="text-sm text-slate-500">Cargando…</p>
             ) : waiterRatings.length === 0 ? (
-              <p className="text-sm ui-text-muted">
+              <p className="text-sm text-slate-500">
                 Aún no hay encuestas con mozo seleccionado. Los clientes eligen el mozo después de su nombre.
               </p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {waiterRatings.map((w, i) => {
-                  const tint = [
-                    '!bg-[#f7fbfd] !border-[#dde8f0]',
-                    '!bg-[#f8f7fb] !border-[#e4e0ee]',
-                    '!bg-[#f7faf8] !border-[#dde9e2]',
-                  ][i % 3];
+                {waiterRatings.map((w) => {
+                  const value = Number(w.average || 0);
+                  const initial = String(w.waiter_name || '?').trim().charAt(0).toUpperCase() || '?';
                   return (
-                    <div key={w.waiter_user_id} className={`rounded-xl border p-4 ${tint}`}>
-                      <p className="font-medium rf-section-title">{w.waiter_name}</p>
-                      <p className="text-2xl font-semibold mt-1 flex items-center gap-1.5">
-                        <MdStars className="text-amber-500/80" />
-                        {Number(w.average || 0).toFixed(1)}
-                      </p>
-                      <p className="text-xs ui-text-muted mt-1">
-                        {w.count} encuesta{w.count === 1 ? '' : 's'} de clientes
-                      </p>
+                    <div key={w.waiter_user_id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 transition hover:shadow-md">
+                      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-lg font-bold text-white shadow-md shadow-orange-500/25">
+                        {initial}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-slate-900">{w.waiter_name}</p>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          <MdStar className="text-amber-500" />
+                          <span className="text-xl font-bold text-slate-900 tabular-nums">{value.toFixed(1)}</span>
+                          <span className="text-xs text-slate-500">
+                            · {w.count} encuesta{w.count === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                          <div className="h-full rounded-full bg-amber-400" style={{ width: `${Math.min(100, (value / 5) * 100)}%` }} />
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -460,8 +607,13 @@ export default function Fidelizacion() {
             )}
           </div>
 
-          <div className="card p-5 overflow-x-auto !bg-[#f4f6f8] !border-[#dde3ea]">
-            <h2 className="text-lg font-semibold rf-section-title mb-3">Respuestas de clientes</h2>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm overflow-x-auto">
+            <h2 className="mb-4 flex items-center gap-2.5 text-lg font-semibold text-slate-900">
+              <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600">
+                <MdForum className="text-xl" />
+              </span>
+              Respuestas de clientes
+            </h2>
             {loading ? (
               <p className="text-sm ui-text-muted">Cargando…</p>
             ) : responses.length === 0 ? (
