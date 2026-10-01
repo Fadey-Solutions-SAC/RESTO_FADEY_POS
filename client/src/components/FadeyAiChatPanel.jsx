@@ -31,6 +31,14 @@ function PixAvatar({ className = '', size = 'sm', mood = 'saludo' }) {
   );
 }
 
+function dayKeyInZone(timeZone) {
+  try {
+    return new Date().toLocaleDateString('en-CA', { timeZone });
+  } catch (_) {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+  }
+}
+
 function stripMd(s) {
   return String(s || '').replace(/\*\*/g, '').trim();
 }
@@ -360,6 +368,9 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
     }
   };
 
+  /** Día del chat según la zona horaria del restaurante (la envía el servidor). */
+  const chatDayRef = useRef({ day: '', timezone: 'America/Lima' });
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -368,6 +379,11 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
       setStatus(st);
       if (st?.enabled) {
         const hist = await api.get('/fadey-ai/history').catch(() => ({ messages: [] }));
+        const timezone = String(hist?.timezone || st?.timezone || 'America/Lima');
+        chatDayRef.current = {
+          day: String(hist?.day || st?.day || dayKeyInZone(timezone)),
+          timezone,
+        };
         setMessages(Array.isArray(hist?.messages) ? hist.messages : []);
       } else {
         setMessages([]);
@@ -386,20 +402,33 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
     return undefined;
   }, [isActive, load]);
 
-  /** Si cruza medianoche con el panel abierto, recarga (servidor ya borró el historial). */
+  /**
+   * Al pasar la medianoche (hora local del restaurante) limpia el chat y recarga.
+   * También revisa al volver a la pestaña o despertar el equipo, porque los temporizadores se pausan.
+   */
   useEffect(() => {
     if (!isActive) return undefined;
-    let lastDay = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
-    const tick = () => {
-      const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
-      if (day !== lastDay) {
-        lastDay = day;
+    const check = () => {
+      const { day, timezone } = chatDayRef.current;
+      if (!day) return;
+      if (dayKeyInZone(timezone) !== day) {
+        chatDayRef.current = { day: dayKeyInZone(timezone), timezone };
         setMessages([]);
+        setReplyOptions([]);
         void load();
       }
     };
-    const id = setInterval(tick, 30_000);
-    return () => clearInterval(id);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    const id = setInterval(check, 30_000);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', check);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', check);
+    };
   }, [isActive, load]);
 
   useEffect(() => {

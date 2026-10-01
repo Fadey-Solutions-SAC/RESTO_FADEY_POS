@@ -3,7 +3,7 @@
  * No llama a OpenAI ni a ningún servicio externo de LLM.
  */
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, runSql } = require('../../database');
+const { queryAll, queryOne, runSql } = require('../../database');
 const { getControlConfig } = require('../../masterAdminService');
 const { ensureFadeyAiSchema } = require('./ensureFadeyAiSchema');
 const {
@@ -22,7 +22,12 @@ const { buildPurchaseAnswer } = require('./fadeyAiPurchase');
 const { buildAdvisorAnswer, analyze: analyzeBusiness, resolveAdvicePeriod } = require('./fadeyAiAdvisor');
 const { buildConceptAnswer } = require('./fadeyAiConcepts');
 const { detectLanguage, toSpanishQuery, translateResult } = require('./fadeyAiI18n');
-const { formatDisplayDateKey } = require('../../utils/appDateTime');
+const {
+  formatDisplayDateKey,
+  resolveRegionalTimezone,
+  partsFromDate,
+  DEFAULT_TIMEZONE,
+} = require('../../utils/appDateTime');
 const {
   suggestionOptionsForUser,
   accessIntroForUser,
@@ -31,6 +36,14 @@ const {
   deniedGuideMessage,
   guideAllowedForUser,
 } = require('./fadeyAiAccess');
+const {
+  recall,
+  trackTopic,
+  topicSummary,
+  handleMemoryCommand,
+  relevantFact,
+  goalProgressLine,
+} = require('./fadeyAiUserMemory');
 
 const RATE = new Map();
 const MAX_PER_MIN = 20;
@@ -55,6 +68,7 @@ function getStatus() {
     learning_until: state.learning_until || null,
     last_monitor_at: state.last_monitor_at || null,
     mode: !enabled ? 'off' : 'local',
+    ...getChatDayInfo(),
   };
 }
 
@@ -82,38 +96,69 @@ function saveMessage(userId, role, content, sources = null) {
   return id;
 }
 
+function businessTimezone() {
+  try {
+    return resolveRegionalTimezone(queryOne);
+  } catch (_) {
+    return DEFAULT_TIMEZONE;
+  }
+}
+
+function businessDayKey() {
+  return String(businessNow()).slice(0, 10);
+}
+
+/** Día de negocio de `created_at`: hora local `YYYY-MM-DD HH:MM:SS` o ISO/UTC de versiones anteriores. */
+function messageDayKey(createdAt, timeZone) {
+  const s = String(createdAt || '').trim();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(s)) return s.slice(0, 10);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s.slice(0, 10);
+  const p = partsFromDate(d, timeZone);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+/** Día y zona horaria con que se reinicia el chat (configuración regional del restaurante). */
+function getChatDayInfo() {
+  return { day: businessDayKey(), timezone: businessTimezone() };
+}
+
 /**
- * Borra el historial de chat al pasar la medianoche (día Lima).
- * Seguro llamar muchas veces: solo ejecuta el DELETE al cambiar el día.
+ * Borra el historial de días anteriores (medianoche en la zona horaria del restaurante).
+ * Revisa cada mensaje, así también limpia filas con fechas ISO/UTC o tras cambiar la zona horaria.
  */
 function purgeFadeyAiChatIfNewDay() {
   ensureFadeyAiSchema();
-  const today = String(businessNow()).slice(0, 10);
+  const { day: today, timezone } = getChatDayInfo();
+  const rows = queryAll('SELECT id, created_at FROM fadey_ai_chat_messages') || [];
+  const stale = rows.filter((r) => messageDayKey(r.created_at, timezone) < today).map((r) => r.id);
+  for (let i = 0; i < stale.length; i += 200) {
+    const ids = stale.slice(i, i + 200);
+    runSql(`DELETE FROM fadey_ai_chat_messages WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+  }
   const state = getState();
-  const last = state.last_chat_purge_day ? String(state.last_chat_purge_day).slice(0, 10) : null;
-  if (last === today) return { purged: false, day: today };
-
-  runSql(`DELETE FROM fadey_ai_chat_messages WHERE substr(created_at, 1, 10) < ?`, [today]);
-  runSql(
-    `UPDATE fadey_ai_state SET last_chat_purge_day = ?, updated_at = ? WHERE id = 1`,
-    [today, businessNow()]
-  );
-  return { purged: true, day: today };
+  if (String(state.last_chat_purge_day || '').slice(0, 10) !== today) {
+    runSql(
+      `UPDATE fadey_ai_state SET last_chat_purge_day = ?, updated_at = ? WHERE id = 1`,
+      [today, businessNow()]
+    );
+  }
+  return { purged: stale.length > 0, removed: stale.length, day: today };
 }
 
 function getHistory(userId, limit = 40) {
   ensureFadeyAiSchema();
   purgeFadeyAiChatIfNewDay();
-  const today = String(businessNow()).slice(0, 10);
-  const rows = queryAll(
+  const { day: today, timezone } = getChatDayInfo();
+  const max = Math.min(100, Math.max(1, Number(limit) || 40));
+  const rows = (queryAll(
     `SELECT id, role, content, sources_json, created_at
      FROM fadey_ai_chat_messages
      WHERE user_id = ?
-       AND substr(created_at, 1, 10) = ?
-     ORDER BY datetime(created_at) DESC, rowid DESC
-     LIMIT ?`,
-    [userId, today, Math.min(100, Math.max(1, Number(limit) || 40))]
-  ) || [];
+     ORDER BY created_at DESC, rowid DESC
+     LIMIT 300`,
+    [userId]
+  ) || []).filter((r) => messageDayKey(r.created_at, timezone) === today).slice(0, max);
   return rows.reverse().map((r) => ({
     id: r.id,
     role: r.role,
@@ -158,6 +203,8 @@ function guidesOnlyReply(message, user) {
 }
 
 function displayUserName(user) {
+  const remembered = String(recall(user?.id).profile.name || '').trim();
+  if (remembered) return remembered;
   const uname = String(user?.username || '').trim();
   if (uname) return uname;
   const full = String(user?.full_name || '').trim();
@@ -187,10 +234,12 @@ function tryStaffGreetingAnswer(message, user) {
 
   const name = displayUserName(user);
   const options = staffHelpOptions(user);
+  const habits = topicSummary(user.id);
   const lines = [
     `¡Hola, ${name}! Soy PIX, tu asistente IA Fadey.`,
     accessIntroForUser(user),
     'Solo te guío en los módulos y acciones que tienes permitidos en el POS.',
+    ...(habits ? [`Sé que sueles consultarme sobre ${habits}; pídemelo cuando quieras.`] : []),
     '',
     'Opciones rápidas:',
     ...options.map((o, i) => `${i + 1}. ${o}`),
@@ -290,15 +339,24 @@ function salesScopeForMessage(message) {
   return resolveSalesPeriod(message).scope;
 }
 
-function formatSalesReply(r) {
+function formatSalesReply(r, user = null) {
   const range = r.from === r.to
     ? formatDisplayDateKey(r.from)
     : `${formatDisplayDateKey(r.from)} → ${formatDisplayDateKey(r.to)}`;
   const label = r.label || range;
   const suffix = label.includes(formatDisplayDateKey(r.from)) ? '' : ` (${range})`;
   const head = `Ventas ${label}: S/ ${Number(r.sales || 0).toFixed(2)} · ${r.orders} cuenta(s)${suffix}.`;
-  if (!r.orders) return `${head}\nNo hay cuentas cobradas en esa fecha.`;
-  return `${head}\nTicket promedio: S/ ${(Number(r.sales || 0) / r.orders).toFixed(2)}.`;
+  let goal = '';
+  if (user?.id) {
+    try {
+      goal = goalProgressLine(user.id, { from: r.from, to: r.to, sales: r.sales, todayKey: businessDayKey() });
+    } catch (_) {
+      goal = '';
+    }
+  }
+  const tail = goal ? `\n${goal}` : '';
+  if (!r.orders) return `${head}\nNo hay cuentas cobradas en esa fecha.${tail}`;
+  return `${head}\nTicket promedio: S/ ${(Number(r.sales || 0) / r.orders).toFixed(2)}.${tail}`;
 }
 
 function isCustomerAnalysisQuestion(m) {
@@ -484,7 +542,7 @@ function tryDirectDataAnswer(message, user) {
     }
     if (r.ok) {
       return {
-        chunks: [formatSalesReply(r)],
+        chunks: [formatSalesReply(r, user)],
         sources: [{ kind: 'tool', title: 'sales_summary' }],
       };
     }
@@ -518,7 +576,7 @@ function tryDirectDataAnswer(message, user) {
       label: barePeriod.label,
     }, user);
     if (r?.ok) {
-      const chunks = [formatSalesReply(r)];
+      const chunks = [formatSalesReply(r, user)];
       const top = runTool('top_products', { from: barePeriod.from, to: barePeriod.to, limit: 3 }, user);
       if (top?.ok && top.items?.length) chunks.push(`Lo más vendido:\n${formatTopProductsList(top)}`);
       return { chunks: [chunks.join('\n\n')], sources: [{ kind: 'tool', title: 'sales_summary' }] };
@@ -613,7 +671,7 @@ function applyLearnedIntent(message, user, chunks, sources) {
     if (r.ok) {
       if (r.text) chunks.push(r.text);
       else if (toolName === 'sales_summary') {
-        chunks.push(formatSalesReply(r));
+        chunks.push(formatSalesReply(r, user));
       } else if (toolName === 'top_products' && r.items?.length) {
         const top = r.items[0];
         chunks.push(`Más vendido (${formatDisplayDateKey(r.date)}): ${top.name} (${top.qty} uds).`);
@@ -773,6 +831,45 @@ function rememberSuccessfulIntent(message, sources) {
   }
 }
 
+const MORE_DETAIL_RE = /^(m[aá]s detalles?|dame m[aá]s detalles?|ver (todo|completo|la respuesta completa)|respuesta completa|completa)[.!]?$/i;
+/** Última respuesta completa por usuario cuando se resumió (estilo «respuestas cortas»). */
+const LAST_FULL_REPLY = new Map();
+const NO_PERSONALIZE = new Set(['user_memory', 'greeting', 'creator_mode', 'origin', 'permission_denied', 'support_contact']);
+
+function shortenReply(text) {
+  const paragraphs = String(text || '').split(/\n{2,}/);
+  let short = paragraphs.slice(0, 2).join('\n\n');
+  const lines = short.split('\n');
+  if (lines.length > 8) short = lines.slice(0, 8).join('\n');
+  return short.length <= String(text || '').length * 0.75 ? short : null;
+}
+
+/** Aplica lo que PIX recuerda del usuario: notas relacionadas, estilo de respuesta y temas frecuentes. */
+function personalizeResult(user, query, result, memory) {
+  const sources = Array.isArray(result.sources) ? result.sources : [];
+  const title = sources[0]?.title || '';
+  try {
+    trackTopic(user.id, title);
+  } catch (_) {
+    /* opcional */
+  }
+  if (NO_PERSONALIZE.has(title)) return result;
+  const isReport = sources.some((s) => s && (s.kind === 'report' || s.title === 'report' || s.report));
+  let reply = String(result.reply || '');
+
+  const fact = relevantFact(user.id, query);
+  if (fact && !reply.includes(fact)) reply = `${reply}\n\nNota que me pediste recordar: ${fact}`;
+
+  if (memory?.profile?.style === 'short' && !isReport && reply.length > 500) {
+    const short = shortenReply(reply);
+    if (short) {
+      LAST_FULL_REPLY.set(String(user.id), { ...result, reply });
+      reply = `${short}\n\n(Te lo resumí porque prefieres respuestas cortas. Escribe «más detalle» para verlo completo.)`;
+    }
+  }
+  return { ...result, reply };
+}
+
 async function chat(user, message, context = {}) {
   if (!isFeatureEnabled()) {
     const err = new Error('El asistente IA Fadey está desactivado en este plan.');
@@ -805,8 +902,29 @@ async function chat(user, message, context = {}) {
 
   saveMessage(user.id, 'user', text);
 
-  const lang = detectLanguage(text);
-  const query = lang === 'en' ? toSpanishQuery(text) : text;
+  const memory = recall(user.id);
+  const detected = detectLanguage(text);
+  const lang = memory.profile.lang === 'en' || memory.profile.lang === 'es' ? memory.profile.lang : detected;
+  const query = detected === 'en' ? toSpanishQuery(text) : text;
+
+  const memoryAnswer = handleMemoryCommand(user, text);
+  if (memoryAnswer) {
+    let out = memoryAnswer;
+    if (lang === 'en' && !/^Got it/.test(out.reply)) out = translateResult(out, { isGuide: false });
+    saveMessage(user.id, 'assistant', out.reply, out.sources);
+    return { ...out, lang, mode: 'local', status: getStatus(), creator_mode: isMasterCreator(user) };
+  }
+
+  if (MORE_DETAIL_RE.test(text.trim())) {
+    let full = LAST_FULL_REPLY.get(String(user.id)) || {
+      reply: 'Esa ya fue la respuesta completa. ¿Quieres que te explique otra cosa?',
+      sources: [{ kind: 'tool', title: 'user_memory' }],
+    };
+    LAST_FULL_REPLY.delete(String(user.id));
+    if (lang === 'en') full = translateResult(full, { isGuide: false });
+    saveMessage(user.id, 'assistant', full.reply, full.sources);
+    return { ...full, lang, mode: 'local', status: getStatus(), creator_mode: isMasterCreator(user) };
+  }
 
   const report = buildConceptAnswer(query, user, { lang, analyzeFn: analyzeBusiness, periodFn: resolveAdvicePeriod })
     || buildPurchaseAnswer(query, user)
@@ -838,6 +956,7 @@ async function chat(user, message, context = {}) {
     }
   }
   rememberSuccessfulIntent(query, result.sources);
+  result = personalizeResult(user, query, result, memory);
   if (lang === 'en') {
     const src = Array.isArray(result.sources) ? result.sources[0] : null;
     const isGuide = !!src && (src.kind === 'guide' || src.kind === 'config' || src.title === 'search_guides');
@@ -858,6 +977,7 @@ module.exports = {
   isFeatureEnabled,
   chat,
   getHistory,
+  getChatDayInfo,
   bootstrapKnowledge,
   purgeFadeyAiChatIfNewDay,
 };

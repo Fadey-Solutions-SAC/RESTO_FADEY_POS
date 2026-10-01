@@ -40,6 +40,19 @@ function ensureFadeyAiSchema() {
     )
   `);
   runSql(`CREATE INDEX IF NOT EXISTS idx_fadey_ai_chat_user ON fadey_ai_chat_messages(user_id, created_at)`);
+  runSql(`
+    CREATE TABLE IF NOT EXISTS fadey_ai_user_memory (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      mkey TEXT NOT NULL,
+      value TEXT NOT NULL,
+      hits INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  runSql(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fadey_ai_user_memory_key ON fadey_ai_user_memory(user_id, kind, mkey)`);
   try {
     runSql(`ALTER TABLE fadey_ai_state ADD COLUMN last_chat_purge_day TEXT`);
   } catch (_) {

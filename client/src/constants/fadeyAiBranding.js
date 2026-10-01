@@ -27,6 +27,7 @@ export const FADEY_AI_CREATOR_MODE = {
 /** Pool completo de sugerencias fijas (se rotan de a 5 en el chat). */
 export const FADEY_AI_SUGGESTION_POOL = [
   '¿Cuánto vendí hoy?',
+  '¿Qué recuerdas de mí?',
   '¿Cuánto vendí la última semana?',
   '¿Cuánto se vendió esta semana?',
   '¿Qué vendimos hoy?',

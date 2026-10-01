@@ -4,9 +4,11 @@ const {
   getStatus,
   chat,
   getHistory,
+  getChatDayInfo,
   bootstrapKnowledge,
   isFeatureEnabled,
 } = require('../services/fadeyAi/fadeyAiChatService');
+const { listMemory, forgetMemoryItem, clearUserMemory } = require('../services/fadeyAi/fadeyAiUserMemory');
 
 const router = express.Router();
 
@@ -39,9 +41,35 @@ router.get('/history', (req, res) => {
     if (!isFeatureEnabled()) {
       return res.status(403).json({ error: 'IA Fadey desactivada' });
     }
-    res.json({ messages: getHistory(req.user.id, Number(req.query.limit) || 40) });
+    res.json({ messages: getHistory(req.user.id, Number(req.query.limit) || 40), ...getChatDayInfo() });
   } catch (err) {
     res.status(500).json({ error: err.message || 'No se pudo cargar historial' });
+  }
+});
+
+router.get('/memory', (req, res) => {
+  try {
+    res.json({ items: listMemory(req.user.id) });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo leer la memoria' });
+  }
+});
+
+router.delete('/memory/:id', (req, res) => {
+  try {
+    forgetMemoryItem(req.user.id, req.params.id);
+    res.json({ ok: true, items: listMemory(req.user.id) });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo borrar' });
+  }
+});
+
+router.delete('/memory', (req, res) => {
+  try {
+    clearUserMemory(req.user.id);
+    res.json({ ok: true, items: [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo borrar la memoria' });
   }
 });
 
