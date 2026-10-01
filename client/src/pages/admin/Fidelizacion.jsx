@@ -365,7 +365,15 @@ export default function Fidelizacion() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-slate-900">
+            {view === 'panel' ? 'Resumen de fidelización' : 'Configuración de la encuesta'}
+          </h1>
+          <p className="text-sm text-slate-500">
+            {view === 'panel' ? 'Lo que opinan tus clientes en las encuestas' : 'Arme el cuadro de la encuesta y descargue el QR'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           {VIEWS.map((t) => {
             const Icon = t.icon;
             return (
@@ -380,21 +388,17 @@ export default function Fidelizacion() {
               </button>
             );
           })}
+          {view === 'panel' ? (
+            <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm">
+              <MdCalendarToday className="text-slate-500" />
+              {todayLabel}
+            </div>
+          ) : null}
         </div>
-        {view === 'panel' ? (
-          <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm">
-            <MdCalendarToday className="text-slate-500" />
-            {todayLabel}
-          </div>
-        ) : null}
       </div>
 
       {view === 'panel' ? (
         <>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Resumen de fidelización</h1>
-            <p className="text-sm text-slate-500">Lo que opinan tus clientes en las encuestas</p>
-          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
