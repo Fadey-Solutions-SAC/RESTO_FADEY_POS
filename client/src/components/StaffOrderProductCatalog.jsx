@@ -3,6 +3,9 @@ import {
   orderingStockCellIsOut,
   orderingStockCellText,
 } from '../utils/productStockDisplay';
+import { getProductPromotion, useActivePromotions } from '../utils/promotions';
+import PromotionBadge from './promotions/PromotionBadge';
+import PromotionPrice from './promotions/PromotionPrice';
 
 /** Misma rejilla en cabecera y filas (móvil / tablet / escritorio). */
 const ROW_LAYOUT = {
@@ -55,6 +58,7 @@ export default function StaffOrderProductCatalog({
   hideProductStock = false,
 }) {
   const fmtMoney = formatCurrency || ((amount) => `S/ ${Number(amount || 0).toFixed(2)}`);
+  const { promotions, clock } = useActivePromotions();
 
   if (!products.length) return null;
 
@@ -75,14 +79,18 @@ export default function StaffOrderProductCatalog({
         {products.map((product) => {
           const stockText = orderingStockCellText(product, { hideStock: hideProductStock });
           const stockOut = orderingStockCellIsOut(product, { hideStock: hideProductStock });
-          const unitPrice = fmtMoney(orderingProductUnitPrice(product));
+          const unitAmount = orderingProductUnitPrice(product);
+          const unitPrice = fmtMoney(unitAmount);
           const stockDisplay = stockText === '—' ? '—' : stockText;
+          const promo = getProductPromotion(product, promotions, clock);
           return (
             <li key={product.id} className="min-w-0 max-w-full">
               <button
                 type="button"
                 onClick={() => onProductPick(product)}
-                className="rf-order-catalog-row w-full max-w-full rounded-md border border-[color:var(--ui-border)] bg-white px-3 py-2 sm:py-2.5 text-left shadow-sm transition-shadow hover:shadow-md"
+                className={`rf-order-catalog-row relative w-full max-w-full overflow-hidden rounded-md border bg-white py-2 pr-3 sm:py-2.5 text-left shadow-sm transition-shadow hover:shadow-md ${
+                  promo ? 'border-orange-200 pl-9' : 'border-[color:var(--ui-border)] pl-3'
+                }`}
                 style={{
                   ...ROW_LAYOUT,
                   margin: 0,
@@ -90,8 +98,9 @@ export default function StaffOrderProductCatalog({
                   font: 'inherit',
                   color: 'var(--ui-body-text)',
                 }}
-                title={`${product.name} · ${stockDisplay} · ${unitPrice}`}
+                title={`${product.name} · ${stockDisplay} · ${unitPrice}${promo ? ` · ${promo.promotion.name}` : ''}`}
               >
+                {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} size="sm" /> : null}
                 <span style={COL_NAME} className="text-sm font-medium text-[var(--ui-body-text)]">
                   {product.is_combo ? (
                     <span className="mr-1 inline-block rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase text-blue-800">
@@ -110,7 +119,11 @@ export default function StaffOrderProductCatalog({
                   {stockDisplay}
                 </span>
                 <span style={COL_PRICE} className="rf-order-catalog-price">
-                  {unitPrice}
+                  {promo?.strike ? (
+                    <PromotionPrice original={unitAmount} final={promo.final_price} formatCurrency={fmtMoney} />
+                  ) : (
+                    unitPrice
+                  )}
                 </span>
               </button>
             </li>

@@ -6,10 +6,29 @@ import {
   MdRemove,
   MdDelete,
   MdEditNote,
+  MdLocalOffer,
 } from 'react-icons/md';
 import { orderingProductUnitPrice } from '../utils/productStockDisplay';
 import { resolveMediaUrl } from '../utils/api';
+import { getProductPromotion, useActivePromotions, useCartPromotionPricing } from '../utils/promotions';
 import StaffOrderProductCatalog from './StaffOrderProductCatalog';
+import PromotionBadge from './promotions/PromotionBadge';
+import PromotionPrice from './promotions/PromotionPrice';
+import PromotionSummary from './promotions/PromotionSummary';
+
+function LinePromotionTag({ promo, formatCurrency }) {
+  if (!promo || !(promo.discount > 0)) return null;
+  return (
+    <p
+      className="flex min-w-0 items-center gap-1 truncate text-[10px] font-semibold text-orange-600"
+      title={`${promo.promotion_name} · ahorro ${formatCurrency(promo.discount)}`}
+    >
+      <MdLocalOffer className="shrink-0" aria-hidden />
+      <span className="truncate">{promo.badge ? `${promo.badge} · ` : ''}{promo.promotion_name}</span>
+      <span className="shrink-0 tabular-nums">(-{formatCurrency(promo.discount)})</span>
+    </p>
+  );
+}
 
 function lineSubtitle(item) {
   if (item.modifier_option) return String(item.modifier_option);
@@ -79,6 +98,7 @@ function CartLineItems({
   /** Si false, oculta eliminar y no permite bajar cantidad por debajo de 1. */
   canDeleteLine = true,
 }) {
+  const pricing = useCartPromotionPricing(cart);
   if (cart.length === 0) {
     return <p className="py-6 text-center text-sm text-[var(--ui-muted)]">Selecciona productos arriba</p>;
   }
@@ -101,6 +121,8 @@ function CartLineItems({
         <div className="divide-y divide-[color:var(--ui-border)]">
           {cart.map((item) => {
             const lineTotal = Number(item.price || 0) * Number(item.quantity || 0);
+            const promo = pricing.lines[String(item.line_key)];
+            const lineFinal = promo ? promo.final_total : lineTotal;
             const subtitle = lineSubtitle(item);
             const showNoteEditor = noteEditorLineKey === item.line_key || item.notes?.trim();
             return (
@@ -140,9 +162,9 @@ function CartLineItems({
                   </p>
                   <p
                     className={`${priceColClass} font-semibold`}
-                    title={formatCurrency(lineTotal)}
+                    title={formatCurrency(lineFinal)}
                   >
-                    {formatCurrency(lineTotal)}
+                    <PromotionPrice original={lineTotal} final={lineFinal} formatCurrency={formatCurrency} />
                   </p>
                   {canDeleteLine ? (
                     <button
@@ -167,6 +189,7 @@ function CartLineItems({
                     {subtitle}
                   </p>
                 ) : null}
+                <LinePromotionTag promo={promo} formatCurrency={formatCurrency} />
                 {Number(item.note_required || 0) === 1 ? (
                   <p className="text-[10px] font-semibold text-red-400">Nota obligatoria</p>
                 ) : null}
@@ -188,7 +211,9 @@ function CartLineItems({
       </div>
     );
   }
-  return cart.map((item) => (
+  return cart.map((item) => {
+    const promo = pricing.lines[String(item.line_key)];
+    return (
     <div key={item.line_key} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-2">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
@@ -201,7 +226,20 @@ function CartLineItems({
               {item.modifier_name}: {item.modifier_option}
             </p>
           )}
-          <p className="text-xs text-[var(--ui-accent)]">{formatCurrency(item.price)}</p>
+          <p className="text-xs text-[var(--ui-accent)]">
+            {promo && promo.discount > 0 ? (
+              <PromotionPrice
+                original={promo.original_total}
+                final={promo.final_total}
+                formatCurrency={formatCurrency}
+                stacked={false}
+                align="left"
+              />
+            ) : (
+              formatCurrency(item.price)
+            )}
+          </p>
+          <LinePromotionTag promo={promo} formatCurrency={formatCurrency} />
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -261,7 +299,8 @@ function CartLineItems({
         </div>
       )}
     </div>
-  ));
+    );
+  });
 }
 
 /**
@@ -294,6 +333,7 @@ export function StaffDineInOrderCartPanel({
   /** Catálogo arriba y pedido abajo en pantallas pequeñas. */
   stackedMobile = false,
 }) {
+  const cartPricing = useCartPromotionPricing(cart);
   const observationRows = fillParentHeight || elevatedAside || stackedMobile ? 2 : 3;
   const pinFooter = true;
   const shellMaxClass = elevatedAside
@@ -378,6 +418,7 @@ export function StaffDineInOrderCartPanel({
               />
             </div>
           ) : null}
+          <PromotionSummary pricing={cartPricing} formatCurrency={formatCurrency} compact />
           {footer ? <div className="space-y-2">{footer}</div> : null}
         </div>
       </div>
@@ -514,9 +555,16 @@ export default function StaffDineInOrderUI({
     : 'grid-cols-1';
 
   const fmtMoney = formatCurrency || ((amount) => `S/ ${Number(amount || 0).toFixed(2)}`);
+  const { promotions: activePromotions, clock: promotionClock } = useActivePromotions();
+  const stackedCartPricing = useCartPromotionPricing(stackedSelfOrder ? cart : []);
 
-  const renderOrderProductRowCompact = (product) => {
-    const unitPrice = fmtMoney(orderingProductUnitPrice(product));
+  const renderOrderProductRowCompact = (product, promo = null) => {
+    const unitAmount = orderingProductUnitPrice(product);
+    const unitPrice = promo?.strike ? (
+      <PromotionPrice original={unitAmount} final={promo.final_price} formatCurrency={fmtMoney} />
+    ) : (
+      fmtMoney(unitAmount)
+    );
     return (
       <button
         type="button"
@@ -565,12 +613,14 @@ export default function StaffDineInOrderUI({
           ) : (
             filteredProducts.map((p) => {
               const imgUrl = String(resolveMediaUrl(p.image || '') || '').trim();
+              const promo = getProductPromotion(p, activePromotions, promotionClock);
               return (
                 <div
                   key={p.id}
-                  className="flex flex-col overflow-hidden rounded-md bg-white text-left transition-shadow hover:shadow-md"
-                  style={{ border: '1px solid var(--ui-border)' }}
+                  className="relative flex flex-col overflow-hidden rounded-md bg-white text-left transition-shadow hover:shadow-md"
+                  style={{ border: promo ? '1px solid #fdba74' : '1px solid var(--ui-border)' }}
                 >
+                  {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} /> : null}
                   <div className="aspect-[4/3] w-full shrink-0 overflow-hidden border-b border-[color:var(--ui-accent)] bg-white">
                     {imgUrl ? (
                       <img src={imgUrl} alt="" className="h-full w-full object-cover" />
@@ -582,7 +632,7 @@ export default function StaffDineInOrderUI({
                     )}
                   </div>
                   <div className="flex flex-col gap-2 bg-white p-2">
-                    {renderOrderProductRowCompact(p)}
+                    {renderOrderProductRowCompact(p, promo)}
                     {productActionLabel ? (
                       <button
                         type="button"
@@ -655,6 +705,7 @@ export default function StaffDineInOrderUI({
               canDeleteLine={canDeleteLine}
             />
           </div>
+          <PromotionSummary pricing={stackedCartPricing} formatCurrency={formatCurrency} compact className="mt-2" />
           {footer ? <div className="mt-3 space-y-2 border-t border-[color:var(--ui-border)] pt-3">{footer}</div> : null}
         </div>
       </div>

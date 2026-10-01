@@ -35,7 +35,7 @@ import {
   MdChevronRight, MdExpandMore, MdArrowBack, MdInventory, MdSwapHoriz,
   MdLabel, MdDoNotDisturb, MdCategory, MdHistory,
   MdSecurity, MdDashboard, MdEventSeat, MdDeliveryDining, MdPhotoCamera,
-  MdAssessment, MdInsights, MdLocalOffer, MdDiscount,
+  MdAssessment, MdInsights, MdLocalOffer,
   MdTableBar, MdPeopleAlt, MdRestaurantMenu, MdTouchApp, MdPalette,
   MdAutoGraph, MdStars,
 } from 'react-icons/md';
@@ -74,8 +74,7 @@ const ALL_MODULES = [
   { id: 'creditos', label: 'Créditos', icon: MdCreditCard, defaultRoles: ['admin', 'cajero'] },
   { id: 'clientes', label: 'Clientes', icon: MdPeopleAlt, defaultRoles: ['admin', 'cajero'] },
   { id: 'productos', label: 'Productos', icon: MdRestaurantMenu, defaultRoles: ['admin'] },
-  { id: 'ofertas', label: 'Ofertas', icon: MdLocalOffer, defaultRoles: ['admin'] },
-  { id: 'descuentos', label: 'Descuentos', icon: MdDiscount, defaultRoles: ['admin'] },
+  { id: 'ofertas', label: 'Promociones', icon: MdLocalOffer, defaultRoles: ['admin'] },
   { id: 'almacen', label: 'Control De Recursos', icon: MdWarehouse, defaultRoles: ['admin'] },
   { id: 'delivery', label: 'Delivery', icon: MdDeliveryDining, defaultRoles: ['admin', 'cajero', 'mozo'] },
   { id: 'informes', label: 'Informes', icon: MdAssessment, defaultRoles: ['admin', 'cajero'] },

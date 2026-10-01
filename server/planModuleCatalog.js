@@ -17,8 +17,8 @@ const MODULE_LABELS = {
   creditos: 'Créditos',
   clientes: 'Clientes',
   productos: 'Productos',
-  ofertas: 'Ofertas',
-  descuentos: 'Descuentos',
+  ofertas: 'Promociones',
+  descuentos: 'Promociones (permiso anterior de Descuentos)',
   almacen: 'Almacenes e inventario',
   delivery: 'Delivery',
   informes: 'Informes',
@@ -106,7 +106,7 @@ function getSubmoduleListForPlan(_planKey, parentId) {
 
 const MODULE_ORDER = [
   'escritorio', 'ventas', 'caja', 'mesas', 'produccion', 'cocina', 'bar', 'delivery', 'reservas', 'auto_pedido',
-  'clientes', 'fidelizacion', 'creditos', 'ofertas', 'descuentos', 'almacen', 'productos', 'informes', 'indicadores',
+  'clientes', 'fidelizacion', 'creditos', 'ofertas', 'almacen', 'productos', 'informes', 'indicadores',
   'mi_restaurant', 'tiempo_trabajado', 'configuracion',
 ];
 

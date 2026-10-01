@@ -29,6 +29,7 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@thermalPrintLayout': resolve(repoRoot, 'server/printing/thermalPrintLayout.json'),
+        '@promotionEngine': resolve(repoRoot, 'packages/shared-types/promotionEngine.js'),
       },
     },
     plugins: [

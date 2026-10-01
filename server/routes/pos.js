@@ -174,11 +174,14 @@ function materializePartialChargeQuantitiesTx(tx, orderId, itemIds, quantitiesBy
     const remainSub = round2(origSub - moveSub);
     const remainId = uuidv4();
 
+    const promoDiscount = Number(it.promo_discount || 0);
+    const movePromo = round2((promoDiscount * chargeQ) / maxQ);
     tx.run(
       `INSERT INTO order_items (
         id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes,
+        original_unit_price, promo_discount, promotion_id, promotion_label,
         station_cocina_ready_at, station_bar_ready_at, kitchen_highlight_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         remainId,
         orderId,
@@ -189,12 +192,16 @@ function materializePartialChargeQuantitiesTx(tx, orderId, itemIds, quantitiesBy
         unit,
         remainSub,
         it.notes || '',
+        it.original_unit_price != null ? it.original_unit_price : unit,
+        round2(promoDiscount - movePromo),
+        it.promotion_id || '',
+        it.promotion_label || '',
         it.station_cocina_ready_at || null,
         it.station_bar_ready_at || null,
         it.kitchen_highlight_at || null,
       ]
     );
-    tx.run('UPDATE order_items SET quantity = ?, subtotal = ? WHERE id = ?', [chargeQ, moveSub, itemId]);
+    tx.run('UPDATE order_items SET quantity = ?, subtotal = ?, promo_discount = ? WHERE id = ?', [chargeQ, moveSub, movePromo, itemId]);
     movingIds.push(itemId);
   }
 

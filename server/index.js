@@ -299,6 +299,7 @@ app.use('/api/pos', require('./routes/pos'));
 app.use('/api/delivery', require('./routes/delivery'));
 app.use('/api/tables', require('./routes/tables'));
 app.use('/api/admin-modules', require('./routes/adminModules'));
+app.use('/api/promotions', require('./routes/promotions'));
 app.use('/api/contrato', require('./routes/contractSignature'));
 app.use('/api/business-config', require('./routes/businessConfig'));
 const { getPrinters } = require('./printing/printerDetector');
@@ -440,6 +441,11 @@ async function start() {
     await initDatabase();
   } catch (err) {
     console.error('[server] initDatabase no bloquea el arranque (maestro puede restaurar .db):', err.message || err);
+  }
+  try {
+    require('./services/promotionService').ensureLegacyMigrated();
+  } catch (err) {
+    console.warn('[promotions] migración inicial:', err.message || err);
   }
   try {
     const { ensureUserWorkSessionSchema } = require('./utils/ensureUserWorkSessionSchema');

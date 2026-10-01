@@ -11,7 +11,7 @@ import AdminAttendanceReviewModal from './AdminAttendanceReviewModal';
 import {
   MdDashboard, MdAttachMoney, MdPointOfSale, MdEventSeat,
   MdCreditCard, MdPeopleAlt, MdRestaurantMenu, MdLocalOffer,
-  MdDiscount, MdWarehouse, MdDeliveryDining, MdAssessment,
+  MdWarehouse, MdDeliveryDining, MdAssessment,
   MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdGroups, MdKitchen, MdLocalBar, MdTouchApp, MdStars,
 } from 'react-icons/md';
 import { getProductionAreaIcon } from '../utils/productionAreaUi';
@@ -32,7 +32,6 @@ const SIDEBAR_LINK_META = {
   clientes: { icon: MdPeopleAlt, labelKey: 'nav.clientes' },
   creditos: { icon: MdCreditCard, labelKey: 'nav.creditos' },
   ofertas: { icon: MdLocalOffer, labelKey: 'nav.ofertas' },
-  descuentos: { icon: MdDiscount, labelKey: 'nav.descuentos' },
   almacen: { icon: MdWarehouse, labelKey: 'nav.almacen' },
   productos: { icon: MdRestaurantMenu, labelKey: 'nav.productos' },
   informes: { icon: MdAssessment, labelKey: 'nav.informes' },
@@ -192,6 +191,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
           end: Boolean(meta.end),
           roles: row.roles,
           moduleId: row.moduleId,
+          moduleIds: row.moduleIds,
         });
       }
       // Asistencia QR: admin bajo RR. HH.; otros roles bajo su módulo operativo (ver submenús abajo).
@@ -287,7 +287,8 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
     if (link?.isProductionArea) {
       return canSeeProduction;
     }
-    return canAccessStaffModule(user, { moduleId: link.moduleId, roles: link.roles });
+    const ids = link.moduleIds?.length ? link.moduleIds : [link.moduleId];
+    return ids.some((moduleId) => canAccessStaffModule(user, { moduleId, roles: link.roles }));
   };
 
   /** Asistencia QR cuelga del módulo del rol (admin → RR. HH.; producción → su área vinculada). */

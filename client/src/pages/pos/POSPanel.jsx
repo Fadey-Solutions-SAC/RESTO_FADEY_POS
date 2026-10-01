@@ -558,7 +558,9 @@ function orderItemsToCart(order, productsById) {
         source_order_id: order.id,
         product_id: it.product_id,
         name: billLineDisplayName(it),
-        price: Number(it.unit_price ?? product?.price ?? 0),
+        price: Number(it.original_unit_price) > 0
+          ? Number(it.original_unit_price)
+          : Number(it.unit_price ?? product?.price ?? 0),
         quantity: 0,
         modifier_id: modId,
         modifier_name: '',

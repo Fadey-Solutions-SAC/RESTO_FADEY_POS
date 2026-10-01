@@ -549,6 +549,8 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
       'reservations',
       'audit_logs',
       'app_settings_history',
+      'promotion_usages',
+      'promotions',
       'discounts_catalog',
       'offers_catalog',
       'combo_items',
@@ -1496,6 +1498,58 @@ async function initDatabase() {
     `);
 
     db.run(`
+      CREATE TABLE IF NOT EXISTS promotions (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        type TEXT NOT NULL DEFAULT 'percent',
+        value REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        start_date TEXT DEFAULT '',
+        end_date TEXT DEFAULT '',
+        no_end_date INTEGER DEFAULT 0,
+        days TEXT DEFAULT '[]',
+        start_time TEXT DEFAULT '',
+        end_time TEXT DEFAULT '',
+        product_ids TEXT DEFAULT '[]',
+        category_ids TEXT DEFAULT '[]',
+        min_quantity INTEGER DEFAULT 0,
+        min_purchase REAL DEFAULT 0,
+        usage_limit INTEGER DEFAULT 0,
+        per_customer_limit INTEGER DEFAULT 0,
+        combinable INTEGER DEFAULT 0,
+        priority INTEGER DEFAULT 0,
+        legacy_source TEXT DEFAULT '',
+        legacy_id TEXT DEFAULT '',
+        created_by_user_id TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS promotion_usages (
+        id TEXT PRIMARY KEY,
+        promotion_id TEXT NOT NULL,
+        order_id TEXT NOT NULL,
+        order_item_id TEXT DEFAULT '',
+        product_id TEXT DEFAULT '',
+        product_name TEXT DEFAULT '',
+        quantity INTEGER DEFAULT 0,
+        original_amount REAL DEFAULT 0,
+        discount_amount REAL DEFAULT 0,
+        final_amount REAL DEFAULT 0,
+        source TEXT DEFAULT '',
+        user_id TEXT DEFAULT '',
+        user_name TEXT DEFAULT '',
+        customer_id TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.run('CREATE INDEX IF NOT EXISTS idx_promotion_usages_promo ON promotion_usages(promotion_id)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_promotion_usages_order ON promotion_usages(order_id)');
+
+    db.run(`
       CREATE TABLE IF NOT EXISTS combos (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1762,6 +1816,10 @@ async function initDatabase() {
     addOrderItemColIfMissing('station_cocina_ready_at', 'ALTER TABLE order_items ADD COLUMN station_cocina_ready_at TEXT');
     addOrderItemColIfMissing('station_bar_ready_at', 'ALTER TABLE order_items ADD COLUMN station_bar_ready_at TEXT');
     addOrderItemColIfMissing('kitchen_highlight_at', 'ALTER TABLE order_items ADD COLUMN kitchen_highlight_at TEXT');
+    addOrderItemColIfMissing('original_unit_price', 'ALTER TABLE order_items ADD COLUMN original_unit_price REAL');
+    addOrderItemColIfMissing('promo_discount', 'ALTER TABLE order_items ADD COLUMN promo_discount REAL DEFAULT 0');
+    addOrderItemColIfMissing('promotion_id', "ALTER TABLE order_items ADD COLUMN promotion_id TEXT DEFAULT ''");
+    addOrderItemColIfMissing('promotion_label', "ALTER TABLE order_items ADD COLUMN promotion_label TEXT DEFAULT ''");
 
     const reservationColumns = queryAll('PRAGMA table_info(reservations)');
     const addReservationColIfMissing = (colName, ddl) => {

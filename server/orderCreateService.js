@@ -23,7 +23,16 @@ const {
   upsertOrderStationState,
 } = require('./services/productionAreasService');
 
+const { priceOrderLinesTx, recordPromotionUsagesTx } = require('./services/promotionService');
+
 const STAFF_IN_HOUSE_ROLES = ['admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion'];
+
+function promotionCustomerIdFromActor(actor, bodyCustomerId) {
+  if (actor?.kind === 'customer' && actor.user) return String(actor.user.id || '');
+  if (actor?.kind === 'public_customer') return String(actor.customerId || '');
+  if (actor?.kind === 'staff') return String(bodyCustomerId || '').trim();
+  return '';
+}
 
 function assertMozoTableCajaTx(tx, actor, tableId) {
   if (actor?.kind !== 'staff' || !actor.user) return;
@@ -176,12 +185,13 @@ function buildComboOrderLine(tx, orderId, item) {
       subtotal: itemSubtotal,
       notes: composedNotes,
       process_type: 'transformed',
+      is_combo: true,
     },
     subtotal: itemSubtotal,
   };
 }
 
-function buildOrderLinesFromPayload(tx, orderId, items, { orderNow, restaurantSchedule, staffInHouseOrder }) {
+function buildOrderLinesFromPayload(tx, orderId, items, { orderNow, restaurantSchedule, staffInHouseOrder, customerId = '' }) {
   let subtotalAdded = 0;
   const lines = items.map((item) => {
     if (String(item.combo_id || '').trim()) {
@@ -243,9 +253,20 @@ function buildOrderLinesFromPayload(tx, orderId, items, { orderNow, restaurantSc
       subtotal: itemSubtotal,
       notes: composedNotes,
       process_type: product.process_type,
+      category_id: product.category_id || '',
     };
   });
+  subtotalAdded = priceOrderLinesTx(tx, lines, { customerId });
   return { lines, subtotalAdded };
+}
+
+function promoColumnValues(item) {
+  return [
+    item.original_unit_price != null ? Number(item.original_unit_price) : Number(item.unit_price || 0),
+    Number(item.promo_discount || 0),
+    String(item.promotion_id || ''),
+    String(item.promotion_label || ''),
+  ];
 }
 
 function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew = false, highlightIdSet = null }) {
@@ -257,20 +278,22 @@ function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew =
     const shouldHighlight =
       highlightNew || (highlightIdSet instanceof Set && highlightIdSet.has(String(item.id)));
     const highlightAt = shouldHighlight ? null : (item.kitchen_highlight_at || null);
+    const promoValues = promoColumnValues(item);
     tx.run(
       `INSERT INTO order_items (
         id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes,
+        original_unit_price, promo_discount, promotion_id, promotion_label,
         station_cocina_ready_at, station_bar_ready_at, kitchen_highlight_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${shouldHighlight ? "datetime('now')" : '?'})`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${shouldHighlight ? "datetime('now')" : '?'})`,
       shouldHighlight
         ? [
           item.id, item.order_id, item.product_id, item.product_name, item.variant_name,
-          item.quantity, item.unit_price, item.subtotal, item.notes,
+          item.quantity, item.unit_price, item.subtotal, item.notes, ...promoValues,
           item.station_cocina_ready_at || null, item.station_bar_ready_at || null,
         ]
         : [
           item.id, item.order_id, item.product_id, item.product_name, item.variant_name,
-          item.quantity, item.unit_price, item.subtotal, item.notes,
+          item.quantity, item.unit_price, item.subtotal, item.notes, ...promoValues,
           item.station_cocina_ready_at || null, item.station_bar_ready_at || null, highlightAt,
         ],
     );
@@ -310,8 +333,10 @@ function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes } = 
     orderNow,
     restaurantSchedule,
     staffInHouseOrder,
+    customerId: order.customer_id || '',
   });
   const newItemIds = insertOrderLineRows(tx, lines, { staffInHouseOrder, highlightNew: true });
+  recordPromotionUsagesTx(tx, orderId, lines, actor, { customerId: order.customer_id || '' });
 
   const nextSubtotal = round2(Number(order.subtotal || 0) + subtotalAdded);
   const discountAmount = Number(order.discount || 0);
@@ -541,8 +566,11 @@ function createOrderInTransaction(tx, orderId, body, actor) {
       subtotal: itemSubtotal,
       notes: composedNotes,
       process_type: product.process_type,
+      category_id: product.category_id || '',
     };
   });
+  const promoCustomerId = promotionCustomerIdFromActor(actor, customer_id);
+  subtotal = priceOrderLinesTx(tx, orderItems, { customerId: promoCustomerId });
 
   const tax = 0;
   const discountAmount = Math.max(0, Number(discount || 0));
@@ -653,10 +681,16 @@ function createOrderInTransaction(tx, orderId, body, actor) {
       deductNonTransformedStockTx(tx, item.product_id, item.quantity);
     }
     tx.run(
-      'INSERT INTO order_items (id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [item.id, item.order_id, item.product_id, item.product_name, item.variant_name, item.quantity, item.unit_price, item.subtotal, item.notes]
+      `INSERT INTO order_items (id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes,
+        original_unit_price, promo_discount, promotion_id, promotion_label)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id, item.order_id, item.product_id, item.product_name, item.variant_name, item.quantity, item.unit_price,
+        item.subtotal, item.notes, ...promoColumnValues(item),
+      ]
     );
   });
+  recordPromotionUsagesTx(tx, orderId, orderItems, actor, { customerId: customerId || '' });
 
   const newLineIds = orderItems.map((i) => i.id);
   reopenProductionStationsForNewLines(tx, orderId, newLineIds);
@@ -784,6 +818,7 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
       subtotal: itemSubtotal,
       notes: composedNotes,
       process_type: product.process_type,
+      category_id: product.category_id || '',
     };
   });
 
@@ -825,6 +860,11 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
     };
   }
 
+  subtotal = priceOrderLinesTx(tx, orderItems, {
+    customerId: order.customer_id || '',
+    preserveLines: new Map(existingItems.map((row) => [String(row.id), row])),
+  });
+
   restoreNonTransformedStockForOrderTx(tx, orderId);
   tx.run('DELETE FROM order_items WHERE order_id = ?', [orderId]);
 
@@ -854,6 +894,7 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
   }
 
   insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightIdSet });
+  recordPromotionUsagesTx(tx, orderId, orderItems, actor, { customerId: order.customer_id || '', syncOrder: true });
   if (newItemIds.length) {
     reopenProductionStationsForNewLines(tx, orderId, newItemIds);
   }

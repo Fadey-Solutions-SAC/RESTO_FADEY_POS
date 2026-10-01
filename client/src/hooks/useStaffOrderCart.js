@@ -1,5 +1,6 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { useCartPromotionPricing } from '../utils/promotions';
 
 /**
  * Misma lógica de líneas de pedido que Caja/POS: line_key, modificadores opcionales/obligatorios, notas.
@@ -33,6 +34,7 @@ export function useStaffOrderCart(modifiers = []) {
           line_key: lineKey,
           product_id: anchorProductId,
           combo_id: isCombo ? product.combo_id : '',
+          category_id: isCombo ? '' : (product.category_id || ''),
           name: product.name,
           price: product.price,
           quantity: 1,
@@ -129,7 +131,8 @@ export function useStaffOrderCart(modifiers = []) {
     setCart((prev) => prev.map((i) => (i.line_key === lineKey ? { ...i, notes: String(nextNote || '') } : i)));
   }, []);
 
-  const cartTotal = useMemo(() => cart.reduce((sum, i) => sum + i.price * i.quantity, 0), [cart]);
+  const cartPricing = useCartPromotionPricing(cart);
+  const cartTotal = cartPricing.final_total;
 
   const resetCart = useCallback(() => {
     setCart([]);
@@ -151,6 +154,7 @@ export function useStaffOrderCart(modifiers = []) {
     removeFromCart,
     updateItemNote,
     cartTotal,
+    cartPricing,
     resetCart,
   };
 }

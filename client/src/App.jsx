@@ -21,8 +21,7 @@ import SelfOrderCliente from './pages/public/SelfOrderCliente';
 import Creditos from './pages/admin/Creditos';
 import Clientes from './pages/admin/Clientes';
 import Productos from './pages/admin/Productos';
-import Ofertas from './pages/admin/Ofertas';
-import Descuentos from './pages/admin/Descuentos';
+import Promociones from './pages/admin/Promociones';
 import Almacen from './pages/admin/Almacen';
 import Delivery from './pages/admin/Delivery';
 import Reports from './pages/admin/Reports';
@@ -233,8 +232,9 @@ function AppRoutes({ user }) {
         <Route path="creditos" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="creditos"><Creditos /></ProtectedRoute>} />
         <Route path="clientes" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="clientes"><Clientes /></ProtectedRoute>} />
         <Route path="productos" element={<ProtectedRoute roles={['admin']} moduleId="productos"><Productos /></ProtectedRoute>} />
-        <Route path="ofertas" element={<ProtectedRoute roles={['admin']} moduleId="ofertas"><Ofertas /></ProtectedRoute>} />
-        <Route path="descuentos" element={<ProtectedRoute roles={['admin']} moduleId="descuentos"><Descuentos /></ProtectedRoute>} />
+        <Route path="promociones" element={<ProtectedRoute roles={['admin']} moduleIds={['ofertas', 'descuentos']}><Promociones /></ProtectedRoute>} />
+        <Route path="ofertas" element={<Navigate to="/admin/promociones" replace />} />
+        <Route path="descuentos" element={<Navigate to="/admin/promociones" replace />} />
         <Route path="almacen" element={<ProtectedRoute roles={['admin']} moduleId="almacen"><Almacen /></ProtectedRoute>} />
         <Route path="delivery" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo']} moduleId="delivery"><DeliveryModuleGate><Delivery /></DeliveryModuleGate></ProtectedRoute>} />
         <Route path="produccion/:areaId" element={<ProtectedRoute roles={['admin', 'produccion', 'cocina', 'bar']} moduleIds={['produccion', 'cocina', 'bar']}><KitchenAreaRoute /></ProtectedRoute>} />

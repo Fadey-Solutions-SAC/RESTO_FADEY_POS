@@ -339,14 +339,14 @@ Nota: si no aparece, falta permiso o el plan lo desactivó.`,
   /* —— Ofertas / descuentos —— */
   {
     id: 'guide-ofertas',
-    title: 'Cómo crear una oferta',
-    keywords: ['ofertas', 'promocion', 'promoción', '2x1', 'combo oferta', 'crear oferta'],
-    body: `Paso a paso — Ofertas:
-1. Admin → Ofertas.
-2. Nueva oferta: nombre, vigencia, productos o condiciones.
-3. Activa la oferta.
-4. Al pedir/cobrar se aplica según las reglas configuradas.
-5. Desactiva o edita cuando termine la campaña.`,
+    title: 'Cómo crear una promoción',
+    keywords: ['ofertas', 'promocion', 'promoción', 'promociones', '2x1', '3x2', 'combo oferta', 'crear oferta', 'crear promocion'],
+    body: `Paso a paso — Promociones:
+1. Admin → Promociones.
+2. Nueva promoción: nombre, tipo (porcentaje, monto fijo, precio especial, 2x1, 3x2, combo o por cantidad) y valor.
+3. Elige productos o categorías, vigencia, días y horario, y reglas (mínimos, límites, prioridad, combinable).
+4. Guarda como Activa: aparece con cinta diagonal en Pedido QR, Mesas, Caja y Delivery y se aplica sola al pedir.
+5. Pausa, duplica o edita desde la tabla; en Ver tienes usos, ventas y ahorro de clientes.`,
   },
   {
     id: 'guide-descuentos',
@@ -356,7 +356,7 @@ Nota: si no aparece, falta permiso o el plan lo desactivó.`,
 1. Abre la cuenta en Mesas o Caja.
 2. Usa la opción de descuento / cortesía (puede pedir motivo).
 3. Indica monto o porcentaje y confirma.
-4. Admin → Descuentos configura reglas o catálogo de motivos.
+4. Los descuentos automáticos por producto se configuran en Admin → Promociones.
 5. Informes → Descuentos y cortesías muestra el histórico.
 Nota: requiere permiso; queda trazabilidad para auditoría.`,
   },

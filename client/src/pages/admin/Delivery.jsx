@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   api,
   formatCurrency,
@@ -15,6 +15,10 @@ import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { UI_BADGE } from '../../utils/uiBadges';
 import Modal from '../../components/Modal';
+import PromotionBadge from '../../components/promotions/PromotionBadge';
+import PromotionPrice from '../../components/promotions/PromotionPrice';
+import PromotionSummary from '../../components/promotions/PromotionSummary';
+import { getProductPromotion, useActivePromotions, useCartPromotionPricing } from '../../utils/promotions';
 import {
   MdDeliveryDining, MdLocationOn, MdCheck, MdTimer, MdAdd,
   MdRemove, MdDelete, MdReceipt, MdSearch, MdShoppingCart,
@@ -172,7 +176,13 @@ export default function Delivery() {
     setCart(prev => prev.map(i => (i.product_id === productId ? { ...i, notes: String(nextNote || '') } : i)));
   };
 
-  const cartTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const pricingCart = useMemo(
+    () => cart.map((i) => ({ ...i, line_key: i.cart_key || i.product_id })),
+    [cart],
+  );
+  const cartPricing = useCartPromotionPricing(pricingCart);
+  const { promotions: activePromotions, clock: promotionClock } = useActivePromotions();
+  const cartTotal = cartPricing.final_total;
 
   const submitDeliveryOrder = async () => {
     if (cart.length === 0) return toast.error('Agrega productos al pedido');
@@ -350,15 +360,25 @@ export default function Delivery() {
             </div>
             <div className="flex-1 overflow-y-auto">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {filteredProducts.map(p => (
-                  <button key={p.id} onClick={() => addToCart(p)} className="bg-slate-50 rounded-xl p-3 text-left hover:shadow-md transition-shadow border border-slate-100 hover:border-gold-300">
+                {filteredProducts.map(p => {
+                  const promo = getProductPromotion(p, activePromotions, promotionClock);
+                  return (
+                  <button key={p.id} onClick={() => addToCart(p)} className={`relative overflow-hidden bg-slate-50 rounded-xl py-3 pr-3 text-left hover:shadow-md transition-shadow border hover:border-gold-300 ${promo ? 'border-orange-200 pl-8' : 'border-slate-100 pl-3'}`}>
+                    {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} size="sm" /> : null}
                     <p className="font-medium text-sm truncate">{p.name}</p>
-                    <p className="text-gold-600 font-bold text-sm mt-1">{formatCurrency(p.price)}</p>
+                    <p className="text-gold-600 font-bold text-sm mt-1">
+                      {promo?.strike ? (
+                        <PromotionPrice original={p.price} final={promo.final_price} formatCurrency={formatCurrency} stacked={false} align="left" />
+                      ) : (
+                        formatCurrency(p.price)
+                      )}
+                    </p>
                     {showStockInOrderingUI(p) ? (
                       <p className="text-xs text-[var(--ui-muted)]">Stock: {p.stock}</p>
                     ) : null}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -375,6 +395,7 @@ export default function Delivery() {
               ) : (
                 cart.map((item) => {
                   const lineTotal = Number(item.price || 0) * Number(item.quantity || 0);
+                  const linePromo = cartPricing.lines[String(item.cart_key || item.product_id)];
                   return (
                     <div key={item.product_id} className="border-b border-slate-200 py-2">
                       <div className="flex items-center gap-2 text-sm">
@@ -411,7 +432,7 @@ export default function Delivery() {
                           </button>
                         </div>
                         <span className="w-[5.5rem] shrink-0 text-right font-semibold text-gold-700 tabular-nums">
-                          {formatCurrency(lineTotal)}
+                          <PromotionPrice original={lineTotal} final={linePromo ? linePromo.final_total : lineTotal} formatCurrency={formatCurrency} />
                         </span>
                         <button
                           type="button"
@@ -422,6 +443,11 @@ export default function Delivery() {
                           <MdDelete className="text-sm" />
                         </button>
                       </div>
+                      {linePromo?.discount > 0 ? (
+                        <p className="text-[11px] font-semibold text-orange-600 mt-0.5 truncate">
+                          {linePromo.badge} · {linePromo.promotion_name} (-{formatCurrency(linePromo.discount)})
+                        </p>
+                      ) : null}
                       {Number(item.note_required || 0) === 1 && (
                         <p className="text-[11px] text-red-600 font-medium mt-0.5">Nota obligatoria</p>
                       )}
@@ -444,6 +470,7 @@ export default function Delivery() {
 
             {cart.length > 0 && (
               <div className="border-t pt-3 mt-3 space-y-2">
+                <PromotionSummary pricing={cartPricing} formatCurrency={formatCurrency} />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total</span>
                   <span className="text-gold-600">{formatCurrency(cartTotal)}</span>
