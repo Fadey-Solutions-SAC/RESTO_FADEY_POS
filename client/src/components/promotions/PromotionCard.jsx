@@ -14,7 +14,7 @@ export default function PromotionCard({ product, preview, formatCurrency = defau
     <div
       className={`relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${className}`.trim()}
     >
-      {preview?.badge ? <PromotionBadge label={preview.badge} type={preview.promotion?.type} /> : null}
+      {preview?.badge ? <PromotionBadge label={preview.badge} type={preview.promotion?.type} seed={preview.promotion?.id} /> : null}
       <div className="aspect-[4/3] w-full overflow-hidden bg-slate-50">
         {img ? (
           <img src={img} alt="" className="h-full w-full object-cover" />

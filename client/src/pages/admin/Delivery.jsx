@@ -364,7 +364,7 @@ export default function Delivery() {
                   const promo = getProductPromotion(p, activePromotions, promotionClock);
                   return (
                   <button key={p.id} onClick={() => addToCart(p)} className={`relative overflow-hidden bg-slate-50 rounded-xl py-3 pr-3 text-left hover:shadow-md transition-shadow border hover:border-gold-300 ${promo ? 'border-orange-200 pl-8' : 'border-slate-100 pl-3'}`}>
-                    {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} size="sm" /> : null}
+                    {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} seed={promo.promotion.id} size="sm" /> : null}
                     <p className="font-medium text-sm truncate">{p.name}</p>
                     <p className="text-gold-600 font-bold text-sm mt-1">
                       {promo?.strike ? (

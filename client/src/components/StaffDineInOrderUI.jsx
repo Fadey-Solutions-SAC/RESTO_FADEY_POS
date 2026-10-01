@@ -620,7 +620,7 @@ export default function StaffDineInOrderUI({
                   className="relative flex flex-col overflow-hidden rounded-md bg-white text-left transition-shadow hover:shadow-md"
                   style={{ border: promo ? '1px solid #fdba74' : '1px solid var(--ui-border)' }}
                 >
-                  {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} /> : null}
+                  {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} seed={promo.promotion.id} /> : null}
                   <div className="aspect-[4/3] w-full shrink-0 overflow-hidden border-b border-[color:var(--ui-accent)] bg-white">
                     {imgUrl ? (
                       <img src={imgUrl} alt="" className="h-full w-full object-cover" />

@@ -491,7 +491,7 @@ export default function Promociones() {
     if (!previewProduct) return null;
     const draft = {
       ...formToPayload(form),
-      id: 'draft',
+      id: editingId || 'draft',
       status: 'active',
       start_date: '',
       end_date: '',
@@ -503,7 +503,7 @@ export default function Promociones() {
     };
     const clock = promotionEngine.clockFromDate(new Date());
     return promotionEngine.getProductPromotionPreview(previewProduct, [draft], clock);
-  }, [form, previewProduct]);
+  }, [form, previewProduct, editingId]);
 
   const summary = data.summary || {};
   const kpis = [
@@ -712,7 +712,7 @@ export default function Promociones() {
                         <div className="flex items-center gap-3">
                           <span
                             className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[10px] font-extrabold text-white shadow-sm"
-                            style={{ background: promotionTone(p.type) }}
+                            style={{ background: promotionTone(p.type, p.id) }}
                           >
                             {promotionBadgeLabel(p)}
                           </span>
@@ -983,7 +983,7 @@ export default function Promociones() {
               <div className="flex min-w-0 items-center gap-3">
                 <span
                   className="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-xs font-extrabold text-white"
-                  style={{ background: promotionTone(detail.type) }}
+                  style={{ background: promotionTone(detail.type, detail.id) }}
                 >
                   {promotionBadgeLabel(detail)}
                 </span>

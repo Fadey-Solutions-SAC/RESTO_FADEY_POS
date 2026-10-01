@@ -1,25 +1,47 @@
-const RIBBON_TONES = {
-  combo: 'linear-gradient(135deg,#7c3aed,#6d28d9)',
-  '2x1': 'linear-gradient(135deg,#7c3aed,#9333ea)',
-  '3x2': 'linear-gradient(135deg,#7c3aed,#9333ea)',
-  default: 'linear-gradient(135deg,#f97316,#ea580c)',
+const RIBBON_PALETTE = [
+  'linear-gradient(135deg,#f97316,#ea580c)',
+  'linear-gradient(135deg,#8b5cf6,#6d28d9)',
+  'linear-gradient(135deg,#ec4899,#be185d)',
+  'linear-gradient(135deg,#ef4444,#b91c1c)',
+  'linear-gradient(135deg,#10b981,#047857)',
+  'linear-gradient(135deg,#3b82f6,#1d4ed8)',
+  'linear-gradient(135deg,#14b8a6,#0f766e)',
+  'linear-gradient(135deg,#f59e0b,#b45309)',
+  'linear-gradient(135deg,#d946ef,#a21caf)',
+  'linear-gradient(135deg,#06b6d4,#0e7490)',
+];
+
+const TYPE_TONES = {
+  combo: RIBBON_PALETTE[1],
+  '2x1': RIBBON_PALETTE[1],
+  '3x2': RIBBON_PALETTE[1],
 };
 
+/** `box`: área recortada en la esquina; `center`: centro del listón; `notch`: profundidad del corte en V. */
 const SIZES = {
-  sm: { box: 44, band: 74, top: 9, left: -21, font: 8, pad: '1px 0' },
-  md: { box: 66, band: 104, top: 15, left: -28, font: 10, pad: '2px 0' },
-  lg: { box: 84, band: 132, top: 20, left: -34, font: 12, pad: '3px 0' },
+  sm: { box: 50, band: 58, height: 16, center: 22, font: 8, notch: 6 },
+  md: { box: 112, band: 124, height: 26, center: 48, font: 12, notch: 10 },
+  lg: { box: 140, band: 156, height: 32, center: 60, font: 14, notch: 12 },
 };
 
-export function promotionTone(type) {
-  return RIBBON_TONES[type] || RIBBON_TONES.default;
+function hashSeed(seed) {
+  const s = String(seed || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/** Color de la promoción: aleatorio por promoción pero estable (mismo id → mismo color). */
+export function promotionTone(type, seed) {
+  if (seed) return RIBBON_PALETTE[hashSeed(seed) % RIBBON_PALETTE.length];
+  return TYPE_TONES[type] || RIBBON_PALETTE[0];
 }
 
 /**
- * Cinta diagonal en la esquina superior izquierda.
- * El contenedor padre debe tener `position: relative` y `overflow: hidden`; la cinta es absoluta y no altera el tamaño.
+ * Listón diagonal con extremos en V sobre la esquina superior izquierda.
+ * El contenedor padre debe tener `position: relative` y `overflow: hidden`; el listón es absoluto y no altera el tamaño.
  */
-export default function PromotionBadge({ label, type = '', size = 'md', className = '' }) {
+export default function PromotionBadge({ label, type = '', seed = '', size = 'md', className = '' }) {
   if (!label) return null;
   const s = SIZES[size] || SIZES.md;
   return (
@@ -29,20 +51,30 @@ export default function PromotionBadge({ label, type = '', size = 'md', classNam
       style={{ width: s.box, height: s.box }}
     >
       <span
-        className="absolute block text-center font-extrabold uppercase leading-tight tracking-wide text-white"
+        className="absolute block"
         style={{
           width: s.band,
-          top: s.top,
-          left: s.left,
-          padding: s.pad,
-          fontSize: s.font,
+          height: s.height,
+          left: s.center - s.band / 2,
+          top: s.center - s.height / 2,
           transform: 'rotate(-45deg)',
-          background: promotionTone(type),
-          boxShadow: '0 2px 6px rgba(15,23,42,0.25)',
-          whiteSpace: 'nowrap',
+          filter: 'drop-shadow(0 2px 3px rgba(15,23,42,0.35))',
         }}
       >
-        {label}
+        <span
+          className="flex h-full w-full items-center justify-center font-extrabold uppercase tracking-wide text-white"
+          style={{
+            fontSize: s.font,
+            lineHeight: 1,
+            paddingInline: s.notch + 2,
+            whiteSpace: 'nowrap',
+            background: promotionTone(type, seed),
+            clipPath: `polygon(0 0, 100% 0, calc(100% - ${s.notch}px) 50%, 100% 100%, 0 100%, ${s.notch}px 50%)`,
+            textShadow: '0 1px 1px rgba(0,0,0,0.25)',
+          }}
+        >
+          {label}
+        </span>
       </span>
     </span>
   );

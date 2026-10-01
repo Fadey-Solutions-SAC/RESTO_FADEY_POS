@@ -100,7 +100,7 @@ export default function StaffOrderProductCatalog({
                 }}
                 title={`${product.name} · ${stockDisplay} · ${unitPrice}${promo ? ` · ${promo.promotion.name}` : ''}`}
               >
-                {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} size="sm" /> : null}
+                {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} seed={promo.promotion.id} size="sm" /> : null}
                 <span style={COL_NAME} className="text-sm font-medium text-[var(--ui-body-text)]">
                   {product.is_combo ? (
                     <span className="mr-1 inline-block rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase text-blue-800">
