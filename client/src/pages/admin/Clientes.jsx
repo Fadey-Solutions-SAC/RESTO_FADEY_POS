@@ -403,7 +403,7 @@ export default function Clientes() {
     {
       key: 'debt',
       title: 'Con crédito',
-      value: formatCurrency(kpis.debtTotal),
+      value: kpis.withDebt,
       Icon: MdCreditCard,
       bubble: 'bg-violet-100 text-violet-600',
       bg: 'from-violet-50/80 to-white',
