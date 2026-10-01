@@ -264,7 +264,7 @@ router.delete('/:id', requireRole('admin', 'cajero', 'mozo'), (req, res) => {
   try {
     const table = queryOne('SELECT * FROM tables WHERE id = ?', [req.params.id]);
     if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
-    const active = queryAll(`SELECT id, table_number, table_id FROM orders WHERE status IN ('pending','preparing','ready') AND IFNULL(TRIM(payment_status), 'pending') != 'paid'`);
+    const active = queryAll(`SELECT id, table_number, table_id FROM orders WHERE status IN ('pending','preparing','ready') AND IFNULL(TRIM(payment_status), 'pending') != 'paid' AND IFNULL(payment_method, '') != 'cuenta_cliente'`);
     const activeOnTable = active.filter((o) => {
       const orderTableId = String(o.table_id || '').trim();
       if (orderTableId) return orderTableId === table.id;

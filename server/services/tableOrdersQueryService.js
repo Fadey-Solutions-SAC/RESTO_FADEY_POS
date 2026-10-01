@@ -2,7 +2,7 @@ const { queryAll } = require('../database');
 const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
 
 const ACTIVE_ORDER_STATUS_SQL =
-  "status IN ('pending','preparing','ready') AND IFNULL(TRIM(payment_status), 'pending') != 'paid'";
+  "status IN ('pending','preparing','ready') AND IFNULL(TRIM(payment_status), 'pending') != 'paid' AND IFNULL(payment_method, '') != 'cuenta_cliente'";
 
 function deriveTableStatus(table, orders) {
   const hasActiveOrders = Array.isArray(orders) && orders.length > 0;

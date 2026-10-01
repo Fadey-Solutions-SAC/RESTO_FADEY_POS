@@ -91,12 +91,13 @@ function expandPendingTableOrderIdsTx(tx, orderIds) {
   const expanded = new Set(ids);
   const ph = ids.map(() => '?').join(',');
   const seeds = tx.queryAll(
-    `SELECT id, table_number, table_id, type FROM orders WHERE id IN (${ph})`,
+    `SELECT id, table_number, table_id, type, payment_method FROM orders WHERE id IN (${ph})`,
     ids,
   ) || [];
   for (const seed of seeds) {
     const type = String(seed.type || 'dine_in').toLowerCase();
     if (type === 'delivery' || type === 'pickup') continue;
+    if (String(seed.payment_method || '') === 'cuenta_cliente') continue;
     const table = String(seed.table_number || '').trim();
     const tid = String(seed.table_id || '').trim();
     if (!table && !tid) continue;
@@ -105,6 +106,7 @@ function expandPendingTableOrderIdsTx(tx, orderIds) {
        WHERE IFNULL(type, 'dine_in') NOT IN ('delivery', 'pickup')
          AND status NOT IN ('cancelled', 'delivered')
          AND IFNULL(payment_status, 'pending') = 'pending'
+         AND IFNULL(payment_method, '') != 'cuenta_cliente'
          AND (
            (TRIM(CAST(table_number AS TEXT)) = ? AND ? != '')
            OR (IFNULL(table_id, '') = ? AND ? != '')
