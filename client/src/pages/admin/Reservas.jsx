@@ -19,7 +19,42 @@ import {
   dismissReservationCajaToast,
   reservationCajaToastId,
 } from '../../utils/reservationCajaAvisosSession';
-import { MdAdd, MdExpandMore, MdEventSeat, MdPerson, MdPhone, MdCalendarToday, MdAccessTime } from 'react-icons/md';
+import {
+  MdAdd,
+  MdExpandMore,
+  MdEventSeat,
+  MdPerson,
+  MdPhone,
+  MdCalendarToday,
+  MdAccessTime,
+  MdChevronRight,
+  MdGroupAdd,
+  MdForum,
+  MdTableRestaurant,
+  MdStickyNote2,
+  MdRestaurant,
+  MdSoupKitchen,
+  MdCheckCircle,
+  MdClose,
+  MdFilterList,
+} from 'react-icons/md';
+
+function splitReservationNotes(notes) {
+  const raw = String(notes || '').trim();
+  const idx = raw.search(/pedido\s+solicitado\s*:/i);
+  if (idx < 0) return { nota: raw, pedido: '' };
+  return {
+    nota: raw.slice(0, idx).replace(/[\s|·\-–]+$/, '').trim(),
+    pedido: raw.slice(idx).replace(/^pedido\s+solicitado\s*:\s*/i, '').trim(),
+  };
+}
+
+const STATUS_PILL = {
+  confirmed: 'bg-emerald-100 text-emerald-700',
+  pending: 'bg-amber-100 text-amber-700',
+  completed: 'bg-sky-100 text-sky-700',
+  cancelled: 'bg-red-100 text-red-700',
+};
 
 const WAREHOUSE_CATEGORY_NAMES = new Set(['PRODUCTOS ALMACEN', 'INSUMOS']);
 
@@ -269,9 +304,16 @@ export default function Reservas() {
     }
   };
 
+  const [dateFilter, setDateFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
   const today = todayKey;
   const visibleReservas = reservas.filter((r) => !['cancelled', 'cancelada'].includes(String(r.status || '').toLowerCase()));
   const todayReservas = visibleReservas.filter((r) => r.date === today);
+  const listedReservas = visibleReservas.filter((r) => (
+    (!dateFilter || r.date === dateFilter)
+    && (statusFilter === 'all' || String(r.status || '') === statusFilter)
+  ));
 
   const formSelectableTables = useMemo(
     () =>
@@ -294,133 +336,233 @@ export default function Reservas() {
 
   return (
     <div>
-      <div className="flex items-center justify-end mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto] gap-4 mb-5 items-stretch">
+        {[
+          {
+            key: 'hoy',
+            title: 'Hoy',
+            value: todayReservas.length,
+            hint: 'reservas para hoy',
+            Icon: MdCalendarToday,
+            bubble: 'bg-blue-100 text-blue-600',
+            onClick: () => { setDateFilter(today); setStatusFilter('all'); },
+          },
+          {
+            key: 'confirmadas',
+            title: 'Confirmadas',
+            value: visibleReservas.filter((r) => r.status === 'confirmed').length,
+            hint: 'reservas confirmadas',
+            Icon: MdGroupAdd,
+            bubble: 'bg-emerald-100 text-emerald-600',
+            onClick: () => { setDateFilter(''); setStatusFilter('confirmed'); },
+          },
+          {
+            key: 'comensales',
+            title: 'Comensales esperados',
+            value: todayReservas.reduce((s, r) => s + (Number(r.guests) || 0), 0),
+            hint: 'personas hoy',
+            Icon: MdForum,
+            bubble: 'bg-violet-100 text-violet-600',
+            onClick: () => { setDateFilter(today); setStatusFilter('all'); },
+          },
+        ].map((k) => (
+          <button
+            key={k.key}
+            type="button"
+            onClick={k.onClick}
+            className="group flex h-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md"
+          >
+            <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-full ${k.bubble}`}>
+              <k.Icon className="text-2xl" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-slate-800">{k.title}</span>
+              <span className="mt-1 block text-3xl font-bold leading-none text-slate-900 tabular-nums">{k.value}</span>
+              <span className="mt-1.5 block text-xs text-slate-500">{k.hint}</span>
+            </span>
+            <MdChevronRight className="shrink-0 text-2xl text-slate-300 transition group-hover:text-slate-500" />
+          </button>
+        ))}
         <button
+          type="button"
           onClick={() => {
             resetForm();
             setShowModal(true);
           }}
-          className="btn-primary flex items-center gap-2"
+          className="flex h-full min-h-[6.5rem] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 text-base font-semibold text-white shadow-md shadow-blue-600/30 transition hover:bg-blue-700 sm:col-span-2 lg:col-span-1"
         >
-          <MdAdd /> Nueva Reserva
+          <MdAdd className="text-2xl" /> Nueva Reserva
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-        <div className="card flex items-center gap-3">
-          <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
-            <MdCalendarToday className="text-sky-600" />
-          </div>
-          <div>
-            <p className="text-xs ui-text-muted">Hoy</p>
-            <p className="text-xl font-bold">{todayReservas.length}</p>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <h2 className="flex items-center gap-2.5 text-xl font-bold text-slate-900">
+            <MdCalendarToday className="text-2xl text-blue-600" />
+            Reservas
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+              <MdCalendarToday className="text-slate-500" />
+              <input
+                type="date"
+                className="bg-transparent text-sm outline-none"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                aria-label="Filtrar por fecha"
+              />
+              {dateFilter ? (
+                <button
+                  type="button"
+                  className="text-slate-400 hover:text-slate-600"
+                  onClick={() => setDateFilter('')}
+                  aria-label="Ver todas las fechas"
+                >
+                  <MdClose />
+                </button>
+              ) : (
+                <span className="text-xs text-slate-400">Todas</span>
+              )}
+            </label>
+            <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+              <MdFilterList className="text-slate-500" />
+              <select
+                className="bg-transparent text-sm outline-none"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                aria-label="Filtrar por estado"
+              >
+                <option value="all">Todos los estados</option>
+                <option value="confirmed">Confirmadas</option>
+                <option value="pending">Pendientes</option>
+                <option value="completed">Completadas</option>
+              </select>
+            </label>
           </div>
         </div>
-        <div className="card flex items-center gap-3">
-          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
-            <MdEventSeat className="text-emerald-600" />
-          </div>
-          <div>
-            <p className="text-xs ui-text-muted">Confirmadas</p>
-            <p className="text-xl font-bold">{visibleReservas.filter((r) => r.status === 'confirmed').length}</p>
-          </div>
-        </div>
-        <div className="card flex items-center gap-3">
-          <div className="w-10 h-10 bg-gold-100 rounded-xl flex items-center justify-center">
-            <MdPerson className="text-gold-600" />
-          </div>
-          <div>
-            <p className="text-xs ui-text-muted">Comensales esperados</p>
-            <p className="text-xl font-bold">{todayReservas.reduce((s, r) => s + r.guests, 0)}</p>
-          </div>
-        </div>
-      </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-        {visibleReservas.length === 0 ? (
+        {listedReservas.length === 0 ? (
           <div className="text-center py-12 text-[var(--ui-muted)]">
             <MdEventSeat className="text-5xl mx-auto mb-3" />
-            <p className="font-medium">No hay reservas activas</p>
-            <p className="text-sm">Las canceladas no se muestran aquí · Crea una nueva reserva para comenzar</p>
+            <p className="font-medium">
+              {visibleReservas.length === 0 ? 'No hay reservas activas' : 'No hay reservas con estos filtros'}
+            </p>
+            <p className="text-sm">
+              {visibleReservas.length === 0
+                ? 'Las canceladas no se muestran aquí · Crea una nueva reserva para comenzar'
+                : 'Cambie la fecha o el estado para ver otras reservas'}
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {visibleReservas.map((r) => (
-              <div
-                key={r.id}
-                className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 rounded-lg border border-slate-100 hover:bg-slate-50 min-w-0"
-              >
-                <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 bg-gold-100 rounded-full flex items-center justify-center">
-                    <span className="font-bold text-gold-700">{r.client_name[0]}</span>
+            {listedReservas.map((r) => {
+              const { nota, pedido } = splitReservationNotes(r.notes);
+              const initial = String(r.client_name || '?').trim().charAt(0) || '?';
+              return (
+                <div
+                  key={r.id}
+                  className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 transition hover:border-slate-300 hover:shadow-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] lg:items-center"
+                >
+                  <div className="flex min-w-0 items-start gap-3 lg:border-r lg:border-slate-200 lg:pr-4">
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-100 text-lg font-bold text-blue-700">
+                      {initial}
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="truncate text-base font-bold text-slate-900">{r.client_name}</p>
+                      <p className="flex items-center gap-1.5 text-sm text-slate-600">
+                        <MdCalendarToday className="text-slate-400" />
+                        {formatDate(r.date)}
+                        <span className="text-slate-300">·</span>
+                        <MdAccessTime className="text-slate-400" />
+                        {r.time}
+                      </p>
+                      <p className="flex items-center gap-1.5 text-sm text-slate-600">
+                        <MdPerson className="text-slate-400" />
+                        {r.guests} persona{Number(r.guests) === 1 ? '' : 's'}
+                      </p>
+                      {r.phone ? (
+                        <p className="flex items-center gap-1.5 text-sm text-slate-600">
+                          <MdPhone className="text-slate-400" />
+                          {r.phone}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold rf-section-title truncate">{r.client_name}</p>
-                    <p className="text-sm ui-text-muted break-words">
-                      <MdCalendarToday className="inline text-xs mr-1" />
-                      {formatDate(r.date)} · <MdAccessTime className="inline text-xs mr-1" />
-                      {r.time} · {r.guests} personas
-                    </p>
-                    {r.phone && (
-                      <p className="text-xs text-[var(--ui-muted)]">
-                        <MdPhone className="inline text-xs mr-1" />
-                        {r.phone}
+
+                  <div className="min-w-0 space-y-2 text-sm lg:border-r lg:border-slate-200 lg:pr-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <MdTableRestaurant className="text-slate-400" />
+                      <span className="text-slate-500">Mesa:</span>
+                      <CompactSelect
+                        value={r.table_id || ''}
+                        onChange={(v) => assignTable(r.id, v)}
+                        title="Asignar o cambiar mesa"
+                        className="min-w-[140px] max-w-[220px]"
+                        placeholder="Sin mesa"
+                        options={[
+                          { value: '', label: 'Sin mesa' },
+                          ...filterTablesForReservationSelect({
+                            tables,
+                            reservations: visibleReservas,
+                            date: r.date,
+                            time: r.time,
+                            excludeReservationId: r.id,
+                            includeTableId: r.table_id,
+                          }).map((t) => ({
+                            value: t.id,
+                            label: `${getTableDisplayLabel(t)} (Cap. ${t.capacity})`,
+                          })),
+                        ]}
+                      />
+                    </div>
+                    {nota ? (
+                      <p className="flex items-start gap-2 text-slate-700">
+                        <MdStickyNote2 className="mt-0.5 shrink-0 text-slate-400" />
+                        <span className="min-w-0 break-words whitespace-pre-wrap">
+                          <span className="text-slate-500">Nota: </span>{nota}
+                        </span>
                       </p>
-                    )}
-                    <p className="text-xs ui-text-muted mt-0.5">
-                      <MdEventSeat className="inline text-xs mr-1" />
-                      {tableLabel(r.table_id)}
-                    </p>
-                    {r.notes && (
-                      <p className="text-xs ui-text-muted mt-1 break-words whitespace-pre-wrap">
-                        Nota: {r.notes}
+                    ) : null}
+                    {pedido ? (
+                      <p className="flex items-start gap-2 text-slate-700">
+                        <MdRestaurant className="mt-0.5 shrink-0 text-slate-400" />
+                        <span className="min-w-0 break-words">
+                          <span className="block text-slate-500">Pedido solicitado:</span>
+                          {pedido}
+                        </span>
                       </p>
-                    )}
+                    ) : null}
                     {reservationNotesHaveOrder(r.notes) ? (
-                      <p className="text-xs mt-1 font-medium text-[var(--ui-accent)]">
+                      <p className="flex items-center gap-2 font-medium text-[var(--ui-accent)]">
+                        <MdSoupKitchen className="shrink-0" />
                         {getReservationKitchenReleaseInfo(r.date, r.time).label}
                       </p>
                     ) : null}
                   </div>
-                </div>
-                <div className="flex flex-col xs:flex-row sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
-                  <CompactSelect
-                    value={r.table_id || ''}
-                    onChange={(v) => assignTable(r.id, v)}
-                    title="Asignar o cambiar mesa"
-                    className="w-full sm:min-w-[140px] sm:max-w-[200px]"
-                    placeholder="Sin mesa"
-                    options={[
-                      { value: '', label: 'Sin mesa' },
-                      ...filterTablesForReservationSelect({
-                        tables,
-                        reservations: visibleReservas,
-                        date: r.date,
-                        time: r.time,
-                        excludeReservationId: r.id,
-                        includeTableId: r.table_id,
-                      }).map((t) => ({
-                        value: t.id,
-                        label: `${getTableDisplayLabel(t)} (Cap. ${t.capacity})`,
-                      })),
-                    ]}
-                  />
-                  <div className="flex items-center gap-2 justify-between sm:justify-start">
-                    <span className={statusColors[r.status] || UI_BADGE.slate}>
-                      {statusNames[r.status]}
-                    </span>
-                    {r.status !== 'cancelled' && (
-                      <button
-                        onClick={() => cancelReserva(r.id)}
-                        className="text-xs px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 shrink-0"
+
+                  <div className="flex items-center justify-between gap-3 lg:justify-end">
+                    <div className="flex flex-col items-stretch gap-2">
+                      <span
+                        className={`inline-flex items-center justify-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold ${STATUS_PILL[r.status] || 'bg-slate-100 text-slate-700'}`}
                       >
-                        Cancelar
-                      </button>
-                    )}
+                        {r.status === 'confirmed' ? <MdCheckCircle /> : null}
+                        {statusNames[r.status] || r.status}
+                      </span>
+                      {r.status !== 'cancelled' ? (
+                        <button
+                          type="button"
+                          onClick={() => cancelReserva(r.id)}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-sm text-slate-700 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <MdClose /> Cancelar
+                        </button>
+                      ) : null}
+                    </div>
+                    <MdChevronRight className="hidden shrink-0 text-2xl text-slate-300 lg:block" />
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
