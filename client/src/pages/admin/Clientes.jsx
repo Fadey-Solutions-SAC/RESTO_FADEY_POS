@@ -386,7 +386,6 @@ export default function Clientes() {
       key: 'total',
       title: 'Total de clientes',
       value: kpis.total,
-      hint: `+${kpis.newThisMonth} nuevos este mes`,
       Icon: MdPeople,
       bubble: 'bg-blue-100 text-blue-600',
       bg: 'from-blue-50/80 to-white',
@@ -396,7 +395,6 @@ export default function Clientes() {
       key: 'active',
       title: 'Clientes activos',
       value: kpis.active,
-      hint: `compraron en ${ACTIVE_DAYS} días`,
       Icon: MdPersonAdd,
       bubble: 'bg-emerald-100 text-emerald-600',
       bg: 'from-emerald-50/80 to-white',
@@ -405,8 +403,7 @@ export default function Clientes() {
     {
       key: 'debt',
       title: 'Con crédito',
-      value: kpis.withDebt,
-      hint: `${formatCurrency(kpis.debtTotal)} por cobrar`,
+      value: formatCurrency(kpis.debtTotal),
       Icon: MdCreditCard,
       bubble: 'bg-violet-100 text-violet-600',
       bg: 'from-violet-50/80 to-white',
@@ -416,7 +413,6 @@ export default function Clientes() {
       key: 'frequent',
       title: 'Clientes frecuentes',
       value: kpis.frequent,
-      hint: `${FREQUENT_VISITS}+ visitas pagadas`,
       Icon: MdStar,
       bubble: 'bg-amber-100 text-amber-600',
       bg: 'from-amber-50/80 to-white',
@@ -432,19 +428,20 @@ export default function Clientes() {
             key={k.key}
             type="button"
             onClick={() => setStatusFilter(k.filter)}
-            className={`group flex h-full items-center gap-4 rounded-2xl border bg-gradient-to-br p-5 text-left shadow-sm transition hover:shadow-md ${k.bg} ${
+            className={`group flex h-full min-w-0 flex-col justify-center gap-3 rounded-2xl border bg-gradient-to-br p-5 text-left shadow-sm transition hover:shadow-md ${k.bg} ${
               statusFilter === k.filter && k.filter !== 'all' ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
             }`}
           >
-            <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-full ${k.bubble}`}>
-              <k.Icon className="text-2xl" />
+            <span className="block truncate whitespace-nowrap text-sm font-semibold text-slate-800" title={k.title}>{k.title}</span>
+            <span className="flex w-full items-center gap-3">
+              <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${k.bubble}`}>
+                <k.Icon className="text-2xl" />
+              </span>
+              <span className="min-w-0 flex-1 truncate whitespace-nowrap text-3xl font-bold leading-none text-slate-900 tabular-nums" title={String(k.value)}>
+                {k.value}
+              </span>
+              <MdChevronRight className="shrink-0 text-2xl text-slate-300 transition group-hover:text-slate-500" />
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-slate-800">{k.title}</span>
-              <span className="mt-1 block text-3xl font-bold leading-none text-slate-900 tabular-nums">{k.value}</span>
-              <span className="mt-1.5 block truncate text-xs text-slate-500">{k.hint}</span>
-            </span>
-            <MdChevronRight className="shrink-0 text-2xl text-slate-300 transition group-hover:text-slate-500" />
           </button>
         ))}
         <button
