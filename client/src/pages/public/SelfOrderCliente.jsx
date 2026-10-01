@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, formatCurrency } from '../../utils/api';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
@@ -11,6 +11,7 @@ import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
 import { MdAdd, MdClose, MdDelete, MdLock, MdReceipt, MdRemove, MdRestaurantMenu } from 'react-icons/md';
 import { filterOrderingProducts } from '../../utils/orderingCatalog';
+import SelfOrderLoading, { isRetryableLoadError, MAX_LOAD_RETRIES } from '../../components/SelfOrderLoading';
 
 function storageKeyForCliente(id) {
   return `selfOrderCliente:${id}`;
@@ -63,13 +64,22 @@ export default function SelfOrderCliente() {
     }
   }, [clienteId]);
 
-  const loadBootstrap = useCallback(() => {
+  const [slowLoad, setSlowLoad] = useState(false);
+  const hasBootstrapRef = useRef(false);
+  const retryTimerRef = useRef(null);
+
+  useEffect(() => () => clearTimeout(retryTimerRef.current), []);
+
+  const loadBootstrap = useCallback((attempt = 0) => {
     if (!clienteId || !sessionToken) return;
+    clearTimeout(retryTimerRef.current);
     api
       .get(
         `/public/self-order/bootstrap?cliente=${encodeURIComponent(clienteId)}&token=${encodeURIComponent(sessionToken)}`
       )
       .then((data) => {
+        hasBootstrapRef.current = true;
+        setSlowLoad(false);
         setBootstrap(data);
         setProducts(data.products || []);
         setCategories(data.categories || []);
@@ -80,9 +90,20 @@ export default function SelfOrderCliente() {
         setBootError('');
       })
       .catch((err) => {
+        const sessionExpired =
+          Number(err?.status) === 401 ||
+          String(err.message || '').includes('Sesión') ||
+          String(err.message || '').includes('401');
+        if (hasBootstrapRef.current && !sessionExpired) return;
+        if (!sessionExpired && isRetryableLoadError(err) && attempt < MAX_LOAD_RETRIES) {
+          if (attempt >= 1) setSlowLoad(true);
+          retryTimerRef.current = setTimeout(() => loadBootstrap(attempt + 1), Math.min(2000 * (attempt + 1), 8000));
+          return;
+        }
+        hasBootstrapRef.current = false;
         setBootError(err.message || 'No se pudo cargar');
         setBootstrap(null);
-        if (String(err.message || '').includes('Sesión') || String(err.message || '').includes('401')) {
+        if (sessionExpired) {
           try {
             sessionStorage.removeItem(storageKeyForCliente(clienteId));
           } catch {
@@ -215,6 +236,7 @@ export default function SelfOrderCliente() {
     } catch {
       /* */
     }
+    hasBootstrapRef.current = false;
     setSessionToken('');
     setBootstrap(null);
     setBootError('');
@@ -268,21 +290,35 @@ export default function SelfOrderCliente() {
     );
   }
 
+  if (!bootstrap && !bootError) {
+    return <SelfOrderLoading slow={slowLoad} />;
+  }
+
   if (bootError || !bootstrap) {
     return (
       <div className="flex min-h-screen min-h-[100dvh] items-center justify-center bg-[var(--ui-body-bg)] p-6 text-center">
         <div className="max-w-md rounded-2xl border border-red-500/40 bg-[var(--ui-surface)] p-8 text-[var(--ui-body-text)]">
-          <h1 className="mb-2 text-lg font-bold">No disponible</h1>
-          <p className="text-sm text-red-200/90">{bootError || 'Cargando…'}</p>
-          {bootError ? (
+          <h1 className="mb-2 text-lg font-bold">No pudimos abrir la carta</h1>
+          <p className="text-sm text-red-200/90">{bootError}</p>
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setBootError('');
+                loadBootstrap();
+              }}
+              className="rounded-lg bg-[var(--ui-accent)] px-4 py-2 text-sm font-semibold text-white"
+            >
+              Reintentar
+            </button>
             <button
               type="button"
               onClick={handleLogoutCliente}
-              className="mt-4 text-sm text-[var(--ui-accent)] underline"
+              className="text-sm text-[var(--ui-accent)] underline"
             >
               Volver a identificarme
             </button>
-          ) : null}
+          </div>
         </div>
       </div>
     );

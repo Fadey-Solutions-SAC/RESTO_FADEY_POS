@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, formatCurrency } from '../../utils/api';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import { MdAdd, MdClose, MdDelete, MdReceipt, MdRemove, MdRestaurantMenu } from 'react-icons/md';
 import { filterOrderingProducts } from '../../utils/orderingCatalog';
 import { getTableDisplayLabel } from '../../utils/mesaMapTableVisual';
+import SelfOrderLoading, { isRetryableLoadError, MAX_LOAD_RETRIES } from '../../components/SelfOrderLoading';
 
 export default function SelfOrder() {
   const [searchParams] = useSearchParams();
@@ -47,11 +48,20 @@ export default function SelfOrder() {
     resetCart,
   } = useStaffOrderCart(modifiers);
 
-  const loadBootstrap = useCallback(() => {
+  const [slowLoad, setSlowLoad] = useState(false);
+  const hasBootstrapRef = useRef(false);
+  const retryTimerRef = useRef(null);
+
+  useEffect(() => () => clearTimeout(retryTimerRef.current), []);
+
+  const loadBootstrap = useCallback((attempt = 0) => {
     if (!mesaParam) return;
+    clearTimeout(retryTimerRef.current);
     api
       .get(`/public/self-order/bootstrap?mesa=${encodeURIComponent(mesaParam)}`)
       .then((data) => {
+        hasBootstrapRef.current = true;
+        setSlowLoad(false);
         setBootstrap(data);
         setProducts(data.products || []);
         setCategories(data.categories || []);
@@ -62,6 +72,12 @@ export default function SelfOrder() {
         setBootError('');
       })
       .catch((err) => {
+        if (hasBootstrapRef.current) return;
+        if (isRetryableLoadError(err) && attempt < MAX_LOAD_RETRIES) {
+          if (attempt >= 1) setSlowLoad(true);
+          retryTimerRef.current = setTimeout(() => loadBootstrap(attempt + 1), Math.min(2000 * (attempt + 1), 8000));
+          return;
+        }
         setBootError(err.message || 'No se pudo cargar');
         setBootstrap(null);
       });
@@ -170,12 +186,26 @@ export default function SelfOrder() {
     );
   }
 
+  if (!bootstrap && !bootError) {
+    return <SelfOrderLoading subtitle={`Mesa ${mesaParam}`} slow={slowLoad} />;
+  }
+
   if (bootError || !bootstrap) {
     return (
       <div className="min-h-screen bg-[var(--ui-body-bg)] flex items-center justify-center p-6 text-center">
         <div className="max-w-md rounded-2xl border border-red-500/40 bg-[var(--ui-surface)] p-8 text-[var(--ui-body-text)]">
-          <h1 className="text-lg font-bold mb-2">No disponible</h1>
-          <p className="text-red-200/90 text-sm">{bootError || 'Cargando…'}</p>
+          <h1 className="text-lg font-bold mb-2">No pudimos abrir la carta</h1>
+          <p className="text-red-200/90 text-sm">{bootError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setBootError('');
+              loadBootstrap();
+            }}
+            className="mt-4 rounded-lg bg-[var(--ui-accent)] px-4 py-2 text-sm font-semibold text-white"
+          >
+            Reintentar
+          </button>
         </div>
       </div>
     );

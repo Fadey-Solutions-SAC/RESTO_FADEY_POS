@@ -1,6 +1,7 @@
 /**
- * Registro del SW con comprobación periódica y recarga solo en actualizaciones reales.
- * No recarga en la primera instalación (evita doble splash en móvil/PWA).
+ * Registro del SW con comprobación periódica.
+ * Nunca recarga la página: el SW nuevo se activa en segundo plano y, como sirve red primero,
+ * la siguiente navegación ya usa la versión publicada (evita recargas a mitad de un pedido QR).
  */
 export function registerServiceWorker() {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
@@ -9,40 +10,20 @@ export function registerServiceWorker() {
 
   const runRegister = async () => {
     try {
-      const hadControllerOnLoad = !!navigator.serviceWorker.controller;
       const reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
 
-      let reloadPending = false;
-
       const activateWaitingWorker = () => {
-        if (!reg.waiting) return;
-        reloadPending = true;
-        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
       };
 
-      if (reg.waiting && hadControllerOnLoad) {
-        activateWaitingWorker();
-      }
+      activateWaitingWorker();
 
       reg.addEventListener('updatefound', () => {
         const installing = reg.installing;
         if (!installing) return;
         installing.addEventListener('statechange', () => {
-          if (
-            installing.state === 'installed' &&
-            navigator.serviceWorker.controller &&
-            reg.waiting
-          ) {
-            activateWaitingWorker();
-          }
+          if (installing.state === 'installed') activateWaitingWorker();
         });
-      });
-
-      let refreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshing || !reloadPending) return;
-        refreshing = true;
-        window.location.reload();
       });
 
       setInterval(() => {
