@@ -26,6 +26,10 @@ import CortesiasReportSection from '../../components/admin/CortesiasReportSectio
 import { InlineDateField, DateFilterPeriodButton, currentYearDateBounds } from '../../components/DateFilterControls';
 import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
 import VentasCuentasTable from '../../components/admin/VentasCuentasTable';
+import SaleActionButtons from '../../components/admin/SaleActionButtons';
+import InformesAiPanel from '../../components/informes/InformesAiPanel';
+import { getFadeyAiAvatarSrc } from '../../constants/fadeyAiBranding';
+import { canAccessStaffModule } from '../../utils/staffModuleAccess';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { INFORME_EXCEL_NAVY, INFORME_EXCEL_LABEL, INFORME_EXCEL_TOTAL } from '../../utils/informeExcelHtml';
@@ -723,6 +727,7 @@ export default function Reports() {
   const [monthlyError, setMonthlyError] = useState('');
   const [ranking, setRanking] = useState([]);
   const [rankingPeriod, setRankingPeriod] = useState('month');
+  const [iaRanking, setIaRanking] = useState([]);
   const [purchaseExpenses, setPurchaseExpenses] = useState([]);
   const [comprasPeriod, setComprasPeriod] = useState('mes'); // ultima | semana | mes | anio | todo | custom
   const [comprasFrom, setComprasFrom] = useState(localMonthStartYmd);
@@ -871,6 +876,15 @@ export default function Reports() {
   }, [salesMonth, tab, reportSection]);
 
   useEffect(() => {
+    if (reportSection !== 'ventas' || tab !== 'ia') return;
+    void loadDaily(salesDailyDate);
+    void loadMonthly(salesMonth);
+    api.get('/reports/ranking?period=month').then(setIaRanking).catch(() => setIaRanking([]));
+    api.get('/inventory/alerts').then(setInventoryAlerts).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportSection, tab]);
+
+  useEffect(() => {
     if (reportSection !== 'ventas' || tab !== 'daily') return;
     loadDaily(salesDailyDate);
   }, [salesDailyDate, tab, reportSection, loadDaily]);
@@ -905,6 +919,18 @@ export default function Reports() {
       return next;
     }, { replace: true });
   }, [setSearchParams]);
+
+  const canOpenVentas = canAccessStaffModule(user, { moduleId: 'ventas', roles: ['admin', 'cajero'] });
+  const renderSaleActions = useCallback((group) => (
+    <SaleActionButtons
+      group={group}
+      onAction={(action, g) => {
+        const orderId = g?.primary?.id || g?.orders?.[0]?.id;
+        if (!orderId) return;
+        navigate(`/admin/ventas?abrir=${encodeURIComponent(orderId)}&accion=${action}`);
+      }}
+    />
+  ), [navigate]);
 
   const goToDescuentosHighlight = useCallback((account) => {
     const recordIds = getObservationRecordIds(account?.observations);
@@ -1674,7 +1700,7 @@ export default function Reports() {
           tabIndex={-1}
           aria-hidden
         />
-        <div className={`grid grid-cols-3 gap-2 min-w-0 ${tab === 'ranking' ? 'w-1/2' : 'flex-1'}`}>
+        <div className={`grid grid-cols-[1fr_1fr_1fr_auto] gap-2 min-w-0 ${tab === 'ranking' ? 'w-1/2' : 'flex-1'}`}>
         <button
           type="button"
           onClick={() => {
@@ -1705,6 +1731,20 @@ export default function Reports() {
           <MdEmojiEvents className="shrink-0" />
           <span className="truncate">Ranking Productos</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('ia')}
+          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${tab === 'ia' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
+          title="IA de informes"
+        >
+          <img
+            src={getFadeyAiAvatarSrc('saludo')}
+            alt=""
+            className="w-5 h-5 rounded-full object-cover object-top shrink-0"
+            draggable={false}
+          />
+          <span>IA</span>
+        </button>
         </div>
         {tab === 'ranking' && (
         <div className="grid grid-cols-4 gap-2 w-1/2 min-w-0">
@@ -1730,6 +1770,15 @@ export default function Reports() {
         </div>
         )}
       </div>
+      {tab === 'ia' && (
+        <InformesAiPanel
+          dailyData={dailyData}
+          monthlyData={monthlyData}
+          ranking={iaRanking}
+          inventoryAlerts={inventoryAlerts}
+          monthLabel={formatMonthLabel(monthlyData?.month || salesMonth)}
+        />
+      )}
       {tab === 'daily' && dailyLoading && !dailyData && (
         <p className="text-sm text-[var(--ui-muted)] mb-4">Cargando informe del día…</p>
       )}
@@ -1822,6 +1871,8 @@ export default function Reports() {
               emptyMessage="No hay cuentas cobradas en este día"
               onStatusClick={goToDescuentosHighlight}
               onAccountPurged={() => void loadDaily(salesDailyDate)}
+              showActions={canOpenVentas}
+              renderActions={renderSaleActions}
             />
           </div>
         </div>
@@ -1891,6 +1942,8 @@ export default function Reports() {
               emptyMessage="No hay cuentas cobradas en este mes"
               onStatusClick={goToDescuentosHighlight}
               onAccountPurged={() => void loadMonthly(salesMonth)}
+              showActions={canOpenVentas}
+              renderActions={renderSaleActions}
             />
           </div>
 

@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatDateTime, formatDate, parseApiDate, isDateKeyInInclusiveRange, toLocalDateKey } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
-import { MdSearch, MdVisibility, MdEdit, MdSave, MdPrint, MdTableChart, MdCancel } from 'react-icons/md';
+import { MdSearch, MdSave } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
 import { buildVentasDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch, parseProductRemovalNotesFromOrder, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import SaleActionButtons, { SALE_ACTIONS } from '../../components/admin/SaleActionButtons';
 import { useAuth } from '../../context/AuthContext';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
@@ -22,7 +23,8 @@ import {
   formatSaleNumero,
 } from '../../utils/salesReportExport';
 import { downloadBlobFile, downloadExcelFile } from '../../utils/inventoryCuadreExport';
-import { formatOrderPaymentLabel } from '../../utils/paymentBreakdownDisplay';
+import { formatOrderPaymentLabel, orderPaymentDetail } from '../../utils/paymentBreakdownDisplay';
+import PaymentSummaryDisplay from '../../components/admin/PaymentSummaryDisplay';
 
 function payLabel(method) {
   if (!method) return '';
@@ -214,13 +216,6 @@ function downloadExcel(order) {
 
 const PAYMENT_METHOD_KEYS = ['efectivo', 'yape', 'plin', 'tarjeta', 'online'];
 const DOC_TYPE_KEYS = ['nota_venta', 'boleta', 'factura'];
-
-function onPrimaryClick(handler) {
-  return (event) => {
-    if (event?.detail > 1) return;
-    handler(event);
-  };
-}
 
 function mesaSortValue(group) {
   const table = String(group?.primary?.table_number || '').trim();
@@ -655,58 +650,53 @@ export default function Ventas() {
     }
   };
 
-  const renderSaleActions = (group, o) => (
-            <div className="flex items-center gap-1 relative">
-              <button
-                type="button"
-                onClick={onPrimaryClick(() => openGroupDetail(group))}
-                onDoubleClick={(event) => event.preventDefault()}
-                className="px-2 py-1 rounded bg-slate-600 text-white text-xs hover:bg-slate-700"
-                title="Ver detalle"
-              >
-                <MdVisibility />
-              </button>
-              <button type="button" onClick={onPrimaryClick(() => openReceipt(o, group))} className="px-2 py-1 rounded bg-cyan-600 text-white text-xs hover:bg-cyan-700" title="Imprimir"><MdPrint /></button>
-              <button
-                type="button"
-                onClick={onPrimaryClick(() => {
-                  if (group.comprobanteCount === 1) downloadExcel({ ...o, local_name: restaurantName });
-                  else group.orders.forEach((ord) => downloadExcel({ ...ord, local_name: restaurantName }));
-                })}
-                className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700"
-                title="Excel"
-              >
-                <MdTableChart />
-              </button>
-              {!isVoidedTab ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={onPrimaryClick(() => {
-                      if (group.comprobanteCount === 1) startEdit(o);
-                      else openGroupDetail(group);
-                    })}
-                    className="px-2 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600"
-                    title="Editar"
-                  >
-                    <MdEdit />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onPrimaryClick(() => {
-                      if (group.comprobanteCount === 1) openVoidModal(o);
-                      else openGroupDetail(group);
-                    })}
-                    disabled={group.orders.every((ord) => ord.status === 'cancelled')}
-                    className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700 disabled:opacity-50"
-                    title="Anular venta"
-                  >
-                    <MdCancel />
-                  </button>
-                </>
-              ) : null}
-            </div>
+  const runSaleAction = (action, group) => {
+    const o = group.primary || {};
+    if (action === 'ver') openGroupDetail(group);
+    else if (action === 'imprimir') openReceipt(o, group);
+    else if (action === 'excel') {
+      if (group.comprobanteCount === 1) downloadExcel({ ...o, local_name: restaurantName });
+      else group.orders.forEach((ord) => downloadExcel({ ...ord, local_name: restaurantName }));
+    } else if (action === 'editar') {
+      if (group.comprobanteCount === 1) startEdit(o);
+      else openGroupDetail(group);
+    } else if (action === 'anular') {
+      if (group.comprobanteCount === 1) openVoidModal(o);
+      else openGroupDetail(group);
+    }
+  };
+
+  const renderSaleActions = (group) => (
+    <SaleActionButtons group={group} onAction={runSaleAction} isVoided={isVoidedTab} />
   );
+
+  /** Informes abre Ventas con `?abrir=<pedido>&accion=<acción>` para reutilizar estas acciones. */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingUrlAction = useRef(null);
+  useEffect(() => {
+    const orderId = searchParams.get('abrir');
+    const action = searchParams.get('accion');
+    if (!orderId) return;
+    pendingUrlAction.current = { orderId, action: SALE_ACTIONS.includes(action) ? action : 'ver' };
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('abrir');
+      next.delete('accion');
+      return next;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const pending = pendingUrlAction.current;
+    if (!pending || loading) return;
+    const group = displayGroups.find((g) => (g.orders || []).some((ord) => String(ord.id) === String(pending.orderId)));
+    pendingUrlAction.current = null;
+    if (!group) {
+      toast.error('No se encontró la venta en el listado');
+      return;
+    }
+    runSaleAction(pending.action, group);
+  });
 
   if (loading) return <div className="flex justify-center py-16"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>;
 
@@ -1039,11 +1029,16 @@ export default function Ventas() {
             <div className="grid grid-cols-2 gap-3 text-sm border-t border-[color:var(--ui-border)] pt-3">
               <div>
                 <p className="ui-text-muted">Metodo de Pago</p>
-                <p className="font-medium break-words">
-                  {selectedGroup.paymentSummary && selectedGroup.paymentSummary !== '—'
-                    ? selectedGroup.paymentSummary
-                    : formatOrderPaymentLabel(selected, payLabel)}
-                </p>
+                <div className="font-medium break-words">
+                  {selectedGroup.paymentSummary && selectedGroup.paymentSummary !== '—' ? (
+                    <PaymentSummaryDisplay detail={selectedGroup.paymentDetail} fallback={selectedGroup.paymentSummary} />
+                  ) : (
+                    <PaymentSummaryDisplay
+                      detail={orderPaymentDetail(selected)}
+                      fallback={formatOrderPaymentLabel(selected, payLabel)}
+                    />
+                  )}
+                </div>
               </div>
               <div>
                 <p className="ui-text-muted">Comprobante</p>

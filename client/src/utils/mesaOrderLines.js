@@ -3,18 +3,28 @@
 import { toLocalDateKey, parseApiDate, APP_DISPLAY_TIMEZONE } from './api';
 import { UI_BADGE } from './uiBadges';
 import { getTableDisplayLabel } from './mesaMapTableVisual';
-import { addOrderPaymentParts, formatPaymentPartsSummary } from './paymentBreakdownDisplay';
+import { addOrderPaymentParts, formatPaymentPartsSummary, paymentPartsDetail } from './paymentBreakdownDisplay';
 
-/** Resumen de pago de una cuenta; si algún pedido fue multimétodo lo indica con los montos exactos por método. */
-function buildAccountPaymentSummary(salesOrders, courtesyCount = 0) {
+function collectAccountPaymentParts(salesOrders) {
   const parts = new Map();
   let multi = false;
   for (const o of salesOrders || []) {
     if (addOrderPaymentParts(parts, o)) multi = true;
   }
+  return { parts, multi };
+}
+
+/** Resumen de pago de una cuenta; si algún pedido fue multimétodo lo indica con los montos exactos por método. */
+function buildAccountPaymentSummary(salesOrders, courtesyCount = 0) {
+  const { parts, multi } = collectAccountPaymentParts(salesOrders);
   const text = formatPaymentPartsSummary(parts, { multi });
   if (!courtesyCount) return text;
   return [text, `Cortesía × ${courtesyCount}`].filter(Boolean).join(' · ');
+}
+
+function buildAccountPaymentDetail(salesOrders, courtesyCount = 0) {
+  const { parts, multi } = collectAccountPaymentParts(salesOrders);
+  return paymentPartsDetail(parts, { multi, courtesyCount });
 }
 
 /**
@@ -530,6 +540,7 @@ export function buildSalesDisplayGroups(orders = [], { groupOpenMesaByTableOnly 
       paidTotal,
       pendingTotal,
       paymentSummary: isPendingAccount ? '—' : paymentSummary,
+      paymentDetail: isPendingAccount ? null : buildAccountPaymentDetail(salesOrders, courtesyOrders.length),
       latestAt,
       earliestAt,
       comprobanteCount: sorted.length,
@@ -727,6 +738,7 @@ export function buildPaidSalesAccountDisplayGroups(orders = [], adjustmentRows =
       paidTotal: total,
       pendingTotal: 0,
       paymentSummary,
+      paymentDetail: buildAccountPaymentDetail(salesOrders, courtesyOrders.length),
       latestAt: paidAt,
       earliestAt: sorted[sorted.length - 1]?.paid_at
         || sorted[sorted.length - 1]?.updated_at

@@ -67,6 +67,26 @@ export function formatPaymentPartsSummary(parts, { multi = false } = {}) {
   return multi && text ? `Multimétodo · ${text}` : text;
 }
 
+/** Detalle para mostrar en lista: `{ multi, lines: [{ method, label, amount }], courtesyCount }`. */
+export function paymentPartsDetail(parts, { multi = false, courtesyCount = 0 } = {}) {
+  return {
+    multi: Boolean(multi),
+    lines: sortedParts(parts).map(([method, amount]) => ({
+      method,
+      label: paymentMethodLabelEs(method),
+      amount: round2(amount),
+    })),
+    courtesyCount: Number(courtesyCount) || 0,
+  };
+}
+
+/** Detalle de pago de un solo pedido (multimétodo con montos) o null si fue un solo método. */
+export function orderPaymentDetail(order) {
+  const br = parseOrderPaymentBreakdown(order);
+  if (!br) return null;
+  return paymentPartsDetail(new Map(Object.entries(br)), { multi: true });
+}
+
 /** Etiqueta de pago de un pedido; usa `labelFn` para el caso de un solo método. */
 export function formatOrderPaymentLabel(order, labelFn = paymentMethodLabelEs) {
   const br = parseOrderPaymentBreakdown(order);

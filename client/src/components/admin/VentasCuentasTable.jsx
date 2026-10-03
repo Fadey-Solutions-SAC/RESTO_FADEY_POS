@@ -5,6 +5,7 @@ import { salesAccountClienteLabel } from '../../utils/salesReportExport';
 import { UI_BADGE } from '../../utils/uiBadges';
 import { useAuth } from '../../context/AuthContext';
 import ContextMenu from '../ContextMenu';
+import PaymentSummaryDisplay from './PaymentSummaryDisplay';
 import i18n from '../../i18n';
 
 export function getAccountAuditStatusBadge(group) {
@@ -76,14 +77,14 @@ export function getAccountDocument(group) {
   return getOrderDocument(primary);
 }
 
-function SortableTh({ label, colKey, sortKey, sortDir, onSort }) {
+function SortableTh({ label, colKey, sortKey, sortDir, onSort, className = '' }) {
   if (!onSort) {
-    return <th className="pb-2 font-medium">{label}</th>;
+    return <th className={`pb-2 font-medium ${className}`}>{label}</th>;
   }
   const active = sortKey === colKey;
   return (
     <th
-      className="pb-2 font-medium cursor-pointer select-none hover:text-[var(--ui-body-text)]"
+      className={`pb-2 font-medium cursor-pointer select-none hover:text-[var(--ui-body-text)] ${className}`}
       onClick={() => onSort(colKey)}
       title={active ? (sortDir === 'asc' ? 'Orden ascendente' : 'Orden descendente') : `Ordenar por ${label}`}
     >
@@ -157,8 +158,9 @@ export default function VentasCuentasTable({
             <th className="pb-2 font-medium">Mesero</th>
             <th className="pb-2 font-medium">Cliente</th>
             <th className="pb-2 font-medium">Documento</th>
-            {!isVoidedTab ? <th className="pb-2 font-medium">Pagos</th> : null}
+            {!isVoidedTab ? <th className="pb-2 pr-6 font-medium">Método</th> : null}
             <SortableTh
+              className="pr-4 whitespace-nowrap"
               label={isVoidedTab ? 'Monto ref.' : 'Venta'}
               colKey="venta"
               sortKey={sortKey}
@@ -226,11 +228,16 @@ export default function VentasCuentasTable({
                   )}
                 </td>
                 {!isVoidedTab ? (
-                  <td className="py-2.5 font-medium text-[var(--ui-body-text)] text-xs leading-relaxed">
-                    {group.paymentSummary || '-'}
+                  <td className="py-2.5 pr-6 font-medium text-[var(--ui-body-text)] text-xs leading-relaxed min-w-[9rem]">
+                    <PaymentSummaryDisplay
+                      detail={group.paymentDetail}
+                      fallback={group.paymentSummary || '-'}
+                      compact
+                      methodOnly
+                    />
                   </td>
                 ) : null}
-                <td className="py-2.5 font-bold text-[var(--ui-body-text)]">{formatCurrency(group.total)}</td>
+                <td className="py-2.5 pr-4 font-bold text-[var(--ui-body-text)] whitespace-nowrap">{formatCurrency(group.total)}</td>
                 <td className="py-2.5">
                   {auditBadge.clickable ? (
                     <button
