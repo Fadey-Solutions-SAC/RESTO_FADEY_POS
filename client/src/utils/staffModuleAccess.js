@@ -39,6 +39,11 @@ export function isPermissionExplicitlyDenied(value) {
   return value === false || value === 0 || value === '0' || value === 'false';
 }
 
+/** Igual que el API (`userHasModule`): el rol cocina/bar siempre tiene su propia estación. */
+function isOwnRoleStation(role, moduleId) {
+  return (role === 'cocina' && moduleId === 'cocina') || (role === 'bar' && moduleId === 'bar');
+}
+
 export function hasModulePermission(user, moduleId) {
   if (!moduleId) return true;
   if (user?.role === 'master_admin') {
@@ -53,6 +58,8 @@ export function hasModulePermission(user, moduleId) {
   const perms = user && typeof user.permissions === 'object' && user.permissions !== null
     ? user.permissions
     : null;
+
+  if (isOwnRoleStation(role, moduleId)) return true;
 
   const isProdStaff = role === 'produccion' || role === 'cocina' || role === 'bar';
   if (isProdStaff && (moduleId === 'cocina' || moduleId === 'bar' || moduleId === 'produccion')) {
@@ -106,6 +113,7 @@ export function canAccessStaffModule(user, { moduleId, roles } = {}) {
     }
     return moduleId === 'mi_restaurant' || !moduleId;
   }
+  if (isOwnRoleStation(String(user.role || '').toLowerCase(), moduleId)) return true;
   if (moduleId && typeof user.permissions === 'object' && user.permissions != null) {
     if (isPermissionExplicitlyDenied(user.permissions[moduleId])) return false;
   }
@@ -144,7 +152,9 @@ export function getDefaultStaffPath(user, opts = {}) {
   // Áreas de producción: QR on y sin jornada → marcar; si ya activo → ir al módulo.
   if (user.role === 'produccion' || user.role === 'cocina' || user.role === 'bar') {
     if (qrOn && !jornadaAbierta) return '/admin/asistencia';
-    return getProductionStaffPath(user);
+    const prodPath = getProductionStaffPath(user);
+    // `/` con sesión staff redirige otra vez aquí: sin módulo, mostrar aviso en /admin.
+    return prodPath === '/' ? '/admin' : prodPath;
   }
   if (user.role === 'delivery') return hasModulePermission(user, 'delivery') ? '/delivery' : '/';
   if (!['admin', 'cajero', 'mozo'].includes(user.role)) return '/admin';
