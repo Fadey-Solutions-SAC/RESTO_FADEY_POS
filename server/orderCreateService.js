@@ -80,12 +80,12 @@ function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
     const wasComplete = isStationCompleteForStation(order, previousItems, areaId);
     if (wasComplete && hadItems) continue;
 
+    // La estación debe pulsar PREPARAR: solo se conserva el inicio si ya estaba trabajando esta comanda.
+    const preparingSql = (col) => (hadItems ? col : 'NULL');
     if (areaId === 'cocina') {
       tx.run(
         `UPDATE orders SET station_cocina_ready_at = NULL,
-          station_cocina_preparing_at = CASE
-            WHEN TRIM(COALESCE(station_cocina_preparing_at, '')) != '' THEN station_cocina_preparing_at
-            ELSE COALESCE(NULLIF(TRIM(preparing_at), ''), created_at, datetime('now')) END,
+          station_cocina_preparing_at = ${preparingSql('station_cocina_preparing_at')},
           updated_at = datetime('now')
          WHERE id = ?`,
         [orderId]
@@ -93,9 +93,7 @@ function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
     } else if (areaId === 'bar') {
       tx.run(
         `UPDATE orders SET station_bar_ready_at = NULL,
-          station_bar_preparing_at = CASE
-            WHEN TRIM(COALESCE(station_bar_preparing_at, '')) != '' THEN station_bar_preparing_at
-            ELSE COALESCE(NULLIF(TRIM(preparing_at), ''), created_at, datetime('now')) END,
+          station_bar_preparing_at = ${preparingSql('station_bar_preparing_at')},
           updated_at = datetime('now')
          WHERE id = ?`,
         [orderId]
@@ -104,7 +102,7 @@ function reopenProductionStationsForNewLines(tx, orderId, lineIds) {
     upsertOrderStationState(
       orderId,
       areaId,
-      { preparing_at: new Date().toISOString().slice(0, 19).replace('T', ' '), ready_at: null },
+      hadItems ? { ready_at: null } : { preparing_at: null, ready_at: null },
       tx
     );
   }

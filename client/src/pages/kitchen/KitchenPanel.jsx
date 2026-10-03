@@ -770,15 +770,17 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
               {t('panel.backToOps')}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => navigate('/admin/perfil')}
-            className={`${HEADER_BOX} ${HEADER_BTN}`}
-            title="Mi perfil"
-          >
-            <MdPerson className="text-lg" />
-            <span className="hidden sm:inline">Mi perfil</span>
-          </button>
+          {!titleInShell ? (
+            <button
+              type="button"
+              onClick={() => navigate('/admin/perfil')}
+              className={`${HEADER_BOX} ${HEADER_BTN}`}
+              title="Mi perfil"
+            >
+              <MdPerson className="text-lg" />
+              <span className="hidden sm:inline">Mi perfil</span>
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setEndShiftOpen(true)}
