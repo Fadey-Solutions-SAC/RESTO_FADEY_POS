@@ -6,7 +6,11 @@ import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { useDeliverySettings } from '../../hooks/useDeliveryEnabled';
 import { useNavigate, Link } from 'react-router-dom';
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, ComposedChart } from 'recharts';
-import { MdDateRange, MdKeyboardArrowDown, MdChevronLeft, MdChevronRight, MdKitchen, MdLocalBar, MdDeliveryDining, MdPointOfSale, MdTableBar, MdBolt, MdWarning, MdNotificationsActive } from 'react-icons/md';
+import {
+  MdDateRange, MdKeyboardArrowDown, MdChevronLeft, MdChevronRight, MdKitchen, MdLocalBar, MdDeliveryDining,
+  MdPointOfSale, MdTableBar, MdBolt, MdWarning, MdNotificationsActive, MdPayments, MdCreditCard, MdPhoneIphone,
+  MdBarChart, MdLocalOffer, MdCreditScore, MdAccountBalance, MdPeople, MdShowChart, MdInventory2, MdCardGiftcard,
+} from 'react-icons/md';
 
 import { useChartTheme } from '../../theme/useChartTheme';
 import {
@@ -311,6 +315,50 @@ function orderBelongsToRegisterSession(order, registerId, openedAt, closedAt) {
   if (regId && orderRegId === regId) return true;
   if (regId && orderRegId && orderRegId !== regId) return false;
   return eventAt >= openedAt && eventAt <= end;
+}
+
+const KPI_WAVE_LINE = 'M0 46 C 30 40, 52 50, 80 42 S 128 30, 150 34 S 186 14, 200 6';
+
+function DashboardKpiCard({ item }) {
+  const Icon = item.icon;
+  const gradId = `kpi-wave-${item.key}`;
+  const value = Number(item.amount || 0);
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-[color:var(--ui-card-border)] bg-[var(--ui-surface)] shadow-sm hover:shadow-md transition-shadow min-h-[8.5rem] p-4">
+      <div className="relative z-10 flex items-center gap-3">
+        <span
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+          style={{ backgroundColor: `${item.color}1f`, color: item.color }}
+        >
+          <Icon className="text-[1.35rem]" />
+        </span>
+        <p className="text-sm font-semibold text-[var(--ui-body-text)] leading-tight">{item.label}</p>
+      </div>
+      <p className="relative z-10 mt-3 text-2xl sm:text-[1.7rem] font-bold tabular-nums text-[var(--ui-body-text)] whitespace-nowrap leading-none">
+        {item.currency ? (
+          <>
+            <span className="font-medium text-[var(--ui-muted)] mr-1">S/</span>
+            {value.toFixed(2)}
+          </>
+        ) : value}
+      </p>
+      <svg
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-14 w-full"
+        viewBox="0 0 200 56"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={item.color} stopOpacity="0.22" />
+            <stop offset="100%" stopColor={item.color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={`${KPI_WAVE_LINE} L200 56 L0 56 Z`} fill={`url(#${gradId})`} />
+        <path d={KPI_WAVE_LINE} fill="none" stroke={item.color} strokeWidth="2" strokeLinecap="round" opacity="0.75" vectorEffect="non-scaling-stroke" />
+      </svg>
+    </div>
+  );
 }
 
 export default function Escritorio() {
@@ -1539,39 +1587,20 @@ export default function Escritorio() {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
         <div className="xl:col-span-8 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           {[
-            { label: 'Ventas en efectivo', amount: salesByPayment.efectivo, currency: true },
-            { label: 'Ventas con tarjeta', amount: salesByPayment.tarjeta, currency: true },
-            { label: 'Yape/Plin', amount: (salesByPayment.yape || 0) + (salesByPayment.plin || 0), currency: true },
-            { label: 'Total de ventas', amount: totalSales, currency: true },
-            { label: 'Egresos de caja', amount: totalCashExpenses, currency: true },
-            { label: 'Total de descuentos', amount: totalDiscounts, currency: true },
-            { label: 'Ventas al crédito', amount: totalCredit, currency: true },
-            { label: 'Cobro de débito', amount: totalDebitIncome, currency: true },
-            { label: 'Clientes', amount: paidAccountsCount, currency: false },
-            { label: 'Promedio de venta', amount: averageSaleAmount, currency: true },
-            { label: 'Productos vendidos', amount: productsSoldCount, currency: false },
-            { label: 'Cortesías', amount: courtesyCount, currency: false },
+            { key: 'cash', label: 'Ventas en efectivo', amount: salesByPayment.efectivo, currency: true, icon: MdPayments, color: '#10b981' },
+            { key: 'card', label: 'Ventas con tarjeta', amount: salesByPayment.tarjeta, currency: true, icon: MdCreditCard, color: '#3b82f6' },
+            { key: 'qr', label: 'Yape/Plin', amount: (salesByPayment.yape || 0) + (salesByPayment.plin || 0), currency: true, icon: MdPhoneIphone, color: '#8b5cf6' },
+            { key: 'total', label: 'Total de ventas', amount: totalSales, currency: true, icon: MdBarChart, color: '#2563eb' },
+            { key: 'expense', label: 'Egresos de caja', amount: totalCashExpenses, currency: true, icon: MdPointOfSale, color: '#ef4444' },
+            { key: 'discount', label: 'Total de descuentos', amount: totalDiscounts, currency: true, icon: MdLocalOffer, color: '#f59e0b' },
+            { key: 'credit', label: 'Ventas al crédito', amount: totalCredit, currency: true, icon: MdCreditScore, color: '#14b8a6' },
+            { key: 'debit', label: 'Cobro de débito', amount: totalDebitIncome, currency: true, icon: MdAccountBalance, color: '#7c3aed' },
+            { key: 'clients', label: 'Clientes', amount: paidAccountsCount, currency: false, icon: MdPeople, color: '#0ea5e9' },
+            { key: 'avg', label: 'Promedio de venta', amount: averageSaleAmount, currency: true, icon: MdShowChart, color: '#f97316' },
+            { key: 'products', label: 'Productos vendidos', amount: productsSoldCount, currency: false, icon: MdInventory2, color: '#22c55e' },
+            { key: 'courtesy', label: 'Cortesías', amount: courtesyCount, currency: false, icon: MdCardGiftcard, color: '#f43f5e' },
           ].map((item) => (
-            <div
-              key={item.label}
-              className="rounded-xl border border-[color:var(--ui-card-border)] bg-[color-mix(in_srgb,var(--ui-accent-muted)_10%,var(--ui-surface))] shadow-sm overflow-hidden"
-            >
-              <p className="text-xs sm:text-sm font-medium text-[var(--ui-body-text)] px-3 py-2 bg-[color-mix(in_srgb,var(--ui-accent-muted)_18%,var(--ui-surface))] border-b border-[color:var(--ui-card-border)]">
-                {item.label}
-              </p>
-              <div className="px-3 py-2.5">
-                {item.currency ? (
-                  <p className="text-xl sm:text-2xl font-light tabular-nums text-[var(--ui-body-text)] flex items-baseline gap-1 whitespace-nowrap leading-none">
-                    <span className="text-sm sm:text-base font-normal text-[var(--ui-accent-muted)]">S/</span>
-                    <span>{Number(item.amount || 0).toFixed(2)}</span>
-                  </p>
-                ) : (
-                  <p className="text-xl sm:text-2xl font-light tabular-nums text-[var(--ui-body-text)] leading-none">
-                    {Number(item.amount || 0)}
-                  </p>
-                )}
-              </div>
-            </div>
+            <DashboardKpiCard key={item.key} item={item} />
           ))}
         </div>
 

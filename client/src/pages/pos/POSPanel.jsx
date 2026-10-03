@@ -395,6 +395,8 @@ import StaffDineInOrderUI, { StaffDineInOrderCartPanel, VIEWPORT_CART_MAX_CLASS 
 import { staffOrderModalProps } from '../../components/staffOrderModalLayout';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
 import PosCustomerPickerModal from '../../components/PosCustomerPickerModal';
+import NonCashArqueoSection from '../../components/pos/NonCashArqueoSection';
+import CashCountSection from '../../components/pos/CashCountSection';
 import { canPosDeleteOrReleaseTable, canAjusteBarAutoDismiss } from '../../utils/posPermissions';
 import { buildTablesBySalon } from '../../utils/salonesUtils';
 import {
@@ -407,7 +409,7 @@ import { readGetCache } from '../../utils/offlinePos';
 import {
   MdPointOfSale, MdTableRestaurant, MdReceipt,
   MdCheckCircle, MdAttachMoney, MdPeople, MdClose,
-  MdAccountBalanceWallet, MdTrendingUp, MdTrendingDown,
+  MdAccountBalanceWallet,
   MdRestaurantMenu,
   MdAccessTime, MdPersonAdd, MdSearch,
   MdDeliveryDining,
@@ -6187,221 +6189,46 @@ export default function POSPanel() {
                   <span className="font-bold text-xl text-emerald-600">{formatCurrency(registerSales)}</span>
                 </div>
               </div>
-
-              {totalTips > 0 ? (
-                <div className="rounded-xl p-4 border border-amber-500/40 bg-amber-500/10">
-                  <h3 className="font-semibold text-[var(--ui-body-text)] mb-3 flex items-center gap-2">
-                    <MdAccountBalanceWallet className="text-amber-600" /> Propinas del turno
-                  </h3>
-                  <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
-                    {registerPaymentRows.filter((row) => row.tip > 0).map((row) => (
-                      <div key={row.value} className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-                        <p className="text-xs text-[var(--ui-muted)]">{row.label}</p>
-                        <p className={`font-bold text-lg tabular-nums ${paymentRowAmountClass(row.value)}`}>{formatCurrency(row.tip)}</p>
-                        <p className="text-[10px] text-[var(--ui-muted)] leading-snug">
-                          {row.value === 'efectivo' ? 'Debe estar en la caja' : 'Incluido en lo que marca el POS / QR'}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-between items-center mt-3 pt-3 border-t border-amber-500/30">
-                    <span className="font-bold text-[var(--ui-body-text)]">Total propinas</span>
-                    <span className="font-bold text-xl text-amber-600 tabular-nums">{formatCurrency(totalTips)}</span>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                <h3 className="font-semibold text-[var(--ui-body-text)] mb-1">Conteo de efectivo</h3>
-                <div className="mb-3">
-                  <p className="text-xs font-semibold text-[var(--ui-muted)] mb-2">
-                    Arqueo por denominación (soles) — escriba la cantidad y pasa sola a la siguiente (o presione Enter)
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {denomDefs.map(d => (
-                      <div key={d.key} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-2 focus-within:border-[color:var(--ui-accent)] focus-within:ring-2 focus-within:ring-[color:var(--ui-accent)]/25">
-                        <label className="block text-xs text-[var(--ui-muted)] mb-1">{d.label}</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            ref={(el) => { closeFieldRefs.current[d.key] = el; }}
-                            type="number"
-                            min="0"
-                            step="1"
-                            inputMode="numeric"
-                            enterKeyHint="next"
-                            value={denominations[d.key]}
-                            onChange={e => handleDenominationInput(d.key, e.target.value)}
-                            onKeyDown={(e) => handleCloseFieldEnter(e, d.key)}
-                            onFocus={(e) => e.target.select()}
-                            className="input-field py-1.5 text-sm"
-                            placeholder="0"
-                          />
-                          <span className="text-xs font-semibold text-[var(--ui-body-text)] min-w-16 text-right tabular-nums">
-                            {formatCurrency((parseFloat(denominations[d.key]) || 0) * d.value)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-between items-center mt-2 p-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-                    <span className="text-xs font-medium text-[var(--ui-muted)]">Total por arqueo</span>
-                    <span className="font-bold text-amber-600 tabular-nums">{formatCurrency(calculateDenominationTotal())}</span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div>
-                    <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Efectivo esperado en caja</label>
-                    <div className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-                      <p className="font-bold text-lg text-[var(--ui-body-text)] tabular-nums">{formatCurrency(expectedRounded)}</p>
-                      <p className="text-[10px] text-[var(--ui-muted)] mt-1 leading-snug">
-                        Apertura {formatCurrency(openingAmt)} + efectivo {formatCurrency(totalCash)}
-                        {cashTips > 0 ? ` + propinas en efectivo ${formatCurrency(cashTips)}` : ''}
-                        {totalIncome > 0 ? ` + ingresos ${formatCurrency(totalIncome)}` : ''}
-                        {totalExpense > 0 ? ` − egresos ${formatCurrency(totalExpense)}` : ''}
-                        {notesCredit > 0 ? ` + notas crédito ${formatCurrency(notesCredit)}` : ''}
-                        {notesDebit > 0 ? ` − notas débito ${formatCurrency(notesDebit)}` : ''}
-                      </p>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[var(--ui-muted)] mb-1">Efectivo contado real</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] font-medium text-sm">S/</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={closingAmount}
-                        onChange={e => setClosingAmount(e.target.value)}
-                        placeholder="0.00"
-                        className="input-field pl-9 text-lg font-bold"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {denominationMismatch && (
-                  <p className="text-sm text-amber-700 mb-3 px-1 rounded-lg border border-amber-500/40 bg-amber-500/10 py-2">
-                    El total por denominación ({formatCurrency(denomTotalRounded)}) no coincide con el efectivo contado ingresado ({formatCurrency(closingAmt)}). La diferencia se calcula respecto al esperado usando el importe contado que escribió.
-                  </p>
-                )}
-
-                {closingAmount !== '' && (
-                  <div className={`flex items-center justify-between p-3 rounded-lg border ${
-                    difference === 0 ? 'bg-emerald-500/10 border-emerald-500/50' :
-                    difference > 0 ? 'bg-sky-500/10 border-sky-500/40' :
-                    'bg-red-500/10 border-red-500/40'
-                  }`}>
-                    <div className="flex items-center gap-2 text-[var(--ui-body-text)]">
-                      {difference === 0 ? <MdCheckCircle className="text-emerald-500 text-xl" /> :
-                       difference > 0 ? <MdTrendingUp className="text-sky-500 text-xl" /> :
-                       <MdTrendingDown className="text-red-500 text-xl" />}
-                      <span className="font-medium text-sm">
-                        {difference === 0 ? 'Caja cuadrada' :
-                         difference > 0 ? 'Sobrante' : 'Faltante'}
-                      </span>
-                    </div>
-                    <span className={`font-bold text-lg tabular-nums ${
-                      difference === 0 ? 'text-emerald-600' :
-                      difference > 0 ? 'text-sky-600' : 'text-red-600'
-                    }`}>
-                      {difference > 0 ? '+' : ''}{formatCurrency(difference)}
-                    </span>
-                  </div>
-                )}
-              </div>
+              <CashCountSection
+                denomDefs={denomDefs}
+                denominations={denominations}
+                onInput={handleDenominationInput}
+                onStep={(key, delta) => updateDenomination(key, String(Math.max(0, (parseFloat(denominations[key]) || 0) + delta)))}
+                registerFieldRef={(key, el) => { closeFieldRefs.current[key] = el; }}
+                onFieldEnter={handleCloseFieldEnter}
+                closingAmount={closingAmount}
+                onClosingAmountChange={setClosingAmount}
+                cashExpected={expectedRounded}
+                expectedHint={[
+                  `Apertura ${formatCurrency(openingAmt)} + efectivo ${formatCurrency(totalCash)}`,
+                  cashTips > 0 ? ` + propinas ${formatCurrency(cashTips)}` : '',
+                  totalIncome > 0 ? ` + ingresos ${formatCurrency(totalIncome)}` : '',
+                  totalExpense > 0 ? ` − egresos ${formatCurrency(totalExpense)}` : '',
+                  notesCredit > 0 ? ` + notas crédito ${formatCurrency(notesCredit)}` : '',
+                  notesDebit > 0 ? ` − notas débito ${formatCurrency(notesDebit)}` : '',
+                ].join('')}
+                difference={difference}
+                denominationMismatch={denominationMismatch}
+                denomTotal={denomTotalRounded}
+              />
 
               {nonCashCheckRows.length > 0 && (
-                <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                  <h3 className="font-semibold text-[var(--ui-body-text)] mb-1">Otros medios (POS / QR)</h3>
-                  <p className="text-xs text-[var(--ui-muted)] mb-3">
-                    Escriba lo que marca el POS de tarjetas y lo recibido por QR (Yape, Plin…) para compararlo con el sistema.
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {nonCashCheckRows.map((r) => (
-                      <div key={r.value} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-2 focus-within:border-[color:var(--ui-accent)] focus-within:ring-2 focus-within:ring-[color:var(--ui-accent)]/25">
-                        <div className="flex items-baseline justify-between gap-2 mb-1">
-                          <label className="text-xs font-medium text-[var(--ui-body-text)]">{r.checkLabel}</label>
-                          <span className="text-[11px] text-[var(--ui-muted)] tabular-nums">Sistema {formatCurrency(r.expected)}</span>
-                        </div>
-                        {r.tip > 0 ? (
-                          <p className="mb-1 inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 tabular-nums">
-                            Venta {formatCurrency(r.amount)} + propina {formatCurrency(r.tip)}
-                          </p>
-                        ) : null}
-                        <div className="flex items-center gap-2">
-                          <div className="relative flex-1">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-xs">S/</span>
-                            <input
-                              ref={(el) => { closeFieldRefs.current[`nc_${r.value}`] = el; }}
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              inputMode="decimal"
-                              enterKeyHint="next"
-                              value={nonCashCounted[r.value] ?? ''}
-                              onChange={(e) => setNonCashCounted((prev) => ({ ...prev, [r.value]: e.target.value }))}
-                              onKeyDown={(e) => handleCloseFieldEnter(e, `nc_${r.value}`)}
-                              onFocus={(e) => e.target.select()}
-                              className="input-field py-1.5 pl-8 text-sm"
-                              placeholder={r.expected.toFixed(2)}
-                            />
-                          </div>
-                          <span className={`text-xs font-semibold min-w-20 text-right tabular-nums ${
-                            !r.verified ? 'text-[var(--ui-muted)]'
-                              : r.difference === 0 ? 'text-emerald-600'
-                                : r.difference > 0 ? 'text-sky-600' : 'text-red-600'
-                          }`}>
-                            {!r.verified ? 'Sin verificar'
-                              : r.difference === 0 ? 'Cuadra'
-                                : `${r.difference > 0 ? '+' : ''}${formatCurrency(r.difference)}`}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
-                    <div className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-                      <p className="text-xs text-[var(--ui-muted)]">Total esperado</p>
-                      <p className="font-bold text-lg tabular-nums text-[var(--ui-body-text)]">{formatCurrency(grandExpected)}</p>
-                      <p className="text-[10px] text-[var(--ui-muted)] leading-snug">
-                        Efectivo {formatCurrency(expectedRounded)} + POS/QR {formatCurrency(nonCashExpectedTotal)}
-                      </p>
-                    </div>
-                    <div className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-                      <p className="text-xs text-[var(--ui-muted)]">Total contado</p>
-                      <p className="font-bold text-lg tabular-nums text-[var(--ui-body-text)]">{formatCurrency(grandCounted)}</p>
-                      <p className="text-[10px] text-[var(--ui-muted)] leading-snug">
-                        Efectivo {formatCurrency(closingAmt)} + POS/QR {formatCurrency(nonCashCountedTotal)}
-                      </p>
-                    </div>
-                    <div className={`rounded-lg p-3 border ${
-                      closingAmount === '' ? 'border-[color:var(--ui-border)] bg-[var(--ui-surface)]'
-                        : grandDifference === 0 ? 'bg-emerald-500/10 border-emerald-500/50'
-                          : grandDifference > 0 ? 'bg-sky-500/10 border-sky-500/40' : 'bg-red-500/10 border-red-500/40'
-                    }`}>
-                      <p className="text-xs text-[var(--ui-muted)]">Diferencia total</p>
-                      <p className={`font-bold text-lg tabular-nums ${
-                        closingAmount === '' ? 'text-[var(--ui-muted)]'
-                          : grandDifference === 0 ? 'text-emerald-600'
-                            : grandDifference > 0 ? 'text-sky-600' : 'text-red-600'
-                      }`}>
-                        {closingAmount === '' ? '—' : `${grandDifference > 0 ? '+' : ''}${formatCurrency(grandDifference)}`}
-                      </p>
-                      <p className="text-[10px] text-[var(--ui-muted)] leading-snug">
-                        {closingAmount === '' ? 'Falta contar el efectivo'
-                          : grandDifference === 0 ? 'Todo cuadra'
-                            : grandDifference > 0 ? 'Sobrante' : 'Faltante'}
-                      </p>
-                    </div>
-                  </div>
-                  {nonCashPending.length > 0 && (
-                    <p className="text-[11px] text-[var(--ui-muted)] mt-2">
-                      Sin verificar: {nonCashPending.map((r) => r.checkLabel).join(', ')} — se toma el monto del sistema.
-                    </p>
-                  )}
-                </div>
+                <NonCashArqueoSection
+                  rows={nonCashCheckRows}
+                  counted={nonCashCounted}
+                  onCountedChange={(method, value) => setNonCashCounted((prev) => ({ ...prev, [method]: value }))}
+                  registerFieldRef={(key, el) => { closeFieldRefs.current[key] = el; }}
+                  onFieldEnter={handleCloseFieldEnter}
+                  tipRows={registerPaymentRows.filter((row) => row.tip > 0)}
+                  totalTips={totalTips}
+                  cashExpected={expectedRounded}
+                  cashCounted={closingAmt}
+                  cashCountMissing={closingAmount === ''}
+                  grandExpected={grandExpected}
+                  grandCounted={grandCounted}
+                  grandDifference={grandDifference}
+                  pendingRows={nonCashPending}
+                />
               )}
 
               <div>
