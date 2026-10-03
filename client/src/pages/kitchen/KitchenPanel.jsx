@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
 import EndShiftModal from '../../components/EndShiftModal';
-import ProductionPrepBanner from '../../components/kitchen/ProductionPrepBanner';
+import ProductionPrepBanner, { ProductionPrepButton, useProductionPrep } from '../../components/kitchen/ProductionPrepBanner';
 import { usePublishShellTitle } from '../../utils/shellTitleOverride';
 import { MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings, MdHistory, MdPerson } from 'react-icons/md';
 import { getProductionAreaIcon } from '../../utils/productionAreaUi';
@@ -23,7 +23,6 @@ import {
   normalizeThermalPaperWidthMm,
 } from '../../utils/ticketPlainText';
 import { isBarProductionItemForStation } from '../../utils/productionArea';
-import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import { canAjusteBarAutoDismiss } from '../../utils/posPermissions';
 import { playNotificationSound, preloadNotificationSound, unlockNotificationAudio, onNotificationAudioUnlockChange } from '../../utils/playNotificationSound';
 
@@ -110,13 +109,21 @@ function formatDispatchedClock(order, areaId) {
   return parsed ? formatTime(parsed) : '—';
 }
 
+/** Comandas en orden de llegada (la más antigua primero), sin importar si es mesa, llevar o delivery. */
+function sortByArrival(list) {
+  const ts = (o) => parseApiDate(o?.created_at)?.getTime() ?? 0;
+  return [...list].sort((a, b) => ts(a) - ts(b) || Number(a?.order_number || 0) - Number(b?.order_number || 0));
+}
+
+/** Misma altura para contadores y botones de la barra del área. */
+const HEADER_BOX = 'h-[3.25rem] rounded-lg border border-[color:var(--ui-border)]';
+const HEADER_BTN = 'shrink-0 px-3 inline-flex items-center gap-2 text-sm font-medium bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)]';
+
 export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const { t } = useTranslation('kitchen');
   const params = useParams();
   const areaId = String(params?.areaId || areaIdProp || station || 'cocina').trim() || 'cocina';
   const [orders, setOrders] = useState([]);
-  const [filter, setFilter] = useState('all');
-  const showDeliveryUi = useShowDeliveryUi();
   const { user } = useAuth();
   useStaffSessionHeartbeat(user);
   useAppLocaleBootstrap();
@@ -214,10 +221,6 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!showDeliveryUi && filter === 'delivery') setFilter('all');
-  }, [showDeliveryUi, filter]);
-
   const getStationItems = useCallback((items = []) => {
     const list = Array.isArray(items) ? items : [];
     return list.filter((it) => isBarProductionItemForStation(it, areaId));
@@ -226,10 +229,9 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const loadOrders = async () => {
     try {
       const qs = new URLSearchParams();
-      if (filter !== 'all') qs.set('type', filter);
       qs.set('station', areaId);
       const data = await api.get(`/orders/kitchen?${qs.toString()}`);
-      setOrders(Array.isArray(data) ? data : []);
+      setOrders(sortByArrival(Array.isArray(data) ? data : []));
       if (usesItemLevelReady) {
         const ids = new Set();
         (data || []).forEach((order) => {
@@ -250,7 +252,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   useEffect(() => {
     loadOrders();
     emit(isBar ? 'join-bar' : 'join-kitchen');
-  }, [filter, areaId]);
+  }, [areaId]);
   useActiveInterval(loadOrders, 10000);
   useActiveInterval(() => setClockTick((n) => n + 1), 30000);
 
@@ -259,7 +261,6 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     try {
       const qs = new URLSearchParams();
       qs.set('station', areaId);
-      if (filter !== 'all') qs.set('type', filter);
       if (historyDate) qs.set('date', historyDate);
       const data = await api.get(`/orders/kitchen/dispatched?${qs.toString()}`);
       setHistoryOrders(Array.isArray(data) ? data : []);
@@ -270,7 +271,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     } finally {
       setHistoryLoading(false);
     }
-  }, [areaId, filter, historyDate, t]);
+  }, [areaId, historyDate, t]);
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -327,6 +328,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   }, [loadDispatchedTodayCount]);
   useActiveInterval(loadDispatchedTodayCount, 30000);
 
+  const prep = useProductionPrep(areaId);
   const titleInShell = location.pathname.startsWith('/admin');
   usePublishShellTitle(panelTitle, titleInShell);
 
@@ -709,18 +711,19 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
               <Tag
                 key={s.key}
                 {...(s.onClick ? { type: 'button', onClick: s.onClick, title: t('history.button') } : {})}
-                className={`min-w-[5.5rem] px-3 py-1.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-left ${s.onClick ? 'hover:bg-[var(--ui-sidebar-hover)]' : ''}`}
+                className={`${HEADER_BOX} min-w-[5.5rem] px-3 flex flex-col justify-center bg-[var(--ui-surface-2)] text-left ${s.onClick ? 'hover:bg-[var(--ui-sidebar-hover)]' : ''}`}
               >
                 <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-[var(--ui-muted)] leading-tight">{s.label}</p>
                 <p className="text-lg sm:text-xl font-bold tabular-nums text-[var(--ui-body-text)] leading-tight">{s.value}</p>
               </Tag>
             );
           })}
+          <ProductionPrepButton prep={prep} className={HEADER_BOX} />
           {canEditBarSettings && (
             <button
               type="button"
               onClick={() => setBarSettingsOpen(true)}
-              className="p-1.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)]"
+              className={`${HEADER_BOX} ${HEADER_BTN} w-[3.25rem] justify-center !px-0`}
               title={t('barSettings.gearTitle')}
               aria-label={t('barSettings.gearTitle')}
             >
@@ -733,47 +736,31 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
             </span>
           ) : null}
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 w-full sm:w-auto overflow-x-auto scrollbar-hide pb-0.5 sm:pb-0 sm:flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 w-full sm:w-auto overflow-x-auto scrollbar-hide pb-0.5 sm:pb-0 sm:flex-wrap">
           <button
             type="button"
             onClick={() => setHistoryOpen(true)}
-            className="shrink-0 px-2 py-1 sm:px-3 sm:py-2 rounded-md sm:rounded-lg text-[11px] sm:text-sm font-medium inline-flex items-center gap-1 sm:gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
+            className={`${HEADER_BOX} ${HEADER_BTN}`}
             title={t('history.button')}
           >
-            <MdHistory className="text-sm sm:text-lg" />
+            <MdHistory className="text-lg" />
             {t('history.button')}
           </button>
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {[
-              { v: 'all', l: t('panel.filterAll') },
-              { v: 'dine_in', l: t('panel.filterTables') },
-              ...(showDeliveryUi ? [{ v: 'delivery', l: t('panel.filterDelivery') }] : []),
-            ].map(f => (
-              <button
-                key={f.v}
-                type="button"
-                onClick={() => setFilter(f.v)}
-                className={`shrink-0 px-2 py-1 sm:px-4 sm:py-2 rounded-md sm:rounded-lg text-[11px] sm:text-sm font-medium transition-colors inline-flex items-center justify-center gap-1 sm:gap-1.5 ${filter === f.v ? 'bg-[var(--ui-accent)] text-white' : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] border border-[color:var(--ui-border)]'}`}
-              >
-                {f.v === 'delivery' ? <MdDeliveryDining className="text-sm sm:text-base shrink-0" /> : null}
-                {f.l}
-              </button>
-            ))}
-          </div>
           <button
             type="button"
             onClick={() => setPrinterModalOpen(true)}
-            className="shrink-0 px-2 py-1 sm:px-3 sm:py-2 rounded-md sm:rounded-lg text-[11px] sm:text-sm font-medium inline-flex items-center gap-1 sm:gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
+            className={`${HEADER_BOX} ${HEADER_BTN}`}
             title={t('panel.printerSettings')}
             aria-label={t('panel.printerSettings')}
           >
-            <MdSettings className="text-sm sm:text-lg" />
-            <span className="sm:inline">{t('panel.printer')}</span>
+            <MdSettings className="text-lg" />
+            <span>{t('panel.printer')}</span>
           </button>
           {canReturnToAdmin && (
             <button
+              type="button"
               onClick={() => navigate('/admin')}
-              className="shrink-0 px-2 py-1 sm:px-3 sm:py-2 bg-[var(--ui-accent)] hover:bg-[var(--ui-accent-hover)] rounded-md sm:rounded-lg text-white border border-[color:var(--ui-border)] text-[11px] sm:text-sm font-medium"
+              className={`${HEADER_BOX} shrink-0 px-3 inline-flex items-center gap-2 text-sm font-medium bg-[var(--ui-accent)] hover:bg-[var(--ui-accent-hover)] text-white`}
             >
               {t('panel.backToOps')}
             </button>
@@ -781,18 +768,18 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           <button
             type="button"
             onClick={() => navigate('/admin/perfil')}
-            className="shrink-0 px-2 py-1 sm:px-3 sm:py-2 rounded-md sm:rounded-lg text-[11px] sm:text-sm font-medium inline-flex items-center gap-1 sm:gap-2 bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)] border border-[color:var(--ui-border)]"
+            className={`${HEADER_BOX} ${HEADER_BTN}`}
             title="Mi perfil"
           >
-            <MdPerson className="text-sm sm:text-lg" />
+            <MdPerson className="text-lg" />
             <span className="hidden sm:inline">Mi perfil</span>
           </button>
           <button
             type="button"
             onClick={() => setEndShiftOpen(true)}
-            className="shrink-0 px-2 py-1 sm:px-3 sm:py-2 hover:bg-[var(--ui-sidebar-hover)] rounded-md sm:rounded-lg text-[var(--ui-muted)] hover:text-[var(--ui-body-text)] border border-[color:var(--ui-border)] text-[11px] sm:text-sm font-medium inline-flex items-center gap-1 sm:gap-2"
+            className={`${HEADER_BOX} ${HEADER_BTN}`}
           >
-            <MdLogout className="text-sm sm:text-lg" />
+            <MdLogout className="text-lg" />
             <span className="whitespace-nowrap">{t('common:layout.endShift')}</span>
           </button>
         </div>
@@ -946,7 +933,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           </div>
         </Modal>
       )}
-      <ProductionPrepBanner areaId={areaId} />
+      <ProductionPrepBanner prep={prep} />
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {visibleOrders.map(order => {
           const TypeIcon = typeIcons[order.type] || MdRestaurant;

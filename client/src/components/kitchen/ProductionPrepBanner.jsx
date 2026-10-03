@@ -26,9 +26,8 @@ function fmtQty(n) {
   return Number.isInteger(v) ? String(v) : v.toFixed(2);
 }
 
-/** Panel desplegable del área de producción: lo que más sale los próximos días e insumos que faltan. */
-export default function ProductionPrepBanner({ areaId }) {
-  const { t } = useTranslation('kitchen');
+/** Estado compartido entre el botón de la barra y el panel desplegado. */
+export function useProductionPrep(areaId) {
   const [plan, setPlan] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -56,8 +55,23 @@ export default function ProductionPrepBanner({ areaId }) {
     }
   }, [areaId, first?.date]);
 
-  if (!plan?.enough_data || !first) return null;
+  const toggle = useCallback(() => {
+    if (!first) return;
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        if (next) localStorage.setItem(collapseKey(areaId, first.date), '1');
+        else localStorage.removeItem(collapseKey(areaId, first.date));
+      } catch (_) { /* almacenamiento no disponible */ }
+      return next;
+    });
+  }, [areaId, first]);
 
+  return { plan, first, collapsed, toggle, available: Boolean(plan?.enough_data && first) };
+}
+
+function useDayLabels() {
+  const { t } = useTranslation('kitchen');
   const days = t('prep.days', { returnObjects: true });
   const dayName = (dow) => (Array.isArray(days) ? days[dow] : '') || '';
   const whenLabel = (target) => {
@@ -66,44 +80,49 @@ export default function ProductionPrepBanner({ areaId }) {
     if (target.offset === 1) return t('prep.tomorrow', { day });
     return t('prep.onDay', { day });
   };
+  return { t, dayName, whenLabel };
+}
 
-  const toggle = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    try {
-      if (next) localStorage.setItem(collapseKey(areaId, first.date), '1');
-      else localStorage.removeItem(collapseKey(areaId, first.date));
-    } catch (_) { /* almacenamiento no disponible */ }
-  };
+/** Botón de la barra del área que despliega/pliega la preparación sugerida. */
+export function ProductionPrepButton({ prep, className = '' }) {
+  const { t, whenLabel } = useDayLabels();
+  if (!prep?.available) return null;
+  const open = !prep.collapsed;
+  return (
+    <button
+      type="button"
+      onClick={prep.toggle}
+      aria-expanded={open}
+      title={t('prep.collapsedSummary', { when: whenLabel(prep.first), count: prep.first.products.length })}
+      className={`${className} shrink-0 px-3 inline-flex items-center gap-2 text-sm font-semibold text-[var(--ui-body-text)] ${
+        open ? `${ACCENT_BORDER} ${ACCENT_SOFT_BG}` : 'bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)]'
+      }`}
+    >
+      <MdAutoAwesome className="text-lg shrink-0 text-[var(--ui-accent-muted)]" />
+      <span className="whitespace-nowrap">{t('prep.title')}</span>
+      <MdExpandMore className={`text-xl shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+    </button>
+  );
+}
 
+/** Panel desplegado: lo que más sale los próximos días e insumos que faltan. */
+export default function ProductionPrepBanner({ prep }) {
+  const { t, dayName, whenLabel } = useDayLabels();
+  if (!prep?.available || prep.collapsed) return null;
+  const { plan } = prep;
   const closedDays = (plan.closed_days || []).map((c) => dayName(c.dow)).filter(Boolean);
 
   return (
     <div className="px-6 pt-6">
       <section className={`rounded-xl overflow-hidden border-2 ${ACCENT_BORDER} bg-[var(--ui-surface)] text-[var(--ui-body-text)]`}>
-        <button
-          type="button"
-          onClick={toggle}
-          aria-expanded={!collapsed}
-          className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-left ${ACCENT_SOFT_BG} hover:bg-[var(--ui-sidebar-hover)]`}
-        >
-          <span className="min-w-0">
-            <span className="text-base font-bold inline-flex items-center gap-1.5 text-[var(--ui-body-text)]">
-              <MdAutoAwesome className="shrink-0 text-[var(--ui-accent-muted)]" />
-              {t('prep.title')}
-            </span>
-            <span className="block text-xs text-[var(--ui-muted)]">
-              {collapsed
-                ? t('prep.collapsedSummary', { when: whenLabel(first), count: first.products.length })
-                : t('prep.subtitle')}
-            </span>
-          </span>
-          <span className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-[var(--ui-muted)]">
-            {collapsed ? t('prep.show') : t('prep.hide')}
-            <MdExpandMore className={`text-xl transition-transform ${collapsed ? '' : 'rotate-180'}`} />
-          </span>
-        </button>
-        {!collapsed ? (
+        <div className={`px-4 py-2.5 ${ACCENT_SOFT_BG}`}>
+          <p className="text-sm font-bold inline-flex items-center gap-1.5 text-[var(--ui-body-text)]">
+            <MdAutoAwesome className="shrink-0 text-[var(--ui-accent-muted)]" />
+            {t('prep.title')}
+          </p>
+          <p className="text-xs text-[var(--ui-muted)]">{t('prep.subtitle')}</p>
+        </div>
+        {(
           <>
             <div className="grid gap-3 p-3 sm:p-4 md:grid-cols-2">
               {plan.targets.map((target) => {
@@ -167,7 +186,7 @@ export default function ProductionPrepBanner({ areaId }) {
               </p>
             ) : null}
           </>
-        ) : null}
+        )}
       </section>
     </div>
   );
