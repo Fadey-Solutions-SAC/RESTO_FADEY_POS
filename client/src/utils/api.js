@@ -1318,8 +1318,9 @@ export function isDateKeyInInclusiveRange(value, fromKey, toKey) {
   return true;
 }
 
+/** Espacio no separable: «S/» nunca queda en otra línea que el número (`escposBuilder` lo pasa a espacio). */
 export const formatCurrency = (amount, symbol = 'S/') => {
-  return `${symbol} ${Number(amount || 0).toFixed(2)}`;
+  return `${symbol}\u00A0${Number(amount || 0).toFixed(2)}`;
 };
 
 const insumoQtyFormatter = new Intl.NumberFormat('es-PE', {

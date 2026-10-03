@@ -595,12 +595,18 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
     nonCashCounted[method] = { expected, counted, difference: roundMoneySoles(counted - expected) };
   }
   const nonCashExpectedTotal = roundMoneySoles(Object.values(nonCashExpectedBy).reduce((s, v) => s + v, 0));
-  const nonCashCountedTotal = roundMoneySoles(
-    Object.entries(nonCashExpectedBy).reduce(
-      (s, [m, exp]) => s + (nonCashCounted[m] ? nonCashCounted[m].counted : exp),
-      0,
-    ),
-  );
+  const rawTotalPos = arqueo?.non_cash_total_pos;
+  const nonCashTotalPos = rawTotalPos === '' || rawTotalPos == null || Number.isNaN(Number(rawTotalPos))
+    ? null
+    : roundMoneySoles(Math.max(0, Number(rawTotalPos)));
+  const nonCashCountedTotal = nonCashTotalPos != null
+    ? nonCashTotalPos
+    : roundMoneySoles(
+      Object.entries(nonCashExpectedBy).reduce(
+        (s, [m, exp]) => s + (nonCashCounted[m] ? nonCashCounted[m].counted : exp),
+        0,
+      ),
+    );
   const arqueoData = JSON.stringify({
     register_id: register.id,
     opened_at: register.opened_at,
@@ -610,6 +616,9 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
     difference: diff,
     denominations: denominationSummary,
     non_cash_check: nonCashCounted,
+    non_cash_total_pos: nonCashTotalPos != null
+      ? { expected: nonCashExpectedTotal, counted: nonCashTotalPos, difference: roundMoneySoles(nonCashTotalPos - nonCashExpectedTotal) }
+      : null,
     total_check: {
       expected: roundMoneySoles(expectedCash + nonCashExpectedTotal),
       counted: roundMoneySoles(countedCash + nonCashCountedTotal),

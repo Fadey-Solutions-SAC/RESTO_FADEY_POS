@@ -100,7 +100,7 @@ export default function NonCashArqueoSection({
   onCountedChange,
   registerFieldRef,
   onFieldEnter,
-  cashTips = 0,
+  tipRows = [],
   cashExpected,
   cashCounted,
   cashCountMissing,
@@ -108,7 +108,15 @@ export default function NonCashArqueoSection({
   grandCounted,
   grandDifference,
   pendingRows = [],
+  expectedTotal = 0,
+  totalPos = null,
+  onMarkCorrect,
 }) {
+  const posDiff = totalPos != null ? Math.round((totalPos - expectedTotal) * 100) / 100 : 0;
+  const posStatus = totalPos == null ? 'pending' : posDiff === 0 ? 'ok' : posDiff > 0 ? 'over' : 'short';
+  const posUi = STATUS_UI[posStatus];
+  const PosIcon = posUi.icon;
+  const allVerified = rows.every((r) => r.verified) && totalPos != null && posDiff === 0;
   const diffStatus = cashCountMissing ? 'pending' : grandDifference === 0 ? 'ok' : grandDifference > 0 ? 'over' : 'short';
   const diffUi = STATUS_UI[diffStatus];
   const DiffIcon = diffUi.icon;
@@ -122,11 +130,62 @@ export default function NonCashArqueoSection({
             Escriba lo que marca el POS de tarjetas y lo recibido por QR (Yape, Plin…) para compararlo con el sistema.
           </p>
         </div>
-        <p className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-700">
-          <MdInfoOutline className="text-sm shrink-0" />
-          Ingrese los montos contados o verificados físicamente
-        </p>
+        <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3 shadow-sm w-full sm:w-auto sm:min-w-[22rem] focus-within:border-[color:var(--ui-accent)] focus-within:ring-2 focus-within:ring-[color:var(--ui-accent)]/25">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="min-w-0">
+              <label htmlFor="nc-input-total-pos" className="text-sm font-bold text-[var(--ui-body-text)]">Total POS</label>
+              <p className="text-[11px] text-[var(--ui-muted)] leading-tight">Total del cierre Culqi / Izipay (todos los medios)</p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-[11px] text-[var(--ui-muted)] leading-tight">Sistema</p>
+              <p className="text-sm font-bold tabular-nums text-[var(--ui-body-text)] whitespace-nowrap">{formatCurrency(expectedTotal)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 min-w-0">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-sm">S/</span>
+              <input
+                id="nc-input-total-pos"
+                ref={(el) => registerFieldRef('nc_total_pos', el)}
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                enterKeyHint="next"
+                value={counted.total_pos ?? ''}
+                onChange={(e) => onCountedChange('total_pos', e.target.value)}
+                onKeyDown={(e) => onFieldEnter(e, 'nc_total_pos')}
+                onFocus={(e) => e.target.select()}
+                className="input-field py-2 pl-9 text-sm font-semibold"
+                placeholder={expectedTotal.toFixed(2)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => onMarkCorrect?.()}
+              className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold whitespace-nowrap transition-colors ${
+                allVerified
+                  ? STATUS_UI.ok.pill
+                  : 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
+              }`}
+              title="Marca todos los medios con el monto del sistema"
+            >
+              <MdCheckCircle className="text-sm" />
+              {allVerified ? 'Verificado' : 'Correcto'}
+            </button>
+          </div>
+          <p className={`mt-1.5 flex items-center gap-1 text-[11px] font-semibold ${posUi.text}`}>
+            <PosIcon className="text-sm shrink-0" />
+            {posStatus === 'pending'
+              ? 'Opcional: reemplaza el detalle por medio'
+              : posStatus === 'ok' ? 'Cuadra con el sistema' : `${posUi.label}: ${signedCurrency(posDiff)}`}
+          </p>
+        </div>
       </div>
+      <p className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-700">
+        <MdInfoOutline className="text-sm shrink-0" />
+        Ingrese los montos contados o verificados físicamente, o pulse «Correcto» si coinciden con el sistema
+      </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {rows.map((r) => {
@@ -174,10 +233,22 @@ export default function NonCashArqueoSection({
                     placeholder={r.expected.toFixed(2)}
                   />
                 </div>
-                <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold whitespace-nowrap ${ui.pill}`}>
-                  <StIcon className="text-sm" />
-                  {ui.label}
-                </span>
+                {st === 'pending' && onMarkCorrect ? (
+                  <button
+                    type="button"
+                    onClick={() => onMarkCorrect(r.value)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-2 text-xs font-semibold whitespace-nowrap text-emerald-700 hover:bg-emerald-500/20"
+                    title="El monto coincide con el sistema"
+                  >
+                    <MdCheckCircle className="text-sm" />
+                    Correcto
+                  </button>
+                ) : (
+                  <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold whitespace-nowrap ${ui.pill}`}>
+                    <StIcon className="text-sm" />
+                    {ui.label}
+                  </span>
+                )}
               </div>
               <div className={`mt-2 flex items-center gap-2 rounded-lg border px-3 py-2 ${ui.box}`}>
                 <StIcon className={`text-lg shrink-0 ${ui.text}`} />
@@ -192,23 +263,35 @@ export default function NonCashArqueoSection({
           );
         })}
 
-        {cashTips > 0 ? (
-          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 shadow-sm">
-            <div className="flex items-start justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-700">
-                  <MdVolunteerActivism className="text-2xl" />
-                </span>
-                <p className="text-sm font-bold text-[var(--ui-body-text)]">Propina en efectivo</p>
+        {[...tipRows]
+          .sort((a, b) => (a.value === 'efectivo') - (b.value === 'efectivo'))
+          .map((row) => {
+            const isCash = row.value === 'efectivo';
+            const methodRow = rows.find((r) => r.value === row.value);
+            return (
+              <div key={`tip-${row.value}`} className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 shadow-sm">
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-700">
+                      <MdVolunteerActivism className="text-2xl" />
+                    </span>
+                    <p className="text-sm font-bold text-[var(--ui-body-text)] leading-tight">
+                      Propina {isCash ? 'en efectivo' : row.label}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[11px] text-[var(--ui-muted)] leading-tight">Total</p>
+                    <p className="text-sm font-bold tabular-nums text-amber-700 whitespace-nowrap">{formatCurrency(row.tip)}</p>
+                  </div>
+                </div>
+                <p className="text-[11px] text-[var(--ui-muted)]">
+                  {isCash
+                    ? 'Incluida en el efectivo esperado del conteo.'
+                    : `Incluida en el monto del sistema de ${methodRow?.checkLabel || row.label}.`}
+                </p>
               </div>
-              <div className="text-right">
-                <p className="text-[11px] text-[var(--ui-muted)] leading-tight">Total</p>
-                <p className="text-sm font-bold tabular-nums text-amber-700">{formatCurrency(cashTips)}</p>
-              </div>
-            </div>
-            <p className="text-[11px] text-[var(--ui-muted)]">Incluida en el efectivo esperado del conteo.</p>
-          </div>
-        ) : null}
+            );
+          })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
@@ -239,12 +322,19 @@ export default function NonCashArqueoSection({
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-[var(--ui-body-text)]">Total contado (Real)</p>
                 <p className="text-xl font-bold tabular-nums text-[var(--ui-body-text)]">{formatCurrency(grandCounted)}</p>
-                <BreakdownLines
-                  cash={cashCounted}
-                  card={sumBy(rows, ['tarjeta'], 'counted')}
-                  qr={sumBy(rows, ['yape', 'plin'], 'counted')}
-                  other={sumBy(rows, ['online'], 'counted')}
-                />
+                {totalPos != null ? (
+                  <div className="mt-2 space-y-0.5 text-xs text-[var(--ui-body-text)] tabular-nums">
+                    <p>Efectivo: <span className="font-semibold">{formatCurrency(cashCounted)}</span></p>
+                    <p>Total POS: <span className="font-semibold">{formatCurrency(totalPos)}</span></p>
+                  </div>
+                ) : (
+                  <BreakdownLines
+                    cash={cashCounted}
+                    card={sumBy(rows, ['tarjeta'], 'counted')}
+                    qr={sumBy(rows, ['yape', 'plin'], 'counted')}
+                    other={sumBy(rows, ['online'], 'counted')}
+                  />
+                )}
               </div>
             </div>
             {!cashCountMissing ? <MdCheckCircle className="text-2xl text-emerald-600 shrink-0" /> : null}

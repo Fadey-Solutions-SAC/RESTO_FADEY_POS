@@ -79,6 +79,7 @@ function wrapLine(text, width) {
 /** ASCII imprimible para bytes que muchas térmicas tratan como texto plano. */
 function escPosAsciiLine(s) {
   return String(s || '')
+    .replace(/\u00A0/g, ' ')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/…/g, '...')

@@ -100,10 +100,12 @@ function emptyTipsByMethod() {
   return Object.fromEntries(TIP_METHOD_FIELDS.map((k) => [k, 0]));
 }
 
-/** Propina cobrada en efectivo; sin desglose por medio (datos antiguos) se asume todo en caja. */
+/** Propina cobrada en efectivo; sin `tips_cash` (datos antiguos) es lo que no se atribuye a otros medios. */
 function cashTipsOf(sales) {
   if (sales && sales.tips_cash != null) return Number(sales.tips_cash || 0);
-  return Number(sales?.total_tips || 0);
+  const nonCash = ['tips_yape', 'tips_plin', 'tips_card', 'tips_online']
+    .reduce((s, k) => s + Number(sales?.[k] || 0), 0);
+  return Math.max(0, round2(Number(sales?.total_tips || 0) - nonCash));
 }
 
 function aggregatePaidOrders(rows) {

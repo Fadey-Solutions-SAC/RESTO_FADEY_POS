@@ -431,13 +431,13 @@ function CloseSummaryCard({ tone, label, amount, sub }) {
   const ui = CLOSE_SUMMARY_TONE[tone] || CLOSE_SUMMARY_TONE.total;
   const Icon = ui.icon;
   return (
-    <div className={`rounded-2xl border p-3 flex items-center gap-3 shadow-sm ${ui.box}`}>
-      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${ui.tile}`}>
-        <Icon className="text-2xl" />
+    <div className={`flex-1 basis-[calc(50%-0.375rem)] lg:basis-0 min-w-0 rounded-2xl border p-2.5 flex items-center gap-2.5 shadow-sm ${ui.box}`}>
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${ui.tile}`}>
+        <Icon className="text-xl" />
       </span>
       <div className="min-w-0">
-        <p className="text-xs text-[var(--ui-body-text)] truncate">{label}</p>
-        <p className="text-xl font-bold tabular-nums text-[var(--ui-body-text)] leading-tight whitespace-nowrap">{formatCurrency(amount)}</p>
+        <p className="text-[11px] text-[var(--ui-body-text)] truncate">{label}</p>
+        <p className="text-base xl:text-lg font-bold tabular-nums text-[var(--ui-body-text)] leading-tight whitespace-nowrap">{formatCurrency(amount)}</p>
         {sub ? <p className="text-[11px] text-[var(--ui-muted)] tabular-nums truncate">{sub}</p> : null}
       </div>
     </div>
@@ -1878,6 +1878,7 @@ export default function POSPanel() {
 
   const closeFieldOrder = () => [
     ...denomDefs.map((d) => d.key),
+    'nc_total_pos',
     ...registerPaymentRows.filter((r) => r.value !== 'efectivo').map((r) => `nc_${r.value}`),
     'closingNotes',
   ];
@@ -1977,6 +1978,7 @@ export default function POSPanel() {
           difference,
           denominations,
           non_cash_counted: nonCashCounted,
+          non_cash_total_pos: nonCashTotalPos,
           observations: closingNotes,
         },
         ...posRegisterBody(),
@@ -3550,8 +3552,12 @@ export default function POSPanel() {
   const totalExpense = Number(cashFlowSource?.total_expense || 0);
   const tipsSource = Number(register?.total_tips || 0) > 0 ? register : registerLiveSales;
   const totalTips = Number(tipsSource?.total_tips || 0);
+  const nonCashTipsTotal = ['tips_yape', 'tips_plin', 'tips_card', 'tips_online']
+    .reduce((s, k) => s + Number(tipsSource?.[k] || 0), 0);
   const tipsByMethod = {
-    efectivo: tipsSource?.tips_cash != null ? Number(tipsSource.tips_cash || 0) : totalTips,
+    efectivo: tipsSource?.tips_cash != null
+      ? Number(tipsSource.tips_cash || 0)
+      : Math.max(0, roundMoneySoles(totalTips - nonCashTipsTotal)),
     yape: Number(tipsSource?.tips_yape || 0),
     plin: Number(tipsSource?.tips_plin || 0),
     tarjeta: Number(tipsSource?.tips_card || 0),
@@ -3631,10 +3637,29 @@ export default function POSPanel() {
       };
     });
   const nonCashExpectedTotal = roundMoneySoles(nonCashCheckRows.reduce((s, r) => s + r.expected, 0));
-  const nonCashCountedTotal = roundMoneySoles(nonCashCheckRows.reduce((s, r) => s + r.counted, 0));
-  const nonCashPending = nonCashCheckRows.filter((r) => !r.verified && r.expected > 0);
+  const totalPosRaw = nonCashCounted.total_pos;
+  /** Total del cierre del POS (Culqi, Izipay…): si se ingresa, reemplaza la suma por medio. */
+  const nonCashTotalPos = totalPosRaw !== undefined && totalPosRaw !== ''
+    ? roundMoneySoles(Math.max(0, parseFloat(totalPosRaw) || 0))
+    : null;
+  const nonCashCountedTotal = nonCashTotalPos != null
+    ? nonCashTotalPos
+    : roundMoneySoles(nonCashCheckRows.reduce((s, r) => s + r.counted, 0));
+  const nonCashPending = nonCashTotalPos != null
+    ? []
+    : nonCashCheckRows.filter((r) => !r.verified && r.expected > 0);
   const grandExpected = roundMoneySoles(expectedRounded + nonCashExpectedTotal);
   const grandCounted = roundMoneySoles(closingAmt + nonCashCountedTotal);
+  const markNonCashCorrect = (method) => {
+    setNonCashCounted((prev) => {
+      const next = { ...prev };
+      nonCashCheckRows.forEach((r) => {
+        if (!method || r.value === method) next[r.value] = r.expected.toFixed(2);
+      });
+      if (!method) next.total_pos = nonCashExpectedTotal.toFixed(2);
+      return next;
+    });
+  };
   const grandDifference = closingAmount === '' ? 0 : roundMoneySoles(grandCounted - grandExpected);
 
   useEffect(() => {
@@ -6175,6 +6200,12 @@ export default function POSPanel() {
                       </span>
                     </div>
                   ))}
+                  {nonCashTotalPos != null && (
+                    <div className="row">
+                      <span>Total POS: sist. {formatCurrency(nonCashExpectedTotal)}</span>
+                      <span>{formatCurrency(nonCashTotalPos)} ({nonCashTotalPos - nonCashExpectedTotal > 0 ? '+' : ''}{formatCurrency(roundMoneySoles(nonCashTotalPos - nonCashExpectedTotal))})</span>
+                    </div>
+                  )}
                   <div className="sep"></div>
                   <div className="row bold"><span>TOTAL ESPERADO</span><span>{formatCurrency(grandExpected)}</span></div>
                   <div className="row bold"><span>TOTAL CONTADO</span><span>{formatCurrency(grandCounted)}</span></div>
@@ -6196,7 +6227,7 @@ export default function POSPanel() {
                   </button>
                 </div>
               ) : null}
-              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="flex flex-wrap lg:flex-nowrap gap-3">
                 <CloseSummaryCard tone="total" label="Ventas del día" amount={registerSales} sub="Métodos activos" />
                 {registerPaymentRows.map((row) => (
                   <CloseSummaryCard
@@ -6204,7 +6235,7 @@ export default function POSPanel() {
                     tone={row.value}
                     label={row.value === 'efectivo' ? 'Ventas en efectivo' : row.value === 'tarjeta' ? 'Ventas con tarjeta' : `Ventas ${row.label}`}
                     amount={row.amount}
-                    sub={row.tip > 0 ? `+ propina ${formatCurrency(row.tip)} = ${formatCurrency(row.amount + row.tip)}` : ''}
+                    sub={row.tip > 0 ? `+ propina ${formatCurrency(row.tip)}` : ''}
                   />
                 ))}
               </div>
@@ -6238,7 +6269,7 @@ export default function POSPanel() {
                   onCountedChange={(method, value) => setNonCashCounted((prev) => ({ ...prev, [method]: value }))}
                   registerFieldRef={(key, el) => { closeFieldRefs.current[key] = el; }}
                   onFieldEnter={handleCloseFieldEnter}
-                  cashTips={cashTips}
+                  tipRows={registerPaymentRows.filter((row) => row.tip > 0)}
                   cashExpected={expectedRounded}
                   cashCounted={closingAmt}
                   cashCountMissing={closingAmount === ''}
@@ -6246,6 +6277,9 @@ export default function POSPanel() {
                   grandCounted={grandCounted}
                   grandDifference={grandDifference}
                   pendingRows={nonCashPending}
+                  expectedTotal={nonCashExpectedTotal}
+                  totalPos={nonCashTotalPos}
+                  onMarkCorrect={markNonCashCorrect}
                 />
               )}
 
