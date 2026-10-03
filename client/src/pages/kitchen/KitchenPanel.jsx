@@ -762,7 +762,6 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           </button>
         </div>
       </header>
-      <ProductionPrepBanner areaId={areaId} />
       <EndShiftModal isOpen={endShiftOpen} onClose={() => setEndShiftOpen(false)} />
       <PrinterModuleModal
         isOpen={printerModalOpen}
@@ -913,6 +912,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
         </Modal>
       )}
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <ProductionPrepBanner areaId={areaId} />
         {visibleOrders.map(order => {
           const TypeIcon = typeIcons[order.type] || MdRestaurant;
           const isOverdue = isKitchenOrderOverdue(order);

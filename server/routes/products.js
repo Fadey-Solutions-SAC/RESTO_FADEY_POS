@@ -12,7 +12,7 @@ const {
   parseRestaurantSchedule,
 } = require('../services/productScheduleService');
 const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
-const { parseProductMinStock } = require('../utils/productStockThreshold');
+const { parseProductMinStock, parseProductMaxStock, validateMinMaxStock } = require('../utils/productStockThreshold');
 const { resolveProductProductionAreaId } = require('../services/productionAreasService');
 const { attachKardexInsumos, buildKardexPersistFromRequest } = require('../utils/productKardexInsumos');
 const router = express.Router();
@@ -206,6 +206,7 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
     available_days,
     schedule_type,
     min_stock,
+    max_stock,
   } = req.body;
   const productName = normalizeCatalogDisplayName(name);
   if (!productName || price === undefined) return res.status(400).json({ error: 'Nombre y precio son requeridos' });
@@ -236,6 +237,9 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
   const storedPurchase = safeProcessType === 'transformed' ? null : parsedPurchase;
   const safeStock = safeProcessType === 'transformed' ? 0 : Math.max(0, Number(stock || 0));
   const safeMinStock = safeProcessType === 'non_transformed' ? parseProductMinStock(min_stock) : 0;
+  const safeMaxStock = safeProcessType === 'non_transformed' ? parseProductMaxStock(max_stock) : 0;
+  const minMaxPost = validateMinMaxStock(safeMinStock, safeMaxStock);
+  if (!minMaxPost.ok) return res.status(400).json({ error: minMaxPost.error });
   const safeWarehouseId = safeProcessType === 'transformed' ? '' : resolveWarehouseId(stock_warehouse_id);
   const safeProductionArea = resolveProductProductionAreaId(production_area);
   const safeTaxType = ['igv', 'exonerado', 'inafecto'].includes(String(tax_type || '').toLowerCase())
@@ -253,8 +257,8 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
       kardex_insumos,
       purchase_price,
       schedule_enabled, available_from, available_to, available_days, schedule_type,
-      catalog_listed_at, idle_sales_days, min_stock, hide_in_self_order
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, ?, ?)`,
+      catalog_listed_at, idle_sales_days, min_stock, max_stock, hide_in_self_order
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, ?, ?, ?)`,
     [
       id,
       productName,
@@ -283,6 +287,7 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
       scheduleFields.available_days,
       scheduleFields.schedule_type,
       safeMinStock,
+      safeMaxStock,
       safeHideInSelfOrder,
     ]
   );
@@ -333,6 +338,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
     available_days,
     schedule_type,
     min_stock,
+    max_stock,
     image_source,
   } = req.body;
   const current = queryOne('SELECT * FROM products WHERE id = ?', [req.params.id]);
@@ -418,6 +424,11 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
   const finalMinStock = finalProcessType === 'non_transformed'
     ? (min_stock !== undefined ? parseProductMinStock(min_stock) : parseProductMinStock(current.min_stock))
     : 0;
+  const finalMaxStock = finalProcessType === 'non_transformed'
+    ? (max_stock !== undefined ? parseProductMaxStock(max_stock) : parseProductMaxStock(current.max_stock))
+    : 0;
+  const minMaxPut = validateMinMaxStock(finalMinStock, finalMaxStock);
+  if (!minMaxPut.ok) return res.status(400).json({ error: minMaxPut.error });
 
   runSql(
     `UPDATE products SET
@@ -444,6 +455,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       kardex_insumos = ?,
       purchase_price = ?,
       min_stock = ?,
+      max_stock = ?,
       schedule_enabled = COALESCE(?, schedule_enabled),
       available_from = COALESCE(?, available_from),
       available_to = COALESCE(?, available_to),
@@ -475,6 +487,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), (req, res) => {
       kardexPersist.kardex_insumos,
       safePurchasePrice === undefined ? current.purchase_price : safePurchasePrice,
       finalMinStock,
+      finalMaxStock,
       scheduleUpdate ? scheduleUpdate.schedule_enabled : null,
       scheduleUpdate ? scheduleUpdate.available_from : null,
       scheduleUpdate ? scheduleUpdate.available_to : null,

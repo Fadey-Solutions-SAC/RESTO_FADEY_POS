@@ -86,6 +86,7 @@
     "notEnough": "No alcanza: tienes {{stock}} {{unit}}, se necesitan ~{{need}} {{unit}}",
     "runningLow": "Te queda poco: {{stock}} {{unit}} para ~{{need}} {{unit}}",
     "prepareFor": "Prepara los insumos de",
+    "prepareAll": "Ten listos los insumos de estos productos antes de abrir.",
     "noRecipeHint": "Estos productos no tienen receta vinculada; revisa que tengas sus insumos.",
     "closedDays": "Cerrado normalmente: {{days}}",
     "hide": "Ocultar por hoy",

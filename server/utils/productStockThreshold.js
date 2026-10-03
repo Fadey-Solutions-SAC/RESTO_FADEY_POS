@@ -33,16 +33,39 @@ function isProductLowStock(stock, minStock) {
   return s <= effectiveMinStock(minStock);
 }
 
-/** Cantidad sugerida para reponer hasta el doble del mínimo (mín. 20 si el umbral es el default). */
-function suggestedReplenishmentQty(stock, minStock) {
-  const effective = effectiveMinStock(minStock);
-  const target = Math.max(20, effective * 2);
-  return Math.max(0, target - (Number(stock) || 0));
+/** Stock máximo (0 = sin máximo configurado). */
+function parseProductMaxStock(value) {
+  return parseProductMinStock(value);
+}
+
+/** Valida que el máximo (si se configuró) no sea menor que el mínimo. */
+function validateMinMaxStock(minStock, maxStock) {
+  const min = parseProductMinStock(minStock);
+  const max = parseProductMaxStock(maxStock);
+  if (max > 0 && max < min) {
+    return { ok: false, error: `El stock máximo (${max}) no puede ser menor que el mínimo (${min})` };
+  }
+  return { ok: true, min, max };
+}
+
+/** Meta de reposición: el máximo si está configurado; si no, el doble del mínimo (mín. 20). */
+function replenishmentTarget(minStock, maxStock) {
+  const max = parseProductMaxStock(maxStock);
+  if (max > 0) return max;
+  return Math.max(20, effectiveMinStock(minStock) * 2);
+}
+
+/** Cantidad sugerida para reponer hasta la meta (máximo configurado o doble del mínimo). */
+function suggestedReplenishmentQty(stock, minStock, maxStock = 0) {
+  return Math.max(0, replenishmentTarget(minStock, maxStock) - (Number(stock) || 0));
 }
 
 module.exports = {
   DEFAULT_NON_TRANSFORMED_MIN_STOCK,
   parseProductMinStock,
+  parseProductMaxStock,
+  validateMinMaxStock,
+  replenishmentTarget,
   effectiveMinStock,
   effectiveMinStockExpr,
   isNonTransformedLowStockSql,

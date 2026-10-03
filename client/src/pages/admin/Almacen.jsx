@@ -221,6 +221,21 @@ function CreateProductModal({
           </p>
         </div>
         <div>
+          <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Stock máximo</label>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={itemForm.max_stock}
+            onChange={e => setItemForm({ ...itemForm, max_stock: e.target.value })}
+            className="input-field"
+            placeholder="Vacío = sin máximo"
+          />
+          <p className="text-xs text-[var(--ui-muted)] mt-1">
+            Requerimientos y la IA sugieren reponer hasta este tope. Sin máximo, se repone al doble del mínimo.
+          </p>
+        </div>
+        <div>
           <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Categoría de producto</label>
           <select
             value={itemForm.category_id}
@@ -409,6 +424,7 @@ export default function Almacen() {
     purchase_price: '',
     stock: '0',
     min_stock: '',
+    max_stock: '',
     category_id: '',
     stock_warehouse: DEFAULT_STOCK_WAREHOUSE,
     note_required: 0,
@@ -941,6 +957,12 @@ export default function Almacen() {
       const selectedWarehouseId = itemForm.stock_warehouse;
 
       const rawPurchase = String(itemForm.purchase_price ?? '').trim();
+      const minStockValue = Math.max(0, Math.floor(Number(itemForm.min_stock || 0)));
+      const maxStockValue = Math.max(0, Math.floor(Number(itemForm.max_stock || 0)));
+      if (maxStockValue > 0 && maxStockValue < minStockValue) {
+        toast.error('El stock máximo no puede ser menor que el mínimo');
+        return;
+      }
       const created = await api.post('/products', {
         name: itemForm.name,
         description: buildWarehouseDescription(itemForm.description, 'non_transformed', initialStock, 0),
@@ -950,7 +972,8 @@ export default function Almacen() {
         category_id: itemForm.category_id || null,
         process_type: 'non_transformed',
         stock_warehouse_id: selectedWarehouseId || '',
-        min_stock: Math.max(0, Math.floor(Number(itemForm.min_stock || 0))),
+        min_stock: minStockValue,
+        max_stock: maxStockValue,
         note_required: Number(itemForm.note_required || 0) === 1 ? 1 : 0,
       });
 
@@ -987,6 +1010,7 @@ export default function Almacen() {
         purchase_price: '',
         stock: '0',
         min_stock: '',
+        max_stock: '',
         category_id: '',
         stock_warehouse: getDefaultCreateWarehouseId(),
         note_required: 0,

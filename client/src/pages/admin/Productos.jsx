@@ -59,6 +59,7 @@ const EMPTY_PRODUCT_FORM = {
   category_id: '',
   stock: 0,
   min_stock: '',
+  max_stock: '',
   is_active: 1,
   process_type: 'transformed',
   stock_warehouse_id: '',
@@ -560,6 +561,7 @@ export default function Productos() {
       category_id: p.category_id || '',
       stock: p.stock,
       min_stock: p.min_stock != null && Number(p.min_stock) > 0 ? String(p.min_stock) : '',
+      max_stock: p.max_stock != null && Number(p.max_stock) > 0 ? String(p.max_stock) : '',
       is_active: p.is_active,
       process_type: p.process_type === 'non_transformed' ? 'non_transformed' : 'transformed',
       stock_warehouse_id: p.stock_warehouse_id || defaultWarehouseId,
@@ -639,6 +641,13 @@ export default function Productos() {
         }
       }
 
+      const minStockValue = isNonTransformed ? Math.max(0, Math.floor(Number(productForm.min_stock || 0))) : 0;
+      const maxStockValue = isNonTransformed ? Math.max(0, Math.floor(Number(productForm.max_stock || 0))) : 0;
+      if (maxStockValue > 0 && maxStockValue < minStockValue) {
+        toast.error(t('products.maxBelowMin'));
+        return;
+      }
+
       if (Number(productForm.schedule_enabled) === 1) {
         if (parseTimeToMinutes(productForm.available_from) == null || parseTimeToMinutes(productForm.available_to) == null) {
           toast.error(t('products.schedule.invalidTimes'));
@@ -652,7 +661,8 @@ export default function Productos() {
         schedule_enabled: Number(productForm.schedule_enabled) === 1 ? 1 : 0,
         available_days: normalizeAvailableDays(productForm.available_days),
         stock: isNonTransformed ? stockAmount : 0,
-        min_stock: isNonTransformed ? Math.max(0, Math.floor(Number(productForm.min_stock || 0))) : 0,
+        min_stock: minStockValue,
+        max_stock: maxStockValue,
         stock_warehouse_id: isNonTransformed ? warehouseId : '',
       };
       let saved;
@@ -1069,8 +1079,20 @@ export default function Productos() {
                             : status === 'low'
                               ? 'bg-gold-100 text-gold-700'
                               : 'bg-red-100 text-red-700';
+                          const maxStock = Number(p.max_stock || 0);
+                          const overMax = maxStock > 0 && Number(p.stock || 0) > maxStock;
                           return (
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{p.stock ?? 0}</span>
+                            <span className="inline-flex flex-col items-center gap-0.5">
+                              <span
+                                className={`text-xs px-2 py-0.5 rounded-full font-medium ${overMax ? 'bg-sky-100 text-sky-800' : cls}`}
+                                title={maxStock > 0 ? `${t('products.minStock')}: ${p.min_stock || 0} · ${t('products.maxStock')}: ${maxStock}` : undefined}
+                              >
+                                {p.stock ?? 0}{maxStock > 0 ? ` / ${maxStock}` : ''}
+                              </span>
+                              {overMax ? (
+                                <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 rounded bg-sky-100 text-sky-800">{t('products.overMax')}</span>
+                              ) : null}
+                            </span>
                           );
                         })() : null}
                       </td>
@@ -1257,6 +1279,7 @@ export default function Productos() {
                 process_type: 'transformed',
                 stock: 0,
                 min_stock: '',
+                max_stock: '',
                 stock_warehouse_id: '',
                 purchase_price: '',
               })}
@@ -1350,6 +1373,17 @@ export default function Productos() {
                   min="0"
                 />
                 <p className="text-xs ui-text-muted mt-1 mb-3">{t('products.minStockHint')}</p>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.maxStock')}</label>
+                <input
+                  type="number"
+                  value={productForm.max_stock}
+                  onChange={e => setProductForm({ ...productForm, max_stock: e.target.value })}
+                  className="input-field"
+                  placeholder="0"
+                  min="0"
+                  step="1"
+                />
+                <p className="text-xs ui-text-muted mt-1 mb-3">{t('products.maxStockHint')}</p>
                 <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('products.initialStock')}</label>
                 <input
                   type="number"

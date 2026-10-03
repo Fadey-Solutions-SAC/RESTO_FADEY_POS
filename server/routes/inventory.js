@@ -327,7 +327,7 @@ router.get('/warehouse-stock', authenticateToken, requireRole('admin'), (req, re
     ensureWarehouseTables();
     const { category_type } = req.query;
     let productsQuery = `
-      SELECT p.id, p.name, p.description, p.price, p.purchase_price, p.stock, p.min_stock, p.category_id, p.process_type, p.stock_warehouse_id, c.name as category_name
+      SELECT p.id, p.name, p.description, p.price, p.purchase_price, p.stock, p.min_stock, p.max_stock, p.category_id, p.process_type, p.stock_warehouse_id, c.name as category_name
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       WHERE p.is_active = 1
@@ -386,14 +386,14 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
     const filterByCategory = Boolean(categoryId);
     const scopeAll = String(req.body?.scope || 'low_stock').trim() === 'all_catalog';
     const productSql = scopeAll
-      ? `SELECT p.id, p.name, p.stock, p.min_stock, p.stock_warehouse_id, p.price, p.category_id,
+      ? `SELECT p.id, p.name, p.stock, p.min_stock, p.max_stock, p.stock_warehouse_id, p.price, p.category_id,
                 c.name as category_name
          FROM products p
          LEFT JOIN categories c ON c.id = p.category_id
          WHERE p.is_active = 1
            AND p.process_type = 'non_transformed'
          ORDER BY p.name ASC`
-      : `SELECT p.id, p.name, p.stock, p.min_stock, p.stock_warehouse_id, p.price, p.category_id,
+      : `SELECT p.id, p.name, p.stock, p.min_stock, p.max_stock, p.stock_warehouse_id, p.price, p.category_id,
                 c.name as category_name
          FROM products p
          LEFT JOIN categories c ON c.id = p.category_id
@@ -488,7 +488,7 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
       const warehouse = (product.stock_warehouse_id
         ? queryOne('SELECT * FROM warehouse_locations WHERE id = ? AND is_active = 1', [product.stock_warehouse_id])
         : null) || principal;
-      const suggestedQty = suggestedReplenishmentQty(product.stock, product.min_stock);
+      const suggestedQty = suggestedReplenishmentQty(product.stock, product.min_stock, product.max_stock);
       const item = {
         id: uuidv4(),
         requirement_id: requirementId,

@@ -47,7 +47,7 @@ function buildPurchasePlan() {
   const soldById = new Map(sold.map((r) => [String(r.product_id), Number(r.qty || 0)]));
 
   const products = safeAll(
-    `SELECT p.id, p.name, p.stock, p.min_stock, IFNULL(p.purchase_price, 0) AS purchase_price,
+    `SELECT p.id, p.name, p.stock, p.min_stock, IFNULL(p.max_stock, 0) AS max_stock, IFNULL(p.purchase_price, 0) AS purchase_price,
             CASE WHEN ${isNonTransformedLowStockSql('p')} THEN 1 ELSE 0 END AS low
      FROM products p
      WHERE IFNULL(p.is_active, 1) = 1 AND p.process_type = 'non_transformed'`,
@@ -61,7 +61,8 @@ function buildPurchasePlan() {
     const daysLeft = daily > 0 ? stock / daily : null;
     const urgent = Number(p.low) === 1 || (daysLeft != null && daysLeft < 3);
     if (!urgent) continue;
-    const target = Math.max(minimo * 2, Math.ceil(daily * COVER_DAYS) + minimo);
+    const maximo = Number(p.max_stock || 0);
+    const target = maximo > 0 ? maximo : Math.max(minimo * 2, Math.ceil(daily * COVER_DAYS) + minimo);
     const comprar = Math.max(1, Math.ceil(target - stock));
     const costo = r2(p.purchase_price);
     productRows.push({

@@ -266,8 +266,11 @@ function buildDayPlan(analysis, dow) {
     if (nonTransformed) {
       const stock = Number(p.stock || 0);
       const min = Number(p.min_stock || 0);
+      const max = Number(p.max_stock || 0);
       const status = stockStatus(stock, e.qty, min);
-      if (status) storeAlerts.push({ name: e.name, stock, need: e.qty, min, status });
+      if (status) {
+        storeAlerts.push({ name: e.name, stock, need: e.qty, min, max, restock: max > 0 ? Math.max(0, max - stock) : 0, status });
+      }
       continue;
     }
     if (areaProducts.get(area)?.length >= 8) continue;
@@ -366,10 +369,11 @@ function closingSuggestionLines(analysis) {
 }
 
 function storeAlertText(a) {
-  if (a.status === 'falta') return `${a.name}: ⚠ no alcanza — stock ${fmtQty(a.stock)}, se venden ~${a.need}`;
-  if (a.min > 0 && a.stock < a.min) return `${a.name}: stock ${fmtQty(a.stock)}, ya bajo su mínimo (${fmtQty(a.min)}); se venden ~${a.need}`;
-  if (a.min > 0 && a.stock === a.min) return `${a.name}: stock ${fmtQty(a.stock)}, justo en su mínimo; se venden ~${a.need}`;
-  return `${a.name}: stock ${fmtQty(a.stock)}, quedaría bajo su mínimo tras vender ~${a.need}`;
+  const restock = a.restock > 0 ? ` → repón ~${fmtQty(a.restock)} (hasta su máximo ${fmtQty(a.max)})` : '';
+  if (a.status === 'falta') return `${a.name}: ⚠ no alcanza — stock ${fmtQty(a.stock)}, se venden ~${a.need}${restock}`;
+  if (a.min > 0 && a.stock < a.min) return `${a.name}: stock ${fmtQty(a.stock)}, ya bajo su mínimo (${fmtQty(a.min)}); se venden ~${a.need}${restock}`;
+  if (a.min > 0 && a.stock === a.min) return `${a.name}: stock ${fmtQty(a.stock)}, justo en su mínimo; se venden ~${a.need}${restock}`;
+  return `${a.name}: stock ${fmtQty(a.stock)}, quedaría bajo su mínimo tras vender ~${a.need}${restock}`;
 }
 
 function sortedStoreAlerts(plan) {

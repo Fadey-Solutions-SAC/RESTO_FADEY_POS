@@ -290,6 +290,8 @@ const ES_TO_EN = [
   ['no alcanza — stock', 'not enough — stock'],
   ['ya bajo su mínimo', 'already below its minimum'],
   ['justo en su mínimo', 'right at its minimum'],
+  ['→ repón ~', '→ restock ~'],
+  ['(hasta su máximo', '(up to its maximum'],
   ['quedaría bajo su mínimo tras vender ~', 'would drop below its minimum after selling ~'],
   ['Almacén sin stock suficiente:', 'Storage without enough stock:'],
   ['Almacén bajo mínimo (stock/mín.):', 'Storage below minimum (stock/min.):'],
