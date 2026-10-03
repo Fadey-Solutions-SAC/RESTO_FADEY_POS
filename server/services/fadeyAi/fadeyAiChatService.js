@@ -394,6 +394,53 @@ function detectPaymentMethodFilter(message) {
 }
 
 const FORECAST_DOWS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const FORECAST_MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/**
+ * Días pedidos en un pronóstico («hoy», «mañana», «pasado mañana», «próximo martes», «el domingo», «fin de semana», «10/10», «el 15»).
+ * @returns {{ targets: Array<{offset:number}|{dow:number,next:boolean}|{day:number,month:number|null}>, days: number|null }}
+ */
+function detectForecastWhen(m) {
+  const found = [];
+  const add = (index, target) => found.push({ index, target });
+  let rest = m;
+  const take = (re, fn) => {
+    rest = rest.replace(re, (...args) => {
+      const match = args[0];
+      const index = args[args.length - 2];
+      fn(args, index);
+      return ' '.repeat(match.length);
+    });
+  };
+  take(/\bpasado manana\b/g, (_, i) => add(i, { offset: 2 }));
+  take(/\besta manana\b/g, (_, i) => add(i, { offset: 0 }));
+  take(/\b(por|en|de|a) la manana\b/g, () => {});
+  take(/\bmanana\b/g, (_, i) => add(i, { offset: 1 }));
+  take(/\bhoy\b/g, (_, i) => add(i, { offset: 0 }));
+  take(/\bfin(es)? de semana\b/g, (_, i) => { add(i, { dow: 6, next: false }); add(i + 1, { dow: 0, next: false }); });
+  take(/\b(?:(proxim\w*|siguiente)\s+)?(domingo|lunes|martes|miercoles|jueves|viernes|sabado)\b(\s+(que viene|proxim\w*|siguiente))?/g, (args, i) => {
+    add(i, { dow: FORECAST_DOWS.indexOf(args[2]), next: Boolean(args[1] || args[3]) });
+  });
+  take(/\b(\d{1,2})\s*[/-]\s*(\d{1,2})\b/g, (args, i) => {
+    const day = Number(args[1]);
+    const month = Number(args[2]);
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) add(i, { day, month });
+  });
+  take(new RegExp(`\\b(?:el )?(?:dia )?(\\d{1,2}) de (${FORECAST_MONTHS.join('|')})\\b`, 'g'), (args, i) => {
+    add(i, { day: Number(args[1]), month: FORECAST_MONTHS.indexOf(args[2]) + 1 });
+  });
+  take(/\bel (?:dia )?(\d{1,2})\b(?! (dias|semanas))/g, (args, i) => {
+    const day = Number(args[1]);
+    if (day >= 1 && day <= 31) add(i, { day, month: null });
+  });
+
+  let days = null;
+  const nd = rest.match(/\b(?:proxim\w*|siguientes?)\s+(\d{1,2})\s+dias\b|\b(\d{1,2})\s+dias\s+(?:proxim\w*|siguientes?|que vienen)\b/);
+  if (nd) days = Math.min(14, Math.max(1, Number(nd[1] || nd[2])));
+  else if (/\b(proxim\w*|siguiente) semana\b|\bsemana que viene\b|\besta semana\b|\bproxim\w* dias\b/.test(rest)) days = 7;
+
+  return { targets: found.sort((a, b) => a.index - b.index).map((f) => f.target), days };
+}
 
 /** Pronóstico / días cerrados / conveniencia de abrir un día. */
 function detectForecastIntent(message) {
@@ -413,7 +460,10 @@ function detectForecastIntent(message) {
 
   const forecast = /pronostic|proyecc|prevision|\bprever\b|predic|\bproxim\w* (\d+ )?(dias|semana)|semana que viene|que (se )?(vendera|venderemos|va a vender|voy a vender|vamos a vender)|cuanto (vendere|venderemos|voy a vender|vamos a vender)|que (debo|tengo que|hay que|deberia|toca) preparar|\bque preparo\b|\bpreparar para\b|mise en place|que insumos (necesito|preparo|debo|hay que)/.test(m)
     || (dow != null && /\b(se vende\w*|venden|vendo|sale|salen|preparar|prepar\w*|esperar|espero)\b/.test(m));
-  if (forecast) return { kind: 'forecast', dow };
+  const when = detectForecastWhen(m);
+  const futureRef = when.targets.some((t) => t.offset == null || t.offset > 0);
+  const futureForecast = futureRef && /\b(se vende\w*|venderan|vendere\w*|venderia\w*|vendo|sale|saldra\w*|salen|esper\w*|habra|ira|iremos|va a ir)\b/.test(m);
+  if (forecast || futureForecast) return { kind: 'forecast', dow, targets: when.targets, days: when.days };
   return null;
 }
 
@@ -430,7 +480,7 @@ function buildForecastChatAnswer(message, user) {
     if (!showMoney) return { reply: deniedToolMessage('sales_summary'), sources: [{ kind: 'tool', title: 'permission_denied' }] };
     reply = weekdayAdviceAnswer(intent.dow);
   } else {
-    reply = forecastAnswer({ focusDow: intent.dow, showMoney, includeStore: canUseTool(user, 'low_stock') });
+    reply = forecastAnswer({ targets: intent.targets, days: intent.days, showMoney, includeStore: canUseTool(user, 'low_stock') });
   }
   return { reply, sources: [{ kind: 'tool', title: 'sales_forecast', focus: intent.kind }] };
 }

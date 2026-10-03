@@ -7,7 +7,7 @@ import { getSocket } from '../hooks/useSocket';
 import StaffTeamChat from './StaffTeamChat';
 import FadeyAiChatPanel from './FadeyAiChatPanel';
 import toast from 'react-hot-toast';
-import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload } from 'react-icons/md';
+import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload, MdRestaurant } from 'react-icons/md';
 import { FADEY_AI_TAGLINE, FADEY_AI_CREATOR_MODE, getFadeyAiAvatarSrc, OPEN_FADEY_AI_EVENT, isFadeyAiCreatorMode } from '../constants/fadeyAiBranding';
 import {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
@@ -75,6 +75,53 @@ function showIncomingMessageToast(msg) {
     ),
     { duration: MESSAGE_TOAST_MS, id: `staff-chat-${msg.id || Date.now()}` },
   );
+}
+
+const ORDER_READY_TOAST_MS = 15000;
+
+function showOrderReadyToast(evt) {
+  const id = `order-ready-${evt.order_id}-${evt.station || 'all'}`;
+  const title = evt.all_ready ? `Pedido ${evt.place} está listo` : `${evt.place} — ${evt.station_name || 'Área'} listo`;
+  const detail = evt.all_ready
+    ? 'Puedes recogerlo y llevarlo.'
+    : `Aún falta: ${(evt.pending_areas || []).join(', ') || 'otra área'}.`;
+  toast.custom(
+    (tt) => (
+      <div
+        className="max-w-sm w-[min(100vw-2rem,22rem)] rounded-xl border-2 border-emerald-500 bg-[var(--ui-surface)] shadow-xl px-4 py-3 text-[var(--ui-body-text)]"
+        role="alert"
+      >
+        <div className="flex items-start gap-3">
+          <MdRestaurant className="text-2xl text-emerald-500 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold">{title}</p>
+            <p className="text-xs mt-1 text-[var(--ui-muted)]">
+              {evt.order_number ? `#${evt.order_number} · ` : ''}{detail}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => toast.dismiss(tt.id)}
+            className="p-1 rounded-lg hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-muted)]"
+            aria-label="Cerrar"
+          >
+            <MdClose />
+          </button>
+        </div>
+      </div>
+    ),
+    { duration: ORDER_READY_TOAST_MS, id, position: 'top-center' },
+  );
+}
+
+function showOrderReadySystemNotification(evt) {
+  try {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
+    new Notification(evt.message || `Pedido ${evt.place} está listo`, { tag: `order-ready-${evt.order_id}` });
+  } catch (_) {
+    /* noop */
+  }
 }
 
 /**
@@ -268,10 +315,19 @@ export default function NotificationCenter({ className = '' }) {
       showIncomingMessageToast(msg);
     };
 
+    const onOrderReady = (evt) => {
+      if (!evt?.order_id) return;
+      playNotificationSound('kitchen', `waiter-ready-${evt.order_id}-${evt.station || ''}`);
+      showOrderReadyToast(evt);
+      showOrderReadySystemNotification(evt);
+    };
+
     s.on('staff-chat-message', onMsg);
+    s.on('waiter-order-ready', onOrderReady);
     return () => {
       s.off('connect', join);
       s.off('staff-chat-message', onMsg);
+      s.off('waiter-order-ready', onOrderReady);
     };
   }, [canUseStaffChat, user?.id]);
 
@@ -329,6 +385,13 @@ export default function NotificationCenter({ className = '' }) {
 
   const openWithTab = (nextTab) => {
     void unlockNotificationAudio();
+    try {
+      if (['mozo', 'cajero', 'admin'].includes(roleLc) && 'Notification' in window && Notification.permission === 'default') {
+        void Notification.requestPermission().catch(() => {});
+      }
+    } catch (_) {
+      /* noop */
+    }
     setOpen((prev) => {
       if (prev && tab === nextTab) return false;
       return true;

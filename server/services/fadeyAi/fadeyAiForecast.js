@@ -241,6 +241,7 @@ function upcomingTargets(analysis, { count = 2, includeToday = true } = {}) {
 function relativeLabel(t) {
   if (t.offset === 0) return `hoy ${WD[t.dow]} ${shortDate(t.date)}`;
   if (t.offset === 1) return `mañana ${WD[t.dow]} ${shortDate(t.date)}`;
+  if (t.offset === 2) return `pasado mañana ${WD[t.dow]} ${shortDate(t.date)}`;
   return `el ${WD[t.dow]} ${shortDate(t.date)}`;
 }
 
@@ -410,33 +411,82 @@ function dayPlanLines(analysis, t, { includeStore = true } = {}) {
   return { lines, plan };
 }
 
-/** Respuesta de chat: pronóstico de próximos días + preparación. */
-function forecastAnswer({ focusDow = null, showMoney = true, includeStore = true } = {}) {
+const MAX_FORECAST_AHEAD = 62;
+
+/**
+ * Convierte lo pedido en el chat en una fecha concreta desde hoy.
+ * @param {{offset?:number, dow?:number, next?:boolean, day?:number, month?:number|null}} spec
+ */
+function resolveForecastTarget(today, spec) {
+  let offset = null;
+  if (Number.isInteger(spec?.offset)) offset = spec.offset;
+  else if (Number.isInteger(spec?.dow)) {
+    const from = spec.next ? 1 : 0;
+    for (let i = from; i < from + 7; i += 1) {
+      if (dowOf(shiftBusinessDateKey(today, i)) === spec.dow) { offset = i; break; }
+    }
+  } else if (Number.isInteger(spec?.day)) {
+    for (let i = 0; i <= MAX_FORECAST_AHEAD; i += 1) {
+      const [, mm, dd] = shiftBusinessDateKey(today, i).split('-').map(Number);
+      if (dd === spec.day && (spec.month == null || mm === spec.month)) { offset = i; break; }
+    }
+  }
+  if (offset == null || offset < 0 || offset > MAX_FORECAST_AHEAD) return null;
+  const date = shiftBusinessDateKey(today, offset);
+  return { date, dow: dowOf(date), offset };
+}
+
+function dayListLabel(t) {
+  const name = t.offset === 0 ? 'Hoy' : t.offset === 1 ? 'Mañana' : WD[t.dow].charAt(0).toUpperCase() + WD[t.dow].slice(1);
+  return `${name} ${shortDate(t.date)}`;
+}
+
+function dayListLine(a, t, showMoney) {
+  const w = a.weekdays[t.dow];
+  if (w.closed) return `• ${dayListLabel(t)}: cerrado (no se abre caja normalmente)`;
+  return `• ${dayListLabel(t)}: ${showMoney ? `~${money(w.expected)}${trendText(w.trend)}` : `~${Math.round(w.avgCnt)} pedido(s)`}`;
+}
+
+/**
+ * Respuesta de chat: pronóstico de un día concreto, de varios días pedidos o de los próximos N días (+ preparación).
+ * @param {{ targets?: Array<object>, days?: number|null, focusDow?: number|null, showMoney?: boolean, includeStore?: boolean }} opts
+ */
+function forecastAnswer({ targets: specs = [], days = null, focusDow = null, showMoney = true, includeStore = true } = {}) {
   const a = getAnalysis();
   if (!a.enoughData) {
     return 'Aún no tengo suficiente historial para pronosticar (necesito al menos 7 días con caja abierta y ventas). Sigue registrando ventas y vuelve a preguntarme.';
   }
+  const requested = (specs.length ? specs : focusDow != null ? [{ dow: focusDow, next: false }] : [])
+    .map((s) => resolveForecastTarget(a.today, s))
+    .filter(Boolean)
+    .filter((t, i, list) => list.findIndex((x) => x.offset === t.offset) === i)
+    .sort((x, y) => x.offset - y.offset);
+
   const lines = [];
-  if (focusDow != null) {
-    const w = a.weekdays[focusDow];
-    let i = 0;
-    while (dowOf(shiftBusinessDateKey(a.today, i)) !== focusDow) i += 1;
-    const t = { date: shiftBusinessDateKey(a.today, i), dow: focusDow, offset: i };
+  if (requested.length === 1) {
+    const t = requested[0];
+    const w = a.weekdays[t.dow];
     lines.push(`**Pronóstico para ${relativeLabel(t)}**`);
     if (w.closed) {
-      lines.push(`Normalmente los ${WD_PLURAL[focusDow]} no se abre caja (el local cierra), así que no espero ventas.`);
+      lines.push(`Normalmente los ${WD_PLURAL[t.dow]} no se abre caja (el local cierra), así que no espero ventas.`);
     } else {
       if (showMoney) lines.push(`Venta esperada: ~${money(w.expected)}${trendText(w.trend)} · ~${Math.round(w.avgCnt)} pedido(s).`);
       lines.push(...dayPlanLines(a, t, { includeStore }).lines);
     }
+  } else if (requested.length > 1) {
+    lines.push(`**Pronóstico para ${requested.map(relativeLabel).join(', ').replace(/, ([^,]*)$/, ' y $1')}**`);
+    requested.forEach((t) => lines.push(dayListLine(a, t, showMoney)));
+    const first = requested.find((t) => !a.weekdays[t.dow].closed);
+    if (first) {
+      lines.push('', `**Prepara para ${relativeLabel(first)}:**`);
+      lines.push(...dayPlanLines(a, first, { includeStore }).lines);
+    }
   } else {
-    lines.push('**Pronóstico de los próximos 7 días**');
-    for (let i = 0; i < 7; i += 1) {
+    const count = Math.min(14, Math.max(1, Number(days) || 7));
+    lines.push(`**Pronóstico de los próximos ${count} días**`);
+    for (let i = 0; i < count; i += 1) {
       const date = shiftBusinessDateKey(a.today, i);
-      const w = a.weekdays[dowOf(date)];
-      const label = `${i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : WD[w.dow].charAt(0).toUpperCase() + WD[w.dow].slice(1)} ${shortDate(date)}`;
-      if (w.closed) lines.push(`• ${label}: cerrado (no se abre caja normalmente)`);
-      else lines.push(`• ${label}: ${showMoney ? `~${money(w.expected)}${trendText(w.trend)}` : `~${Math.round(w.avgCnt)} pedido(s)`}`);
+      lines.push(dayListLine(a, { date, dow: dowOf(date), offset: i }, showMoney));
     }
     const { targets } = upcomingTargets(a, { count: 1 });
     if (targets[0]) {

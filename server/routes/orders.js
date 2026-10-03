@@ -29,6 +29,7 @@ const { attachTableDisplayLabels } = require('../utils/tableDisplayLabel');
 const { getOpenRegisterForUser } = require('../utils/openCashRegister');
 const { purgeOrdersFromSystem, loadOrdersByIds } = require('../utils/purgeOrderFromSystem');
 const { upsertOrderStationState } = require('../services/productionAreasService');
+const { notifyWaiterOrderReady } = require('../services/waiterReadyNotifyService');
 const {
   allRequiredStationsReady,
   kitchenOrderNeedsRepair,
@@ -769,6 +770,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
 
   const stationSt = normalizeKitchenStation(stationRequested);
   const areaItemsAtStart = getOrderItemsWithArea(order.id);
+  const stationWasCompleteAtStart = isStationCompleteForStation(order, areaItemsAtStart, stationSt);
   if (kitchenOrderNeedsRepair(order, areaItemsAtStart)) {
     runSql(
       "UPDATE orders SET status = 'preparing', preparing_at = COALESCE(preparing_at, datetime('now')), updated_at = datetime('now') WHERE id = ?",
@@ -1139,7 +1141,12 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     const stationDone =
       status === 'ready'
       && isStationCompleteForStation(updated, refreshedItems, stationSt);
-    if (stationDone) io.emit('order-ready', updated);
+    if (stationDone) {
+      io.emit('order-ready', updated);
+      if (isStationReadyRequest && !stationWasCompleteAtStart) {
+        notifyWaiterOrderReady(io, updated, { station: stationSt, actorUserId: req.user?.id });
+      }
+    }
   }
   res.json(updated);
   } catch (err) {
