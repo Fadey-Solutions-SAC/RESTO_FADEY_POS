@@ -7,6 +7,7 @@ import {
   requestAllDevicePermissions,
   sendTestNotification,
 } from '../utils/devicePermissions';
+import { isSplashSoundEnabled, previewSplashSound, setSplashSoundEnabled } from '../utils/splashSound';
 
 const STATUS_UI = {
   granted: { label: 'Permitido', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -40,6 +41,7 @@ function Row({ icon: Icon, title, help, status }) {
 export default function DevicePermissionsCard() {
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [splashSound, setSplashSound] = useState(() => isSplashSoundEnabled());
 
   const refresh = useCallback(async () => {
     setStatus(await getDevicePermissionsStatus());
@@ -132,6 +134,31 @@ export default function DevicePermissionsCard() {
           className="flex items-center justify-center gap-2 h-11 px-4 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50"
         >
           <MdCampaign className="text-lg" /> Probar aviso
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+        <label className="flex items-center gap-2.5 cursor-pointer select-none min-w-0">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-slate-300"
+            checked={splashSound}
+            onChange={(e) => {
+              setSplashSoundEnabled(e.target.checked);
+              setSplashSound(e.target.checked);
+            }}
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-slate-800">Sonido de apertura</span>
+            <span className="block text-xs text-slate-500">Suena con la animación al abrir el sistema en este equipo.</span>
+          </span>
+        </label>
+        <button
+          type="button"
+          onClick={() => previewSplashSound()}
+          className="shrink-0 text-xs font-medium px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+        >
+          Escuchar
         </button>
       </div>
 

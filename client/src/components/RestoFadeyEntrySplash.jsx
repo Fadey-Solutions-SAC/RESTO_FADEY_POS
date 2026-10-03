@@ -5,6 +5,7 @@ import {
   isEntrySplashDone,
 } from '../utils/entrySplashSession';
 import EntrySplashCircuits from './EntrySplashCircuits';
+import { playSplashSound } from '../utils/splashSound';
 
 /**
  * Logo de empresa FY (circular). NO regenerar/recortar salvo indicación explícita del usuario.
@@ -42,6 +43,7 @@ export default function RestoFadeyEntrySplash({ onComplete }) {
     if (!splashAnimationStarted) {
       splashAnimationStarted = true;
       markEntrySplashStarted();
+      playSplashSound();
     }
     setPhase('in');
 
