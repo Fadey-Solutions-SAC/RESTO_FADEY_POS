@@ -13,7 +13,7 @@ También aplicar cuando el usuario pida explícitamente subir cambios, `git push
 
 2. Responder **siempre** con **cinco partes numeradas del 1 al 5**. En cada parte: título en negrita (**1**, **2**, …), línea en blanco, y **un solo** bloque de código con etiqueta `text` que contenga **exactamente una línea** (el comando). Orden:
 
-   - **1:** `cd` al repo. Ruta por defecto en **PowerShell** (Windows): `cd "c:\Users\Intel\OneDrive\RESTAURANT.DEMO"`. Si el usuario usa **Git Bash**: `cd /c/Users/Intel/OneDrive/RESTAURANT.DEMO`.
+   - **1:** `cd` al repo. Ruta por defecto en **PowerShell** (Windows): `cd "c:\Users\Intel\OneDrive\RESTO FADEY POS"`. Si el usuario usa **Git Bash**: `cd /c/Users/Intel/OneDrive/RESTO FADEY POS`
    - **2:** `git status`
    - **3:** `git add -A` (o archivos concretos si el usuario lo pide)
    - **4:** `git commit -m "…"` con mensaje breve acorde al cambio (en español o inglés, según el estilo del commit en el repo)

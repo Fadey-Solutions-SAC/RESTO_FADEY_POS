@@ -362,8 +362,18 @@ function isClientCheckoutTable(table) {
 
 /** Recuadro sintético en caja: un slot por pedido delivery pendiente de cobro (misma UX que mesa). */
 const POS_DELIVERY_SLOT_PREFIX = 'pos-delivery-slot:';
+/** Venta rápida: se cobra con el mismo modal que una mesa; si no se cobra queda como recuadro en caja. */
+const POS_QUICK_SALE_SLOT_PREFIX = 'pos-quick-sale:';
+const QUICK_SALE_CUSTOMER_NAME = 'VENTA RAPIDA';
+function isQuickSaleCheckoutTable(table) {
+  return Boolean(table && String(table.id || '').startsWith(POS_QUICK_SALE_SLOT_PREFIX));
+}
+/** Recuadro sintético de un solo pedido (delivery o venta rápida), sin mesa física. */
 function isDeliveryCheckoutTable(table) {
-  return Boolean(table && String(table.id || '').startsWith(POS_DELIVERY_SLOT_PREFIX));
+  return Boolean(
+    table
+    && (String(table.id || '').startsWith(POS_DELIVERY_SLOT_PREFIX) || isQuickSaleCheckoutTable(table)),
+  );
 }
 function deliveryOrderIdFromSlotTable(table) {
   return String(table?.id || '').slice(POS_DELIVERY_SLOT_PREFIX.length);
@@ -596,6 +606,34 @@ function buildDeliveryCajaSlots(orders) {
     order_total: getOrderChargeTotal(o),
     order_count: 1,
   }));
+}
+function quickSaleSlotForOrder(o, idx = 0) {
+  return {
+    id: `${POS_QUICK_SALE_SLOT_PREFIX}${o.id}`,
+    number: o.order_number,
+    name: idx > 0 ? `VENTA RÁPIDA ${idx + 1}` : 'VENTA RÁPIDA',
+    zone: 'venta_rapida',
+    orders: [o],
+    status: 'occupied',
+    order_total: getOrderChargeTotal(o),
+    order_count: 1,
+  };
+}
+function buildQuickSaleCajaSlots(orders) {
+  return (orders || [])
+    .filter(
+      (o) =>
+        String(o.type || '') === 'pickup' &&
+        String(o.customer_name || '').trim().toUpperCase() === QUICK_SALE_CUSTOMER_NAME &&
+        !String(o.table_id || '').trim() &&
+        String(o.payment_status || '') !== 'paid' &&
+        String(o.status || '') !== 'cancelled'
+    )
+    .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')))
+    .map((o, idx) => quickSaleSlotForOrder(o, idx));
+}
+function buildOrderCajaSlots(orders) {
+  return [...buildDeliveryCajaSlots(orders), ...buildQuickSaleCajaSlots(orders)];
 }
 
 function PosInlineLoading({ title, subtitle }) {
@@ -1077,7 +1115,7 @@ export default function POSPanel() {
             prev && prev.id === selId && isClientCheckoutTable(prev) ? { ...prev, orders: fresh } : prev
           );
         } else if (isDeliveryCheckoutTable({ id: selId })) {
-          const slots = buildDeliveryCajaSlots(ordersData);
+          const slots = buildOrderCajaSlots(ordersData);
           const next = slots.find((s) => s.id === selId);
           setSelectedTable((prev) => {
             if (!prev || prev.id !== selId) return prev;
@@ -1103,7 +1141,7 @@ export default function POSPanel() {
       if (tableDetailIdRef.current) {
         const detailId = tableDetailIdRef.current;
         if (isDeliveryCheckoutTable({ id: detailId })) {
-          const slots = buildDeliveryCajaSlots(ordersData);
+          const slots = buildOrderCajaSlots(ordersData);
           const next = slots.find((s) => s.id === detailId);
           setTableDetail((prev) => (prev && prev.id === detailId ? (next || null) : prev));
         } else {
@@ -2877,8 +2915,6 @@ export default function POSPanel() {
   };
 
   const receivedAmount = Math.max(0, parseFloat(amountReceived) || 0);
-  const quickSaleChange = Math.max(0, receivedAmount - cartTotal);
-  const quickSaleMissing = Math.max(0, cartTotal - receivedAmount);
 
   const showParaLlevarToggle =
     !quickSaleMode &&
@@ -2944,36 +2980,8 @@ export default function POSPanel() {
       setNoteEditorLineKey(missingRequiredNote.line_key);
       return toast.error(`"${missingRequiredNote.name}" requiere una nota obligatoria`);
     }
-    let quickPayMethod = paymentMethod;
-    let quickPayBreakdown = null;
-    if (quickSaleMode) {
-      if (multiPayEnabled) {
-        const o = {};
-        for (const opt of multiPaymentOptions) {
-          const raw = multiPayAmounts[opt.value];
-          if (raw === undefined || raw === '' || String(raw).trim() === '') continue;
-          const v = roundMoneySoles(parseFloat(raw));
-          if (v > 0) o[opt.value] = v;
-        }
-        if (Object.keys(o).length < 2) {
-          return toast.error('En multimétodo indica al menos dos métodos con monto mayor a cero.');
-        }
-        const sum = roundMoneySoles(Object.values(o).reduce((s, x) => s + x, 0));
-        if (Math.abs(sum - cartTotal) > 0.05) {
-          return toast.error(`La suma (${formatCurrency(sum)}) debe coincidir con el total (${formatCurrency(cartTotal)})`);
-        }
-        quickPayBreakdown = o;
-        quickPayMethod = dominantPaymentFromBreakdown(o);
-      } else if (paymentMethod === 'efectivo' && receivedAmount < cartTotal) {
-        return toast.error(`Monto insuficiente. Falta ${formatCurrency(cartTotal - receivedAmount)}`);
-      }
-    }
-    if (quickSaleMode) {
-      const billingError = validateBillingData();
-      if (billingError) return toast.error(billingError);
-    }
     const tid = toast.loading(
-      editingOrderId ? 'Guardando cambios…' : quickSaleMode ? 'Registrando venta…' : 'Enviando pedido…'
+      editingOrderId ? 'Guardando cambios…' : quickSaleMode ? 'Preparando cobro…' : 'Enviando pedido…'
     );
     try {
       if (editingOrderId) {
@@ -3082,37 +3090,17 @@ export default function POSPanel() {
         table: tableForOrder,
         cartItems: buildOrderItemsPayload(cart),
         extra: {
-          payment_method: quickSaleMode ? quickPayMethod : paymentMethod,
+          payment_method: paymentMethod,
           notes: !quickSaleMode ? buildMesaOrderNotes(paraLlevarMesa, mesaOrderObservation) : '',
-          ...(quickSaleMode ? { type: 'pickup', table_number: '', table_id: '', target_order_id: '', customer_name: 'VENTA RAPIDA' } : {}),
+          ...(quickSaleMode ? { type: 'pickup', table_number: '', table_id: '', target_order_id: '', customer_name: QUICK_SALE_CUSTOMER_NAME } : {}),
         },
       }));
       if (quickSaleMode) {
-        let doc = null;
-        if (billingForm.enabled) {
-          doc = await issueElectronicDocument(createdOrder.id);
-        }
-        const payBody = { payment_method: quickPayMethod, payment_status: 'paid' };
-        if (quickPayBreakdown) payBody.payment_breakdown = quickPayBreakdown;
-        if (tipPayEnabled) {
-          const tipVal = roundMoneySoles(parseFloat(String(checkoutTipAmount).replace(',', '.')) || 0);
-          if (tipVal > 0) payBody.tip_amount = tipVal;
-        }
-        await api.put(`/orders/${createdOrder.id}/payment`, payBody);
-        if (billingForm.enabled && doc) {
-          toast.success(`Venta rápida cobrada · ${billingSuccessSummary(doc)}`, { id: tid });
-          if (String(doc.provider_status || '').toLowerCase() === 'error') {
-            toast.error(doc.sunat_description || doc.provider_message || 'Error SUNAT. Reintente en Informes.');
-          }
-          if (doc?.pdf_url) {
-            if (String(doc.provider_status || '').toLowerCase() === 'accepted') {
-              printedSunatPdfRef.current.add(doc.id);
-            }
-            window.open(resolveMediaUrl(doc.pdf_url), '_blank', 'noopener,noreferrer');
-          }
-        } else {
-          toast.success('Venta rápida cobrada', { id: tid });
-        }
+        toast.dismiss(tid);
+        resetBillingForm();
+        openBillForTable(quickSaleSlotForOrder(createdOrder));
+        loadData();
+        return;
       } else {
         if (createdOrder.merged_into_existing) {
           toast.success(
@@ -3277,6 +3265,7 @@ export default function POSPanel() {
     ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
     : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5';
   const deliveryCajaSlots = useMemo(() => buildDeliveryCajaSlots(allOrders), [allOrders]);
+  const quickSaleCajaSlots = useMemo(() => buildQuickSaleCajaSlots(allOrders), [allOrders]);
   const filteredProducts = filterOrderingProducts(products, { search, selectedCat });
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
@@ -4162,6 +4151,40 @@ export default function POSPanel() {
             </div>
           </>
         )}
+
+        {quickSaleCajaSlots.length > 0 && (
+          <>
+            <h2 className="font-semibold text-slate-700 mt-4 mb-2 flex items-center gap-2">
+              <MdPointOfSale /> Ventas rápidas por cobrar
+            </h2>
+            <p className="text-sm ui-text-muted mb-3">
+              Ventas rápidas que se cerraron sin cobrar. Al cobrarlas, desaparecen de esta lista.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+              {quickSaleCajaSlots.map((slot) => (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => openBillForTable(slot)}
+                  className="card text-left transition-all border-l-4 border-l-emerald-500 hover:shadow-lg bg-slate-50/80"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100">
+                      <MdPointOfSale className="text-emerald-700 text-xl" />
+                    </div>
+                    <div>
+                      <p className="font-bold rf-section-title">{slot.name}</p>
+                      <p className="text-xs ui-text-muted">Pedido #{slot.orders?.[0]?.order_number ?? '—'}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs font-semibold text-emerald-800">
+                    Por cobrar · {formatCurrency(slot.order_total)}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {mesaDetailModalOpen && tableDetail && (
@@ -4202,6 +4225,7 @@ export default function POSPanel() {
                       ? (() => {
                           const o = tableDetail.orders?.[0];
                           if (!o) return 'Sin pedido';
+                          if (isQuickSaleCheckoutTable(tableDetail)) return `Venta rápida pendiente de cobro · Pedido #${o.order_number ?? '—'}`;
                           return [o.customer_name, o.delivery_address].filter(Boolean).join(' · ') || 'Delivery';
                         })()
                       : tableDetail.orders?.length
@@ -4336,7 +4360,7 @@ export default function POSPanel() {
                       onClick={() => beginCobrarMesa(tableDetail)}
                       disabled={!tableDetail.orders?.length}
                       className="btn-cobrar btn-mesa-grid"
-                      title={isDeliveryCheckoutTable(tableDetail) ? 'Cobrar delivery' : 'Cobrar mesa'}
+                      title={isQuickSaleCheckoutTable(tableDetail) ? 'Cobrar venta rápida' : isDeliveryCheckoutTable(tableDetail) ? 'Cobrar delivery' : 'Cobrar mesa'}
                     >
                       <MdAttachMoney className="shrink-0 text-lg" />
                       <span>Cobrar</span>
@@ -4664,214 +4688,6 @@ export default function POSPanel() {
           formatCurrency={formatCurrency}
           className="min-h-0 flex-1"
           showOrderObservation={false}
-          sidebarTop={(
-              <div className="space-y-2">
-                <div>
-                  <label className="flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-1 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={multiPayEnabled}
-                      onChange={(e) => setMultiPayEnabled(e.target.checked)}
-                      className="rounded border-[color:var(--ui-accent)]"
-                    />
-                    Pago multimétodo
-                  </label>
-                  {!multiPayEnabled ? (
-                  <select className="input-field" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                    {paymentOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  ) : (
-                    <div className="space-y-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
-                      {multiPaymentOptions.map((opt) => (
-                        <div key={opt.value} className="flex items-center gap-2">
-                          <span className="text-xs text-[var(--ui-body-text)] w-[80px] shrink-0">{opt.label}</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="input-field flex-1 text-sm"
-                            placeholder="0.00"
-                            value={multiPayAmounts[opt.value] ?? ''}
-                            onChange={(e) =>
-                              setMultiPayAmounts((prev) => ({ ...prev, [opt.value]: e.target.value }))
-                            }
-                          />
-                        </div>
-                      ))}
-                      <p className={`text-xs font-extrabold ${multiPaySumStatusClass(multiPaySumProof, cartTotal)}`}>
-                        Suma: {formatCurrency(multiPaySumProof)} · Total {formatCurrency(cartTotal)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-1 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tipPayEnabled}
-                      onChange={(e) => {
-                        const on = e.target.checked;
-                        setTipPayEnabled(on);
-                        if (!on) setCheckoutTipAmount('');
-                      }}
-                      className="rounded border-[color:var(--ui-accent)]"
-                    />
-                    Propina (opcional)
-                  </label>
-                  {tipPayEnabled && (
-                    <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
-                      <label className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">Monto propina</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="input-field w-full text-sm"
-                        placeholder="0.00"
-                        value={checkoutTipAmount}
-                        onChange={(e) => setCheckoutTipAmount(e.target.value)}
-                      />
-                    </div>
-                  )}
-                </div>
-                {!multiPayEnabled && paymentMethod === 'efectivo' && (
-                  <>
-                    <div>
-                      <label className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">Paga con</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="input-field"
-                        value={amountReceived}
-                        onChange={(e) => setAmountReceived(e.target.value)}
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div className="text-sm py-0.5">
-                      <p className="text-[var(--ui-muted)]">
-                        Vuelto:{' '}
-                        <span className="font-extrabold text-[color:var(--ui-success)] tabular-nums">{formatCurrency(quickSaleChange)}</span>
-                      </p>
-                      {quickSaleMissing > 0 && (
-                        <p className="text-xs font-extrabold text-[color:var(--ui-danger)] mt-1">Falta: {formatCurrency(quickSaleMissing)}</p>
-                      )}
-                    </div>
-                  </>
-                )}
-                {billingForm.enabled ? (
-                <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-2 space-y-2">
-                    <div className="space-y-2">
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={openCustomerModal}
-                          className="px-2 py-1 rounded-lg border border-[color:var(--ui-accent)] text-[var(--ui-accent-muted)] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center gap-1"
-                        >
-                          <MdPersonAdd className="text-sm" />
-                          Agregar cliente
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <select
-                          className="input-field"
-                          value={billingForm.doc_type}
-                          onChange={(e) => setBillingForm((prev) => ({ ...prev, doc_type: e.target.value }))}
-                        >
-                          <option value="boleta">Boleta</option>
-                          <option value="factura">Factura</option>
-                          <option value="nota_venta">Nota de venta</option>
-                        </select>
-                        <select
-                          className="input-field"
-                          value={billingForm.customer_doc_type}
-                          onChange={(e) => setBillingForm((prev) => ({ ...prev, customer_doc_type: e.target.value }))}
-                          disabled={billingForm.doc_type === 'factura' || billingForm.doc_type === 'nota_venta'}
-                        >
-                          <option value="1">DNI</option>
-                          <option value="6">RUC</option>
-                          <option value="0">Sin documento</option>
-                        </select>
-                      </div>
-                      <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/60 p-2 space-y-1.5">
-                        <p className="text-[11px] font-medium text-[var(--ui-body-text)]">Detalle en el comprobante</p>
-                        <div className="flex flex-wrap gap-3 text-xs text-[#D1D5DB]">
-                          <label className="flex items-center gap-1.5 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="invoice_lines_quick"
-                              checked={billingForm.invoice_lines_mode === 'detallado'}
-                              onChange={() => setBillingForm((prev) => ({ ...prev, invoice_lines_mode: 'detallado' }))}
-                              className="border-[color:var(--ui-accent)]"
-                              disabled={billingForm.doc_type === 'nota_venta'}
-                            />
-                            Detallado (cada producto)
-                          </label>
-                          <label className="flex items-center gap-1.5 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="invoice_lines_quick"
-                              checked={billingForm.invoice_lines_mode === 'consumo'}
-                              onChange={() => setBillingForm((prev) => ({ ...prev, invoice_lines_mode: 'consumo' }))}
-                              className="border-[color:var(--ui-accent)]"
-                              disabled={billingForm.doc_type === 'nota_venta'}
-                            />
-                            Por consumo (una línea)
-                          </label>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 items-stretch">
-                        <input
-                          className="input-field flex-1 min-w-0"
-                          placeholder="N° documento"
-                          value={billingForm.customer_doc_number}
-                          onChange={(e) =>
-                            setBillingForm((prev) => ({ ...prev, customer_doc_number: normalizeDocNumber(e.target.value) }))
-                          }
-                        />
-                        {(billingForm.doc_type !== 'nota_venta' && (billingForm.customer_doc_type === '1' || billingForm.customer_doc_type === '6')) && (
-                          <button
-                            type="button"
-                            title={`Consultar nombre o razón social en padrón (requiere PERU_CONSULTAS_TOKEN en el servidor). ${padronQuotaUi.label || ''}`.trim()}
-                            onClick={() => void handleConsultaPadron()}
-                            disabled={consultaPadronLoading || padronQuotaUi.exhausted}
-                            className="shrink-0 px-2.5 py-2 rounded-lg border border-[color:var(--ui-accent)] text-[var(--ui-accent-muted)] text-xs font-medium hover:bg-[#2563EB]/20 flex items-center justify-center gap-1 disabled:opacity-50"
-                          >
-                            <MdSearch className="text-lg shrink-0" />
-                            <span className="hidden sm:inline">Padrón</span>
-                          </button>
-                        )}
-                      </div>
-                      <input
-                        className="input-field"
-                        placeholder={billingForm.doc_type === 'factura' ? 'Razón social' : 'Nombre cliente'}
-                        value={billingForm.customer_name}
-                        onChange={(e) => setBillingForm((prev) => ({ ...prev, customer_name: e.target.value }))}
-                      />
-                      <input
-                        className="input-field"
-                        placeholder="Dirección (opcional)"
-                        value={billingForm.customer_address}
-                        onChange={(e) => setBillingForm((prev) => ({ ...prev, customer_address: e.target.value }))}
-                      />
-                      <input
-                        className="input-field"
-                        placeholder=""
-                        value={billingForm.customer_phone}
-                        onChange={(e) => setBillingForm((prev) => ({ ...prev, customer_phone: e.target.value }))}
-                      />
-                      {searchingCustomer && <p className="text-[11px] text-[var(--ui-muted)]">Buscando cliente en el registro local...</p>}
-                      {matchedCustomer && (
-                        <p className="text-[11px] text-emerald-400">Cliente encontrado: {matchedCustomer.name}</p>
-                      )}
-                    </div>
-                </div>
-                ) : null}
-              </div>
-          )}
           footer={
             cart.length > 0 ? (
               <>
@@ -4880,23 +4696,9 @@ export default function POSPanel() {
                   <span className="text-[var(--ui-accent-muted)]">{formatCurrency(cartTotal)}</span>
                 </div>
                 {quickSaleMode && (
-                  <label className="flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-1">
-                    <input
-                      type="checkbox"
-                      checked={billingForm.enabled}
-                      onChange={(e) => setBillingForm((prev) => (e.target.checked
-                        ? {
-                          ...prev,
-                          enabled: true,
-                          doc_type: 'nota_venta',
-                          customer_doc_type: '0',
-                          invoice_lines_mode: 'detallado',
-                        }
-                        : { ...prev, enabled: false }))}
-                      className="rounded border-[color:var(--ui-accent)]"
-                    />
-                    Emitir Comprobante
-                  </label>
+                  <p className="text-[11px] text-[var(--ui-muted)]">
+                    Al continuar se abre el cobro de caja: descuento, cortesía, dividir cuenta, pagos y comprobante.
+                  </p>
                 )}
                 <button
                   type="button"
@@ -5149,9 +4951,11 @@ export default function POSPanel() {
         title={
           selectedTable && isClientCheckoutTable(selectedTable)
             ? 'COBRAR CUENTA CLIENTE'
-            : selectedTable && isDeliveryCheckoutTable(selectedTable)
-              ? 'COBRAR DELIVERY'
-              : 'COBRAR MESA'
+            : selectedTable && isQuickSaleCheckoutTable(selectedTable)
+              ? 'COBRAR VENTA RÁPIDA'
+              : selectedTable && isDeliveryCheckoutTable(selectedTable)
+                ? 'COBRAR DELIVERY'
+                : 'COBRAR MESA'
         }
         size="xl"
         dialogClassName="!max-w-5xl"
