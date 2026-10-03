@@ -363,7 +363,7 @@ function closedRegisterCashFlow(register) {
   return {
     opening: Number(arqueo.opening_amount ?? register?.opening_amount ?? 0),
     cashSales: Number(arqueo.payment_breakdown?.efectivo ?? register?.total_cash ?? 0),
-    tips: Number(arqueo.total_tips || 0),
+    tips: Number(arqueo.tips_by_method?.efectivo ?? arqueo.total_tips ?? 0),
     income: Number(live?.income ?? arqueo.cash_movements?.income ?? 0),
     expense: Number(live?.expense ?? arqueo.cash_movements?.expense ?? 0),
     notesCredit: Number(live?.notes_credit ?? arqueo.cash_notes?.credit ?? 0),
@@ -392,10 +392,19 @@ function buildClosedRegisterPrintHtml(register) {
   parts.push(row('MONTO APERTURA', formatCurrency(register.opening_amount || 0), 'row bold'));
   parts.push('<div class="sep"></div>');
   parts.push(row('Ventas (Efectivo)', formatCurrency(register.total_cash || 0)));
+  const tipsBy = arqueo.tips_by_method || {};
+  const pushTip = (key, label) => {
+    if (Number(tipsBy[key] || 0) > 0) parts.push(row(`  + Propina (${label})`, formatCurrency(tipsBy[key])));
+  };
+  pushTip('efectivo', 'Efectivo');
   parts.push(row('Ventas (Yape)', formatCurrency(register.total_yape || 0)));
+  pushTip('yape', 'Yape');
   parts.push(row('Ventas (Plin)', formatCurrency(register.total_plin || 0)));
+  pushTip('plin', 'Plin');
   parts.push(row('Ventas (Tarjeta)', formatCurrency(register.total_card || 0)));
+  pushTip('tarjeta', 'Tarjeta');
   if (onlineAmt > 0) parts.push(row('Ventas (Online)', formatCurrency(onlineAmt)));
+  pushTip('online', 'Online');
   parts.push('<div class="sep"></div>');
   parts.push(row('TOTAL VENTAS', formatCurrency(register.total_sales || 0), 'row total-row'));
   parts.push(row('Propinas', formatCurrency(arqueo.total_tips || 0)));
@@ -3292,7 +3301,7 @@ export default function Reports() {
                 const rows = [
                   { label: 'Apertura', value: flow.opening, sign: '' },
                   { label: 'Ventas en efectivo', value: flow.cashSales, sign: '+' },
-                  ...(flow.tips > 0 ? [{ label: 'Propinas', value: flow.tips, sign: '+' }] : []),
+                  ...(flow.tips > 0 ? [{ label: 'Propinas en efectivo', value: flow.tips, sign: '+' }] : []),
                   { label: 'Ingresos de caja', value: flow.income, sign: '+', cls: 'text-emerald-600' },
                   { label: 'Egresos de caja', value: flow.expense, sign: '−', cls: 'text-red-600' },
                   ...(flow.notesCredit > 0 ? [{ label: 'Notas de crédito', value: flow.notesCredit, sign: '+' }] : []),

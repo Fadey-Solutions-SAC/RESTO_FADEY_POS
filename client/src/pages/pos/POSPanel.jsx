@@ -43,8 +43,29 @@ function addAmountToPaymentBucket(buckets, method, amount) {
   else buckets.efectivo += n;
 }
 
+/** Propina cobrada con el mismo medio de la venta; en multipago, proporcional a cada medio. */
+function addTipToPaymentBuckets(tipBuckets, tip, breakdown, method) {
+  const amt = roundMoneySoles(tip);
+  if (amt <= 0) return;
+  const entries = breakdown ? Object.entries(breakdown).filter(([, v]) => Number(v) > 0) : [];
+  const sum = entries.reduce((s, [, v]) => s + Number(v), 0);
+  if (!entries.length || sum <= 0) {
+    addAmountToPaymentBucket(tipBuckets, method, amt);
+    return;
+  }
+  let assigned = 0;
+  entries.forEach(([k, v], idx) => {
+    const part = idx === entries.length - 1
+      ? roundMoneySoles(amt - assigned)
+      : roundMoneySoles((amt * Number(v)) / sum);
+    assigned = roundMoneySoles(assigned + part);
+    addAmountToPaymentBucket(tipBuckets, k, part);
+  });
+}
+
 function summarizePaidOrdersForRegister(orders, register, endAt) {
   const buckets = { efectivo: 0, yape: 0, plin: 0, tarjeta: 0, online: 0 };
+  const tipBuckets = { efectivo: 0, yape: 0, plin: 0, tarjeta: 0, online: 0 };
   let total = 0;
   let tips = 0;
   const matched = [];
@@ -53,19 +74,22 @@ function summarizePaidOrdersForRegister(orders, register, endAt) {
     matched.push(order);
     const amount = roundMoneySoles(order.total || 0);
     total = roundMoneySoles(total + amount);
-    tips = roundMoneySoles(tips + Number(order.tip_amount || 0));
+    const tip = roundMoneySoles(Number(order.tip_amount || 0));
+    tips = roundMoneySoles(tips + tip);
     let breakdown = null;
     const raw = order.payment_breakdown;
     if (raw && typeof raw === 'object') breakdown = raw;
     else if (typeof raw === 'string' && raw.trim()) {
       try { breakdown = JSON.parse(raw); } catch (_) { breakdown = null; }
     }
-    if (breakdown && typeof breakdown === 'object' && !Array.isArray(breakdown)
-      && Object.keys(breakdown).length >= 2) {
+    const isMulti = breakdown && typeof breakdown === 'object' && !Array.isArray(breakdown)
+      && Object.keys(breakdown).length >= 2;
+    if (isMulti) {
       for (const [k, v] of Object.entries(breakdown)) addAmountToPaymentBucket(buckets, k, v);
     } else {
       addAmountToPaymentBucket(buckets, order.payment_method, amount);
     }
+    addTipToPaymentBuckets(tipBuckets, tip, isMulti ? breakdown : null, order.payment_method);
   }
   return {
     total_sales: total,
@@ -75,6 +99,11 @@ function summarizePaidOrdersForRegister(orders, register, endAt) {
     total_card: roundMoneySoles(buckets.tarjeta),
     total_online: roundMoneySoles(buckets.online),
     total_tips: tips,
+    tips_cash: roundMoneySoles(tipBuckets.efectivo),
+    tips_yape: roundMoneySoles(tipBuckets.yape),
+    tips_plin: roundMoneySoles(tipBuckets.plin),
+    tips_card: roundMoneySoles(tipBuckets.tarjeta),
+    tips_online: roundMoneySoles(tipBuckets.online),
     order_count: matched.length,
     orders: matched,
   };
@@ -3484,17 +3513,26 @@ export default function POSPanel() {
   const cashFlowSource = closingData && String(closingData.id || '') === String(register?.id || '') ? closingData : register;
   const totalIncome = Number(cashFlowSource?.total_income || 0);
   const totalExpense = Number(cashFlowSource?.total_expense || 0);
-  const totalTips = Number(register?.total_tips || 0) > 0 ? Number(register.total_tips || 0) : registerLiveSales.total_tips;
+  const tipsSource = Number(register?.total_tips || 0) > 0 ? register : registerLiveSales;
+  const totalTips = Number(tipsSource?.total_tips || 0);
+  const tipsByMethod = {
+    efectivo: tipsSource?.tips_cash != null ? Number(tipsSource.tips_cash || 0) : totalTips,
+    yape: Number(tipsSource?.tips_yape || 0),
+    plin: Number(tipsSource?.tips_plin || 0),
+    tarjeta: Number(tipsSource?.tips_card || 0),
+    online: Number(tipsSource?.tips_online || 0),
+  };
+  const cashTips = roundMoneySoles(tipsByMethod.efectivo);
   const notesCredit = Number(cashFlowSource?.notes_credit || 0);
   const notesDebit = Number(cashFlowSource?.notes_debit || 0);
   const useLiveRegisterSales = !(Number(register?.total_sales || 0) > 0) && registerLiveSales.total_sales > 0;
   const expectedCash = useLiveRegisterSales
     ? roundMoneySoles(
-      openingAmt + totalCash + totalTips + totalIncome - totalExpense + notesCredit - notesDebit,
+      openingAmt + totalCash + cashTips + totalIncome - totalExpense + notesCredit - notesDebit,
     )
     : (register?.expected_cash ??
       roundMoneySoles(
-        openingAmt + totalCash + totalTips + totalIncome - totalExpense + notesCredit - notesDebit,
+        openingAmt + totalCash + cashTips + totalIncome - totalExpense + notesCredit - notesDebit,
       ));
   const expectedRounded = roundMoneySoles(expectedCash);
 
@@ -3525,24 +3563,27 @@ export default function POSPanel() {
       value: opt.value,
       label: opt.label,
       amount: by[opt.value] ?? 0,
+      tip: roundMoneySoles(tipsByMethod[opt.value] || 0),
     }));
     const hasOnlineRow = rows.some((r) => r.value === 'online');
-    if (!hasOnlineRow && by.online > 0) {
+    if (!hasOnlineRow && (by.online > 0 || tipsByMethod.online > 0)) {
       rows.push({
         value: 'online',
         label: PAYMENT_METHODS.online || 'Online',
         amount: by.online,
+        tip: roundMoneySoles(tipsByMethod.online || 0),
       });
     }
     return rows;
-  }, [register, paymentOptions, registerLiveSales]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [register, paymentOptions, registerLiveSales, tipsByMethod.efectivo, tipsByMethod.yape, tipsByMethod.plin, tipsByMethod.tarjeta, tipsByMethod.online]);
 
   /** Verificación de cobros no efectivo (POS de tarjeta / QR): vacío = aún sin verificar (se asume el del sistema). */
   const nonCashCheckRows = registerPaymentRows
     .filter((row) => row.value !== 'efectivo')
     .map((row) => {
       const raw = nonCashCounted[row.value];
-      const expected = roundMoneySoles(row.amount);
+      const expected = roundMoneySoles(row.amount + (row.tip || 0));
       const verified = raw !== undefined && raw !== '';
       const counted = verified ? roundMoneySoles(Math.max(0, parseFloat(raw) || 0)) : expected;
       return {
@@ -6008,9 +6049,17 @@ export default function POSPanel() {
               <div className="row bold"><span>MONTO APERTURA</span><span>{formatCurrency(openingAmt)}</span></div>
               <div className="sep"></div>
               {registerPaymentRows.map((row) => (
-                <div key={row.value} className="row">
-                  <span>Ventas ({row.label})</span>
-                  <span>{formatCurrency(row.amount)}</span>
+                <div key={row.value}>
+                  <div className="row">
+                    <span>Ventas ({row.label})</span>
+                    <span>{formatCurrency(row.amount)}</span>
+                  </div>
+                  {row.tip > 0 && (
+                    <div className="row">
+                      <span>  + Propina ({row.label})</span>
+                      <span>{formatCurrency(row.tip)}</span>
+                    </div>
+                  )}
                 </div>
               ))}
               <div className="sep"></div>
@@ -6043,13 +6092,13 @@ export default function POSPanel() {
                 </>
               )}
               <div className="sep"></div>
-              {totalTips > 0 && <div className="row"><span>Propinas</span><span>{formatCurrency(totalTips)}</span></div>}
+              {cashTips > 0 && <div className="row"><span>Propinas en efectivo</span><span>{formatCurrency(cashTips)}</span></div>}
               <div className="row"><span>Ingresos de caja</span><span>+{formatCurrency(totalIncome)}</span></div>
               <div className="row"><span>Egresos de caja</span><span>−{formatCurrency(totalExpense)}</span></div>
               {notesCredit > 0 && <div className="row"><span>Notas de crédito</span><span>+{formatCurrency(notesCredit)}</span></div>}
               {notesDebit > 0 && <div className="row"><span>Notas de débito</span><span>−{formatCurrency(notesDebit)}</span></div>}
               <div className="row bold"><span>EFECTIVO ESPERADO</span><span>{formatCurrency(expectedRounded)}</span></div>
-              <div className="row"><span className="arqueo-hint">(Apertura + efectivo + propinas + ingresos − egresos ± notas de caja)</span></div>
+              <div className="row"><span className="arqueo-hint">(Apertura + efectivo + propinas en efectivo + ingresos − egresos ± notas de caja)</span></div>
               <div className="sep"></div>
               <div className="row bold"><span>DETALLE ARQUEO</span><span></span></div>
               {denomDefs
@@ -6104,6 +6153,11 @@ export default function POSPanel() {
                     <div key={row.value} className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
                       <p className="text-xs text-[var(--ui-muted)]">{row.label}</p>
                       <p className={`font-bold text-lg ${paymentRowAmountClass(row.value)}`}>{formatCurrency(row.amount)}</p>
+                      {row.tip > 0 ? (
+                        <p className="text-[11px] text-[var(--ui-muted)] tabular-nums">
+                          + propina {formatCurrency(row.tip)} = {formatCurrency(row.amount + row.tip)}
+                        </p>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -6157,7 +6211,7 @@ export default function POSPanel() {
                       <p className="font-bold text-lg text-[var(--ui-body-text)] tabular-nums">{formatCurrency(expectedRounded)}</p>
                       <p className="text-[10px] text-[var(--ui-muted)] mt-1 leading-snug">
                         Apertura {formatCurrency(openingAmt)} + efectivo {formatCurrency(totalCash)}
-                        {totalTips > 0 ? ` + propinas ${formatCurrency(totalTips)}` : ''}
+                        {cashTips > 0 ? ` + propinas en efectivo ${formatCurrency(cashTips)}` : ''}
                         {totalIncome > 0 ? ` + ingresos ${formatCurrency(totalIncome)}` : ''}
                         {totalExpense > 0 ? ` − egresos ${formatCurrency(totalExpense)}` : ''}
                         {notesCredit > 0 ? ` + notas crédito ${formatCurrency(notesCredit)}` : ''}

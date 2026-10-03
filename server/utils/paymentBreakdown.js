@@ -91,16 +91,61 @@ function splitBreakdownAcrossOrders(breakdown, orderTotals, batchTotal) {
   });
 }
 
+const TIP_FIELD_BY_METHOD = {
+  efectivo: 'tips_cash',
+  yape: 'tips_yape',
+  plin: 'tips_plin',
+  tarjeta: 'tips_card',
+  online: 'tips_online',
+};
+
+/**
+ * La propina se cobra con el mismo medio de la venta (Yape 191 + 5 propina = 196 en el QR).
+ * En multipago se reparte proporcional a cada medio.
+ */
+function splitTipByMethod(tip, breakdown, paymentMethod) {
+  const amt = round2(tip);
+  if (amt <= 0) return {};
+  if (breakdown) {
+    const entries = Object.entries(breakdown).filter(([, v]) => round2(v) > 0);
+    const sum = round2(entries.reduce((s, [, v]) => s + round2(v), 0));
+    if (entries.length && sum > 0) {
+      const out = {};
+      let assigned = 0;
+      let bestKey = entries[0][0];
+      let bestAmt = -1;
+      for (const [k, v] of entries) {
+        const part = round2((amt * round2(v)) / sum);
+        out[k] = part;
+        assigned = round2(assigned + part);
+        if (round2(v) > bestAmt) {
+          bestAmt = round2(v);
+          bestKey = k;
+        }
+      }
+      const drift = round2(amt - assigned);
+      if (drift !== 0) out[bestKey] = round2(out[bestKey] + drift);
+      return out;
+    }
+  }
+  const pm = String(paymentMethod || 'efectivo').trim().toLowerCase();
+  return { [TIP_FIELD_BY_METHOD[pm] ? pm : 'efectivo']: amt };
+}
+
 function addOrderToSalesTotals(row, totals) {
   if (String(row?.payment_method || '').trim().toLowerCase() === 'cortesia') return;
   const t = round2(row.total || 0);
   totals.total_sales = round2(totals.total_sales + t);
+  const br = parsePaymentBreakdown(row.payment_breakdown);
   const tip = round2(Number(row.tip_amount || 0));
   if (tip > 0) {
     if (typeof totals.total_tips !== 'number') totals.total_tips = 0;
     totals.total_tips = round2(totals.total_tips + tip);
+    for (const [method, part] of Object.entries(splitTipByMethod(tip, br, row.payment_method))) {
+      const field = TIP_FIELD_BY_METHOD[method] || 'tips_cash';
+      totals[field] = round2(Number(totals[field] || 0) + part);
+    }
   }
-  const br = parsePaymentBreakdown(row.payment_breakdown);
   if (br) {
     aggregateBreakdownIntoTotals(br, totals);
   } else {
@@ -131,6 +176,7 @@ module.exports = {
   parsePaymentBreakdown,
   splitBreakdownAcrossOrders,
   addOrderToSalesTotals,
+  splitTipByMethod,
   dominantPaymentMethod,
   round2,
   ALLOWED,

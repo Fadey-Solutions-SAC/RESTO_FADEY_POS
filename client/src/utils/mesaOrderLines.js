@@ -718,6 +718,9 @@ export function buildPaidSalesAccountDisplayGroups(orders = [], adjustmentRows =
     const allItems = sorted.flatMap((o) => o.items || []);
     const groupedProducts = groupItemsByProductNameForBill(allItems);
     const total = salesOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+    const tipTotal = Math.round(
+      salesOrders.reduce((s, o) => s + Math.max(0, Number(o.tip_amount || 0)), 0) * 100,
+    ) / 100;
     const paidAt = primary?.paid_at || primary?.updated_at || primary?.created_at;
 
     const paymentSummary = buildAccountPaymentSummary(salesOrders, courtesyOrders.length);
@@ -735,6 +738,8 @@ export function buildPaidSalesAccountDisplayGroups(orders = [], adjustmentRows =
       primary,
       groupedProducts,
       total,
+      tipTotal,
+      collectedTotal: Math.round((total + tipTotal) * 100) / 100,
       paidTotal: total,
       pendingTotal: 0,
       paymentSummary,

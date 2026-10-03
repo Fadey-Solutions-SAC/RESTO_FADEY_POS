@@ -89,8 +89,21 @@ function emptySalesTotals() {
     total_card: 0,
     total_online: 0,
     total_tips: 0,
+    ...emptyTipsByMethod(),
     order_count: 0,
   };
+}
+
+const TIP_METHOD_FIELDS = ['tips_cash', 'tips_yape', 'tips_plin', 'tips_card', 'tips_online'];
+
+function emptyTipsByMethod() {
+  return Object.fromEntries(TIP_METHOD_FIELDS.map((k) => [k, 0]));
+}
+
+/** Propina cobrada en efectivo; sin desglose por medio (datos antiguos) se asume todo en caja. */
+function cashTipsOf(sales) {
+  if (sales && sales.tips_cash != null) return Number(sales.tips_cash || 0);
+  return Number(sales?.total_tips || 0);
 }
 
 function aggregatePaidOrders(rows) {
@@ -102,6 +115,7 @@ function aggregatePaidOrders(rows) {
     total_card: 0,
     total_online: 0,
     total_tips: 0,
+    ...emptyTipsByMethod(),
   };
   (rows || []).forEach((row) => {
     addOrderToSalesTotals(row, totals);
@@ -115,6 +129,7 @@ function aggregatePaidOrders(rows) {
     total_card: round2(totals.total_card),
     total_online: round2(totals.total_online),
     total_tips: round2(Number(totals.total_tips || 0)),
+    ...Object.fromEntries(TIP_METHOD_FIELDS.map((k) => [k, round2(Number(totals[k] || 0))])),
     order_count: accountCount,
     comanda_count: (rows || []).length,
   };
@@ -171,12 +186,12 @@ function getCashNoteTotals(registerId) {
   };
 }
 
-/** Efectivo que debe haber en caja al arqueo (solo efectivo físico + propinas en caja). */
+/** Efectivo que debe haber en caja al arqueo (solo efectivo físico + propinas en efectivo). */
 function computeExpectedCash(register, sales, movements, notes) {
   return round2(
     Number(register?.opening_amount || 0)
       + Number(sales?.total_cash || 0)
-      + Number(sales?.total_tips || 0)
+      + cashTipsOf(sales)
       + Number(movements?.total_income || 0)
       - Number(movements?.total_expense || 0)
       + Number(notes?.notes_credit || 0)
@@ -191,6 +206,7 @@ module.exports = {
   getMovementTotals,
   getCashNoteTotals,
   computeExpectedCash,
+  cashTipsOf,
   get SALES_EVENT_AT_SQL() {
     return paidAtSql('');
   },

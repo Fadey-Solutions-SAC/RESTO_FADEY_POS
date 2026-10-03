@@ -582,10 +582,10 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
   const businessDate = computeRegisterBusinessDateKey(register.opened_at, closedAtIso, queryOne);
   const denominationSummary = arqueo?.denominations || {};
   const nonCashExpectedBy = {
-    yape: Number(sales.total_yape || 0),
-    plin: Number(sales.total_plin || 0),
-    tarjeta: Number(sales.total_card || 0),
-    online: Number(sales.total_online || 0),
+    yape: roundMoneySoles(Number(sales.total_yape || 0) + Number(sales.tips_yape || 0)),
+    plin: roundMoneySoles(Number(sales.total_plin || 0) + Number(sales.tips_plin || 0)),
+    tarjeta: roundMoneySoles(Number(sales.total_card || 0) + Number(sales.tips_card || 0)),
+    online: roundMoneySoles(Number(sales.total_online || 0) + Number(sales.tips_online || 0)),
   };
   const nonCashCounted = {};
   for (const [method, raw] of Object.entries(arqueo?.non_cash_counted || {})) {
@@ -632,6 +632,13 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
     },
     total_sales: Number(sales.total_sales || 0),
     total_tips: Number(sales.total_tips || 0),
+    tips_by_method: {
+      efectivo: Number(sales.tips_cash || 0),
+      yape: Number(sales.tips_yape || 0),
+      plin: Number(sales.tips_plin || 0),
+      tarjeta: Number(sales.tips_card || 0),
+      online: Number(sales.tips_online || 0),
+    },
     order_count: Number(sales.order_count || 0),
     observations: arqueo?.observations || closingNotesText || '',
     closed_by: req.user.id,

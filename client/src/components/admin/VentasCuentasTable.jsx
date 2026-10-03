@@ -237,7 +237,14 @@ export default function VentasCuentasTable({
                     />
                   </td>
                 ) : null}
-                <td className="py-2.5 pr-4 font-bold text-[var(--ui-body-text)] whitespace-nowrap">{formatCurrency(group.total)}</td>
+                <td className="py-2.5 pr-4 font-bold text-[var(--ui-body-text)] whitespace-nowrap">
+                  {formatCurrency(group.total)}
+                  {Number(group.tipTotal || 0) > 0 ? (
+                    <p className="text-[10px] font-medium text-[var(--ui-muted)]" title={`Total cobrado ${formatCurrency(group.collectedTotal)}`}>
+                      + propina {formatCurrency(group.tipTotal)}
+                    </p>
+                  ) : null}
+                </td>
                 <td className="py-2.5">
                   {auditBadge.clickable ? (
                     <button

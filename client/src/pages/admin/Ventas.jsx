@@ -1045,8 +1045,33 @@ export default function Ventas() {
                 <p className="font-medium">{(() => { const doc = getAccountDocument(selectedGroup); return `${docLabel(doc.doc_type)} - ${doc.full_number}`; })()}</p>
               </div>
             </div>
-            <div className="border-t border-[color:var(--ui-border)] pt-3 flex justify-between font-bold text-lg text-[var(--ui-body-text)]">
-              <span>Total</span><span>{formatCurrency(selectedGroup.total)}</span>
+            {selectedGroup.observations?.observed && selectedGroup.observations.items?.length ? (
+              <div className="rounded-lg border border-amber-500/40 bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm text-[var(--ui-body-text)]">
+                <p className="font-semibold mb-1">Motivo de «Observado»:</p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  {selectedGroup.observations.items.map((item, idx) => (
+                    <li key={`${item.kind}-${item.recordId || idx}`}>
+                      <span className="font-medium">{item.label}:</span> {item.detail}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <div className="border-t border-[color:var(--ui-border)] pt-3 space-y-1 text-[var(--ui-body-text)]">
+              <div className="flex justify-between font-bold text-lg">
+                <span>Total venta</span><span>{formatCurrency(selectedGroup.total)}</span>
+              </div>
+              {Number(selectedGroup.tipTotal || 0) > 0 ? (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="ui-text-muted">Propina</span>
+                    <span className="font-medium">+{formatCurrency(selectedGroup.tipTotal)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold">
+                    <span>Total cobrado</span><span>{formatCurrency(selectedGroup.collectedTotal)}</span>
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
         )}
