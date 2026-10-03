@@ -23,7 +23,7 @@ import {
   normalizeThermalPaperWidthMm,
 } from '../../utils/ticketPlainText';
 import { isBarProductionItemForStation } from '../../utils/productionArea';
-import { canAjusteBarAutoDismiss } from '../../utils/posPermissions';
+import ProductionAreaSettingsSection, { DEFAULT_AREA_SETTINGS } from '../../components/kitchen/ProductionAreaSettingsSection';
 import { playNotificationSound, preloadNotificationSound, unlockNotificationAudio, onNotificationAudioUnlockChange } from '../../utils/playNotificationSound';
 
 /** Pedido auto-pedido con cuenta de cliente (sin mesa física). */
@@ -50,8 +50,6 @@ function itemHighlightActive(item, highlightIds, orderId) {
   if (!d) return false;
   return Date.now() - d.getTime() < KITCHEN_ITEM_HIGHLIGHT_MS;
 }
-
-const BAR_AUTO_DISMISS_MINUTE_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 
 function localDateInputValue(date = new Date()) {
   const y = date.getFullYear();
@@ -149,11 +147,11 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const printerModuleKey = areaId;
   const { loadConfig: reloadPrinterConfig } = usePrintingModule(printerModuleKey);
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
-  const [barSettingsOpen, setBarSettingsOpen] = useState(false);
-  const [barAutoDismiss, setBarAutoDismiss] = useState(false);
-  const [barAutoDismissMinutes, setBarAutoDismissMinutes] = useState(30);
-  const [barSettingsLoaded, setBarSettingsLoaded] = useState(false);
-  const [barSettingsSaving, setBarSettingsSaving] = useState(false);
+  const [areaSettings, setAreaSettings] = useState(DEFAULT_AREA_SETTINGS);
+  const [areaSettingsLoaded, setAreaSettingsLoaded] = useState(false);
+  const [areaSettingsSaving, setAreaSettingsSaving] = useState(false);
+  const areaSettingsRef = useRef(DEFAULT_AREA_SETTINGS);
+  areaSettingsRef.current = areaSettings;
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyDate, setHistoryDate] = useState(() => localDateInputValue());
   const [historyOrders, setHistoryOrders] = useState([]);
@@ -177,11 +175,6 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
       ? t('panel.stationKitchen')
       : (areaDisplayName || areaId);
   const canReturnToAdmin = user?.role === 'admin' && !location.pathname.startsWith('/admin');
-  const canEditBarSettings =
-    isBar &&
-    (['admin', 'bar', 'master_admin'].includes(String(user?.role || '').toLowerCase()) ||
-      canAjusteBarAutoDismiss(user));
-
   useEffect(() => {
     let cancelled = false;
     if (isBar || isCocina) {
@@ -203,8 +196,14 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     };
   }, [areaId, isBar, isCocina]);
 
+  const playAreaSound = (key, opts = {}) => {
+    const s = areaSettingsRef.current;
+    if (!s.notifyEnabled && !opts.force) return;
+    playNotificationSound(isBar ? 'bar' : 'kitchen', key, { ...opts, volume: (s.notifyVolume ?? 100) / 100 });
+  };
+
   const playStationAlert = () => {
-    playNotificationSound(isBar ? 'bar' : 'kitchen', `overdue-${Date.now()}`);
+    playAreaSound(`overdue-${Date.now()}`);
   };
 
   useEffect(() => {
@@ -423,7 +422,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const handleKitchenIncomingOrder = (order, toastLabel) => {
     if (!orderRelevantToStation(order)) return;
     loadOrders();
-    playNotificationSound(isBar ? 'bar' : 'kitchen', order?.id);
+    playAreaSound(order?.id);
     const num = order?.order_number;
     toast.success(
       num != null
@@ -447,7 +446,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     }
     loadOrders();
     if (payload?.merged && stationNewIds.length) {
-      playNotificationSound(isBar ? 'bar' : 'kitchen', orderId);
+      playAreaSound(orderId);
       const num = order?.order_number;
       toast.success(
         num != null
@@ -461,73 +460,66 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   };
 
   useEffect(() => {
-    if (!isBar) return undefined;
     let cancelled = false;
+    setAreaSettingsLoaded(false);
     api
-      .get('/orders/bar-station-settings')
+      .get(`/orders/production-area-settings/${encodeURIComponent(areaId)}`)
       .then((data) => {
         if (cancelled) return;
-        setBarAutoDismiss(Boolean(data?.autoDismissPendingAfter30Min));
-        if (data?.autoDismissMinutes != null) {
-          setBarAutoDismissMinutes(Number(data.autoDismissMinutes));
-        }
-        setBarSettingsLoaded(true);
+        setAreaSettings({ ...DEFAULT_AREA_SETTINGS, ...(data || {}) });
+        setAreaSettingsLoaded(true);
       })
       .catch(() => {
-        if (!cancelled) setBarSettingsLoaded(true);
+        if (!cancelled) setAreaSettingsLoaded(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [isBar]);
+  }, [areaId]);
 
-  const saveBarSettings = async ({ enabled, minutes } = {}) => {
-    setBarSettingsSaving(true);
+  const saveAreaSettings = async (patch) => {
+    setAreaSettingsSaving(true);
     try {
-      const payload = {};
-      if (enabled !== undefined) payload.autoDismissPendingAfter30Min = Boolean(enabled);
-      if (minutes !== undefined) payload.autoDismissMinutes = Number(minutes);
-      const saved = await api.put('/orders/bar-station-settings', payload);
-      setBarAutoDismiss(Boolean(saved?.autoDismissPendingAfter30Min));
-      if (saved?.autoDismissMinutes != null) {
-        setBarAutoDismissMinutes(Number(saved.autoDismissMinutes));
-      }
-      if (enabled !== undefined) {
+      const saved = await api.put(`/orders/production-area-settings/${encodeURIComponent(areaId)}`, patch);
+      setAreaSettings({ ...DEFAULT_AREA_SETTINGS, ...(saved || {}) });
+      if ('autoDismissEnabled' in patch) {
         toast.success(
-          saved?.autoDismissPendingAfter30Min
+          saved?.autoDismissEnabled
             ? t('barSettings.enabledToast', { minutes: saved.autoDismissMinutes })
             : t('barSettings.disabledToast'),
         );
-      } else if (minutes !== undefined) {
+        void loadOrders();
+      } else if ('autoDismissMinutes' in patch) {
         toast.success(t('barSettings.minutesSaved', { minutes: saved.autoDismissMinutes }));
+        void loadOrders();
+      } else if ('notifyEnabled' in patch) {
+        toast.success(saved?.notifyEnabled ? t('barSettings.notifyOnToast') : t('barSettings.notifyOffToast'));
+      } else if ('notifyVolume' in patch) {
+        toast.success(t('barSettings.volumeSaved', { volume: saved.notifyVolume }));
       }
-      void loadOrders();
     } catch (err) {
       toast.error(err?.message || t('barSettings.saveFailed'));
     } finally {
-      setBarSettingsSaving(false);
+      setAreaSettingsSaving(false);
     }
   };
 
-  useSocket('bar-station-settings-update', (payload) => {
-    if (!isBar || !payload) return;
-    setBarAutoDismiss(Boolean(payload.autoDismissPendingAfter30Min));
-    if (payload.autoDismissMinutes != null) {
-      setBarAutoDismissMinutes(Number(payload.autoDismissMinutes));
-    }
+  useSocket('production-area-settings-update', (payload) => {
+    if (!payload || String(payload.areaId) !== String(areaId)) return;
+    setAreaSettings({ ...DEFAULT_AREA_SETTINGS, ...(payload.settings || {}) });
   });
 
-  useSocket('bar-auto-dismiss', (payload) => {
-    if (!isBar) return;
+  useSocket('station-auto-dismiss', (payload) => {
+    if (String(payload?.areaId) !== String(areaId)) return;
     const order = payload?.order || payload;
     const table = order?.table_number;
     const num = order?.order_number;
-    const minutes = payload?.minutes ?? barAutoDismissMinutes;
+    const minutes = payload?.minutes ?? areaSettings.autoDismissMinutes;
     const label = table
-      ? t('barSettings.autoDismissTable', { table: orderTableLabel(order), minutes })
+      ? t('barSettings.autoDismissTable', { table: orderTableLabel(order), minutes, station: stationLabel })
       : num != null
-        ? t('barSettings.autoDismissOrder', { number: num, minutes })
-        : t('barSettings.autoDismissGeneric', { minutes });
+        ? t('barSettings.autoDismissOrder', { number: num, minutes, station: stationLabel })
+        : t('barSettings.autoDismissGeneric', { minutes, station: stationLabel });
     toast(label, { duration: 7000, icon: 'ℹ️' });
     void loadOrders();
     if (historyOpen) void loadDispatchedHistory();
@@ -698,7 +690,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
 
   return (
     <div className="min-h-screen bg-[var(--ui-body-bg)] text-[var(--ui-body-text)]">
-      {!soundReady ? (
+      {!soundReady && areaSettings.notifyEnabled ? (
         <button
           type="button"
           onClick={() => void unlockNotificationAudio()}
@@ -733,20 +725,9 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
             );
           })}
           <ProductionPrepButton prep={prep} className={HEADER_BOX} />
-          {canEditBarSettings && (
-            <button
-              type="button"
-              onClick={() => setBarSettingsOpen(true)}
-              className={`${HEADER_BOX} ${HEADER_BTN} w-[3.25rem] justify-center !px-0`}
-              title={t('barSettings.gearTitle')}
-              aria-label={t('barSettings.gearTitle')}
-            >
-              <MdSettings className="text-lg" />
-            </button>
-          )}
-          {isBar && barAutoDismiss ? (
+          {areaSettings.autoDismissEnabled ? (
             <span className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">
-              {t('barSettings.badgeActive', { minutes: barAutoDismissMinutes })}
+              {t('barSettings.badgeActive', { minutes: areaSettings.autoDismissMinutes })}
             </span>
           ) : null}
         </div>
@@ -800,7 +781,17 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
         }}
         moduleKey={printerModuleKey}
         moduleLabel={stationLabel}
-      />
+        printerTitle={t('barSettings.printerTitle')}
+      >
+        <ProductionAreaSettingsSection
+          settings={areaSettings}
+          loaded={areaSettingsLoaded}
+          saving={areaSettingsSaving}
+          onSave={saveAreaSettings}
+          stationLabel={stationLabel}
+          soundType={isBar ? 'bar' : 'kitchen'}
+        />
+      </PrinterModuleModal>
       <Modal
         isOpen={historyOpen}
         onClose={() => setHistoryOpen(false)}
@@ -896,59 +887,6 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           )}
         </div>
       </Modal>
-      {isBar && (
-        <Modal
-          isOpen={barSettingsOpen}
-          onClose={() => setBarSettingsOpen(false)}
-          title={t('barSettings.modalTitle')}
-        >
-          <div className="space-y-4">
-            <p className="text-sm text-[var(--ui-muted)]">{t('barSettings.modalHint')}</p>
-            <label className="flex items-start gap-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                className="mt-1 h-4 w-4 rounded border-[color:var(--ui-border)]"
-                checked={barAutoDismiss}
-                disabled={barSettingsSaving || !barSettingsLoaded || !canEditBarSettings}
-                onChange={(e) => void saveBarSettings({ enabled: e.target.checked })}
-              />
-              <span>
-                <span className="block text-sm font-medium text-[var(--ui-body-text)]">
-                  {t('barSettings.toggleLabel')}
-                </span>
-                <span className="block text-xs text-[var(--ui-muted)] mt-1">
-                  {t('barSettings.toggleHelp')}
-                </span>
-              </span>
-            </label>
-            {barAutoDismiss ? (
-              <label className="block">
-                <span className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">
-                  {t('barSettings.minutesLabel')}
-                </span>
-                <select
-                  className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-sm text-[var(--ui-body-text)]"
-                  value={barAutoDismissMinutes}
-                  disabled={barSettingsSaving || !barSettingsLoaded || !canEditBarSettings}
-                  onChange={(e) => void saveBarSettings({ minutes: Number(e.target.value) })}
-                >
-                  {BAR_AUTO_DISMISS_MINUTE_OPTIONS.map((mins) => (
-                    <option key={mins} value={mins}>
-                      {t('barSettings.minutesOption', { count: mins })}
-                    </option>
-                  ))}
-                </select>
-                <span className="block text-xs text-[var(--ui-muted)] mt-1">
-                  {t('barSettings.minutesHelp')}
-                </span>
-              </label>
-            ) : null}
-            {barSettingsSaving ? (
-              <p className="text-xs text-[var(--ui-muted)]">{t('barSettings.saving')}</p>
-            ) : null}
-          </div>
-        </Modal>
-      )}
       <ProductionPrepBanner prep={prep} />
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {visibleOrders.map(order => {

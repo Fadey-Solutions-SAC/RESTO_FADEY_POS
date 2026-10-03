@@ -556,16 +556,16 @@ async function start() {
     console.warn('[reservation-scheduler] no iniciado:', err.message || err);
   }
   try {
-    const { processBarAutoDismiss } = require('./services/barAutoDismissService');
+    const { processStationAutoDismiss } = require('./services/stationAutoDismissService');
     setInterval(() => {
       try {
-        processBarAutoDismiss({ io });
+        processStationAutoDismiss({ io });
       } catch (err) {
-        console.warn('[bar-auto-dismiss] intervalo:', err.message || err);
+        console.warn('[station-auto-dismiss] intervalo:', err.message || err);
       }
     }, 60 * 1000);
   } catch (err) {
-    console.warn('[bar-auto-dismiss] no iniciado:', err.message || err);
+    console.warn('[station-auto-dismiss] no iniciado:', err.message || err);
   }
   try {
     const { advanceStaffChatCycleIfDue } = require('./staffChatService');

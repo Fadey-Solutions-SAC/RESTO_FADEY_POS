@@ -125,12 +125,19 @@ export async function unlockNotificationAudio() {
   if (pendingPlay) {
     const next = pendingPlay;
     pendingPlay = null;
-    playNotificationSound(next.type, next.orderKey, { force: true });
+    playNotificationSound(next.type, next.orderKey, { force: true, volume: next.volume });
   }
   return true;
 }
 
-function playFallbackBeep(type) {
+function normalizeVolume(volume) {
+  const v = Number(volume);
+  if (!Number.isFinite(v)) return 1;
+  return Math.min(1, Math.max(0, v));
+}
+
+function playFallbackBeep(type, volume = 1) {
+  const peak = Math.max(0.0002, 0.22 * normalizeVolume(volume));
   try {
     const ctx = getSharedAudioContext();
     if (!ctx) return;
@@ -148,7 +155,7 @@ function playFallbackBeep(type) {
         oscillator.frequency.value = freq;
         const dur = idx === freqs.length - 1 ? 0.28 : 0.16;
         gainNode.gain.setValueAtTime(0.0001, t0);
-        gainNode.gain.exponentialRampToValueAtTime(0.22, t0 + 0.015);
+        gainNode.gain.exponentialRampToValueAtTime(peak, t0 + 0.015);
         gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
         oscillator.connect(gainNode);
         gainNode.connect(ctx.destination);
@@ -194,16 +201,17 @@ export function preloadNotificationSound(type) {
  * Reproduce una notificación sonora.
  * @param {'kitchen'|'bar'|'cocina'|'message'|'system'|'chat'|'notification'} type
  * @param {string} [orderKey] Id del evento para evitar duplicados simultáneos.
- * @param {{ force?: boolean }} [opts]
+ * @param {{ force?: boolean, volume?: number }} [opts] volume de 0 a 1 (por defecto 1).
  */
 export function playNotificationSound(type, orderKey = '', opts = {}) {
   if (typeof window === 'undefined') return;
   const normalized = normalizeType(type);
   if (!normalized) return;
   if (!opts.force && shouldSkipDuplicate(normalized, orderKey)) return;
+  const volume = normalizeVolume(opts.volume ?? 1);
 
   if (!audioUnlocked) {
-    pendingPlay = { type: normalized, orderKey: String(orderKey || '') };
+    pendingPlay = { type: normalized, orderKey: String(orderKey || ''), volume };
     // Intentar igual: a veces el contexto ya está permitido (Electron / gesto previo).
   }
 
@@ -212,12 +220,12 @@ export function playNotificationSound(type, orderKey = '', opts = {}) {
 
   const template = getPreloadedAudio(normalized);
   if (!template) {
-    playFallbackBeep(normalized);
+    playFallbackBeep(normalized, volume);
     return;
   }
 
   const audio = template.cloneNode(true);
-  audio.volume = 1;
+  audio.volume = volume;
   audio.currentTime = 0;
   playingKeys.add(playKey);
 
@@ -229,7 +237,7 @@ export function playNotificationSound(type, orderKey = '', opts = {}) {
 
   const onError = () => {
     cleanup();
-    playFallbackBeep(normalized);
+    playFallbackBeep(normalized, volume);
   };
 
   audio.addEventListener('ended', cleanup);
@@ -245,9 +253,9 @@ export function playNotificationSound(type, orderKey = '', opts = {}) {
       .catch(() => {
         cleanup();
         if (!audioUnlocked) {
-          pendingPlay = { type: normalized, orderKey: String(orderKey || '') };
+          pendingPlay = { type: normalized, orderKey: String(orderKey || ''), volume };
         }
-        playFallbackBeep(normalized);
+        playFallbackBeep(normalized, volume);
       });
   }
 }

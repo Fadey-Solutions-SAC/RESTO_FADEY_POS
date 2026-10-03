@@ -84,6 +84,8 @@ function emptyMultiPaymentAmounts() {
   return { efectivo: '', yape: '', plin: '', tarjeta: '', online: '' };
 }
 
+const DENOM_AUTO_ADVANCE_MS = 900;
+
 const EMPTY_DENOMINATIONS = {
   b200: '', b100: '', b50: '', b20: '', b10: '', m5: '', m2: '', m1: '', c50: '', c20: '', c10: '',
 };
@@ -879,6 +881,8 @@ export default function POSPanel() {
   const [nonCashCounted, setNonCashCounted] = useState({});
   const [closeDraftSavedAt, setCloseDraftSavedAt] = useState('');
   const closeFieldRefs = useRef({});
+  const denomAdvanceTimerRef = useRef(null);
+  useEffect(() => () => window.clearTimeout(denomAdvanceTimerRef.current), []);
   const closeAutoFocusDoneRef = useRef(false);
   const [registerHistory, setRegisterHistory] = useState([]);
   const [billingStatus, setBillingStatus] = useState({
@@ -1826,15 +1830,45 @@ export default function POSPanel() {
     return true;
   };
 
-  /** Enter: confirma la cantidad (vacío = 0) y salta a la siguiente denominación, de mayor a menor. */
-  const handleCloseFieldEnter = (e, key) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    if (denomDefs.some((d) => d.key === key) && denominations[key] === '') updateDenomination(key, '0');
+  const focusNextCloseField = (key) => {
     const order = closeFieldOrder();
     for (let i = order.indexOf(key) + 1; i < order.length; i += 1) {
       if (focusCloseField(order[i])) return;
     }
+  };
+
+  /** Enter: confirma la cantidad (vacío = 0) y salta a la siguiente denominación, de mayor a menor. */
+  const handleCloseFieldEnter = (e, key) => {
+    const isDenom = denomDefs.some((d) => d.key === key);
+    if (isDenom && (e.key === '0' || e.key === 'Numpad0') && Number(denominations[key] || 0) === 0) {
+      e.preventDefault();
+      window.clearTimeout(denomAdvanceTimerRef.current);
+      updateDenomination(key, '0');
+      focusNextCloseField(key);
+      return;
+    }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    window.clearTimeout(denomAdvanceTimerRef.current);
+    if (denomDefs.some((d) => d.key === key) && denominations[key] === '') updateDenomination(key, '0');
+    focusNextCloseField(key);
+  };
+
+  /** Al escribir una cantidad avanza solo: 0 al instante; otros números tras una pausa breve (permite 12, 150…). */
+  const handleDenominationInput = (key, raw) => {
+    updateDenomination(key, raw);
+    window.clearTimeout(denomAdvanceTimerRef.current);
+    const value = String(raw ?? '').trim();
+    if (value === '') return;
+    const el = closeFieldRefs.current[key];
+    const advance = () => {
+      if (el && document.activeElement === el) focusNextCloseField(key);
+    };
+    if (Number(value) === 0) {
+      advance();
+      return;
+    }
+    denomAdvanceTimerRef.current = window.setTimeout(advance, DENOM_AUTO_ADVANCE_MS);
   };
 
   const saveCloseDraft = () => {
@@ -5943,7 +5977,7 @@ export default function POSPanel() {
         isOpen={showCloseModal}
         onClose={dismissCloseModal}
         title="Arqueo y Cierre de Caja"
-        size="wide"
+        size="xl"
       >
         {preparingCloseModal ? (
           <PosInlineLoading
@@ -6083,7 +6117,7 @@ export default function POSPanel() {
                 <h3 className="font-semibold text-[var(--ui-body-text)] mb-1">Conteo de efectivo</h3>
                 <div className="mb-3">
                   <p className="text-xs font-semibold text-[var(--ui-muted)] mb-2">
-                    Arqueo por denominación (soles) — escriba la cantidad y presione Enter para pasar a la siguiente
+                    Arqueo por denominación (soles) — escriba la cantidad y pasa sola a la siguiente (o presione Enter)
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                     {denomDefs.map(d => (
@@ -6098,7 +6132,7 @@ export default function POSPanel() {
                             inputMode="numeric"
                             enterKeyHint="next"
                             value={denominations[d.key]}
-                            onChange={e => updateDenomination(d.key, e.target.value)}
+                            onChange={e => handleDenominationInput(d.key, e.target.value)}
                             onKeyDown={(e) => handleCloseFieldEnter(e, d.key)}
                             onFocus={(e) => e.target.select()}
                             className="input-field py-1.5 text-sm"

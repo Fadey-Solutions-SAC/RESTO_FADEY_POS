@@ -172,9 +172,9 @@ router.get('/kitchen', authenticateToken, (req, res) => {
   if (!userCanAccessKitchenStation(req.user, stationRequested)) {
     return res.status(403).json({ error: 'No tienes permiso para este panel de producción' });
   }
-  if (stationRequested === 'bar') {
-    const { processBarAutoDismiss } = require('../services/barAutoDismissService');
-    processBarAutoDismiss({ io: req.app.get('io') });
+  {
+    const { processStationAutoDismiss } = require('../services/stationAutoDismissService');
+    processStationAutoDismiss({ io: req.app.get('io'), areaId: stationRequested });
   }
   const { type } = req.query;
   try {
@@ -321,11 +321,51 @@ router.put('/bar-station-settings', authenticateToken, (req, res) => {
   try {
     const saved = saveBarStationSettings(req.body || {});
     const io = req.app.get('io');
-    if (io) io.emit('bar-station-settings-update', saved);
+    if (io) {
+      io.emit('bar-station-settings-update', saved);
+      io.emit('production-area-settings-update', { areaId: 'bar', settings: readAreaSettings('bar') });
+    }
     res.json(saved);
   } catch (err) {
     logRouteError(req, err, { phase: 'bar-station-settings' });
     res.status(400).json({ error: publicErrorMessage(err, 'No se pudo guardar ajustes de bar') });
+  }
+});
+
+const { readAreaSettings, saveAreaSettings } = require('../services/productionAreaSettingsService');
+
+function canManageAreaSettings(user, areaId) {
+  const role = String(user?.role || '').toLowerCase();
+  if (['admin', 'master_admin'].includes(role)) return true;
+  if (areaId === 'bar' && userCanAjusteBarAutoDismiss(user)) return true;
+  if (user?.type === 'customer') return false;
+  return userCanAccessKitchenApi(user) && userCanAccessKitchenStation(user, areaId);
+}
+
+router.get('/production-area-settings/:areaId', authenticateToken, (req, res) => {
+  const areaId = String(req.params.areaId || '').trim();
+  if (!areaId || !canManageAreaSettings(req.user, areaId)) {
+    return res.status(403).json({ error: 'No tienes permiso para ver los ajustes de esta área' });
+  }
+  res.json(readAreaSettings(areaId));
+});
+
+router.put('/production-area-settings/:areaId', authenticateToken, (req, res) => {
+  const areaId = String(req.params.areaId || '').trim();
+  if (!areaId || !canManageAreaSettings(req.user, areaId)) {
+    return res.status(403).json({ error: 'No tienes permiso para cambiar los ajustes de esta área' });
+  }
+  try {
+    const saved = saveAreaSettings(areaId, req.body || {});
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('production-area-settings-update', { areaId, settings: saved });
+      if (areaId === 'bar') io.emit('bar-station-settings-update', readBarStationSettings());
+    }
+    res.json(saved);
+  } catch (err) {
+    logRouteError(req, err, { phase: 'production-area-settings', areaId });
+    res.status(400).json({ error: publicErrorMessage(err, 'No se pudieron guardar los ajustes del área') });
   }
 });
 
