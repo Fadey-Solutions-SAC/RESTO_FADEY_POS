@@ -25,6 +25,7 @@ function normalizeType(type) {
   if (key === 'system' || key === 'notification' || key === 'notif' || key === 'aviso' || key === 'avisos') {
     return 'system';
   }
+  if (key === 'alert' || key === 'alarm' || key === 'alerta' || key === 'delay' || key === 'demora') return 'alert';
   return '';
 }
 
@@ -142,18 +143,20 @@ function playFallbackBeep(type, volume = 1) {
     const ctx = getSharedAudioContext();
     if (!ctx) return;
     const start = () => {
+      const isAlert = type === 'alert';
       const freqs =
-        type === 'bar' ? [990, 1320]
-          : type === 'message' ? [740, 980]
-            : type === 'system' ? [520, 700, 880]
-              : [660, 880, 1100];
+        isAlert ? [988, 659, 988, 659, 988, 659, 988, 659]
+          : type === 'bar' ? [990, 1320]
+            : type === 'message' ? [740, 980]
+              : type === 'system' ? [520, 700, 880]
+                : [660, 880, 1100];
       let t0 = ctx.currentTime + 0.01;
       freqs.forEach((freq, idx) => {
         const oscillator = ctx.createOscillator();
         const gainNode = ctx.createGain();
-        oscillator.type = 'sine';
+        oscillator.type = isAlert ? 'square' : 'sine';
         oscillator.frequency.value = freq;
-        const dur = idx === freqs.length - 1 ? 0.28 : 0.16;
+        const dur = isAlert ? 0.22 : idx === freqs.length - 1 ? 0.28 : 0.16;
         gainNode.gain.setValueAtTime(0.0001, t0);
         gainNode.gain.exponentialRampToValueAtTime(peak, t0 + 0.015);
         gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);

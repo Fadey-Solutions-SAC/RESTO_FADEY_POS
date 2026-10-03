@@ -138,7 +138,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const [statusBusy, setStatusBusy] = useState({});
   const [highlightItemIds, setHighlightItemIds] = useState(() => new Set());
   const [clockTick, setClockTick] = useState(0);
-  const overdueNotifiedRef = useRef(new Set());
+  const overdueAlertedAtRef = useRef(new Map());
   const navigate = useNavigate();
   const location = useLocation();
   const emit = useSocketEmit();
@@ -203,8 +203,10 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     playNotificationSound(isBar ? 'bar' : 'kitchen', key, { ...opts, volume: (s.notifyVolume ?? 100) / 100 });
   };
 
-  const playStationAlert = () => {
-    playAreaSound(`overdue-${Date.now()}`);
+  const playDelayAlarm = (key) => {
+    const s = areaSettingsRef.current;
+    if (s.delayAlertEnabled === false) return;
+    playNotificationSound('alert', key, { force: true, volume: (s.notifyVolume ?? 100) / 100 });
   };
 
   useEffect(() => {
@@ -262,7 +264,10 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     emit(isBar ? 'join-bar' : 'join-kitchen');
   }, [areaId]);
   useActiveInterval(loadOrders, 10000);
-  useActiveInterval(() => setClockTick((n) => n + 1), 30000);
+  useEffect(() => {
+    const id = setInterval(() => setClockTick((n) => n + 1), 15000);
+    return () => clearInterval(id);
+  }, []);
 
   const loadDispatchedHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -631,11 +636,12 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     }
   };
 
-  const ARRIVAL_OVERDUE_MS = KITCHEN_ARRIVAL_OVERDUE_MS;
-  const PREP_OVERDUE_MS = KITCHEN_PREP_OVERDUE_MS;
+  const delayMinutes = Number(areaSettings.delayAlertMinutes) || 0;
+  const ARRIVAL_OVERDUE_MS = delayMinutes > 0 ? delayMinutes * 60000 : KITCHEN_ARRIVAL_OVERDUE_MS;
+  const PREP_OVERDUE_MS = delayMinutes > 0 ? delayMinutes * 60000 : KITCHEN_PREP_OVERDUE_MS;
 
   const getOrderTimerAnchor = (order) => {
-    return order?.created_at || getStationPreparingAt(order, areaId);
+    return order?.kitchen_last_send_at || order?.created_at || getStationPreparingAt(order, areaId);
   };
 
   const getTimeDiff = (order) => {
@@ -658,34 +664,45 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     return elapsed >= PREP_OVERDUE_MS;
   };
 
+  const overdueMinutesLabel = Math.round(ARRIVAL_OVERDUE_MS / 60000);
   const getOverdueToastLabel = useCallback((order) => {
+    const minutes = overdueMinutesLabel;
     if (order?.table_number && order?.type === 'dine_in') {
-      return t('toast.overdueTable', { table: orderTableLabel(order) });
+      return t('toast.overdueTable', { table: orderTableLabel(order), minutes });
     }
     if (order?.type === 'delivery') {
-      return t('toast.overdueDelivery', { number: order.order_number });
+      return t('toast.overdueDelivery', { number: order.order_number, minutes });
     }
-    return t('toast.overdueOrder', { number: order.order_number });
-  }, [t, orderTableLabel]);
+    return t('toast.overdueOrder', { number: order.order_number, minutes });
+  }, [t, orderTableLabel, overdueMinutesLabel]);
 
   useEffect(() => {
     const activeOrders = orders.filter((order) => {
       if (isComandaDoneForStation(order)) return false;
       return getPendingStationItems(order.items).length > 0;
     });
-    const visibleIds = new Set();
+    const overdueIds = new Set();
+    const repeatMs = Math.max(0, Number(areaSettings.delayAlertRepeatMinutes) || 0) * 60000;
+    const now = Date.now();
+    const due = [];
     activeOrders.forEach((order) => {
-      visibleIds.add(order.id);
       if (!isKitchenOrderOverdue(order)) return;
-      if (overdueNotifiedRef.current.has(order.id)) return;
-      overdueNotifiedRef.current.add(order.id);
-      toast.error(getOverdueToastLabel(order), { duration: 9000, icon: '⏱️' });
-      playStationAlert();
+      overdueIds.add(order.id);
+      const last = overdueAlertedAtRef.current.get(order.id);
+      if (last == null) {
+        due.push(order);
+        overdueAlertedAtRef.current.set(order.id, now);
+        toast.error(getOverdueToastLabel(order), { duration: 9000, icon: '⏱️', id: `overdue-${order.id}` });
+      } else if (repeatMs > 0 && now - last >= repeatMs) {
+        due.push(order);
+        overdueAlertedAtRef.current.set(order.id, now);
+      }
     });
-    overdueNotifiedRef.current.forEach((id) => {
-      if (!visibleIds.has(id)) overdueNotifiedRef.current.delete(id);
+    overdueAlertedAtRef.current.forEach((_, id) => {
+      if (!overdueIds.has(id)) overdueAlertedAtRef.current.delete(id);
     });
-  }, [orders, clockTick, getOverdueToastLabel, isComandaDoneForStation, getPendingStationItems]);
+    if (due.length) playDelayAlarm(`overdue-${due.map((o) => o.id).join(',')}-${now}`);
+  }, [orders, clockTick, getOverdueToastLabel, isComandaDoneForStation, getPendingStationItems, areaSettings.delayAlertRepeatMinutes, areaSettings.delayAlertMinutes]);
 
   const typeIcons = { dine_in: MdTableBar, delivery: MdDeliveryDining, pickup: MdRestaurant };
 

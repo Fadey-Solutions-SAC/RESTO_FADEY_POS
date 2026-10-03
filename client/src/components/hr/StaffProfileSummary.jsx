@@ -24,7 +24,7 @@ export function roleLabel(role) {
 }
 
 const KIND_TEXT = {
-  mozo: 'Según las mesas y cuentas que abre cada día.',
+  mozo: 'Según las mesas y cuentas que abre cada día. Las ventas son el total de sus mesas ya cerradas en caja.',
   caja: 'Según las cuentas que abre y las que cobra cada día.',
   produccion: 'Según las comandas que despacha y el tiempo que tardan en salir.',
   admin: 'Cuentas abiertas, cobradas y comandas despachadas.',
@@ -32,7 +32,7 @@ const KIND_TEXT = {
 };
 
 const KIND_TEXT_SELF = {
-  mozo: 'Según las mesas y cuentas que abres cada día.',
+  mozo: 'Según las mesas y cuentas que abres cada día. Las ventas son el total de tus mesas ya cerradas en caja.',
   caja: 'Según las cuentas que abres y las que cobras cada día.',
   produccion: 'Según las comandas que despachas y el tiempo que tardan en salir.',
   admin: 'Cuentas abiertas, cobradas y comandas despachadas por ti.',
@@ -100,10 +100,13 @@ function summaryChips(kind, s, selfView = false) {
   if (!s) return [];
   const perHour = s.por_hora != null ? s.por_hora.toFixed(2) : '—';
   if (kind === 'mozo' || kind === 'general') {
+    const salesLabel = kind === 'mozo'
+      ? (selfView ? 'Ventas de tus mesas' : 'Ventas de sus mesas')
+      : (selfView ? 'Ventas de tus cuentas' : 'Ventas de sus cuentas');
     return [
       ['Cuentas abiertas', s.cuentas],
       ['Comandas enviadas', s.comandas],
-      ['Ventas cobradas', formatCurrency(s.ventas)],
+      [salesLabel, formatCurrency(s.ventas)],
       ['Cuentas por hora', perHour],
     ];
   }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MdNotificationsActive, MdTimerOff, MdVolumeOff, MdVolumeUp } from 'react-icons/md';
+import { MdNotificationsActive, MdTimerOff, MdVolumeOff, MdVolumeUp, MdAlarm } from 'react-icons/md';
 import {
   isNotificationAudioUnlocked,
   onNotificationAudioUnlockChange,
@@ -13,9 +13,14 @@ export const DEFAULT_AREA_SETTINGS = Object.freeze({
   autoDismissMinutes: 30,
   notifyEnabled: true,
   notifyVolume: 100,
+  delayAlertEnabled: true,
+  delayAlertMinutes: 30,
+  delayAlertRepeatMinutes: 2,
 });
 
 export const AUTO_DISMISS_MINUTE_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
+export const DELAY_ALERT_MINUTE_OPTIONS = [5, 10, 15, 20, 25, 30, 40, 45, 60, 90, 120];
+export const DELAY_ALERT_REPEAT_OPTIONS = [0, 1, 2, 3, 5, 10];
 
 const CARD = 'rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 space-y-3';
 
@@ -105,6 +110,70 @@ export default function ProductionAreaSettingsSection({
               </button>
             </div>
           </div>
+        ) : null}
+      </div>
+
+      <div className={CARD}>
+        <p className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
+          <MdAlarm className="text-lg text-red-500" />
+          {t('barSettings.delayTitle')}
+        </p>
+        <label className="flex items-start gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 rounded border-[color:var(--ui-border)]"
+            checked={settings.delayAlertEnabled !== false}
+            disabled={disabled}
+            onChange={(e) => void onSave({ delayAlertEnabled: e.target.checked })}
+          />
+          <span>
+            <span className="block text-sm font-medium text-[var(--ui-body-text)]">{t('barSettings.delayLabel')}</span>
+            <span className="block text-xs text-[var(--ui-muted)] mt-1">{t('barSettings.delayHelp')}</span>
+          </span>
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('barSettings.delayMinutesLabel')}</span>
+            <select
+              className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-sm text-[var(--ui-body-text)]"
+              value={settings.delayAlertMinutes}
+              disabled={disabled}
+              onChange={(e) => void onSave({ delayAlertMinutes: Number(e.target.value) })}
+            >
+              {DELAY_ALERT_MINUTE_OPTIONS.map((mins) => (
+                <option key={mins} value={mins}>{t('barSettings.minutesOption', { count: mins })}</option>
+              ))}
+            </select>
+          </label>
+          {settings.delayAlertEnabled !== false ? (
+            <label className="block">
+              <span className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('barSettings.delayRepeatLabel')}</span>
+              <select
+                className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-sm text-[var(--ui-body-text)]"
+                value={settings.delayAlertRepeatMinutes}
+                disabled={disabled}
+                onChange={(e) => void onSave({ delayAlertRepeatMinutes: Number(e.target.value) })}
+              >
+                {DELAY_ALERT_REPEAT_OPTIONS.map((mins) => (
+                  <option key={mins} value={mins}>
+                    {mins === 0 ? t('barSettings.delayRepeatOnce') : t('barSettings.delayRepeatEvery', { count: mins })}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+        {settings.delayAlertEnabled !== false ? (
+          <button
+            type="button"
+            className="btn-secondary text-sm inline-flex items-center gap-1.5"
+            onClick={async () => {
+              await unlockNotificationAudio();
+              playNotificationSound('alert', `delay-test-${Date.now()}`, { force: true, volume: volume / 100 });
+            }}
+          >
+            <MdAlarm /> {t('barSettings.delayTest')}
+          </button>
         ) : null}
       </div>
 

@@ -11,12 +11,27 @@ const AUTO_DISMISS_MINUTES_DEFAULT = 30;
 const AUTO_DISMISS_MINUTES_MIN = 5;
 const AUTO_DISMISS_MINUTES_MAX = 180;
 
+const DELAY_ALERT_MINUTES_DEFAULT = 30;
+const DELAY_ALERT_MINUTES_MIN = 5;
+const DELAY_ALERT_MINUTES_MAX = 120;
+const DELAY_ALERT_REPEAT_DEFAULT = 2;
+const DELAY_ALERT_REPEAT_MAX = 30;
+
 const DEFAULT_AREA_SETTINGS = Object.freeze({
   autoDismissEnabled: false,
   autoDismissMinutes: AUTO_DISMISS_MINUTES_DEFAULT,
   notifyEnabled: true,
   notifyVolume: 100,
+  delayAlertEnabled: true,
+  delayAlertMinutes: DELAY_ALERT_MINUTES_DEFAULT,
+  delayAlertRepeatMinutes: DELAY_ALERT_REPEAT_DEFAULT,
 });
+
+function clampInt(value, min, max, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
 
 function toBool(v, fallback) {
   if (v === true || v === 1 || v === '1' || v === 'true') return true;
@@ -43,6 +58,9 @@ function normalizeAreaSettings(raw) {
     autoDismissMinutes: normalizeAutoDismissMinutes(src.autoDismissMinutes),
     notifyEnabled: toBool(src.notifyEnabled, DEFAULT_AREA_SETTINGS.notifyEnabled),
     notifyVolume: normalizeVolume(src.notifyVolume),
+    delayAlertEnabled: toBool(src.delayAlertEnabled, DEFAULT_AREA_SETTINGS.delayAlertEnabled),
+    delayAlertMinutes: clampInt(src.delayAlertMinutes, DELAY_ALERT_MINUTES_MIN, DELAY_ALERT_MINUTES_MAX, DELAY_ALERT_MINUTES_DEFAULT),
+    delayAlertRepeatMinutes: clampInt(src.delayAlertRepeatMinutes, 0, DELAY_ALERT_REPEAT_MAX, DELAY_ALERT_REPEAT_DEFAULT),
   };
 }
 
