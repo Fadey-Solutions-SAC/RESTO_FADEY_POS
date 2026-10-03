@@ -29,16 +29,6 @@ export default function Layout() {
   const location = useLocation();
   const [cajaOpen, setCajaOpen] = useState(null);
   const [checkingCaja, setCheckingCaja] = useState(true);
-  const hideNotificationsInKitchenBar =
-    location.pathname.startsWith('/admin/cocina') ||
-    location.pathname.startsWith('/admin/bar') ||
-    location.pathname.startsWith('/admin/produccion') ||
-    location.pathname.startsWith('/produccion') ||
-    location.pathname.startsWith('/kitchen') ||
-    location.pathname.startsWith('/bar') ||
-    user?.role === 'cocina' ||
-    user?.role === 'bar' ||
-    user?.role === 'produccion';
   const checkCaja = useCallback(() => {
     api.get('/pos/register-status')
       .then((data) => setCajaOpen(data.is_open))
@@ -185,7 +175,7 @@ export default function Layout() {
                 <MdLock className="text-sm" /> <span className="hidden xs:inline">{t('layout.registerClosed')}</span>
               </span>
             )}
-            {!hideNotificationsInKitchenBar && <NotificationCenter />}
+            <NotificationCenter />
             {!isMobile && <div className="h-8 w-px bg-[color:var(--ui-border)]" />}
             <Link
               to="/admin/perfil"

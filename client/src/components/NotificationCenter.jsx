@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { getSocket } from '../hooks/useSocket';
 import StaffTeamChat from './StaffTeamChat';
 import FadeyAiChatPanel from './FadeyAiChatPanel';
+import DevicePermissionsBanner from './DevicePermissionsBanner';
 import toast from 'react-hot-toast';
 import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload, MdRestaurant } from 'react-icons/md';
 import { FADEY_AI_TAGLINE, FADEY_AI_CREATOR_MODE, getFadeyAiAvatarSrc, OPEN_FADEY_AI_EVENT, isFadeyAiCreatorMode } from '../constants/fadeyAiBranding';
@@ -118,7 +119,15 @@ function showOrderReadySystemNotification(evt) {
   try {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
     if (Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
-    new Notification(evt.message || `Pedido ${evt.place} está listo`, { tag: `order-ready-${evt.order_id}` });
+    const n = new Notification(evt.message || `Pedido ${evt.place} está listo`, { tag: `order-ready-${evt.order_id}` });
+    n.onclick = () => {
+      try {
+        window.focus();
+      } catch (_) {
+        /* noop */
+      }
+      n.close();
+    };
   } catch (_) {
     /* noop */
   }
@@ -385,13 +394,6 @@ export default function NotificationCenter({ className = '' }) {
 
   const openWithTab = (nextTab) => {
     void unlockNotificationAudio();
-    try {
-      if (['mozo', 'cajero', 'admin'].includes(roleLc) && 'Notification' in window && Notification.permission === 'default') {
-        void Notification.requestPermission().catch(() => {});
-      }
-    } catch (_) {
-      /* noop */
-    }
     setOpen((prev) => {
       if (prev && tab === nextTab) return false;
       return true;
@@ -680,6 +682,7 @@ export default function NotificationCenter({ className = '' }) {
       </button>
 
       {panel}
+      <DevicePermissionsBanner role={roleLc} />
     </div>
   );
 }

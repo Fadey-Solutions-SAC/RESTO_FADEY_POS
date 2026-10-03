@@ -13,6 +13,7 @@ import {
   StaffContractCard,
   StaffProductivityCard,
 } from '../../components/hr/StaffProfileSummary';
+import DevicePermissionsCard from '../../components/DevicePermissionsCard';
 
 function PasswordInput({ value, onChange, placeholder, autoComplete }) {
   const [show, setShow] = useState(false);
@@ -158,6 +159,7 @@ export default function MiPerfil() {
         </form>
 
         <div className="space-y-5 min-w-0">
+          <DevicePermissionsCard />
           <StaffHoursCards hours={hours} period={period} />
           <StaffContractCard contract={contract} title="Mi contrato de trabajo" />
         </div>

@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
 import EndShiftModal from '../../components/EndShiftModal';
+import NotificationCenter from '../../components/NotificationCenter';
 import ProductionPrepBanner, { ProductionPrepButton, useProductionPrep } from '../../components/kitchen/ProductionPrepBanner';
 import { usePublishShellTitle } from '../../utils/shellTitleOverride';
 import { MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings, MdHistory, MdPerson } from 'react-icons/md';
@@ -751,6 +752,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
               {t('panel.backToOps')}
             </button>
           )}
+          {!titleInShell ? <NotificationCenter className="shrink-0" /> : null}
           {!titleInShell ? (
             <button
               type="button"
