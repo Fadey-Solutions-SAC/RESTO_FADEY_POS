@@ -137,26 +137,79 @@ function normalizeVolume(volume) {
   return Math.min(1, Math.max(0, v));
 }
 
+/**
+ * Alarma de pedido demorado: sirena aguda (zona donde el oído es más sensible), notas sostenidas,
+ * dos osciladores por nota casi a escala completa (los avisos usan ~22 %) y un limitador para que no distorsione.
+ * Nunca baja del 70 % aunque el volumen del área sea menor.
+ */
+function playAlarmTone(ctx, volume = 1) {
+  const level = Math.max(0.7, normalizeVolume(volume));
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.value = -3;
+  compressor.knee.value = 0;
+  compressor.ratio.value = 20;
+  compressor.attack.value = 0.001;
+  compressor.release.value = 0.05;
+  const master = ctx.createGain();
+  master.gain.value = level;
+  compressor.connect(master);
+  master.connect(ctx.destination);
+
+  const pattern = [1568, 1047, 1568, 1047, 1568, 1047, 1568, 1047, 1568, 1047];
+  const dur = 0.2;
+  let t0 = ctx.currentTime + 0.02;
+  pattern.forEach((freq) => {
+    const note = ctx.createGain();
+    note.gain.setValueAtTime(0.0001, t0);
+    note.gain.linearRampToValueAtTime(0.9, t0 + 0.01);
+    note.gain.setValueAtTime(0.9, t0 + dur - 0.03);
+    note.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+    note.connect(compressor);
+    [['square', freq], ['sawtooth', freq * 2]].forEach(([wave, f], i) => {
+      const osc = ctx.createOscillator();
+      osc.type = wave;
+      osc.frequency.value = f;
+      const mix = ctx.createGain();
+      mix.gain.value = i === 0 ? 0.7 : 0.35;
+      osc.connect(mix);
+      mix.connect(note);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    });
+    t0 += dur + 0.04;
+  });
+  setTimeout(() => {
+    try {
+      master.disconnect();
+      compressor.disconnect();
+    } catch (_) {
+      /* noop */
+    }
+  }, Math.ceil((t0 - ctx.currentTime + 0.5) * 1000));
+}
+
 function playFallbackBeep(type, volume = 1) {
   const peak = Math.max(0.0002, 0.22 * normalizeVolume(volume));
   try {
     const ctx = getSharedAudioContext();
     if (!ctx) return;
     const start = () => {
-      const isAlert = type === 'alert';
+      if (type === 'alert') {
+        playAlarmTone(ctx, volume);
+        return;
+      }
       const freqs =
-        isAlert ? [988, 659, 988, 659, 988, 659, 988, 659]
-          : type === 'bar' ? [990, 1320]
-            : type === 'message' ? [740, 980]
-              : type === 'system' ? [520, 700, 880]
-                : [660, 880, 1100];
+        type === 'bar' ? [990, 1320]
+          : type === 'message' ? [740, 980]
+            : type === 'system' ? [520, 700, 880]
+              : [660, 880, 1100];
       let t0 = ctx.currentTime + 0.01;
       freqs.forEach((freq, idx) => {
         const oscillator = ctx.createOscillator();
         const gainNode = ctx.createGain();
-        oscillator.type = isAlert ? 'square' : 'sine';
+        oscillator.type = 'sine';
         oscillator.frequency.value = freq;
-        const dur = isAlert ? 0.22 : idx === freqs.length - 1 ? 0.28 : 0.16;
+        const dur = idx === freqs.length - 1 ? 0.28 : 0.16;
         gainNode.gain.setValueAtTime(0.0001, t0);
         gainNode.gain.exponentialRampToValueAtTime(peak, t0 + 0.015);
         gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
