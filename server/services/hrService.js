@@ -1162,26 +1162,31 @@ function openAttendance(employeeId) {
   );
 }
 
-/** True si el usuario tiene check-in QR sin salida (jornada activa). */
-function hasOpenQrJornadaForUser(userId) {
+/** `applies`: QR activo y el usuario tiene ficha de empleado (puede marcar). */
+function getQrJornadaStateForUser(userId) {
   const uid = String(userId || '').trim();
-  if (!uid) return false;
+  if (!uid) return { applies: false, open: false };
   try {
-    if (!isAsistenciaQrActiva()) return false;
+    if (!isAsistenciaQrActiva()) return { applies: false, open: false };
   } catch (_) {
     /* continuar */
   }
   const rid = restaurantIdOf({ id: uid });
-  if (!rid) return false;
+  if (!rid) return { applies: false, open: false };
   let emp;
   try {
     emp = employeeByUser(rid, uid);
   } catch (_) {
-    return false;
+    return { applies: false, open: false };
   }
-  if (!emp?.id) return false;
+  if (!emp?.id) return { applies: false, open: false };
   const open = openAttendance(emp.id);
-  return Boolean(open?.check_in_at && !open?.check_out_at);
+  return { applies: true, open: Boolean(open?.check_in_at && !open?.check_out_at) };
+}
+
+/** True si el usuario tiene check-in QR sin salida (jornada activa). */
+function hasOpenQrJornadaForUser(userId) {
+  return getQrJornadaStateForUser(userId).open;
 }
 
 function approvedLeaveToday(employeeId, date) {
@@ -1926,6 +1931,7 @@ module.exports = {
   meToday,
   adjustmentsOf,
   hasOpenQrJornadaForUser,
+  getQrJornadaStateForUser,
   calc,
   computePayrollDue,
   scheduleOfEmployee,

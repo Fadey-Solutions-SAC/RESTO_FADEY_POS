@@ -39,9 +39,23 @@ export function isPermissionExplicitlyDenied(value) {
   return value === false || value === 0 || value === '0' || value === 'false';
 }
 
-/** Igual que el API (`userHasModule`): el rol cocina/bar siempre tiene su propia estación. */
-function isOwnRoleStation(role, moduleId) {
-  return (role === 'cocina' && moduleId === 'cocina') || (role === 'bar' && moduleId === 'bar');
+const PRODUCTION_ROLES = ['produccion', 'cocina', 'bar'];
+
+/** Área propia del personal de producción; mismas reglas que `userCanAccessKitchenStation` del API. */
+function getOwnProductionAreaId(user) {
+  const role = String(user?.role || '').toLowerCase();
+  if (role === 'cocina') return 'cocina';
+  if (role === 'bar') return 'bar';
+  if (role === 'produccion') return String(user?.production_area_id || '').trim();
+  return '';
+}
+
+/** El API siempre deja al personal de producción abrir su propia estación, sin depender de permisos. */
+function isOwnRoleStation(user, moduleId) {
+  const own = getOwnProductionAreaId(user).toLowerCase();
+  if (!own || !moduleId) return false;
+  const ownModule = own === 'cocina' || own === 'bar' ? own : 'produccion';
+  return moduleId === ownModule;
 }
 
 export function hasModulePermission(user, moduleId) {
@@ -59,7 +73,7 @@ export function hasModulePermission(user, moduleId) {
     ? user.permissions
     : null;
 
-  if (isOwnRoleStation(role, moduleId)) return true;
+  if (isOwnRoleStation(user, moduleId)) return true;
 
   const isProdStaff = role === 'produccion' || role === 'cocina' || role === 'bar';
   if (isProdStaff && (moduleId === 'cocina' || moduleId === 'bar' || moduleId === 'produccion')) {
@@ -113,7 +127,7 @@ export function canAccessStaffModule(user, { moduleId, roles } = {}) {
     }
     return moduleId === 'mi_restaurant' || !moduleId;
   }
-  if (isOwnRoleStation(String(user.role || '').toLowerCase(), moduleId)) return true;
+  if (isOwnRoleStation(user, moduleId)) return true;
   if (moduleId && typeof user.permissions === 'object' && user.permissions != null) {
     if (isPermissionExplicitlyDenied(user.permissions[moduleId])) return false;
   }
@@ -125,17 +139,26 @@ export function canAccessStaffModule(user, { moduleId, roles } = {}) {
 
 export function getProductionStaffPath(user) {
   if (!user) return '/';
-  if (user.role === 'produccion') {
-    const area = String(user.production_area_id || '').trim() || 'cocina';
-    return hasModulePermission(user, 'produccion') ? `/admin/produccion/${area}` : '/';
-  }
-  if (user.role === 'cocina') {
-    return hasModulePermission(user, 'cocina') ? '/admin/produccion/cocina' : '/';
-  }
-  if (user.role === 'bar') {
-    return hasModulePermission(user, 'bar') ? '/admin/produccion/bar' : '/';
-  }
-  return '/admin';
+  if (!PRODUCTION_ROLES.includes(String(user.role || '').toLowerCase())) return '/admin';
+  const own = getOwnProductionAreaId(user);
+  return own ? `/admin/produccion/${own}` : '/';
+}
+
+/** Personal que debe marcar ingreso QR antes de entrar a su módulo. */
+export function requiresQrCheckIn(user, opts = {}) {
+  if (!user) return false;
+  const role = String(user.role || '').toLowerCase();
+  if (!PRODUCTION_ROLES.includes(role) && role !== 'cajero' && role !== 'mozo') return false;
+  const qrOn = opts.asistenciaQrActiva != null
+    ? Boolean(opts.asistenciaQrActiva)
+    : (user.asistencia_qr_activa == null ? true : Boolean(user.asistencia_qr_activa));
+  const jornadaAbierta = opts.jornadaQrAbierta != null
+    ? Boolean(opts.jornadaQrAbierta)
+    : Boolean(user.jornada_qr_abierta);
+  if (!qrOn || jornadaAbierta) return false;
+  // Sin ficha de empleado no puede marcar; API antiguo no envía el campo (producción mantiene el QR).
+  if (PRODUCTION_ROLES.includes(role)) return user.asistencia_qr_aplica !== false;
+  return user.asistencia_qr_aplica === true;
 }
 
 export function getDefaultStaffPath(user, opts = {}) {
@@ -143,15 +166,9 @@ export function getDefaultStaffPath(user, opts = {}) {
   if (user.role === 'master_admin') {
     return isMasterViewingAsOwner() ? '/admin' : '/master';
   }
-  const qrOn = opts.asistenciaQrActiva != null
-    ? Boolean(opts.asistenciaQrActiva)
-    : (user.asistencia_qr_activa == null ? true : Boolean(user.asistencia_qr_activa));
-  const jornadaAbierta = opts.jornadaQrAbierta != null
-    ? Boolean(opts.jornadaQrAbierta)
-    : Boolean(user.jornada_qr_abierta);
-  // Áreas de producción: QR on y sin jornada → marcar; si ya activo → ir al módulo.
-  if (user.role === 'produccion' || user.role === 'cocina' || user.role === 'bar') {
-    if (qrOn && !jornadaAbierta) return '/admin/asistencia';
+  // QR activo y sin jornada → marcar; si ya está activa → ir directo al módulo.
+  if (requiresQrCheckIn(user, opts)) return '/admin/asistencia';
+  if (PRODUCTION_ROLES.includes(String(user.role || '').toLowerCase())) {
     const prodPath = getProductionStaffPath(user);
     // `/` con sesión staff redirige otra vez aquí: sin módulo, mostrar aviso en /admin.
     return prodPath === '/' ? '/admin' : prodPath;

@@ -6,10 +6,12 @@ import { formatMinutes, formatSqlTime, getHrDeviceId } from '../../components/hr
 import { MdCheckCircle, MdLogout, MdWarningAmber } from 'react-icons/md';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getProductionStaffPath } from '../../utils/staffModuleAccess';
+import { getDefaultStaffPath } from '../../utils/staffModuleAccess';
+
+const QR_MODULE_ROLES = ['produccion', 'cocina', 'bar', 'cajero', 'mozo'];
 
 export default function HrAttendanceKiosk() {
-  const { user } = useAuth();
+  const { user, refreshStaffProfile } = useAuth();
   const navigate = useNavigate();
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState('');
@@ -20,8 +22,11 @@ export default function HrAttendanceKiosk() {
   const [meLoading, setMeLoading] = useState(true);
   const [openAttendance, setOpenAttendance] = useState(null);
 
-  const productionPath = useMemo(() => getProductionStaffPath(user), [user]);
-  const isProductionStaff = ['produccion', 'cocina', 'bar'].includes(String(user?.role || '').toLowerCase());
+  const modulePath = useMemo(() => {
+    const path = getDefaultStaffPath(user, { jornadaQrAbierta: true });
+    return path.startsWith('/admin/asistencia') ? '/' : path;
+  }, [user]);
+  const goesToModuleAfterQr = QR_MODULE_ROLES.includes(String(user?.role || '').toLowerCase());
   const jornadaActiva = Boolean(openAttendance?.check_in_at && !openAttendance?.check_out_at);
 
   const loadMyStatus = useCallback(async () => {
@@ -64,10 +69,13 @@ export default function HrAttendanceKiosk() {
       });
       setResult(data);
       toast.success(data.title || 'Marcación registrada');
-      await loadMyStatus();
-      if (data.action === 'check_in' && isProductionStaff && productionPath && productionPath !== '/') {
+      await Promise.all([
+        loadMyStatus(),
+        typeof refreshStaffProfile === 'function' ? refreshStaffProfile() : null,
+      ]);
+      if (data.action === 'check_in' && goesToModuleAfterQr && modulePath && modulePath !== '/') {
         toast.success('Jornada activa. Entrando al módulo…');
-        setTimeout(() => navigate(productionPath, { replace: true }), 900);
+        setTimeout(() => navigate(modulePath, { replace: true }), 900);
       }
     } catch (err) {
       toast.error(err.message);
@@ -75,7 +83,7 @@ export default function HrAttendanceKiosk() {
     } finally {
       setBusy(false);
     }
-  }, [busy, branchId, qrActiva, loadMyStatus, isProductionStaff, productionPath, navigate]);
+  }, [busy, branchId, qrActiva, loadMyStatus, refreshStaffProfile, goesToModuleAfterQr, modulePath, navigate]);
 
   if (modeLoading) {
     return <p className="text-center text-sm text-[var(--ui-muted)] py-12">Cargando…</p>;
@@ -127,8 +135,8 @@ export default function HrAttendanceKiosk() {
               </p>
             </div>
           </div>
-          {jornadaActiva && isProductionStaff && productionPath && productionPath !== '/' ? (
-            <Link to={productionPath} className="btn-primary text-sm shrink-0">
+          {jornadaActiva && goesToModuleAfterQr && modulePath && modulePath !== '/' ? (
+            <Link to={modulePath} className="btn-primary text-sm shrink-0">
               Ir al módulo
             </Link>
           ) : null}
@@ -168,8 +176,8 @@ export default function HrAttendanceKiosk() {
               ) : (
                 <p className="text-emerald-600 font-medium">A tiempo</p>
               )}
-              {isProductionStaff && productionPath && productionPath !== '/' ? (
-                <Link to={productionPath} className="btn-primary text-sm mt-2 inline-flex">Ir al módulo</Link>
+              {goesToModuleAfterQr && modulePath && modulePath !== '/' ? (
+                <Link to={modulePath} className="btn-primary text-sm mt-2 inline-flex">Ir al módulo</Link>
               ) : null}
             </>
           ) : (

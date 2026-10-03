@@ -717,10 +717,10 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           Toca aquí para activar el sonido de pedidos nuevos
         </button>
       ) : null}
-      <header className="bg-[var(--ui-surface)] backdrop-blur-xl border-b border-[color:var(--ui-border)] px-3 py-2 sm:px-6 sm:py-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-wrap">
+      <header className="bg-[var(--ui-surface)] backdrop-blur-xl border-b border-[color:var(--ui-border)] px-3 py-2 sm:px-4 sm:py-3 lg:px-6 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+        <div className="grid grid-cols-3 gap-2 w-full min-w-0 lg:flex lg:w-auto lg:items-center lg:gap-3">
           {!titleInShell ? (
-            <div className="flex items-center gap-2 min-w-0 mr-1">
+            <div className="col-span-3 flex items-center gap-2 min-w-0 lg:mr-1">
               <StationIcon className="text-2xl sm:text-3xl text-[var(--ui-body-text)] shrink-0" />
               <h1 className="text-base sm:text-xl font-bold truncate">{panelTitle}</h1>
             </div>
@@ -735,21 +735,21 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
               <Tag
                 key={s.key}
                 {...(s.onClick ? { type: 'button', onClick: s.onClick, title: t('history.button') } : {})}
-                className={`${HEADER_BOX} min-w-[5.5rem] px-3 flex flex-col justify-center bg-[var(--ui-surface-2)] text-left ${s.onClick ? 'hover:bg-[var(--ui-sidebar-hover)]' : ''}`}
+                className={`${HEADER_BOX} w-full min-w-0 lg:w-auto lg:min-w-[6.5rem] px-3 flex flex-col justify-center bg-[var(--ui-surface-2)] text-left ${s.onClick ? 'hover:bg-[var(--ui-sidebar-hover)]' : ''}`}
               >
-                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-[var(--ui-muted)] leading-tight">{s.label}</p>
+                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-[var(--ui-muted)] leading-tight truncate">{s.label}</p>
                 <p className="text-lg sm:text-xl font-bold tabular-nums text-[var(--ui-body-text)] leading-tight">{s.value}</p>
               </Tag>
             );
           })}
-          <ProductionPrepButton prep={prep} className={HEADER_BOX} />
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2 w-full min-w-0 lg:w-auto lg:flex-nowrap lg:gap-3">
+          <ProductionPrepButton prep={prep} className={`${HEADER_BOX} flex-1 justify-center lg:flex-none`} />
           {areaSettings.autoDismissEnabled ? (
             <span className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">
               {t('barSettings.badgeActive', { minutes: areaSettings.autoDismissMinutes })}
             </span>
           ) : null}
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0 w-full sm:w-auto overflow-x-auto scrollbar-hide pb-0.5 sm:pb-0 sm:flex-wrap">
           <button
             type="button"
             onClick={() => setPrinterModalOpen(true)}
@@ -907,7 +907,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
         </div>
       </Modal>
       <ProductionPrepBanner prep={prep} />
-      <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="p-3 sm:p-4 lg:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-4">
         {visibleOrders.map(order => {
           const TypeIcon = typeIcons[order.type] || MdRestaurant;
           const isOverdue = isKitchenOrderOverdue(order);

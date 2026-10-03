@@ -113,7 +113,7 @@ export default function ProductionPrepBanner({ prep }) {
   const closedDays = (plan.closed_days || []).map((c) => dayName(c.dow)).filter(Boolean);
 
   return (
-    <div className="px-6 pt-6">
+    <div className="px-3 pt-3 sm:px-4 sm:pt-4 lg:px-6 lg:pt-6">
       <section className={`rounded-xl overflow-hidden border-2 ${ACCENT_BORDER} bg-[var(--ui-surface)] text-[var(--ui-body-text)]`}>
         <div className={`px-4 py-2.5 ${ACCENT_SOFT_BG}`}>
           <p className="text-sm font-bold inline-flex items-center gap-1.5 text-[var(--ui-body-text)]">

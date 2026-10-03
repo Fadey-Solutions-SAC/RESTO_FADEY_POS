@@ -10,6 +10,7 @@ import {
   MdDateRange, MdKeyboardArrowDown, MdChevronLeft, MdChevronRight, MdKitchen, MdLocalBar, MdDeliveryDining,
   MdPointOfSale, MdTableBar, MdBolt, MdWarning, MdNotificationsActive, MdPayments, MdCreditCard, MdPhoneIphone,
   MdBarChart, MdLocalOffer, MdCreditScore, MdAccountBalance, MdPeople, MdShowChart, MdInventory2, MdCardGiftcard,
+  MdMoreVert, MdNorthEast,
 } from 'react-icons/md';
 
 import { useChartTheme } from '../../theme/useChartTheme';
@@ -324,24 +325,34 @@ function DashboardKpiCard({ item }) {
   const gradId = `kpi-wave-${item.key}`;
   const value = Number(item.amount || 0);
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-[color:var(--ui-card-border)] bg-[var(--ui-surface)] shadow-sm hover:shadow-md transition-shadow min-h-[8.5rem] p-4">
-      <div className="relative z-10 flex items-center gap-3">
+    <div className="relative overflow-hidden rounded-2xl border border-[color:var(--ui-card-border)] bg-[var(--ui-surface)] shadow-sm hover:shadow-md transition-shadow min-h-[10rem] p-4">
+      <MdMoreVert className="absolute right-3 top-3 z-10 text-lg text-[var(--ui-muted)]" aria-hidden="true" />
+      <div className="relative z-10 flex items-center gap-3 pr-5">
         <span
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
           style={{ backgroundColor: `${item.color}1f`, color: item.color }}
         >
-          <Icon className="text-[1.35rem]" />
+          <Icon className="text-[1.45rem]" />
         </span>
         <p className="text-sm font-semibold text-[var(--ui-body-text)] leading-tight">{item.label}</p>
       </div>
-      <p className="relative z-10 mt-3 text-2xl sm:text-[1.7rem] font-bold tabular-nums text-[var(--ui-body-text)] whitespace-nowrap leading-none">
+      <p className="relative z-10 mt-3 text-2xl sm:text-[1.8rem] font-bold tabular-nums text-[var(--ui-body-text)] whitespace-nowrap leading-none">
         {item.currency ? (
           <>
-            <span className="font-medium text-[var(--ui-muted)] mr-1">S/</span>
+            <span className="font-medium text-[var(--ui-muted)] mr-1.5">S/</span>
             {value.toFixed(2)}
           </>
         ) : value}
       </p>
+      <div className="relative z-10 mt-3 flex items-center gap-2 text-[11px] text-[var(--ui-muted)]">
+        <span
+          className="flex h-5 w-5 items-center justify-center rounded-md"
+          style={{ backgroundColor: `${item.color}1f`, color: item.color }}
+        >
+          <MdNorthEast className="text-xs" />
+        </span>
+        vs. periodo anterior
+      </div>
       <svg
         className="pointer-events-none absolute inset-x-0 bottom-0 h-14 w-full"
         viewBox="0 0 200 56"

@@ -415,7 +415,34 @@ import {
   MdDeliveryDining,
   MdEdit, MdDelete, MdPrint, MdSave,
   MdSwapHoriz, MdOpenWith, MdCallMerge,
+  MdStorage, MdShoppingCart, MdCreditCard, MdPhoneIphone, MdLanguage,
 } from 'react-icons/md';
+
+const CLOSE_SUMMARY_TONE = {
+  total: { icon: MdStorage, box: 'border-emerald-500/25 bg-emerald-500/10', tile: 'bg-emerald-500/15 text-emerald-600' },
+  efectivo: { icon: MdShoppingCart, box: 'border-blue-500/25 bg-blue-500/10', tile: 'bg-blue-500/15 text-blue-600' },
+  tarjeta: { icon: MdCreditCard, box: 'border-violet-500/25 bg-violet-500/10', tile: 'bg-violet-500/15 text-violet-600' },
+  yape: { icon: MdPhoneIphone, box: 'border-orange-500/25 bg-orange-500/10', tile: 'bg-orange-500/15 text-orange-600' },
+  plin: { icon: MdPhoneIphone, box: 'border-sky-500/25 bg-sky-500/10', tile: 'bg-sky-500/15 text-sky-600' },
+  online: { icon: MdLanguage, box: 'border-indigo-500/25 bg-indigo-500/10', tile: 'bg-indigo-500/15 text-indigo-600' },
+};
+
+function CloseSummaryCard({ tone, label, amount, sub }) {
+  const ui = CLOSE_SUMMARY_TONE[tone] || CLOSE_SUMMARY_TONE.total;
+  const Icon = ui.icon;
+  return (
+    <div className={`rounded-2xl border p-3 flex items-center gap-3 shadow-sm ${ui.box}`}>
+      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${ui.tile}`}>
+        <Icon className="text-2xl" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs text-[var(--ui-body-text)] truncate">{label}</p>
+        <p className="text-xl font-bold tabular-nums text-[var(--ui-body-text)] leading-tight whitespace-nowrap">{formatCurrency(amount)}</p>
+        {sub ? <p className="text-[11px] text-[var(--ui-muted)] tabular-nums truncate">{sub}</p> : null}
+      </div>
+    </div>
+  );
+}
 
 /** Mesa sintética al cobrar cuenta desde Clientes (no existe fila en `tables`). */
 const POS_ADMIN_REGISTER_KEY = 'posAdminRegisterId';
@@ -6169,25 +6196,17 @@ export default function POSPanel() {
                   </button>
                 </div>
               ) : null}
-              <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                <h3 className="font-semibold text-[var(--ui-body-text)] mb-3 flex items-center gap-2"><MdAccountBalanceWallet className="text-[var(--ui-accent)]" /> Resumen de ventas (métodos activos)</h3>
-                <div className={`grid gap-3 ${registerPaymentRows.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
-                  {registerPaymentRows.map((row) => (
-                    <div key={row.value} className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
-                      <p className="text-xs text-[var(--ui-muted)]">{row.label}</p>
-                      <p className={`font-bold text-lg ${paymentRowAmountClass(row.value)}`}>{formatCurrency(row.amount)}</p>
-                      {row.tip > 0 ? (
-                        <p className="text-[11px] text-[var(--ui-muted)] tabular-nums">
-                          + propina {formatCurrency(row.tip)} = {formatCurrency(row.amount + row.tip)}
-                        </p>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between items-center mt-3 pt-3 border-t border-[color:var(--ui-border)]">
-                  <span className="font-bold text-[var(--ui-body-text)]">Total ventas</span>
-                  <span className="font-bold text-xl text-emerald-600">{formatCurrency(registerSales)}</span>
-                </div>
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+                <CloseSummaryCard tone="total" label="Ventas del día" amount={registerSales} sub="Métodos activos" />
+                {registerPaymentRows.map((row) => (
+                  <CloseSummaryCard
+                    key={row.value}
+                    tone={row.value}
+                    label={row.value === 'efectivo' ? 'Ventas en efectivo' : row.value === 'tarjeta' ? 'Ventas con tarjeta' : `Ventas ${row.label}`}
+                    amount={row.amount}
+                    sub={row.tip > 0 ? `+ propina ${formatCurrency(row.tip)} = ${formatCurrency(row.amount + row.tip)}` : ''}
+                  />
+                ))}
               </div>
               <CashCountSection
                 denomDefs={denomDefs}
@@ -6219,8 +6238,7 @@ export default function POSPanel() {
                   onCountedChange={(method, value) => setNonCashCounted((prev) => ({ ...prev, [method]: value }))}
                   registerFieldRef={(key, el) => { closeFieldRefs.current[key] = el; }}
                   onFieldEnter={handleCloseFieldEnter}
-                  tipRows={registerPaymentRows.filter((row) => row.tip > 0)}
-                  totalTips={totalTips}
+                  cashTips={cashTips}
                   cashExpected={expectedRounded}
                   cashCounted={closingAmt}
                   cashCountMissing={closingAmount === ''}

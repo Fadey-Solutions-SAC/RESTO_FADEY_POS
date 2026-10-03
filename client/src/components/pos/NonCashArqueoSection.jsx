@@ -12,14 +12,6 @@ import {
 } from 'react-icons/md';
 import { formatCurrency } from '../../utils/api';
 
-const METHOD_TEXT_CLASS = {
-  efectivo: 'text-emerald-600',
-  yape: 'text-fuchsia-600',
-  plin: 'text-sky-600',
-  tarjeta: 'text-amber-600',
-  online: 'text-indigo-600',
-};
-
 function MethodBadge({ value }) {
   if (value === 'yape') {
     return (
@@ -108,8 +100,7 @@ export default function NonCashArqueoSection({
   onCountedChange,
   registerFieldRef,
   onFieldEnter,
-  tipRows = [],
-  totalTips = 0,
+  cashTips = 0,
   cashExpected,
   cashCounted,
   cashCountMissing,
@@ -137,7 +128,7 @@ export default function NonCashArqueoSection({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {rows.map((r) => {
           const st = statusOf(r);
           const ui = STATUS_UI[st];
@@ -201,31 +192,21 @@ export default function NonCashArqueoSection({
           );
         })}
 
-        {totalTips > 0 ? (
+        {cashTips > 0 ? (
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 shadow-sm">
             <div className="flex items-start justify-between gap-2 mb-3">
               <div className="flex items-center gap-2.5">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-700">
                   <MdVolunteerActivism className="text-2xl" />
                 </span>
-                <p className="text-sm font-bold text-[var(--ui-body-text)]">Propinas</p>
+                <p className="text-sm font-bold text-[var(--ui-body-text)]">Propina en efectivo</p>
               </div>
               <div className="text-right">
                 <p className="text-[11px] text-[var(--ui-muted)] leading-tight">Total</p>
-                <p className="text-sm font-bold tabular-nums text-amber-700">{formatCurrency(totalTips)}</p>
+                <p className="text-sm font-bold tabular-nums text-amber-700">{formatCurrency(cashTips)}</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {tipRows.map((row) => (
-                <span
-                  key={row.value}
-                  className="inline-flex items-center gap-1 rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-2 py-1 text-[11px] tabular-nums"
-                >
-                  <span className="text-[var(--ui-muted)]">{row.label}</span>
-                  <span className={`font-bold ${METHOD_TEXT_CLASS[row.value] || 'text-[var(--ui-body-text)]'}`}>{formatCurrency(row.tip)}</span>
-                </span>
-              ))}
-            </div>
+            <p className="text-[11px] text-[var(--ui-muted)]">Incluida en el efectivo esperado del conteo.</p>
           </div>
         ) : null}
       </div>

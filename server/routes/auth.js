@@ -305,11 +305,14 @@ router.post('/login', async (req, res) => {
   if (!Array.isArray(production_area_ids)) production_area_ids = [];
   let asistencia_qr_activa = true;
   let jornada_qr_abierta = false;
+  let asistencia_qr_aplica = false;
   try {
     const hr = require('../services/hrService');
     asistencia_qr_activa = hr.isAsistenciaQrActiva();
     if (asistencia_qr_activa) {
-      jornada_qr_abierta = Boolean(hr.hasOpenQrJornadaForUser(user.id));
+      const qrState = hr.getQrJornadaStateForUser(user.id);
+      jornada_qr_abierta = Boolean(qrState.open);
+      asistencia_qr_aplica = Boolean(qrState.applies);
     }
   } catch (_) {
     asistencia_qr_activa = true;
@@ -331,6 +334,7 @@ router.post('/login', async (req, res) => {
       production_area_id: String(user.production_area_id || '').trim(),
       production_area_ids,
       asistencia_qr_activa,
+      asistencia_qr_aplica,
       jornada_qr_abierta,
       fadey_ai_enabled: Number(getControlConfig().fadey_ai_enabled) === 1,
       ...readUiAppearanceFromStoredSettings(),
@@ -476,11 +480,14 @@ router.get('/me', authenticateToken, async (req, res) => {
   if (!Array.isArray(production_area_ids)) production_area_ids = [];
   let asistencia_qr_activa = true;
   let jornada_qr_abierta = false;
+  let asistencia_qr_aplica = false;
   try {
     const hr = require('../services/hrService');
     asistencia_qr_activa = hr.isAsistenciaQrActiva();
     if (asistencia_qr_activa) {
-      jornada_qr_abierta = Boolean(hr.hasOpenQrJornadaForUser(user.id));
+      const qrState = hr.getQrJornadaStateForUser(user.id);
+      jornada_qr_abierta = Boolean(qrState.open);
+      asistencia_qr_aplica = Boolean(qrState.applies);
     }
   } catch (_) {
     asistencia_qr_activa = true;
@@ -496,6 +503,7 @@ router.get('/me', authenticateToken, async (req, res) => {
     type: 'staff',
     caja_name: caja?.name || '',
     asistencia_qr_activa,
+    asistencia_qr_aplica,
     jornada_qr_abierta,
     fadey_ai_enabled: Number(getControlConfig().fadey_ai_enabled) === 1,
     ...readUiAppearanceFromStoredSettings(),
