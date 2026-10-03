@@ -886,17 +886,69 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     letter-spacing: -0.02em;
   }
 
-  .rf-mesa-map-tile__number--name {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-    max-width: 90%;
-    text-align: center;
+  .rf-mesa-map-tile__name-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    width: 100%;
+    padding: 0 0.2rem;
+    min-width: 0;
+  }
+
+  .rf-mesa-map-tile__name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    line-height: 1.1;
+    max-width: 100%;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1.08;
+    letter-spacing: 0;
+    text-align: center;
     text-transform: uppercase;
+    color: #fff;
+    text-shadow: 0 1px 0 rgb(0 0 0 / 0.12);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+  }
+
+  .rf-mesa-map-tile__name--sm {
+    font-size: 0.6rem;
+  }
+
+  .rf-mesa-map-tile__name--xs {
+    font-size: 0.52rem;
+  }
+
+  .rf-mesa-map-tile__number--suffix {
+    font-size: 1.15rem;
+  }
+
+  .rf-mesa-map-tile--reserved .rf-mesa-map-tile__name {
+    color: #1f2937;
+    text-shadow: none;
+  }
+
+  @media (min-width: 640px) {
+    .rf-mesa-map-tile__name {
+      font-size: 0.72rem;
+    }
+
+    .rf-mesa-map-tile__name--sm {
+      font-size: 0.64rem;
+    }
+
+    .rf-mesa-map-tile__name--xs {
+      font-size: 0.56rem;
+    }
+
+    .rf-mesa-map-tile__number--suffix {
+      font-size: 1.25rem;
+    }
   }
 
   .rf-mesa-map-tile__capacity {

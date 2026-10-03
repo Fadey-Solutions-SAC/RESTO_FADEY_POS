@@ -36,6 +36,19 @@ router.get('/status', (req, res) => {
   }
 });
 
+/** Preparación sugerida para un área de producción (cocina, bar…): lo que más sale los próximos días e insumos cortos. */
+router.get('/production-forecast', (req, res) => {
+  try {
+    if (!isFeatureEnabled()) {
+      return res.status(403).json({ error: 'IA Fadey desactivada' });
+    }
+    const { buildAreaPrepPlan } = require('../services/fadeyAi/fadeyAiForecast');
+    res.json(buildAreaPrepPlan(String(req.query.area || '').trim()));
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo calcular el pronóstico' });
+  }
+});
+
 router.get('/history', (req, res) => {
   try {
     if (!isFeatureEnabled()) {

@@ -118,7 +118,7 @@ export async function printKitchenBarOrder(orderOrId, { newItemIds = null, fromL
     const waiter = String(fullOrder?.created_by_user_name || '').trim();
     const tableLbl =
       fullOrder?.type === 'dine_in' && fullOrder?.table_number
-        ? `Mesa ${String(fullOrder.table_number).trim()}`
+        ? String(fullOrder.table_display_label || '').trim() || `Mesa ${String(fullOrder.table_number).trim()}`
         : String(fullOrder?.table_number || '').trim();
 
     let printed = false;

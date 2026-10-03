@@ -485,16 +485,16 @@ function HrAiOperativaPanel({ data, filters = {}, onExport }) {
             </h3>
             {prodPie.length ? (
               <div className="rf-ai-home__pie-wrap">
-                <ResponsiveContainer width="100%" height={96}>
+                <div className="rf-ai-home__chart-box"><ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={prodPie} dataKey="value" nameKey="name" innerRadius={24} outerRadius={38}>
+                    <Pie data={prodPie} dataKey="value" nameKey="name" innerRadius="50%" outerRadius="80%">
                       {prodPie.map((entry, i) => (
                         <Cell key={entry.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip formatter={(v) => formatMinutes(v)} />
                   </PieChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></div>
                 <ul>
                   {prodPie.map((row, i) => (
                     <li key={row.name}>
@@ -515,7 +515,7 @@ function HrAiOperativaPanel({ data, filters = {}, onExport }) {
               Horas por turno
             </h3>
             {shiftBars.length ? (
-              <ResponsiveContainer width="100%" height={96}>
+              <div className="rf-ai-home__chart-box"><ResponsiveContainer width="100%" height="100%">
                 <BarChart data={shiftBars} margin={{ top: 2, right: 4, left: -6, bottom: -4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="name" tick={{ fontSize: 9 }} />
@@ -523,7 +523,7 @@ function HrAiOperativaPanel({ data, filters = {}, onExport }) {
                   <Tooltip formatter={(v) => formatMinutes(v)} />
                   <Bar dataKey="minutos" fill="#2563eb" radius={[3, 3, 0, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             ) : (
               <p className="rf-ai-home__empty">Sin movimiento por turno en este período.</p>
             )}

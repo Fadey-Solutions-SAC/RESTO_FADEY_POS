@@ -773,9 +773,14 @@ export function buildPedidoMesaTicketPlainText({
   if (orderType === 'delivery') title = 'DELIVERY';
   else if (orderType === 'pickup') title = 'RECOJO';
   else {
-    const raw = String(tableLabel || '').replace(/^mesa\s*/i, '').trim();
-    const num = raw || String(orderNumber != null ? orderNumber : '').trim();
-    title = num ? `MESA ${num}`.toUpperCase() : 'MESA';
+    const label = String(tableLabel || '').trim();
+    const raw = label.replace(/^mesa\s*/i, '').trim();
+    if (label && !/^mesa\b/i.test(label) && !/^\d+$/.test(label)) {
+      title = label.toUpperCase();
+    } else {
+      const num = raw || String(orderNumber != null ? orderNumber : '').trim();
+      title = num ? `MESA ${num}`.toUpperCase() : 'MESA';
+    }
   }
 
   lines.push(centerThermalLine(title, w));

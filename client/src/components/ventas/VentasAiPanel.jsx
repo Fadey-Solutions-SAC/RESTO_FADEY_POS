@@ -78,6 +78,7 @@ export default function VentasAiPanel({
 }) {
   const [heroMode, setHeroMode] = useState('hello'); // hello | chat
   const chatRef = useRef(null);
+  const heroRef = useRef(null);
 
   const activeOrders = useMemo(
     () => (Array.isArray(filtered) && filtered.length ? filtered : orders)
@@ -189,6 +190,7 @@ export default function VentasAiPanel({
 
   const openChat = (prompt = '') => {
     setHeroMode('chat');
+    requestAnimationFrame(() => heroRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
     const msg = String(prompt || '').trim();
     if (!msg) {
       requestAnimationFrame(() => chatRef.current?.focusInput?.());
@@ -213,7 +215,7 @@ export default function VentasAiPanel({
   return (
     <div className="rf-ai-home animate-in fade-in duration-300">
       <div className="rf-ai-home__main">
-        <section className={`rf-ai-home__hero ${heroMode === 'chat' ? 'rf-ai-home__hero--chat' : ''}`}>
+        <section ref={heroRef} className={`rf-ai-home__hero ${heroMode === 'chat' ? 'rf-ai-home__hero--chat' : ''}`}>
           {heroMode === 'chat' ? (
             <div className="rf-ai-home__hero-chat">
               <div className="rf-ai-home__hero-chat-bar">
@@ -319,16 +321,16 @@ export default function VentasAiPanel({
             </h3>
             {paymentPie.length ? (
               <div className="rf-ai-home__pie-wrap">
-                <ResponsiveContainer width="100%" height={96}>
+                <div className="rf-ai-home__chart-box"><ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={paymentPie} dataKey="value" nameKey="name" innerRadius={24} outerRadius={38}>
+                    <Pie data={paymentPie} dataKey="value" nameKey="name" innerRadius="50%" outerRadius="80%">
                       {paymentPie.map((entry, i) => (
                         <Cell key={entry.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip formatter={(v) => formatCurrency(v)} />
                   </PieChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></div>
                 <ul>
                   {paymentPie.map((row, i) => (
                     <li key={row.name}>
@@ -349,7 +351,7 @@ export default function VentasAiPanel({
               Ventas por mesero
             </h3>
             {waiterBars.length ? (
-              <ResponsiveContainer width="100%" height={96}>
+              <div className="rf-ai-home__chart-box"><ResponsiveContainer width="100%" height="100%">
                 <BarChart data={waiterBars} margin={{ top: 2, right: 4, left: -6, bottom: -4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="name" tick={{ fontSize: 9 }} />
@@ -357,7 +359,7 @@ export default function VentasAiPanel({
                   <Tooltip formatter={(v) => formatCurrency(v)} />
                   <Bar dataKey="ventas" fill="#2563eb" radius={[3, 3, 0, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             ) : (
               <p className="rf-ai-home__empty">Sin ventas por mesero en el filtro actual.</p>
             )}

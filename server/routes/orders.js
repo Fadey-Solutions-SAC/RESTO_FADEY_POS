@@ -25,6 +25,8 @@ const { userCanEliminarLiberarMesa, userCanAjusteBarAutoDismiss } = require('../
 const { orderHasBarItems, orderHasKitchenItems, stripKitchenItemMeta, filterItemsForKitchenStation } = require('../utils/productionArea');
 const { getOrderItemsWithProductionArea, enrichOrderItemsWithComboAreas } = require('../services/orderItemsProductionService');
 const { ensureOrdersSchema } = require('../utils/ensureOrdersSchema');
+const { attachTableDisplayLabels } = require('../utils/tableDisplayLabel');
+const { getOpenRegisterForUser } = require('../utils/openCashRegister');
 const { purgeOrdersFromSystem, loadOrdersByIds } = require('../utils/purgeOrderFromSystem');
 const { upsertOrderStationState } = require('../services/productionAreasService');
 const {
@@ -204,12 +206,12 @@ router.get('/kitchen', authenticateToken, (req, res) => {
     /* ignore */
   }
   const filtered = filterKitchenOrdersForStation(orders, stationRequested, getOrderItemsWithArea);
-  res.json(
-    filtered.map(({ order: o, stationItems }) => {
-      o.items = stationItems.map(stripKitchenItemMeta);
-      return o;
-    }),
-  );
+  const kitchenOrders = filtered.map(({ order: o, stationItems }) => {
+    o.items = stationItems.map(stripKitchenItemMeta);
+    return o;
+  });
+  attachTableDisplayLabels(kitchenOrders);
+  res.json(kitchenOrders);
 });
 
 function parseKitchenHistoryDate(input) {
@@ -273,6 +275,7 @@ router.get('/kitchen/dispatched', authenticateToken, (req, res) => {
     o.items = filterItemsForKitchenStation(areaItems, stationRequested).map(stripKitchenItemMeta);
     result.push(o);
   }
+  attachTableDisplayLabels(result);
   res.json(result);
 });
 
@@ -530,6 +533,7 @@ router.get('/:id', authenticateToken, (req, res) => {
       return res.status(403).json({ error: 'No tienes acceso a este pedido' });
     }
   }
+  attachTableDisplayLabels(order);
   res.json(order);
 });
 
@@ -1165,10 +1169,7 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
   }
   if (nextPayEffective === 'paid' && !wasPaid) {
     const role = String(req.user?.role || '').toLowerCase();
-    const openReg = queryOne(
-      'SELECT id FROM cash_registers WHERE user_id = ? AND closed_at IS NULL',
-      [req.user.id],
-    );
+    const openReg = getOpenRegisterForUser(req.user);
     if (role === 'cajero' && !openReg?.id) {
       return res.status(400).json({ error: 'Debe abrir caja antes de registrar cobros' });
     }

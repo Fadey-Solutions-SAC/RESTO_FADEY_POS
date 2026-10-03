@@ -38,7 +38,8 @@ router.get('/admin-notifications', (req, res) => {
   }
   let list = getActiveNotifications().slice(0, 30);
   if (!seesPagoUsoAviso) {
-    list = list.filter((n) => String(n.title || '').trim() !== PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE);
+    list = list.filter((n) => String(n.title || '').trim() !== PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE
+      && String(n.audience || '').trim() !== 'admin');
   }
   return res.json(list);
 });

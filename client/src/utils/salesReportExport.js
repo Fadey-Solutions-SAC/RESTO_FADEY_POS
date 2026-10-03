@@ -1,6 +1,7 @@
 import { buildFixedWidthTable } from './fixedWidthTxt';
 import { formatMesaLabel, isCourtesyOrder, isDiscountOrder, courtesyReferenceAmount } from './mesaOrderLines';
 import { buildStyledInformeExcelHtml, formatSolesExcel } from './informeExcelHtml';
+import { formatOrderPaymentLabel } from './paymentBreakdownDisplay';
 
 const PAYMENT_METHOD_LABELS = {
   efectivo: 'Efectivo',
@@ -240,7 +241,9 @@ export function mapSalesAccountExportRow(account, { formatDate, formatTime } = {
   const o = account?.primary;
   const table = String(o?.table_number || '').trim();
   const isMesa = o?.type === 'dine_in' && table;
-  const payment = PAYMENT_METHOD_LABELS[String(o?.payment_method || 'efectivo')] || o?.payment_method || '—';
+  const payment = account?.paymentSummary && account.paymentSummary !== '—'
+    ? account.paymentSummary
+    : formatOrderPaymentLabel(o, (m) => PAYMENT_METHOD_LABELS[String(m || 'efectivo')] || m || '—');
   const cobroHora = formatTime ? formatTime(account.paidAt) : '';
   const cobroFecha = formatDate ? formatDate(account.paidAt) : '';
   return {

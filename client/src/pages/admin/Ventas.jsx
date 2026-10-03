@@ -22,6 +22,7 @@ import {
   formatSaleNumero,
 } from '../../utils/salesReportExport';
 import { downloadBlobFile, downloadExcelFile } from '../../utils/inventoryCuadreExport';
+import { formatOrderPaymentLabel } from '../../utils/paymentBreakdownDisplay';
 
 function payLabel(method) {
   if (!method) return '';
@@ -58,7 +59,7 @@ function orderReceiptHtml(order, groupedProducts = null) {
         <h2>${docLabel(doc.doc_type)} ${doc.full_number}${titleExtra}</h2>
         <p class="muted">Venta #${order.order_number} · ${new Date(`${order.created_at}Z`).toLocaleString('es-PE')}</p>
         <p><strong>Cliente:</strong> ${order.customer_name || 'PUBLICO GENERAL'}</p>
-        <p><strong>Pago:</strong> ${payLabel(order.payment_method)}</p>
+        <p><strong>Pago:</strong> ${formatOrderPaymentLabel(order, payLabel)}</p>
         <table><tbody>${itemsHtml}</tbody></table>
         <p class="total">Total: S/ ${Number(order.total || 0).toFixed(2)}</p>
       </body>
@@ -130,7 +131,7 @@ function toTemplateRow(order, localName = '-') {
   const numero = parts[1] || String(order.order_number || '').padStart(8, '0');
   const isCancelled = order.status === 'cancelled';
   const isPaid = order.payment_status === 'paid';
-  const paymentLabel = payLabel(order.payment_method);
+  const paymentLabel = formatOrderPaymentLabel(order, payLabel);
   const mesa = order.type === 'dine_in' ? `M${String(order.table_number || '0').padStart(2, '0')}` : '-';
   const requester = order.created_by_user_name || '-';
   return [
@@ -235,6 +236,33 @@ function monthLabelEs(monthKey) {
   return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${y}`;
 }
 
+function normalizeVentasSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Coincide por # de venta, cliente, mesa o nombre de producto (sin tildes, en cualquier parte del texto). */
+function orderMatchesVentasSearch(order, queryRaw) {
+  const raw = String(queryRaw || '').trim();
+  const q = normalizeVentasSearchText(raw);
+  if (!q) return true;
+  if (String(order?.order_number || '').includes(raw)) return true;
+  if (String(order?.sale_number || '').includes(raw)) return true;
+  if (normalizeVentasSearchText(order?.customer_name).includes(q)) return true;
+  if (orderMatchesMesaSearch(order, raw)) return true;
+  const words = q.split(' ');
+  return (order?.items || []).some((it) => {
+    const text = normalizeVentasSearchText(
+      `${it.product_name || it.name || ''} ${it.variant_name || it.modifier_option || ''}`,
+    );
+    return words.every((w) => text.includes(w));
+  });
+}
+
 function sortVentasGroups(groups, sortKey, sortDir) {
   const dir = sortDir === 'asc' ? 1 : -1;
   return [...groups].sort((a, b) => {
@@ -259,7 +287,6 @@ export default function Ventas() {
   const reportUsuario = user?.full_name || user?.username || 'Administrador';
   const showDeliveryUi = useShowDeliveryUi();
   const [orders, setOrders] = useState([]);
-  const [filtered, setFiltered] = useState([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -298,7 +325,6 @@ export default function Ventas() {
         .filter((o) => !isCourtesyOrder(o))
         .map(o => ({ ...o, document: docsByOrder.get(o.id) || null, local_name: local }));
       setOrders(merged);
-      setFiltered(merged);
     } catch (err) {
       console.error(err);
     } finally {
@@ -327,18 +353,11 @@ export default function Ventas() {
   useEffect(() => { load(); }, []);
   useEffect(() => { void loadAdjustments(); }, [loadAdjustments]);
 
-  useEffect(() => {
+  const searchQuery = search.trim();
+
+  /** Filtros sin búsqueda: la búsqueda se aplica por cuenta completa (ver `displayGroups`). */
+  const baseFiltered = useMemo(() => {
     let f = orders;
-    if (search) {
-      const q = search.trim();
-      const qLower = q.toLowerCase();
-      f = f.filter(
-        (o) =>
-          String(o.order_number || '').includes(q) ||
-          (o.customer_name || '').toLowerCase().includes(qLower) ||
-          orderMatchesMesaSearch(o, q),
-      );
-    }
     if (statusFilter !== 'all') f = f.filter(o => o.payment_status === statusFilter);
     if (typeFilter !== 'all') f = f.filter(o => o.type === typeFilter);
     if (waiterFilter !== 'all') {
@@ -349,8 +368,8 @@ export default function Ventas() {
     }
     if (saleTab === 'activas') f = f.filter((o) => o.status !== 'cancelled');
     else if (saleTab === 'anuladas') f = f.filter((o) => o.status === 'cancelled');
-    setFiltered(f);
-  }, [search, statusFilter, typeFilter, waiterFilter, fromDate, toDate, saleTab, orders]);
+    return f;
+  }, [statusFilter, typeFilter, waiterFilter, fromDate, toDate, saleTab, orders]);
 
   useEffect(() => {
     if (!showDeliveryUi && typeFilter === 'delivery') setTypeFilter('all');
@@ -362,16 +381,7 @@ export default function Ventas() {
   /** Para la pestaña IA usamos ventas no anuladas (o el filtro de fechas/mesero aplicado). */
   const aiOrdersSource = useMemo(() => {
     let f = orders.filter((o) => !isCourtesyOrder(o) && o.status !== 'cancelled');
-    if (search) {
-      const q = search.trim();
-      const qLower = q.toLowerCase();
-      f = f.filter(
-        (o) =>
-          String(o.order_number || '').includes(q) ||
-          (o.customer_name || '').toLowerCase().includes(qLower) ||
-          orderMatchesMesaSearch(o, q),
-      );
-    }
+    if (searchQuery) f = f.filter((o) => orderMatchesVentasSearch(o, searchQuery));
     if (statusFilter !== 'all') f = f.filter((o) => o.payment_status === statusFilter);
     if (typeFilter !== 'all') f = f.filter((o) => o.type === typeFilter);
     if (waiterFilter !== 'all') {
@@ -381,7 +391,7 @@ export default function Ventas() {
       f = f.filter((o) => isDateKeyInInclusiveRange(o.updated_at || o.created_at, fromDate, toDate));
     }
     return f;
-  }, [orders, search, statusFilter, typeFilter, waiterFilter, fromDate, toDate]);
+  }, [orders, searchQuery, statusFilter, typeFilter, waiterFilter, fromDate, toDate]);
 
   const aiTotals = useMemo(() => {
     const paidAccounts = summarizePaidSalesAccounts(
@@ -405,9 +415,25 @@ export default function Ventas() {
   }, [sortKey]);
 
   const displayGroups = useMemo(() => {
-    const groups = buildVentasDisplayGroups(filtered, adjustmentRows, { voidedTab: isVoidedTab });
+    let groups = buildVentasDisplayGroups(baseFiltered, adjustmentRows, { voidedTab: isVoidedTab });
+    if (searchQuery) {
+      groups = groups.filter((g) => {
+        const groupOrders = g.orders?.length ? g.orders : [g.primary].filter(Boolean);
+        return groupOrders.some((o) => orderMatchesVentasSearch(o, searchQuery));
+      });
+    }
     return sortVentasGroups(groups, sortKey, sortDir);
-  }, [filtered, adjustmentRows, isVoidedTab, sortKey, sortDir]);
+  }, [baseFiltered, adjustmentRows, isVoidedTab, searchQuery, sortKey, sortDir]);
+
+  const filtered = useMemo(() => {
+    if (!searchQuery) return baseFiltered;
+    const ids = new Set();
+    displayGroups.forEach((g) => {
+      const groupOrders = g.orders?.length ? g.orders : [g.primary].filter(Boolean);
+      groupOrders.forEach((o) => ids.add(o.id));
+    });
+    return baseFiltered.filter((o) => ids.has(o.id));
+  }, [baseFiltered, displayGroups, searchQuery]);
 
   /** Mes en curso venta por venta; meses cerrados comprimidos en un recuadro. */
   const { currentMonthGroups, pastMonths } = useMemo(() => {
@@ -428,7 +454,19 @@ export default function Ventas() {
       .map(([key, groups]) => ({ key, label: monthLabelEs(key), groups }));
     return { currentMonthGroups: current, pastMonths: months };
   }, [displayGroups]);
-  const [openMonthKey, setOpenMonthKey] = useState('');
+  const [openMonthKeys, setOpenMonthKeys] = useState(() => new Set());
+  const pastMonthKeysSig = pastMonths.map((m) => m.key).join('|');
+  useEffect(() => {
+    setOpenMonthKeys(searchQuery && pastMonthKeysSig ? new Set(pastMonthKeysSig.split('|')) : new Set());
+  }, [searchQuery, pastMonthKeysSig]);
+  const toggleMonthOpen = useCallback((key) => {
+    setOpenMonthKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
   const paidSalesAccounts = useMemo(
     () => summarizePaidSalesAccounts(filtered.filter((o) => o.payment_status === 'paid' && !isCourtesyOrder(o))),
     [filtered],
@@ -795,7 +833,7 @@ export default function Ventas() {
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <div className="relative flex-1 min-w-[220px]">
             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)]" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por #, mesa (ej. 20 o M20) o cliente..." className="input-field pl-9" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por producto, #, mesa (ej. 20 o M20) o cliente..." className="input-field pl-9" />
           </div>
           {!isVoidedTab ? (
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-field w-auto min-w-[160px] cursor-pointer">
@@ -864,7 +902,7 @@ export default function Ventas() {
         {pastMonths.length ? (
           <div className="mt-4 space-y-3">
             {pastMonths.map((month) => {
-              const open = openMonthKey === month.key;
+              const open = openMonthKeys.has(month.key);
               return (
                 <div
                   key={month.key}
@@ -879,7 +917,7 @@ export default function Ventas() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setOpenMonthKey(open ? '' : month.key)}
+                      onClick={() => toggleMonthOpen(month.key)}
                       className={open ? 'btn-secondary text-sm px-4 py-2' : 'btn-primary text-sm px-4 py-2'}
                     >
                       {open ? 'Ocultar' : 'Inspeccionar'}
@@ -999,7 +1037,14 @@ export default function Ventas() {
               </p>
             ) : null}
             <div className="grid grid-cols-2 gap-3 text-sm border-t border-[color:var(--ui-border)] pt-3">
-              <div><p className="ui-text-muted">Metodo de Pago</p><p className="font-medium">{payLabel(selected.payment_method)}</p></div>
+              <div>
+                <p className="ui-text-muted">Metodo de Pago</p>
+                <p className="font-medium break-words">
+                  {selectedGroup.paymentSummary && selectedGroup.paymentSummary !== '—'
+                    ? selectedGroup.paymentSummary
+                    : formatOrderPaymentLabel(selected, payLabel)}
+                </p>
+              </div>
               <div>
                 <p className="ui-text-muted">Comprobante</p>
                 <p className="font-medium">{(() => { const doc = getAccountDocument(selectedGroup); return `${docLabel(doc.doc_type)} - ${doc.full_number}`; })()}</p>

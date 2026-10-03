@@ -3,6 +3,19 @@
 import { toLocalDateKey, parseApiDate, APP_DISPLAY_TIMEZONE } from './api';
 import { UI_BADGE } from './uiBadges';
 import { getTableDisplayLabel } from './mesaMapTableVisual';
+import { addOrderPaymentParts, formatPaymentPartsSummary } from './paymentBreakdownDisplay';
+
+/** Resumen de pago de una cuenta; si algún pedido fue multimétodo lo indica con los montos exactos por método. */
+function buildAccountPaymentSummary(salesOrders, courtesyCount = 0) {
+  const parts = new Map();
+  let multi = false;
+  for (const o of salesOrders || []) {
+    if (addOrderPaymentParts(parts, o)) multi = true;
+  }
+  const text = formatPaymentPartsSummary(parts, { multi });
+  if (!courtesyCount) return text;
+  return [text, `Cortesía × ${courtesyCount}`].filter(Boolean).join(' · ');
+}
 
 /**
  * Identidad de línea para mesa / precuenta / cobro: mismo producto, variante, notas y precio unitario → se agrupan cantidades.
@@ -491,22 +504,7 @@ export function buildSalesDisplayGroups(orders = [], { groupOpenMesaByTableOnly 
       .filter((o) => String(o.payment_status || 'pending') === 'pending')
       .reduce((s, o) => s + Number(o.total || 0), 0);
 
-    const payParts = new Map();
-    for (const o of salesOrders) {
-      const method = String(o.payment_method || 'efectivo');
-      payParts.set(method, (payParts.get(method) || 0) + Number(o.total || 0));
-    }
-    if (courtesyOrders.length) {
-      payParts.set('cortesia', courtesyOrders.length);
-    }
-    const paymentSummary = [...payParts.entries()]
-      .map(([method, amount]) => {
-        if (method === 'cortesia') return `Cortesía × ${amount}`;
-        const labels = { efectivo: 'Efectivo', yape: 'Yape', plin: 'Plin', tarjeta: 'Tarjeta', online: 'Online' };
-        const label = labels[method] || method;
-        return `${label} (S/): ${Number(amount).toFixed(2)}`;
-      })
-      .join(' · ');
+    const paymentSummary = buildAccountPaymentSummary(salesOrders, courtesyOrders.length);
 
     const latestAt = sorted[0]?.created_at;
     const earliestAt = sorted[sorted.length - 1]?.created_at;
@@ -711,20 +709,7 @@ export function buildPaidSalesAccountDisplayGroups(orders = [], adjustmentRows =
     const total = salesOrders.reduce((s, o) => s + Number(o.total || 0), 0);
     const paidAt = primary?.paid_at || primary?.updated_at || primary?.created_at;
 
-    const payParts = new Map();
-    for (const o of salesOrders) {
-      const method = String(o.payment_method || 'efectivo');
-      payParts.set(method, (payParts.get(method) || 0) + Number(o.total || 0));
-    }
-    if (courtesyOrders.length) payParts.set('cortesia', courtesyOrders.length);
-    const paymentSummary = [...payParts.entries()]
-      .map(([method, amount]) => {
-        if (method === 'cortesia') return `Cortesía × ${amount}`;
-        const labels = { efectivo: 'Efectivo', yape: 'Yape', plin: 'Plin', tarjeta: 'Tarjeta', online: 'Online' };
-        const label = labels[method] || method;
-        return `${label} (S/): ${Number(amount).toFixed(2)}`;
-      })
-      .join(' · ');
+    const paymentSummary = buildAccountPaymentSummary(salesOrders, courtesyOrders.length);
 
     const extraRows = sorted.flatMap((o) => adjustmentByOrderId.get(String(o.id)) || []);
     const observations = collectSalesAccountObservations(sorted, extraRows);

@@ -84,12 +84,93 @@ function emptyMultiPaymentAmounts() {
   return { efectivo: '', yape: '', plin: '', tarjeta: '', online: '' };
 }
 
-/** Verde si cuadra, naranja al activar (suma 0), rojo si hay montos pero no cuadran. */
-function multiPaySumStatusClass(sum, total) {
-  const s = roundMoneySoles(sum);
+const EMPTY_DENOMINATIONS = {
+  b200: '', b100: '', b50: '', b20: '', b10: '', m5: '', m2: '', m1: '', c50: '', c20: '', c10: '',
+};
+
+/** Borrador del arqueo por caja: permite cobrar a un cliente a mitad del cierre sin perder el conteo. */
+function cashCloseDraftKey(registerId) {
+  return registerId ? `rf_cash_close_draft_${registerId}` : '';
+}
+
+function readCashCloseDraft(registerId) {
+  const key = cashCloseDraftKey(registerId);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeCashCloseDraft(registerId, draft) {
+  const key = cashCloseDraftKey(registerId);
+  if (!key) return false;
+  try {
+    localStorage.setItem(key, JSON.stringify(draft));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function clearCashCloseDraft(registerId) {
+  const key = cashCloseDraftKey(registerId);
+  if (!key) return;
+  try {
+    localStorage.removeItem(key);
+  } catch (_) {
+    /* sin almacenamiento */
+  }
+}
+
+function nonCashCheckLabel(value, label) {
+  if (value === 'tarjeta') return `${label} (POS)`;
+  if (value === 'yape' || value === 'plin') return `${label} (QR)`;
+  return label;
+}
+
+/**
+ * Multimétodo con vuelto: Yape/Plin/Tarjeta/Online se cobran exactos y no pueden superar el total;
+ * el efectivo puede exceder el saldo restante y la diferencia se entrega como vuelto.
+ * `breakdown` lleva el efectivo realmente aplicado a la venta (lo que queda en caja).
+ */
+function resolveMultiPayment(amounts, options, total) {
   const t = roundMoneySoles(total);
-  if (Math.abs(s - t) <= 0.05) return 'text-[color:var(--ui-success)]';
-  if (s <= 0) return 'text-[color:var(--ui-warning)]';
+  const given = {};
+  for (const opt of options || []) {
+    const v = roundMoneySoles(parseFloat(amounts?.[opt.value]));
+    if (Number.isFinite(v) && v > 0) given[opt.value] = v;
+  }
+  const sum = roundMoneySoles(Object.values(given).reduce((s, x) => s + x, 0));
+  const cashGiven = given.efectivo || 0;
+  const nonCash = roundMoneySoles(sum - cashGiven);
+  const cashApplied = roundMoneySoles(Math.max(0, Math.min(cashGiven, t - nonCash)));
+  const change = roundMoneySoles(Math.max(0, cashGiven - cashApplied));
+  const missing = roundMoneySoles(Math.max(0, t - sum));
+  const breakdown = { ...given };
+  if (cashGiven > 0) {
+    if (cashApplied > 0) breakdown.efectivo = cashApplied;
+    else delete breakdown.efectivo;
+  }
+  let error = '';
+  if (Object.keys(given).length < 2) {
+    error = 'En multimétodo indica al menos dos métodos con monto mayor a cero.';
+  } else if (nonCash - t > 0.05) {
+    error = `Los pagos sin efectivo (${formatCurrency(nonCash)}) superan el total (${formatCurrency(t)}). Solo el efectivo puede dar vuelto.`;
+  } else if (missing > 0.05) {
+    error = `Monto insuficiente. Falta ${formatCurrency(missing)}`;
+  } else if (Object.keys(breakdown).length < 2) {
+    error = 'Los otros métodos ya cubren el total: quite el efectivo o use un solo método.';
+  }
+  return { given, sum, cashGiven, nonCash, cashApplied, change, missing, breakdown, error, valid: !error };
+}
+
+/** Verde si cuadra, naranja al activar (sin montos), rojo si hay montos pero no cuadran. */
+function multiPayStatusClass(state) {
+  if (state.valid) return 'text-[color:var(--ui-success)]';
+  if (state.sum <= 0) return 'text-[color:var(--ui-warning)]';
   return 'text-[color:var(--ui-danger)]';
 }
 
@@ -794,6 +875,11 @@ export default function POSPanel() {
     c20: '',
     c10: '',
   });
+  /** Monto verificado en POS / QR por método no efectivo (tarjeta, yape, plin, online). */
+  const [nonCashCounted, setNonCashCounted] = useState({});
+  const [closeDraftSavedAt, setCloseDraftSavedAt] = useState('');
+  const closeFieldRefs = useRef({});
+  const closeAutoFocusDoneRef = useRef(false);
   const [registerHistory, setRegisterHistory] = useState([]);
   const [billingStatus, setBillingStatus] = useState({
     billing_enabled: 0,
@@ -1598,7 +1684,11 @@ export default function POSPanel() {
       setRegister(reg);
       setRegisterStatus({ is_open: true, register: { user_id: user?.id, cajero_name: user?.full_name, opened_at: reg.opened_at } });
       setOpeningAmount('');
-      toast.success(`Caja abierta con ${formatCurrency(amount)}`);
+      toast.success(
+        reg?.already_open
+          ? 'Tu caja ya estaba abierta: ingresaste al turno en curso'
+          : `Caja abierta con ${formatCurrency(amount)}`,
+      );
       await loadData();
     } catch (err) { toast.error(err.message); }
     finally { setWorkAreaLoading(false); }
@@ -1665,21 +1755,13 @@ export default function POSPanel() {
     prepareCloseGenRef.current = gen;
     const now = new Date();
     setClosingAtPreview(now);
-    setClosingAmount('');
-    setClosingNotes('');
-    setDenominations({
-      b200: '',
-      b100: '',
-      b50: '',
-      b20: '',
-      b10: '',
-      m5: '',
-      m2: '',
-      m1: '',
-      c50: '',
-      c20: '',
-      c10: '',
-    });
+    const draft = readCashCloseDraft(register?.id);
+    setClosingAmount(draft?.closingAmount ?? '');
+    setClosingNotes(draft?.closingNotes ?? '');
+    setDenominations({ ...EMPTY_DENOMINATIONS, ...(draft?.denominations || {}) });
+    setNonCashCounted(draft?.nonCashCounted || {});
+    setCloseDraftSavedAt(draft?.savedAt || '');
+    closeAutoFocusDoneRef.current = false;
     setPreparingCloseModal(true);
     setShowCloseModal(true);
     try {
@@ -1730,6 +1812,60 @@ export default function POSPanel() {
     setClosingAmount(total.toFixed(2));
   };
 
+  const closeFieldOrder = () => [
+    ...denomDefs.map((d) => d.key),
+    ...registerPaymentRows.filter((r) => r.value !== 'efectivo').map((r) => `nc_${r.value}`),
+    'closingNotes',
+  ];
+
+  const focusCloseField = (key) => {
+    const el = closeFieldRefs.current[key];
+    if (!el) return false;
+    el.focus();
+    if (el.tagName === 'INPUT') el.select();
+    return true;
+  };
+
+  /** Enter: confirma la cantidad (vacío = 0) y salta a la siguiente denominación, de mayor a menor. */
+  const handleCloseFieldEnter = (e, key) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (denomDefs.some((d) => d.key === key) && denominations[key] === '') updateDenomination(key, '0');
+    const order = closeFieldOrder();
+    for (let i = order.indexOf(key) + 1; i < order.length; i += 1) {
+      if (focusCloseField(order[i])) return;
+    }
+  };
+
+  const saveCloseDraft = () => {
+    const savedAt = new Date().toISOString();
+    const ok = writeCashCloseDraft(register?.id, {
+      denominations,
+      closingAmount,
+      closingNotes,
+      nonCashCounted,
+      savedAt,
+    });
+    if (!ok) {
+      toast.error('No se pudo guardar el borrador en este equipo');
+      return;
+    }
+    setCloseDraftSavedAt(savedAt);
+    toast.success('Borrador de cierre guardado. Puede seguir cobrando y retomarlo con «Cerrar caja».');
+    dismissCloseModal();
+  };
+
+  const discardCloseDraft = () => {
+    clearCashCloseDraft(register?.id);
+    setCloseDraftSavedAt('');
+    setDenominations({ ...EMPTY_DENOMINATIONS });
+    setClosingAmount('');
+    setClosingNotes('');
+    setNonCashCounted({});
+    closeAutoFocusDoneRef.current = false;
+    toast.success('Borrador descartado');
+  };
+
   const closeRegister = async () => {
     if (closingRegisterBusy) return;
     if (closingAmount === '') return toast.error('Ingresa el efectivo contado para cerrar caja');
@@ -1746,10 +1882,13 @@ export default function POSPanel() {
           counted_cash: amount,
           difference,
           denominations,
+          non_cash_counted: nonCashCounted,
           observations: closingNotes,
         },
         ...posRegisterBody(),
       }, { skipOffline: true, _retryContext: 'Cierre de caja:' });
+      clearCashCloseDraft(register?.id);
+      setCloseDraftSavedAt('');
       toast.success('Caja cerrada — Informe guardado');
       setShowCloseModal(false);
       setClosingAtPreview(null);
@@ -2136,22 +2275,10 @@ export default function POSPanel() {
     let checkoutPaymentBreakdown = null;
     if (!chargeToAccount && !isCourtesyCheckout) {
       if (multiPayEnabled) {
-        const o = {};
-        for (const opt of multiPaymentOptions) {
-          const raw = multiPayAmounts[opt.value];
-          if (raw === undefined || raw === '' || String(raw).trim() === '') continue;
-          const v = roundMoneySoles(parseFloat(raw));
-          if (v > 0) o[opt.value] = v;
-        }
-        if (Object.keys(o).length < 2) {
-          return toast.error('En multimétodo indica al menos dos métodos con monto mayor a cero.');
-        }
-        const sum = roundMoneySoles(Object.values(o).reduce((s, x) => s + x, 0));
-        if (Math.abs(sum - payableTotal) > 0.05) {
-          return toast.error(`La suma (${formatCurrency(sum)}) debe coincidir con el total (${formatCurrency(payableTotal)})`);
-        }
-        checkoutPaymentBreakdown = o;
-        checkoutPaymentMethod = dominantPaymentFromBreakdown(o);
+        const mp = resolveMultiPayment(multiPayAmounts, multiPaymentOptions, payableTotal);
+        if (!mp.valid) return toast.error(mp.error);
+        checkoutPaymentBreakdown = mp.breakdown;
+        checkoutPaymentMethod = dominantPaymentFromBreakdown(mp.breakdown);
       } else if (paymentMethod === 'efectivo' && receivedAmount < payableTotal) {
         return toast.error(`Monto insuficiente. Falta ${formatCurrency(payableTotal - receivedAmount)}`);
       }
@@ -3339,6 +3466,40 @@ export default function POSPanel() {
     return rows;
   }, [register, paymentOptions, registerLiveSales]);
 
+  /** Verificación de cobros no efectivo (POS de tarjeta / QR): vacío = aún sin verificar (se asume el del sistema). */
+  const nonCashCheckRows = registerPaymentRows
+    .filter((row) => row.value !== 'efectivo')
+    .map((row) => {
+      const raw = nonCashCounted[row.value];
+      const expected = roundMoneySoles(row.amount);
+      const verified = raw !== undefined && raw !== '';
+      const counted = verified ? roundMoneySoles(Math.max(0, parseFloat(raw) || 0)) : expected;
+      return {
+        ...row,
+        checkLabel: nonCashCheckLabel(row.value, row.label),
+        expected,
+        counted,
+        verified,
+        difference: verified ? roundMoneySoles(counted - expected) : 0,
+      };
+    });
+  const nonCashExpectedTotal = roundMoneySoles(nonCashCheckRows.reduce((s, r) => s + r.expected, 0));
+  const nonCashCountedTotal = roundMoneySoles(nonCashCheckRows.reduce((s, r) => s + r.counted, 0));
+  const nonCashPending = nonCashCheckRows.filter((r) => !r.verified && r.expected > 0);
+  const grandExpected = roundMoneySoles(expectedRounded + nonCashExpectedTotal);
+  const grandCounted = roundMoneySoles(closingAmt + nonCashCountedTotal);
+  const grandDifference = closingAmount === '' ? 0 : roundMoneySoles(grandCounted - grandExpected);
+
+  useEffect(() => {
+    if (!showCloseModal || preparingCloseModal || !closingData || closeAutoFocusDoneRef.current) return undefined;
+    const t = setTimeout(() => {
+      const first = denomDefs.find((d) => denominations[d.key] === '')?.key || denomDefs[0].key;
+      if (focusCloseField(first)) closeAutoFocusDoneRef.current = true;
+    }, 120);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCloseModal, preparingCloseModal, closingData]);
+
   const paymentRowAmountClass = (value) => {
     switch (value) {
       case 'efectivo':
@@ -3480,15 +3641,9 @@ export default function POSPanel() {
       ? Math.min(discountAmountBase, discountAmountBase * (discountValue / 100))
       : Math.min(discountAmountBase, discountValue));
   const payableTotal = Math.max(0, selectionBaseTotal - discountPreview);
-  const multiPaySumProof = useMemo(
-    () =>
-      roundMoneySoles(
-        multiPaymentOptions.reduce((s, o) => {
-          const v = parseFloat(multiPayAmounts[o.value] || '0');
-          return s + (Number.isFinite(v) && v > 0 ? v : 0);
-        }, 0)
-      ),
-    [multiPaymentOptions, multiPayAmounts]
+  const multiPayState = useMemo(
+    () => resolveMultiPayment(multiPayAmounts, multiPaymentOptions, payableTotal),
+    [multiPaymentOptions, multiPayAmounts, payableTotal]
   );
   const billLineItemsGrouped = useMemo(() => {
     if (!selectedTable) return [];
@@ -4985,8 +5140,8 @@ export default function POSPanel() {
                               <div className="grid grid-cols-[1.75rem_2rem_minmax(0,1fr)_5.75rem_3.75rem_3.75rem] gap-1.5 text-[10px] sm:text-xs font-semibold text-[var(--ui-muted)] border-b border-[color:var(--ui-border)] pb-2 shrink-0 items-center">
                                 <span className="sr-only">Incluir</span>
                                 <span className="text-center">Ped.</span>
-                                <span>Producto</span>
-                                <span className="text-center tabular-nums">Cant.</span>
+                                <span className="col-start-3 col-end-7 sm:col-auto">Producto</span>
+                                <span className="col-start-4 sm:col-auto text-center tabular-nums">Cant.</span>
                                 <span className="text-right tabular-nums">P. unit.</span>
                                 <span className="text-right tabular-nums">Total</span>
                               </div>
@@ -5043,11 +5198,11 @@ export default function POSPanel() {
                                         <span className="text-center text-[10px] font-bold text-[var(--ui-accent-muted)] tabular-nums">
                                           #{line.orderNumber}
                                         </span>
-                                        <span className="min-w-0 break-words leading-snug">{line.name}</span>
+                                        <span className="col-start-3 col-end-7 sm:col-auto min-w-0 break-words leading-snug">{line.name}</span>
                                         {showQtyStepper ? (
                                           <div
                                             onClick={(e) => e.stopPropagation()}
-                                            className="inline-flex items-center justify-center gap-0.5 h-6 mx-auto"
+                                            className="col-start-4 sm:col-auto inline-flex items-center justify-center gap-0.5 h-6 mx-auto"
                                           >
                                             <button
                                               type="button"
@@ -5072,7 +5227,7 @@ export default function POSPanel() {
                                             </button>
                                           </div>
                                         ) : (
-                                          <span className="text-center tabular-nums text-[var(--ui-body-text)]">{line.qty}</span>
+                                          <span className="col-start-4 sm:col-auto text-center tabular-nums text-[var(--ui-body-text)]">{line.qty}</span>
                                         )}
                                         <span className="text-right tabular-nums text-[#D1D5DB]">{formatCurrency(line.unit)}</span>
                                         <span className="text-right tabular-nums font-medium text-[var(--ui-body-text)]">{formatCurrency(lineTotal)}</span>
@@ -5389,9 +5544,17 @@ export default function POSPanel() {
                               />
                             </div>
                           ))}
-                          <p className={`text-xs font-extrabold ${multiPaySumStatusClass(multiPaySumProof, payableTotal)}`}>
-                            Suma: {formatCurrency(multiPaySumProof)} · Debe ser {formatCurrency(payableTotal)}
+                          <p className={`text-xs font-extrabold ${multiPayStatusClass(multiPayState)}`}>
+                            Suma: {formatCurrency(multiPayState.sum)} · Total {formatCurrency(payableTotal)}
                           </p>
+                          {multiPayState.valid && multiPayState.change > 0 ? (
+                            <p className="text-xs font-semibold text-[var(--ui-body-text)]">
+                              Efectivo recibido {formatCurrency(multiPayState.cashGiven)} · aplicado a la venta {formatCurrency(multiPayState.cashApplied)} · vuelto {formatCurrency(multiPayState.change)}
+                            </p>
+                          ) : null}
+                          {!multiPayState.valid && multiPayState.sum > 0 ? (
+                            <p className="text-xs font-semibold text-[color:var(--ui-danger)]">{multiPayState.error}</p>
+                          ) : null}
                         </div>
                       )}
                     </div>
@@ -5500,9 +5663,11 @@ export default function POSPanel() {
                       <div className="flex flex-col justify-center py-0.5 bg-transparent">
                         <p className="text-xs text-[var(--ui-muted)]">Vuelto</p>
                         <p className="text-lg font-extrabold text-[color:var(--ui-success)] tabular-nums">
-                          {!multiPayEnabled && paymentMethod === 'efectivo'
-                            ? formatCurrency(Math.max(0, receivedAmount - payableTotal))
-                            : formatCurrency(0)}
+                          {multiPayEnabled
+                            ? formatCurrency(multiPayState.valid ? multiPayState.change : 0)
+                            : paymentMethod === 'efectivo'
+                              ? formatCurrency(Math.max(0, receivedAmount - payableTotal))
+                              : formatCurrency(0)}
                         </p>
                         {!multiPayEnabled && paymentMethod === 'efectivo' && receivedAmount < payableTotal && (
                           <p className="text-sm font-extrabold text-[color:var(--ui-danger)]">Falta: {formatCurrency(payableTotal - receivedAmount)}</p>
@@ -5781,10 +5946,41 @@ export default function POSPanel() {
                 ))}
               <div className="row bold"><span>EFECTIVO CONTADO</span><span>{formatCurrency(closingAmt)}</span></div>
               <div className={`row bold ${difference >= 0 ? 'diff-pos' : 'diff-neg'}`}><span>DIFERENCIA</span><span>{difference > 0 ? '+' : ''}{formatCurrency(difference)}</span></div>
+              {nonCashCheckRows.length > 0 && (
+                <>
+                  <div className="sep"></div>
+                  <div className="row bold"><span>VERIFICACIÓN POS / QR</span><span></span></div>
+                  {nonCashCheckRows.map((r) => (
+                    <div key={r.value} className="row">
+                      <span>{r.checkLabel}: sist. {formatCurrency(r.expected)}</span>
+                      <span>
+                        {r.verified
+                          ? `${formatCurrency(r.counted)} (${r.difference > 0 ? '+' : ''}${formatCurrency(r.difference)})`
+                          : 'sin verificar'}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="sep"></div>
+                  <div className="row bold"><span>TOTAL ESPERADO</span><span>{formatCurrency(grandExpected)}</span></div>
+                  <div className="row bold"><span>TOTAL CONTADO</span><span>{formatCurrency(grandCounted)}</span></div>
+                  <div className={`row bold ${grandDifference >= 0 ? 'diff-pos' : 'diff-neg'}`}><span>DIFERENCIA TOTAL</span><span>{grandDifference > 0 ? '+' : ''}{formatCurrency(grandDifference)}</span></div>
+                </>
+              )}
               {closingNotes && <div className="row"><span>OBS:</span><span>{closingNotes}</span></div>}
             </div>
 
             <div className="mt-4 space-y-4">
+              {closeDraftSavedAt ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-sm">
+                  <span className="text-[var(--ui-body-text)]">
+                    Borrador recuperado ({new Date(closeDraftSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).
+                    Los totales del sistema ya incluyen las ventas hechas después; solo ajuste el billete o moneda que cambió.
+                  </span>
+                  <button type="button" onClick={discardCloseDraft} className="text-xs font-semibold text-red-600 hover:underline">
+                    Descartar borrador
+                  </button>
+                </div>
+              ) : null}
               <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
                 <h3 className="font-semibold text-[var(--ui-body-text)] mb-3 flex items-center gap-2"><MdAccountBalanceWallet className="text-[var(--ui-accent)]" /> Resumen de ventas (métodos activos)</h3>
                 <div className={`grid gap-3 ${registerPaymentRows.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
@@ -5804,18 +6000,25 @@ export default function POSPanel() {
               <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
                 <h3 className="font-semibold text-[var(--ui-body-text)] mb-1">Conteo de efectivo</h3>
                 <div className="mb-3">
-                  <p className="text-xs font-semibold text-[var(--ui-muted)] mb-2">Arqueo por denominación (soles)</p>
+                  <p className="text-xs font-semibold text-[var(--ui-muted)] mb-2">
+                    Arqueo por denominación (soles) — escriba la cantidad y presione Enter para pasar a la siguiente
+                  </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                     {denomDefs.map(d => (
-                      <div key={d.key} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-2">
+                      <div key={d.key} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-2 focus-within:border-[color:var(--ui-accent)] focus-within:ring-2 focus-within:ring-[color:var(--ui-accent)]/25">
                         <label className="block text-xs text-[var(--ui-muted)] mb-1">{d.label}</label>
                         <div className="flex items-center gap-2">
                           <input
+                            ref={(el) => { closeFieldRefs.current[d.key] = el; }}
                             type="number"
                             min="0"
                             step="1"
+                            inputMode="numeric"
+                            enterKeyHint="next"
                             value={denominations[d.key]}
                             onChange={e => updateDenomination(d.key, e.target.value)}
+                            onKeyDown={(e) => handleCloseFieldEnter(e, d.key)}
+                            onFocus={(e) => e.target.select()}
                             className="input-field py-1.5 text-sm"
                             placeholder="0"
                           />
@@ -5894,9 +6097,98 @@ export default function POSPanel() {
                 )}
               </div>
 
+              {nonCashCheckRows.length > 0 && (
+                <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
+                  <h3 className="font-semibold text-[var(--ui-body-text)] mb-1">Otros medios (POS / QR)</h3>
+                  <p className="text-xs text-[var(--ui-muted)] mb-3">
+                    Escriba lo que marca el POS de tarjetas y lo recibido por QR (Yape, Plin…) para compararlo con el sistema.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {nonCashCheckRows.map((r) => (
+                      <div key={r.value} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-2 focus-within:border-[color:var(--ui-accent)] focus-within:ring-2 focus-within:ring-[color:var(--ui-accent)]/25">
+                        <div className="flex items-baseline justify-between gap-2 mb-1">
+                          <label className="text-xs font-medium text-[var(--ui-body-text)]">{r.checkLabel}</label>
+                          <span className="text-[11px] text-[var(--ui-muted)] tabular-nums">Sistema {formatCurrency(r.expected)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-xs">S/</span>
+                            <input
+                              ref={(el) => { closeFieldRefs.current[`nc_${r.value}`] = el; }}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              inputMode="decimal"
+                              enterKeyHint="next"
+                              value={nonCashCounted[r.value] ?? ''}
+                              onChange={(e) => setNonCashCounted((prev) => ({ ...prev, [r.value]: e.target.value }))}
+                              onKeyDown={(e) => handleCloseFieldEnter(e, `nc_${r.value}`)}
+                              onFocus={(e) => e.target.select()}
+                              className="input-field py-1.5 pl-8 text-sm"
+                              placeholder={r.expected.toFixed(2)}
+                            />
+                          </div>
+                          <span className={`text-xs font-semibold min-w-20 text-right tabular-nums ${
+                            !r.verified ? 'text-[var(--ui-muted)]'
+                              : r.difference === 0 ? 'text-emerald-600'
+                                : r.difference > 0 ? 'text-sky-600' : 'text-red-600'
+                          }`}>
+                            {!r.verified ? 'Sin verificar'
+                              : r.difference === 0 ? 'Cuadra'
+                                : `${r.difference > 0 ? '+' : ''}${formatCurrency(r.difference)}`}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+                    <div className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+                      <p className="text-xs text-[var(--ui-muted)]">Total esperado</p>
+                      <p className="font-bold text-lg tabular-nums text-[var(--ui-body-text)]">{formatCurrency(grandExpected)}</p>
+                      <p className="text-[10px] text-[var(--ui-muted)] leading-snug">
+                        Efectivo {formatCurrency(expectedRounded)} + POS/QR {formatCurrency(nonCashExpectedTotal)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+                      <p className="text-xs text-[var(--ui-muted)]">Total contado</p>
+                      <p className="font-bold text-lg tabular-nums text-[var(--ui-body-text)]">{formatCurrency(grandCounted)}</p>
+                      <p className="text-[10px] text-[var(--ui-muted)] leading-snug">
+                        Efectivo {formatCurrency(closingAmt)} + POS/QR {formatCurrency(nonCashCountedTotal)}
+                      </p>
+                    </div>
+                    <div className={`rounded-lg p-3 border ${
+                      closingAmount === '' ? 'border-[color:var(--ui-border)] bg-[var(--ui-surface)]'
+                        : grandDifference === 0 ? 'bg-emerald-500/10 border-emerald-500/50'
+                          : grandDifference > 0 ? 'bg-sky-500/10 border-sky-500/40' : 'bg-red-500/10 border-red-500/40'
+                    }`}>
+                      <p className="text-xs text-[var(--ui-muted)]">Diferencia total</p>
+                      <p className={`font-bold text-lg tabular-nums ${
+                        closingAmount === '' ? 'text-[var(--ui-muted)]'
+                          : grandDifference === 0 ? 'text-emerald-600'
+                            : grandDifference > 0 ? 'text-sky-600' : 'text-red-600'
+                      }`}>
+                        {closingAmount === '' ? '—' : `${grandDifference > 0 ? '+' : ''}${formatCurrency(grandDifference)}`}
+                      </p>
+                      <p className="text-[10px] text-[var(--ui-muted)] leading-snug">
+                        {closingAmount === '' ? 'Falta contar el efectivo'
+                          : grandDifference === 0 ? 'Todo cuadra'
+                            : grandDifference > 0 ? 'Sobrante' : 'Faltante'}
+                      </p>
+                    </div>
+                  </div>
+                  {nonCashPending.length > 0 && (
+                    <p className="text-[11px] text-[var(--ui-muted)] mt-2">
+                      Sin verificar: {nonCashPending.map((r) => r.checkLabel).join(', ')} — se toma el monto del sistema.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-[var(--ui-muted)] mb-1">Observaciones</label>
                 <textarea
+                  ref={(el) => { closeFieldRefs.current.closingNotes = el; }}
                   value={closingNotes}
                   onChange={e => setClosingNotes(e.target.value)}
                   className="input-field"
@@ -5914,6 +6206,15 @@ export default function POSPanel() {
                 className="btn-secondary flex-1 min-w-[120px] disabled:opacity-50"
               >
                 Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={saveCloseDraft}
+                disabled={closingRegisterBusy}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm btn-secondary min-w-[160px] disabled:opacity-50"
+                title="Guarda el conteo para cobrar a un cliente y retomar el cierre después"
+              >
+                <MdSave /> Guardar borrador
               </button>
               <button
                 type="button"

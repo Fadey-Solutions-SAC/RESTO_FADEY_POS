@@ -31,6 +31,7 @@ const {
 } = require('../utils/salesAccountGrouping');
 const { sendCashCloseNotification, getCashCloseRecipient } = require('../services/cashCloseNotifyService');
 const { getOrderChargeBase } = require('../utils/orderChargeBase');
+const { getOpenRegisterForUser } = require('../utils/openCashRegister');
 
 const router = express.Router();
 
@@ -357,6 +358,24 @@ function getOpenRegister(userId) {
   return queryOne('SELECT * FROM cash_registers WHERE user_id = ? AND closed_at IS NULL', [userId]);
 }
 
+/**
+ * Multimétodo con vuelto: si el desglose excede el total, el excedente se descuenta del efectivo
+ * (vuelto entregado). Los métodos que no son efectivo no pueden superar el total.
+ */
+function applyCashChangeToBreakdown(breakdown, total) {
+  const t = round2(total);
+  const sum = round2(Object.values(breakdown).reduce((acc, v) => acc + round2(Number(v) || 0), 0));
+  const excess = round2(sum - t);
+  if (excess <= 0.05) return;
+  const cash = round2(Number(breakdown.efectivo) || 0);
+  if (cash <= 0 || excess - cash > 0.05) {
+    throw new Error('Los pagos sin efectivo superan el total a cobrar. Solo el efectivo puede dar vuelto.');
+  }
+  const applied = round2(cash - excess);
+  if (applied > 0) breakdown.efectivo = applied;
+  else delete breakdown.efectivo;
+}
+
 function pickRegisterId(req) {
   const q = String(req.query?.register_id || '').trim();
   if (q) return q;
@@ -365,14 +384,15 @@ function pickRegisterId(req) {
 }
 
 /**
- * Cajero: solo su turno abierto (no acepta register_id de la URL).
+ * Cajero: su turno abierto o el de su caja asignada aunque lo haya abierto otro usuario
+ * (no acepta register_id de la URL).
  * Admin: si envía register_id, opera esa sesión (cualquier usuario); si no, solo la suya propia.
  */
 function resolvePosRegister(req) {
   const user = req.user;
   const role = String(user?.role || '').toLowerCase();
   if (role === 'cajero') {
-    return getOpenRegister(user.id) || null;
+    return getOpenRegisterForUser(user);
   }
   if (role === 'admin') {
     const rid = pickRegisterId(req);
@@ -468,8 +488,13 @@ router.post('/open-register', authenticateToken, requireRole('admin', 'cajero'),
   }
 
   if (role !== 'admin') {
-    const existing = getOpenRegister(req.user.id);
-    if (existing) return res.status(400).json({ error: 'Ya tienes una caja abierta', register: existing });
+    const existing = getOpenRegisterForUser({ id: req.user.id, role });
+    if (existing) {
+      if (String(existing.user_id) !== String(req.user.id)) {
+        return res.json({ ...existing, already_open: true });
+      }
+      return res.status(400).json({ error: 'Ya tienes una caja abierta', register: existing });
+    }
   } else {
     const existing = getOpenRegister(req.user.id);
     if (existing) {
@@ -556,6 +581,26 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
   const { computeRegisterBusinessDateKey } = require('../utils/registerBusinessDate');
   const businessDate = computeRegisterBusinessDateKey(register.opened_at, closedAtIso, queryOne);
   const denominationSummary = arqueo?.denominations || {};
+  const nonCashExpectedBy = {
+    yape: Number(sales.total_yape || 0),
+    plin: Number(sales.total_plin || 0),
+    tarjeta: Number(sales.total_card || 0),
+    online: Number(sales.total_online || 0),
+  };
+  const nonCashCounted = {};
+  for (const [method, raw] of Object.entries(arqueo?.non_cash_counted || {})) {
+    if (!(method in nonCashExpectedBy) || raw === '' || raw == null || Number.isNaN(Number(raw))) continue;
+    const counted = roundMoneySoles(Math.max(0, Number(raw)));
+    const expected = roundMoneySoles(nonCashExpectedBy[method]);
+    nonCashCounted[method] = { expected, counted, difference: roundMoneySoles(counted - expected) };
+  }
+  const nonCashExpectedTotal = roundMoneySoles(Object.values(nonCashExpectedBy).reduce((s, v) => s + v, 0));
+  const nonCashCountedTotal = roundMoneySoles(
+    Object.entries(nonCashExpectedBy).reduce(
+      (s, [m, exp]) => s + (nonCashCounted[m] ? nonCashCounted[m].counted : exp),
+      0,
+    ),
+  );
   const arqueoData = JSON.stringify({
     register_id: register.id,
     opened_at: register.opened_at,
@@ -564,6 +609,12 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
     counted_cash: countedCash,
     difference: diff,
     denominations: denominationSummary,
+    non_cash_check: nonCashCounted,
+    total_check: {
+      expected: roundMoneySoles(expectedCash + nonCashExpectedTotal),
+      counted: roundMoneySoles(countedCash + nonCashCountedTotal),
+      difference: roundMoneySoles(countedCash + nonCashCountedTotal - expectedCash - nonCashExpectedTotal),
+    },
     payment_breakdown: {
       efectivo: Number(sales.total_cash || 0),
       yape: Number(sales.total_yape || 0),
@@ -860,6 +911,10 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
           throw new Error('La cortesía debe dejar el total en S/ 0.00. Revise el descuento aplicado.');
         }
       } else if (paymentBreakdownObj) {
+        applyCashChangeToBreakdown(paymentBreakdownObj, batchTotal);
+        if (Object.keys(paymentBreakdownObj).length < 2) {
+          throw new Error('Los otros métodos ya cubren el total: cobre con un solo método.');
+        }
         const splitSum = round2(
           Object.values(paymentBreakdownObj).reduce((acc, v) => acc + round2(Number(v) || 0), 0)
         );
@@ -1059,7 +1114,7 @@ router.get('/payment-methods', authenticateToken, requireRole('admin', 'cajero',
 router.get('/register-status', authenticateToken, requireRole('admin', 'cajero', 'mozo'), (req, res) => {
   const role = String(req.user?.role || '').toLowerCase();
   let mozoCajaId = '';
-  if (role === 'mozo') {
+  if (role === 'mozo' || role === 'cajero') {
     const u = queryOne('SELECT caja_station_id FROM users WHERE id = ?', [req.user.id]);
     mozoCajaId = String(u?.caja_station_id || '').trim();
   }

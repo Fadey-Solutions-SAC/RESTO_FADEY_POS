@@ -78,6 +78,15 @@ router.get('/employees/:id', requireHrAdmin, asyncHandler(async (req, res) => {
   return res.json(emp);
 }));
 
+router.get('/employees/:id/profile', requireHrAdmin, asyncHandler(async (req, res) => {
+  const emp = hr.getEmployee(rid(req), req.params.id);
+  if (!emp?.user_id) return res.status(404).json({ error: 'Trabajador no encontrado' });
+  const { buildStaffProfile } = require('./profile');
+  const profile = buildStaffProfile(emp.user_id, rid(req));
+  if (!profile) return res.status(404).json({ error: 'Usuario no encontrado' });
+  return res.json(profile);
+}));
+
 router.patch('/employees/:id', requireHrAdmin, asyncHandler(async (req, res) => {
   res.json(hr.updateEmployee(rid(req), req.params.id, req.body || {}, req.user));
 }));

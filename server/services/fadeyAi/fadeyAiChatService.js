@@ -21,6 +21,11 @@ const { buildReportAnswer } = require('./fadeyAiReports');
 const { buildPurchaseAnswer } = require('./fadeyAiPurchase');
 const { buildAdvisorAnswer, analyze: analyzeBusiness, resolveAdvicePeriod } = require('./fadeyAiAdvisor');
 const { buildConceptAnswer } = require('./fadeyAiConcepts');
+const {
+  forecastAnswer,
+  closedDaysAnswer,
+  weekdayAdviceAnswer,
+} = require('./fadeyAiForecast');
 const { detectLanguage, toSpanishQuery, translateResult } = require('./fadeyAiI18n');
 const {
   formatDisplayDateKey,
@@ -35,6 +40,8 @@ const {
   filterGuideHitsForUser,
   deniedGuideMessage,
   guideAllowedForUser,
+  canUseTool,
+  deniedToolMessage,
 } = require('./fadeyAiAccess');
 const {
   recall,
@@ -359,6 +366,75 @@ function formatSalesReply(r, user = null) {
   return `${head}\nTicket promedio: S/ ${(Number(r.sales || 0) / r.orders).toFixed(2)}.${tail}`;
 }
 
+/**
+ * Pregunta de ventas filtrada por método de pago («ventas en efectivo», «sin efectivo», «con Yape»…).
+ * @returns {'all'|'efectivo'|'noncash'|'yape'|'plin'|'tarjeta'|'online'|'transferencia'|null}
+ */
+function detectPaymentMethodFilter(message) {
+  const m = String(message || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (!/venta|vend|cobr|pag|ingres|entr(o|aron|ado)|recaud|factur|total|cuanto|monto|recibi/.test(m)) return null;
+  if (/\b(abrir|cerrar|arqueo|apertura|cierre)\b/.test(m) && !/venta|vend|cobrad/.test(m)) return null;
+
+  const nonCash = /\b(sin|no|excepto|menos|salvo|aparte del?|fuera del?)\s+(el\s+|en\s+|con\s+)?efectivo\b/.test(m)
+    || /\bque no (sea|sean|fue|fueron|es|son)( en| con)? efectivo\b/.test(m)
+    || /\bdistint\w* (a|al|de|del) efectivo\b/.test(m)
+    || /\b(pagos?|medios?|metodos?|cobros?|ventas?)\s+(digitales|electronic\w*)\b/.test(m);
+  if (nonCash) return 'noncash';
+
+  const found = [];
+  if (/\befectivo\b|\bal contado\b/.test(m)) found.push('efectivo');
+  if (/\byape\b/.test(m)) found.push('yape');
+  if (/\bplin\b/.test(m)) found.push('plin');
+  if (/\btarjetas?\b|\bvisa\b|\bmastercard\b/.test(m)) found.push('tarjeta');
+  if (/\btransferencias?\b/.test(m)) found.push('transferencia');
+  if (/\bonline\b|\ben linea\b/.test(m)) found.push('online');
+  if (found.length === 1) return found[0];
+  if (found.length > 1 || /\bpor (cada )?(metodo|forma|medio|tipo)( de pago)?\b|desglose.*pago/.test(m)) return 'all';
+  return null;
+}
+
+const FORECAST_DOWS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+
+/** Pronóstico / días cerrados / conveniencia de abrir un día. */
+function detectForecastIntent(message) {
+  const m = String(message || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[¿?¡!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^como\b/.test(m)) return null;
+  const dm = m.match(/\b(domingo|lunes|martes|miercoles|jueves|viernes|sabado)s?\b/);
+  const dow = dm ? FORECAST_DOWS.indexOf(dm[1]) : null;
+
+  if (/\b(que|cuales) dias? (cerr|cierr|no (se )?abr|descans)|\bdias? (de descanso|cerrad\w*|que no (se )?abr)|\bcuando (cerramos|cierro|cierran|descansamos)\b|no se abre (la )?caja/.test(m)) {
+    return { kind: 'closed' };
+  }
+  const advice = /\b(conviene|deberia|vale la pena|es rentable|me conviene) (cerrar|abrir|atender)\b|\bcerrar (los|el|todos los) (domingo|lunes|martes|miercoles|jueves|viernes|sabado)/.test(m)
+    || /\b(dia|dias) (mas )?(flojos?|malos?|peor(es)?)\b|\bpeor dia\b|\bque dia (se )?vend\w* menos\b/.test(m)
+    || (dow != null && /\b(baj\w*|cae\w*|cay\w*|flojo\w*|menos|peor|malo\w*|rentab\w*|conviene)\b/.test(m) && !/pronostic|prepar/.test(m));
+  if (advice) return { kind: 'advice', dow };
+
+  const forecast = /pronostic|proyecc|prevision|\bprever\b|predic|\bproxim\w* (\d+ )?(dias|semana)|semana que viene|que (se )?(vendera|venderemos|va a vender|voy a vender|vamos a vender)|cuanto (vendere|venderemos|voy a vender|vamos a vender)|que (debo|tengo que|hay que|deberia|toca) preparar|\bque preparo\b|\bpreparar para\b|mise en place|que insumos (necesito|preparo|debo|hay que)/.test(m)
+    || (dow != null && /\b(se vende\w*|venden|vendo|sale|salen|preparar|prepar\w*|esperar|espero)\b/.test(m));
+  if (forecast) return { kind: 'forecast', dow };
+  return null;
+}
+
+function buildForecastChatAnswer(message, user) {
+  const intent = detectForecastIntent(message);
+  if (!intent) return null;
+  const showMoney = canUseTool(user, 'sales_summary');
+  if (!showMoney && !canUseTool(user, 'top_products')) {
+    return { reply: deniedToolMessage('sales_summary'), sources: [{ kind: 'tool', title: 'permission_denied' }] };
+  }
+  let reply;
+  if (intent.kind === 'closed') reply = closedDaysAnswer();
+  else if (intent.kind === 'advice') {
+    if (!showMoney) return { reply: deniedToolMessage('sales_summary'), sources: [{ kind: 'tool', title: 'permission_denied' }] };
+    reply = weekdayAdviceAnswer(intent.dow);
+  } else {
+    reply = forecastAnswer({ focusDow: intent.dow, showMoney, includeStore: canUseTool(user, 'low_stock') });
+  }
+  return { reply, sources: [{ kind: 'tool', title: 'sales_forecast', focus: intent.kind }] };
+}
+
 function isCustomerAnalysisQuestion(m) {
   return /\bclientes?\b/.test(m)
     && /analiz|an[aá]lisis|recurrent|frecuent|fiel|mejores|top|qui[eé]n|cu[aá]nt|per[ií]odo|comportamiento|vuelven|nuevos|perfil|ticket|informe|resumen/.test(m)
@@ -498,6 +574,13 @@ function tryDirectDataAnswer(message, user) {
   if (/pendiente(s)?( de )?cobro|por cobrar|sin cobrar|cu[aá]nto.*pendiente|hay pendiente/.test(m)) {
     const r = runTool('sales_desk', { focus: 'pending', message }, user);
     const out = denyOrOk(r, 'sales_desk', 'pending');
+    if (out) return out;
+  }
+
+  const payFilter = detectPaymentMethodFilter(m);
+  if (payFilter) {
+    const r = runTool('sales_desk', { focus: 'method', method: payFilter, message }, user);
+    const out = denyOrOk(r, 'sales_desk', 'method');
     if (out) return out;
   }
 
@@ -809,7 +892,7 @@ function rememberSuccessfulIntent(message, sources) {
   try {
     const src = Array.isArray(sources) && sources[0] ? sources[0] : null;
     if (!src) return;
-    if (['support_contact', 'report', 'report_hint', 'purchase_plan', 'business_advice', 'business_concept'].includes(src.title)) return;
+    if (['support_contact', 'report', 'report_hint', 'purchase_plan', 'business_advice', 'business_concept', 'sales_forecast'].includes(src.title)) return;
     // No aprender guías para preguntas de datos (evita volver a “paso a paso” / menús).
     if (!isExplicitHowToMessage(message) && (src.title === 'search_guides' || src.kind === 'guide')) {
       return;
@@ -926,7 +1009,8 @@ async function chat(user, message, context = {}) {
     return { ...full, lang, mode: 'local', status: getStatus(), creator_mode: isMasterCreator(user) };
   }
 
-  const report = buildConceptAnswer(query, user, { lang, analyzeFn: analyzeBusiness, periodFn: resolveAdvicePeriod })
+  const report = buildForecastChatAnswer(query, user)
+    || buildConceptAnswer(query, user, { lang, analyzeFn: analyzeBusiness, periodFn: resolveAdvicePeriod })
     || buildPurchaseAnswer(query, user)
     || buildAdvisorAnswer(query, user, { lang })
     || buildReportAnswer(query, user);

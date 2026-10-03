@@ -66,12 +66,12 @@ function hoursSummary(userId, from, to) {
   }
 }
 
-function contractSummary(req) {
+function contractSummary(restaurantId, userId) {
   try {
     const hr = require('../services/hrService');
     hr.ensureHrSchema();
-    const emp = hr.employeeByUser(hr.restaurantIdOf(req.user), req.user.id);
-    if (!emp?.id) return { available: false, reason: 'Aún no tienes ficha de trabajador en Recursos humanos.' };
+    const emp = hr.employeeByUser(restaurantId, userId);
+    if (!emp?.id) return { available: false, reason: 'Aún no tiene ficha de trabajador en Recursos humanos.' };
     const {
       readEmploymentContrato,
       publicEmploymentContratoView,
@@ -208,6 +208,47 @@ function productivitySummary(kind, series) {
   return out;
 }
 
+/**
+ * Resumen del perfil de un usuario del sistema (datos, horas, contrato y productividad).
+ * Lo usan «Mi perfil» y el detalle del trabajador en Recursos humanos.
+ */
+function buildStaffProfile(userId, restaurantId) {
+  const user = queryOne(
+    'SELECT id, username, full_name, role, email, phone, created_at FROM users WHERE id = ?',
+    [userId],
+  );
+  if (!user) return null;
+  const today = getBusinessTodayDateKey(queryOne);
+  const from = shiftBusinessDateKey(today, -(PERIOD_DAYS - 1));
+  const kind = profileKind(user.role);
+  const hours = hoursSummary(user.id, from, today);
+  const series = productivitySeries(user.id, kind, from, today, hours.by_day);
+  return {
+    user: {
+      id: user.id,
+      username: user.username,
+      full_name: user.full_name,
+      role: user.role,
+      email: /@no-email\.local$/i.test(String(user.email || '')) ? '' : user.email,
+      phone: user.phone || '',
+      created_at: user.created_at,
+    },
+    kind,
+    period: { from, to: today, days: PERIOD_DAYS },
+    hours: {
+      period_minutes: hours.period_minutes,
+      weekly_minutes: hours.weekly_minutes,
+      monthly_minutes: hours.monthly_minutes,
+      total_minutes: hours.total_minutes,
+    },
+    contract: contractSummary(restaurantId, user.id),
+    productivity: {
+      series,
+      summary: productivitySummary(kind, series),
+    },
+  };
+}
+
 router.get('/', (req, res) => {
   try {
     const today = getBusinessTodayDateKey(queryOne);
@@ -226,39 +267,10 @@ router.get('/', (req, res) => {
       });
     }
 
-    const user = queryOne(
-      'SELECT id, username, full_name, role, email, phone, created_at FROM users WHERE id = ?',
-      [req.user.id],
-    );
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-
-    const hours = hoursSummary(user.id, from, today);
-    const series = productivitySeries(user.id, kind, from, today, hours.by_day);
-    return res.json({
-      user: {
-        id: user.id,
-        username: user.username,
-        full_name: user.full_name,
-        role: user.role,
-        email: /@no-email\.local$/i.test(String(user.email || '')) ? '' : user.email,
-        phone: user.phone || '',
-        created_at: user.created_at,
-      },
-      editable: true,
-      kind,
-      period: { from, to: today, days: PERIOD_DAYS },
-      hours: {
-        period_minutes: hours.period_minutes,
-        weekly_minutes: hours.weekly_minutes,
-        monthly_minutes: hours.monthly_minutes,
-        total_minutes: hours.total_minutes,
-      },
-      contract: contractSummary(req),
-      productivity: {
-        series,
-        summary: productivitySummary(kind, series),
-      },
-    });
+    const hr = require('../services/hrService');
+    const profile = buildStaffProfile(req.user.id, hr.restaurantIdOf(req.user));
+    if (!profile) return res.status(404).json({ error: 'Usuario no encontrado' });
+    return res.json({ ...profile, editable: true });
   } catch (err) {
     console.error('[profile] GET', err);
     return res.status(500).json({ error: 'No se pudo cargar tu perfil' });
@@ -318,3 +330,4 @@ router.put('/', (req, res) => {
 });
 
 module.exports = router;
+module.exports.buildStaffProfile = buildStaffProfile;

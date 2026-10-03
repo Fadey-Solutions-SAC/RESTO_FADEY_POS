@@ -6,7 +6,9 @@ const {
   getPaidSalesEventSql,
   queryPaidSalesOrders,
   metricsFromPaidOrdersWhere,
+  buildOrderAccountKeyMap,
 } = require('../../utils/salesAccountGrouping');
+const { parsePaymentBreakdown, round2 } = require('../../utils/paymentBreakdown');
 const {
   getBusinessTodayDateKey,
   getBusinessMonthKey,
@@ -181,6 +183,113 @@ const PAY_METHOD_LABELS = {
   transferencia: 'Transferencia',
 };
 
+function normalizePayMethod(raw) {
+  const m = String(raw || '').trim().toLowerCase();
+  return m || 'efectivo';
+}
+
+function payMethodLabel(method) {
+  return PAY_METHOD_LABELS[method] || method;
+}
+
+/**
+ * Ventas cobradas por método de pago. Las cuentas multimétodo se reparten con el monto
+ * exacto de cada método (`payment_breakdown`), no con el método dominante.
+ */
+function paidSalesByMethod(from, to) {
+  const ps = getPaidSalesEventSql();
+  const rows = queryPaidSalesOrders(
+    `${ps.ORDER_DATE} >= date(?) AND ${ps.ORDER_DATE} <= date(?)`,
+    [from, to],
+  );
+  const accountKey = buildOrderAccountKeyMap(rows);
+  const methods = new Map();
+  const accounts = new Set();
+  const multiAccounts = new Set();
+  let total = 0;
+  let multiTotal = 0;
+  for (const row of rows) {
+    const amount = round2(row.total || 0);
+    const acc = accountKey.get(String(row.id)) || String(row.id);
+    accounts.add(acc);
+    total = round2(total + amount);
+    const breakdown = parsePaymentBreakdown(row.payment_breakdown);
+    if (breakdown) {
+      multiAccounts.add(acc);
+      multiTotal = round2(multiTotal + amount);
+    }
+    const parts = breakdown ? Object.entries(breakdown) : [[normalizePayMethod(row.payment_method), amount]];
+    for (const [method, amt] of parts) {
+      if (!methods.has(method)) methods.set(method, { method, total: 0, accounts: new Set() });
+      const entry = methods.get(method);
+      entry.total = round2(entry.total + Number(amt || 0));
+      entry.accounts.add(acc);
+    }
+  }
+  const list = [...methods.values()]
+    .map((e) => ({ method: e.method, label: payMethodLabel(e.method), total: e.total, count: e.accounts.size }))
+    .sort((a, b) => b.total - a.total);
+  return {
+    total,
+    accounts: accounts.size,
+    methods: list,
+    multi: { count: multiAccounts.size, total: multiTotal },
+  };
+}
+
+function pct(part, whole) {
+  return whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : '0%';
+}
+
+/** Filtro: 'all' | 'efectivo' | 'noncash' | método concreto (yape, plin, tarjeta, online, transferencia). */
+function formatMethodSales(data, filter, label) {
+  const money = (n) => `S/ ${Number(n || 0).toFixed(2)}`;
+  const lines = [];
+  if (!data.accounts) {
+    lines.push(`**Ventas por método de pago** ${label}`);
+    lines.push('No hay cuentas cobradas en ese período.');
+    return lines.join('\n');
+  }
+  const pick = (fn) => data.methods.filter(fn);
+  const sumOf = (list) => ({
+    total: round2(list.reduce((s, m) => s + m.total, 0)),
+    count: list.reduce((s, m) => s + m.count, 0),
+  });
+
+  if (filter === 'all') {
+    lines.push(`**Ventas por método de pago** ${label}`);
+  } else {
+    let title;
+    let selected;
+    if (filter === 'efectivo') {
+      title = 'Ventas en efectivo';
+      selected = pick((m) => m.method === 'efectivo');
+    } else if (filter === 'noncash') {
+      title = 'Ventas sin efectivo';
+      selected = pick((m) => m.method !== 'efectivo');
+    } else {
+      title = `Ventas con ${payMethodLabel(filter)}`;
+      selected = pick((m) => m.method === filter);
+    }
+    const s = sumOf(selected);
+    lines.push(`**${title}** ${label}: ${money(s.total)} · ${s.count} cuenta(s).`);
+    if (filter === 'noncash' && selected.length) {
+      selected.forEach((m) => lines.push(`• ${m.label}: ${money(m.total)} · ${m.count} cuenta(s)`));
+    }
+    lines.push(`Representa el ${pct(s.total, data.total)} del total cobrado (${money(data.total)} · ${data.accounts} cuenta(s)).`);
+    lines.push('');
+    lines.push('Detalle por método:');
+  }
+  data.methods.forEach((m) => {
+    lines.push(`• ${m.label}: ${money(m.total)} (${pct(m.total, data.total)}) · ${m.count} cuenta(s)`);
+  });
+  if (filter === 'all') lines.push(`Total cobrado: ${money(data.total)} · ${data.accounts} cuenta(s).`);
+  if (data.multi.count) {
+    lines.push(`Incluye ${data.multi.count} cuenta(s) multimétodo (${money(data.multi.total)}): cada parte se sumó a su método con el monto exacto.`);
+  }
+  return lines.join('\n');
+}
+
 /** Escritorio de ventas: pendiente, pagos y meseros (datos del módulo Ventas). */
 function toolSalesDesk(args = {}, user) {
   if (!canSeeFinancials(user)) {
@@ -196,11 +305,35 @@ function toolSalesDesk(args = {}, user) {
   let from = parseDateKey(args.from) || period.from;
   let to = parseDateKey(args.to) || period.to;
   // Pendiente/pagos/meseros sin período → mes en curso (más útil en el módulo Ventas).
-  if (!args.from && !hasExplicitPeriod && (focus === 'pending' || focus === 'payments' || focus === 'waiters' || focus === 'full')) {
+  if (!args.from && !hasExplicitPeriod && ['pending', 'payments', 'method', 'waiters', 'full'].includes(focus)) {
     const month = getBusinessMonthKey(queryOne);
     from = `${month}-01`;
     to = today;
   }
+  const range = from === to
+    ? formatDisplayDateKey(from)
+    : `${formatDisplayDateKey(from)} → ${formatDisplayDateKey(to)}`;
+  const periodLabel = hasExplicitPeriod ? (period.label || range) : `este mes (${range})`;
+
+  if (focus === 'method' || focus === 'payments') {
+    const filter = focus === 'payments' ? 'all' : String(args.method || 'all').toLowerCase();
+    const data = paidSalesByMethod(from, to);
+    const label = periodLabel.includes(formatDisplayDateKey(from)) ? `(${periodLabel})` : `(${periodLabel} · ${range})`;
+    return {
+      ok: true,
+      from,
+      to,
+      label: periodLabel,
+      focus,
+      method: filter,
+      total: data.total,
+      accounts: data.accounts,
+      payments: data.methods,
+      multi: data.multi,
+      text: formatMethodSales(data, filter, label),
+    };
+  }
+
   const ps = getPaidSalesEventSql();
 
   const pendingRow = queryOne(
@@ -214,21 +347,7 @@ function toolSalesDesk(args = {}, user) {
     [from, to],
   ) || { cnt: 0, total: 0 };
 
-  const payRows = queryAll(
-    `SELECT lower(IFNULL(NULLIF(trim(o.payment_method), ''), 'efectivo')) AS method,
-            COUNT(*) AS cnt,
-            IFNULL(SUM(o.total), 0) AS total
-     FROM orders o
-     WHERE o.status != 'cancelled'
-       AND o.payment_status = 'paid'
-       AND IFNULL(o.payment_method, '') NOT IN ('cortesia', 'cuenta_cliente')
-       AND ${ps.ORDER_DATE} >= date(?)
-       AND ${ps.ORDER_DATE} <= date(?)
-     GROUP BY lower(IFNULL(NULLIF(trim(o.payment_method), ''), 'efectivo'))
-     ORDER BY total DESC
-     LIMIT 8`,
-    [from, to],
-  ) || [];
+  const payRows = paidSalesByMethod(from, to).methods;
 
   const waiterRows = queryAll(
     `SELECT COALESCE(NULLIF(trim(o.created_by_user_name), ''), 'Sin mesero') AS name,
@@ -261,23 +380,18 @@ function toolSalesDesk(args = {}, user) {
   );
 
   const lines = [];
-  const range = from === to
-    ? formatDisplayDateKey(from)
-    : `${formatDisplayDateKey(from)} → ${formatDisplayDateKey(to)}`;
-  const label = hasExplicitPeriod ? (period.label || range) : `este mes (${range})`;
-  lines.push(`**Escritorio de ventas** (${label})`);
+  lines.push(`**Escritorio de ventas** (${periodLabel})`);
 
   if (focus === 'pending' || focus === 'full') {
     lines.push(
       `Pendiente de cobro: S/ ${Number(pendingRow.total || 0).toFixed(2)} · ${Number(pendingRow.cnt || 0)} cuenta(s).`,
     );
   }
-  if (focus === 'payments' || focus === 'full') {
+  if (focus === 'full') {
     if (payRows.length) {
       lines.push('Formas de pago (cobrado):');
       payRows.forEach((r, i) => {
-        const label = PAY_METHOD_LABELS[r.method] || r.method;
-        lines.push(`${i + 1}. ${label}: S/ ${Number(r.total || 0).toFixed(2)} (${Number(r.cnt || 0)} cobro(s))`);
+        lines.push(`${i + 1}. ${r.label}: S/ ${Number(r.total || 0).toFixed(2)} (${r.count} cuenta(s))`);
       });
     } else {
       lines.push('Sin cobros con forma de pago en este período.');
@@ -306,12 +420,7 @@ function toolSalesDesk(args = {}, user) {
     label: period.label,
     focus,
     pending: { count: Number(pendingRow.cnt || 0), total: Number(pendingRow.total || 0) },
-    payments: payRows.map((r) => ({
-      method: r.method,
-      label: PAY_METHOD_LABELS[r.method] || r.method,
-      count: Number(r.cnt || 0),
-      total: Number(r.total || 0),
-    })),
+    payments: payRows,
     waiters: waiterRows.map((r) => ({
       name: r.name,
       count: Number(r.cnt || 0),
@@ -445,11 +554,12 @@ const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'sales_desk',
-      description: 'Escritorio del módulo Ventas: pendiente de cobro, formas de pago y ranking de meseros.',
+      description: 'Escritorio del módulo Ventas: pendiente de cobro, ventas por método de pago (efectivo / sin efectivo / Yape…) y ranking de meseros.',
       parameters: {
         type: 'object',
         properties: {
-          focus: { type: 'string', enum: ['full', 'pending', 'payments', 'waiters'] },
+          focus: { type: 'string', enum: ['full', 'pending', 'payments', 'method', 'waiters'] },
+          method: { type: 'string', enum: ['all', 'efectivo', 'noncash', 'yape', 'plin', 'tarjeta', 'online', 'transferencia'] },
           message: { type: 'string' },
           from: { type: 'string' },
           to: { type: 'string' },

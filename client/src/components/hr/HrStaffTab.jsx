@@ -1,11 +1,17 @@
-import { useMemo, useState } from 'react';
-import { MdEdit, MdVisibility } from 'react-icons/md';
+import { useMemo, useRef, useState } from 'react';
+import { MdEdit, MdVisibility, MdBadge, MdPayments, MdSchedule } from 'react-icons/md';
 import { FaWhatsapp } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { api, formatCurrency } from '../../utils/api';
 import Modal from '../Modal';
 import { employeeStatusLabel } from './hrFormat';
 import HrEmploymentContractBox from './HrEmploymentContractBox';
+import {
+  roleLabel,
+  StaffHoursCards,
+  StaffContractCard,
+  StaffProductivityCard,
+} from './StaffProfileSummary';
 
 const PAY_MODE_LABEL = {
   hora: 'Por horas',
@@ -69,6 +75,18 @@ function DetailRow({ label, value }) {
   );
 }
 
+function InspectSection({ icon: Icon, title, children, className = '' }) {
+  return (
+    <section className={`rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 sm:p-4 space-y-3 min-w-0 ${className}`}>
+      <h4 className="text-sm font-semibold text-[var(--ui-body-text)] flex items-center gap-2">
+        {Icon ? <Icon className="text-base text-[var(--ui-accent)]" /> : null}
+        {title}
+      </h4>
+      {children}
+    </section>
+  );
+}
+
 function payModeLabel(mode) {
   const m = String(mode || '').toLowerCase();
   return PAY_MODE_LABEL[m] || (m ? m : null);
@@ -86,6 +104,9 @@ export default function HrStaffTab({ employees, schedules = [], branches, onRelo
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
   const [inspect, setInspect] = useState(null);
+  const [inspectProfile, setInspectProfile] = useState(null);
+  const [inspectProfileLoading, setInspectProfileLoading] = useState(false);
+  const inspectReqRef = useRef(0);
   const [saving, setSaving] = useState(false);
 
   const filtered = useMemo(() => (employees || []).filter((e) => {
@@ -99,7 +120,10 @@ export default function HrStaffTab({ employees, schedules = [], branches, onRelo
 
   const openEdit = (e) => {
     const kind = scheduleKindFromEmployee(e);
+    inspectReqRef.current += 1;
     setInspect(null);
+    setInspectProfile(null);
+    setInspectProfileLoading(false);
     setEdit({
       ...e,
       schedule_kind: kind,
@@ -117,9 +141,27 @@ export default function HrStaffTab({ employees, schedules = [], branches, onRelo
     });
   };
 
-  const openInspect = (e) => {
+  const openInspect = async (e) => {
     setEdit(null);
     setInspect(e);
+    setInspectProfile(null);
+    const reqId = ++inspectReqRef.current;
+    setInspectProfileLoading(true);
+    try {
+      const res = await api.get(`/hr/employees/${encodeURIComponent(e.id)}/profile`);
+      if (inspectReqRef.current === reqId) setInspectProfile(res);
+    } catch (err) {
+      if (inspectReqRef.current === reqId) toast.error(err?.message || 'No se pudo cargar el perfil del trabajador');
+    } finally {
+      if (inspectReqRef.current === reqId) setInspectProfileLoading(false);
+    }
+  };
+
+  const closeInspect = () => {
+    inspectReqRef.current += 1;
+    setInspect(null);
+    setInspectProfile(null);
+    setInspectProfileLoading(false);
   };
 
   const save = async () => {
@@ -238,19 +280,56 @@ export default function HrStaffTab({ employees, schedules = [], branches, onRelo
 
       <Modal
         isOpen={!!inspect}
-        onClose={() => setInspect(null)}
+        onClose={closeInspect}
         title="Detalle del trabajador"
-        size="md"
-        maxHeightClass="max-h-[min(92vh,720px)]"
-        bodyClassName="!overflow-y-auto !px-3 !py-3 sm:!px-4"
+        size="full"
+        maxHeightClass="max-h-[min(94vh,960px)]"
+        bodyClassName="!overflow-y-auto !px-3 !py-3 sm:!px-5 sm:!py-4"
       >
         {inspect ? (
-          <div className="space-y-3 max-w-full min-w-0">
-            <div>
-              <div className="text-base font-semibold text-[var(--ui-body-text)]">{inspect.full_name}</div>
-              <div className="text-xs text-[var(--ui-muted)]">@{inspect.username} · {inspect.role}</div>
+          <div className="space-y-4 max-w-full min-w-0">
+            <div className="flex flex-wrap items-center gap-4">
+              {inspect.photo_url ? (
+                <img
+                  src={inspect.photo_url}
+                  alt=""
+                  className="w-16 h-16 rounded-full object-cover border border-[color:var(--ui-border)] shrink-0"
+                />
+              ) : (
+                <span className="w-16 h-16 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-2xl font-bold shrink-0">
+                  {(inspect.full_name || inspect.username || 'U').trim()[0]?.toUpperCase() || 'U'}
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="text-lg font-bold text-[var(--ui-body-text)] break-words">{inspect.full_name}</div>
+                <div className="text-sm text-[var(--ui-muted)] break-words">
+                  @{inspect.username} · {roleLabel(inspect.role)}
+                  {inspect.position ? ` · ${inspect.position}` : ''}
+                </div>
+                {(inspectProfile?.user?.phone || inspect.phone || inspectProfile?.user?.email) ? (
+                  <div className="text-xs text-[var(--ui-muted)] mt-0.5 break-words">
+                    {[inspectProfile?.user?.phone || inspect.phone, inspectProfile?.user?.email].filter(Boolean).join(' · ')}
+                  </div>
+                ) : null}
+              </div>
+              <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)]">
+                {employeeStatusLabel(inspect.status)}
+              </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3">
+
+            <InspectSection icon={MdSchedule} title="Horas trabajadas">
+              {inspectProfileLoading && !inspectProfile ? (
+                <div className="flex items-center justify-center py-6"><div className="rf-loader rf-loader--md" /></div>
+              ) : inspectProfile?.hours ? (
+                <StaffHoursCards hours={inspectProfile.hours} period={inspectProfile.period} />
+              ) : (
+                <p className="text-sm text-[var(--ui-muted)]">Sin datos de horas.</p>
+              )}
+            </InspectSection>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+            <InspectSection icon={MdBadge} title="Ficha laboral">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <DetailRow label="Documento" value={inspect.document_id} />
               <DetailRow label="Código" value={inspect.employee_code} />
               <DetailRow label="Cargo" value={inspect.position} />
@@ -258,17 +337,19 @@ export default function HrStaffTab({ employees, schedules = [], branches, onRelo
               <DetailRow label="Fecha ingreso" value={inspect.hire_date} />
               <DetailRow label="Contrato" value={inspect.contract_type} />
               <DetailRow label="Sede" value={branchName(inspect.branch_id)} />
-              <DetailRow label="Estado" value={employeeStatusLabel(inspect.status)} />
               <DetailRow label="Horario" value={inspect.schedule_label || inspect.schedule_name} />
               <DetailRow
                 label="Contrato digital"
                 value={inspect.employment_contract?.label || null}
               />
-              <DetailRow label="Foto" value={inspect.photo_url} />
+              <DetailRow
+                label="Usuario desde"
+                value={inspectProfile?.user?.created_at ? String(inspectProfile.user.created_at).slice(0, 10) : null}
+              />
             </div>
+            </InspectSection>
 
-            <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 space-y-2.5">
-              <h4 className="text-sm font-semibold text-[var(--ui-body-text)]">Datos de pago</h4>
+            <InspectSection icon={MdPayments} title="Datos de pago">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <DetailRow label="Formato de pago" value={payModeLabel(inspect.payroll_pay_mode)} />
                 <DetailRow
@@ -336,10 +417,23 @@ export default function HrStaffTab({ employees, schedules = [], branches, onRelo
                   <FaWhatsapp className="text-base" /> Abrir WhatsApp
                 </a>
               ) : null}
+            </InspectSection>
             </div>
 
+            {inspectProfile ? (
+              <>
+                <StaffContractCard contract={inspectProfile.contract} title="Contrato de trabajo" />
+                <StaffProductivityCard
+                  kind={inspectProfile.kind}
+                  productivity={inspectProfile.productivity}
+                  period={inspectProfile.period}
+                  title="Productividad"
+                />
+              </>
+            ) : null}
+
             <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-1">
-              <button type="button" className="btn-secondary w-full sm:w-auto" onClick={() => setInspect(null)}>
+              <button type="button" className="btn-secondary w-full sm:w-auto" onClick={closeInspect}>
                 Cerrar
               </button>
               <button

@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
 import EndShiftModal from '../../components/EndShiftModal';
+import ProductionPrepBanner from '../../components/kitchen/ProductionPrepBanner';
 import { MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings, MdHistory, MdPerson } from 'react-icons/md';
 import { getProductionAreaIcon } from '../../utils/productionAreaUi';
 import toast from 'react-hot-toast';
@@ -143,6 +144,11 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [areaDisplayName, setAreaDisplayName] = useState('');
   const [soundReady, setSoundReady] = useState(false);
+  const orderTableLabel = useCallback(
+    (order) =>
+      String(order?.table_display_label || '').trim() || t('panel.table', { number: order?.table_number }),
+    [t],
+  );
   const StationIcon = getProductionAreaIcon({ id: areaId, name: areaDisplayName || areaId });
   const panelTitle = isBar
     ? t('panel.barTitle')
@@ -326,7 +332,8 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
       const waiter = String(payloadOrder?.created_by_user_name || '').trim();
       const tableLbl =
         payloadOrder?.type === 'dine_in' && payloadOrder?.table_number
-          ? `Mesa ${String(payloadOrder.table_number).trim()}`
+          ? String(payloadOrder.table_display_label || order?.table_display_label || '').trim()
+            || `Mesa ${String(payloadOrder.table_number).trim()}`
           : String(payloadOrder?.table_number || '').trim();
       const ticketItems = items.map((it) => ({
         product_name: String(it.product_name || '').trim() || '—',
@@ -481,7 +488,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     const num = order?.order_number;
     const minutes = payload?.minutes ?? barAutoDismissMinutes;
     const label = table
-      ? t('barSettings.autoDismissTable', { table, minutes })
+      ? t('barSettings.autoDismissTable', { table: orderTableLabel(order), minutes })
       : num != null
         ? t('barSettings.autoDismissOrder', { number: num, minutes })
         : t('barSettings.autoDismissGeneric', { minutes });
@@ -623,13 +630,13 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
 
   const getOverdueToastLabel = useCallback((order) => {
     if (order?.table_number && order?.type === 'dine_in') {
-      return t('toast.overdueTable', { table: order.table_number });
+      return t('toast.overdueTable', { table: orderTableLabel(order) });
     }
     if (order?.type === 'delivery') {
       return t('toast.overdueDelivery', { number: order.order_number });
     }
     return t('toast.overdueOrder', { number: order.order_number });
-  }, [t]);
+  }, [t, orderTableLabel]);
 
   useEffect(() => {
     const activeOrders = orders.filter((order) => {
@@ -755,6 +762,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           </button>
         </div>
       </header>
+      <ProductionPrepBanner areaId={areaId} />
       <EndShiftModal isOpen={endShiftOpen} onClose={() => setEndShiftOpen(false)} />
       <PrinterModuleModal
         isOpen={printerModalOpen}
@@ -814,7 +822,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
                     className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] overflow-hidden"
                   >
                     <div className="px-4 py-3 flex items-center justify-between gap-3 border-b border-[color:var(--ui-border)]">
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
                         {cuentaCliente ? (
                           <span className="font-semibold truncate">{order.customer_name || t('panel.customer')}</span>
                         ) : order.type === 'delivery' ? (
@@ -824,8 +832,8 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
                         )}
                         <TypeIcon className="text-lg shrink-0 text-[var(--ui-muted)]" />
                         {order.table_number ? (
-                          <span className="text-xs px-2 py-0.5 rounded border border-[color:var(--ui-border)]">
-                            {t('panel.table', { number: order.table_number })}
+                          <span className="text-xs px-2 py-0.5 rounded border border-[color:var(--ui-border)] max-w-full break-words">
+                            {orderTableLabel(order)}
                           </span>
                         ) : null}
                       </div>
@@ -945,8 +953,8 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
                       {order.type === 'delivery' ? (
                         <span className="text-lg font-bold tracking-tight text-[var(--ui-body-text)]">{t('panel.delivery')}</span>
                       ) : (
@@ -954,10 +962,12 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
                       )}
                       <TypeIcon className="text-xl shrink-0 text-[var(--ui-body-text)]" />
                       {order.table_number ? (
-                        <span className={tableBadgeClass}>{t('panel.table', { number: order.table_number })}</span>
+                        <span className={`${tableBadgeClass} max-w-full break-words font-semibold leading-tight`}>
+                          {orderTableLabel(order)}
+                        </span>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-1 text-sm">
+                    <div className="flex shrink-0 items-center gap-1 pt-1 text-sm">
                       <MdAccessTime className={isOverdue ? 'text-red-500' : 'text-[var(--ui-muted)]'} />
                       <span className={isOverdue ? 'font-bold text-red-400' : 'text-[var(--ui-muted)]'}>{getTimeDiff(order)}</span>
                     </div>

@@ -249,6 +249,7 @@ function addNotification({
   level = 'info',
   duration_hours = null,
   expires_at: explicitExpiresAt = null,
+  audience = '',
 }) {
   const notifications = getNotifications();
   const expTrim =
@@ -274,6 +275,7 @@ function addNotification({
     expires_at: expiresAt,
     deleted_at: null,
     updated_at: null,
+    ...(audience ? { audience: String(audience).trim() } : {}),
   };
   notifications.unshift(entry);
   saveNotifications(notifications);

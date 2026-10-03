@@ -23,7 +23,38 @@ function getTableDisplayLabel(table, opts = {}) {
   return name || 'Mesa';
 }
 
+/**
+ * Agrega `table_display_label` (ej. «Habitación 103» o «Mesa 103») a pedidos de salón.
+ * Muta y devuelve lo recibido (pedido o lista).
+ */
+function attachTableDisplayLabels(orders) {
+  const list = (Array.isArray(orders) ? orders : [orders]).filter(
+    (o) => o && o.type === 'dine_in' && String(o.table_number || '').trim(),
+  );
+  if (!list.length) return orders;
+  let tables = [];
+  try {
+    const { queryAll } = require('../database');
+    tables = queryAll('SELECT id, number, name, display_label FROM tables') || [];
+  } catch (_) {
+    return orders;
+  }
+  const byId = new Map(tables.map((t) => [String(t.id), t]));
+  const byNumber = new Map();
+  tables.forEach((t) => {
+    const key = String(t.number ?? '').trim();
+    if (key && !byNumber.has(key)) byNumber.set(key, t);
+  });
+  list.forEach((o) => {
+    const table =
+      byId.get(String(o.table_id || '').trim()) || byNumber.get(String(o.table_number).trim());
+    if (table) o.table_display_label = getTableDisplayLabel(table);
+  });
+  return orders;
+}
+
 module.exports = {
   normalizeDisplayLabel,
   getTableDisplayLabel,
+  attachTableDisplayLabels,
 };

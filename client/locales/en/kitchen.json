@@ -50,7 +50,7 @@
     "itemsAddedToComanda": "Items added to order #{{number}}",
     "itemsAddedToComandaShort": "Items added to the order",
     "newOrderNumber": "New order #{{number}} ({{station}})",
-    "overdueTable": "Table {{table}} is over 30 minutes late",
+    "overdueTable": "{{table}} is over 30 minutes late",
     "overdueDelivery": "Delivery #{{number}} is over 30 minutes late",
     "overdueOrder": "Order #{{number}} is over 30 minutes late"
   },
@@ -70,8 +70,26 @@
     "minutesSaved": "Auto-remove time: {{minutes}} min",
     "saveFailed": "Could not save setting",
     "saving": "Saving…",
-    "autoDismissTable": "Table {{table}} removed from bar ({{minutes}} min unattended)",
+    "autoDismissTable": "{{table}} removed from bar ({{minutes}} min unattended)",
     "autoDismissOrder": "Order #{{number}} removed from bar ({{minutes}} min unattended)",
     "autoDismissGeneric": "Order removed from bar ({{minutes}} min unattended)"
+  },
+  "prep": {
+    "title": "Suggested prep",
+    "subtitle": "Based on what sells most on each weekday",
+    "today": "Today {{day}}",
+    "tomorrow": "Tomorrow {{day}}",
+    "onDay": "On {{day}}",
+    "comesDay": "{{when}} is coming: these sell more, prepare your ingredients.",
+    "usuallySells": "Usually sells",
+    "hot": "sells more on that day",
+    "notEnough": "Not enough: you have {{stock}} {{unit}}, need ~{{need}} {{unit}}",
+    "runningLow": "Running low: {{stock}} {{unit}} for ~{{need}} {{unit}}",
+    "prepareFor": "Prepare the ingredients for",
+    "noRecipeHint": "These products have no linked recipe; make sure you have their ingredients.",
+    "closedDays": "Usually closed: {{days}}",
+    "hide": "Hide for today",
+    "show": "Show suggested prep",
+    "days": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
   }
 }

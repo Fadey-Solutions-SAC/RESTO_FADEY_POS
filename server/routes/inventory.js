@@ -11,6 +11,7 @@ const {
 } = require('../utils/productStockThreshold');
 const { resolvePurchaseDate, parsePurchaseDateInput } = require('../utils/inventoryPurchaseDate');
 const { isUnidadUm, insumoStockEnUnidades } = require('../utils/insumoUnidadMedida');
+const { getOpenRegisterForUser } = require('../utils/openCashRegister');
 
 const router = express.Router();
 
@@ -750,7 +751,7 @@ router.post('/receptions/receive', authenticateToken, requireRole('admin'), (req
       ['received', notes || '', requirement_id]
     );
 
-    const openRegister = queryOne('SELECT * FROM cash_registers WHERE user_id = ? AND closed_at IS NULL', [req.user.id]);
+    const openRegister = getOpenRegisterForUser(req.user);
     if (openRegister && totalExpense > 0) {
       runSql(
         'INSERT INTO cash_movements (id, register_id, user_id, type, amount, concept) VALUES (?, ?, ?, ?, ?, ?)',

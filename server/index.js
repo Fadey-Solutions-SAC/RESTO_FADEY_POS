@@ -90,6 +90,22 @@ const io = new Server(server, {
   cors: corsOptions,
 });
 
+{
+  const { attachTableDisplayLabels } = require('./utils/tableDisplayLabel');
+  const rawEmit = io.emit.bind(io);
+  io.emit = (event, payload, ...rest) => {
+    if ((event === 'new-order' || event === 'order-update') && payload && typeof payload === 'object'
+      && payload.type === 'dine_in' && !payload.table_display_label) {
+      try {
+        attachTableDisplayLabels(payload);
+      } catch (_) {
+        /* la etiqueta es opcional */
+      }
+    }
+    return rawEmit(event, payload, ...rest);
+  };
+}
+
 app.set('io', io);
 const { setSocketIo } = require('./socketBroadcast');
 setSocketIo(io);

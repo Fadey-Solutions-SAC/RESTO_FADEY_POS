@@ -236,13 +236,22 @@ export function getTableDisplayLabel(table) {
   return name || 'Mesa';
 }
 
-/** Texto corto en el mapa de mesas (número M12 o nombre truncado). */
+/**
+ * Nombre personalizado separado en texto + número final («Habitación 101» → { prefix: 'Habitación', number: '101' }).
+ * Sin número final: { prefix: nombre completo, number: '' }.
+ */
+export function splitTableNameLabel(name) {
+  const s = String(name || '').trim().replace(/\s+/g, ' ');
+  const m = s.match(/^(.*?\S)[\s\-#.:Nº°]*?(\d+[A-Za-z]?)$/u);
+  if (m && m[1] && !/^\d+$/.test(m[1])) return { prefix: m[1].replace(/[\s\-#.:Nº°]+$/u, ''), number: m[2] };
+  return { prefix: s, number: '' };
+}
+
+/** Texto en el mapa de mesas (número M12 o nombre completo). */
 export function formatMesaMapTableNumber(table) {
   const mode = normalizeTableDisplayLabel(table?.display_label);
   const name = String(table?.name || '').trim();
-  if (mode === 'name' && name) {
-    return name.length > 8 ? `${name.slice(0, 7)}…` : name;
-  }
+  if (mode === 'name' && name) return name;
   const num = table?.number;
   if (num != null && String(num).trim() !== '') {
     const raw = String(num).trim().replace(/^M/i, '');

@@ -375,16 +375,16 @@ export default function FadeyAiHomePanel({ data }) {
             </h3>
             {categoryData.length ? (
               <div className="rf-ai-home__pie-wrap">
-                <ResponsiveContainer width="100%" height={96}>
+                <div className="rf-ai-home__chart-box"><ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={24} outerRadius={38}>
+                    <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius="50%" outerRadius="80%">
                       {categoryData.map((entry, i) => (
                         <Cell key={entry.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip />
                   </PieChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></div>
                 <ul>
                   {categoryData.map((row, i) => (
                     <li key={row.name}>
@@ -405,7 +405,7 @@ export default function FadeyAiHomePanel({ data }) {
               {view?.chartTitleRight || 'Ventas por hora'}
             </h3>
             {hourData.length ? (
-              <ResponsiveContainer width="100%" height={96}>
+              <div className="rf-ai-home__chart-box"><ResponsiveContainer width="100%" height="100%">
                 <BarChart data={hourData} margin={{ top: 2, right: 4, left: -6, bottom: -4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="name" tick={{ fontSize: 9 }} />
@@ -413,7 +413,7 @@ export default function FadeyAiHomePanel({ data }) {
                   <Tooltip formatter={(v) => formatCurrency(v)} />
                   <Bar dataKey="ventas" fill="#2563eb" radius={[3, 3, 0, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             ) : (
               <p className="rf-ai-home__empty">Sin movimiento por hora en este período.</p>
             )}

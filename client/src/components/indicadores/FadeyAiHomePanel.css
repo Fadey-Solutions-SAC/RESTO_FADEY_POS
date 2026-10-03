@@ -408,8 +408,11 @@
   align-items: stretch;
   gap: 0;
   padding: 0;
-  min-height: min(42vh, 22rem);
-  height: min(48vh, 26rem);
+  /* Casi pantalla completa: alto de la ventana menos cabecera de la app y pestañas del módulo. */
+  min-height: 22rem;
+  height: clamp(22rem, calc(100vh - 9.5rem), 72rem);
+  height: clamp(22rem, calc(100dvh - 9.5rem), 72rem);
+  scroll-margin-top: 0.75rem;
   overflow: hidden;
   background: #f8fafc;
   border: 1px solid var(--ui-border);
@@ -485,6 +488,116 @@
   display: none;
 }
 
+/* En el chat ampliado las respuestas usan el ancho disponible (antes máx. 340px). */
+.rf-ai-home__hero-chat-body .rf-fadey-ai-card {
+  max-width: min(94%, 60rem);
+}
+
+.rf-ai-home__hero-chat-body .rf-fadey-ai-bubble-user {
+  max-width: min(80%, 40rem);
+}
+
+.rf-ai-home__chart-box {
+  width: 100%;
+  height: 96px;
+}
+
+.rf-ai-home__pie-wrap .rf-ai-home__chart-box {
+  min-width: 0;
+}
+
+/* Escritorio amplio: más aire, tipografía legible y gráficos más altos. */
+@media (min-width: 1400px) {
+  .rf-ai-home {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+    gap: 0.9rem;
+  }
+
+  .rf-ai-home__main,
+  .rf-ai-home__side {
+    gap: 0.8rem;
+  }
+
+  .rf-ai-home__hero {
+    padding: 1rem 1.25rem;
+    gap: 1rem;
+  }
+
+  .rf-ai-home__hero--chat {
+    padding: 0;
+  }
+
+  .rf-ai-home__bot {
+    width: 4.6rem;
+    height: 4.6rem;
+  }
+
+  .rf-ai-home__hero-copy h2 { font-size: 1.4rem; }
+  .rf-ai-home__hero-copy p { font-size: 0.88rem; }
+  .rf-ai-home__hero-copy li { font-size: 0.82rem; }
+  .rf-ai-home__msg-btn { font-size: 0.82rem; padding: 0.45rem 0.85rem; }
+
+  .rf-ai-home__hero-chat-bar { padding: 0.7rem 0.95rem; }
+  .rf-ai-home__hero-chat-pix { width: 2.4rem; height: 2.4rem; }
+  .rf-ai-home__hero-chat-titles strong { font-size: 1rem; }
+  .rf-ai-home__hero-chat-titles span { font-size: 0.78rem; }
+
+  .rf-ai-home__hero-chat-body .rf-fadey-ai-card,
+  .rf-ai-home__hero-chat-body .rf-fadey-ai-bubble-user {
+    font-size: 0.95rem;
+  }
+
+  .rf-ai-home__kpis { gap: 0.7rem; }
+  .rf-ai-home__kpi { padding: 0.75rem 0.9rem; gap: 0.7rem; }
+  .rf-ai-home__kpi p { font-size: 0.78rem; }
+  .rf-ai-home__kpi strong { font-size: 1.25rem; }
+  .rf-ai-home__kpi em { font-size: 0.72rem; }
+  .rf-ai-home__kpi-icon { width: 2.4rem; height: 2.4rem; font-size: 1.2rem; border-radius: 10px; }
+
+  .rf-ai-home__charts { gap: 0.8rem; }
+  .rf-ai-home__chart { padding: 0.75rem 0.9rem !important; }
+  .rf-ai-home__chart h3 { font-size: 0.92rem; margin-bottom: 0.4rem; }
+  .rf-ai-home__chart-box { height: 180px; }
+  .rf-ai-home__pie-wrap li { font-size: 0.82rem; }
+  .rf-ai-home__empty { font-size: 0.82rem; padding: 1.5rem 0; }
+
+  .rf-ai-home__exports { font-size: 0.82rem; }
+
+  .rf-ai-home__recs,
+  .rf-ai-home__actions { padding: 0.85rem 0.95rem !important; }
+  .rf-ai-home__recs h3,
+  .rf-ai-home__actions h3 { font-size: 0.95rem; margin-bottom: 0.55rem; }
+  .rf-ai-home__recs ul { gap: 0.6rem; }
+  .rf-ai-home__recs p { font-size: 0.85rem; }
+  .rf-ai-home__action-grid { gap: 0.55rem; }
+  .rf-ai-home__action-btn,
+  .rf-ai-home__action-grid a { font-size: 0.8rem; padding: 0.6rem 0.7rem; }
+}
+
+@media (min-width: 1800px) {
+  .rf-ai-home {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 440px);
+    gap: 1.1rem;
+  }
+
+  .rf-ai-home__hero-copy h2 { font-size: 1.6rem; }
+  .rf-ai-home__hero-copy p { font-size: 0.95rem; }
+  .rf-ai-home__hero-copy li { font-size: 0.9rem; }
+
+  .rf-ai-home__hero-chat-body .rf-fadey-ai-card,
+  .rf-ai-home__hero-chat-body .rf-fadey-ai-bubble-user {
+    font-size: 1.02rem;
+  }
+
+  .rf-ai-home__kpi strong { font-size: 1.45rem; }
+  .rf-ai-home__kpi p { font-size: 0.85rem; }
+  .rf-ai-home__chart-box { height: 240px; }
+  .rf-ai-home__chart h3 { font-size: 1rem; }
+  .rf-ai-home__recs p { font-size: 0.92rem; }
+  .rf-ai-home__action-btn,
+  .rf-ai-home__action-grid a { font-size: 0.86rem; }
+}
+
 @media (max-width: 1100px) {
   .rf-ai-home {
     grid-template-columns: 1fr;
@@ -495,7 +608,19 @@
   }
 }
 
+@media (max-width: 1100px) and (min-width: 761px) {
+  .rf-ai-home__chart-box { height: 150px; }
+}
+
 @media (max-width: 760px) {
+  .rf-ai-home__hero--chat {
+    height: calc(100vh - 7.5rem);
+    height: calc(100dvh - 7.5rem);
+    min-height: 20rem;
+  }
+
+  .rf-ai-home__chart-box { height: 160px; }
+
   .rf-ai-home__kpis,
   .rf-ai-home__charts,
   .rf-ai-home__action-grid,

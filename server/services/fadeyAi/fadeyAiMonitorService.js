@@ -134,6 +134,43 @@ function maybeNotifyAnomalies() {
   }
 }
 
+function maybeNotifyForecast() {
+  const { adminDailyNotice, weeklyClosingNotice } = require('./fadeyAiForecast');
+  const daily = adminDailyNotice();
+  if (daily && !alreadyAlertedToday(daily.key)) {
+    addNotification({
+      title: FADEY_AVISO_TITLE,
+      message: daily.message,
+      level: 'info',
+      created_by: 'IA Fadey',
+      duration_hours: 18,
+      audience: 'admin',
+    });
+    markAlertedToday(daily.key, daily.message);
+  }
+  const weekly = weeklyClosingNotice();
+  if (weekly) {
+    const { queryOne: q } = require('../../database');
+    const monday = (() => {
+      const d = new Date(`${String(businessNow()).slice(0, 10)}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+      return d.toISOString().slice(0, 10);
+    })();
+    const id = `alert-week-${monday}-${weekly.key}`;
+    if (!q('SELECT id FROM fadey_ai_memory WHERE id = ?', [id])) {
+      addNotification({
+        title: FADEY_AVISO_TITLE,
+        message: weekly.message,
+        level: 'info',
+        created_by: 'IA Fadey',
+        duration_hours: 72,
+        audience: 'admin',
+      });
+      upsertMemory({ id, kind: 'alert', title: weekly.key, body: weekly.message, meta: { week: monday } });
+    }
+  }
+}
+
 function markMonitorRan() {
   const { runSql } = require('../../database');
   const now = businessNow();
@@ -167,6 +204,11 @@ function runFadeyAiMonitorCycle() {
   }
 
   maybeNotifyAnomalies();
+  try {
+    maybeNotifyForecast();
+  } catch (err) {
+    console.warn('[fadey-ai] pronóstico:', err.message || err);
+  }
   markMonitorRan();
   return { ok: true, learning: false, monitored: true };
 }

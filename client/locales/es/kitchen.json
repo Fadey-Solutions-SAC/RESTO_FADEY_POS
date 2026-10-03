@@ -50,7 +50,7 @@
     "itemsAddedToComanda": "Productos agregados a comanda #{{number}}",
     "itemsAddedToComandaShort": "Productos agregados a la comanda",
     "newOrderNumber": "Nuevo pedido #{{number}} ({{station}})",
-    "overdueTable": "Mesa {{table}} está tardando más de 30 minutos",
+    "overdueTable": "{{table}} está tardando más de 30 minutos",
     "overdueDelivery": "Delivery #{{number}} está tardando más de 30 minutos",
     "overdueOrder": "Pedido #{{number}} está tardando más de 30 minutos"
   },
@@ -70,8 +70,26 @@
     "minutesSaved": "Tiempo de auto-retiro: {{minutes}} min",
     "saveFailed": "No se pudo guardar el ajuste",
     "saving": "Guardando…",
-    "autoDismissTable": "Mesa {{table}} retirada de bar ({{minutes}} min sin atender)",
+    "autoDismissTable": "{{table}} retirada de bar ({{minutes}} min sin atender)",
     "autoDismissOrder": "Pedido #{{number}} retirado de bar ({{minutes}} min sin atender)",
     "autoDismissGeneric": "Comanda retirada de bar ({{minutes}} min sin atender)"
+  },
+  "prep": {
+    "title": "Preparación sugerida",
+    "subtitle": "Según lo que más se vende cada día de la semana",
+    "today": "Hoy {{day}}",
+    "tomorrow": "Mañana {{day}}",
+    "onDay": "El {{day}}",
+    "comesDay": "Viene {{when}}: esto se vende más, prepara tus insumos.",
+    "usuallySells": "Suele salir",
+    "hot": "se vende más ese día",
+    "notEnough": "No alcanza: tienes {{stock}} {{unit}}, se necesitan ~{{need}} {{unit}}",
+    "runningLow": "Te queda poco: {{stock}} {{unit}} para ~{{need}} {{unit}}",
+    "prepareFor": "Prepara los insumos de",
+    "noRecipeHint": "Estos productos no tienen receta vinculada; revisa que tengas sus insumos.",
+    "closedDays": "Cerrado normalmente: {{days}}",
+    "hide": "Ocultar por hoy",
+    "show": "Ver preparación sugerida",
+    "days": ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"]
   }
 }
