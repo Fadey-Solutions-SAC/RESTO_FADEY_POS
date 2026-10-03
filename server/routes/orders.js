@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../database');
+const { queryAll, queryOne, runSql, withTransaction, logAudit, ensureOrdersPaymentNoteColumn } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { assertPaymentMethodAllowed, normalizePaymentMethod, classifySalesAdjustment } = require('../businessRules');
 const { parsePaymentBreakdown, dominantPaymentMethod, round2 } = require('../utils/paymentBreakdown');
@@ -1170,6 +1170,8 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
   }
 
   const tipInBody = req.body?.tip_amount !== undefined && req.body?.tip_amount !== null;
+  const noteInBody = req.body?.payment_note !== undefined && req.body?.payment_note !== null;
+  const canSavePaymentNote = noteInBody ? ensureOrdersPaymentNoteColumn() : false;
 
   if (payment_status && !['pending', 'paid', 'refunded'].includes(String(payment_status))) {
     return res.status(400).json({ error: 'Estado de pago inválido' });
@@ -1207,7 +1209,12 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
     nextBreakdown = null;
   }
 
-  if (nextPaymentMethod === null && nextBreakdown === undefined && (payment_status === undefined || payment_status === null)) {
+  if (
+    nextPaymentMethod === null
+    && nextBreakdown === undefined
+    && (payment_status === undefined || payment_status === null)
+    && !canSavePaymentNote
+  ) {
     return res.status(400).json({ error: 'Sin cambios de pago' });
   }
 
@@ -1231,6 +1238,10 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
     const tip = round2(Math.max(0, Number(req.body.tip_amount)));
     setParts.push('tip_amount = ?');
     params.push(tip);
+  }
+  if (canSavePaymentNote) {
+    setParts.push('payment_note = ?');
+    params.push(String(req.body.payment_note || '').trim().slice(0, 300));
   }
   if (payment_status !== undefined && payment_status !== null) {
     setParts.push('payment_status = ?');

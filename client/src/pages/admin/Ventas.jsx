@@ -298,6 +298,7 @@ export default function Ventas() {
   const [editing, setEditing] = useState(null);
   const [editPaymentMethod, setEditPaymentMethod] = useState('efectivo');
   const [editDocType, setEditDocType] = useState('nota_venta');
+  const [editPaymentNote, setEditPaymentNote] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [restaurantName, setRestaurantName] = useState('-');
@@ -540,22 +541,43 @@ export default function Ventas() {
     setEditing(null);
   };
 
-  const startEdit = (order) => {
-    const doc = getOrderDocument(order);
-    setEditing(order);
-    setEditPaymentMethod(order.payment_method || 'efectivo');
+  const startEdit = (group) => {
+    const order = group.primary;
+    const doc = getAccountDocument(group);
+    const payableOrders = (group.orders || []).filter(
+      (o) => o.status !== 'cancelled' && String(o.payment_method || '') !== 'cortesia',
+    );
+    const initialNote = String(
+      payableOrders.find((o) => String(o.payment_note || '').trim())?.payment_note || '',
+    ).trim();
+    setEditing({
+      id: order.id,
+      orderIds: payableOrders.map((o) => o.id),
+      docType: doc.doc_type || 'nota_venta',
+      paymentNote: initialNote,
+      singleComanda: (group.orders || []).length === 1,
+    });
+    setEditPaymentMethod(payableOrders[0]?.payment_method || order.payment_method || 'efectivo');
     setEditDocType(doc.doc_type || 'nota_venta');
+    setEditPaymentNote(initialNote);
     setSelected(order);
-    const group = displayGroups.find((g) => g.orders.some((o) => o.id === order.id));
-    if (group) setSelectedGroup(group);
+    setSelectedGroup(group);
   };
 
   const saveChanges = async () => {
     if (!editing) return;
     setSavingEdit(true);
     try {
-      await api.put(`/orders/${editing.id}/payment`, { payment_method: editPaymentMethod });
-      await api.put(`/billing/order/${editing.id}/document`, { doc_type: editDocType });
+      const nextNote = editPaymentNote.trim();
+      for (const orderId of editing.orderIds) {
+        await api.put(`/orders/${orderId}/payment`, {
+          payment_method: editPaymentMethod,
+          ...(nextNote !== editing.paymentNote ? { payment_note: nextNote } : {}),
+        });
+      }
+      if (editing.singleComanda && editDocType !== editing.docType) {
+        await api.put(`/billing/order/${editing.id}/document`, { doc_type: editDocType });
+      }
       toast.success('Registro actualizado');
       setEditing(null);
       closeDetail();
@@ -658,8 +680,7 @@ export default function Ventas() {
       if (group.comprobanteCount === 1) downloadExcel({ ...o, local_name: restaurantName });
       else group.orders.forEach((ord) => downloadExcel({ ...ord, local_name: restaurantName }));
     } else if (action === 'editar') {
-      if (group.comprobanteCount === 1) startEdit(o);
-      else openGroupDetail(group);
+      startEdit(group);
     } else if (action === 'anular') {
       if (group.comprobanteCount === 1) openVoidModal(o);
       else openGroupDetail(group);
@@ -965,18 +986,55 @@ export default function Ventas() {
                   </div>
                   <div>
                     <label className="block text-xs text-[var(--ui-muted)] mb-1">Comprobante</label>
-                    <select className="input-field text-sm" value={editDocType} onChange={e => setEditDocType(e.target.value)}>
+                    <select
+                      className="input-field text-sm disabled:opacity-60"
+                      value={editDocType}
+                      onChange={e => setEditDocType(e.target.value)}
+                      disabled={!editing.singleComanda}
+                    >
                       {DOC_TYPE_KEYS.map((value) => (
                         <option key={value} value={value}>{docLabel(value)}</option>
                       ))}
                     </select>
                   </div>
                 </div>
-                <button onClick={saveChanges} disabled={savingEdit} className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
-                  <MdSave /> {savingEdit ? 'Guardando...' : 'Guardar cambios'}
-                </button>
+                <div>
+                  <label htmlFor="edit-payment-note" className="block text-xs text-[var(--ui-muted)] mb-1">Nota del pago</label>
+                  <textarea
+                    id="edit-payment-note"
+                    rows={2}
+                    maxLength={300}
+                    className="input-field w-full text-sm resize-y"
+                    placeholder="Ej.: Cliente pagó con Yape, no en efectivo"
+                    value={editPaymentNote}
+                    onChange={(e) => setEditPaymentNote(e.target.value)}
+                  />
+                </div>
+                {editing.orderIds.length > 1 ? (
+                  <p className="text-xs text-[var(--ui-muted)]">
+                    El método se aplica a las {editing.orderIds.length} comandas de la cuenta; la propina se mantiene y pasa al nuevo método en el cierre de caja.
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={saveChanges} disabled={savingEdit} className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
+                    <MdSave /> {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                  <button type="button" onClick={() => setEditing(null)} disabled={savingEdit} className="btn-secondary text-sm">
+                    Cancelar
+                  </button>
+                </div>
               </div>
             )}
+            {editing?.id !== selected.id
+              && !selectedGroup.isPendingAccount
+              && !isVoidedTab
+              && (selectedGroup.orders || []).some((o) => o.status !== 'cancelled' && o.payment_status === 'paid') ? (
+                <div className="flex justify-end">
+                  <button type="button" onClick={() => startEdit(selectedGroup)} className="btn-secondary text-sm">
+                    Editar método de pago
+                  </button>
+                </div>
+              ) : null}
 
             {selected.status === 'cancelled' && String(selected.cancellation_reason || '').trim() ? (
               <div className="rounded-lg border border-red-500/50 bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm text-[var(--ui-body-text)] shadow-inner">
@@ -1044,6 +1102,12 @@ export default function Ventas() {
                 <p className="ui-text-muted">Comprobante</p>
                 <p className="font-medium">{(() => { const doc = getAccountDocument(selectedGroup); return `${docLabel(doc.doc_type)} - ${doc.full_number}`; })()}</p>
               </div>
+              {selectedGroup.paymentNote ? (
+                <div className="col-span-2">
+                  <p className="ui-text-muted">Nota del pago</p>
+                  <p className="font-medium whitespace-pre-wrap break-words">{selectedGroup.paymentNote}</p>
+                </div>
+              ) : null}
             </div>
             {selectedGroup.observations?.observed && selectedGroup.observations.items?.length ? (
               <div className="rounded-lg border border-amber-500/40 bg-[var(--ui-surface-2)] px-3 py-2.5 text-sm text-[var(--ui-body-text)]">

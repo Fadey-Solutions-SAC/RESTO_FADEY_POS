@@ -235,6 +235,11 @@ export default function VentasCuentasTable({
                       compact
                       methodOnly
                     />
+                    {group.paymentNote ? (
+                      <p className="text-[10px] font-normal text-[var(--ui-muted)] truncate max-w-[12rem]" title={group.paymentNote}>
+                        Nota: {group.paymentNote}
+                      </p>
+                    ) : null}
                   </td>
                 ) : null}
                 <td className="py-2.5 pr-4 font-bold text-[var(--ui-body-text)] whitespace-nowrap">

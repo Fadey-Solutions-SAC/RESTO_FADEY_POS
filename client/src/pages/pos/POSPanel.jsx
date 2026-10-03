@@ -832,6 +832,7 @@ export default function POSPanel() {
   const [multiPayAmounts, setMultiPayAmounts] = useState(() => emptyMultiPaymentAmounts());
   const [tipPayEnabled, setTipPayEnabled] = useState(false);
   const [checkoutTipAmount, setCheckoutTipAmount] = useState('');
+  const [checkoutPaymentNote, setCheckoutPaymentNote] = useState('');
   const [amountReceived, setAmountReceived] = useState('');
   const [billingForm, setBillingForm] = useState(DEFAULT_BILLING_FORM);
   const [billingResult, setBillingResult] = useState(null);
@@ -1486,6 +1487,7 @@ export default function POSPanel() {
     setMultiPayAmounts(emptyMultiPaymentAmounts());
     setTipPayEnabled(false);
     setCheckoutTipAmount('');
+    setCheckoutPaymentNote('');
   }, [showBill, selectedTable?.id]);
 
   useEffect(() => {
@@ -2434,6 +2436,8 @@ export default function POSPanel() {
         const tipVal = roundMoneySoles(parseFloat(String(checkoutTipAmount).replace(',', '.')) || 0);
         if (tipVal > 0) checkoutBody.tip_amount = tipVal;
       }
+      const paymentNoteText = String(checkoutPaymentNote || '').trim();
+      if (paymentNoteText) checkoutBody.payment_note = paymentNoteText;
 
       if (useLineSplit) {
         checkoutBody.order_item_ids = selectedOrderItemIds;
@@ -2609,6 +2613,7 @@ export default function POSPanel() {
       setMultiPayAmounts(emptyMultiPaymentAmounts());
       setTipPayEnabled(false);
       setCheckoutTipAmount('');
+      setCheckoutPaymentNote('');
       resetBillingForm();
       loadData();
     } catch (err) { toast.error(err.message); }
@@ -3133,6 +3138,7 @@ export default function POSPanel() {
     setMultiPayAmounts(emptyMultiPaymentAmounts());
     setTipPayEnabled(false);
     setCheckoutTipAmount('');
+    setCheckoutPaymentNote('');
     setShowMenu(true);
     resetCart();
     setSearch('');
@@ -4942,6 +4948,7 @@ export default function POSPanel() {
             setMultiPayAmounts(emptyMultiPaymentAmounts());
             setTipPayEnabled(false);
             setCheckoutTipAmount('');
+            setCheckoutPaymentNote('');
             resetBillingForm();
             resetCart();
             clearMesaLock();
@@ -5757,6 +5764,20 @@ export default function POSPanel() {
                         </label>
                       </div>
                     </div>
+                    <div>
+                      <label htmlFor="checkout-payment-note" className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">
+                        Nota del pago (opcional)
+                      </label>
+                      <textarea
+                        id="checkout-payment-note"
+                        rows={2}
+                        maxLength={300}
+                        className="input-field w-full text-sm resize-y"
+                        placeholder="Ej.: Yape a nombre de Juan, operación 123456"
+                        value={checkoutPaymentNote}
+                        onChange={(e) => setCheckoutPaymentNote(e.target.value)}
+                      />
+                    </div>
                     {addToAccountEnabled && (
                       <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2 space-y-2">
                         <div className="flex items-center justify-between gap-2">
@@ -6167,6 +6188,29 @@ export default function POSPanel() {
                 </div>
               </div>
 
+              {totalTips > 0 ? (
+                <div className="rounded-xl p-4 border border-amber-500/40 bg-amber-500/10">
+                  <h3 className="font-semibold text-[var(--ui-body-text)] mb-3 flex items-center gap-2">
+                    <MdAccountBalanceWallet className="text-amber-600" /> Propinas del turno
+                  </h3>
+                  <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
+                    {registerPaymentRows.filter((row) => row.tip > 0).map((row) => (
+                      <div key={row.value} className="rounded-lg p-3 border border-[color:var(--ui-border)] bg-[var(--ui-surface)]">
+                        <p className="text-xs text-[var(--ui-muted)]">{row.label}</p>
+                        <p className={`font-bold text-lg tabular-nums ${paymentRowAmountClass(row.value)}`}>{formatCurrency(row.tip)}</p>
+                        <p className="text-[10px] text-[var(--ui-muted)] leading-snug">
+                          {row.value === 'efectivo' ? 'Debe estar en la caja' : 'Incluido en lo que marca el POS / QR'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center mt-3 pt-3 border-t border-amber-500/30">
+                    <span className="font-bold text-[var(--ui-body-text)]">Total propinas</span>
+                    <span className="font-bold text-xl text-amber-600 tabular-nums">{formatCurrency(totalTips)}</span>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="rounded-xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
                 <h3 className="font-semibold text-[var(--ui-body-text)] mb-1">Conteo de efectivo</h3>
                 <div className="mb-3">
@@ -6280,6 +6324,11 @@ export default function POSPanel() {
                           <label className="text-xs font-medium text-[var(--ui-body-text)]">{r.checkLabel}</label>
                           <span className="text-[11px] text-[var(--ui-muted)] tabular-nums">Sistema {formatCurrency(r.expected)}</span>
                         </div>
+                        {r.tip > 0 ? (
+                          <p className="mb-1 inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 tabular-nums">
+                            Venta {formatCurrency(r.amount)} + propina {formatCurrency(r.tip)}
+                          </p>
+                        ) : null}
                         <div className="flex items-center gap-2">
                           <div className="relative flex-1">
                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-xs">S/</span>

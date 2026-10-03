@@ -739,6 +739,9 @@ export function buildPaidSalesAccountDisplayGroups(orders = [], adjustmentRows =
       groupedProducts,
       total,
       tipTotal,
+      paymentNote: [...new Set(
+        salesOrders.map((o) => String(o.payment_note || '').trim()).filter(Boolean),
+      )].join(' · '),
       collectedTotal: Math.round((total + tipTotal) * 100) / 100,
       paidTotal: total,
       pendingTotal: 0,

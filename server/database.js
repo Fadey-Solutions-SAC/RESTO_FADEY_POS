@@ -1762,6 +1762,7 @@ async function initDatabase() {
     );
     addOrderColIfMissing('payment_breakdown', "ALTER TABLE orders ADD COLUMN payment_breakdown TEXT DEFAULT NULL");
     addOrderColIfMissing('tip_amount', 'ALTER TABLE orders ADD COLUMN tip_amount REAL NOT NULL DEFAULT 0');
+    addOrderColIfMissing('payment_note', "ALTER TABLE orders ADD COLUMN payment_note TEXT DEFAULT ''");
     addOrderColIfMissing('kitchen_release_at', 'ALTER TABLE orders ADD COLUMN kitchen_release_at TEXT');
     addOrderColIfMissing('preparing_at', 'ALTER TABLE orders ADD COLUMN preparing_at TEXT');
     addOrderColIfMissing('station_cocina_ready_at', 'ALTER TABLE orders ADD COLUMN station_cocina_ready_at TEXT');
@@ -3611,6 +3612,19 @@ function getOrderColumnSet() {
   return new Set(pragmaTableColumnNames('orders'));
 }
 
+function ensureOrdersPaymentNoteColumn() {
+  if (!db) return false;
+  try {
+    if (getOrderColumnSet().has('payment_note')) return true;
+    runSql("ALTER TABLE orders ADD COLUMN payment_note TEXT DEFAULT ''");
+  } catch (e) {
+    if (!/duplicate column/i.test(String(e?.message || e))) {
+      console.warn('[ensureOrdersPaymentNoteColumn]', e.message || e);
+    }
+  }
+  return getOrderColumnSet().has('payment_note');
+}
+
 function ensureLoyaltySurveysTable() {
   if (!db) return;
   try {
@@ -3708,6 +3722,7 @@ function ensureOrdersReportColumns() {
     ['sale_number', 'ALTER TABLE orders ADD COLUMN sale_number INTEGER'],
     ['tip_amount', 'ALTER TABLE orders ADD COLUMN tip_amount REAL NOT NULL DEFAULT 0'],
     ['payment_breakdown', 'ALTER TABLE orders ADD COLUMN payment_breakdown TEXT DEFAULT NULL'],
+    ['payment_note', "ALTER TABLE orders ADD COLUMN payment_note TEXT DEFAULT ''"],
     ['created_by_user_id', "ALTER TABLE orders ADD COLUMN created_by_user_id TEXT DEFAULT ''"],
     ['created_by_user_name', "ALTER TABLE orders ADD COLUMN created_by_user_name TEXT DEFAULT ''"],
     ['sale_document_type', "ALTER TABLE orders ADD COLUMN sale_document_type TEXT DEFAULT 'nota_venta'"],
@@ -3749,6 +3764,7 @@ module.exports = {
   ensureOrdersReportColumns,
   ensureLoyaltySurveysTable,
   getOrderColumnSet,
+  ensureOrdersPaymentNoteColumn,
   hasUsersColumn,
   ensureUsersSchemaColumns,
   ensureUsersRoleAllowsProduccion,

@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('../database');
+const { queryAll, queryOne, runSql, withTransaction, logAudit, ensureOrdersPaymentNoteColumn } = require('../database');
 const kardexInventory = require('../services/kardexInventoryService');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { assertPaymentMethodAllowed, normalizePaymentMethod, getPaymentMethodOptionsPayload, isCourtesyDiscountReason, COURTESY_PAYMENT_METHOD } = require('../businessRules');
@@ -747,7 +747,10 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     tip_amount: tipAmountRaw,
     charge_to_customer_account: chargeToAccountRaw,
     customer_id: customerIdRaw,
+    payment_note: paymentNoteRaw,
   } = body;
+  const paymentNote = String(paymentNoteRaw || '').trim().slice(0, 300);
+  const canSavePaymentNote = paymentNote ? ensureOrdersPaymentNoteColumn() : false;
   const chargeToCustomerAccount = chargeToAccountRaw === true || chargeToAccountRaw === 1 || chargeToAccountRaw === '1';
   const customerIdForAccount = String(customerIdRaw || '').trim();
   const orderItemIds = [
@@ -971,6 +974,9 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
             );
           }
         }
+        if (canSavePaymentNote) {
+          tx.run('UPDATE orders SET payment_note = ? WHERE id = ?', [paymentNote, row.id]);
+        }
         kardexInventory.aplicarSalidasVentaPedido(
           tx,
           row.id,
@@ -1054,6 +1060,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         payment_method: primaryForAudit,
         payment_breakdown: paymentBreakdownObj || null,
         tip_amount: round2(Math.max(0, Number(tipAmountRaw || 0))),
+        payment_note: paymentNote || undefined,
       },
     });
     const paidItems = paidOrders.flatMap((o) => (Array.isArray(o.items) ? o.items : []));
