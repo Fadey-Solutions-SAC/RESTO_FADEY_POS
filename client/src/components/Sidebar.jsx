@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
-import { ADMIN_MODULE_PATHS, canAccessStaffModule, hasModulePermission } from '../utils/staffModuleAccess';
+import { ADMIN_MODULE_PATHS, PRIMARY_MODULE_BY_ROLE, canAccessStaffModule, hasModulePermission } from '../utils/staffModuleAccess';
 import { useShowDeliveryUi } from '../hooks/useDeliveryEnabled';
 import { usePrintingModule } from '../hooks/usePrintingModule';
 import EndShiftModal from './EndShiftModal';
@@ -348,12 +348,22 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
     }
     return true;
   }).map((id) => ({ id, label: t(`cajaSub.${id}`) }));
-  const visibleLinks = user?.role === 'cajero'
-    ? [
-        filtered.find(l => l.to === '/admin/caja'),
-        ...filtered.filter(l => l.to !== '/admin/caja'),
-      ].filter(Boolean)
-    : filtered;
+  /** 0 = módulo propio del rol (área vinculada en producción), 1 = otras áreas de producción, 2 = resto. */
+  const linkPriority = (link) => {
+    if (roleLc === 'produccion' || roleLc === 'cocina' || roleLc === 'bar') {
+      if (!link.isProductionArea) return 2;
+      const own = String(user?.production_area_id || '').trim() || (roleLc === 'produccion' ? '' : roleLc);
+      return own && String(link.productionAreaId || '').trim() === own ? 0 : 1;
+    }
+    const primaryId = PRIMARY_MODULE_BY_ROLE[roleLc];
+    return primaryId && link.moduleId === primaryId ? 0 : 2;
+  };
+  const visibleLinks = roleLc === 'admin' || roleLc === 'master_admin'
+    ? filtered
+    : filtered
+      .map((link, idx) => ({ link, idx, p: linkPriority(link) }))
+      .sort((a, b) => a.p - b.p || a.idx - b.idx)
+      .map((row) => row.link);
 
   const linkClass = ({ isActive }) =>
     `rf-nav-link ${isActive ? 'rf-nav-link--active' : ''}`;

@@ -856,9 +856,14 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       order.status === 'delivered' ||
       String(order.payment_status || '') === 'paid' ||
       isUnpaidActive;
+    /** Venta rápida de mostrador (sin mesa): la anula la misma caja que la registró. */
+    const isQuickSaleOrder =
+      String(order.type || '') === 'pickup'
+      && !String(order.table_id || '').trim()
+      && String(order.customer_name || '').trim().toUpperCase() === 'VENTA RAPIDA';
     const canCancelUnpaidActive =
       ['admin', 'master_admin'].includes(roleLc)
-      || (roleLc === 'cajero' && userCanEliminarLiberarMesa(req.user));
+      || (roleLc === 'cajero' && (isQuickSaleOrder || userCanEliminarLiberarMesa(req.user)));
     if (isUnpaidActive && !canCancelUnpaidActive) {
       return res.status(403).json({
         error: 'Solo caja (admin o cajero autorizado) puede quitar productos o liberar la mesa.',

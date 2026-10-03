@@ -25,7 +25,10 @@
     "delivery": "Delivery",
     "timeNow": "Now",
     "timeMinutes": "{{count}} min",
-    "timeHours": "{{hours}}h {{minutes}}m"
+    "timeHours": "{{hours}}h {{minutes}}m",
+    "statActive": "Active",
+    "statPreparing": "Preparing",
+    "statDispatched": "Dispatched today"
   },
   "history": {
     "button": "History",
@@ -77,10 +80,11 @@
   "prep": {
     "title": "Suggested prep",
     "subtitle": "Based on what sells most on each weekday",
-    "today": "Today {{day}}",
-    "tomorrow": "Tomorrow {{day}}",
-    "onDay": "On {{day}}",
-    "comesDay": "{{when}} is coming: these sell more, prepare your ingredients.",
+    "today": "today, {{day}}",
+    "tomorrow": "tomorrow, {{day}}",
+    "onDay": "{{day}}",
+    "comesDay": "Coming up {{when}}: these sell more, prepare your ingredients.",
+    "collapsedSummary": "For {{when}}: {{count}} top-selling products",
     "usuallySells": "Usually sells",
     "hot": "sells more on that day",
     "notEnough": "Not enough: you have {{stock}} {{unit}}, need ~{{need}} {{unit}}",
@@ -89,8 +93,8 @@
     "prepareAll": "Have the ingredients for these products ready before opening.",
     "noRecipeHint": "These products have no linked recipe; make sure you have their ingredients.",
     "closedDays": "Usually closed: {{days}}",
-    "hide": "Hide for today",
-    "show": "Show suggested prep",
+    "hide": "Collapse",
+    "show": "Expand",
     "days": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
   }
 }

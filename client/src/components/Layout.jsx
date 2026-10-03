@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppLocaleBootstrap } from '../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../hooks/useStaffSessionHeartbeat';
 import { getShellModuleTitle } from '../utils/shellModuleTitle';
+import { useShellTitleOverride } from '../utils/shellTitleOverride';
 import { getOfflinePosStatus, subscribeOfflinePos } from '../utils/offlinePos';
 import OfflineCajaBanner from './OfflineCajaBanner';
 import { clearMasterViewAsOwner } from '../utils/masterViewMode';
@@ -88,7 +89,8 @@ export default function Layout() {
   }, [isMobile]);
 
   const isMozoBlocked = user?.role === 'mozo' && cajaOpen === false && !checkingCaja;
-  const shellTitle = getShellModuleTitle(location.pathname, location.search, td);
+  const shellTitleOverride = useShellTitleOverride();
+  const shellTitle = shellTitleOverride || getShellModuleTitle(location.pathname, location.search, td);
   const isCajaPage = location.pathname === '/admin/caja' || location.pathname.startsWith('/admin/caja/');
   const isSettingsPage = location.pathname === '/admin/configuracion' || location.pathname.startsWith('/admin/configuracion/');
   const isAlmacenPage = location.pathname === '/admin/almacen' || location.pathname.startsWith('/admin/almacen/');

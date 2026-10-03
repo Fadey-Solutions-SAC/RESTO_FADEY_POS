@@ -25,7 +25,10 @@
     "delivery": "Delivery",
     "timeNow": "Ahora",
     "timeMinutes": "{{count}} min",
-    "timeHours": "{{hours}}h {{minutes}}m"
+    "timeHours": "{{hours}}h {{minutes}}m",
+    "statActive": "Activos",
+    "statPreparing": "En preparación",
+    "statDispatched": "Despachados hoy"
   },
   "history": {
     "button": "Historial",
@@ -77,9 +80,10 @@
   "prep": {
     "title": "Preparación sugerida",
     "subtitle": "Según lo que más se vende cada día de la semana",
-    "today": "Hoy {{day}}",
-    "tomorrow": "Mañana {{day}}",
-    "onDay": "El {{day}}",
+    "today": "hoy {{day}}",
+    "tomorrow": "mañana {{day}}",
+    "onDay": "el {{day}}",
+    "collapsedSummary": "Para {{when}}: {{count}} productos que más salen",
     "comesDay": "Viene {{when}}: esto se vende más, prepara tus insumos.",
     "usuallySells": "Suele salir",
     "hot": "se vende más ese día",
@@ -89,8 +93,8 @@
     "prepareAll": "Ten listos los insumos de estos productos antes de abrir.",
     "noRecipeHint": "Estos productos no tienen receta vinculada; revisa que tengas sus insumos.",
     "closedDays": "Cerrado normalmente: {{days}}",
-    "hide": "Ocultar por hoy",
-    "show": "Ver preparación sugerida",
+    "hide": "Plegar",
+    "show": "Desplegar",
     "days": ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"]
   }
 }

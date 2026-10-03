@@ -9,6 +9,7 @@ import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
 import EndShiftModal from '../../components/EndShiftModal';
 import ProductionPrepBanner from '../../components/kitchen/ProductionPrepBanner';
+import { usePublishShellTitle } from '../../utils/shellTitleOverride';
 import { MdLogout, MdRestaurant, MdDeliveryDining, MdTableBar, MdCheckCircle, MdAccessTime, MdPrint, MdSettings, MdHistory, MdPerson } from 'react-icons/md';
 import { getProductionAreaIcon } from '../../utils/productionAreaUi';
 import toast from 'react-hot-toast';
@@ -309,6 +310,25 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     if (isComandaDoneForStation(order)) return false;
     return getPendingStationItems(order.items).length > 0;
   });
+  const preparingCount = visibleOrders.filter((order) => isComandaPreparingForStation(order)).length;
+
+  const [dispatchedTodayCount, setDispatchedTodayCount] = useState(0);
+  const loadDispatchedTodayCount = useCallback(async () => {
+    try {
+      const qs = new URLSearchParams({ station: areaId, limit: '200' });
+      const data = await api.get(`/orders/kitchen/dispatched?${qs.toString()}`);
+      setDispatchedTodayCount(Array.isArray(data) ? data.length : 0);
+    } catch (_) {
+      /* el contador no bloquea el panel */
+    }
+  }, [areaId]);
+  useEffect(() => {
+    void loadDispatchedTodayCount();
+  }, [loadDispatchedTodayCount]);
+  useActiveInterval(loadDispatchedTodayCount, 30000);
+
+  const titleInShell = location.pathname.startsWith('/admin');
+  usePublishShellTitle(panelTitle, titleInShell);
 
   const printOrderForStation = async (order, { silent = false } = {}) => {
     try {
@@ -588,6 +608,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
       }
       toast.success(status === 'preparing' ? t('toast.preparing') : t('toast.markedReady'));
       void loadOrders();
+      if (status === 'ready') void loadDispatchedTodayCount();
       if (historyOpen && status === 'ready') void loadDispatchedHistory();
     } catch (err) {
       toast.error(err.message);
@@ -670,33 +691,47 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           Toca aquí para activar el sonido de pedidos nuevos
         </button>
       ) : null}
-      <header className="bg-[var(--ui-surface)] backdrop-blur-xl border-b border-[color:var(--ui-border)] px-3 py-2 sm:px-6 sm:py-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
-          <StationIcon className="text-2xl sm:text-3xl text-[var(--ui-body-text)] shrink-0" />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
+      <header className="bg-[var(--ui-surface)] backdrop-blur-xl border-b border-[color:var(--ui-border)] px-3 py-2 sm:px-6 sm:py-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-wrap">
+          {!titleInShell ? (
+            <div className="flex items-center gap-2 min-w-0 mr-1">
+              <StationIcon className="text-2xl sm:text-3xl text-[var(--ui-body-text)] shrink-0" />
               <h1 className="text-base sm:text-xl font-bold truncate">{panelTitle}</h1>
-              {canEditBarSettings && (
-                <button
-                  type="button"
-                  onClick={() => setBarSettingsOpen(true)}
-                  className="p-1 sm:p-1.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)]"
-                  title={t('barSettings.gearTitle')}
-                  aria-label={t('barSettings.gearTitle')}
-                >
-                  <MdSettings className="text-base sm:text-lg" />
-                </button>
-              )}
             </div>
-            <p className="text-[var(--ui-muted)] text-[11px] sm:text-sm leading-tight">
-              {t('panel.activeOrders', { count: visibleOrders.length })}
-              {isBar && barAutoDismiss ? (
-                <span className="ml-1.5 sm:ml-2 text-[9px] sm:text-[10px] uppercase tracking-wide text-amber-400/90">
-                  · {t('barSettings.badgeActive', { minutes: barAutoDismissMinutes })}
-                </span>
-              ) : null}
-            </p>
-          </div>
+          ) : null}
+          {[
+            { key: 'active', label: t('panel.statActive'), value: visibleOrders.length, onClick: null },
+            { key: 'preparing', label: t('panel.statPreparing'), value: preparingCount, onClick: null },
+            { key: 'dispatched', label: t('panel.statDispatched'), value: dispatchedTodayCount, onClick: () => setHistoryOpen(true) },
+          ].map((s) => {
+            const Tag = s.onClick ? 'button' : 'div';
+            return (
+              <Tag
+                key={s.key}
+                {...(s.onClick ? { type: 'button', onClick: s.onClick, title: t('history.button') } : {})}
+                className={`min-w-[5.5rem] px-3 py-1.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-left ${s.onClick ? 'hover:bg-[var(--ui-sidebar-hover)]' : ''}`}
+              >
+                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-[var(--ui-muted)] leading-tight">{s.label}</p>
+                <p className="text-lg sm:text-xl font-bold tabular-nums text-[var(--ui-body-text)] leading-tight">{s.value}</p>
+              </Tag>
+            );
+          })}
+          {canEditBarSettings && (
+            <button
+              type="button"
+              onClick={() => setBarSettingsOpen(true)}
+              className="p-1.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-body-text)]"
+              title={t('barSettings.gearTitle')}
+              aria-label={t('barSettings.gearTitle')}
+            >
+              <MdSettings className="text-lg" />
+            </button>
+          )}
+          {isBar && barAutoDismiss ? (
+            <span className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">
+              {t('barSettings.badgeActive', { minutes: barAutoDismissMinutes })}
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 w-full sm:w-auto overflow-x-auto scrollbar-hide pb-0.5 sm:pb-0 sm:flex-wrap">
           <button
@@ -911,8 +946,8 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           </div>
         </Modal>
       )}
+      <ProductionPrepBanner areaId={areaId} />
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        <ProductionPrepBanner areaId={areaId} />
         {visibleOrders.map(order => {
           const TypeIcon = typeIcons[order.type] || MdRestaurant;
           const isOverdue = isKitchenOrderOverdue(order);
@@ -1034,7 +1069,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
                       type="button"
                       disabled={Boolean(statusBusy[order.id])}
                       onClick={() => void updateStatus(order.id, 'preparing')}
-                      className="flex-1 min-h-[2.5rem] py-2.5 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] disabled:opacity-50 disabled:pointer-events-none rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2"
+                      className="flex-1 min-h-[2.5rem] py-2.5 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] disabled:opacity-50 disabled:pointer-events-none rounded-lg font-bold text-sm text-white transition-all flex items-center justify-center gap-2"
                     >
                       <StationIcon /> {t('panel.prepare')}
                     </button>
@@ -1043,7 +1078,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
                       type="button"
                       disabled={Boolean(statusBusy[order.id])}
                       onClick={() => void updateStatus(order.id, 'ready')}
-                      className="flex-1 min-h-[2.5rem] py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 disabled:pointer-events-none rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 min-h-[2.5rem] py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 disabled:pointer-events-none rounded-lg font-bold text-sm text-white transition-colors flex items-center justify-center gap-2"
                     >
                       <MdCheckCircle /> {t('panel.ready')}
                     </button>

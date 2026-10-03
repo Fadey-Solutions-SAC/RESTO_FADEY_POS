@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MdAutoAwesome, MdClose, MdWarning, MdExpandMore } from 'react-icons/md';
+import { MdAutoAwesome, MdWarning, MdExpandMore } from 'react-icons/md';
 import { api } from '../../utils/api';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 
@@ -12,7 +12,7 @@ const ACCENT_SOFT_BG = 'bg-[color:color-mix(in_srgb,var(--ui-accent-muted)_16%,t
 const DANGER_TEXT = 'text-[color:color-mix(in_srgb,var(--ui-danger)_70%,var(--ui-body-text))]';
 const WARNING_TEXT = 'text-[color:color-mix(in_srgb,var(--ui-warning)_55%,var(--ui-body-text))]';
 
-function hideKey(areaId, date) {
+function collapseKey(areaId, date) {
   return `rf-prep-banner-hidden:${areaId}:${date}`;
 }
 
@@ -26,11 +26,11 @@ function fmtQty(n) {
   return Number.isInteger(v) ? String(v) : v.toFixed(2);
 }
 
-/** Tarjeta en la grilla del panel de producción: lo que más sale los próximos días e insumos que faltan. */
+/** Panel desplegable del área de producción: lo que más sale los próximos días e insumos que faltan. */
 export default function ProductionPrepBanner({ areaId }) {
   const { t } = useTranslation('kitchen');
   const [plan, setPlan] = useState(null);
-  const [hidden, setHidden] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -50,9 +50,9 @@ export default function ProductionPrepBanner({ areaId }) {
   useEffect(() => {
     if (!first) return;
     try {
-      setHidden(localStorage.getItem(hideKey(areaId, first.date)) === '1');
+      setCollapsed(localStorage.getItem(collapseKey(areaId, first.date)) === '1');
     } catch (_) {
-      setHidden(false);
+      setCollapsed(false);
     }
   }, [areaId, first?.date]);
 
@@ -67,111 +67,108 @@ export default function ProductionPrepBanner({ areaId }) {
     return t('prep.onDay', { day });
   };
 
-  const setHide = (value) => {
-    setHidden(value);
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
     try {
-      if (value) localStorage.setItem(hideKey(areaId, first.date), '1');
-      else localStorage.removeItem(hideKey(areaId, first.date));
+      if (next) localStorage.setItem(collapseKey(areaId, first.date), '1');
+      else localStorage.removeItem(collapseKey(areaId, first.date));
     } catch (_) { /* almacenamiento no disponible */ }
   };
-
-  if (hidden) {
-    return (
-      <button
-        type="button"
-        onClick={() => setHide(false)}
-        className={`col-span-full justify-self-start px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium inline-flex items-center gap-1.5 border ${ACCENT_BORDER} ${ACCENT_SOFT_BG} text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]`}
-      >
-        <MdAutoAwesome className="shrink-0 text-[var(--ui-accent-muted)]" />
-        {t('prep.show')}
-        <MdExpandMore className="shrink-0" />
-      </button>
-    );
-  }
 
   const closedDays = (plan.closed_days || []).map((c) => dayName(c.dow)).filter(Boolean);
 
   return (
-    <section className={`self-start rounded-xl overflow-hidden border-2 ${ACCENT_BORDER} bg-[var(--ui-surface)] text-[var(--ui-body-text)] min-w-0`}>
-      <div className={`flex items-start justify-between gap-2 px-4 py-3 ${ACCENT_SOFT_BG} border-b border-[color:var(--ui-border)]`}>
-        <div className="min-w-0">
-          <h2 className="text-base font-bold inline-flex items-center gap-1.5 text-[var(--ui-body-text)]">
-            <MdAutoAwesome className="shrink-0 text-[var(--ui-accent-muted)]" />
-            {t('prep.title')}
-          </h2>
-          <p className="text-xs text-[var(--ui-muted)]">{t('prep.subtitle')}</p>
-        </div>
+    <div className="px-6 pt-6">
+      <section className={`rounded-xl overflow-hidden border-2 ${ACCENT_BORDER} bg-[var(--ui-surface)] text-[var(--ui-body-text)]`}>
         <button
           type="button"
-          onClick={() => setHide(true)}
-          className="shrink-0 p-1 rounded-md text-[var(--ui-muted)] hover:text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
-          title={t('prep.hide')}
-          aria-label={t('prep.hide')}
+          onClick={toggle}
+          aria-expanded={!collapsed}
+          className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-left ${ACCENT_SOFT_BG} hover:bg-[var(--ui-sidebar-hover)]`}
         >
-          <MdClose className="text-lg" />
+          <span className="min-w-0">
+            <span className="text-base font-bold inline-flex items-center gap-1.5 text-[var(--ui-body-text)]">
+              <MdAutoAwesome className="shrink-0 text-[var(--ui-accent-muted)]" />
+              {t('prep.title')}
+            </span>
+            <span className="block text-xs text-[var(--ui-muted)]">
+              {collapsed
+                ? t('prep.collapsedSummary', { when: whenLabel(first), count: first.products.length })
+                : t('prep.subtitle')}
+            </span>
+          </span>
+          <span className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-[var(--ui-muted)]">
+            {collapsed ? t('prep.show') : t('prep.hide')}
+            <MdExpandMore className={`text-xl transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+          </span>
         </button>
-      </div>
-      <div className="divide-y divide-[color:var(--ui-border)]">
-        {plan.targets.map((target) => {
-          const onlyNoRecipe = target.no_recipe?.length && target.no_recipe.length === target.products.length;
-          return (
-            <div key={target.date} className="px-4 py-3 min-w-0">
-              <p className="text-sm font-semibold text-[var(--ui-body-text)]">{t('prep.comesDay', { when: whenLabel(target) })}</p>
-              <p className="mt-2 text-[11px] uppercase tracking-wide text-[var(--ui-muted)]">{t('prep.usuallySells')}</p>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {target.products.map((p) => (
-                  <span
-                    key={p.name}
-                    className={`text-xs px-2 py-0.5 rounded-full border break-words max-w-full text-[var(--ui-body-text)] ${p.hot ? `${ACCENT_BORDER} ${ACCENT_SOFT_BG} font-semibold` : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]'}`}
-                    title={p.hot ? t('prep.hot') : undefined}
-                  >
-                    {p.name} ~{p.qty}{p.hot ? ' ↑' : ''}
-                  </span>
-                ))}
-              </div>
-              {target.insumos?.length ? (
-                <ul className="mt-2 space-y-1">
-                  {target.insumos.map((i) => (
-                    <li
-                      key={i.name}
-                      className={`text-xs flex items-start gap-1.5 ${i.status === 'falta' ? DANGER_TEXT : WARNING_TEXT}`}
-                    >
-                      <MdWarning className="shrink-0 mt-0.5" />
-                      <span className="min-w-0 break-words">
-                        <strong>{i.name}</strong>:{' '}
-                        {t(i.status === 'falta' ? 'prep.notEnough' : 'prep.runningLow', {
-                          stock: fmtQty(i.stock),
-                          need: fmtQty(i.need),
-                          unit: i.unit || '',
-                        })}
-                        {i.products?.length ? ` (${i.products.join(', ')})` : ''}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {target.no_recipe?.length ? (
-                <p className="mt-2 text-xs text-[var(--ui-muted)]">
-                  {onlyNoRecipe && !target.uses_insumo_store ? (
-                    t('prep.prepareAll')
-                  ) : (
-                    <>
-                      <span className="font-medium text-[var(--ui-body-text)]">{t('prep.prepareFor')}:</span>{' '}
-                      {target.no_recipe.map((p) => `${p.name} (~${p.qty})`).join(', ')}.
-                      {target.uses_insumo_store ? ` ${t('prep.noRecipeHint')}` : ''}
-                    </>
-                  )}
-                </p>
-              ) : null}
+        {!collapsed ? (
+          <>
+            <div className="grid gap-3 p-3 sm:p-4 md:grid-cols-2">
+              {plan.targets.map((target) => {
+                const onlyNoRecipe = target.no_recipe?.length && target.no_recipe.length === target.products.length;
+                return (
+                  <div key={target.date} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 min-w-0">
+                    <p className="text-sm font-semibold text-[var(--ui-body-text)]">{t('prep.comesDay', { when: whenLabel(target) })}</p>
+                    <p className="mt-2 text-[11px] uppercase tracking-wide text-[var(--ui-muted)]">{t('prep.usuallySells')}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {target.products.map((p) => (
+                        <span
+                          key={p.name}
+                          className={`text-xs px-2 py-0.5 rounded-full border break-words max-w-full text-[var(--ui-body-text)] ${p.hot ? `${ACCENT_BORDER} ${ACCENT_SOFT_BG} font-semibold` : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)]'}`}
+                          title={p.hot ? t('prep.hot') : undefined}
+                        >
+                          {p.name} ~{p.qty}{p.hot ? ' ↑' : ''}
+                        </span>
+                      ))}
+                    </div>
+                    {target.insumos?.length ? (
+                      <ul className="mt-2 space-y-1">
+                        {target.insumos.map((i) => (
+                          <li
+                            key={i.name}
+                            className={`text-xs flex items-start gap-1.5 ${i.status === 'falta' ? DANGER_TEXT : WARNING_TEXT}`}
+                          >
+                            <MdWarning className="shrink-0 mt-0.5" />
+                            <span className="min-w-0 break-words">
+                              <strong>{i.name}</strong>:{' '}
+                              {t(i.status === 'falta' ? 'prep.notEnough' : 'prep.runningLow', {
+                                stock: fmtQty(i.stock),
+                                need: fmtQty(i.need),
+                                unit: i.unit || '',
+                              })}
+                              {i.products?.length ? ` (${i.products.join(', ')})` : ''}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {target.no_recipe?.length ? (
+                      <p className="mt-2 text-xs text-[var(--ui-muted)]">
+                        {onlyNoRecipe && !target.uses_insumo_store ? (
+                          t('prep.prepareAll')
+                        ) : (
+                          <>
+                            <span className="font-medium text-[var(--ui-body-text)]">{t('prep.prepareFor')}:</span>{' '}
+                            {target.no_recipe.map((p) => `${p.name} (~${p.qty})`).join(', ')}.
+                            {target.uses_insumo_store ? ` ${t('prep.noRecipeHint')}` : ''}
+                          </>
+                        )}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
-      {closedDays.length ? (
-        <p className="px-4 py-2 text-[11px] text-[var(--ui-muted)] border-t border-[color:var(--ui-border)]">
-          {t('prep.closedDays', { days: closedDays.join(', ') })}
-        </p>
-      ) : null}
-    </section>
+            {closedDays.length ? (
+              <p className="px-4 pb-3 text-[11px] text-[var(--ui-muted)]">
+                {t('prep.closedDays', { days: closedDays.join(', ') })}
+              </p>
+            ) : null}
+          </>
+        ) : null}
+      </section>
+    </div>
   );
 }

@@ -2945,6 +2945,43 @@ export default function POSPanel() {
     }
   };
 
+  /** Anula una venta rápida pendiente de cobro (motivo obligatorio; devuelve stock). */
+  const cancelQuickSale = async (table) => {
+    const order = table?.orders?.[0];
+    if (!order?.id) return;
+    const ok = window.confirm(
+      `¿Anular la venta rápida #${order.order_number ?? '—'} por ${formatCurrency(getOrderChargeTotal(order))}? Se devolverá el stock.`
+    );
+    if (!ok) return;
+    clientCheckoutOpenedKeyRef.current = '';
+    setShowBill(false);
+    setAmountReceived('');
+    setSplitMode(false);
+    setSelectedOrderItemIds([]);
+    setSelectedOrderItemQtys({});
+    setAddToAccountEnabled(false);
+    resetBillingForm();
+    setMesaDetailModalOpen(false);
+    let reason = '';
+    try {
+      reason = await promptMesaRemovalReason('cancel');
+    } catch {
+      return;
+    }
+    const tid = toast.loading('Anulando venta rápida…');
+    try {
+      await api.put(`/orders/${order.id}/status`, {
+        status: 'cancelled',
+        cancellation_reason: formatMesaRemovalReason('Venta rápida anulada', reason),
+      });
+      toast.success('Venta rápida anulada', { id: tid });
+      setSelectedTable(null);
+      await loadData();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo anular la venta rápida', { id: tid });
+    }
+  };
+
   /** Modificar pedido: carrito vacío → anular pedido y liberar mesa si no quedan pedidos activos. */
   const liberarMesaDesdeEdicionPedidoVacio = async () => {
     if (!editingOrderId || !selectedTable) return;
@@ -4313,29 +4350,50 @@ export default function POSPanel() {
               <MdPointOfSale /> Ventas rápidas por cobrar
             </h2>
             <p className="text-sm ui-text-muted mb-3">
-              Ventas rápidas que se cerraron sin cobrar. Al cobrarlas, desaparecen de esta lista.
+              Ventas rápidas que se cerraron sin cobrar. Al cobrarlas o anularlas, desaparecen de esta lista.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
               {quickSaleCajaSlots.map((slot) => (
-                <button
+                <div
                   key={slot.id}
-                  type="button"
-                  onClick={() => openBillForTable(slot)}
-                  className="card text-left transition-all border-l-4 border-l-emerald-500 hover:shadow-lg bg-slate-50/80"
+                  className="card text-left transition-all border-l-4 border-l-emerald-500 hover:shadow-lg bg-slate-50/80 flex flex-col gap-2"
                 >
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100">
-                      <MdPointOfSale className="text-emerald-700 text-xl" />
+                  <button
+                    type="button"
+                    onClick={() => openBillForTable(slot)}
+                    className="text-left"
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100">
+                        <MdPointOfSale className="text-emerald-700 text-xl" />
+                      </div>
+                      <div>
+                        <p className="font-bold rf-section-title">{slot.name}</p>
+                        <p className="text-xs ui-text-muted">Pedido #{slot.orders?.[0]?.order_number ?? '—'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold rf-section-title">{slot.name}</p>
-                      <p className="text-xs ui-text-muted">Pedido #{slot.orders?.[0]?.order_number ?? '—'}</p>
-                    </div>
+                    <p className="text-xs font-semibold text-emerald-800">
+                      Por cobrar · {formatCurrency(slot.order_total)}
+                    </p>
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openBillForTable(slot)}
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold inline-flex items-center justify-center gap-1"
+                    >
+                      <MdAttachMoney className="text-sm" /> Cobrar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void cancelQuickSale(slot)}
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold inline-flex items-center justify-center gap-1"
+                      title="Anular esta venta rápida sin cobrarla"
+                    >
+                      <MdClose className="text-sm" /> Anular
+                    </button>
                   </div>
-                  <p className="text-xs font-semibold text-emerald-800">
-                    Por cobrar · {formatCurrency(slot.order_total)}
-                  </p>
-                </button>
+                </div>
               ))}
             </div>
           </>
@@ -4482,6 +4540,17 @@ export default function POSPanel() {
                   <MdPrint className="shrink-0 text-lg" />
                   <span>Precuenta</span>
                 </button>
+                {isQuickSaleCheckoutTable(tableDetail) && tableDetail.orders?.length ? (
+                  <button
+                    type="button"
+                    onClick={() => void cancelQuickSale(tableDetail)}
+                    className="btn-mesa-grid !bg-red-600 hover:!bg-red-700 !text-white !border-red-700"
+                    title="Anular esta venta rápida sin cobrarla"
+                  >
+                    <MdClose className="shrink-0 text-lg" />
+                    <span>Anular</span>
+                  </button>
+                ) : null}
                 {(() => {
                   const heldByReserva =
                     !tableDetail.orders?.length
@@ -5735,6 +5804,17 @@ export default function POSPanel() {
                       ? 'Aplicar descuento'
                       : 'Agregar descuento'}
                 </button>
+                {isQuickSaleCheckoutTable(selectedTable) && (
+                  <button
+                    type="button"
+                    onClick={() => void cancelQuickSale(selectedTable)}
+                    disabled={checkoutBusy}
+                    className="px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold border border-red-700 shadow-md shadow-black/20 inline-flex items-center gap-1.5 disabled:opacity-60"
+                    title="Anular esta venta rápida sin cobrarla"
+                  >
+                    <MdClose className="text-base" /> Anular venta
+                  </button>
+                )}
               </div>
               <div className="lg:pl-4 px-0.5">
                 <button
@@ -5749,7 +5829,9 @@ export default function POSPanel() {
                 >
                   {checkoutBusy
                     ? (addToAccountEnabled ? 'AGREGANDO...' : 'COBRANDO...')
-                    : (addToAccountEnabled ? 'AGREGAR A CUENTA' : 'COBRAR MESA')}
+                    : (addToAccountEnabled
+                      ? 'AGREGAR A CUENTA'
+                      : isQuickSaleCheckoutTable(selectedTable) ? 'COBRAR VENTA' : 'COBRAR MESA')}
                 </button>
               </div>
             </div>

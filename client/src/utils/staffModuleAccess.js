@@ -25,6 +25,12 @@ export const ADMIN_MODULE_PATHS = [
   { path: '/admin/configuracion', moduleId: 'configuracion', roles: ['admin'] },
 ];
 
+/** Módulo de trabajo de cada rol: va primero en el menú y es la entrada al iniciar sesión. */
+export const PRIMARY_MODULE_BY_ROLE = {
+  cajero: 'caja',
+  mozo: 'mesas',
+};
+
 export function isPermissionEnabled(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
 }
@@ -142,6 +148,11 @@ export function getDefaultStaffPath(user, opts = {}) {
   }
   if (user.role === 'delivery') return hasModulePermission(user, 'delivery') ? '/delivery' : '/';
   if (!['admin', 'cajero', 'mozo'].includes(user.role)) return '/admin';
+  const primaryId = PRIMARY_MODULE_BY_ROLE[user.role];
+  const primary = primaryId && ADMIN_MODULE_PATHS.find((item) => item.moduleId === primaryId);
+  if (primary && canAccessStaffModule(user, { moduleId: primary.moduleId, roles: primary.roles })) {
+    return primary.path;
+  }
   const first = ADMIN_MODULE_PATHS.find((item) => hasModulePermission(user, item.moduleId));
   return first?.path || '/admin';
 }
