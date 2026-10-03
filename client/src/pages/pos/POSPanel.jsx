@@ -6233,9 +6233,8 @@ export default function POSPanel() {
                   <CloseSummaryCard
                     key={row.value}
                     tone={row.value}
-                    label={row.value === 'efectivo' ? 'Ventas en efectivo' : row.value === 'tarjeta' ? 'Ventas con tarjeta' : `Ventas ${row.label}`}
+                    label={row.label}
                     amount={row.amount}
-                    sub={row.tip > 0 ? `+ propina ${formatCurrency(row.tip)}` : ''}
                   />
                 ))}
               </div>

@@ -53,21 +53,41 @@ export function filterVisibleOrderingProducts(products = [], categoryIds = new S
   return products.filter((p) => p.is_combo || categoryIds.has(p.category_id));
 }
 
-/** Coincide si el nombre del producto empieza con el texto buscado (orden de escritura). */
-export function matchesOrderingProductSearch(productName, searchTerm) {
-  const term = String(searchTerm || '').trim().toLowerCase();
-  if (!term) return true;
-  const name = String(productName || '').trim().toLowerCase();
-  return name.startsWith(term);
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
-/** Filtra catálogo de pedidos por categoría y búsqueda por prefijo. */
+function searchWords(value) {
+  return normalizeSearchText(value).split(/[^a-z0-9ñ.]+/).filter(Boolean);
+}
+
+/**
+ * Cada palabra escrita debe coincidir con el inicio de alguna palabra del nombre, en cualquier orden
+ * («cabernet», «sauv cab», «fro malb»). Sin distinguir tildes ni mayúsculas.
+ */
+export function matchesOrderingProductSearch(productName, searchTerm) {
+  const terms = searchWords(searchTerm);
+  if (!terms.length) return true;
+  const words = searchWords(productName);
+  return terms.every((t) => words.some((w) => w.startsWith(t)));
+}
+
+/** Filtra por categoría y búsqueda; primero los nombres que empiezan con lo escrito. */
 export function filterOrderingProducts(products = [], { search = '', selectedCat = 'all' } = {}) {
-  return products.filter((p) => {
+  const filtered = products.filter((p) => {
     if (selectedCat !== 'all' && p.category_id !== selectedCat) return false;
     if (!matchesOrderingProductSearch(p.name, search)) return false;
     return true;
   });
+  const term = normalizeSearchText(search);
+  if (!term) return filtered;
+  const startsFirst = filtered.filter((p) => normalizeSearchText(p.name).startsWith(term));
+  if (!startsFirst.length || startsFirst.length === filtered.length) return filtered;
+  return [...startsFirst, ...filtered.filter((p) => !normalizeSearchText(p.name).startsWith(term))];
 }
 
 export function buildOrderItemsPayload(cart = []) {

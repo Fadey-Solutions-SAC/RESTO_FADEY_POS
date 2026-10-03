@@ -6,7 +6,6 @@ import {
   MdCreditCard,
   MdErrorOutline,
   MdHourglassEmpty,
-  MdInfoOutline,
   MdLanguage,
   MdVolunteerActivism,
 } from 'react-icons/md';
@@ -123,13 +122,8 @@ export default function NonCashArqueoSection({
 
   return (
     <div className="rounded-2xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-        <div>
-          <h3 className="font-bold text-lg text-[var(--ui-body-text)]">Otros medios (POS / QR)</h3>
-          <p className="text-xs text-[var(--ui-muted)]">
-            Escriba lo que marca el POS de tarjetas y lo recibido por QR (Yape, Plin…) para compararlo con el sistema.
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h3 className="font-bold text-lg text-[var(--ui-body-text)]">Otros medios (POS / QR)</h3>
         <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3 shadow-sm w-full sm:w-auto sm:min-w-[22rem] focus-within:border-[color:var(--ui-accent)] focus-within:ring-2 focus-within:ring-[color:var(--ui-accent)]/25">
           <div className="flex items-start justify-between gap-3 mb-2">
             <div className="min-w-0">
@@ -182,11 +176,6 @@ export default function NonCashArqueoSection({
           </p>
         </div>
       </div>
-      <p className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-700">
-        <MdInfoOutline className="text-sm shrink-0" />
-        Ingrese los montos contados o verificados físicamente, o pulse «Correcto» si coinciden con el sistema
-      </p>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {rows.map((r) => {
           const st = statusOf(r);
