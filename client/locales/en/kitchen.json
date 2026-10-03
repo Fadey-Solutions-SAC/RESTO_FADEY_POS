@@ -40,7 +40,8 @@
     "count_one": "{{count}} dispatched ticket",
     "emptyTitle": "No dispatches on this date",
     "emptyHint": "Tickets marked READY will appear here",
-    "loadFailed": "Could not load history"
+    "loadFailed": "Could not load history",
+    "retentionHint": "You can only browse the last {{days}} days."
   },
   "toast": {
     "sentToStation": "Ticket sent to {{station}}",

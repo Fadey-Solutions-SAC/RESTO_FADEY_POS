@@ -40,7 +40,8 @@
     "count_one": "{{count}} comanda despachada",
     "emptyTitle": "Sin despachos en esta fecha",
     "emptyHint": "Las comandas marcadas como LISTO aparecerán aquí",
-    "loadFailed": "No se pudo cargar el historial"
+    "loadFailed": "No se pudo cargar el historial",
+    "retentionHint": "Solo puedes consultar los últimos {{days}} días."
   },
   "toast": {
     "sentToStation": "Comanda enviada a {{station}}",

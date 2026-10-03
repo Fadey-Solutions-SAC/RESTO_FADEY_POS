@@ -214,9 +214,17 @@ router.get('/kitchen', authenticateToken, (req, res) => {
   res.json(kitchenOrders);
 });
 
+const KITCHEN_HISTORY_DAYS = 15;
+
 function parseKitchenHistoryDate(input) {
   const v = String(input || '').trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+}
+
+function shiftDateKey(dateKey, days) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return dt.toISOString().slice(0, 10);
 }
 
 router.get('/kitchen/dispatched', authenticateToken, (req, res) => {
@@ -230,7 +238,16 @@ router.get('/kitchen/dispatched', authenticateToken, (req, res) => {
   if (!userCanAccessKitchenStation(req.user, stationRequested)) {
     return res.status(403).json({ error: 'No tienes permiso para este panel de producción' });
   }
-  const dateKey = parseKitchenHistoryDate(req.query.date) || getBusinessTodayDateKey(queryOne);
+  const todayKey = getBusinessTodayDateKey(queryOne);
+  const dateKey = parseKitchenHistoryDate(req.query.date) || todayKey;
+  const oldestKey = shiftDateKey(todayKey, -KITCHEN_HISTORY_DAYS);
+  if (dateKey < oldestKey || dateKey > todayKey) {
+    return res.status(400).json({
+      error: `El historial solo muestra los últimos ${KITCHEN_HISTORY_DAYS} días`,
+      oldest_date: oldestKey,
+      today: todayKey,
+    });
+  }
   const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
   const { type } = req.query;
   const legacy = isLegacyStation(stationRequested);

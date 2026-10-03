@@ -60,6 +60,14 @@ function localDateInputValue(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+const HISTORY_DAYS = 15;
+
+function historyDateRange() {
+  const today = new Date();
+  const oldest = new Date(today.getFullYear(), today.getMonth(), today.getDate() - HISTORY_DAYS);
+  return { min: localDateInputValue(oldest), max: localDateInputValue(today) };
+}
+
 function readOrderStationField(order, areaId, field) {
   const st = String(areaId || '').trim() || 'cocina';
   const map = order?.order_stations || order?.station_states;
@@ -277,6 +285,12 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     if (!historyOpen) return;
     void loadDispatchedHistory();
   }, [historyOpen, loadDispatchedHistory]);
+
+  const openHistory = useCallback(() => {
+    setHistoryDate(localDateInputValue());
+    setHistoryOpen(true);
+  }, []);
+  const historyRange = historyOpen ? historyDateRange() : null;
 
   const isKitchenItemHighlighted = useCallback(
     (item, orderId) => usesItemLevelReady && itemHighlightActive(item, highlightItemIds, orderId),
@@ -704,7 +718,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           {[
             { key: 'active', label: t('panel.statActive'), value: visibleOrders.length, onClick: null },
             { key: 'preparing', label: t('panel.statPreparing'), value: preparingCount, onClick: null },
-            { key: 'dispatched', label: t('panel.statDispatched'), value: dispatchedTodayCount, onClick: () => setHistoryOpen(true) },
+            { key: 'dispatched', label: t('panel.statDispatched'), value: dispatchedTodayCount, onClick: openHistory },
           ].map((s) => {
             const Tag = s.onClick ? 'button' : 'div';
             return (
@@ -737,15 +751,6 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           ) : null}
         </div>
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 w-full sm:w-auto overflow-x-auto scrollbar-hide pb-0.5 sm:pb-0 sm:flex-wrap">
-          <button
-            type="button"
-            onClick={() => setHistoryOpen(true)}
-            className={`${HEADER_BOX} ${HEADER_BTN}`}
-            title={t('history.button')}
-          >
-            <MdHistory className="text-lg" />
-            {t('history.button')}
-          </button>
           <button
             type="button"
             onClick={() => setPrinterModalOpen(true)}
@@ -807,7 +812,15 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
               <input
                 type="date"
                 value={historyDate}
-                onChange={(e) => setHistoryDate(e.target.value)}
+                min={historyRange?.min}
+                max={historyRange?.max}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v || !historyRange) return;
+                  if (v < historyRange.min) setHistoryDate(historyRange.min);
+                  else if (v > historyRange.max) setHistoryDate(historyRange.max);
+                  else setHistoryDate(v);
+                }}
                 className="input-field w-auto"
               />
             </label>
@@ -823,6 +836,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
               {t('history.count', { count: historyOrders.length })}
             </p>
           </div>
+          <p className="text-xs text-[var(--ui-muted)]">{t('history.retentionHint', { days: HISTORY_DAYS })}</p>
           {historyLoading ? (
             <p className="text-sm text-[var(--ui-muted)] py-8 text-center">{t('history.loading')}</p>
           ) : historyOrders.length === 0 ? (
