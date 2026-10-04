@@ -475,9 +475,9 @@ export default function Settings() {
   });
   const [manualPrintingApi, setManualPrintingApi] = useState(() => {
     try {
-      return String(window.localStorage?.getItem('resto_local_printing_api') || 'http://127.0.0.1:3001');
+      return getPersistedPrintingBridgeOrigin() || 'http://127.0.0.1:3002';
     } catch (_) {
-      return 'http://127.0.0.1:3001';
+      return 'http://127.0.0.1:3002';
     }
   });
   const { user: currentUser } = useAuth();
@@ -784,7 +784,7 @@ export default function Settings() {
   const linkPrintingAssistantManually = async () => {
     const raw = String(manualPrintingApi || '').trim();
     if (!raw) {
-      toast.error('Ingrese una URL local (ej. http://127.0.0.1:3001)');
+      toast.error('Ingrese una URL local (ej. http://127.0.0.1:3002)');
       return;
     }
     try {
@@ -1934,7 +1934,7 @@ export default function Settings() {
                     className="input-field flex-1 min-w-[220px]"
                     value={manualPrintingApi}
                     onChange={(e) => setManualPrintingApi(e.target.value)}
-                    placeholder="http://127.0.0.1:3001"
+                    placeholder="http://127.0.0.1:3002"
                   />
                   <button type="button" className="btn-secondary text-sm" onClick={linkPrintingAssistantManually} disabled={printingBusy || printingLinkStatus.checking}>
                     Vincular manual

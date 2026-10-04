@@ -820,13 +820,12 @@ export async function checkPrintingHealth() {
   const persisted = getPersistedPrintingBridgeOrigin();
   if (persisted) {
     const probe = await probeOriginHealth(persisted, 4500);
-    if (probe.ok) return true;
+    if (probe.ok && probe.assistant) return true;
   }
-
-  if (isPrintingLinkConfigured() && persisted) return true;
 
   /** Si el asistente Electron quedó en otro puerto (3002…), lo encontramos sin depender de localStorage. */
   if (await discoverAssistantAndPersist()) {
+    printingServiceBaseCache = { at: 0, base: '' };
     return true;
   }
 
@@ -875,17 +874,23 @@ async function printingRequest(endpoint, options = {}) {
     const token = localStorage.getItem('token');
     if (token) headers['Authorization'] = `Bearer ${token}`;
   }
-  const base = await getPrintingServiceApiBase();
+  let base = await getPrintingServiceApiBase();
   let res;
   try {
     res = await fetch(`${base}${endpoint}`, { ...options, headers });
   } catch (err) {
-    const msg = err && err.message ? String(err.message) : 'fetch';
-    console.warn('[printing] fetch falló hacia', base, msg);
-    if (/Failed to fetch|NetworkError|Load failed|network/i.test(msg)) {
+    console.warn('[printing] fetch falló hacia', base, err?.message || err);
+    /** El asistente pudo reiniciarse en otro puerto: redescubrir y reintentar una vez. */
+    printingServiceBaseCache = { at: 0, base: '' };
+    const retryBase = await getPrintingServiceApiBase();
+    if (retryBase === base) throw new Error(printingUnreachableMessage());
+    base = retryBase;
+    try {
+      res = await fetch(`${base}${endpoint}`, { ...options, headers });
+    } catch (err2) {
+      console.warn('[printing] reintento falló hacia', base, err2?.message || err2);
       throw new Error(printingUnreachableMessage());
     }
-    throw new Error(printingUnreachableMessage());
   }
   const text = await res.text();
   let data = null;
