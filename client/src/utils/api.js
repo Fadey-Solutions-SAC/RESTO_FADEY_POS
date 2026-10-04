@@ -11,6 +11,7 @@
  * - Las llamadas bajo `api.printing.*` usan esa base; el resto del sistema sigue usando API_BASE.
  */
 import { translateApiErrorMessage } from '../i18n/translateApiError';
+import toast from 'react-hot-toast';
 import { scaleInsumoDisplayQty } from './insumoUnidadMedida';
 import {
   enqueueMutation,
@@ -128,6 +129,33 @@ function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+/**
+ * Render reinicia el API en cada deploy (con disco no hay deploy sin corte): las lecturas
+ * esperan ~40 s reintentando en vez de mostrar error de conexión de inmediato.
+ */
+const API_RESTART_RETRY_DELAYS_MS = [2000, 3000, 5000, 8000, 10000, 12000];
+const API_RECONNECT_TOAST_ID = 'api-reconnecting';
+let apiReconnectToastShown = false;
+
+function showApiReconnecting() {
+  if (apiReconnectToastShown) return;
+  apiReconnectToastShown = true;
+  toast.loading('Reconectando con el servidor…', { id: API_RECONNECT_TOAST_ID });
+}
+
+function hideApiReconnecting() {
+  if (!apiReconnectToastShown) return;
+  apiReconnectToastShown = false;
+  toast.dismiss(API_RECONNECT_TOAST_ID);
+}
+
+function canRetryWhileApiRestarts(method, skipOffline, attempt) {
+  return method === 'GET'
+    && !skipOffline
+    && !isBrowserOffline()
+    && attempt < API_RESTART_RETRY_DELAYS_MS.length;
 }
 
 /** URL efectiva del API (`/api` incluido). */
@@ -394,6 +422,12 @@ async function request(endpoint, options = {}, attempt = 0) {
     if (timeoutId) clearTimeout(timeoutId);
     const local = useLocalFallback();
     if (local != null && isNetworkFailure(err)) return local;
+    if (isNetworkFailure(err) && canRetryWhileApiRestarts(method, skipOffline, attempt)) {
+      showApiReconnecting();
+      await sleep(API_RESTART_RETRY_DELAYS_MS[attempt]);
+      return request(endpoint, options, attempt + 1);
+    }
+    hideApiReconnecting();
     const msg = String(err?.message || err || '');
     if (/failed to fetch|networkerror|load failed|network|abort/i.test(msg) || err?.name === 'AbortError') {
       const origin = getApiOrigin() || url;
@@ -435,7 +469,13 @@ async function request(endpoint, options = {}, attempt = 0) {
     if (!skipOffline && method === 'GET' && res.status >= 502 && res.status <= 504) {
       const cached = overlayCachedGet(endpoint, readGetCache(endpoint));
       if (cached != null) return cached;
+      if (canRetryWhileApiRestarts(method, skipOffline, attempt)) {
+        showApiReconnecting();
+        await sleep(API_RESTART_RETRY_DELAYS_MS[attempt]);
+        return request(endpoint, options, attempt + 1);
+      }
     }
+    hideApiReconnecting();
     if (
       !skipOffline
       && isOfflinePosMutation(method, endpoint)
@@ -471,6 +511,7 @@ async function request(endpoint, options = {}, attempt = 0) {
     throw err;
   }
 
+  hideApiReconnecting();
   if (method === 'GET' && !skipOffline && shouldCacheGet(endpoint)) {
     saveGetCache(endpoint, data);
     return overlayCachedGet(endpoint, data);
