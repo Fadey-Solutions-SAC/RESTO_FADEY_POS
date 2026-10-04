@@ -576,14 +576,13 @@ export function buildConfiguredPrintingLinkStatus(extraDetail = '') {
   } catch (_) {
     /* noop */
   }
-  const detail = extraDetail
-    || persisted
-    || (printerHint ? `Impresora: ${printerHint}` : 'Configuración guardada en esta PC');
+  const saved = persisted || (printerHint ? `Impresora: ${printerHint}` : 'Configuración guardada en esta PC');
+  /** Configurado antes no implica activo: si el asistente no responde se muestra sin vínculo. */
   return {
-    connected: true,
+    connected: false,
     configured: true,
-    source: usesInstalledLocalPrinting() ? 'Aplicación Resto FADEY (configurada)' : 'Impresión configurada',
-    detail,
+    source: 'Asistente sin respuesta',
+    detail: extraDetail ? `${extraDetail} · ${saved}` : `No responde el asistente de impresión en esta PC · ${saved}`,
   };
 }
 
@@ -813,7 +812,6 @@ export async function checkPrintingHealth() {
       persistPrintingBridgeOrigin(assistant);
       return true;
     }
-    if (isPrintingLinkConfigured()) return true;
     throw new Error(printingUnreachableMessage());
   }
 
