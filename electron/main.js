@@ -460,8 +460,21 @@ function printUsbGdi(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
       ? `<div style="text-align:center;font-weight:700;font-size:${brandPx}px;line-height:1.2;margin:0 auto 6px;padding:0;width:100%;font-family:Consolas,'Courier New',monospace">${escapeHtmlPre(banner)}</div>`
       : '';
     const bodyHtml = thermalPlainToGdiHtml(body.length ? body : '—', fontPx);
+    const footerImageUrl = String(gdiOpts.footerImageUrl || '').trim();
+    const footerMm = Number(gdiOpts.footerImageMaxMm) > 0
+      ? Math.min(paperMm - 6, Number(gdiOpts.footerImageMaxMm))
+      : 36;
+    const footerImageBlock = footerImageUrl
+      ? `<div style="text-align:center;margin:4px auto 0;width:100%"><img src="${escapeHtmlAttr(footerImageUrl)}" alt="" style="display:block;margin:0 auto;width:${footerMm}mm;height:${footerMm}mm;image-rendering:pixelated;object-fit:contain"/></div>`
+      : '';
     const footSpacer = '<div style="height:8mm" aria-hidden="true"></div>';
-    const html = `<!DOCTYPE html><meta charset="utf-8"><style>@page{margin:0}html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;overflow:visible}body{width:${paperMm}mm;max-width:${paperMm}mm;margin:0 auto;box-sizing:border-box;overflow:visible}</style>${logoBlock}${brandBlock}${bodyHtml}${footSpacer}`;
+    /** Ancho = columna de texto (no el papel completo): marca, logo y QR quedan centrados respecto a los productos. */
+    const colChars = Math.max(0, ...plain.split('\n').map((l) => l.replace(/\r/g, '').length));
+    const colSpacer = colChars
+      ? `<div aria-hidden="true" style="height:0;overflow:hidden;font-family:Consolas,'Courier New',monospace;font-size:${fontPx}px;white-space:pre">${'&nbsp;'.repeat(colChars)}</div>`
+      : '';
+    const column = `<div style="width:max-content;max-width:${paperMm}mm;margin:0">${colSpacer}${logoBlock}${brandBlock}${bodyHtml}${footerImageBlock}</div>`;
+    const html = `<!DOCTYPE html><meta charset="utf-8"><style>@page{margin:0}html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;overflow:visible}body{width:${paperMm}mm;max-width:${paperMm}mm;margin:0 auto;box-sizing:border-box;overflow:visible}</style>${column}${footSpacer}`;
     const printWin = new BrowserWindow({
       show: false,
       webPreferences: { offscreen: true },
@@ -608,6 +621,8 @@ async function printByModule(moduleKey, payload = {}) {
       logoUrl: useGdiUsbFallback ? String(payload.logoUrl || payload.logo || '').trim() : '',
       logoMaxMm: Number(payload.logoMaxMm) || 0,
       restaurantBrand: String(payload.restaurantBrand || '').trim(),
+      footerImageUrl: useGdiUsbFallback ? String(payload.footerImageUrl || '').trim() : '',
+      footerImageMaxMm: Number(payload.footerImageMaxMm) || 0,
     });
   }
   if (!isValidIp(cfg.ip)) throw new Error(`IP inválida en ${key}`);
@@ -802,6 +817,7 @@ function buildAssistantExpressApp() {
     port: assistantListenPort || null,
     origin: assistantListenPort ? `http://127.0.0.1:${assistantListenPort}` : '',
     service: 'resto-fadey-printing-assistant',
+    features: ['footer_image'],
   });
 
   assistant.get('/health', (_req, res) => res.json(assistantHealthPayload()));

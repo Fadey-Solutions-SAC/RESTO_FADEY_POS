@@ -246,7 +246,7 @@ import {
   restaurantThermalBrandLine,
 } from '../../utils/ticketPlainText';
 import PrinterModulePanel from '../../components/printing/PrinterModulePanel';
-import { printSurveyQrAfterPrecuentaIfEnabled } from '../../utils/surveyQrPrint';
+import { getPrecuentaSurveyQrAttachment, printSurveyQrThermal } from '../../utils/surveyQrPrint';
 import {
   DEFAULT_PRINTING_CONFIG,
   fetchPrintingConfig,
@@ -3916,19 +3916,27 @@ export default function POSPanel() {
       widthMm,
       printedAt: new Date(),
     });
+    const surveyQr = await getPrecuentaSurveyQrAttachment(widthMm).catch(() => null);
+    const inlineQr = surveyQr?.mode === 'inline' ? surveyQr : null;
     const r = await printCajaTicket({
-      text: plain,
+      text: inlineQr ? `${plain.replace(/\s+$/, '')}\n${inlineQr.textSuffix}` : plain,
       preformatted: true,
       logoUrl: String(printRestaurantInfo.logo || '').trim() || undefined,
       restaurantBrand: restaurantThermalBrandLine(printRestaurantInfo) || undefined,
       paperWidth: widthMm,
+      ...(inlineQr ? inlineQr.payload : {}),
     });
     if (r.ok) {
       toast.success(`Precuenta impresa · ${getThermalPrintRevision()}`);
-      printSurveyQrAfterPrecuentaIfEnabled({
-        widthMm,
-        restaurantName: String(printRestaurantInfo.name || '').trim(),
-      }).catch((err) => toast.error(err?.message || 'No se pudo imprimir el QR de la encuesta'));
+      if (surveyQr?.mode === 'separate') {
+        new Promise((r) => setTimeout(r, 1500))
+          .then(() => printSurveyQrThermal({
+            url: surveyQr.url,
+            widthMm,
+            restaurantName: String(printRestaurantInfo.name || '').trim(),
+          }))
+          .catch((err) => toast.error(err?.message || 'No se pudo imprimir el QR de la encuesta'));
+      }
       const tid = String(table.id || '').trim();
       if (tid) {
         setPrecuentaTableIds((prev) => {

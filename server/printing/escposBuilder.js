@@ -193,6 +193,21 @@ async function buildTicket(moduleName, data = {}, options = {}) {
     if (magBuf.length) chunks.push(magBuf);
 
     chunks.push(body);
+
+    /** Imagen al pie (p. ej. QR de encuesta en la precuenta), en el mismo ticket antes del corte. */
+    const footerImageUrl = String(data.footerImageUrl || '').trim();
+    if (footerImageUrl && !data.omitRasterForGdi) {
+      const footerRaster = await logoToEscPosRaster(footerImageUrl, paperW, {
+        maxDots: Number(data.footerImageMaxDots) || 0,
+      });
+      if (footerRaster && footerRaster.length) {
+        chunks.push(GS_BANG_NORMAL);
+        chunks.push(ALIGN_CENTER);
+        chunks.push(footerRaster);
+        chunks.push(Buffer.from('\x1B\x61\x00', 'binary'));
+      }
+    }
+
     chunks.push(tailAfterBody());
     return Buffer.concat(chunks);
   }
