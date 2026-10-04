@@ -43,6 +43,7 @@ import {
 import Modal from '../../components/Modal';
 import LoyaltySurveyFilledSheet from '../../components/loyalty/LoyaltySurveyFilledSheet';
 import { buildLoyaltySurveyTicketText } from '../../utils/loyaltySurveyTicket';
+import { isShareableSurveyUrl } from '../../utils/surveyQrPrint';
 
 const VIEWS = [
   { id: 'panel', label: 'Panel', icon: MdDashboard },
@@ -130,6 +131,7 @@ export default function Fidelizacion() {
   const [formLoading, setFormLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [downloadingQr, setDownloadingQr] = useState(false);
+  const [savingPrecuentaQr, setSavingPrecuentaQr] = useState(false);
   const [viewResponse, setViewResponse] = useState(null);
   const [printingSurveyId, setPrintingSurveyId] = useState('');
   const url = useMemo(() => surveyUrl(), []);
@@ -312,6 +314,27 @@ export default function Fidelizacion() {
       toast.error(e.message || 'No se pudo guardar');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const togglePrecuentaQr = async (enabled) => {
+    if (!canEdit) return;
+    setSavingPrecuentaQr(true);
+    try {
+      const saved = await api.put('/loyalty/precuenta-qr', {
+        enabled,
+        ...(isShareableSurveyUrl(url) ? { survey_url: url } : {}),
+      });
+      setForm((prev) => ({
+        ...prev,
+        print_qr_on_precuenta: saved.print_qr_on_precuenta === true,
+        survey_url: saved.survey_url || '',
+      }));
+      toast.success(enabled ? 'El QR se imprimirá con la precuenta' : 'El QR ya no se imprimirá con la precuenta');
+    } catch (e) {
+      toast.error(e.message || 'No se pudo guardar la opción');
+    } finally {
+      setSavingPrecuentaQr(false);
     }
   };
 
@@ -1025,6 +1048,29 @@ export default function Fidelizacion() {
                   <MdContentCopy /> Copiar enlace
                 </button>
               </div>
+              <label
+                className={`mt-4 w-full flex items-center justify-between gap-3 rounded-xl border ui-border px-3 py-2.5 text-left ${
+                  canEdit ? 'cursor-pointer' : 'opacity-60'
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">Imprimir QR en la precuenta</span>
+                  <span className="block text-[11px] ui-text-muted">
+                    Al imprimir la precuenta en caja sale también este QR para que el cliente califique.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={form.print_qr_on_precuenta === true}
+                  disabled={!canEdit || savingPrecuentaQr || formLoading}
+                  onChange={(e) => togglePrecuentaQr(e.target.checked)}
+                />
+                <span
+                  aria-hidden
+                  className="relative shrink-0 w-11 h-6 rounded-full bg-gray-300 transition-colors peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"
+                />
+              </label>
             </div>
           </div>
         </div>

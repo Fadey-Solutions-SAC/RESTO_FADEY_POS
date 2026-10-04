@@ -246,6 +246,7 @@ import {
   restaurantThermalBrandLine,
 } from '../../utils/ticketPlainText';
 import PrinterModulePanel from '../../components/printing/PrinterModulePanel';
+import { printSurveyQrAfterPrecuentaIfEnabled } from '../../utils/surveyQrPrint';
 import {
   DEFAULT_PRINTING_CONFIG,
   fetchPrintingConfig,
@@ -417,6 +418,9 @@ import {
   MdSwapHoriz, MdOpenWith, MdCallMerge,
   MdStorage, MdShoppingCart, MdCreditCard, MdPhoneIphone, MdLanguage,
 } from 'react-icons/md';
+
+/** Valor del selector de método que activa el cobro con varios medios. */
+const MULTI_PAY_OPTION = '__multi__';
 
 const CLOSE_SUMMARY_TONE = {
   total: { icon: MdStorage, box: 'border-emerald-500/25 bg-emerald-500/10', tile: 'bg-emerald-500/15 text-emerald-600' },
@@ -862,6 +866,7 @@ export default function POSPanel() {
   const [tipPayEnabled, setTipPayEnabled] = useState(false);
   const [checkoutTipAmount, setCheckoutTipAmount] = useState('');
   const [checkoutPaymentNote, setCheckoutPaymentNote] = useState('');
+  const [paymentNoteOpen, setPaymentNoteOpen] = useState(false);
   const [amountReceived, setAmountReceived] = useState('');
   const [billingForm, setBillingForm] = useState(DEFAULT_BILLING_FORM);
   const [billingResult, setBillingResult] = useState(null);
@@ -1516,7 +1521,7 @@ export default function POSPanel() {
     setMultiPayAmounts(emptyMultiPaymentAmounts());
     setTipPayEnabled(false);
     setCheckoutTipAmount('');
-    setCheckoutPaymentNote('');
+    setCheckoutPaymentNote(''); setPaymentNoteOpen(false);
   }, [showBill, selectedTable?.id]);
 
   useEffect(() => {
@@ -2644,7 +2649,7 @@ export default function POSPanel() {
       setMultiPayAmounts(emptyMultiPaymentAmounts());
       setTipPayEnabled(false);
       setCheckoutTipAmount('');
-      setCheckoutPaymentNote('');
+      setCheckoutPaymentNote(''); setPaymentNoteOpen(false);
       resetBillingForm();
       loadData();
     } catch (err) { toast.error(err.message); }
@@ -3169,7 +3174,7 @@ export default function POSPanel() {
     setMultiPayAmounts(emptyMultiPaymentAmounts());
     setTipPayEnabled(false);
     setCheckoutTipAmount('');
-    setCheckoutPaymentNote('');
+    setCheckoutPaymentNote(''); setPaymentNoteOpen(false);
     setShowMenu(true);
     resetCart();
     setSearch('');
@@ -3920,6 +3925,10 @@ export default function POSPanel() {
     });
     if (r.ok) {
       toast.success(`Precuenta impresa · ${getThermalPrintRevision()}`);
+      printSurveyQrAfterPrecuentaIfEnabled({
+        widthMm,
+        restaurantName: String(printRestaurantInfo.name || '').trim(),
+      }).catch((err) => toast.error(err?.message || 'No se pudo imprimir el QR de la encuesta'));
       const tid = String(table.id || '').trim();
       if (tid) {
         setPrecuentaTableIds((prev) => {
@@ -5002,7 +5011,7 @@ export default function POSPanel() {
             setMultiPayAmounts(emptyMultiPaymentAmounts());
             setTipPayEnabled(false);
             setCheckoutTipAmount('');
-            setCheckoutPaymentNote('');
+            setCheckoutPaymentNote(''); setPaymentNoteOpen(false);
             resetBillingForm();
             resetCart();
             clearMesaLock();
@@ -5709,30 +5718,33 @@ export default function POSPanel() {
                       <p className="text-xs text-[var(--ui-muted)] mt-0.5">Total a pagar</p>
                     </div>
                     <div className={addToAccountEnabled ? 'opacity-50 pointer-events-none' : ''}>
-                      <label className="flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={multiPayEnabled}
-                          onChange={(e) => setMultiPayEnabled(e.target.checked)}
-                          disabled={addToAccountEnabled}
-                          className="rounded border-[color:var(--ui-accent)]"
-                        />
-                        Pago multimétodo
+                      <label htmlFor="checkout-payment-method" className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">
+                        Método de pago
                       </label>
-                      {!multiPayEnabled ? (
                       <select
+                        id="checkout-payment-method"
                         className="input-field w-full"
-                        value={paymentMethod}
-                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        value={multiPayEnabled ? MULTI_PAY_OPTION : paymentMethod}
+                        disabled={addToAccountEnabled}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === MULTI_PAY_OPTION) {
+                            setMultiPayEnabled(true);
+                            return;
+                          }
+                          setMultiPayEnabled(false);
+                          setPaymentMethod(v);
+                        }}
                       >
                         {paymentOptions.map((opt) => (
                           <option key={opt.value} value={opt.value}>
                             {opt.label}
                           </option>
                         ))}
+                        {multiPaymentOptions.length >= 2 ? <option value={MULTI_PAY_OPTION}>Multimétodo</option> : null}
                       </select>
-                      ) : (
-                        <div className="space-y-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
+                      {multiPayEnabled ? (
+                        <div className="mt-2 space-y-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
                           {multiPaymentOptions.map((opt) => (
                             <div key={opt.value} className="flex items-center gap-2">
                               <span className="text-xs text-[var(--ui-body-text)] w-[88px] shrink-0">{opt.label}</span>
@@ -5761,77 +5773,106 @@ export default function POSPanel() {
                             <p className="text-xs font-semibold text-[color:var(--ui-danger)]">{multiPayState.error}</p>
                           ) : null}
                         </div>
-                      )}
+                      ) : null}
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className={`flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-2 ${addToAccountEnabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                          <input
-                            type="checkbox"
-                            checked={tipPayEnabled}
-                            onChange={(e) => {
-                              const on = e.target.checked;
-                              setTipPayEnabled(on);
-                              if (!on) setCheckoutTipAmount('');
-                            }}
-                            disabled={addToAccountEnabled}
-                            className="rounded border-[color:var(--ui-accent)]"
-                          />
-                          Propina (opcional)
-                        </label>
-                        {tipPayEnabled && !addToAccountEnabled && (
-                          <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
-                            <label className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">Monto propina</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              className="input-field w-full text-sm"
-                              placeholder="0.00"
-                              value={checkoutTipAmount}
-                              onChange={(e) => setCheckoutTipAmount(e.target.value)}
-                            />
-                          </div>
-                        )}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        {
+                          key: 'tip',
+                          label: 'Propina',
+                          active: tipPayEnabled,
+                          disabled: addToAccountEnabled,
+                          onClick: () => {
+                            const on = !tipPayEnabled;
+                            setTipPayEnabled(on);
+                            if (!on) setCheckoutTipAmount('');
+                          },
+                        },
+                        {
+                          key: 'account',
+                          label: 'Agregar a cuenta',
+                          active: addToAccountEnabled,
+                          disabled: false,
+                          onClick: () => {
+                            const on = !addToAccountEnabled;
+                            setAddToAccountEnabled(on);
+                            if (on) {
+                              setTipPayEnabled(false);
+                              setCheckoutTipAmount('');
+                              setBillingForm((prev) => ({ ...prev, enabled: false }));
+                            } else {
+                              setSelectedBillingCustomerId('');
+                              setMatchedCustomer(null);
+                              setBillingForm((prev) => ({ ...prev, customer_name: '' }));
+                            }
+                          },
+                        },
+                        {
+                          key: 'note',
+                          label: 'Nota',
+                          active: paymentNoteOpen,
+                          disabled: false,
+                          onClick: () => {
+                            const on = !paymentNoteOpen;
+                            setPaymentNoteOpen(on);
+                            if (!on) setCheckoutPaymentNote('');
+                          },
+                        },
+                      ].map((b) => (
+                        <button
+                          key={b.key}
+                          type="button"
+                          onClick={b.onClick}
+                          disabled={b.disabled}
+                          aria-pressed={b.active}
+                          className={`flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                            b.active
+                              ? 'border-[color:var(--ui-accent)] bg-[color-mix(in_srgb,var(--ui-accent)_14%,var(--ui-surface))] text-[var(--ui-body-text)]'
+                              : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-surface-2)]'
+                          }`}
+                        >
+                          <span
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                              b.active ? 'border-[color:var(--ui-accent)] bg-[var(--ui-accent)] text-white' : 'border-[color:var(--ui-border)]'
+                            }`}
+                          >
+                            {b.active ? <span className="text-[10px] leading-none">✓</span> : null}
+                          </span>
+                          <span className="truncate">{b.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {tipPayEnabled && !addToAccountEnabled && (
+                      <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
+                        <label htmlFor="checkout-tip-amount" className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">Monto propina</label>
+                        <input
+                          id="checkout-tip-amount"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="input-field w-full text-sm"
+                          placeholder="0.00"
+                          value={checkoutTipAmount}
+                          onChange={(e) => setCheckoutTipAmount(e.target.value)}
+                        />
                       </div>
-                      <div>
-                        <label className="flex items-center gap-2 text-xs font-medium text-[var(--ui-body-text)] mb-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={addToAccountEnabled}
-                            onChange={(e) => {
-                              const on = e.target.checked;
-                              setAddToAccountEnabled(on);
-                              if (on) {
-                                setTipPayEnabled(false);
-                                setCheckoutTipAmount('');
-                                setBillingForm((prev) => ({ ...prev, enabled: false }));
-                              } else {
-                                setSelectedBillingCustomerId('');
-                                setMatchedCustomer(null);
-                                setBillingForm((prev) => ({ ...prev, customer_name: '' }));
-                              }
-                            }}
-                            className="rounded border-[color:var(--ui-accent)]"
-                          />
-                          Agregar a cuenta
+                    )}
+                    {paymentNoteOpen && (
+                      <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2">
+                        <label htmlFor="checkout-payment-note" className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">
+                          Nota del pago
                         </label>
+                        <textarea
+                          id="checkout-payment-note"
+                          rows={2}
+                          maxLength={300}
+                          className="input-field w-full text-sm resize-y"
+                          placeholder="Ej.: Yape a nombre de Juan, operación 123456"
+                          value={checkoutPaymentNote}
+                          onChange={(e) => setCheckoutPaymentNote(e.target.value)}
+                        />
                       </div>
-                    </div>
-                    <div>
-                      <label htmlFor="checkout-payment-note" className="block text-xs font-medium text-[var(--ui-body-text)] mb-1">
-                        Nota del pago (opcional)
-                      </label>
-                      <textarea
-                        id="checkout-payment-note"
-                        rows={2}
-                        maxLength={300}
-                        className="input-field w-full text-sm resize-y"
-                        placeholder="Ej.: Yape a nombre de Juan, operación 123456"
-                        value={checkoutPaymentNote}
-                        onChange={(e) => setCheckoutPaymentNote(e.target.value)}
-                      />
-                    </div>
+                    )}
                     {addToAccountEnabled && (
                       <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)]/40 p-2 space-y-2">
                         <div className="flex items-center justify-between gap-2">

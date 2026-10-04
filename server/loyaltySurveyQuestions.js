@@ -77,7 +77,15 @@ function defaultForm() {
     improve_options: DEFAULT_IMPROVE.map((o) => ({ ...o })),
     area_options: DEFAULT_AREA_OPTIONS.map((o) => ({ ...o })),
     rating_scale: RATING_SCALE.map((s) => ({ ...s })),
+    print_qr_on_precuenta: false,
+    survey_url: '',
   };
+}
+
+function sanitizeSurveyUrl(value) {
+  const s = String(value || '').trim();
+  if (!s || s.length > 300 || !/^https?:\/\//i.test(s)) return '';
+  return s;
 }
 
 function sanitizeLabel(value, fallback, max = 80) {
@@ -177,6 +185,8 @@ function normalizeForm(raw) {
       : normalizeOptionList(o.improve_options, DEFAULT_IMPROVE),
     area_options: normalizeAreaOptions(o.area_options),
     rating_scale: RATING_SCALE.map((s) => ({ ...s })),
+    print_qr_on_precuenta: o.print_qr_on_precuenta === true || o.print_qr_on_precuenta === 1 || o.print_qr_on_precuenta === '1',
+    survey_url: sanitizeSurveyUrl(o.survey_url),
   };
 }
 

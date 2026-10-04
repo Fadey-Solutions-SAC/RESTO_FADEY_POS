@@ -78,6 +78,23 @@ router.put('/form', requireRole('admin', 'master_admin'), (req, res) => {
   }
 });
 
+/** Activa/desactiva el QR de la encuesta al pie de la precuenta sin tocar el resto del formato. */
+router.put('/precuenta-qr', requireRole('admin', 'master_admin'), (req, res) => {
+  try {
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const current = readLoyaltySurveyForm();
+    const saved = saveLoyaltySurveyForm({
+      ...current,
+      print_qr_on_precuenta: b.enabled === true,
+      survey_url: b.survey_url != null ? b.survey_url : current.survey_url,
+    });
+    emitStaffDataUpdate({ domain: 'loyalty' });
+    res.json({ print_qr_on_precuenta: saved.print_qr_on_precuenta, survey_url: saved.survey_url });
+  } catch (err) {
+    sendRouteError(res, req, err, 'No se pudo guardar la opción del QR en precuenta');
+  }
+});
+
 router.get('/qr-png', async (req, res) => {
   try {
     const data = String(req.query.data || '').trim();
