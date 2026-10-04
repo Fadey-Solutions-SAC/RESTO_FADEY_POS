@@ -15,6 +15,7 @@ import {
   printTestForModule,
   PRINTING_CONFIG_UPDATED_EVENT,
   PRINTING_LINK_STATUS_EVENT,
+  savePrintingModuleAutoPrint,
   savePrintingModuleConfig,
   verifyPrintingLinkStatus,
   printingUnreachableMessage,
@@ -142,6 +143,23 @@ export function usePrintingModule(moduleKey, { autoLoad = true } = {}) {
     }
   }, [printingConfig, moduleKey, moduleEnabled, refreshPrinterStatus]);
 
+  const setModuleEnabled = useCallback(async (enabled) => {
+    if (moduleKey === 'caja') return null;
+    const next = Boolean(enabled);
+    setBusy(true);
+    try {
+      const saved = await savePrintingModuleAutoPrint(printingConfig, moduleKey, next);
+      setPrintingConfig(normalizePrintingConfig(saved));
+      toast.success(next ? 'Impresora del área activada' : 'Impresora del área desactivada');
+      return saved;
+    } catch (err) {
+      toast.error(err.message || 'No se pudo cambiar el estado de la impresora');
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }, [printingConfig, moduleKey]);
+
   const printTest = useCallback(async () => {
     setBusy(true);
     try {
@@ -232,6 +250,7 @@ export function usePrintingModule(moduleKey, { autoLoad = true } = {}) {
     detectUsb,
     updateModuleField,
     saveModule,
+    setModuleEnabled,
     printTest,
   };
 }

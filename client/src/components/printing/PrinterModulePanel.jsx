@@ -46,9 +46,13 @@ export default function PrinterModulePanel({
     detectUsb,
     updateModuleField,
     saveModule,
+    setModuleEnabled,
     printTest,
     loadConfig,
+    moduleEnabled,
+    configLoaded,
   } = usePrintingModule(moduleKey);
+  const isProductionArea = String(moduleKey || '').trim().toLowerCase() !== 'caja';
 
   const [manualPrintingApi, setManualPrintingApi] = useState(() => (
     getPersistedPrintingBridgeOrigin() || 'http://127.0.0.1:3002'
@@ -178,6 +182,32 @@ export default function PrinterModulePanel({
           >
             {soundReady ? <MdVolumeUp /> : <MdVolumeOff />}
             {soundReady ? 'Probar sonido' : 'Activar sonido'}
+          </button>
+        </div>
+      ) : null}
+
+      {isProductionArea ? (
+        <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className={`text-sm font-semibold ${moduleEnabled ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {moduleEnabled ? 'Impresora activa' : 'Impresora desactivada'}
+            </p>
+            <p className="text-xs ui-text-muted mt-0.5">
+              {moduleEnabled
+                ? 'Las comandas de esta área se imprimen automáticamente.'
+                : 'Esta área no imprimirá comandas; los pedidos siguen llegando a la pantalla.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            className={`btn-secondary text-sm shrink-0 ${moduleEnabled ? 'border-rose-200 text-rose-700 hover:bg-rose-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}
+            onClick={async () => {
+              const saved = await setModuleEnabled(!moduleEnabled);
+              if (saved && onConfigLoaded) onConfigLoaded(saved);
+            }}
+            disabled={busy || !configLoaded}
+          >
+            {moduleEnabled ? 'Desactivar impresora' : 'Activar impresora'}
           </button>
         </div>
       ) : null}
