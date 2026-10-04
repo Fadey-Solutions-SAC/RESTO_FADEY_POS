@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from './context/AuthContext';
 import { shouldSkipEntrySplash, markEntrySplashDone } from './utils/entrySplashSession';
 import { registerServiceWorkerAfterSplash } from './serviceWorkerRegister';
+import { startAppUpdateWatcher } from './utils/appUpdateWatcher';
 
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -179,6 +180,7 @@ export default function App() {
   useEffect(() => {
     if (user || splashDone) {
       registerServiceWorkerAfterSplash();
+      startAppUpdateWatcher();
     }
   }, [user, splashDone]);
 

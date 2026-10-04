@@ -17,10 +17,12 @@ export default defineConfig(() => {
   if (viteApiUrl && /\.vercel\.app/i.test(viteApiUrl)) {
     console.error('[build] VITE_API_URL no puede apuntar a Vercel; use la URL onrender.com de su API.');
   }
+  const buildId = `${clientPkg.version}-${Date.now()}`;
   return {
     base: isDesktopBuild ? './' : '/',
     define: {
       __APP_VERSION__: JSON.stringify(clientPkg.version),
+      __APP_BUILD_ID__: JSON.stringify(buildId),
       /** Instalación Windows: el API embebido escucha en este host (ver `electron/main.js`). */
       ...(isDesktopBuild
         ? { 'import.meta.env.VITE_API_URL': JSON.stringify('http://127.0.0.1:3001') }
@@ -39,12 +41,16 @@ export default defineConfig(() => {
         closeBundle() {
           const swPath = resolve(__dirname, 'dist/sw.js');
           try {
-            const buildId = `${clientPkg.version}-${Date.now()}`;
             let s = readFileSync(swPath, 'utf8');
             s = s.replace(/__SW_VERSION__/g, buildId);
             writeFileSync(swPath, s);
           } catch (e) {
             console.warn('[inject-sw-version]', e.message);
+          }
+          try {
+            writeFileSync(resolve(__dirname, 'dist/build-meta.json'), `${JSON.stringify({ buildId })}\n`);
+          } catch (e) {
+            console.warn('[build-meta]', e.message);
           }
           const api = String(process.env.VITE_API_URL || '')
             .trim()
