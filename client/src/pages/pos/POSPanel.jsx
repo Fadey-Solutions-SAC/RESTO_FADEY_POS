@@ -540,6 +540,12 @@ const CAJA_OPTIONS = [
 ];
 const BAR_AUTO_DISMISS_MINUTE_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 
+/** En caja el administrador maestro opera con los mismos flujos que el admin dueño. */
+function posRoleOf(u) {
+  const role = String(u?.role || '').toLowerCase();
+  return role === 'master_admin' ? 'admin' : role;
+}
+
 async function printCajaTicket(payload) {
   try {
     if (hasElectronPrinting()) {
@@ -980,7 +986,7 @@ export default function POSPanel() {
   const posCanBarAutoDismiss = canAjusteBarAutoDismiss(user);
   const cajaOptionsForRole = useMemo(() => {
     let opts;
-    if (String(user?.role || '').toLowerCase() === 'cajero') {
+    if (posRoleOf(user) === 'cajero') {
       opts = CAJA_OPTIONS.filter((o) => CAJA_OPTIONS_CAJERO_IDS.has(o.id));
     } else {
       opts = CAJA_OPTIONS;
@@ -1019,7 +1025,7 @@ export default function POSPanel() {
   const appendPosRegisterId = useCallback(
     (path) => {
       const rid = String(adminRegisterId || '').trim();
-      if (String(user?.role || '').toLowerCase() !== 'admin' || !rid) return path;
+      if (posRoleOf(user) !== 'admin' || !rid) return path;
       const sep = path.includes('?') ? '&' : '?';
       return `${path}${sep}register_id=${encodeURIComponent(rid)}`;
     },
@@ -1028,11 +1034,14 @@ export default function POSPanel() {
 
   const posRegisterBody = useCallback(() => {
     const rid = String(adminRegisterId || '').trim();
-    if (String(user?.role || '').toLowerCase() !== 'admin' || !rid) return {};
+    if (posRoleOf(user) !== 'admin' || !rid) return {};
     return { register_id: rid };
   }, [user?.role, adminRegisterId]);
 
-  const isPosAdmin = String(user?.role || '').toLowerCase() === 'admin';
+  const isPosAdmin = posRoleOf(user) === 'admin';
+  const isMasterAdmin = user?.role === 'master_admin';
+  const [openingEdit, setOpeningEdit] = useState(null);
+  const [savingOpening, setSavingOpening] = useState(false);
   const adminAttachedRegisterId = String(adminRegisterId || '').trim();
   const adminAttachedStation = useMemo(() => {
     if (!adminAttachedRegisterId) return null;
@@ -1076,7 +1085,7 @@ export default function POSPanel() {
 
   const loadData = async (opts = {}) => {
     try {
-      const posRole = String(posUserRef.current?.role || '').toLowerCase();
+      const posRole = posRoleOf(posUserRef.current);
       let adminRid =
         opts.adminRegisterOverride !== undefined
           ? String(opts.adminRegisterOverride || '').trim()
@@ -1391,7 +1400,7 @@ export default function POSPanel() {
   }, [selectedTable?.id]);
 
   useEffect(() => {
-    const posRole = String(user?.role || '').toLowerCase();
+    const posRole = posRoleOf(user);
     if (posRole !== 'cajero' && posRole !== 'mozo') return;
     const cajaId = String(user?.caja_station_id || '').trim();
     if (!cajaId) return;
@@ -1804,7 +1813,7 @@ export default function POSPanel() {
           opened_at: op.opened_at,
         }));
       }
-      void prefetchTablesForCaja(station?.id, String(user?.role || '').toLowerCase());
+      void prefetchTablesForCaja(station?.id, posRoleOf(user));
       await loadData({ adminRegisterOverride: rid });
     } finally {
       setWorkAreaLoading(false);
@@ -1842,7 +1851,7 @@ export default function POSPanel() {
         /* usa el estado actual */
       }
       if (gen !== prepareCloseGenRef.current) return;
-      const posRole = String(posUserRef.current?.role || '').toLowerCase();
+      const posRole = posRoleOf(posUserRef.current);
       const adminRid = String(adminRegisterIdRef.current || '').trim();
       const currentRegPath = posRole === 'admin'
         ? (adminRid ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}` : null)
@@ -1994,7 +2003,7 @@ export default function POSPanel() {
       setShowCloseModal(false);
       setClosingAtPreview(null);
       setRegister(null);
-      if (String(user?.role || '').toLowerCase() === 'admin') {
+      if (posRoleOf(user) === 'admin') {
         persistAdminRegisterId('');
         setAdminRegisterId('');
       }
@@ -3548,6 +3557,28 @@ export default function POSPanel() {
   const todaySales = registerSales;
   const openingAmt = register?.opening_amount || 0;
 
+  const saveOpeningAmount = async () => {
+    const rid = String(register?.id || '').trim();
+    if (!rid || openingEdit == null) return;
+    const amount = Number(String(openingEdit).replace(',', '.'));
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast.error('Ingrese un monto de apertura válido');
+      return;
+    }
+    setSavingOpening(true);
+    try {
+      const updated = await api.put(`/pos/register/${encodeURIComponent(rid)}/opening-amount`, { opening_amount: amount });
+      setRegister((prev) => (prev && String(prev.id) === rid ? { ...prev, ...(updated || {}), opening_amount: amount } : prev));
+      setOpeningEdit(null);
+      toast.success('Monto de apertura actualizado');
+      void loadData();
+    } catch (err) {
+      toast.error(err?.message || 'No se pudo actualizar el monto de apertura');
+    } finally {
+      setSavingOpening(false);
+    }
+  };
+
   const totalCash = Number(register?.total_cash || 0) > 0 ? Number(register.total_cash || 0) : registerLiveSales.total_cash;
   const totalYape = Number(register?.total_yape || 0) > 0 ? Number(register.total_yape || 0) : registerLiveSales.total_yape;
   const totalPlin = Number(register?.total_plin || 0) > 0 ? Number(register.total_plin || 0) : registerLiveSales.total_plin;
@@ -4103,7 +4134,7 @@ export default function POSPanel() {
   );
 
   const renderOpenRegisterScreen = () => {
-    const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
+    const isAdmin = posRoleOf(user) === 'admin';
     if (isAdmin) {
       return (
         <div className="flex items-center justify-center py-12 px-4">
@@ -4864,7 +4895,49 @@ export default function POSPanel() {
           <div className="card">
             <h3 className="font-bold rf-section-title mb-4">Apertura y cierre</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <div className="rf-surface-light rounded-lg p-3"><p className="text-xs ui-text-muted">Apertura</p><p className="font-bold">{formatCurrency(openingAmt)}</p></div>
+              <div className="rf-surface-light rounded-lg p-3">
+                <p className="text-xs ui-text-muted">Apertura</p>
+                {isMasterAdmin && openingEdit != null ? (
+                  <div className="mt-1 space-y-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      className="input-field"
+                      value={openingEdit}
+                      onChange={(e) => setOpeningEdit(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void saveOpeningAmount();
+                        if (e.key === 'Escape') setOpeningEdit(null);
+                      }}
+                      disabled={savingOpening}
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button type="button" className="btn-primary text-sm" onClick={() => void saveOpeningAmount()} disabled={savingOpening}>
+                        {savingOpening ? 'Guardando…' : 'Guardar'}
+                      </button>
+                      <button type="button" className="btn-secondary text-sm" onClick={() => setOpeningEdit(null)} disabled={savingOpening}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-bold">{formatCurrency(openingAmt)}</p>
+                    {isMasterAdmin ? (
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs px-2 py-1"
+                        onClick={() => setOpeningEdit(String(Number(openingAmt || 0)))}
+                      >
+                        Editar
+                      </button>
+                    ) : null}
+                  </div>
+                )}
+              </div>
               <div className="rf-surface-light rounded-lg p-3"><p className="text-xs ui-text-muted">Efectivo esperado</p><p className="font-bold">{formatCurrency(expectedRounded)}</p></div>
               <div className="rf-surface-light rounded-lg p-3"><p className="text-xs ui-text-muted">Ventas del turno</p><p className="font-bold">{formatCurrency(registerSales)}</p></div>
             </div>

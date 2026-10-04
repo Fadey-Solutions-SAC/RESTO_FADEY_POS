@@ -394,7 +394,7 @@ function resolvePosRegister(req) {
   if (role === 'cajero') {
     return getOpenRegisterForUser(user);
   }
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'master_admin') {
     const rid = pickRegisterId(req);
     if (rid) {
       return queryOne('SELECT * FROM cash_registers WHERE id = ? AND closed_at IS NULL', [rid]) || null;
@@ -548,6 +548,47 @@ router.get('/current-register', authenticateToken, requireRole('admin', 'cajero'
   } catch (err) {
     console.error('[pos/current-register]', err?.message || err);
     return res.status(500).json({ error: err.message || 'No se pudo leer el turno de caja' });
+  }
+});
+
+/** Solo administrador maestro: corrige el monto de apertura de un turno aún abierto. */
+router.put('/register/:id/opening-amount', authenticateToken, (req, res) => {
+  if (String(req.user?.role || '').toLowerCase() !== 'master_admin') {
+    return res.status(403).json({ error: 'Solo el administrador maestro puede editar el monto de apertura' });
+  }
+  const raw = req.body?.opening_amount;
+  if (raw === undefined || raw === null || raw === '' || Number.isNaN(Number(raw))) {
+    return res.status(400).json({ error: 'Ingrese un monto de apertura válido' });
+  }
+  const nextAmount = roundMoneySoles(Number(raw));
+  if (nextAmount < 0) {
+    return res.status(400).json({ error: 'El monto de apertura no puede ser negativo' });
+  }
+  const registerId = String(req.params.id || '').trim();
+  const register = queryOne('SELECT * FROM cash_registers WHERE id = ?', [registerId]);
+  if (!register) return res.status(404).json({ error: 'Turno de caja no encontrado' });
+  if (register.closed_at) {
+    return res.status(400).json({ error: 'El turno ya está cerrado; solo se puede editar un turno abierto' });
+  }
+  const previousAmount = Number(register.opening_amount || 0);
+  runSql('UPDATE cash_registers SET opening_amount = ? WHERE id = ?', [nextAmount, registerId]);
+  logAudit({
+    actorUserId: req.user.id,
+    actorName: req.user.full_name || req.user.username || '',
+    action: 'cash_register.opening_amount_edit',
+    resourceType: 'cash_register',
+    resourceId: registerId,
+    details: { previous_opening_amount: previousAmount, opening_amount: nextAmount },
+  });
+  const io = req.app.get('io');
+  if (io) io.emit('register-update', { action: 'opening-edit', registerId });
+
+  const updated = queryOne('SELECT * FROM cash_registers WHERE id = ?', [registerId]);
+  try {
+    const { sales, movements, notes, expectedCash } = buildRegisterSnapshot(updated);
+    return res.json({ ...updated, ...sales, ...movements, ...notes, expected_cash: expectedCash });
+  } catch (_) {
+    return res.json(updated);
   }
 });
 
