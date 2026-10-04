@@ -189,7 +189,7 @@ function playAlarmTone(ctx, volume = 1) {
 }
 
 function playFallbackBeep(type, volume = 1) {
-  const peak = Math.max(0.0002, 0.22 * normalizeVolume(volume));
+  const peak = Math.max(0.0002, 0.45 * normalizeVolume(volume));
   try {
     const ctx = getSharedAudioContext();
     if (!ctx) return;
@@ -228,6 +228,69 @@ function playFallbackBeep(type, volume = 1) {
   } catch (_) {
     // Navegador bloqueó audio sin interacción previa.
   }
+}
+
+/** Ganancia extra sobre el WAV (HTMLAudio no pasa de 1.0); el limitador evita que distorsione. */
+const SOUND_BOOST = { kitchen: 3.2, bar: 3.2, message: 1.6, system: 1.6 };
+const decodedBuffers = {};
+
+async function getDecodedBuffer(ctx, type) {
+  if (decodedBuffers[type]) return decodedBuffers[type];
+  const src = SOUND_FILES[type];
+  if (!src) return null;
+  decodedBuffers[type] = fetch(src)
+    .then((r) => {
+      if (!r.ok) throw new Error('sound fetch');
+      return r.arrayBuffer();
+    })
+    .then((buf) => new Promise((resolve, reject) => {
+      const p = ctx.decodeAudioData(buf, resolve, reject);
+      if (p && typeof p.then === 'function') p.then(resolve, reject);
+    }))
+    .catch((err) => {
+      delete decodedBuffers[type];
+      throw err;
+    });
+  return decodedBuffers[type];
+}
+
+async function playBoostedSound(type, volume) {
+  const ctx = getSharedAudioContext();
+  if (!ctx) return false;
+  if (ctx.state === 'suspended') {
+    try {
+      await ctx.resume();
+    } catch (_) {
+      return false;
+    }
+  }
+  if (ctx.state !== 'running') return false;
+  const buffer = await getDecodedBuffer(ctx, type);
+  if (!buffer) return false;
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  const gain = ctx.createGain();
+  gain.gain.value = normalizeVolume(volume) * (SOUND_BOOST[type] || 1);
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -2;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.002;
+  limiter.release.value = 0.08;
+  source.connect(gain);
+  gain.connect(limiter);
+  limiter.connect(ctx.destination);
+  source.onended = () => {
+    try {
+      source.disconnect();
+      gain.disconnect();
+      limiter.disconnect();
+    } catch (_) {
+      /* noop */
+    }
+  };
+  source.start();
+  return true;
 }
 
 function getPreloadedAudio(type) {
@@ -274,6 +337,30 @@ export function playNotificationSound(type, orderKey = '', opts = {}) {
   const playKey = buildPlayKey(normalized, orderKey);
   if (playingKeys.has(playKey)) return;
 
+  if (SOUND_FILES[normalized]) {
+    playingKeys.add(playKey);
+    playBoostedSound(normalized, volume)
+      .then((ok) => {
+        if (ok) {
+          pendingPlay = null;
+          audioUnlocked = true;
+          notifyUnlockListeners();
+          setTimeout(() => playingKeys.delete(playKey), 1500);
+          return;
+        }
+        playingKeys.delete(playKey);
+        playWithHtmlAudio(normalized, orderKey, volume, playKey);
+      })
+      .catch(() => {
+        playingKeys.delete(playKey);
+        playWithHtmlAudio(normalized, orderKey, volume, playKey);
+      });
+    return;
+  }
+  playWithHtmlAudio(normalized, orderKey, volume, playKey);
+}
+
+function playWithHtmlAudio(normalized, orderKey, volume, playKey) {
   const template = getPreloadedAudio(normalized);
   if (!template) {
     playFallbackBeep(normalized, volume);

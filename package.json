@@ -1,6 +1,6 @@
 {
   "name": "restaurant-platform",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Plataforma completa para restaurante - Admin, Cocina, POS, Cliente, Delivery",
   "private": true,
   "workspaces": [
