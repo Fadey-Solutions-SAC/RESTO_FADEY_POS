@@ -32,7 +32,8 @@
     "electron": "electron electron/main.js",
     "electron:dev": "concurrently \"npm run server\" \"cd client && npm run dev\" \"cross-env ELECTRON_START_URL=http://localhost:5173 electron electron/main.js\"",
     "electron:build": "npm install && cross-env VITE_DESKTOP_BUILD=1 npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis",
-    "electron:dist": "npm install && cross-env VITE_DESKTOP_BUILD=1 npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --publish never"
+    "electron:dist": "npm install && cross-env VITE_DESKTOP_BUILD=1 npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --publish never",
+    "electron:release": "npm install && cross-env VITE_DESKTOP_BUILD=1 npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --publish always"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -121,7 +122,7 @@
           ]
         }
       ],
-      "artifactName": "RestoFADEY.Setup.exe",
+      "artifactName": "Fadey.Impresion.Setup.exe",
       "icon": "client/public/pwa-icon-512.png",
       "signAndEditExecutable": false
     },
@@ -147,10 +148,6 @@
         "provider": "github",
         "owner": "Fadey-Solutions-SAC",
         "repo": "RESTO_FADEY_POS"
-      },
-      {
-        "provider": "generic",
-        "url": "https://updates.restofadey.com/desktop"
       }
     ]
   }

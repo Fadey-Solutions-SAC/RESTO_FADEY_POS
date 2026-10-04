@@ -1126,7 +1126,7 @@ function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
     console.error('[electron] ejecutable no encontrado:', execPath);
     showTrayBalloon(
       'Resto FADEY',
-      'No se encontró el programa instalado. Reinstale RestoFADEY.Setup.exe y abra solo un acceso directo.',
+      'No se encontró el programa instalado. Reinstale Fadey.Impresion.Setup.exe y abra solo un acceso directo.',
     );
     return;
   }
@@ -1377,8 +1377,6 @@ function getAutoUpdater() {
 
 const DESKTOP_UPDATE_FEEDS = [
   { provider: 'github', owner: 'Fadey-Solutions-SAC', repo: 'RESTO_FADEY_POS' },
-  { provider: 'github', owner: 'MECATRONIC-MEN', repo: 'RESTAURANT' },
-  { provider: 'generic', url: 'https://updates.restofadey.com/desktop' },
 ];
 
 async function checkDesktopUpdates({ notifyIfNone = false } = {}) {

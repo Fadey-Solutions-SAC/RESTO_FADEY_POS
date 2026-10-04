@@ -1,9 +1,9 @@
 import toast from 'react-hot-toast';
 
-/** Debe coincidir con el nombre exacto del asset en GitHub Releases (actual: RestoFADEY.Setup.exe). */
+/** Debe coincidir con el nombre exacto del asset en GitHub Releases y con `build.win.artifactName`. */
 export const DESKTOP_SETUP_URL =
   import.meta.env.VITE_DESKTOP_SETUP_URL ||
-  'https://github.com/MECATRONIC-MEN/RESTAURANT/releases/latest/download/RestoFADEY.Setup.exe';
+  'https://github.com/Fadey-Solutions-SAC/RESTO_FADEY_POS/releases/latest/download/Fadey.Impresion.Setup.exe';
 
 /** Abre la descarga del instalador del asistente de impresión (Resto FADEY desktop). */
 export function openPrintingAssistantInstaller() {
@@ -16,7 +16,7 @@ export function openPrintingAssistantInstaller() {
   a.href = url;
   a.rel = 'noopener noreferrer';
   a.target = '_blank';
-  a.download = 'RestoFADEY-Setup.exe';
+  a.download = 'Fadey.Impresion.Setup.exe';
   document.body.appendChild(a);
   a.click();
   a.remove();
