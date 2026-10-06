@@ -457,6 +457,43 @@ function CloseSummaryCard({ tone, label, amount, sub }) {
 
 /** Mesa sintética al cobrar cuenta desde Clientes (no existe fila en `tables`). */
 const POS_ADMIN_REGISTER_KEY = 'posAdminRegisterId';
+const POS_CAJA_LOCKED_CLOSED_KEY = 'posCajaLockedClosed';
+const POS_CLOSED_REGISTER_IDS_KEY = 'posClosedRegisterIds';
+
+function readCajaLockedClosed() {
+  try {
+    return sessionStorage.getItem(POS_CAJA_LOCKED_CLOSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function persistCajaLockedClosed(locked) {
+  try {
+    if (locked) sessionStorage.setItem(POS_CAJA_LOCKED_CLOSED_KEY, '1');
+    else sessionStorage.removeItem(POS_CAJA_LOCKED_CLOSED_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
+function readClosedRegisterIds() {
+  try {
+    const raw = sessionStorage.getItem(POS_CLOSED_REGISTER_IDS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set((Array.isArray(arr) ? arr : []).map((id) => String(id || '').trim()).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistClosedRegisterIds(ids) {
+  try {
+    sessionStorage.setItem(POS_CLOSED_REGISTER_IDS_KEY, JSON.stringify([...ids].slice(-30)));
+  } catch {
+    /* noop */
+  }
+}
 
 function readPersistedAdminRegisterId() {
   try {
@@ -826,7 +863,8 @@ export default function POSPanel() {
   const [register, setRegister] = useState(null);
   const [registerStatus, setRegisterStatus] = useState({ is_open: false, register: null });
   const loadDataGenRef = useRef(0);
-  const closedRegisterIdsRef = useRef(new Set());
+  const closedRegisterIdsRef = useRef(readClosedRegisterIds());
+  const cajaLockedClosedRef = useRef(readCajaLockedClosed());
   const registerIdRef = useRef('');
   const [dailySales, setDailySales] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1032,6 +1070,18 @@ export default function POSPanel() {
   const rememberClosedRegister = (registerId) => {
     const rid = String(registerId || '').trim();
     if (rid) closedRegisterIdsRef.current.add(rid);
+    persistClosedRegisterIds(closedRegisterIdsRef.current);
+  };
+
+  const lockCajaClosed = (registerId) => {
+    rememberClosedRegister(registerId);
+    cajaLockedClosedRef.current = true;
+    persistCajaLockedClosed(true);
+  };
+
+  const unlockCajaClosed = () => {
+    cajaLockedClosedRef.current = false;
+    persistCajaLockedClosed(false);
   };
 
   const filterStationsAfterClose = (stations) => {
@@ -1045,6 +1095,7 @@ export default function POSPanel() {
   };
 
   const resolveLiveRegister = (raw) => {
+    if (cajaLockedClosedRef.current) return null;
     const live = liveOpenRegister(raw);
     if (!live) return null;
     if (closedRegisterIdsRef.current.has(String(live.id))) return null;
@@ -1169,7 +1220,7 @@ export default function POSPanel() {
         Array.isArray(stationsResEarly?.stations) ? stationsResEarly.stations : [],
       );
       setCajaStations((prev) => (stationsList.length ? stationsList : filterStationsAfterClose(prev)));
-      if (posRole === 'admin' && !adminRid && stationsList.length === 1) {
+      if (posRole === 'admin' && !adminRid && stationsList.length === 1 && !cajaLockedClosedRef.current) {
         const onlyOpenId = String(stationsList[0]?.open_register?.id || '').trim();
         if (onlyOpenId) {
           adminRid = onlyOpenId;
@@ -1254,6 +1305,7 @@ export default function POSPanel() {
         register: statusRegister,
       });
       setRegister((prev) => {
+        if (cajaLockedClosedRef.current) return null;
         if (regResolved) return regResolved;
         if (regFetchFailed) return resolveLiveRegister(prev);
         return null;
@@ -1506,17 +1558,15 @@ export default function POSPanel() {
   useActiveInterval(pollPosData, 10000);
   useSocket('register-update', (payload) => {
     if (payload?.action === 'close') {
-      rememberClosedRegister(payload.registerId);
+      lockCajaClosed(payload.registerId);
       loadDataGenRef.current += 1;
       invalidateGetCache(REGISTER_STATE_CACHE_PATHS);
       setCajaStations((prev) => filterStationsAfterClose(prev));
-      if (payload.registerId && String(payload.registerId) === registerIdRef.current) {
-        setRegister(null);
-        setRegisterStatus({ is_open: false, register: null });
-        if (posRoleOf(posUserRef.current) === 'admin') {
-          persistAdminRegisterId('');
-          setAdminRegisterId('');
-        }
+      setRegister(null);
+      setRegisterStatus({ is_open: false, register: null });
+      if (posRoleOf(posUserRef.current) === 'admin') {
+        persistAdminRegisterId('');
+        setAdminRegisterId('');
       }
     }
     void loadData();
@@ -1827,6 +1877,7 @@ export default function POSPanel() {
     setWorkAreaLoading(true);
     try {
       const reg = await api.post('/pos/open-register', { opening_amount: amount });
+      unlockCajaClosed();
       setRegister(reg);
       setRegisterStatus({ is_open: true, register: { user_id: user?.id, cajero_name: user?.full_name, opened_at: reg.opened_at } });
       setOpeningAmount('');
@@ -1850,6 +1901,7 @@ export default function POSPanel() {
     setWorkAreaLoading(true);
     try {
       const reg = await api.post('/pos/open-register', { opening_amount: amount, caja_station_id: sid });
+      unlockCajaClosed();
       persistAdminRegisterId(reg.id);
       setAdminRegisterId(reg.id);
       setRegister(reg);
@@ -2065,7 +2117,7 @@ export default function POSPanel() {
         },
         ...posRegisterBody(),
       }, { skipOffline: true, _retryContext: 'Cierre de caja:' });
-      rememberClosedRegister(register?.id);
+      lockCajaClosed(register?.id);
       loadDataGenRef.current += 1;
       invalidateGetCache(REGISTER_STATE_CACHE_PATHS);
       clearCashCloseDraft(register?.id);

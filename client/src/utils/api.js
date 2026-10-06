@@ -373,7 +373,12 @@ export function getSocketOrigin() {
 
 async function request(endpoint, options = {}, attempt = 0) {
   const token = localStorage.getItem('token');
-  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  const headers = {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+    ...options.headers,
+  };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const method = String(options.method || 'GET').toUpperCase();
@@ -417,7 +422,7 @@ async function request(endpoint, options = {}, attempt = 0) {
 
   let res;
   try {
-    res = await fetch(url, { ...fetchOptions, headers });
+    res = await fetch(url, { ...fetchOptions, headers, cache: fetchOptions.cache || 'no-store' });
   } catch (err) {
     if (timeoutId) clearTimeout(timeoutId);
     const local = useLocalFallback();

@@ -355,7 +355,13 @@ function buildExtraDiscountsByOrderTx(tx, orderIds, totalExtraRaw, anchorOrderIt
 }
 
 function getOpenRegister(userId) {
-  return queryOne('SELECT * FROM cash_registers WHERE user_id = ? AND closed_at IS NULL', [userId]);
+  return queryOne(
+    `SELECT * FROM cash_registers
+     WHERE user_id = ? AND closed_at IS NULL
+     ORDER BY datetime(opened_at) DESC
+     LIMIT 1`,
+    [userId],
+  );
 }
 
 /**
@@ -430,6 +436,7 @@ function buildRegisterSnapshot(register) {
 }
 
 router.get('/caja-stations', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  res.set('Cache-Control', 'no-store');
   let stations = listCajasWithIds().filter((c) => c.active);
   const role = String(req.user.role || '').toLowerCase();
   if (role === 'cajero') {
@@ -538,6 +545,7 @@ router.post('/open-register', authenticateToken, requireRole('admin', 'cajero'),
 });
 
 router.get('/current-register', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const register = resolvePosRegister(req);
     if (!register) return res.json(null);
@@ -698,6 +706,19 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
 
   runSql("UPDATE cash_registers SET closed_at = datetime('now'), closing_amount = ?, total_sales = ?, total_cash = ?, total_yape = ?, total_plin = ?, total_card = ?, notes = ?, arqueo_data = ?, business_date = ? WHERE id = ?",
     [countedCash, sales.total_sales, sales.total_cash, sales.total_yape, sales.total_plin, sales.total_card, closingNotesText || '', arqueoData, businessDate, register.id]);
+  const stationId = String(register.caja_station_id || '').trim();
+  runSql(
+    `UPDATE cash_registers
+     SET closed_at = datetime('now'),
+         notes = CASE WHEN trim(coalesce(notes, '')) = '' THEN 'Cierre automático de turno duplicado' ELSE notes END
+     WHERE closed_at IS NULL
+       AND id != ?
+       AND (
+         user_id = ?
+         OR (? != '' AND trim(coalesce(caja_station_id, '')) = ?)
+       )`,
+    [register.id, register.user_id, stationId, stationId],
+  );
   /** Cierre de caja: reinicio de numeración para el próximo turno / apertura. */
   runSql('UPDATE order_sequence SET current_number = 0 WHERE id = 1');
   logAudit({
@@ -1176,6 +1197,7 @@ router.get('/payment-methods', authenticateToken, requireRole('admin', 'cajero',
 });
 
 router.get('/register-status', authenticateToken, requireRole('admin', 'cajero', 'mozo'), (req, res) => {
+  res.set('Cache-Control', 'no-store');
   const role = String(req.user?.role || '').toLowerCase();
   let mozoCajaId = '';
   if (role === 'mozo' || role === 'cajero') {

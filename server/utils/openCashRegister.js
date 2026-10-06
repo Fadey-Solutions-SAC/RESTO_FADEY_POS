@@ -26,7 +26,13 @@ function getOpenRegisterByStation(stationId) {
 function getOpenRegisterForUser(user) {
   const userId = user?.id;
   if (!userId) return null;
-  const own = queryOne('SELECT * FROM cash_registers WHERE user_id = ? AND closed_at IS NULL', [userId]);
+  const own = queryOne(
+    `SELECT * FROM cash_registers
+     WHERE user_id = ? AND closed_at IS NULL
+     ORDER BY datetime(opened_at) DESC
+     LIMIT 1`,
+    [userId],
+  );
   if (own) return own;
   if (String(user?.role || '').toLowerCase() !== 'cajero') return null;
   return getOpenRegisterByStation(getUserCajaStationId(userId));
