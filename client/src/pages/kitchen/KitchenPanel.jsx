@@ -36,6 +36,8 @@ const KITCHEN_ITEM_HIGHLIGHT_MS = 10 * 60 * 1000;
 const KITCHEN_ARRIVAL_OVERDUE_MS = 30 * 60 * 1000;
 const KITCHEN_PREP_OVERDUE_MS = 30 * 60 * 1000;
 const normalizePaperWidthMm = normalizeThermalPaperWidthMm;
+const USER_AREA_SOUND_KEY_PREFIX = 'resto_area_sound_user_v1';
+const USER_SOUND_FIELDS = new Set(['notifyEnabled', 'notifyVolume']);
 
 function kitchenHighlightKey(orderId, itemId) {
   return `${String(orderId || '').trim()}:${String(itemId || '').trim()}`;
@@ -465,14 +467,46 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     }
   };
 
+  /** Sonido y volumen son preferencia de cada usuario (no del área): cajero y cocina no se afectan entre sí. */
+  const userSoundKey = `${USER_AREA_SOUND_KEY_PREFIX}:${user?.id || 'anon'}:${areaId}`;
+  const userSoundKeyRef = useRef(userSoundKey);
+  userSoundKeyRef.current = userSoundKey;
+
+  const readUserSoundPrefs = useCallback(() => {
+    try {
+      const raw = window.localStorage?.getItem(userSoundKeyRef.current);
+      const data = raw ? JSON.parse(raw) : null;
+      if (!data || typeof data !== 'object') return {};
+      const prefs = {};
+      if (typeof data.notifyEnabled === 'boolean') prefs.notifyEnabled = data.notifyEnabled;
+      const vol = Number(data.notifyVolume);
+      if (Number.isFinite(vol) && vol >= 10 && vol <= 100) prefs.notifyVolume = vol;
+      return prefs;
+    } catch (_) {
+      return {};
+    }
+  }, []);
+
+  const mergeAreaSettings = useCallback(
+    (serverSettings) => ({
+      ...DEFAULT_AREA_SETTINGS,
+      ...(serverSettings || {}),
+      notifyEnabled: DEFAULT_AREA_SETTINGS.notifyEnabled,
+      notifyVolume: DEFAULT_AREA_SETTINGS.notifyVolume,
+      ...readUserSoundPrefs(),
+    }),
+    [readUserSoundPrefs],
+  );
+
   useEffect(() => {
     let cancelled = false;
     setAreaSettingsLoaded(false);
+    setAreaSettings(mergeAreaSettings(null));
     api
       .get(`/orders/production-area-settings/${encodeURIComponent(areaId)}`)
       .then((data) => {
         if (cancelled) return;
-        setAreaSettings({ ...DEFAULT_AREA_SETTINGS, ...(data || {}) });
+        setAreaSettings(mergeAreaSettings(data));
         setAreaSettingsLoaded(true);
       })
       .catch(() => {
@@ -481,13 +515,36 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     return () => {
       cancelled = true;
     };
-  }, [areaId]);
+  }, [areaId, userSoundKey, mergeAreaSettings]);
 
-  const saveAreaSettings = async (patch) => {
+  const saveUserSoundPrefs = (patch) => {
+    const next = { ...readUserSoundPrefs(), ...patch };
+    try {
+      window.localStorage?.setItem(userSoundKeyRef.current, JSON.stringify(next));
+    } catch (_) {
+      /* noop */
+    }
+    setAreaSettings((prev) => ({ ...prev, ...patch }));
+    if ('notifyEnabled' in patch) {
+      toast.success(patch.notifyEnabled ? t('barSettings.notifyOnToast') : t('barSettings.notifyOffToast'));
+    } else if ('notifyVolume' in patch) {
+      toast.success(t('barSettings.volumeSaved', { volume: patch.notifyVolume }));
+    }
+  };
+
+  const saveAreaSettings = async (rawPatch) => {
+    const soundPatch = {};
+    const patch = {};
+    Object.entries(rawPatch || {}).forEach(([k, v]) => {
+      if (USER_SOUND_FIELDS.has(k)) soundPatch[k] = v;
+      else patch[k] = v;
+    });
+    if (Object.keys(soundPatch).length) saveUserSoundPrefs(soundPatch);
+    if (!Object.keys(patch).length) return;
     setAreaSettingsSaving(true);
     try {
       const saved = await api.put(`/orders/production-area-settings/${encodeURIComponent(areaId)}`, patch);
-      setAreaSettings({ ...DEFAULT_AREA_SETTINGS, ...(saved || {}) });
+      setAreaSettings(mergeAreaSettings(saved));
       if ('autoDismissEnabled' in patch) {
         toast.success(
           saved?.autoDismissEnabled
@@ -498,10 +555,6 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
       } else if ('autoDismissMinutes' in patch) {
         toast.success(t('barSettings.minutesSaved', { minutes: saved.autoDismissMinutes }));
         void loadOrders();
-      } else if ('notifyEnabled' in patch) {
-        toast.success(saved?.notifyEnabled ? t('barSettings.notifyOnToast') : t('barSettings.notifyOffToast'));
-      } else if ('notifyVolume' in patch) {
-        toast.success(t('barSettings.volumeSaved', { volume: saved.notifyVolume }));
       }
     } catch (err) {
       toast.error(err?.message || t('barSettings.saveFailed'));
@@ -512,7 +565,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
 
   useSocket('production-area-settings-update', (payload) => {
     if (!payload || String(payload.areaId) !== String(areaId)) return;
-    setAreaSettings({ ...DEFAULT_AREA_SETTINGS, ...(payload.settings || {}) });
+    setAreaSettings(mergeAreaSettings(payload.settings));
   });
 
   useSocket('station-auto-dismiss', (payload) => {

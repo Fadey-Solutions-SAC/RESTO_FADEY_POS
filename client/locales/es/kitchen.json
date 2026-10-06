@@ -67,7 +67,7 @@
     "minutesHelp": "Las comandas que no se marquen PREPARAR ni LISTO se retiran solas tras este tiempo.",
     "notifyTitle": "Notificación de pedidos nuevos",
     "notifyLabel": "Permitir sonido al llegar un pedido",
-    "notifyHelp": "Suena cuando llega una comanda o se agregan productos.",
+    "notifyHelp": "Suena cuando llega una comanda o se agregan productos. Solo aplica a su usuario; los demás usuarios con acceso al área no se ven afectados.",
     "delayTitle": "Alerta de pedido demorado",
     "delayLabel": "Sonar alarma cuando un pedido se demora",
     "delayHelp": "La comanda se pone en rojo y suena una alarma distinta a la de pedido nuevo. Se repite hasta que la marquen LISTO.",

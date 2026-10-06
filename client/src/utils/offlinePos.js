@@ -103,11 +103,39 @@ function getCache() {
 }
 
 export function saveGetCache(endpoint, data) {
-  if (!shouldCacheGet(endpoint) || data == null) return;
+  if (!shouldCacheGet(endpoint)) return;
+  const p = pathOf(endpoint);
+  if (p === '/pos/current-register' && data && typeof data === 'object' && data.closed_at) {
+    /** Turno ya cerrado: no cachear como si siguiera abierto. */
+    invalidateGetCache([p]);
+    return;
+  }
+  if (data == null) {
+    /** Respuesta vacía (p. ej. caja ya cerrada): no dejar el turno anterior como respaldo offline. */
+    invalidateGetCache([pathOf(endpoint)]);
+    return;
+  }
   const cache = getCache();
   cache[endpoint] = { at: Date.now(), data };
   writeJson(CACHE_KEY, cache);
 }
+
+/** Borra del caché offline todas las variantes (con o sin query) de las rutas indicadas. */
+export function invalidateGetCache(paths) {
+  const targets = new Set((Array.isArray(paths) ? paths : [paths]).map((p) => pathOf(p)).filter(Boolean));
+  if (!targets.size) return;
+  const cache = getCache();
+  let changed = false;
+  for (const key of Object.keys(cache)) {
+    if (targets.has(pathOf(key))) {
+      delete cache[key];
+      changed = true;
+    }
+  }
+  if (changed) writeJson(CACHE_KEY, cache);
+}
+
+export const REGISTER_STATE_CACHE_PATHS = ['/pos/current-register', '/pos/caja-stations', '/pos/register-status'];
 
 export function readGetCache(endpoint) {
   const cache = getCache();

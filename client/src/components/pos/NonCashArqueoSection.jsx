@@ -127,8 +127,7 @@ export default function NonCashArqueoSection({
         <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3 shadow-sm w-full sm:w-auto sm:min-w-[22rem] focus-within:border-[color:var(--ui-accent)] focus-within:ring-2 focus-within:ring-[color:var(--ui-accent)]/25">
           <div className="flex items-start justify-between gap-3 mb-2">
             <div className="min-w-0">
-              <label htmlFor="nc-input-total-pos" className="text-sm font-bold text-[var(--ui-body-text)]">Total POS</label>
-              <p className="text-[11px] text-[var(--ui-muted)] leading-tight">Total del cierre Culqi / Izipay (todos los medios)</p>
+              <label htmlFor="nc-input-total-pos" className="text-sm font-bold text-[var(--ui-body-text)]">Total en el POS</label>
             </div>
             <div className="text-right shrink-0">
               <p className="text-[11px] text-[var(--ui-muted)] leading-tight">Sistema</p>

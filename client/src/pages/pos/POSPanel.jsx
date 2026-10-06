@@ -20,6 +20,13 @@ function isPaidRegisterSaleOrder(order) {
   return method !== 'cortesia' && method !== 'cuenta_cliente';
 }
 
+function liveOpenRegister(reg) {
+  if (!reg || typeof reg !== 'object') return null;
+  if (!String(reg.id || '').trim()) return null;
+  if (reg.closed_at) return null;
+  return reg;
+}
+
 function orderBelongsToOpenRegister(order, register, endAt) {
   if (!isPaidRegisterSaleOrder(order) || !register?.opened_at) return false;
   const registerId = String(register.id || '').trim();
@@ -406,7 +413,7 @@ import {
   getMesaMapVisualState,
   getTableDisplayLabel,
 } from '../../utils/mesaMapTableVisual';
-import { readGetCache } from '../../utils/offlinePos';
+import { readGetCache, invalidateGetCache, REGISTER_STATE_CACHE_PATHS } from '../../utils/offlinePos';
 import {
   MdPointOfSale, MdTableRestaurant, MdReceipt,
   MdCheckCircle, MdAttachMoney, MdPeople, MdClose,
@@ -818,6 +825,9 @@ export default function POSPanel() {
   const [allOrders, setAllOrders] = useState([]);
   const [register, setRegister] = useState(null);
   const [registerStatus, setRegisterStatus] = useState({ is_open: false, register: null });
+  const loadDataGenRef = useRef(0);
+  const closedRegisterIdsRef = useRef(new Set());
+  const registerIdRef = useRef('');
   const [dailySales, setDailySales] = useState(null);
   const [loading, setLoading] = useState(true);
   const [workAreaLoading, setWorkAreaLoading] = useState(false);
@@ -1017,6 +1027,29 @@ export default function POSPanel() {
   adminRegisterIdRef.current = adminRegisterId;
   const posUserRef = useRef(user);
   posUserRef.current = user;
+  registerIdRef.current = String(register?.id || '').trim();
+
+  const rememberClosedRegister = (registerId) => {
+    const rid = String(registerId || '').trim();
+    if (rid) closedRegisterIdsRef.current.add(rid);
+  };
+
+  const filterStationsAfterClose = (stations) => {
+    const closed = closedRegisterIdsRef.current;
+    if (!closed.size) return stations;
+    return (Array.isArray(stations) ? stations : []).map((s) => {
+      const oid = String(s?.open_register?.id || '').trim();
+      if (oid && closed.has(oid)) return { ...s, open_register: null };
+      return s;
+    });
+  };
+
+  const resolveLiveRegister = (raw) => {
+    const live = liveOpenRegister(raw);
+    if (!live) return null;
+    if (closedRegisterIdsRef.current.has(String(live.id))) return null;
+    return live;
+  };
   const [barAutoDismiss, setBarAutoDismiss] = useState(false);
   const [barAutoDismissMinutes, setBarAutoDismissMinutes] = useState(30);
   const [barSettingsLoaded, setBarSettingsLoaded] = useState(false);
@@ -1084,6 +1117,8 @@ export default function POSPanel() {
   }, []);
 
   const loadData = async (opts = {}) => {
+    const gen = loadDataGenRef.current + 1;
+    loadDataGenRef.current = gen;
     try {
       const posRole = posRoleOf(posUserRef.current);
       let adminRid =
@@ -1103,6 +1138,7 @@ export default function POSPanel() {
       const staffTablesQs = staffCajaId
         ? `?caja_station_id=${encodeURIComponent(staffCajaId)}`
         : '';
+      let regFetchFailed = false;
 
       const [
         stationsResEarly,
@@ -1112,18 +1148,27 @@ export default function POSPanel() {
         status,
         ordersData,
       ] = await Promise.all([
-        api.get('/pos/caja-stations').catch(() => null),
-        currentRegPath ? api.get(currentRegPath).catch(() => null) : Promise.resolve(null),
+        api.get('/pos/caja-stations', { skipOffline: true }).catch(() => null),
+        currentRegPath
+          ? api.get(currentRegPath, { skipOffline: true }).catch(() => {
+            regFetchFailed = true;
+            return null;
+          })
+          : Promise.resolve(null),
         staffCajaId ? api.get(`/tables${staffTablesQs}`) : Promise.resolve(null),
         staffCajaId
           ? api.get(`/tables/salones${staffTablesQs}`).catch(() => ({ salones: [] }))
           : Promise.resolve(null),
-        api.get('/pos/register-status'),
+        api.get('/pos/register-status', { skipOffline: true }).catch(() => null),
         api.get('/orders?limit=600').catch(() => []),
       ]);
 
-      const stationsList = Array.isArray(stationsResEarly?.stations) ? stationsResEarly.stations : [];
-      setCajaStations((prev) => (stationsList.length ? stationsList : prev));
+      if (gen !== loadDataGenRef.current) return;
+
+      const stationsList = filterStationsAfterClose(
+        Array.isArray(stationsResEarly?.stations) ? stationsResEarly.stations : [],
+      );
+      setCajaStations((prev) => (stationsList.length ? stationsList : filterStationsAfterClose(prev)));
       if (posRole === 'admin' && !adminRid && stationsList.length === 1) {
         const onlyOpenId = String(stationsList[0]?.open_register?.id || '').trim();
         if (onlyOpenId) {
@@ -1162,7 +1207,7 @@ export default function POSPanel() {
         salonesList = Array.isArray(s?.salones) ? s.salones : [];
       }
 
-      let regResolved = regPreview;
+      let regResolved = resolveLiveRegister(regPreview);
       let adminRegisterStillOpen = false;
       if (posRole === 'admin' && adminRid && !regResolved) {
         adminRegisterStillOpen = stationsList.some((s) => String(s.open_register?.id || '') === adminRid);
@@ -1170,13 +1215,13 @@ export default function POSPanel() {
           const st = stationsList.find((s) => String(s.open_register?.id || '') === adminRid);
           const op = st?.open_register;
           if (op) {
-            regResolved = {
+            regResolved = resolveLiveRegister({
               id: adminRid,
               caja_station_id: st.id,
               user_id: op.user_id,
               cajero_name: op.cajero_name,
               opened_at: op.opened_at,
-            };
+            });
           }
         }
         if (!regResolved && stationsResEarly != null && !adminRegisterStillOpen) {
@@ -1196,15 +1241,22 @@ export default function POSPanel() {
         posRole,
       );
 
+      if (gen !== loadDataGenRef.current) return;
+
       setTables(scopedTables);
       setSalonesConfig(scopedSalones);
       setAllOrders(ordersData || []);
-      setRegisterStatus(status);
+      const statusRegister = resolveLiveRegister(status?.register);
+      const statusLooksOpen = Boolean(status?.is_open) && Boolean(statusRegister);
+      setRegisterStatus({
+        ...(status && typeof status === 'object' ? status : { is_open: false, register: null }),
+        is_open: statusLooksOpen,
+        register: statusRegister,
+      });
       setRegister((prev) => {
         if (regResolved) return regResolved;
-        if (prev) return prev;
-        if (posRole === 'admin' && adminRid && adminRegisterStillOpen && prev) return prev;
-        return regResolved;
+        if (regFetchFailed) return resolveLiveRegister(prev);
+        return null;
       });
       setLoading(false);
 
@@ -1229,6 +1281,8 @@ export default function POSPanel() {
         api.get('/admin-modules/reservations').catch(() => []),
         api.get('/restaurant').catch(() => null),
       ]);
+
+      if (gen !== loadDataGenRef.current) return;
 
       setPrintRestaurantInfo({
         name: String(restaurantRes?.name || '').trim(),
@@ -1450,7 +1504,21 @@ export default function POSPanel() {
     void loadPrinterConfig();
   }, []);
   useActiveInterval(pollPosData, 10000);
-  useSocket('register-update', () => {
+  useSocket('register-update', (payload) => {
+    if (payload?.action === 'close') {
+      rememberClosedRegister(payload.registerId);
+      loadDataGenRef.current += 1;
+      invalidateGetCache(REGISTER_STATE_CACHE_PATHS);
+      setCajaStations((prev) => filterStationsAfterClose(prev));
+      if (payload.registerId && String(payload.registerId) === registerIdRef.current) {
+        setRegister(null);
+        setRegisterStatus({ is_open: false, register: null });
+        if (posRoleOf(posUserRef.current) === 'admin') {
+          persistAdminRegisterId('');
+          setAdminRegisterId('');
+        }
+      }
+    }
     void loadData();
   });
   useSocket('order-update', () => {
@@ -1856,7 +1924,7 @@ export default function POSPanel() {
       const currentRegPath = posRole === 'admin'
         ? (adminRid ? `/pos/current-register?register_id=${encodeURIComponent(adminRid)}` : null)
         : '/pos/current-register';
-      const fresh = currentRegPath ? await api.get(currentRegPath).catch(() => null) : null;
+      const fresh = currentRegPath ? await api.get(currentRegPath, { skipOffline: true }).catch(() => null) : null;
       if (gen !== prepareCloseGenRef.current) return;
       if (currentRegPath && !fresh) {
         toast.error('No se pudieron leer las ventas del turno. Reintente el cierre; no cierre si los totales salen en 0.');
@@ -1997,17 +2065,23 @@ export default function POSPanel() {
         },
         ...posRegisterBody(),
       }, { skipOffline: true, _retryContext: 'Cierre de caja:' });
+      rememberClosedRegister(register?.id);
+      loadDataGenRef.current += 1;
+      invalidateGetCache(REGISTER_STATE_CACHE_PATHS);
       clearCashCloseDraft(register?.id);
       setCloseDraftSavedAt('');
       toast.success('Caja cerrada — Informe guardado');
       setShowCloseModal(false);
       setClosingAtPreview(null);
       setRegister(null);
+      setRegisterStatus({ is_open: false, register: null });
+      setCajaStations((prev) => filterStationsAfterClose(prev));
       if (posRoleOf(user) === 'admin') {
         persistAdminRegisterId('');
         setAdminRegisterId('');
       }
       await loadData();
+      invalidateGetCache(REGISTER_STATE_CACHE_PATHS);
       await loadCajaExtras();
     } catch (err) { toast.error(err.message); }
     finally { setClosingRegisterBusy(false); }

@@ -67,7 +67,7 @@
     "minutesHelp": "Orders not marked START or READY are removed automatically after this time.",
     "notifyTitle": "New order notification",
     "notifyLabel": "Play a sound when an order arrives",
-    "notifyHelp": "Plays when a ticket arrives or items are added.",
+    "notifyHelp": "Plays when a ticket arrives or items are added. Applies only to your user; other users with access to this area are not affected.",
     "delayTitle": "Late order alert",
     "delayLabel": "Sound an alarm when an order is late",
     "delayHelp": "The ticket turns red and an alarm different from the new-order sound plays. It repeats until the ticket is marked READY.",
