@@ -375,8 +375,6 @@ async function request(endpoint, options = {}, attempt = 0) {
   const token = localStorage.getItem('token');
   const headers = {
     'Content-Type': 'application/json',
-    'Cache-Control': 'no-cache',
-    Pragma: 'no-cache',
     ...options.headers,
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
