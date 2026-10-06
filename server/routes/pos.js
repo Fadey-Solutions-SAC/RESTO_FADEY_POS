@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql, withTransaction, logAudit, ensureOrdersPaymentNoteColumn } = require('../database');
 const kardexInventory = require('../services/kardexInventoryService');
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { assertPaymentMethodAllowed, normalizePaymentMethod, getPaymentMethodOptionsPayload, isCourtesyDiscountReason, COURTESY_PAYMENT_METHOD } = require('../businessRules');
+const { assertPaymentMethodAllowed, normalizePaymentMethod, getPaymentMethodOptionsPayload, isPosTerminalEnabled, isCourtesyDiscountReason, COURTESY_PAYMENT_METHOD } = require('../businessRules');
 const { getActiveCajaById, listCajasWithIds } = require('../cajaSettings');
 const { print } = require('../printing/printerService');
 const { getOrderWithItems } = require('../orderCreateService');
@@ -32,6 +32,7 @@ const {
 const { sendCashCloseNotification, getCashCloseRecipient } = require('../services/cashCloseNotifyService');
 const { getOrderChargeBase } = require('../utils/orderChargeBase');
 const { getOpenRegisterForUser } = require('../utils/openCashRegister');
+const { materializePartialItemQuantitiesTx } = require('../services/orderItemQuantitySplit');
 
 const router = express.Router();
 
@@ -143,73 +144,6 @@ function cloneOrderForItemSplitTx(tx, sourceId, newOrderId, newOrderNumber, chil
 }
 
 /**
- * Si se cobra menos unidades que la línea, deja el remanente en un ítem nuevo (mismo pedido)
- * y reduce la línea original a la cantidad a cobrar (conserva el id para anclas de descuento).
- * @returns {string[]} ids de líneas listas para mover/cobrar
- */
-function materializePartialChargeQuantitiesTx(tx, orderId, itemIds, quantitiesByItemId) {
-  const qtyMap = quantitiesByItemId && typeof quantitiesByItemId === 'object' ? quantitiesByItemId : {};
-  const movingIds = [];
-
-  for (const itemId of itemIds) {
-    const it = tx.queryOne('SELECT * FROM order_items WHERE id = ? AND order_id = ?', [itemId, orderId]);
-    if (!it) throw new Error('Línea de pedido no encontrada al dividir cantidad');
-
-    const maxQ = Math.max(1, Math.floor(Number(it.quantity) || 1));
-    const raw = qtyMap[itemId];
-    let chargeQ = raw == null || raw === '' ? maxQ : Math.floor(Number(raw));
-    if (!Number.isFinite(chargeQ) || chargeQ < 1) {
-      throw new Error(`Cantidad inválida para cobrar en «${it.product_name || 'producto'}»`);
-    }
-    if (chargeQ > maxQ) chargeQ = maxQ;
-
-    if (chargeQ >= maxQ) {
-      movingIds.push(itemId);
-      continue;
-    }
-
-    const unit = Number(it.unit_price || 0);
-    const origSub = lineItemSubtotal(it);
-    const moveSub = round2((origSub * chargeQ) / maxQ);
-    const remainQ = maxQ - chargeQ;
-    const remainSub = round2(origSub - moveSub);
-    const remainId = uuidv4();
-
-    const promoDiscount = Number(it.promo_discount || 0);
-    const movePromo = round2((promoDiscount * chargeQ) / maxQ);
-    tx.run(
-      `INSERT INTO order_items (
-        id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes,
-        original_unit_price, promo_discount, promotion_id, promotion_label,
-        station_cocina_ready_at, station_bar_ready_at, kitchen_highlight_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        remainId,
-        orderId,
-        it.product_id,
-        it.product_name,
-        it.variant_name || '',
-        remainQ,
-        unit,
-        remainSub,
-        it.notes || '',
-        it.original_unit_price != null ? it.original_unit_price : unit,
-        round2(promoDiscount - movePromo),
-        it.promotion_id || '',
-        it.promotion_label || '',
-        it.station_cocina_ready_at || null,
-        it.station_bar_ready_at || null,
-        it.kitchen_highlight_at || null,
-      ]
-    );
-    tx.run('UPDATE order_items SET quantity = ?, subtotal = ?, promo_discount = ? WHERE id = ?', [chargeQ, moveSub, movePromo, itemId]);
-    movingIds.push(itemId);
-  }
-
-  return movingIds;
-}
-
-/**
  * Mueve líneas seleccionadas a un pedido nuevo y devuelve el id del pedido a cobrar (el nuevo).
  * Reparte el descuento previo del pedido fuente entre padre e hijo según subtotales de líneas.
  */
@@ -305,7 +239,7 @@ function prepareCheckoutOrderIdsFromItemLinesTx(tx, orderItemIdsRaw, quantitiesB
     if (allFullSelected) {
       chargeIds.push(orderId);
     } else {
-      const movingIds = materializePartialChargeQuantitiesTx(tx, orderId, itemIdsForOrder, qtyMap);
+      const movingIds = materializePartialItemQuantitiesTx(tx, orderId, itemIdsForOrder, qtyMap);
       const newId = splitOrderItemsForPartialCheckoutTx(tx, orderId, movingIds);
       chargeIds.push(newId);
     }
@@ -1193,7 +1127,10 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
 });
 
 router.get('/payment-methods', authenticateToken, requireRole('admin', 'cajero', 'mozo'), (req, res) => {
-  res.json({ options: getPaymentMethodOptionsPayload({ includeOnline: false }) });
+  res.json({
+    options: getPaymentMethodOptionsPayload({ includeOnline: false }),
+    pos_enabled: isPosTerminalEnabled(),
+  });
 });
 
 router.get('/register-status', authenticateToken, requireRole('admin', 'cajero', 'mozo'), (req, res) => {

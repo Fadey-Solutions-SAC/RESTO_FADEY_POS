@@ -3,6 +3,7 @@ import {
   playNotificationSound,
   unlockNotificationAudio,
 } from './playNotificationSound';
+import { areWindowsNotificationsEnabled } from './soundPrefs';
 
 /** Se dispara en `window` cuando cambia algún permiso (banner, perfil). */
 export const DEVICE_PERMISSIONS_EVENT = 'rf-device-permissions-changed';
@@ -87,9 +88,29 @@ export async function requestAllDevicePermissions({ camera = true } = {}) {
   return { sound: Boolean(sound), notifications, camera: cam };
 }
 
+/** Pide solo el permiso de sonido (desbloquea el audio del navegador). */
+export async function requestSoundPermission() {
+  const ok = await unlockNotificationAudio().catch(() => false);
+  emitChange();
+  return Boolean(ok);
+}
+
+export async function requestNotificationPermissionOnly() {
+  const res = await requestNotificationPermission();
+  emitChange();
+  return res;
+}
+
+export async function requestCameraPermissionOnly() {
+  const res = await requestCameraPermission();
+  emitChange();
+  return res;
+}
+
 export function sendTestNotification() {
-  playNotificationSound('kitchen', `permission-test-${Date.now()}`, { force: true });
+  playNotificationSound('ready', `permission-test-${Date.now()}`, { force: true, preview: true });
   try {
+    if (!areWindowsNotificationsEnabled()) return false;
     if (getNotificationPermission() !== 'granted') return false;
     const n = new Notification('Pedido Mesa 1 está listo', { body: 'Así te llegarán los avisos de tus pedidos.', tag: 'rf-permission-test' });
     n.onclick = () => {

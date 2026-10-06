@@ -333,6 +333,7 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
       target_table_id: targetTableId,
       order_ids: orderIdsRaw,
       order_item_ids: orderItemIdsRaw,
+      order_item_quantities: orderItemQuantitiesRaw,
     } = req.body || {};
     if (!sourceTableId || !targetTableId) {
       return res.status(400).json({ error: 'Mesa origen y destino son requeridas' });
@@ -394,6 +395,8 @@ router.post('/move-orders', requireRole('admin', 'cajero', 'mozo'), (req, res) =
           sourceTable: source,
           targetTable: target,
           orderItemIds,
+          quantitiesByItemId:
+            orderItemQuantitiesRaw && typeof orderItemQuantitiesRaw === 'object' ? orderItemQuantitiesRaw : {},
         }),
       );
       movedOrderIds = result.moved_order_ids;

@@ -75,11 +75,13 @@ function signedCurrency(n) {
   return `${n > 0 ? '+' : ''}${formatCurrency(n)}`;
 }
 
-function BreakdownLines({ cash, card, qr, other }) {
+function BreakdownLines({ cash, card, qr, other, showCard = true }) {
   return (
     <div className="mt-2 space-y-0.5 text-xs text-[var(--ui-body-text)] tabular-nums">
       <p>Efectivo: <span className="font-semibold">{formatCurrency(cash)}</span></p>
-      <p>POS Tarjetas: <span className="font-semibold">{formatCurrency(card)}</span></p>
+      {showCard || card > 0 ? (
+        <p>POS Tarjetas: <span className="font-semibold">{formatCurrency(card)}</span></p>
+      ) : null}
       <p>QR (Yape/Plin): <span className="font-semibold">{formatCurrency(qr)}</span></p>
       {other > 0 ? <p>Online: <span className="font-semibold">{formatCurrency(other)}</span></p> : null}
     </div>
@@ -109,13 +111,31 @@ export default function NonCashArqueoSection({
   pendingRows = [],
   expectedTotal = 0,
   totalPos = null,
+  showPosTotal = true,
   onMarkCorrect,
 }) {
   const posDiff = totalPos != null ? Math.round((totalPos - expectedTotal) * 100) / 100 : 0;
   const posStatus = totalPos == null ? 'pending' : posDiff === 0 ? 'ok' : posDiff > 0 ? 'over' : 'short';
   const posUi = STATUS_UI[posStatus];
   const PosIcon = posUi.icon;
-  const allVerified = rows.every((r) => r.verified) && totalPos != null && posDiff === 0;
+  const allVerified = showPosTotal
+    ? rows.every((r) => r.verified) && totalPos != null && posDiff === 0
+    : rows.every((r) => r.verified && r.difference === 0);
+  const markAllButton = (
+    <button
+      type="button"
+      onClick={() => onMarkCorrect?.()}
+      className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold whitespace-nowrap transition-colors ${
+        allVerified
+          ? STATUS_UI.ok.pill
+          : 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
+      }`}
+      title="Marca todos los medios con el monto del sistema"
+    >
+      <MdCheckCircle className="text-sm" />
+      {allVerified ? 'Verificado' : 'Correcto'}
+    </button>
+  );
   const diffStatus = cashCountMissing ? 'pending' : grandDifference === 0 ? 'ok' : grandDifference > 0 ? 'over' : 'short';
   const diffUi = STATUS_UI[diffStatus];
   const DiffIcon = diffUi.icon;
@@ -123,7 +143,11 @@ export default function NonCashArqueoSection({
   return (
     <div className="rounded-2xl p-4 border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <h3 className="font-bold text-lg text-[var(--ui-body-text)]">Otros medios (POS / QR)</h3>
+        <h3 className="font-bold text-lg text-[var(--ui-body-text)]">
+          {showPosTotal ? 'Otros medios (POS / QR)' : 'Otros medios (QR)'}
+        </h3>
+        {!showPosTotal ? markAllButton : null}
+        {showPosTotal ? (
         <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3 shadow-sm w-full sm:w-auto sm:min-w-[22rem] focus-within:border-[color:var(--ui-accent)] focus-within:ring-2 focus-within:ring-[color:var(--ui-accent)]/25">
           <div className="flex items-start justify-between gap-3 mb-2">
             <div className="min-w-0">
@@ -153,19 +177,7 @@ export default function NonCashArqueoSection({
                 placeholder={expectedTotal.toFixed(2)}
               />
             </div>
-            <button
-              type="button"
-              onClick={() => onMarkCorrect?.()}
-              className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold whitespace-nowrap transition-colors ${
-                allVerified
-                  ? STATUS_UI.ok.pill
-                  : 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
-              }`}
-              title="Marca todos los medios con el monto del sistema"
-            >
-              <MdCheckCircle className="text-sm" />
-              {allVerified ? 'Verificado' : 'Correcto'}
-            </button>
+            {markAllButton}
           </div>
           <p className={`mt-1.5 flex items-center gap-1 text-[11px] font-semibold ${posUi.text}`}>
             <PosIcon className="text-sm shrink-0" />
@@ -174,6 +186,7 @@ export default function NonCashArqueoSection({
               : posStatus === 'ok' ? 'Cuadra con el sistema' : `${posUi.label}: ${signedCurrency(posDiff)}`}
           </p>
         </div>
+        ) : null}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {rows.map((r) => {
@@ -296,6 +309,7 @@ export default function NonCashArqueoSection({
                 card={sumBy(rows, ['tarjeta'], 'expected')}
                 qr={sumBy(rows, ['yape', 'plin'], 'expected')}
                 other={sumBy(rows, ['online'], 'expected')}
+                showCard={showPosTotal}
               />
             </div>
           </div>
@@ -321,6 +335,7 @@ export default function NonCashArqueoSection({
                     card={sumBy(rows, ['tarjeta'], 'counted')}
                     qr={sumBy(rows, ['yape', 'plin'], 'counted')}
                     other={sumBy(rows, ['online'], 'counted')}
+                    showCard={showPosTotal}
                   />
                 )}
               </div>

@@ -60,6 +60,51 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+/** Aviso push (pedido listo, etc.): llega aunque la pantalla esté apagada o el sistema cerrado. */
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (_) {
+    data = { title: event.data ? event.data.text() : 'Resto FADEY' };
+  }
+  const title = data.title || 'Resto FADEY';
+  const options = {
+    body: data.body || '',
+    tag: data.tag || 'rf-aviso',
+    renotify: true,
+    requireInteraction: true,
+    silent: false,
+    vibrate: [400, 150, 400, 150, 700],
+    icon: '/pwa-icon-192.png',
+    badge: '/pwa-icon-192.png',
+    data: { url: data.url || '/', kind: data.kind || '' },
+  };
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const visible = list.find((c) => c.visibilityState === 'visible' && c.focused);
+      if (visible) {
+        /* El sistema está en pantalla: el socket ya hizo sonar el aviso dentro de la app. */
+        visible.postMessage({ type: 'rf-push', payload: data });
+        return undefined;
+      }
+      return self.registration.showNotification(title, options);
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const existing = list.find((c) => 'focus' in c);
+      if (existing) return existing.focus();
+      return self.clients.openWindow(target);
+    }),
+  );
+});
+
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();

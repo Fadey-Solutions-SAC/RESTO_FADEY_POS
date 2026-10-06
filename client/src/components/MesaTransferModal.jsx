@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from './Modal';
 import { api, formatCurrency } from '../utils/api';
 import toast from 'react-hot-toast';
-import { MdSwapHoriz, MdCallMerge, MdWarning } from 'react-icons/md';
+import { MdSwapHoriz, MdCallMerge, MdWarning, MdAdd, MdRemove } from 'react-icons/md';
+import { billLineKey, billLineDisplayName } from '../utils/mesaOrderLines';
 
 function tableIsOccupied(table) {
   return Boolean(table?.orders?.length);
@@ -12,6 +13,44 @@ function itemLineSubtotal(item) {
   const qty = Number(item.quantity || 0);
   const unit = Number(item.unit_price ?? 0);
   return Number(item.subtotal != null ? item.subtotal : unit * qty);
+}
+
+/** La mesa es una cuenta: la misma línea de producto de varias comandas se lista una sola vez. */
+function groupSourceLines(orders) {
+  const m = new Map();
+  for (const order of orders || []) {
+    for (const item of order.items || []) {
+      if (!item?.id) continue;
+      const qty = Math.max(0, Math.floor(Number(item.quantity || 0)));
+      if (qty <= 0) continue;
+      const key = billLineKey(item);
+      if (!m.has(key)) {
+        m.set(key, { key, name: billLineDisplayName(item), quantity: 0, subtotal: 0, items: [] });
+      }
+      const row = m.get(key);
+      row.quantity += qty;
+      row.subtotal += itemLineSubtotal(item);
+      row.items.push({ id: item.id, quantity: qty });
+    }
+  }
+  return [...m.values()];
+}
+
+/** Convierte unidades elegidas por fila en ids de ítem + cantidades parciales para el servidor. */
+function buildItemMovePayload(lines, qtyByKey) {
+  const ids = [];
+  const quantities = {};
+  for (const line of lines) {
+    let remaining = Number(qtyByKey[line.key] || 0);
+    for (const it of line.items) {
+      if (remaining <= 0) break;
+      const take = Math.min(it.quantity, remaining);
+      ids.push(it.id);
+      if (take < it.quantity) quantities[it.id] = take;
+      remaining -= take;
+    }
+  }
+  return { ids, quantities };
 }
 
 /**
@@ -31,7 +70,7 @@ export default function MesaTransferModal({
 }) {
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
-  const [selectedItemIds, setSelectedItemIds] = useState([]);
+  const [selectedQtyByKey, setSelectedQtyByKey] = useState({});
   const [occupiedPrompt, setOccupiedPrompt] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -45,20 +84,11 @@ export default function MesaTransferModal({
   );
   const sourceOrders = sourceTable?.orders || [];
 
-  const sourceItems = useMemo(() => {
-    const rows = [];
-    for (const order of sourceOrders) {
-      for (const item of order.items || []) {
-        if (!item?.id) continue;
-        rows.push({
-          ...item,
-          orderId: order.id,
-          orderNumber: order.order_number,
-        });
-      }
-    }
-    return rows;
-  }, [sourceOrders]);
+  const sourceLines = useMemo(() => groupSourceLines(sourceOrders), [sourceOrders]);
+  const selectedUnits = useMemo(
+    () => sourceLines.reduce((n, line) => n + Number(selectedQtyByKey[line.key] || 0), 0),
+    [sourceLines, selectedQtyByKey],
+  );
 
   const sourceOptions = useMemo(() => {
     if (pickSourceAndTarget) {
@@ -83,14 +113,14 @@ export default function MesaTransferModal({
     setTargetId('');
     setOccupiedPrompt(false);
     setBusy(false);
-    setSelectedItemIds([]);
+    setSelectedQtyByKey({});
   }, [open, initialSourceId, mode, pickSourceAndTarget]);
 
   const handleSourceChange = (nextSourceId) => {
     setSourceId(nextSourceId);
     setTargetId('');
     setOccupiedPrompt(false);
-    setSelectedItemIds([]);
+    setSelectedQtyByKey({});
   };
 
   const targetOptions = useMemo(
@@ -98,10 +128,18 @@ export default function MesaTransferModal({
     [tables, sourceId],
   );
 
-  const toggleItem = (itemId) => {
-    setSelectedItemIds((prev) =>
-      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId],
-    );
+  const setLineQty = (line, nextQty) => {
+    const qty = Math.max(0, Math.min(line.quantity, Math.floor(Number(nextQty) || 0)));
+    setSelectedQtyByKey((prev) => {
+      const next = { ...prev };
+      if (qty > 0) next[line.key] = qty;
+      else delete next[line.key];
+      return next;
+    });
+  };
+
+  const toggleLine = (line) => {
+    setLineQty(line, selectedQtyByKey[line.key] ? 0 : line.quantity);
   };
 
   const runMove = async (confirmMerge) => {
@@ -110,7 +148,7 @@ export default function MesaTransferModal({
     if (sourceId === targetId) return toast.error('Origen y destino deben ser diferentes');
 
     if (mode === 'move_orders') {
-      if (!selectedItemIds.length) return toast.error('Selecciona al menos un producto para mover');
+      if (!selectedUnits) return toast.error('Selecciona al menos un producto para mover');
     }
 
     setBusy(true);
@@ -121,7 +159,9 @@ export default function MesaTransferModal({
         confirm_merge: Boolean(confirmMerge),
       };
       if (mode === 'move_orders') {
-        body.order_item_ids = selectedItemIds;
+        const { ids, quantities } = buildItemMovePayload(sourceLines, selectedQtyByKey);
+        body.order_item_ids = ids;
+        if (Object.keys(quantities).length) body.order_item_quantities = quantities;
       }
       await api.post('/tables/move-orders', body);
       toast.success(
@@ -129,7 +169,7 @@ export default function MesaTransferModal({
           ? `Cuenta unida en ${targetTable?.name || 'mesa destino'}`
           : mode === 'move_table'
             ? `Mesa movida a ${targetTable?.name || 'destino'}`
-            : `${selectedItemIds.length} producto(s) movido(s)`,
+            : `${selectedUnits} producto(s) movido(s)`,
       );
       setOccupiedPrompt(false);
       onClose?.();
@@ -179,7 +219,10 @@ export default function MesaTransferModal({
               <option key={t.id} value={t.id}>
                 {t.name}
                 {pickSourceAndTarget
-                  ? ` · ${(t.orders || []).reduce((n, o) => n + (o.items?.length || 0), 0)} producto(s)`
+                  ? ` · ${(t.orders || []).reduce(
+                    (n, o) => n + (o.items || []).reduce((s, it) => s + Number(it.quantity || 0), 0),
+                    0,
+                  )} producto(s)`
                   : tableIsOccupied(t)
                     ? ' (ocupada)'
                     : ' (libre)'}
@@ -191,50 +234,75 @@ export default function MesaTransferModal({
           )}
         </div>
 
-        {mode === 'move_orders' && sourceItems.length > 0 && (
+        {mode === 'move_orders' && sourceLines.length > 0 && (
           <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 space-y-2 max-h-52 overflow-y-auto">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)]">
               Productos de la cuenta
             </p>
-            {sourceItems.map((item) => {
-              const checked = selectedItemIds.includes(item.id);
+            {sourceLines.map((line) => {
+              const picked = Number(selectedQtyByKey[line.key] || 0);
+              const checked = picked > 0;
               return (
-                <label
-                  key={item.id}
-                  className={`flex gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
+                <div
+                  key={line.key}
+                  className={`flex items-center gap-3 p-2 rounded-lg border transition-colors ${
                     checked
                       ? 'border-sky-500/50 bg-sky-500/10'
                       : 'border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleItem(item.id)}
-                    className="mt-1 shrink-0"
-                  />
-                  <div className="min-w-0 flex-1 flex justify-between gap-2 text-sm text-[var(--ui-body-text)]">
-                    <span>
-                      {Number(item.quantity || 0)}× {item.product_name}
+                  <label className="min-w-0 flex-1 flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleLine(line)}
+                      className="shrink-0"
+                    />
+                    <span className="min-w-0 flex-1 flex justify-between gap-2 text-sm text-[var(--ui-body-text)]">
+                      <span className="min-w-0 break-words">
+                        {line.quantity}× {line.name}
+                      </span>
+                      <span className="tabular-nums shrink-0">{formatCurrency(line.subtotal)}</span>
                     </span>
-                    <span className="tabular-nums shrink-0">
-                      {formatCurrency(itemLineSubtotal(item))}
-                    </span>
-                  </div>
-                </label>
+                  </label>
+                  {checked && line.quantity > 1 ? (
+                    <div className="flex shrink-0 items-center gap-1" aria-label="Cantidad a mover">
+                      <button
+                        type="button"
+                        onClick={() => setLineQty(line, picked - 1)}
+                        className="rounded-md border border-[color:var(--ui-border)] p-1 text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+                        aria-label="Mover una unidad menos"
+                      >
+                        <MdRemove />
+                      </button>
+                      <span className="w-10 text-center text-sm font-semibold tabular-nums text-[var(--ui-body-text)]">
+                        {picked}/{line.quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setLineQty(line, picked + 1)}
+                        disabled={picked >= line.quantity}
+                        className="rounded-md border border-[color:var(--ui-border)] p-1 text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:opacity-40"
+                        aria-label="Mover una unidad más"
+                      >
+                        <MdAdd />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               );
             })}
           </div>
         )}
 
-        {mode === 'move_orders' && sourceId && sourceItems.length === 0 && (
+        {mode === 'move_orders' && sourceId && sourceLines.length === 0 && (
           <p className="text-sm text-[var(--ui-muted)]">La mesa no tiene productos activos.</p>
         )}
 
         {isMoveTable && sourceTable && (
           <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-[var(--ui-body-text)]">
             Se moverán todos los productos de la cuenta (
-            <strong>{sourceItems.length}</strong> línea(s)).
+            <strong>{sourceLines.length}</strong> línea(s)).
           </div>
         )}
 
@@ -294,7 +362,7 @@ export default function MesaTransferModal({
                 busy ||
                 !sourceId ||
                 !targetId ||
-                (mode === 'move_orders' && selectedItemIds.length === 0)
+                (mode === 'move_orders' && selectedUnits === 0)
               }
               className={`flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-white disabled:opacity-50 ${
                 isMoveTable

@@ -5,6 +5,7 @@ import { api } from '../utils/api';
 import { getShellModuleTitle } from '../utils/shellModuleTitle';
 import FadeyAiReportView from './FadeyAiReportView';
 import { exportReportExcel, exportReportPdf } from '../utils/fadeyReportExport';
+import { playNotificationSound } from '../utils/playNotificationSound';
 
 const REPORT_DOWNLOAD_RE = /^(descargar?\s*|download\s*)?(en\s*|in\s*|as\s*)?(excel|pdf)[.!]*$/i;
 import { useAuth } from '../context/AuthContext';
@@ -516,6 +517,7 @@ const FadeyAiChatPanel = forwardRef(function FadeyAiChatPanel({
           created_at: new Date().toISOString(),
         },
       ]);
+      playNotificationSound('ai', `ai-reply-${Date.now()}`);
       setReplyOptions(opts);
       setOptionsOffset(0);
       if (res?.lang === 'en' || res?.lang === 'es') {

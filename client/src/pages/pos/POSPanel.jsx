@@ -235,6 +235,7 @@ import {
   formatPeDateTimeLine,
   formatPeDateTimeParts,
   getPaymentMethodOptions,
+  isPosTerminalEnabledInConfig,
   orderMultiPaymentOptions,
   hasElectronPrinting,
   normalizeUsbPrinterList,
@@ -760,6 +761,7 @@ function orderItemsToCart(order, productsById) {
     if (!m.has(k)) {
       m.set(k, {
         line_key: `mg:${order.id}:${k}`,
+        bill_key: k,
         source_order_id: order.id,
         product_id: it.product_id,
         name: billLineDisplayName(it),
@@ -778,6 +780,68 @@ function orderItemsToCart(order, productsById) {
     row.quantity += qty;
   }
   return [...m.values()];
+}
+
+/**
+ * Modificar pedido: la mesa es una sola cuenta, así que la misma línea de producto de varias comandas
+ * se muestra en una fila. `source_allocations` guarda cuánto aporta cada comanda para repartir al guardar.
+ */
+function mergeEditCartAcrossOrders(orders, productsById) {
+  const sorted = [...(orders || [])].sort((a, b) =>
+    String(a.created_at || '').localeCompare(String(b.created_at || '')),
+  );
+  const m = new Map();
+  for (const order of sorted) {
+    for (const row of orderItemsToCart(order, productsById)) {
+      const prev = m.get(row.bill_key);
+      if (!prev) {
+        m.set(row.bill_key, {
+          ...row,
+          line_key: `mg:${row.bill_key}`,
+          source_allocations: [{ order_id: order.id, quantity: row.quantity }],
+        });
+        continue;
+      }
+      prev.quantity += row.quantity;
+      prev.source_order_id = order.id;
+      prev.source_allocations.push({ order_id: order.id, quantity: row.quantity });
+    }
+  }
+  return [...m.values()];
+}
+
+/**
+ * Reparte cada fila agrupada entre sus comandas: los aumentos van a la comanda más reciente
+ * y las reducciones se descuentan desde la más reciente hacia la más antigua.
+ */
+function expandEditCartToOrders(cart) {
+  const out = [];
+  for (const line of cart || []) {
+    const allocs = line.source_allocations;
+    if (!allocs?.length) {
+      out.push(line);
+      continue;
+    }
+    const { source_allocations: _allocs, ...base } = line;
+    const qtys = allocs.map((a) => Number(a.quantity || 0));
+    let diff = Number(line.quantity || 0) - qtys.reduce((s, q) => s + q, 0);
+    if (diff > 0) qtys[qtys.length - 1] += diff;
+    for (let i = qtys.length - 1; i >= 0 && diff < 0; i -= 1) {
+      const take = Math.min(qtys[i], -diff);
+      qtys[i] -= take;
+      diff += take;
+    }
+    allocs.forEach((a, i) => {
+      if (qtys[i] <= 0) return;
+      out.push({
+        ...base,
+        line_key: `${line.line_key}:${a.order_id}`,
+        source_order_id: a.order_id,
+        quantity: qtys[i],
+      });
+    });
+  }
+  return out;
 }
 
 function filterUnpaidDeliveryOrdersForCaja(orders) {
@@ -915,6 +979,7 @@ export default function POSPanel() {
   const [selectedCat, setSelectedCat] = useState('all');
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [paymentOptions, setPaymentOptions] = useState(getPaymentMethodOptions(null, { includeOnline: false }));
+  const [posTerminalEnabled, setPosTerminalEnabled] = useState(true);
   const [multiPayEnabled, setMultiPayEnabled] = useState(false);
   const [multiPayAmounts, setMultiPayAmounts] = useState(() => emptyMultiPaymentAmounts());
   const [tipPayEnabled, setTipPayEnabled] = useState(false);
@@ -1362,6 +1427,11 @@ export default function POSPanel() {
         Array.isArray(paymentMethodsRes?.options) && paymentMethodsRes.options.length
           ? paymentMethodsRes.options
           : getPaymentMethodOptions(cfg, { includeOnline: false }),
+      );
+      setPosTerminalEnabled(
+        typeof paymentMethodsRes?.pos_enabled === 'boolean'
+          ? paymentMethodsRes.pos_enabled
+          : isPosTerminalEnabledInConfig(cfg),
       );
       setDailySales(
         daily?.sales?.total_sales === undefined || daily?.sales?.total_sales === null
@@ -3061,8 +3131,8 @@ export default function POSPanel() {
       return String(b.created_at || '').localeCompare(String(a.created_at || ''));
     });
     const primary = sorted[0];
-    const initialCart = editable.flatMap((o) => orderItemsToCart(o, productsById));
-    editSessionInitialCartRef.current = initialCart.map((row) => ({ ...row }));
+    const initialCart = mergeEditCartAcrossOrders(editable, productsById);
+    editSessionInitialCartRef.current = expandEditCartToOrders(initialCart);
     setMesaDetailModalOpen(false);
     setQuickSaleMode(false);
     setEditingSessionOrderIds(editable.map((o) => o.id));
@@ -3397,14 +3467,15 @@ export default function POSPanel() {
         const noteOrder = buildMesaOrderNotes(paraLlevarMesa, mesaOrderObservation);
         const sessionIds =
           editingSessionOrderIds.length > 0 ? editingSessionOrderIds : [editingOrderId];
+        const cartByOrder = expandEditCartToOrders(cart);
         const byOrder = new Map();
-        for (const i of cart) {
+        for (const i of cartByOrder) {
           const oid = String(i.source_order_id || editingOrderId);
           if (!byOrder.has(oid)) byOrder.set(oid, []);
           byOrder.get(oid).push(i);
         }
         const willCancelOrders = sessionIds.some((oid) => (byOrder.get(oid) || []).length === 0);
-        const hasRemovals = cartHasProductRemovals(editSessionInitialCartRef.current, cart);
+        const hasRemovals = cartHasProductRemovals(editSessionInitialCartRef.current, cartByOrder);
         let removalReason = '';
         if (hasRemovals || willCancelOrders) {
           if (!posCanDeleteRelease) {
@@ -3801,7 +3872,7 @@ export default function POSPanel() {
   const nonCashExpectedTotal = roundMoneySoles(nonCashCheckRows.reduce((s, r) => s + r.expected, 0));
   const totalPosRaw = nonCashCounted.total_pos;
   /** Total del cierre del POS (Culqi, Izipay…): si se ingresa, reemplaza la suma por medio. */
-  const nonCashTotalPos = totalPosRaw !== undefined && totalPosRaw !== ''
+  const nonCashTotalPos = posTerminalEnabled && totalPosRaw !== undefined && totalPosRaw !== ''
     ? roundMoneySoles(Math.max(0, parseFloat(totalPosRaw) || 0))
     : null;
   const nonCashCountedTotal = nonCashTotalPos != null
@@ -3818,7 +3889,7 @@ export default function POSPanel() {
       nonCashCheckRows.forEach((r) => {
         if (!method || r.value === method) next[r.value] = r.expected.toFixed(2);
       });
-      if (!method) next.total_pos = nonCashExpectedTotal.toFixed(2);
+      if (!method && posTerminalEnabled) next.total_pos = nonCashExpectedTotal.toFixed(2);
       return next;
     });
   };
@@ -6427,7 +6498,7 @@ export default function POSPanel() {
               {nonCashCheckRows.length > 0 && (
                 <>
                   <div className="sep"></div>
-                  <div className="row bold"><span>VERIFICACIÓN POS / QR</span><span></span></div>
+                  <div className="row bold"><span>{posTerminalEnabled ? 'VERIFICACIÓN POS / QR' : 'VERIFICACIÓN QR'}</span><span></span></div>
                   {nonCashCheckRows.map((r) => (
                     <div key={r.value} className="row">
                       <span>{r.checkLabel}: sist. {formatCurrency(r.expected)}</span>
@@ -6516,6 +6587,7 @@ export default function POSPanel() {
                   pendingRows={nonCashPending}
                   expectedTotal={nonCashExpectedTotal}
                   totalPos={nonCashTotalPos}
+                  showPosTotal={posTerminalEnabled}
                   onMarkCorrect={markNonCashCorrect}
                 />
               )}

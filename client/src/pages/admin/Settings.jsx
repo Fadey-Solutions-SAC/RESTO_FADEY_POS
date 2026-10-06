@@ -2428,6 +2428,31 @@ export default function Settings() {
         {/* FORMAS DE PAGO */}
         {activeSection === 'formas_pago' && (
           <div className="space-y-4">
+            <div className="card flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3 min-w-0">
+                <MdCreditCard className="text-[var(--ui-muted)] text-xl shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="font-medium text-sm">Usar POS (terminal de tarjetas)</p>
+                  <p className="text-xs text-[var(--ui-muted)]">
+                    Culqi, Izipay, Niubiz… Si su negocio no usa POS, desactívelo: no aparece «Tarjeta (POS)» al cobrar
+                    y el cierre de caja no pide el «Total en el POS».
+                  </p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={Number(appSettings.pos_terminal_enabled ?? 1) === 1}
+                  onChange={(e) => {
+                    const next = { ...appSettings, pos_terminal_enabled: e.target.checked ? 1 : 0 };
+                    setAppSettings(next);
+                    void saveAppSettings({ nextSettings: next });
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-300 peer-checked:bg-gold-600 rounded-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
+              </label>
+            </div>
             <div className="flex justify-end items-center">
               <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => openSettingsCrudModal('formas_pago')}><MdAdd /> Nueva Forma de Pago</button>
             </div>

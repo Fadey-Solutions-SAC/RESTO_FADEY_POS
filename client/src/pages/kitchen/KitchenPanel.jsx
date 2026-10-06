@@ -24,7 +24,8 @@ import {
   normalizeThermalPaperWidthMm,
 } from '../../utils/ticketPlainText';
 import { isBarProductionItemForStation } from '../../utils/productionArea';
-import ProductionAreaSettingsSection, { DEFAULT_AREA_SETTINGS } from '../../components/kitchen/ProductionAreaSettingsSection';
+import ProductionAreaSettingsSection from '../../components/kitchen/ProductionAreaSettingsSection';
+import { useProductionAreaSettings } from '../../hooks/useProductionAreaSettings';
 import { playNotificationSound, preloadNotificationSound, unlockNotificationAudio, onNotificationAudioUnlockChange } from '../../utils/playNotificationSound';
 
 /** Pedido auto-pedido con cuenta de cliente (sin mesa física). */
@@ -36,9 +37,6 @@ const KITCHEN_ITEM_HIGHLIGHT_MS = 10 * 60 * 1000;
 const KITCHEN_ARRIVAL_OVERDUE_MS = 30 * 60 * 1000;
 const KITCHEN_PREP_OVERDUE_MS = 30 * 60 * 1000;
 const normalizePaperWidthMm = normalizeThermalPaperWidthMm;
-const USER_AREA_SOUND_KEY_PREFIX = 'resto_area_sound_user_v1';
-const USER_SOUND_FIELDS = new Set(['notifyEnabled', 'notifyVolume']);
-
 function kitchenHighlightKey(orderId, itemId) {
   return `${String(orderId || '').trim()}:${String(itemId || '').trim()}`;
 }
@@ -150,11 +148,13 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const printerModuleKey = areaId;
   const { loadConfig: reloadPrinterConfig } = usePrintingModule(printerModuleKey);
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
-  const [areaSettings, setAreaSettings] = useState(DEFAULT_AREA_SETTINGS);
-  const [areaSettingsLoaded, setAreaSettingsLoaded] = useState(false);
-  const [areaSettingsSaving, setAreaSettingsSaving] = useState(false);
-  const areaSettingsRef = useRef(DEFAULT_AREA_SETTINGS);
-  areaSettingsRef.current = areaSettings;
+  const {
+    settings: areaSettings,
+    loaded: areaSettingsLoaded,
+    saving: areaSettingsSaving,
+    save: saveAreaSettings,
+    settingsRef: areaSettingsRef,
+  } = useProductionAreaSettings(areaId, user, { onAutoDismissSaved: () => void loadOrders() });
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyDate, setHistoryDate] = useState(() => localDateInputValue());
   const [historyOrders, setHistoryOrders] = useState([]);
@@ -466,107 +466,6 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
       handleKitchenIncomingOrder(order, t('toast.orderUpdated'));
     }
   };
-
-  /** Sonido y volumen son preferencia de cada usuario (no del área): cajero y cocina no se afectan entre sí. */
-  const userSoundKey = `${USER_AREA_SOUND_KEY_PREFIX}:${user?.id || 'anon'}:${areaId}`;
-  const userSoundKeyRef = useRef(userSoundKey);
-  userSoundKeyRef.current = userSoundKey;
-
-  const readUserSoundPrefs = useCallback(() => {
-    try {
-      const raw = window.localStorage?.getItem(userSoundKeyRef.current);
-      const data = raw ? JSON.parse(raw) : null;
-      if (!data || typeof data !== 'object') return {};
-      const prefs = {};
-      if (typeof data.notifyEnabled === 'boolean') prefs.notifyEnabled = data.notifyEnabled;
-      const vol = Number(data.notifyVolume);
-      if (Number.isFinite(vol) && vol >= 10 && vol <= 100) prefs.notifyVolume = vol;
-      return prefs;
-    } catch (_) {
-      return {};
-    }
-  }, []);
-
-  const mergeAreaSettings = useCallback(
-    (serverSettings) => ({
-      ...DEFAULT_AREA_SETTINGS,
-      ...(serverSettings || {}),
-      notifyEnabled: DEFAULT_AREA_SETTINGS.notifyEnabled,
-      notifyVolume: DEFAULT_AREA_SETTINGS.notifyVolume,
-      ...readUserSoundPrefs(),
-    }),
-    [readUserSoundPrefs],
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    setAreaSettingsLoaded(false);
-    setAreaSettings(mergeAreaSettings(null));
-    api
-      .get(`/orders/production-area-settings/${encodeURIComponent(areaId)}`)
-      .then((data) => {
-        if (cancelled) return;
-        setAreaSettings(mergeAreaSettings(data));
-        setAreaSettingsLoaded(true);
-      })
-      .catch(() => {
-        if (!cancelled) setAreaSettingsLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [areaId, userSoundKey, mergeAreaSettings]);
-
-  const saveUserSoundPrefs = (patch) => {
-    const next = { ...readUserSoundPrefs(), ...patch };
-    try {
-      window.localStorage?.setItem(userSoundKeyRef.current, JSON.stringify(next));
-    } catch (_) {
-      /* noop */
-    }
-    setAreaSettings((prev) => ({ ...prev, ...patch }));
-    if ('notifyEnabled' in patch) {
-      toast.success(patch.notifyEnabled ? t('barSettings.notifyOnToast') : t('barSettings.notifyOffToast'));
-    } else if ('notifyVolume' in patch) {
-      toast.success(t('barSettings.volumeSaved', { volume: patch.notifyVolume }));
-    }
-  };
-
-  const saveAreaSettings = async (rawPatch) => {
-    const soundPatch = {};
-    const patch = {};
-    Object.entries(rawPatch || {}).forEach(([k, v]) => {
-      if (USER_SOUND_FIELDS.has(k)) soundPatch[k] = v;
-      else patch[k] = v;
-    });
-    if (Object.keys(soundPatch).length) saveUserSoundPrefs(soundPatch);
-    if (!Object.keys(patch).length) return;
-    setAreaSettingsSaving(true);
-    try {
-      const saved = await api.put(`/orders/production-area-settings/${encodeURIComponent(areaId)}`, patch);
-      setAreaSettings(mergeAreaSettings(saved));
-      if ('autoDismissEnabled' in patch) {
-        toast.success(
-          saved?.autoDismissEnabled
-            ? t('barSettings.enabledToast', { minutes: saved.autoDismissMinutes })
-            : t('barSettings.disabledToast'),
-        );
-        void loadOrders();
-      } else if ('autoDismissMinutes' in patch) {
-        toast.success(t('barSettings.minutesSaved', { minutes: saved.autoDismissMinutes }));
-        void loadOrders();
-      }
-    } catch (err) {
-      toast.error(err?.message || t('barSettings.saveFailed'));
-    } finally {
-      setAreaSettingsSaving(false);
-    }
-  };
-
-  useSocket('production-area-settings-update', (payload) => {
-    if (!payload || String(payload.areaId) !== String(areaId)) return;
-    setAreaSettings(mergeAreaSettings(payload.settings));
-  });
 
   useSocket('station-auto-dismiss', (payload) => {
     if (String(payload?.areaId) !== String(areaId)) return;

@@ -111,7 +111,24 @@ function paymentIdsFromPagosSistema(pagosSistema) {
   return ids;
 }
 
+/** Terminal POS de tarjetas (Culqi, Izipay…). Apagado: sin cobro con tarjeta ni cuadre de POS en el cierre. */
+function isPosTerminalEnabledInSettings(settings) {
+  return Number(settings?.pos_terminal_enabled ?? 1) === 1;
+}
+
+function isPosTerminalEnabled() {
+  return isPosTerminalEnabledInSettings(getAppSettingsSnapshot().settings);
+}
+
 function getAllowedPaymentMethods() {
+  const { settings } = getAppSettingsSnapshot();
+  const posOn = isPosTerminalEnabledInSettings(settings);
+  const ids = collectAllowedPaymentMethods().filter((id) => posOn || id !== 'tarjeta');
+  if (ids.length === 0) return posOn ? ['efectivo', 'tarjeta'] : ['efectivo'];
+  return ids;
+}
+
+function collectAllowedPaymentMethods() {
   const { pagosSistema, settings } = getAppSettingsSnapshot();
   const formasPago = Array.isArray(settings?.formas_pago) ? settings.formas_pago : [];
   const seen = new Set();
@@ -130,7 +147,6 @@ function getAllowedPaymentMethods() {
     ordered.push(id);
   }
 
-  if (ordered.length === 0) return ['efectivo', 'tarjeta'];
   return ordered;
 }
 
@@ -154,16 +170,18 @@ function getPaymentMethodOptionsPayload({ includeOnline = false } = {}) {
     options.push({ value: id, label: PAYMENT_METHOD_LABELS[id] || id });
   }
 
-  if (includeOnline) options.push({ value: 'online', label: PAYMENT_METHOD_LABELS.online });
-  if (options.length === 0) {
+  const posOn = isPosTerminalEnabledInSettings(settings);
+  const filtered = options.filter((o) => posOn || o.value !== 'tarjeta');
+  if (includeOnline) filtered.push({ value: 'online', label: PAYMENT_METHOD_LABELS.online });
+  if (filtered.length === 0) {
     return [
       { value: 'efectivo', label: PAYMENT_METHOD_LABELS.efectivo },
       { value: 'yape', label: PAYMENT_METHOD_LABELS.yape },
       { value: 'plin', label: PAYMENT_METHOD_LABELS.plin },
-      { value: 'tarjeta', label: PAYMENT_METHOD_LABELS.tarjeta },
+      ...(posOn ? [{ value: 'tarjeta', label: PAYMENT_METHOD_LABELS.tarjeta }] : []),
     ];
   }
-  return options;
+  return filtered;
 }
 
 function normalizePaymentMethod(rawMethod, { fallback = 'efectivo', allowOnline = false } = {}) {
@@ -235,6 +253,7 @@ module.exports = {
   getLocalTodayDateKey,
   getAllowedPaymentMethods,
   getPaymentMethodOptionsPayload,
+  isPosTerminalEnabled,
   normalizePaymentMethod,
   isPaymentMethodAllowed,
   assertPaymentMethodAllowed,

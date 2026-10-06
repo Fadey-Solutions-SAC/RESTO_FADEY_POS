@@ -298,6 +298,7 @@ app.use('/api/loyalty', require('./routes/loyalty'));
 app.use('/api/system', require('./routes/system'));
 app.use('/api/license', require('./routes/license'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/push', require('./routes/push'));
 app.use('/api/restaurant', require('./routes/restaurant'));
 app.use('/api/categories', require('./routes/categories'));
 app.use('/api/products', require('./routes/products'));

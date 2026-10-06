@@ -112,7 +112,7 @@ export default function PrinterModulePanel({
   const activateSound = async () => {
     if (!soundType) return;
     await unlockNotificationAudio();
-    playNotificationSound(soundType, `cfg-test-${Date.now()}`, { force: true });
+    playNotificationSound(soundType, `cfg-test-${Date.now()}`, { force: true, preview: true });
     toast.success('Sonido de pedidos activado');
   };
 

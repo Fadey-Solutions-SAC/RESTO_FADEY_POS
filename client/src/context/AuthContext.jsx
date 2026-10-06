@@ -4,6 +4,7 @@ import { applyUiThemeFromAppSettings } from '../theme/uiTheme';
 import { isBrowserOffline, readGetCache, saveGetCache } from '../utils/offlinePos';
 import { clearReservationCajaAvisosSession } from '../utils/reservationCajaAvisosSession';
 import { clearMasterViewAsOwner } from '../utils/masterViewMode';
+import { disablePushSubscription } from '../utils/webPush';
 
 const STAFF_USER_KEY = 'rf_offline_staff_user';
 
@@ -183,6 +184,7 @@ export function AuthProvider({ children }) {
   const logout = async (opts = {}) => {
     const body = {};
     if (opts.photo_logout) body.photo_logout = opts.photo_logout;
+    await disablePushSubscription();
     try {
       await api.post('/auth/logout', body);
     } catch (_) {

@@ -7,6 +7,7 @@ const { readProductionAreas } = require('./productionAreasService');
 const { getOrderItemsWithProductionArea } = require('./orderItemsProductionService');
 const { collectOrderProductionAreaIds } = require('../utils/productionArea');
 const { isStationCompleteForStation } = require('../utils/kitchenStationReady');
+const { sendPushToUser } = require('./webPushService');
 
 function orderPlaceLabel(order) {
   const type = String(order?.type || '').trim();
@@ -62,6 +63,15 @@ function notifyWaiterOrderReady(io, order, { station = '', actorUserId = '' } = 
       at: new Date().toISOString(),
     };
     io.to(`staff-${waiterId}`).emit('waiter-order-ready', payload);
+    sendPushToUser(waiterId, {
+      kind: 'ready',
+      title: payload.message,
+      body: allReady
+        ? `${orderNumber ? `#${orderNumber} · ` : ''}Puedes recogerlo y llevarlo.`
+        : `${orderNumber ? `#${orderNumber} · ` : ''}Aún falta: ${payload.pending_areas.join(', ') || 'otra área'}.`,
+      tag: `order-ready-${order.id}-${station || 'all'}`,
+      url: '/',
+    }).catch((err) => console.warn('[waiter-ready-push]', err?.message || err));
     return payload;
   } catch (err) {
     console.error('[waiter-ready-notify]', err?.message || err);

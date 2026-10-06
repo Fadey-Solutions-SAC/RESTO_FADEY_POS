@@ -25,6 +25,9 @@ import {
   preloadNotificationSound,
   unlockNotificationAudio,
 } from '../utils/playNotificationSound';
+import { SOUND_PREFS_EVENT, areWindowsNotificationsEnabled } from '../utils/soundPrefs';
+import { DEVICE_PERMISSIONS_EVENT } from '../utils/devicePermissions';
+import { syncPushSubscription } from '../utils/webPush';
 
 const DISMISSED_AVISOS_STORAGE_KEY = 'admin_avisos_descartados_v1';
 const STAFF_CHAT_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
@@ -118,6 +121,7 @@ function showOrderReadyToast(evt) {
 function showOrderReadySystemNotification(evt) {
   try {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (!areWindowsNotificationsEnabled()) return;
     if (Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
     const n = new Notification(evt.message || `Pedido ${evt.place} está listo`, { tag: `order-ready-${evt.order_id}` });
     n.onclick = () => {
@@ -219,6 +223,18 @@ export default function NotificationCenter({ className = '' }) {
     preloadNotificationSound('message');
     preloadNotificationSound('system');
   }, []);
+
+  useEffect(() => {
+    if (!isRestaurantStaff || roleLc === 'master_admin') return undefined;
+    const sync = () => void syncPushSubscription();
+    sync();
+    window.addEventListener(SOUND_PREFS_EVENT, sync);
+    window.addEventListener(DEVICE_PERMISSIONS_EVENT, sync);
+    return () => {
+      window.removeEventListener(SOUND_PREFS_EVENT, sync);
+      window.removeEventListener(DEVICE_PERMISSIONS_EVENT, sync);
+    };
+  }, [isRestaurantStaff, roleLc, user?.id]);
 
   useEffect(() => {
     if (!showAvisosBtn) return undefined;
@@ -326,7 +342,7 @@ export default function NotificationCenter({ className = '' }) {
 
     const onOrderReady = (evt) => {
       if (!evt?.order_id) return;
-      playNotificationSound('kitchen', `waiter-ready-${evt.order_id}-${evt.station || ''}`);
+      playNotificationSound('ready', `waiter-ready-${evt.order_id}-${evt.station || ''}`);
       showOrderReadyToast(evt);
       showOrderReadySystemNotification(evt);
     };

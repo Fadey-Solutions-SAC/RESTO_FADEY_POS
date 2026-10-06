@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const { round2 } = require('../utils/paymentBreakdown');
 const { getTableDisplayLabel } = require('../utils/tableDisplayLabel');
 const { orderBelongsToTable } = require('./tableOrdersQueryService');
+const { materializePartialItemQuantitiesTx } = require('./orderItemQuantitySplit');
 
 function lineItemSubtotal(it) {
   const qty = Number(it.quantity || 0);
@@ -120,7 +121,7 @@ function splitOrderItemsToTargetTableTx(tx, sourceOrderId, selectedItemIds, targ
  * Mueve productos (order_items) de la mesa origen a la mesa destino.
  * Si se mueven todos los ítems de un pedido, se traslada el pedido completo.
  */
-function moveOrderItemsBetweenTablesTx(tx, { sourceTable, targetTable, orderItemIds }) {
+function moveOrderItemsBetweenTablesTx(tx, { sourceTable, targetTable, orderItemIds, quantitiesByItemId = {} }) {
   const uniq = [...new Set((orderItemIds || []).map((x) => String(x || '').trim()).filter(Boolean))];
   if (!uniq.length) throw new Error('Selecciona al menos un producto para mover');
 
@@ -166,7 +167,8 @@ function moveOrderItemsBetweenTablesTx(tx, { sourceTable, targetTable, orderItem
   const affectedOrderIds = new Set();
   for (const [orderId, itemIds] of byOrder) {
     affectedOrderIds.add(orderId);
-    const movedId = splitOrderItemsToTargetTableTx(tx, orderId, itemIds, targetMeta);
+    const movingIds = materializePartialItemQuantitiesTx(tx, orderId, itemIds, quantitiesByItemId);
+    const movedId = splitOrderItemsToTargetTableTx(tx, orderId, movingIds, targetMeta);
     movedOrderIds.push(movedId);
     affectedOrderIds.add(movedId);
   }

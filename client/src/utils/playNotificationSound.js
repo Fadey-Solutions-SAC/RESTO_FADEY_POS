@@ -1,9 +1,12 @@
+import { isSoundCategoryEnabled } from './soundPrefs';
+
+/** Cocina y bar (llegada a producción) usan sus WAV; el resto se sintetiza para que cada aviso sea distinto. */
 const SOUND_FILES = {
   kitchen: '/sounds/kitchen-notification.wav',
   bar: '/sounds/bar-notification.wav',
-  message: '/sounds/message-notification.wav',
-  system: '/sounds/system-notification.wav',
 };
+
+const SYNTH_TYPES = new Set(['message', 'system', 'ai', 'ready', 'alert']);
 
 const SOUND_TYPES = Object.keys(SOUND_FILES);
 
@@ -26,6 +29,8 @@ function normalizeType(type) {
     return 'system';
   }
   if (key === 'alert' || key === 'alarm' || key === 'alerta' || key === 'delay' || key === 'demora') return 'alert';
+  if (key === 'ai' || key === 'ia' || key === 'fadey-ai') return 'ai';
+  if (key === 'ready' || key === 'listo' || key === 'order-ready' || key === 'waiter-ready') return 'ready';
   return '';
 }
 
@@ -138,87 +143,169 @@ function normalizeVolume(volume) {
 }
 
 /**
- * Alarma de pedido demorado: sirena aguda (zona donde el oído es más sensible), notas sostenidas,
- * dos osciladores por nota casi a escala completa (los avisos usan ~22 %) y un limitador para que no distorsione.
- * Nunca baja del 70 % aunque el volumen del área sea menor.
+ * Cadena de salida a máximo nivel: ganancia de empuje → limitador duro → salida a escala completa.
+ * El limitador mantiene el pico bajo 0 dBFS para que suene lo más fuerte posible sin distorsionar.
  */
-function playAlarmTone(ctx, volume = 1) {
-  const level = Math.max(0.7, normalizeVolume(volume));
-  const compressor = ctx.createDynamicsCompressor();
-  compressor.threshold.value = -3;
-  compressor.knee.value = 0;
-  compressor.ratio.value = 20;
-  compressor.attack.value = 0.001;
-  compressor.release.value = 0.05;
+function createLoudOutput(ctx, volume = 1, drive = 2.4) {
+  const input = ctx.createGain();
+  input.gain.value = drive;
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -1;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.001;
+  limiter.release.value = 0.06;
   const master = ctx.createGain();
-  master.gain.value = level;
-  compressor.connect(master);
+  master.gain.value = normalizeVolume(volume);
+  input.connect(limiter);
+  limiter.connect(master);
   master.connect(ctx.destination);
-
-  const pattern = [1568, 1047, 1568, 1047, 1568, 1047, 1568, 1047, 1568, 1047];
-  const dur = 0.2;
-  let t0 = ctx.currentTime + 0.02;
-  pattern.forEach((freq) => {
-    const note = ctx.createGain();
-    note.gain.setValueAtTime(0.0001, t0);
-    note.gain.linearRampToValueAtTime(0.9, t0 + 0.01);
-    note.gain.setValueAtTime(0.9, t0 + dur - 0.03);
-    note.gain.linearRampToValueAtTime(0.0001, t0 + dur);
-    note.connect(compressor);
-    [['square', freq], ['sawtooth', freq * 2]].forEach(([wave, f], i) => {
-      const osc = ctx.createOscillator();
-      osc.type = wave;
-      osc.frequency.value = f;
-      const mix = ctx.createGain();
-      mix.gain.value = i === 0 ? 0.7 : 0.35;
-      osc.connect(mix);
-      mix.connect(note);
-      osc.start(t0);
-      osc.stop(t0 + dur + 0.02);
-    });
-    t0 += dur + 0.04;
-  });
-  setTimeout(() => {
+  const dispose = (ms) => setTimeout(() => {
     try {
+      input.disconnect();
+      limiter.disconnect();
       master.disconnect();
-      compressor.disconnect();
     } catch (_) {
       /* noop */
     }
-  }, Math.ceil((t0 - ctx.currentTime + 0.5) * 1000));
+  }, ms);
+  return { input, dispose };
 }
 
+/** Nota con envolvente; `partials` = [[forma, multiplicador de frecuencia, nivel], …]. */
+function tone(ctx, out, { freq, t0, dur, peak = 0.9, attack = 0.008, partials = [['sine', 1, 1]], glideTo = 0, sustain = false }) {
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, t0);
+  env.gain.linearRampToValueAtTime(peak, t0 + attack);
+  if (sustain) {
+    env.gain.setValueAtTime(peak, t0 + dur - 0.03);
+    env.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+  } else {
+    env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  }
+  env.connect(out);
+  partials.forEach(([wave, mult, level]) => {
+    const osc = ctx.createOscillator();
+    osc.type = wave;
+    osc.frequency.setValueAtTime(freq * mult, t0);
+    if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo * mult, t0 + dur * 0.8);
+    const mix = ctx.createGain();
+    mix.gain.value = level;
+    osc.connect(mix);
+    mix.connect(env);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.03);
+  });
+}
+
+/** Mensajes: doble «burbuja» con deslizamiento ascendente (tipo chat). */
+function synthMessage(ctx, out, t) {
+  const bubble = [['sine', 1, 0.8], ['triangle', 2, 0.35]];
+  tone(ctx, out, { freq: 880, glideTo: 1320, t0: t, dur: 0.14, partials: bubble });
+  tone(ctx, out, { freq: 1175, glideTo: 1760, t0: t + 0.16, dur: 0.2, partials: bubble });
+  return t + 0.4;
+}
+
+/** Notificaciones: campana «din-don» con parciales metálicos. */
+function synthSystem(ctx, out, t) {
+  const bell = [['sine', 1, 0.7], ['sine', 2.76, 0.3], ['sine', 5.4, 0.15], ['triangle', 1, 0.3]];
+  tone(ctx, out, { freq: 1046.5, t0: t, dur: 0.75, attack: 0.004, partials: bell });
+  tone(ctx, out, { freq: 784, t0: t + 0.32, dur: 0.95, attack: 0.004, partials: bell });
+  return t + 1.3;
+}
+
+/** Fadey IA: arpegio futurista con brillo desafinado (sonido «inteligente»). */
+function synthAi(ctx, out, t) {
+  const shimmer = [['sine', 1, 0.6], ['sine', 1.005, 0.6], ['triangle', 2, 0.25]];
+  [659.25, 987.77, 1318.5, 1975.5].forEach((f, i) => {
+    tone(ctx, out, { freq: f, t0: t + i * 0.085, dur: 0.38, attack: 0.006, partials: shimmer });
+  });
+  tone(ctx, out, { freq: 2637, glideTo: 3520, t0: t + 0.36, dur: 0.32, peak: 0.55, partials: [['sine', 1, 1]] });
+  return t + 0.8;
+}
+
+/** Pedido listo (mozo/caja): fanfarria corta ascendente Do-Mi-Sol-Do, brillante y clara. */
+function synthReady(ctx, out, t) {
+  const brass = [['square', 1, 0.4], ['triangle', 1, 0.6], ['sine', 2, 0.25]];
+  const seq = [[523.25, 0.11], [659.25, 0.11], [783.99, 0.11], [1046.5, 0.42]];
+  let at = t;
+  seq.forEach(([f, d]) => {
+    tone(ctx, out, { freq: f, t0: at, dur: d, attack: 0.006, partials: brass, sustain: true });
+    at += d + 0.025;
+  });
+  return at + 0.1;
+}
+
+/**
+ * Alarma de pedido demorado (se mantiene el patrón de áreas): sirena aguda alternada, notas sostenidas,
+ * square + sawtooth. Siempre a nivel máximo, sin importar el volumen del área.
+ */
+function synthAlarm(ctx, out, t) {
+  const pattern = [1568, 1047, 1568, 1047, 1568, 1047, 1568, 1047, 1568, 1047];
+  const dur = 0.2;
+  let at = t;
+  pattern.forEach((freq) => {
+    tone(ctx, out, {
+      freq,
+      t0: at,
+      dur,
+      attack: 0.01,
+      partials: [['square', 1, 0.7], ['sawtooth', 2, 0.35]],
+      sustain: true,
+    });
+    at += dur + 0.04;
+  });
+  return at;
+}
+
+const SYNTHS = {
+  message: synthMessage,
+  system: synthSystem,
+  ai: synthAi,
+  ready: synthReady,
+  alert: synthAlarm,
+};
+
+function playSynth(type, volume = 1) {
+  const synth = SYNTHS[type];
+  if (!synth) return false;
+  try {
+    const ctx = getSharedAudioContext();
+    if (!ctx) return false;
+    const start = () => {
+      const level = type === 'alert' ? 1 : volume;
+      const { input, dispose } = createLoudOutput(ctx, level);
+      const t0 = ctx.currentTime + 0.02;
+      const end = synth(ctx, input, t0);
+      dispose(Math.ceil((end - ctx.currentTime + 0.5) * 1000));
+    };
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(start).catch(() => {});
+    } else {
+      start();
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Respaldo si el WAV de cocina/bar no carga: mismo carácter que antes, a nivel máximo. */
 function playFallbackBeep(type, volume = 1) {
-  const peak = Math.max(0.0002, 0.45 * normalizeVolume(volume));
+  if (playSynth(type, volume)) return;
   try {
     const ctx = getSharedAudioContext();
     if (!ctx) return;
     const start = () => {
-      if (type === 'alert') {
-        playAlarmTone(ctx, volume);
-        return;
-      }
-      const freqs =
-        type === 'bar' ? [990, 1320]
-          : type === 'message' ? [740, 980]
-            : type === 'system' ? [520, 700, 880]
-              : [660, 880, 1100];
+      const { input, dispose } = createLoudOutput(ctx, volume);
+      const freqs = type === 'bar' ? [990, 1320] : [660, 880, 1100];
       let t0 = ctx.currentTime + 0.01;
       freqs.forEach((freq, idx) => {
-        const oscillator = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-        oscillator.type = 'sine';
-        oscillator.frequency.value = freq;
         const dur = idx === freqs.length - 1 ? 0.28 : 0.16;
-        gainNode.gain.setValueAtTime(0.0001, t0);
-        gainNode.gain.exponentialRampToValueAtTime(peak, t0 + 0.015);
-        gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-        oscillator.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        oscillator.start(t0);
-        oscillator.stop(t0 + dur + 0.02);
+        tone(ctx, input, { freq, t0, dur, partials: [['sine', 1, 1]] });
         t0 += dur + 0.05;
       });
+      dispose(Math.ceil((t0 - ctx.currentTime + 0.5) * 1000));
     };
     if (ctx.state === 'suspended') {
       ctx.resume().then(start).catch(() => {});
@@ -231,7 +318,7 @@ function playFallbackBeep(type, volume = 1) {
 }
 
 /** Ganancia extra sobre el WAV (HTMLAudio no pasa de 1.0); el limitador evita que distorsione. */
-const SOUND_BOOST = { kitchen: 3.2, bar: 3.2, message: 1.6, system: 1.6 };
+const SOUND_BOOST = { kitchen: 4, bar: 4 };
 const decodedBuffers = {};
 
 async function getDecodedBuffer(ctx, type) {
@@ -272,10 +359,10 @@ async function playBoostedSound(type, volume) {
   const gain = ctx.createGain();
   gain.gain.value = normalizeVolume(volume) * (SOUND_BOOST[type] || 1);
   const limiter = ctx.createDynamicsCompressor();
-  limiter.threshold.value = -2;
+  limiter.threshold.value = -1;
   limiter.knee.value = 0;
   limiter.ratio.value = 20;
-  limiter.attack.value = 0.002;
+  limiter.attack.value = 0.001;
   limiter.release.value = 0.08;
   source.connect(gain);
   gain.connect(limiter);
@@ -318,14 +405,16 @@ export function preloadNotificationSound(type) {
 
 /**
  * Reproduce una notificación sonora.
- * @param {'kitchen'|'bar'|'cocina'|'message'|'system'|'chat'|'notification'} type
+ * @param {'kitchen'|'bar'|'message'|'system'|'ai'|'ready'|'alert'} type
  * @param {string} [orderKey] Id del evento para evitar duplicados simultáneos.
- * @param {{ force?: boolean, volume?: number }} [opts] volume de 0 a 1 (por defecto 1).
+ * @param {{ force?: boolean, volume?: number, preview?: boolean }} [opts]
+ *   volume de 0 a 1 (por defecto 1); preview suena aunque el tipo esté desactivado en este equipo.
  */
 export function playNotificationSound(type, orderKey = '', opts = {}) {
   if (typeof window === 'undefined') return;
   const normalized = normalizeType(type);
   if (!normalized) return;
+  if (!opts.preview && !isSoundCategoryEnabled(normalized)) return;
   if (!opts.force && shouldSkipDuplicate(normalized, orderKey)) return;
   const volume = normalizeVolume(opts.volume ?? 1);
 
@@ -336,6 +425,18 @@ export function playNotificationSound(type, orderKey = '', opts = {}) {
 
   const playKey = buildPlayKey(normalized, orderKey);
   if (playingKeys.has(playKey)) return;
+
+  if (SYNTH_TYPES.has(normalized)) {
+    playingKeys.add(playKey);
+    const ok = playSynth(normalized, volume);
+    if (ok && getSharedAudioContext()?.state === 'running') {
+      pendingPlay = null;
+      audioUnlocked = true;
+      notifyUnlockListeners();
+    }
+    setTimeout(() => playingKeys.delete(playKey), 1200);
+    return;
+  }
 
   if (SOUND_FILES[normalized]) {
     playingKeys.add(playKey);

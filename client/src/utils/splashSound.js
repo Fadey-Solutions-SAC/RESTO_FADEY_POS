@@ -172,14 +172,14 @@ function exitWhoosh(ctx, out, t0) {
  * Reproduce el sonido de apertura una vez por carga de página.
  * En la app de escritorio suena siempre; en navegador solo si permite audio sin clic previo.
  */
-export function playSplashSound({ volume = 0.85 } = {}) {
+export function playSplashSound({ volume = 1 } = {}) {
   if (playedThisLoad || typeof window === 'undefined' || !isSplashSoundEnabled()) return;
   playedThisLoad = true;
   startSplashSound(volume);
 }
 
 /** Vista previa (desde un clic, p. ej. Mi perfil): suena aunque esté desactivado o ya haya sonado. */
-export function previewSplashSound({ volume = 0.85 } = {}) {
+export function previewSplashSound({ volume = 1 } = {}) {
   if (typeof window === 'undefined') return;
   startSplashSound(volume);
 }
@@ -197,9 +197,10 @@ function startSplashSound(volume) {
   const run = () => {
     const t0 = ctx.currentTime + 0.05;
     const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = -6;
-    limiter.ratio.value = 8;
-    limiter.attack.value = 0.003;
+    limiter.threshold.value = -1;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.002;
     limiter.release.value = 0.2;
     const master = ctx.createGain();
     master.gain.value = Math.min(1, Math.max(0, volume));
@@ -213,7 +214,7 @@ function startSplashSound(volume) {
     wet.gain.value = 0.45;
     reverb.connect(wet).connect(limiter);
     const bus = ctx.createGain();
-    bus.gain.value = 1.7;
+    bus.gain.value = 2.6;
     bus.connect(dry);
     bus.connect(reverb);
 

@@ -14,6 +14,7 @@ import {
   StaffProductivityCard,
 } from '../../components/hr/StaffProfileSummary';
 import DevicePermissionsCard from '../../components/DevicePermissionsCard';
+import ProductionAreaProfileCard from '../../components/kitchen/ProductionAreaProfileCard';
 
 function PasswordInput({ value, onChange, placeholder, autoComplete }) {
   const [show, setShow] = useState(false);
@@ -160,6 +161,7 @@ export default function MiPerfil() {
 
         <div className="space-y-5 min-w-0">
           <DevicePermissionsCard />
+          {productionPath ? <ProductionAreaProfileCard user={user} /> : null}
           <StaffHoursCards hours={hours} period={period} />
           <StaffContractCard contract={contract} title="Mi contrato de trabajo" />
         </div>

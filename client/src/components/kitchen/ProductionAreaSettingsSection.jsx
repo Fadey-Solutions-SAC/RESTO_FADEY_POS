@@ -7,6 +7,7 @@ import {
   playNotificationSound,
   unlockNotificationAudio,
 } from '../../utils/playNotificationSound';
+import { getSoundPrefs, setSoundPref, SOUND_PREFS_EVENT } from '../../utils/soundPrefs';
 
 export const DEFAULT_AREA_SETTINGS = Object.freeze({
   autoDismissEnabled: false,
@@ -39,10 +40,16 @@ export default function ProductionAreaSettingsSection({
 
   useEffect(() => setVolume(settings.notifyVolume), [settings.notifyVolume]);
   useEffect(() => onNotificationAudioUnlockChange((ready) => setSoundReady(Boolean(ready))), []);
+  const [delaySoundHere, setDelaySoundHere] = useState(() => getSoundPrefs().delay !== false);
+  useEffect(() => {
+    const sync = () => setDelaySoundHere(getSoundPrefs().delay !== false);
+    window.addEventListener(SOUND_PREFS_EVENT, sync);
+    return () => window.removeEventListener(SOUND_PREFS_EVENT, sync);
+  }, []);
 
   const testSound = async (vol = volume) => {
     await unlockNotificationAudio();
-    playNotificationSound(soundType, `cfg-test-${Date.now()}`, { force: true, volume: vol / 100 });
+    playNotificationSound(soundType, `cfg-test-${Date.now()}`, { force: true, preview: true, volume: vol / 100 });
   };
 
   const commitVolume = () => {
@@ -131,6 +138,20 @@ export default function ProductionAreaSettingsSection({
             <span className="block text-xs text-[var(--ui-muted)] mt-1">{t('barSettings.delayHelp')}</span>
           </span>
         </label>
+        {settings.delayAlertEnabled !== false ? (
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 rounded border-[color:var(--ui-border)]"
+              checked={delaySoundHere}
+              onChange={(e) => setSoundPref('delay', e.target.checked)}
+            />
+            <span>
+              <span className="block text-sm font-medium text-[var(--ui-body-text)]">{t('barSettings.delayDeviceLabel')}</span>
+              <span className="block text-xs text-[var(--ui-muted)] mt-1">{t('barSettings.delayDeviceHelp')}</span>
+            </span>
+          </label>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{t('barSettings.delayMinutesLabel')}</span>
@@ -169,7 +190,7 @@ export default function ProductionAreaSettingsSection({
             className="btn-secondary text-sm inline-flex items-center gap-1.5"
             onClick={async () => {
               await unlockNotificationAudio();
-              playNotificationSound('alert', `delay-test-${Date.now()}`, { force: true, volume: volume / 100 });
+              playNotificationSound('alert', `delay-test-${Date.now()}`, { force: true, preview: true });
             }}
           >
             <MdAlarm /> {t('barSettings.delayTest')}

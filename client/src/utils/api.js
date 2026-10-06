@@ -1570,16 +1570,24 @@ export const getPaymentMethodOptions = (appConfig, { includeOnline = false } = {
     options.push({ value, label: PAYMENT_METHODS[value] || value });
   }
 
-  if (includeOnline) options.push({ value: 'online', label: PAYMENT_METHODS.online });
-  if (options.length === 0) {
+  const posOn = isPosTerminalEnabledInConfig(appConfig);
+  const filtered = options.filter((o) => posOn || o.value !== 'tarjeta');
+  if (includeOnline) filtered.push({ value: 'online', label: PAYMENT_METHODS.online });
+  if (filtered.length === 0) {
     return [
       { value: 'efectivo', label: PAYMENT_METHODS.efectivo },
       { value: 'yape', label: PAYMENT_METHODS.yape },
       { value: 'plin', label: PAYMENT_METHODS.plin },
-      { value: 'tarjeta', label: PAYMENT_METHODS.tarjeta },
+      ...(posOn ? [{ value: 'tarjeta', label: PAYMENT_METHODS.tarjeta }] : []),
     ];
   }
-  return options;
+  return filtered;
+};
+
+/** Terminal POS de tarjetas (Culqi, Izipay…) activo en Configuración › Formas de pago. */
+export const isPosTerminalEnabledInConfig = (appConfig) => {
+  const raw = appConfig?.pos_terminal_enabled ?? appConfig?.settings?.pos_terminal_enabled;
+  return Number(raw ?? 1) === 1;
 };
 
 const MULTI_PAY_ORDER = ['efectivo', 'yape', 'plin', 'tarjeta'];

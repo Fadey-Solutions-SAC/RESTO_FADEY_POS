@@ -42,7 +42,7 @@ export function isPermissionExplicitlyDenied(value) {
 const PRODUCTION_ROLES = ['produccion', 'cocina', 'bar'];
 
 /** Área propia del personal de producción; mismas reglas que `userCanAccessKitchenStation` del API. */
-function getOwnProductionAreaId(user) {
+export function getOwnProductionAreaId(user) {
   const role = String(user?.role || '').toLowerCase();
   if (role === 'cocina') return 'cocina';
   if (role === 'bar') return 'bar';
