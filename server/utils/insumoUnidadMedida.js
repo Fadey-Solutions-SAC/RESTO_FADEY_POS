@@ -61,6 +61,27 @@ function insumoValorInventario(insumo) {
  * kg/L: el dato se guarda en g/ml (uso de cocina) y se convierte a la U.M. base.
  * ml, g, onza, unidad: cantidad exacta.
  */
+const MASS_TO_KG = { mg: 1e-6, g: 0.001, kg: 1 };
+const VOL_TO_L = { ml: 0.001, l: 1 };
+
+/**
+ * Convierte una cantidad a la unidad base del insumo (kg, g, L, ml o unidad).
+ * No usa el atajo de receta (g/ml escritos para un insumo en kg/L).
+ */
+function convertirAUnidadBase(cantidad, unidadOrigen, unidadBase) {
+  const q = Number(cantidad);
+  if (!Number.isFinite(q)) throw new Error('Cantidad inválida para convertir');
+  const from = normalizeInsumoUm(unidadOrigen).toLowerCase();
+  const to = normalizeInsumoUm(unidadBase).toLowerCase();
+  if (from === to) return q;
+  if (from === 'unidad' || to === 'unidad') {
+    throw new Error(`No se puede convertir ${unidadOrigen || 'unidad'} a ${unidadBase || 'unidad'}`);
+  }
+  if (MASS_TO_KG[from] && MASS_TO_KG[to]) return (q * MASS_TO_KG[from]) / MASS_TO_KG[to];
+  if (VOL_TO_L[from] && VOL_TO_L[to]) return (q * VOL_TO_L[from]) / VOL_TO_L[to];
+  throw new Error(`No se puede convertir ${unidadOrigen} a ${unidadBase}`);
+}
+
 function recipeQtyToStock(qty, unidadMedida) {
   const um = normalizeInsumoUm(unidadMedida);
   const q = Number(qty) || 0;
@@ -78,4 +99,5 @@ module.exports = {
   insumoEstaBajoMinimo,
   insumoValorInventario,
   recipeQtyToStock,
+  convertirAUnidadBase,
 };

@@ -20,6 +20,9 @@ const emptyForm = () => ({
   minimo_kg: '0',
   activo: true,
   insumo_area: 'cocina',
+  tipo: 'insumo',
+  insumo_clase: 'directo',
+  stock_maximo: '0',
 });
 
 function formFromInsumo(row) {
@@ -38,6 +41,9 @@ function formFromInsumo(row) {
     minimo_kg: und ? '0' : String(Number(row.stock_minimo || 0)),
     activo: Number(row.activo) !== 0,
     insumo_area: String(row.insumo_area || 'cocina').toLowerCase() === 'bar' ? 'bar' : 'cocina',
+    tipo: String(row.tipo || 'insumo') === 'transformable' ? 'transformable' : 'insumo',
+    insumo_clase: String(row.insumo_clase || 'directo').toLowerCase() === 'doble' ? 'doble' : 'directo',
+    stock_maximo: String(Number(row.stock_maximo || 0)),
   };
 }
 
@@ -85,6 +91,9 @@ export default function InsumoCreateModal({ isOpen, onClose, onSaved, insumo = n
         stock_minimo: und ? 0 : (Number.isFinite(mk) && mk >= 0 ? mk : 0),
         activo: form.activo,
         insumo_area: form.insumo_area === 'bar' ? 'bar' : 'cocina',
+        tipo: form.tipo === 'transformable' ? 'transformable' : 'insumo',
+        insumo_clase: form.insumo_clase === 'doble' ? 'doble' : 'directo',
+        stock_maximo: Number.isFinite(parseLocaleNumber(form.stock_maximo)) ? Math.max(0, parseLocaleNumber(form.stock_maximo)) : 0,
       };
       if (isEdit) {
         await api.put(`/kardex-inventory/insumos/${editingId}`, payload);
@@ -126,7 +135,56 @@ export default function InsumoCreateModal({ isOpen, onClose, onSaved, insumo = n
           >
             Bar
           </button>
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, tipo: 'insumo' }))}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+              form.tipo !== 'transformable'
+                ? 'bg-sky-600/90 text-white border-sky-500'
+                : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)]'
+            }`}
+          >
+            Insumo
+          </button>
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, tipo: 'transformable' }))}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+              form.tipo === 'transformable'
+                ? 'bg-teal-600/90 text-white border-teal-500'
+                : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)]'
+            }`}
+          >
+            Transformable
+          </button>
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, insumo_clase: 'directo' }))}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+              form.insumo_clase !== 'doble'
+                ? 'bg-amber-600/90 text-white border-amber-500'
+                : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)]'
+            }`}
+            title="Se usa tal cual: alitas, pollo, filetes"
+          >
+            Directo
+          </button>
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, insumo_clase: 'doble' }))}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+              form.insumo_clase === 'doble'
+                ? 'bg-orange-600/90 text-white border-orange-500'
+                : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)]'
+            }`}
+            title="Para preparar salsas y condimentos"
+          >
+            Doble
+          </button>
         </div>
+        <p className="text-xs text-[var(--ui-muted)] -mt-2">
+          Directo: alitas, pollo, filetes. Doble: lo que entra a salsas y condimentos.
+        </p>
         <div className="flex flex-wrap gap-3 items-end">
           <div className="min-w-[10rem] flex-1">
             <label className="block text-xs text-[#9CA3AF] mb-0.5">Insumo</label>
@@ -221,6 +279,17 @@ export default function InsumoCreateModal({ isOpen, onClose, onSaved, insumo = n
                   ? 'Con U.M. Unidad, use solo Mín. (U)'
                   : 'Mínimo en la U.M. de peso o litraje'
               }
+            />
+          </div>
+          <div className="w-[5.5rem]">
+            <label className="block text-xs text-[#9CA3AF] mb-0.5">Máx.</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="input-field text-sm py-1.5 w-full"
+              value={form.stock_maximo}
+              onChange={(e) => setForm((f) => ({ ...f, stock_maximo: e.target.value }))}
+              title="Stock máximo en la unidad base"
             />
           </div>
           <label className="flex items-center gap-2 text-sm text-[#E5E7EB] pb-0.5 whitespace-nowrap">

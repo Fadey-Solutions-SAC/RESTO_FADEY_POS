@@ -1696,6 +1696,52 @@ async function initDatabase() {
     addInsumoColIfMissing('kg_por_unidad', 'ALTER TABLE insumos ADD COLUMN kg_por_unidad REAL NOT NULL DEFAULT 0');
     addInsumoColIfMissing('stock_minimo', 'ALTER TABLE insumos ADD COLUMN stock_minimo REAL NOT NULL DEFAULT 0');
     addInsumoColIfMissing('insumo_area', "ALTER TABLE insumos ADD COLUMN insumo_area TEXT NOT NULL DEFAULT 'cocina'");
+    addInsumoColIfMissing('insumo_clase', "ALTER TABLE insumos ADD COLUMN insumo_clase TEXT NOT NULL DEFAULT 'directo'");
+    addInsumoColIfMissing('tipo', "ALTER TABLE insumos ADD COLUMN tipo TEXT NOT NULL DEFAULT 'insumo'");
+    addInsumoColIfMissing('stock_maximo', 'ALTER TABLE insumos ADD COLUMN stock_maximo REAL NOT NULL DEFAULT 0');
+    try {
+      db.run(
+        "UPDATE insumos SET tipo = 'insumo' WHERE tipo IS NULL OR TRIM(tipo) NOT IN ('insumo','transformable')"
+      );
+      db.run(
+        "UPDATE insumos SET insumo_clase = 'directo' WHERE insumo_clase IS NULL OR TRIM(insumo_clase) NOT IN ('directo','doble')"
+      );
+    } catch (_) {
+      /* tabla ausente */
+    }
+    const addRecetaColIfMissing = (col, ddl) => {
+      const cols = queryAll('PRAGMA table_info(recetas)');
+      if (!cols.some((c) => c.name === col)) db.run(ddl);
+    };
+    addRecetaColIfMissing('insumo_resultado_id', "ALTER TABLE recetas ADD COLUMN insumo_resultado_id TEXT DEFAULT ''");
+    addRecetaColIfMissing('rendimiento', 'ALTER TABLE recetas ADD COLUMN rendimiento REAL NOT NULL DEFAULT 0');
+    const addKardexColIfMissing = (col, ddl) => {
+      const cols = queryAll('PRAGMA table_info(kardex)');
+      if (!cols.some((c) => c.name === col)) db.run(ddl);
+    };
+    addKardexColIfMissing('motivo', "ALTER TABLE kardex ADD COLUMN motivo TEXT DEFAULT ''");
+    addKardexColIfMissing('receta_id', "ALTER TABLE kardex ADD COLUMN receta_id TEXT DEFAULT ''");
+    addKardexColIfMissing('almacen_id', "ALTER TABLE kardex ADD COLUMN almacen_id TEXT DEFAULT ''");
+    addKardexColIfMissing('unidad_original', "ALTER TABLE kardex ADD COLUMN unidad_original TEXT DEFAULT ''");
+    addKardexColIfMissing('cantidad_original', 'ALTER TABLE kardex ADD COLUMN cantidad_original REAL');
+    addKardexColIfMissing('ip', "ALTER TABLE kardex ADD COLUMN ip TEXT DEFAULT ''");
+    db.run(`
+      CREATE TABLE IF NOT EXISTS transformaciones (
+        id TEXT PRIMARY KEY,
+        receta_id TEXT NOT NULL,
+        insumo_resultado_id TEXT NOT NULL,
+        lotes REAL NOT NULL,
+        cantidad_producida REAL NOT NULL,
+        costo_unitario REAL NOT NULL DEFAULT 0,
+        costo_total REAL NOT NULL DEFAULT 0,
+        motivo TEXT DEFAULT '',
+        estado TEXT NOT NULL DEFAULT 'confirmada',
+        anulacion_id TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        created_by TEXT
+      )
+    `);
+    db.run('CREATE INDEX IF NOT EXISTS idx_transformaciones_resultado ON transformaciones(insumo_resultado_id, created_at)');
     try {
       db.run(
         "UPDATE insumos SET insumo_area = 'cocina' WHERE insumo_area IS NULL OR TRIM(insumo_area) NOT IN ('cocina','bar')"

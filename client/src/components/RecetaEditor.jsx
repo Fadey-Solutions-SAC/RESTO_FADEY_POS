@@ -59,6 +59,9 @@ export default function RecetaEditor({
     product_id: productId || '',
     activo: true,
     lines: [emptyLine()],
+    modo: 'venta',
+    insumo_resultado_id: '',
+    rendimiento: '',
   });
 
   useEffect(() => {
@@ -80,13 +83,24 @@ export default function RecetaEditor({
         if (!id) {
           if (!cancelled) {
             setCurrentId('');
-            setForm({ nombre_plato: productName || '', product_id: productId || '', activo: true, lines: [emptyLine()] });
+            setForm({
+              nombre_plato: productName || '',
+              product_id: productId || '',
+              activo: true,
+              lines: [emptyLine()],
+              modo: 'venta',
+              insumo_resultado_id: '',
+              rendimiento: '',
+            });
           }
           return;
         }
         const r = await api.get(`${BASE}/recetas/${id}`);
         if (cancelled) return;
         setCurrentId(id);
+        const catalogo = Array.isArray(insList) ? insList : [];
+        const resultado = catalogo.find((i) => String(i.id) === String(r.insumo_resultado_id || ''));
+        const esProduccion = Boolean(String(r.insumo_resultado_id || '').trim());
         setForm({
           nombre_plato: locked ? (productName || r.nombre_plato || '') : (r.nombre_plato || ''),
           product_id: locked ? productId : (r.product_id || ''),
@@ -94,6 +108,9 @@ export default function RecetaEditor({
           lines: r.detalles?.length
             ? r.detalles.map((d) => ({ insumo_id: d.insumo_id, qty: toInputQty(d.cantidad_usada, d.unidad_medida) }))
             : [emptyLine()],
+          modo: esProduccion ? 'produccion' : 'venta',
+          insumo_resultado_id: esProduccion ? String(r.insumo_resultado_id) : '',
+          rendimiento: esProduccion ? toInputQty(r.rendimiento, resultado?.unidad_medida) : '',
         });
       } catch (e) {
         if (!cancelled) toast.error(e.message || 'No se pudo cargar la receta');
@@ -108,10 +125,14 @@ export default function RecetaEditor({
     () => products.find((p) => String(p.id) === String(form.product_id)),
     [products, form.product_id],
   );
-  const area = areaOf(locked ? productionArea : selectedProduct?.production_area);
-  const price = productPrice != null ? Number(productPrice) : Number(selectedProduct?.price || 0);
-
   const insumoById = useMemo(() => new Map(insumos.map((i) => [String(i.id), i])), [insumos]);
+  const resultadoSel = insumoById.get(String(form.insumo_resultado_id));
+  const area = areaOf(
+    form.modo === 'produccion' && !locked
+      ? resultadoSel?.insumo_area
+      : (locked ? productionArea : selectedProduct?.production_area),
+  );
+  const price = productPrice != null ? Number(productPrice) : Number(selectedProduct?.price || 0);
 
   const costRows = form.lines.map((line) => {
     const ins = insumoById.get(String(line.insumo_id));
@@ -129,9 +150,25 @@ export default function RecetaEditor({
   const save = async (e) => {
     e.preventDefault();
     const nombre = form.nombre_plato.trim();
-    if (!nombre || !form.product_id) {
+    const esProduccion = form.modo === 'produccion' && !locked;
+    if (!nombre || (!esProduccion && !form.product_id)) {
       toast.error('Nombre de la receta y producto del menú son obligatorios');
       return;
+    }
+    let rendimientoBase = 0;
+    if (esProduccion) {
+      const resultado = insumoById.get(String(form.insumo_resultado_id));
+      const rendInput = parseLocaleNumber(form.rendimiento);
+      const esDoble = String(resultado?.insumo_clase || '') === 'doble' || String(resultado?.tipo || '') === 'transformable';
+      if (!resultado || !esDoble) {
+        toast.error('Elige el insumo doble que se fabrica, por ejemplo salsa de tomate');
+        return;
+      }
+      if (!Number.isFinite(rendInput) || rendInput <= 0) {
+        toast.error('Indica cuánto rinde un lote');
+        return;
+      }
+      rendimientoBase = rendInput / inputFactor(resultado.unidad_medida);
     }
     const detalles = [];
     for (const line of form.lines) {
@@ -139,7 +176,11 @@ export default function RecetaEditor({
       const ins = insumoById.get(String(line.insumo_id));
       const q = parseLocaleNumber(line.qty);
       if (!Number.isFinite(q) || q <= 0) {
-        toast.error(`Indica la cantidad por plato de «${ins?.nombre || 'insumo'}» (mayor a 0).`);
+        toast.error(`Indica la cantidad de «${ins?.nombre || 'insumo'}» (mayor a 0).`);
+        return;
+      }
+      if (esProduccion && String(ins?.insumo_clase || 'directo') === 'doble') {
+        toast.error(`«${ins.nombre}» es doble. La fabricación usa insumos directos, como el tomate.`);
         return;
       }
       detalles.push({ insumo_id: line.insumo_id, cantidad_usada: q / inputFactor(ins?.unidad_medida) });
@@ -148,7 +189,14 @@ export default function RecetaEditor({
       toast.error('Agrega al menos un insumo a la receta.');
       return;
     }
-    const body = { nombre_plato: nombre, product_id: form.product_id, activo: form.activo, detalles };
+    const body = {
+      nombre_plato: nombre,
+      product_id: esProduccion ? '' : form.product_id,
+      activo: form.activo,
+      detalles,
+      insumo_resultado_id: esProduccion ? form.insumo_resultado_id : '',
+      rendimiento: esProduccion ? rendimientoBase : 0,
+    };
     setSaving(true);
     try {
       const saved = currentId
@@ -181,9 +229,29 @@ export default function RecetaEditor({
 
   return (
     <form onSubmit={save} className="space-y-4">
+      {!locked && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, modo: 'venta', insumo_resultado_id: '', rendimiento: '' }))}
+            className={`px-3 py-1.5 rounded-lg text-sm border ${form.modo !== 'produccion' ? 'bg-amber-500/20 border-amber-500/50 text-amber-200' : 'border-[color:var(--ui-border)] text-[var(--ui-body-text)]'}`}
+          >
+            Descuenta al vender
+          </button>
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, modo: 'produccion', product_id: '' }))}
+            className={`px-3 py-1.5 rounded-lg text-sm border ${form.modo === 'produccion' ? 'bg-teal-500/20 border-teal-500/50 text-teal-200' : 'border-[color:var(--ui-border)] text-[var(--ui-body-text)]'}`}
+          >
+            Fabrica un insumo doble
+          </button>
+        </div>
+      )}
       <p className="text-xs ui-text-muted">
-        Insumos que se descuentan del almacén por <strong>cada plato vendido</strong>. En insumos por kg o L escribe gramos o mililitros;
-        si el insumo tiene promedio kg / U (pollo, carnes), también se descuentan las unidades en proporción.
+        {form.modo === 'produccion' && !locked
+          ? 'Ejemplo: 1000 g de tomate (directo) fabrican 500 ml de salsa (doble). Al vender un plato que usa 100 ml, solo baja la salsa. La salsa también se puede comprar ya hecha.'
+          : 'Insumos que se descuentan al vender el plato. Si el plato usa una salsa doble, pon esa salsa: no vuelvas a poner el tomate.'}
+        {' '}En insumos por kg o L escribe gramos o mililitros.
         {' '}Solo se listan insumos de <strong>{area}</strong>.
       </p>
 
@@ -198,8 +266,21 @@ export default function RecetaEditor({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Producto vinculado</label>
-          {locked ? (
+          <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">
+            {form.modo === 'produccion' && !locked ? 'Transformable que produce' : 'Producto vinculado'}
+          </label>
+          {form.modo === 'produccion' && !locked ? (
+            <select
+              className="input-field"
+              value={form.insumo_resultado_id}
+              onChange={(e) => setForm((f) => ({ ...f, insumo_resultado_id: e.target.value, product_id: '' }))}
+            >
+              <option value="">— Insumo doble —</option>
+              {insumos.filter((i) => String(i.insumo_clase || '') === 'doble' || String(i.tipo || '') === 'transformable' || String(i.id) === String(form.insumo_resultado_id)).map((i) => (
+                <option key={i.id} value={i.id}>{insumoOptionLabel(i)}</option>
+              ))}
+            </select>
+          ) : locked ? (
             <input className="input-field bg-[var(--ui-surface-2)]" value={productName} readOnly />
           ) : (
             <select
@@ -221,6 +302,20 @@ export default function RecetaEditor({
             </select>
           )}
         </div>
+        {form.modo === 'produccion' && !locked ? (
+          <div>
+            <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">
+              Rinde un lote ({resultadoSel ? (normalizeInsumoUm(resultadoSel.unidad_medida) === 'kg' ? 'g' : normalizeInsumoUm(resultadoSel.unidad_medida) === 'L' ? 'ml' : resultadoSel.unidad_medida) : 'U.M.'})
+            </label>
+            <input
+              className="input-field"
+              inputMode="decimal"
+              value={form.rendimiento}
+              onChange={(e) => setForm((f) => ({ ...f, rendimiento: e.target.value }))}
+              placeholder={normalizeInsumoUm(resultadoSel?.unidad_medida) === 'kg' ? '10000' : '1'}
+            />
+          </div>
+        ) : null}
         <label className="flex items-center gap-2 text-sm pb-2">
           <input
             type="checkbox"
@@ -232,17 +327,24 @@ export default function RecetaEditor({
       </div>
 
       <div className="space-y-2">
-        <p className="text-sm font-medium text-[var(--ui-body-text)]">Insumos por plato (1 servicio)</p>
+        <p className="text-sm font-medium text-[var(--ui-body-text)]">
+          {form.modo === 'produccion' && !locked ? 'Ingredientes de un lote' : 'Insumos por plato (1 servicio)'}
+        </p>
         {form.lines.map((line, idx) => {
           const ins = insumoById.get(String(line.insumo_id));
           const unit = ins ? kardexRecipeInputUnit(ins.unidad_medida) : '';
           const taken = new Set(form.lines.map((l, i) => (i === idx ? '' : String(l.insumo_id))).filter(Boolean));
-          const options = insumos.filter((i) => (
-            (Number(i.activo) !== 0 && areaOf(i.insumo_area) === area && !taken.has(String(i.id)))
-            || String(i.id) === String(line.insumo_id)
-          ));
+          const fabricaDoble = form.modo === 'produccion' && !locked;
+          const options = insumos.filter((i) => {
+            if (String(i.id) === String(line.insumo_id)) return true;
+            if (Number(i.activo) === 0 || areaOf(i.insumo_area) !== area || taken.has(String(i.id))) return false;
+            if (!fabricaDoble) return true;
+            if (String(i.id) === String(form.insumo_resultado_id)) return false;
+            return String(i.insumo_clase || 'directo') !== 'doble';
+          });
           return (
-            <div key={idx} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] gap-2 items-center">
+            <div key={idx} className="space-y-1">
+            <div className="grid grid-cols-[minmax(0,1fr)_7rem_auto] gap-2 items-center">
               <select
                 className="input-field text-sm"
                 value={line.insumo_id}
@@ -279,6 +381,10 @@ export default function RecetaEditor({
               >
                 <MdClose className="text-lg" />
               </button>
+            </div>
+            {form.modo !== 'produccion' && String(ins?.insumo_clase || '') === 'doble' ? (
+              <p className="text-[11px] text-teal-700">Al vender el plato solo se descuenta {ins.nombre}. Los directos ya salieron al fabricarla.</p>
+            ) : null}
             </div>
           );
         })}

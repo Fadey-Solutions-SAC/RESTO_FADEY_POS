@@ -396,14 +396,18 @@ export default function Almacen() {
   const [showRequirementModal, setShowRequirementModal] = useState(false);
   /** '' = todas (+ kardex); id de categoría = solo productos de almacén de esa categoría */
   const [requirementCategoryId, setRequirementCategoryId] = useState('');
+  const [requirementSource, setRequirementSource] = useState('non_transformed');
+  const [requirementInsumoClase, setRequirementInsumoClase] = useState('');
   /** low_stock = bajo mínimo; all_catalog = todos los no transformables (filtrables por categoría) */
-  const [requirementScope, setRequirementScope] = useState('low_stock');
   const [selectedRequirementIds, setSelectedRequirementIds] = useState([]);
   const [latestRequirement, setLatestRequirement] = useState(null);
   const [receptionForm, setReceptionForm] = useState({});
   const [receptionExtraLines, setReceptionExtraLines] = useState([]);
   const [showReceptionAddModal, setShowReceptionAddModal] = useState(false);
   const [receptionAddDraft, setReceptionAddDraft] = useState({
+    source: 'non_transformed',
+    category_id: '',
+    insumo_clase: '',
     pickValue: '',
     warehouse_id: '',
     quantity: '1',
@@ -460,37 +464,39 @@ export default function Almacen() {
   );
 
   const receptionPickProducts = useMemo(() => {
-    const whId = receptionAddDraft.warehouse_id;
-    const selectedWh = warehouses.find((w) => String(w.id) === String(whId));
-    const insumosDestino = selectedWh && isInsumosWarehouse(selectedWh);
+    if (receptionAddDraft.source === 'insumos') return [];
     const extraIds = new Set(receptionExtraLines.map((l) => l.product_id));
-    const isSupplySku = (p) => (p.category_name || '').toUpperCase() === WAREHOUSE_CATEGORY_NAMES.supplies;
-
-    let list = products.filter((p) => !receptionRequirementIds.has(p.id) && !extraIds.has(p.id));
-
-    if (insumosDestino) {
-      list = list.filter((p) => isSupplySku(p));
-    } else if (whId) {
-      list = list.filter((p) => productLinkedToWarehouse(p, whId));
+    let list = products.filter((p) => (
+      p.process === 'non_transformed'
+      && !receptionRequirementIds.has(p.id)
+      && !extraIds.has(p.id)
+    ));
+    const cat = String(receptionAddDraft.category_id || '');
+    if (cat) {
+      list = list.filter((p) => {
+        if (cat === '__none__') return !String(p.category_id || '').trim();
+        return String(p.category_id || '') === cat;
+      });
     }
-
     return list
       .slice()
       .sort((a, b) => String(a.name || '').localeCompare(b.name || '', 'es'));
-  }, [products, receptionRequirementIds, receptionExtraLines, receptionAddDraft.warehouse_id, warehouses]);
+  }, [products, receptionRequirementIds, receptionExtraLines, receptionAddDraft.source, receptionAddDraft.category_id]);
 
   const receptionPickInsumos = useMemo(() => {
-    const whId = receptionAddDraft.warehouse_id;
-    const selectedWh = warehouses.find((w) => String(w.id) === String(whId));
-    if (!selectedWh || !isInsumosWarehouse(selectedWh)) {
-      return [];
-    }
+    if (receptionAddDraft.source !== 'insumos') return [];
     const extraIds = new Set(receptionExtraLines.map((l) => l.product_id));
+    const clase = String(receptionAddDraft.insumo_clase || '');
     return kardexInsumos
       .filter((ins) => Number(ins.activo) !== 0 && ins.id && !receptionRequirementIds.has(ins.id) && !extraIds.has(ins.id))
+      .filter((ins) => {
+        if (!clase) return true;
+        const actual = String(ins.insumo_clase || 'directo').toLowerCase() === 'doble' ? 'doble' : 'directo';
+        return actual === clase;
+      })
       .slice()
       .sort((a, b) => String(a.nombre || '').localeCompare(b.nombre || '', 'es'));
-  }, [kardexInsumos, receptionRequirementIds, receptionExtraLines, receptionAddDraft.warehouse_id, warehouses]);
+  }, [kardexInsumos, receptionRequirementIds, receptionExtraLines, receptionAddDraft.source, receptionAddDraft.insumo_clase]);
 
   const receptionPickListEmpty = receptionPickProducts.length === 0 && receptionPickInsumos.length === 0;
   const sameWarehouseId = (a, b) => String(a || '') === String(b || '');
@@ -715,32 +721,52 @@ export default function Almacen() {
   }, [nonTransformedProducts]);
 
   const requirementListForModal = useMemo(() => {
-    if (requirementScope === 'all_catalog') {
-      let list = nonTransformedProducts;
-      if (requirementCategoryId) {
-        list = list.filter((p) => {
-          if (requirementCategoryId === '__none__') return !String(p.category_id || '').trim();
-          return String(p.category_id || '') === requirementCategoryId;
-        });
-      }
-      return list
-        .map((p) => ({
-          id: p.id,
-          name: p.name,
-          stock: p.stock,
-          min_stock: p.min_stock,
-          category_name: p.category_name || 'Sin categoría',
-          isKardex: false,
-        }))
+    if (requirementSource === 'insumos') {
+      return (kardexInsumos || [])
+        .filter((i) => Number(i.activo) !== 0)
+        .filter((i) => {
+          if (!requirementInsumoClase) return true;
+          const clase = String(i.insumo_clase || 'directo').toLowerCase() === 'doble' ? 'doble' : 'directo';
+          return clase === requirementInsumoClase;
+        })
+        .map((i) => {
+          const porUnidad = isUnidadUm(i.unidad_medida);
+          const uAct = insumoStockEnUnidades(i);
+          const sAct = Number(i.stock_actual) || 0;
+          const clase = String(i.insumo_clase || 'directo').toLowerCase() === 'doble' ? 'doble' : 'directo';
+          return {
+            id: i.id,
+            name: i.nombre,
+            stock: porUnidad ? uAct : sAct,
+            min_stock: porUnidad ? (Number(i.minimo_unidades) || 0) : (Number(i.stock_minimo) || 0),
+            minimo: porUnidad ? (Number(i.minimo_unidades) || 0) : (Number(i.stock_minimo) || 0),
+            isKardex: true,
+            kardexPorU: porUnidad,
+            umed: String(i.unidad_medida || 'kg').replace(/[0-9]/g, '').trim() || 'kg',
+            category_name: clase === 'doble' ? 'Insumos dobles' : 'Insumos directos',
+            insumo_clase: clase,
+          };
+        })
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'));
     }
-    if (!requirementCategoryId) return lowStockGlobal;
-    const filteredProducts = lowFromWarehouse.filter((p) => {
-      if (requirementCategoryId === '__none__') return !String(p.category_id || '').trim();
-      return String(p.category_id || '') === requirementCategoryId;
-    });
-    return filteredProducts;
-  }, [requirementScope, requirementCategoryId, lowStockGlobal, lowFromWarehouse, nonTransformedProducts]);
+    let list = nonTransformedProducts;
+    if (requirementCategoryId) {
+      list = list.filter((p) => {
+        if (requirementCategoryId === '__none__') return !String(p.category_id || '').trim();
+        return String(p.category_id || '') === requirementCategoryId;
+      });
+    }
+    return list
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        stock: p.stock,
+        min_stock: p.min_stock,
+        category_name: p.category_name || 'Sin categoría',
+        isKardex: false,
+      }))
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'));
+  }, [requirementSource, requirementCategoryId, requirementInsumoClase, kardexInsumos, nonTransformedProducts]);
 
   const productsForSelectedWarehouse = isAllWarehousesView(selectedWarehouseView)
     ? scopedProducts
@@ -1086,13 +1112,13 @@ export default function Almacen() {
   const openNewRequirement = () => {
     if (!requirementListForModal.length) {
       toast.error(
-        requirementScope === 'all_catalog'
-          ? (requirementCategoryId
+        requirementSource === 'insumos'
+          ? (requirementInsumoClase
+            ? 'No hay insumos de esa subdivisión'
+            : 'No hay insumos activos')
+          : (requirementCategoryId
             ? 'No hay productos no transformables en la categoría seleccionada'
-            : 'No hay productos no transformables activos')
-          : requirementCategoryId
-            ? 'No hay productos con stock bajo en la categoría seleccionada'
-            : 'No hay productos con stock bajo',
+            : 'No hay productos no transformables activos'),
       );
       return;
     }
@@ -1123,10 +1149,11 @@ export default function Almacen() {
         return row && row.isKardex;
       });
       const requirement = await api.post('/inventory/requirements/low-stock', {
-        product_ids: pIds,
-        insumo_ids: inIds,
-        category_id: requirementCategoryId || undefined,
-        scope: requirementScope,
+        product_ids: requirementSource === 'insumos' ? [] : pIds,
+        insumo_ids: requirementSource === 'insumos' ? inIds : [],
+        category_id: requirementSource === 'non_transformed' ? (requirementCategoryId || undefined) : undefined,
+        insumo_clase: requirementSource === 'insumos' ? (requirementInsumoClase || undefined) : undefined,
+        source: requirementSource,
       });
       setLatestRequirement(requirement);
       const nextForm = {};
@@ -1170,7 +1197,7 @@ export default function Almacen() {
         .join('\n');
       const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
       const date = new Date().toISOString().slice(0, 10);
-      const scopeLabel = requirementScope === 'all_catalog' ? 'catalogo' : 'stock-bajo';
+      const scopeLabel = requirementSource === 'insumos' ? 'insumos' : 'no-transformables';
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = `requerimiento-${scopeLabel}-${date}.csv`;
@@ -1401,40 +1428,52 @@ export default function Almacen() {
             <h3 className="font-bold rf-section-title mb-4">Requerimiento interno</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 max-w-2xl">
               <div>
-                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Alcance</label>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Qué pedir</label>
                 <select
-                  value={requirementScope}
-                  onChange={(e) => setRequirementScope(e.target.value)}
+                  value={requirementSource}
+                  onChange={(e) => {
+                    setRequirementSource(e.target.value);
+                    setRequirementCategoryId('');
+                    setRequirementInsumoClase('');
+                  }}
                   className="input-field w-full"
                 >
-                  <option value="low_stock">Solo stock bajo mínimo (+ insumos kardex)</option>
-                  <option value="all_catalog">Todos los no transformables</option>
+                  <option value="non_transformed">No transformables</option>
+                  <option value="insumos">Insumos</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Categoría de productos</label>
-                <select
-                  value={requirementCategoryId}
-                  onChange={(e) => setRequirementCategoryId(e.target.value)}
-                  className="input-field w-full"
-                >
-                  <option value="">
-                    {requirementScope === 'all_catalog'
-                      ? 'Todas las categorías (todos los no transformables)'
-                      : 'Todas las categorías (+ insumos kardex bajo mínimo)'}
-                  </option>
-                  {requirementCategoryOptions.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">
+                  {requirementSource === 'insumos' ? 'Subdivisión de insumos' : 'Categoría'}
+                </label>
+                {requirementSource === 'insumos' ? (
+                  <select
+                    value={requirementInsumoClase}
+                    onChange={(e) => setRequirementInsumoClase(e.target.value)}
+                    className="input-field w-full"
+                  >
+                    <option value="">Todos los insumos</option>
+                    <option value="directo">Insumos directos</option>
+                    <option value="doble">Insumos dobles</option>
+                  </select>
+                ) : (
+                  <select
+                    value={requirementCategoryId}
+                    onChange={(e) => setRequirementCategoryId(e.target.value)}
+                    className="input-field w-full"
+                  >
+                    <option value="">Todas las categorías</option>
+                    {requirementCategoryOptions.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
             <p className="text-xs text-[var(--ui-muted)] mb-4">
-              {requirementScope === 'all_catalog'
-                ? `${requirementListForModal.length} producto(s) no transformable(s) en el filtro actual`
-                : requirementCategoryId
-                  ? `${requirementListForModal.length} producto(s) bajo mínimo en esta categoría`
-                  : `${requirementListForModal.length} ítem(s) bajo mínimo (productos + kardex)`}
+              {requirementSource === 'insumos'
+                ? `${requirementListForModal.length} insumo(s) en el filtro`
+                : `${requirementListForModal.length} producto(s) no transformable(s) en el filtro`}
             </p>
             <button className="btn-primary" onClick={openNewRequirement}>
               Nuevo requerimiento
@@ -1902,28 +1941,70 @@ export default function Almacen() {
                 ))}
               </select>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Qué agregar</label>
+                <select
+                  className="input-field"
+                  value={receptionAddDraft.source || 'non_transformed'}
+                  onChange={(e) => setReceptionAddDraft((d) => ({
+                    ...d,
+                    source: e.target.value,
+                    category_id: '',
+                    insumo_clase: '',
+                    pickValue: '',
+                  }))}
+                >
+                  <option value="non_transformed">No transformables</option>
+                  <option value="insumos">Insumos</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">
+                  {receptionAddDraft.source === 'insumos' ? 'Subdivisión' : 'Categoría'}
+                </label>
+                {receptionAddDraft.source === 'insumos' ? (
+                  <select
+                    className="input-field"
+                    value={receptionAddDraft.insumo_clase || ''}
+                    onChange={(e) => setReceptionAddDraft((d) => ({ ...d, insumo_clase: e.target.value, pickValue: '' }))}
+                  >
+                    <option value="">Todos los insumos</option>
+                    <option value="directo">Insumos directos</option>
+                    <option value="doble">Insumos dobles</option>
+                  </select>
+                ) : (
+                  <select
+                    className="input-field"
+                    value={receptionAddDraft.category_id || ''}
+                    onChange={(e) => setReceptionAddDraft((d) => ({ ...d, category_id: e.target.value, pickValue: '' }))}
+                  >
+                    <option value="">Todas las categorías</option>
+                    {requirementCategoryOptions.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
             <div>
-              <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Producto o insumo</label>
+              <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">
+                {receptionAddDraft.source === 'insumos' ? 'Insumo' : 'Producto'}
+              </label>
               <select
                 className="input-field"
                 value={receptionAddDraft.pickValue}
                 onChange={(e) => setReceptionAddDraft((d) => ({ ...d, pickValue: e.target.value }))}
               >
                 <option value="">— Seleccionar —</option>
-                {receptionPickProducts.length > 0 && (
-                  <optgroup label="Productos de almacén (unidades)">
-                    {receptionPickProducts.map((p) => (
-                      <option key={`p-${p.id}`} value={`p:${p.id}`}>{p.name}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {receptionPickInsumos.length > 0 && (
-                  <optgroup label="Insumos kardex (kg/L, unidades)">
-                    {receptionPickInsumos.map((ins) => (
-                      <option key={`i-${ins.id}`} value={`i:${ins.id}`}>{ins.nombre}</option>
-                    ))}
-                  </optgroup>
-                )}
+                {receptionAddDraft.source !== 'insumos' && receptionPickProducts.map((p) => (
+                  <option key={`p-${p.id}`} value={`p:${p.id}`}>{p.name}</option>
+                ))}
+                {receptionAddDraft.source === 'insumos' && receptionPickInsumos.map((ins) => (
+                  <option key={`i-${ins.id}`} value={`i:${ins.id}`}>
+                    {ins.nombre} · {String(ins.insumo_clase || 'directo') === 'doble' ? 'doble' : 'directo'}
+                  </option>
+                ))}
               </select>
               {receptionPickListEmpty && (
                 <p className="text-xs text-amber-700 mt-1">
@@ -1990,32 +2071,24 @@ export default function Almacen() {
         <Modal
           isOpen={showRequirementModal}
           onClose={() => setShowRequirementModal(false)}
-          title="Nuevo requerimiento · Stock bajo"
+          title={requirementSource === 'insumos' ? 'Nuevo requerimiento · Insumos' : 'Nuevo requerimiento · No transformables'}
           size="lg"
         >
           <div className="space-y-4">
             <p className="text-sm text-[var(--ui-muted)]">
-              {requirementScope === 'all_catalog' ? (
-                requirementCategoryId ? (
-                  <>
-                    Todos los productos no transformables en categoría{' '}
-                    <strong>{requirementCategoryOptions.find((c) => c.id === requirementCategoryId)?.name || 'seleccionada'}</strong>.
-                    Puede desmarcar filas antes de descargar.
-                  </>
-                ) : (
-                  <>Todos los productos no transformables activos. Puede desmarcar filas antes de descargar.</>
-                )
+              {requirementSource === 'insumos' ? (
+                <>
+                  Insumos {requirementInsumoClase === 'doble' ? 'dobles (salsas y condimentos)' : requirementInsumoClase === 'directo' ? 'directos (alitas, pollo, filetes y similares)' : 'directos y dobles'}.
+                  La recepción suma el stock en el kardex. Puede desmarcar filas.
+                </>
               ) : requirementCategoryId ? (
                 <>
-                  Solo productos de almacén en categoría{' '}
-                  <strong>{requirementCategoryOptions.find((c) => c.id === requirementCategoryId)?.name || 'seleccionada'}</strong>
-                  {' '}con stock bajo. Puede desmarcar filas antes de descargar.
+                  Productos no transformables de{' '}
+                  <strong>{requirementCategoryOptions.find((c) => c.id === requirementCategoryId)?.name || 'la categoría'}</strong>.
+                  La recepción suma el stock del almacén. Puede desmarcar filas.
                 </>
               ) : (
-                <>
-                  Incluye productos de almacén bajo su stock mínimo e <strong>insumos kardex</strong> bajo el mínimo (en U o en kg/L,
-                  según se configuró al crear el insumo). Puedes desmarcar filas.
-                </>
+                <>Todos los productos no transformables con stock. La recepción suma el stock del almacén. Puede desmarcar filas.</>
               )}
             </p>
             <div className="flex flex-wrap gap-2 items-center mb-2">
@@ -2066,7 +2139,7 @@ export default function Almacen() {
                         {p.isKardex && <span className="ml-1 text-xs text-amber-700">(Kardex)</span>}
                       </td>
                       <td className="p-2.5 ui-text-muted">
-                        {p.isKardex ? 'Kardex insumos' : (p.category_name || 'Sin categoría')}
+                        {p.category_name || 'Sin categoría'}
                       </td>
                       <td className="p-2.5 text-red-600 font-semibold">
                         {p.isKardex
@@ -2377,6 +2450,9 @@ export default function Almacen() {
                         } text-[10px] uppercase tracking-wide`}
                       >
                         {String(i.insumo_area || 'cocina').toLowerCase() === 'bar' ? 'Bar' : 'Cocina'}
+                      </span>
+                      <span className={`mr-2 ${String(i.insumo_clase || 'directo') === 'doble' ? UI_BADGE.amber : UI_BADGE.slate} text-[10px] uppercase tracking-wide`}>
+                        {String(i.insumo_clase || 'directo') === 'doble' ? 'Doble' : 'Directo'}
                       </span>
                       {i.nombre}
                     </td>

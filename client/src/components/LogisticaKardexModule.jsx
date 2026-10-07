@@ -161,9 +161,17 @@ export default function LogisticaKardexModule() {
   const [kardexInsumo, setKardexInsumo] = useState('');
   const [kardexFrom, setKardexFrom] = useState('');
   const [kardexTo, setKardexTo] = useState('');
+  const [kardexTipo, setKardexTipo] = useState('todos');
+  const [kardexMov, setKardexMov] = useState('todos');
+  const [kardexDetalleId, setKardexDetalleId] = useState('');
   const [kardexData, setKardexData] = useState(null);
+  const [consistencia, setConsistencia] = useState(null);
+  const [invTipoFiltro, setInvTipoFiltro] = useState('todos');
+  const [invBusqueda, setInvBusqueda] = useState('');
+  const [producirLotes, setProducirLotes] = useState({});
 
-  const [invDetalles, setInvDetalles] = useState([{ insumo_id: '', stock_real: '' }]);
+  const [insumoCounted, setInsumoCounted] = useState({});
+  const insumoListRef = useRef(null);
   const [whProducts, setWhProducts] = useState([]);
   const [whWarehouses, setWhWarehouses] = useState([]);
   const [cuadreWarehouseId, setCuadreWarehouseId] = useState('');
@@ -253,7 +261,7 @@ export default function LogisticaKardexModule() {
   }, [compraAreaTab]);
 
   useEffect(() => {
-    setInvDetalles([{ insumo_id: '', stock_real: '' }]);
+    setInsumoCounted({});
   }, [invFisicoAreaTab]);
 
   useEffect(() => {
@@ -265,6 +273,15 @@ export default function LogisticaKardexModule() {
       } catch (_) {}
     })();
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'kardex' && tab !== 'inv_fisico') return undefined;
+    let cancel = false;
+    api.get(`${BASE}/consistencia`)
+      .then((r) => { if (!cancel) setConsistencia(r); })
+      .catch(() => { if (!cancel) setConsistencia(null); });
+    return () => { cancel = true; };
+  }, [tab, insumos]);
 
   useEffect(() => {
     if (tab !== 'kardex' || !kardexInsumo) {
@@ -405,20 +422,72 @@ export default function LogisticaKardexModule() {
     }
   };
 
-  const crearInventarioFisico = async (e) => {
-    e.preventDefault();
+  const insumoSystemQty = (insumo) => {
+    if (isUnidadUm(insumo?.unidad_medida)) return insumoStockEnUnidades(insumo);
+    const qty = Number(insumo?.stock_actual || 0);
+    return Number.isFinite(qty) ? qty : 0;
+  };
+
+  const insumoCountDiff = (insumo) => {
+    const raw = insumoCounted[insumo.id];
+    if (raw === '' || raw === undefined) return null;
+    const counted = Number(raw);
+    if (Number.isNaN(counted)) return null;
+    return counted - insumoSystemQty(insumo);
+  };
+
+  const insumosInvList = [...insumosInvFisicoFiltrados].filter((insumo) => {
+    const tipo = String(insumo.tipo || 'insumo');
+    if (invTipoFiltro === 'transformable' && tipo !== 'transformable') return false;
+    if (invTipoFiltro === 'insumo' && tipo === 'transformable') return false;
+    const q = foldProductName(invBusqueda);
+    if (q && !foldProductName(insumo.nombre).includes(q)) return false;
+    return true;
+  }).sort((a, b) => {
+    const an = foldProductName(a.nombre);
+    const bn = foldProductName(b.nombre);
+    const prefix = foldProductName(cuadreLetter);
+    if (prefix) {
+      const aHit = an.startsWith(prefix) ? 0 : 1;
+      const bHit = bn.startsWith(prefix) ? 0 : 1;
+      if (aHit !== bHit) return aHit - bHit;
+    }
+    return an.localeCompare(bn, 'es');
+  });
+
+  const producirTransformable = async (receta) => {
+    const lotes = Number(producirLotes[receta.id] || 1);
+    if (!(lotes > 0)) {
+      toast.error('Indica cuántos lotes producir');
+      return;
+    }
+    try {
+      const r = await api.post(`${BASE}/transformaciones`, {
+        receta_id: receta.id,
+        lotes,
+        motivo: 'Producción',
+      });
+      toast.success(`Producido ${formatInsumoQty(r.cantidad_producida)} en el kardex`);
+      loadCore();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  const crearInventarioFisico = async () => {
     const detalles = [];
-    for (const d of invDetalles) {
-      if (!d.insumo_id || d.stock_real === '') continue;
-      const stock_real = parseLocaleNumber(d.stock_real);
+    for (const insumo of insumosInvFisicoFiltrados) {
+      const raw = insumoCounted[insumo.id];
+      if (raw === '' || raw === undefined) continue;
+      const stock_real = parseLocaleNumber(raw);
       if (!Number.isFinite(stock_real) || stock_real < 0) {
-        toast.error('Revisa el stock contado (número en U.M. del insumo).');
+        toast.error(`Revisa la cantidad contada de ${insumo.nombre}.`);
         return;
       }
-      detalles.push({ insumo_id: d.insumo_id, stock_real });
+      detalles.push({ insumo_id: insumo.id, stock_real });
     }
     if (!detalles.length) {
-      toast.error('Agrega al menos un insumo con stock real contado');
+      toast.error('Escribe la cantidad contada de al menos un insumo');
       return;
     }
     try {
@@ -429,7 +498,7 @@ export default function LogisticaKardexModule() {
           ? `CUADRE ${cn} creado (pendiente de cierre)`
           : 'Toma de inventario creada (pendiente de cierre)'
       );
-      setInvDetalles([{ insumo_id: '', stock_real: '' }]);
+      setInsumoCounted({});
       loadCore();
     } catch (err) {
       toast.error(err.message);
@@ -496,11 +565,11 @@ export default function LogisticaKardexModule() {
   const setCuadreLetterOnly = (raw) => {
     const letter = String(raw || '').replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]/g, '').slice(-1).toLocaleUpperCase('es');
     setCuadreLetter(letter);
-    cuadreListRef.current?.scrollTo({ top: 0 });
+    (tab === 'inv_fisico' ? insumoListRef : cuadreListRef).current?.scrollTo({ top: 0 });
   };
 
   useEffect(() => {
-    if (tab !== 'inv_no_transform' || showReconciliationsModal) return undefined;
+    if ((tab !== 'inv_no_transform' && tab !== 'inv_fisico') || showReconciliationsModal) return undefined;
     const onKey = (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
       const target = e.target;
@@ -523,7 +592,7 @@ export default function LogisticaKardexModule() {
       if (/^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]$/.test(e.key)) {
         e.preventDefault();
         setCuadreLetter(e.key.toLocaleUpperCase('es'));
-        cuadreListRef.current?.scrollTo({ top: 0 });
+        (tab === 'inv_fisico' ? insumoListRef : cuadreListRef).current?.scrollTo({ top: 0 });
       }
     };
     window.addEventListener('keydown', onKey, true);
@@ -610,8 +679,8 @@ export default function LogisticaKardexModule() {
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className="relative flex items-center gap-2 rounded-xl px-3 py-3 text-left min-h-[72px] transition hover:brightness-[0.98]"
-              style={{ background: t.bg, color: t.fg }}
+              className="relative flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left min-h-[72px] transition hover:brightness-[0.98]"
+              style={{ background: t.bg, color: t.fg, borderColor: t.line }}
             >
               <Icon className="w-7 h-7 shrink-0" />
               <span className="text-[13px] font-semibold leading-tight">{t.label}</span>
@@ -1104,14 +1173,34 @@ export default function LogisticaKardexModule() {
               >
                 <div>
                   <span className="font-medium">{r.nombre_plato}</span>
-                  <span className="ui-text-muted text-sm ml-2">· {r.product_name || r.product_id}</span>
+                  <span className="ui-text-muted text-sm ml-2">
+                    · {r.resultado_nombre ? `Produce ${r.resultado_nombre}` : (r.product_name || r.product_id)}
+                  </span>
                   <span className="ui-text-muted text-xs ml-2">
                     · {Number(r.insumos_count || 0)} insumo(s){Number(r.activo) === 1 ? '' : ' · inactiva'}
                   </span>
                 </div>
-                <button type="button" className="text-amber-400/90 text-sm" onClick={() => { setEditingRecetaId(r.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-                  Editar
-                </button>
+                <div className="flex items-center gap-2">
+                  {r.insumo_resultado_id ? (
+                    <>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={producirLotes[r.id] ?? '1'}
+                        onChange={(e) => setProducirLotes((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                        className="w-16 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-2 py-1 text-sm text-right"
+                        title="Lotes a producir"
+                      />
+                      <button type="button" className="text-teal-300 text-sm" onClick={() => producirTransformable(r)}>
+                        Producir
+                      </button>
+                    </>
+                  ) : null}
+                  <button type="button" className="text-amber-400/90 text-sm" onClick={() => { setEditingRecetaId(r.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+                    Editar
+                  </button>
+                </div>
               </div>
             ))}
             {!recetas.length && <p className="p-4 ui-text-muted text-sm">No hay recetas. Crea una aquí o desde Productos → Editar producto → Agregar receta.</p>}
@@ -1121,7 +1210,22 @@ export default function LogisticaKardexModule() {
 
       {tab === 'kardex' && (
         <div className="space-y-3">
+          {consistencia && consistencia.ok === false && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              El stock no cuadra con el kardex en {consistencia.inconsistencias.length} producto(s). No se corrigió solo:{' '}
+              {consistencia.inconsistencias.slice(0, 4).map((x) => x.nombre).join(', ')}
+              {consistencia.inconsistencias.length > 4 ? '…' : ''}
+            </div>
+          )}
           <div className="flex flex-wrap gap-2 items-center">
+            <div>
+              <label className="block text-xs ui-text-muted mb-1">Tipo</label>
+              <select className="input-field text-sm h-9 py-0" value={kardexTipo} onChange={(e) => setKardexTipo(e.target.value)}>
+                <option value="todos">Todos</option>
+                <option value="insumo">Insumo</option>
+                <option value="transformable">Transformable</option>
+              </select>
+            </div>
             <div>
               <label className="block text-xs ui-text-muted mb-1">Insumo</label>
               <select
@@ -1130,20 +1234,36 @@ export default function LogisticaKardexModule() {
                 onChange={(e) => setKardexInsumo(e.target.value)}
               >
                 <option value="">— Seleccionar —</option>
-                {insumosCocina.length > 0 && (
-                  <optgroup label="Insumos de cocina">
-                    {insumosCocina.map((i) => (
+                {insumosCocina.filter((i) => kardexTipo === 'todos' || String(i.tipo || 'insumo') === kardexTipo).length > 0 && (
+                  <optgroup label="Cocina">
+                    {insumosCocina.filter((i) => kardexTipo === 'todos' || String(i.tipo || 'insumo') === kardexTipo).map((i) => (
                       <option key={i.id} value={i.id}>{insumoOptionStockLabel(i)}</option>
                     ))}
                   </optgroup>
                 )}
-                {insumosBar.length > 0 && (
-                  <optgroup label="Insumos de bar">
-                    {insumosBar.map((i) => (
+                {insumosBar.filter((i) => kardexTipo === 'todos' || String(i.tipo || 'insumo') === kardexTipo).length > 0 && (
+                  <optgroup label="Bar">
+                    {insumosBar.filter((i) => kardexTipo === 'todos' || String(i.tipo || 'insumo') === kardexTipo).map((i) => (
                       <option key={i.id} value={i.id}>{insumoOptionStockLabel(i)}</option>
                     ))}
                   </optgroup>
                 )}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs ui-text-muted mb-1">Movimiento</label>
+              <select className="input-field text-sm h-9 py-0" value={kardexMov} onChange={(e) => setKardexMov(e.target.value)}>
+                <option value="todos">Todos</option>
+                <option value="inicial">Inventario inicial</option>
+                <option value="compra">Compra</option>
+                <option value="transformacion">Producción</option>
+                <option value="venta">Consumo por receta</option>
+                <option value="venta_masa">Consumo por peso</option>
+                <option value="merma">Merma</option>
+                <option value="ajuste">Ajuste</option>
+                <option value="inventario_fisico">Conteo</option>
+                <option value="anulacion_venta">Anulación de venta</option>
+                <option value="anulacion_transformacion">Anulación</option>
               </select>
             </div>
             <InlineDateField
@@ -1167,43 +1287,48 @@ export default function LogisticaKardexModule() {
               />
             )}
           </div>
-          {kardexData && (
-            <div className="text-sm text-[var(--ui-body-text)] mb-2">
-              <MdInventory2 className="inline mr-1" />
-              Valor inventario actual: <span className="text-emerald-400 font-medium">{formatCurrency(kardexData.valor_inventario)}</span>
-              {' · '}
-              {(() => {
-                const um = String(kardexData.insumo?.unidad_medida || '').replace(/[0-9]/g, '').trim();
-                const porUnidad = isUnidadUm(um);
-                const sAct = Number(kardexData.insumo?.stock_actual || 0);
-                const uAct = insumoStockEnUnidades(kardexData.insumo);
-                return (
-                  <span>
-                    Stock: {porUnidad
-                      ? `${formatInsumoQty(uAct)} U`
-                      : (sAct > 0 ? formatInsumoWithUnit(sAct, um) : '—')}
-                    {!porUnidad ? ` · U: ${uAct > 0 ? `${formatInsumoQty(uAct)} U` : '—'}` : ''}
-                  </span>
-                );
-              })()}
+          {kardexData?.resumen && (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {[
+                ['Stock inicial', formatInsumoQty(kardexData.resumen.stock_inicial)],
+                ['Entradas', formatInsumoQty(kardexData.resumen.entradas)],
+                ['Salidas', formatInsumoQty(kardexData.resumen.salidas)],
+                ['Stock actual', formatInsumoQty(kardexData.resumen.stock_actual)],
+                ['Valor', formatCurrency(kardexData.resumen.valor)],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2">
+                  <p className="text-[11px] ui-text-muted">{label}</p>
+                  <p className="text-sm font-semibold text-[var(--ui-body-text)] tabular-nums">
+                    {value}{label !== 'Valor' ? ` ${kardexData.resumen.unidad || ''}` : ''}
+                  </p>
+                </div>
+              ))}
             </div>
+          )}
+          {kardexData?.resumen && kardexData.resumen.cuadra === false && (
+            <p className="text-sm text-amber-300">
+              El stock actual no coincide con el último saldo del kardex. No se modificó solo.
+            </p>
           )}
           <div className="overflow-x-auto border border-slate-600/50 rounded-lg max-h-[480px] overflow-y-auto">
             <table className="w-full text-sm min-w-[900px]">
               <thead className="sticky top-0 z-10 bg-[var(--ui-surface)] border-b border-[color:var(--ui-border)] shadow-sm">
                 <tr className="text-left text-[var(--ui-body-text)] border-b border-[color:var(--ui-border)]">
                   <th className="p-2">Fecha</th>
-                  <th className="p-2">Tipo</th>
-                  <th className="p-2 text-right">Cant. (kg/L)</th>
+                  <th className="p-2">Movimiento</th>
+                  <th className="p-2">Documento</th>
+                  <th className="p-2 text-right">Entrada</th>
+                  <th className="p-2 text-right">Salida</th>
                   <th className="p-2 text-right">Cant. (U)</th>
                   <th className="p-2 text-right">C. unit.</th>
                   <th className="p-2 text-right">C. total</th>
-                  <th className="p-2 text-right">Stock res. (kg/L)</th>
+                  <th className="p-2 text-right">Stock resultante</th>
                   <th className="p-2 text-right">Stock res. (U)</th>
+                  <th className="p-2">Usuario</th>
                 </tr>
               </thead>
               <tbody>
-                {(kardexData?.movimientos || []).map((m) => {
+                {(kardexData?.movimientos || []).filter((m) => kardexMov === 'todos' || String(m.referencia || '') === kardexMov).map((m) => {
                   const ins = kardexData?.insumo || {};
                   const um = String(ins.unidad_medida || '').replace(/[0-9]/g, '').trim();
                   const kpu = Number(ins.kg_por_unidad || 0);
@@ -1212,28 +1337,30 @@ export default function LogisticaKardexModule() {
                   const canShowU = kpu > 1e-12;
                   const qtyU = canShowU ? (qtyKg / kpu) : 0;
                   const stockU = canShowU ? (stockKg / kpu) : 0;
+                  const esEntrada = m.tipo_movimiento !== 'salida';
                   return (
                     <tr key={m.id} className="border-b border-slate-600/40">
                       <td className="p-2 text-[var(--ui-body-text)]">{formatDateTime(m.fecha || m.created_at)}</td>
                       <td className="p-2">
-                        <span
-                          className={
-                            m.tipo_movimiento === 'entrada'
-                              ? 'text-emerald-400'
-                              : m.tipo_movimiento === 'salida'
-                                ? 'text-red-400'
-                                : 'text-amber-300'
-                          }
-                        >
-                          {m.tipo_movimiento === 'entrada'
-                            ? 'Entrada'
-                            : m.tipo_movimiento === 'salida'
-                              ? 'Salida'
-                              : 'Ajuste'}
+                        <span className={esEntrada ? 'text-emerald-400' : 'text-red-400'}>
+                          {m.movimiento_label || (esEntrada ? 'Entrada' : 'Salida')}
                         </span>
+                        <button type="button" className="block text-[11px] ui-text-muted" onClick={() => setKardexDetalleId((id) => (id === m.id ? '' : m.id))}>
+                          {kardexDetalleId === m.id ? 'Ocultar' : 'Ver detalle'}
+                        </button>
+                        {kardexDetalleId === m.id && (
+                          <p className="text-[11px] ui-text-muted max-w-[16rem]">
+                            {m.motivo || 'Sin motivo'}
+                            {m.receta_id ? ` · receta ${String(m.receta_id).slice(0, 8)}` : ''}
+                          </p>
+                        )}
                       </td>
-                      <td className="p-2 text-right tabular-nums text-[var(--ui-body-text)]">
-                        {formatInsumoQty(qtyKg)} {um || 'kg'}
+                      <td className="p-2 text-[var(--ui-body-text)]">{m.referencia_id ? String(m.referencia_id).slice(0, 8) : '—'}</td>
+                      <td className="p-2 text-right tabular-nums text-emerald-300">
+                        {esEntrada ? `${formatInsumoQty(qtyKg)} ${um || ''}` : '—'}
+                      </td>
+                      <td className="p-2 text-right tabular-nums text-red-300">
+                        {!esEntrada ? `${formatInsumoQty(qtyKg)} ${um || ''}` : '—'}
                       </td>
                       <td className="p-2 text-right tabular-nums text-[var(--ui-body-text)]">
                         {canShowU ? `${formatInsumoQty(qtyU)} U` : '—'}
@@ -1246,6 +1373,7 @@ export default function LogisticaKardexModule() {
                       <td className="p-2 text-right font-medium text-[var(--ui-body-text)] tabular-nums">
                         {canShowU ? `${formatInsumoQty(stockU)} U` : '—'}
                       </td>
+                      <td className="p-2 text-[var(--ui-body-text)]">{m.usuario_nombre || '—'}</td>
                     </tr>
                   );
                 })}
@@ -1345,47 +1473,142 @@ export default function LogisticaKardexModule() {
               Bar
             </button>
           </div>
+          {consistencia && consistencia.ok === false && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              Hay stock que no cuadra con el kardex. No se corrigió solo. Ábrelo en Kardex para ver el detalle.
+            </div>
+          )}
           <p className="text-[var(--ui-muted)] text-sm">
             <strong className="text-[var(--ui-body-text)]">Inventario de transformables (insumos):</strong>{' '}
-            conteo físico de materiales del kardex. Registra el conteo (pendiente) y luego <strong>cierra</strong> para generar movimientos valorizados.
+            stock actual. El conteo, al cerrarse, genera el ajuste en el kardex.
           </p>
-          <form onSubmit={crearInventarioFisico} className="space-y-2">
-            {invDetalles.map((d, i) => (
-              <div key={i} className="flex flex-wrap gap-2">
-                <select
-                  className="input-field text-sm py-1.5"
-                  value={d.insumo_id}
-                  onChange={(e) => {
-                    const n = [...invDetalles];
-                    n[i] = { ...n[i], insumo_id: e.target.value };
-                    setInvDetalles(n);
-                  }}
-                >
-                  <option value="">— Insumo —</option>
-                  {insumosInvFisicoFiltrados.map((x) => (
-                    <option key={x.id} value={x.id}>{x.nombre}</option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.0001"
-                  placeholder="Stock contado (real)"
-                  className="input-field text-sm py-1.5 w-44"
-                  value={d.stock_real}
-                  onChange={(e) => {
-                    const n = [...invDetalles];
-                    n[i] = { ...n[i], stock_real: e.target.value };
-                    setInvDetalles(n);
-                  }}
-                />
-              </div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              value={invBusqueda}
+              onChange={(e) => setInvBusqueda(e.target.value)}
+              placeholder="Buscar"
+              className="input-field text-sm h-9 py-0 w-40"
+            />
+            {['todos', 'insumo', 'transformable'].map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setInvTipoFiltro(id)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                  invTipoFiltro === id
+                    ? 'bg-teal-600/90 text-white border-teal-500'
+                    : 'border-[color:var(--ui-border)] text-[var(--ui-body-text)]'
+                }`}
+              >
+                {id === 'todos' ? 'Todos' : id === 'insumo' ? 'Insumos' : 'Transformables'}
+              </button>
             ))}
-            <button type="button" className="text-amber-400/90 text-sm" onClick={() => setInvDetalles((l) => [...l, { insumo_id: '', stock_real: '' }])}>
-              + Fila
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <label className="flex items-center gap-2 text-sm text-[var(--ui-muted)]">
+              Letra:
+              <input
+                data-cuadre-letter=""
+                value={cuadreLetter}
+                onChange={(e) => setCuadreLetterOnly(e.target.value)}
+                maxLength={1}
+                className="w-10 text-center bg-[var(--ui-surface)] border border-[color:var(--ui-border)] rounded-lg px-2 py-1.5 text-[var(--ui-body-text)] text-sm uppercase"
+                aria-label="Una letra: pone primero los insumos que empiezan con ella"
+              />
+            </label>
+          </div>
+          <div
+            ref={insumoListRef}
+            className="overflow-x-auto max-h-[70vh] overflow-y-auto rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]"
+          >
+            <table className="w-full text-sm min-w-[900px]">
+              <thead>
+                <tr className="bg-[var(--ui-surface)] border-b border-[color:var(--ui-border)] text-left text-[var(--ui-body-text)]">
+                  <th className="p-2.5 font-medium w-20">#</th>
+                  <th className="p-2.5 font-medium">Insumo</th>
+                  <th className="p-2.5 font-medium">U.M.</th>
+                  <th className="p-2.5 font-medium text-right">Stock sistema</th>
+                  <th className="p-2.5 font-medium text-right">Cantidad contada</th>
+                  <th className="p-2.5 font-medium text-right">Diferencia</th>
+                  <th className="p-2.5 font-medium text-right">Costo</th>
+                  <th className="p-2.5 font-medium text-right">Valorización</th>
+                </tr>
+              </thead>
+              <tbody>
+                {insumosInvList.map((insumo, idx) => {
+                  const um = String(insumo.unidad_medida || 'kg').replace(/[0-9]/g, '').trim() || 'kg';
+                  const porUnidad = isUnidadUm(um);
+                  const stock = insumoSystemQty(insumo);
+                  const unidades = insumoStockEnUnidades(insumo);
+                  const diff = insumoCountDiff(insumo);
+                  const unitCost = Number(insumo.costo_promedio || 0);
+                  const letterPrefix = foldProductName(cuadreLetter);
+                  const matchesLetter = Boolean(letterPrefix) && foldProductName(insumo.nombre).startsWith(letterPrefix);
+                  return (
+                    <tr key={insumo.id} className={`border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)] ${matchesLetter ? 'bg-amber-500/10' : ''}`}>
+                      <td className="p-2.5 text-[var(--ui-muted)]">#{String(idx + 1).padStart(3, '0')}</td>
+                      <td className="p-2.5 font-medium text-[var(--ui-body-text)]">
+                        {insumo.nombre}
+                        <span className="block text-[11px] font-normal text-[var(--ui-muted)]">
+                          {String(insumo.tipo || 'insumo') === 'transformable' ? 'Transformable' : 'Insumo'}
+                          {' · '}mín {formatInsumoQty(insumo.stock_minimo || insumo.minimo_unidades || 0)}
+                          {' · '}máx {formatInsumoQty(insumo.stock_maximo || 0)}
+                          {insumo.ultima_produccion ? ` · última producción ${formatDateTime(insumo.ultima_produccion)}` : ''}
+                          {insumo.ultimo_movimiento ? ` · último mov. ${formatDateTime(insumo.ultimo_movimiento)}` : ''}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-[11px] text-teal-300"
+                          onClick={() => { setTab('kardex'); setKardexInsumo(insumo.id); }}
+                        >
+                          Ver kardex
+                        </button>
+                      </td>
+                      <td className="p-2.5 text-[var(--ui-muted)]">{porUnidad ? 'Unidad' : um}</td>
+                      <td className="p-2.5 text-right tabular-nums">
+                        {porUnidad ? `${formatInsumoQty(stock)} U` : formatInsumoWithUnit(stock, um)}
+                        {!porUnidad && unidades > 0 ? (
+                          <span className="block text-xs text-[var(--ui-muted)]">{formatInsumoQty(unidades)} U</span>
+                        ) : null}
+                      </td>
+                      <td className="p-2.5 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.0001"
+                          value={insumoCounted[insumo.id] ?? ''}
+                          onChange={(e) => setInsumoCounted((prev) => ({ ...prev, [insumo.id]: e.target.value }))}
+                          className="w-24 ml-auto rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] py-1.5 px-2 text-right text-sm text-[var(--ui-body-text)]"
+                          placeholder="0"
+                        />
+                      </td>
+                      <td
+                        className={`p-2.5 text-right font-medium ${
+                          diff === null ? 'text-[var(--ui-muted)]' : diff === 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-sky-400'
+                        }`}
+                      >
+                        {diff === null ? '—' : formatInsumoQty(diff)}
+                      </td>
+                      <td className="p-2.5 text-right">{formatCurrency(unitCost)}</td>
+                      <td className="p-2.5 text-right">{formatCurrency(insumoValorInventario(insumo))}</td>
+                    </tr>
+                  );
+                })}
+                {insumosInvList.length === 0 && (
+                  <tr>
+                    <td colSpan="8" className="p-8 text-center text-[var(--ui-muted)]">
+                      No hay insumos de {invFisicoAreaTab === 'bar' ? 'bar' : 'cocina'}.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex justify-end">
+            <button type="button" onClick={crearInventarioFisico} className="btn-primary">
+              Crear toma (pendiente)
             </button>
-            <button type="submit" className="btn-primary block">Crear toma (pendiente)</button>
-          </form>
+          </div>
           <div className="mt-4 space-y-2">
             <p className="ui-text-muted text-xs flex items-center gap-1"><MdList /> Últimos inventarios</p>
             {invList.map((iv) => {

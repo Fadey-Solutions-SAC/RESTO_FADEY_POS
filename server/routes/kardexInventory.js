@@ -40,17 +40,55 @@ function normalizeInsumoArea(raw) {
   return s === 'bar' ? 'bar' : 'cocina';
 }
 
+function normalizeInsumoTipo(raw) {
+  return String(raw || '').trim().toLowerCase() === 'transformable' ? 'transformable' : 'insumo';
+}
+
+function normalizeInsumoClase(raw) {
+  return String(raw || '').trim().toLowerCase() === 'doble' ? 'doble' : 'directo';
+}
+
+function validarFabricacionDoble(resultadoId, detalles) {
+  const resultado = queryOne('SELECT id, nombre, insumo_clase, tipo FROM insumos WHERE id = ?', [resultadoId]);
+  if (!resultado) throw new Error('El insumo que se fabrica no existe');
+  const esDoble = normalizeInsumoClase(resultado.insumo_clase) === 'doble' || String(resultado.tipo || '') === 'transformable';
+  if (!esDoble) {
+    throw new Error('La fabricación se vincula a un insumo doble, por ejemplo salsa de tomate');
+  }
+  for (const d of detalles || []) {
+    const iid = String(d?.insumo_id || '').trim();
+    if (!iid) continue;
+    if (iid === String(resultadoId)) throw new Error('El insumo doble no puede ser ingrediente de sí mismo');
+    const ing = queryOne('SELECT nombre, insumo_clase FROM insumos WHERE id = ?', [iid]);
+    if (!ing) throw new Error('Hay un ingrediente que no existe');
+    if (normalizeInsumoClase(ing.insumo_clase) === 'doble') {
+      throw new Error(`«${ing.nombre}» es doble. Para fabricar usa insumos directos, como el tomate.`);
+    }
+  }
+}
+
+function requestIp(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || String(req.ip || '');
+}
+
 /** GET /insumos — ?area=cocina|bar filtra; sin parámetro devuelve todos (orden por área y nombre). */
 router.get('/insumos', (req, res) => {
   try {
     const areaQ = String(req.query.area || '').trim().toLowerCase();
-    let sql = 'SELECT * FROM insumos';
+    let sql = `SELECT i.*,
+      (SELECT k.fecha FROM kardex k WHERE k.id_insumo = i.id ORDER BY datetime(k.created_at) DESC LIMIT 1) AS ultimo_movimiento,
+      (SELECT k.referencia FROM kardex k WHERE k.id_insumo = i.id ORDER BY datetime(k.created_at) DESC LIMIT 1) AS ultimo_movimiento_ref,
+      (SELECT t.created_at FROM transformaciones t
+        WHERE t.insumo_resultado_id = i.id AND t.estado = 'confirmada'
+        ORDER BY datetime(t.created_at) DESC LIMIT 1) AS ultima_produccion
+      FROM insumos i`;
     const params = [];
     if (areaQ === 'cocina' || areaQ === 'bar') {
-      sql += ' WHERE insumo_area = ?';
+      sql += ' WHERE i.insumo_area = ?';
       params.push(areaQ);
     }
-    sql += ' ORDER BY insumo_area ASC, nombre ASC';
+    sql += ' ORDER BY i.insumo_area ASC, i.nombre ASC';
     const rows = queryAll(sql, params);
     res.json(rows);
   } catch (err) {
@@ -113,11 +151,30 @@ router.post('/insumos', (req, res) => {
                 : minimo_kg
           ) || 0
         );
-    runSql(
-      `INSERT INTO insumos (id, nombre, unidad_medida, stock_actual, stock_unidades, minimo_unidades, kg_por_unidad, stock_minimo, costo_promedio, activo, insumo_area, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [id, n, umed, sa, su, mu, smin, costo, activo === false || activo === 0 ? 0 : 1, area]
-    );
+    const smax = Math.max(0, Number(req.body?.stock_maximo) || 0);
+    const tipo = normalizeInsumoTipo(req.body?.tipo);
+    const clase = normalizeInsumoClase(req.body?.insumo_clase);
+    const ip = requestIp(req);
+    withTransaction((tx) => {
+      tx.run(
+        `INSERT INTO insumos (id, nombre, unidad_medida, stock_actual, stock_unidades, minimo_unidades, kg_por_unidad, stock_minimo, stock_maximo, costo_promedio, activo, insumo_area, tipo, insumo_clase, created_at, updated_at)
+         VALUES (?, ?, ?, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        [id, n, umed, mu, smin, smax, costo, activo === false || activo === 0 ? 0 : 1, area, tipo, clase]
+      );
+      if (sa > 0) {
+        kx.registrarEntrada(tx, {
+          insumoId: id,
+          cantidad: sa,
+          costoUnitario: costo,
+          referencia: 'inicial',
+          referenciaId: id,
+          userId: req.user.id,
+          unidadesIngreso: porUnidad ? sa : (su > 0 ? su : undefined),
+          motivo: 'Inventario inicial',
+          ip,
+        });
+      }
+    });
     logAudit({
       actorUserId: req.user.id,
       actorName: req.user.full_name || '',
@@ -161,27 +218,49 @@ router.put('/insumos/:id', (req, res) => {
       suVal = units;
       saVal = units;
     }
-    runSql(
-      `UPDATE insumos SET nombre = COALESCE(?, nombre), unidad_medida = COALESCE(?, unidad_medida),
-       stock_unidades = COALESCE(?, stock_unidades), minimo_unidades = COALESCE(?, minimo_unidades),
-       stock_minimo = COALESCE(?, stock_minimo), costo_promedio = COALESCE(?, costo_promedio),
-       stock_actual = COALESCE(?, stock_actual),
-       activo = COALESCE(?, activo),
-       insumo_area = COALESCE(?, insumo_area),
-       updated_at = datetime('now') WHERE id = ?`,
-      [
-        nombre != null ? normalizeCatalogDisplayName(nombre) : null,
-        unidad_medida != null ? umed : null,
-        suVal,
-        minimo_unidades != null ? Math.max(0, Number(minimo_unidades)) : null,
-        porUnidad ? 0 : (stock_minimo != null ? Math.max(0, Number(stock_minimo)) : null),
-        costo_promedio != null ? Math.max(0, Number(costo_promedio)) : null,
-        saVal,
-        activo != null ? (activo ? 1 : 0) : null,
-        insumo_area != null ? normalizeInsumoArea(insumo_area) : null,
-        req.params.id,
-      ]
-    );
+    const tipo = req.body?.tipo != null ? normalizeInsumoTipo(req.body.tipo) : null;
+    const smax = req.body?.stock_maximo != null ? Math.max(0, Number(req.body.stock_maximo) || 0) : null;
+    const motivoStock = String(req.body?.motivo || 'Edición de ficha de insumo').trim() || 'Edición de ficha de insumo';
+    withTransaction((tx) => {
+      tx.run(
+        `UPDATE insumos SET nombre = COALESCE(?, nombre), unidad_medida = COALESCE(?, unidad_medida),
+         minimo_unidades = COALESCE(?, minimo_unidades),
+         stock_minimo = COALESCE(?, stock_minimo),
+         stock_maximo = COALESCE(?, stock_maximo),
+         costo_promedio = COALESCE(?, costo_promedio),
+         activo = COALESCE(?, activo),
+         insumo_area = COALESCE(?, insumo_area),
+         tipo = COALESCE(?, tipo),
+         insumo_clase = COALESCE(?, insumo_clase),
+         updated_at = datetime('now') WHERE id = ?`,
+        [
+          nombre != null ? normalizeCatalogDisplayName(nombre) : null,
+          unidad_medida != null ? umed : null,
+          minimo_unidades != null ? Math.max(0, Number(minimo_unidades)) : null,
+          porUnidad ? 0 : (stock_minimo != null ? Math.max(0, Number(stock_minimo)) : null),
+          smax,
+          costo_promedio != null ? Math.max(0, Number(costo_promedio)) : null,
+          activo != null ? (activo ? 1 : 0) : null,
+          insumo_area != null ? normalizeInsumoArea(insumo_area) : null,
+          tipo,
+          req.body?.insumo_clase != null ? normalizeInsumoClase(req.body.insumo_clase) : null,
+          req.params.id,
+        ]
+      );
+      if (saVal != null && Math.abs(saVal - Number(cur.stock_actual || 0)) > 1e-6) {
+        const diff = saVal - Number(cur.stock_actual || 0);
+        const comun = {
+          insumoId: req.params.id,
+          referencia: 'ajuste',
+          referenciaId: req.params.id,
+          userId: req.user.id,
+          motivo: motivoStock,
+          ip: requestIp(req),
+        };
+        if (diff > 0) kx.registrarAjusteEntrada(tx, { ...comun, cantidad: diff });
+        else kx.registrarAjusteSalida(tx, { ...comun, cantidad: -diff });
+      }
+    });
     res.json(queryOne('SELECT * FROM insumos WHERE id = ?', [req.params.id]));
   } catch (err) {
     res.status(500).json({ error: err.message || 'Error al actualizar insumo' });
@@ -227,23 +306,45 @@ router.get('/kardex/:insumoId', (req, res) => {
     const { from, to } = req.query;
     const insumo = queryOne('SELECT * FROM insumos WHERE id = ?', [req.params.insumoId]);
     if (!insumo) return res.status(404).json({ error: 'Insumo no encontrado' });
-    let sql = `SELECT * FROM kardex WHERE id_insumo = ?`;
+    let sql = `SELECT k.*, u.full_name AS usuario_nombre
+      FROM kardex k
+      LEFT JOIN users u ON u.id = k.created_by
+      WHERE k.id_insumo = ?`;
     const p = [req.params.insumoId];
     if (from) {
-      sql += ` AND date(fecha) >= date(?)`;
+      sql += ` AND date(k.fecha) >= date(?)`;
       p.push(from);
     }
     if (to) {
-      sql += ` AND date(fecha) <= date(?)`;
+      sql += ` AND date(k.fecha) <= date(?)`;
       p.push(to);
     }
-    sql += ` ORDER BY datetime(created_at) ASC`;
-    const movs = queryAll(sql, p);
-    const valorInv = Number(insumo.stock_actual || 0) * Number(insumo.costo_promedio || 0);
+    const ref = String(req.query.movimiento || '').trim().toLowerCase();
+    if (ref && ref !== 'todos') {
+      sql += ` AND lower(k.referencia) = ?`;
+      p.push(ref);
+    }
+    sql += ` ORDER BY datetime(k.created_at) ASC`;
+    const movs = queryAll(sql, p).map((m) => ({
+      ...m,
+      movimiento_label: kx.etiquetaMovimiento(m.referencia, m.tipo_movimiento),
+    }));
+    const last = queryOne(
+      `SELECT stock_resultante FROM kardex WHERE id_insumo = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT 1`,
+      [req.params.insumoId]
+    );
+    const resumen = kx.resumenKardex(insumo, movs);
+    const stock = Number(insumo.stock_actual || 0);
+    resumen.cuadra = last
+      ? Math.abs(Number(last.stock_resultante) - stock) <= 1e-3
+      : Math.abs(stock) <= 1e-3;
+    const almacen = kx.resolverAlmacenInsumos({ queryOne });
     res.json({
       insumo,
       movimientos: movs,
-      valor_inventario: Number(valorInv.toFixed(4)),
+      resumen,
+      almacen,
+      valor_inventario: Number(resumen.valor.toFixed(4)),
     });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Error al leer kardex' });
@@ -303,10 +404,11 @@ router.get('/recetas', (req, res) => {
   try {
     const productId = String(req.query.product_id || '').trim();
     const rows = queryAll(
-      `SELECT r.*, p.name as product_name,
+      `SELECT r.*, p.name as product_name, ir.nombre AS resultado_nombre,
               (SELECT COUNT(*) FROM receta_detalle rd WHERE rd.receta_id = r.id) AS insumos_count
        FROM recetas r
        LEFT JOIN products p ON p.id = r.product_id
+       LEFT JOIN insumos ir ON ir.id = r.insumo_resultado_id
        ${productId ? 'WHERE r.product_id = ?' : ''}
        ORDER BY r.nombre_plato ASC`,
       productId ? [productId] : [],
@@ -320,24 +422,45 @@ router.get('/recetas', (req, res) => {
 /** POST /recetas */
 router.post('/recetas', (req, res) => {
   try {
-    const { nombre_plato, product_id, activo, detalles } = req.body || {};
+    const { nombre_plato, product_id, activo, detalles, insumo_resultado_id, rendimiento } = req.body || {};
     const n = String(nombre_plato || '').trim();
     if (!n) return res.status(400).json({ error: 'nombre_plato requerido' });
     const pid = String(product_id || '').trim();
-    if (!pid) return res.status(400).json({ error: 'product_id requerido para vincular a un plato del menú' });
-    const existing = queryOne('SELECT id FROM recetas WHERE product_id = ? ORDER BY activo DESC, created_at ASC LIMIT 1', [pid]);
+    const resultadoId = String(insumo_resultado_id || '').trim();
+    const rend = Number(rendimiento || 0);
+    const esProduccion = Boolean(resultadoId);
+    if (esProduccion) {
+      if (!(rend > 0)) return res.status(400).json({ error: 'Indica cuánto rinde un lote del transformable' });
+      if (pid) {
+        return res.status(400).json({
+          error: 'Una receta de producción no se vincula a un plato. Así la venta no vuelve a descontar los ingredientes.',
+        });
+      }
+    } else if (!pid) {
+      return res.status(400).json({ error: 'product_id requerido para vincular a un plato del menú' });
+    }
+    if (esProduccion) validarFabricacionDoble(resultadoId, detalles);
+    const existing = pid
+      ? queryOne('SELECT id FROM recetas WHERE product_id = ? ORDER BY activo DESC, created_at ASC LIMIT 1', [pid])
+      : queryOne(
+        `SELECT id FROM recetas WHERE insumo_resultado_id = ? AND TRIM(IFNULL(product_id, '')) = '' ORDER BY created_at ASC LIMIT 1`,
+        [resultadoId],
+      );
     const id = existing?.id || uuidv4();
     withTransaction((tx) => {
       if (existing) {
-        tx.run('UPDATE recetas SET nombre_plato = ?, activo = ? WHERE id = ?', [n, activo === false ? 0 : 1, id]);
+        tx.run(
+          'UPDATE recetas SET nombre_plato = ?, activo = ?, insumo_resultado_id = ?, rendimiento = ? WHERE id = ?',
+          [n, activo === false ? 0 : 1, resultadoId, esProduccion ? rend : 0, id]
+        );
         tx.run('DELETE FROM receta_detalle WHERE receta_id = ?', [id]);
       } else {
         tx.run(
-          `INSERT INTO recetas (id, nombre_plato, product_id, activo) VALUES (?, ?, ?, ?)`,
-          [id, n, pid, activo === false ? 0 : 1]
+          `INSERT INTO recetas (id, nombre_plato, product_id, activo, insumo_resultado_id, rendimiento) VALUES (?, ?, ?, ?, ?, ?)`,
+          [id, n, pid, activo === false ? 0 : 1, resultadoId, esProduccion ? rend : 0]
         );
       }
-      clearProductKardexLines(tx, pid);
+      if (pid) clearProductKardexLines(tx, pid);
       if (Array.isArray(detalles)) {
         detalles.forEach((d) => {
           if (!d.insumo_id || d.cantidad_usada == null) return;
@@ -377,18 +500,35 @@ router.put('/recetas/:id', (req, res) => {
   try {
     const cur = queryOne('SELECT * FROM recetas WHERE id = ?', [req.params.id]);
     if (!cur) return res.status(404).json({ error: 'Receta no encontrada' });
-    const { nombre_plato, product_id, activo, detalles } = req.body || {};
+    const { nombre_plato, product_id, activo, detalles, insumo_resultado_id, rendimiento } = req.body || {};
+    const nextPid = product_id != null ? String(product_id).trim() : String(cur.product_id || '').trim();
+    const nextResultado = insumo_resultado_id != null
+      ? String(insumo_resultado_id).trim()
+      : String(cur.insumo_resultado_id || '').trim();
+    const nextRend = rendimiento != null ? Number(rendimiento) : Number(cur.rendimiento || 0);
+    if (nextResultado && nextPid) {
+      return res.status(400).json({
+        error: 'Una receta de producción no se vincula a un plato. Así la venta no vuelve a descontar los ingredientes.',
+      });
+    }
+    if (nextResultado && !(nextRend > 0)) {
+      return res.status(400).json({ error: 'Indica cuánto rinde un lote del insumo doble' });
+    }
+    if (nextResultado) validarFabricacionDoble(nextResultado, Array.isArray(detalles) ? detalles : []);
     withTransaction((tx) => {
       tx.run(
-        `UPDATE recetas SET nombre_plato = COALESCE(?, nombre_plato), product_id = COALESCE(?, product_id), activo = COALESCE(?, activo) WHERE id = ?`,
+        `UPDATE recetas SET nombre_plato = COALESCE(?, nombre_plato), product_id = ?, activo = COALESCE(?, activo),
+         insumo_resultado_id = ?, rendimiento = ? WHERE id = ?`,
         [
           nombre_plato != null ? String(nombre_plato).trim() : null,
-          product_id != null ? String(product_id).trim() : null,
+          nextPid,
           activo != null ? (activo ? 1 : 0) : null,
+          nextResultado,
+          nextResultado ? nextRend : 0,
           req.params.id,
         ]
       );
-      clearProductKardexLines(tx, product_id != null ? String(product_id).trim() : cur.product_id);
+      if (nextPid) clearProductKardexLines(tx, nextPid);
       if (Array.isArray(detalles)) {
         tx.run('DELETE FROM receta_detalle WHERE receta_id = ?', [req.params.id]);
         detalles.forEach((d) => {
@@ -517,37 +657,100 @@ router.get('/inventario-fisico', (req, res) => {
 /** POST /ajustes — merma o entrada manual (sin compra) */
 router.post('/ajustes', (req, res) => {
   try {
-    const { insumo_id, cantidad, tipo, referencia } = req.body || {};
+    const { insumo_id, cantidad, tipo, referencia, motivo } = req.body || {};
     const t = String(tipo || 'salida').toLowerCase();
     if (!insumo_id) return res.status(400).json({ error: 'insumo_id requerido' });
     const c = Number(cantidad);
     if (c <= 0) return res.status(400).json({ error: 'cantidad > 0 requerida' });
+    const nota = String(motivo || '').trim();
+    if (!nota) return res.status(400).json({ error: 'El ajuste o la merma necesitan un motivo' });
     const ref = String(referencia || (t === 'entrada' ? 'ajuste' : 'merma'));
     const opId = uuidv4();
     withTransaction((tx) => {
+      const comun = {
+        insumoId: insumo_id,
+        cantidad: c,
+        referencia: ref,
+        referenciaId: opId,
+        userId: req.user.id,
+        motivo: nota,
+        ip: requestIp(req),
+      };
       if (t === 'entrada') {
         const ins = tx.queryOne('SELECT * FROM insumos WHERE id = ?', [insumo_id]);
         if (!ins) throw new Error('Insumo no encontrado');
-        kx.registrarAjusteEntrada(tx, {
-          insumoId: insumo_id,
-          cantidad: c,
-          referencia: ref,
-          referenciaId: opId,
-          userId: req.user.id,
-        });
+        kx.registrarAjusteEntrada(tx, comun);
       } else {
-        kx.registrarAjusteSalida(tx, {
-          insumoId: insumo_id,
-          cantidad: c,
-          referencia: ref,
-          referenciaId: opId,
-          userId: req.user.id,
-        });
+        kx.registrarAjusteSalida(tx, comun);
       }
     });
     res.status(201).json({ ok: true, operacion_id: opId });
   } catch (err) {
     res.status(400).json({ error: err.message || 'Error en ajuste' });
+  }
+});
+
+/** POST /transformaciones — produce un transformable y mueve el kardex de ingredientes y resultado. */
+router.post('/transformaciones', (req, res) => {
+  try {
+    const { receta_id, lotes, motivo } = req.body || {};
+    if (!receta_id) return res.status(400).json({ error: 'receta_id requerido' });
+    const result = withTransaction((tx) => kx.ejecutarTransformacion(tx, {
+      recetaId: receta_id,
+      lotes,
+      userId: req.user.id,
+      motivo,
+      ip: requestIp(req),
+    }));
+    logAudit({
+      actorUserId: req.user.id,
+      actorName: req.user.full_name || '',
+      action: 'kardex.transformacion',
+      resourceType: 'transformacion',
+      resourceId: result.id,
+      details: result,
+    });
+    emitInventoryUpdate({});
+    res.status(201).json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'No se pudo producir' });
+  }
+});
+
+/** POST /transformaciones/:id/anular — movimientos inversos, sin borrar el kardex. */
+router.post('/transformaciones/:id/anular', (req, res) => {
+  try {
+    const motivo = String(req.body?.motivo || '').trim();
+    if (!motivo) return res.status(400).json({ error: 'Indica el motivo de la anulación' });
+    const result = withTransaction((tx) => kx.anularTransformacion(
+      tx,
+      req.params.id,
+      req.user.id,
+      motivo,
+      requestIp(req),
+    ));
+    logAudit({
+      actorUserId: req.user.id,
+      actorName: req.user.full_name || '',
+      action: 'kardex.transformacion.anular',
+      resourceType: 'transformacion',
+      resourceId: req.params.id,
+      details: result,
+    });
+    emitInventoryUpdate({});
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'No se pudo anular' });
+  }
+});
+
+/** GET /consistencia — stock vs último saldo del kardex. No corrige diferencias. */
+router.get('/consistencia', (req, res) => {
+  try {
+    const report = kx.auditarConsistenciaKardex({ queryAll });
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo revisar la consistencia' });
   }
 });
 

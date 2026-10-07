@@ -414,67 +414,50 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
     const selectedInsumoIds = Array.isArray(req.body?.insumo_ids) ? req.body.insumo_ids : null;
     const categoryId = String(req.body?.category_id || '').trim();
     const filterByCategory = Boolean(categoryId);
-    const scopeAll = String(req.body?.scope || 'low_stock').trim() === 'all_catalog';
-    const productSql = scopeAll
-      ? `SELECT p.id, p.name, p.stock, p.min_stock, p.max_stock, p.stock_warehouse_id, p.price, p.category_id,
+    const source = String(req.body?.source || 'non_transformed').trim() === 'insumos' ? 'insumos' : 'non_transformed';
+    const insumoClase = String(req.body?.insumo_clase || '').trim().toLowerCase();
+    const claseFiltro = insumoClase === 'doble' || insumoClase === 'directo' ? insumoClase : '';
+
+    let lowStockProducts = [];
+    let insumosBajo = [];
+    if (source === 'non_transformed') {
+      lowStockProducts = queryAll(
+        `SELECT p.id, p.name, p.stock, p.min_stock, p.max_stock, p.stock_warehouse_id, p.price, p.category_id,
                 c.name as category_name
          FROM products p
          LEFT JOIN categories c ON c.id = p.category_id
          WHERE p.is_active = 1
            AND p.process_type = 'non_transformed'
          ORDER BY p.name ASC`
-      : `SELECT p.id, p.name, p.stock, p.min_stock, p.max_stock, p.stock_warehouse_id, p.price, p.category_id,
-                c.name as category_name
-         FROM products p
-         LEFT JOIN categories c ON c.id = p.category_id
-         WHERE p.is_active = 1
-           AND p.process_type = 'non_transformed'
-           AND ${isNonTransformedLowStockSql('p')}
-         ORDER BY p.stock ASC, p.name ASC`;
-    let lowStockProducts = queryAll(productSql);
-    if (filterByCategory) {
-      lowStockProducts = lowStockProducts.filter((p) => {
-        if (categoryId === '__none__') return !String(p.category_id || '').trim();
-        return String(p.category_id || '') === categoryId;
-      });
+      );
+      if (filterByCategory) {
+        lowStockProducts = lowStockProducts.filter((p) => {
+          if (categoryId === '__none__') return !String(p.category_id || '').trim();
+          return String(p.category_id || '') === categoryId;
+        });
+      }
+      lowStockProducts = lowStockProducts.filter((p) => !selectedProductIds || selectedProductIds.includes(p.id));
+    } else {
+      insumosBajo = queryAll(
+        `SELECT id, nombre, stock_unidades, minimo_unidades, stock_actual, stock_minimo, unidad_medida, costo_promedio, kg_por_unidad,
+                COALESCE(insumo_area, 'cocina') as insumo_area,
+                CASE WHEN LOWER(TRIM(COALESCE(insumo_clase, 'directo'))) = 'doble' THEN 'doble' ELSE 'directo' END as insumo_clase
+         FROM insumos
+         WHERE activo = 1
+         ORDER BY nombre`
+      ).filter((i) => !claseFiltro || String(i.insumo_clase) === claseFiltro)
+        .filter((i) => !selectedInsumoIds || selectedInsumoIds.includes(i.id));
     }
-    lowStockProducts = lowStockProducts.filter((p) => !selectedProductIds || selectedProductIds.includes(p.id));
-
-    const insumosBajo = filterByCategory || scopeAll
-      ? []
-      : queryAll(
-      `SELECT id, nombre, stock_unidades, minimo_unidades, stock_actual, stock_minimo, unidad_medida, costo_promedio, kg_por_unidad,
-              COALESCE(insumo_area, 'cocina') as insumo_area
-       FROM insumos
-       WHERE activo = 1
-         AND (
-           (
-             LOWER(TRIM(COALESCE(unidad_medida,''))) IN ('unidad', 'u', 'und', 'unidades')
-             AND minimo_unidades > 0
-             AND COALESCE(NULLIF(stock_unidades, 0), stock_actual) + 0.0001 < minimo_unidades
-           )
-           OR (
-             LOWER(TRIM(COALESCE(unidad_medida,''))) NOT IN ('unidad', 'u', 'und', 'unidades')
-             AND (
-               (minimo_unidades > 0 AND stock_unidades + 0.0001 < minimo_unidades)
-               OR (stock_minimo > 0 AND stock_actual + 0.0001 < stock_minimo)
-             )
-           )
-         )
-       ORDER BY nombre`
-    ).filter(
-      (i) => !selectedInsumoIds || selectedInsumoIds.includes(i.id)
-    );
 
     if (!lowStockProducts.length && !insumosBajo.length) {
       return res.status(400).json({
-        error: scopeAll
-          ? (filterByCategory
+        error: source === 'insumos'
+          ? (claseFiltro
+            ? `No hay insumos ${claseFiltro === 'doble' ? 'dobles' : 'directos'} activos`
+            : 'No hay insumos activos para requerimiento')
+          : (filterByCategory
             ? 'No hay productos no transformables en la categoría seleccionada'
-            : 'No hay productos no transformables activos para requerimiento')
-          : filterByCategory
-            ? 'No hay productos de almacén bajo mínimo en la categoría seleccionada'
-            : 'No hay productos de almacén ni insumos kardex bajo mínimo para requerimiento',
+            : 'No hay productos no transformables activos para requerimiento'),
       });
     }
 
@@ -567,7 +550,7 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
         total_cost: 0,
         item_type: 'insumo',
         insumo_id: inm.id,
-        category_name: 'Kardex insumos',
+        category_name: String(inm.insumo_clase) === 'doble' ? 'Insumos dobles' : 'Insumos directos',
         price: Number(inm.costo_promedio || 0),
       };
 
@@ -600,6 +583,14 @@ router.post('/requirements/low-stock', authenticateToken, requireRole('admin'), 
         product_name = `[Kardex] ${inm.nombre} · faltan ≈${suggestedQtyKg.toFixed(2)} ${umc} (mín. ${sMin} ${umc})`;
         current_stock = sAct;
         const item = { ...base, product_name, current_stock, suggested_qty: suggestedQtyKg, uom: umc };
+        const row = { ...item };
+        delete row.uom;
+        insertItem(row);
+        outItems.push({ ...row, uom: umc });
+      } else {
+        product_name = `[Kardex] ${inm.nombre}`;
+        current_stock = porUnidad ? uAct : sAct;
+        const item = { ...base, product_name, current_stock, suggested_qty: 0, uom: umc };
         const row = { ...item };
         delete row.uom;
         insertItem(row);

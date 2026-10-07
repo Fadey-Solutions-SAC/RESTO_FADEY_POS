@@ -8,6 +8,56 @@ const { getKardexMetodoValorizacion } = require('./businessConfigService');
 const { isUnidadUm, isMasaOrLitrajeUm, recipeQtyToStock } = require('../utils/insumoUnidadMedida');
 const { resolveKardexInsumoLines } = require('../utils/productKardexInsumos');
 
+function kardexMeta(p = {}) {
+  const cantidadOriginal = p.cantidadOriginal != null && p.cantidadOriginal !== ''
+    ? Number(p.cantidadOriginal)
+    : null;
+  return {
+    motivo: String(p.motivo || ''),
+    recetaId: String(p.recetaId || ''),
+    almacenId: String(p.almacenId || ''),
+    unidadOriginal: String(p.unidadOriginal || ''),
+    cantidadOriginal: Number.isFinite(cantidadOriginal) ? cantidadOriginal : null,
+    ip: String(p.ip || ''),
+  };
+}
+
+function etiquetaMovimiento(referencia, tipoMovimiento) {
+  const ref = String(referencia || '').toLowerCase();
+  const tipo = String(tipoMovimiento || '').toLowerCase();
+  const map = {
+    inicial: 'Inventario inicial',
+    compra: 'Compra',
+    recepcion: 'Recepción',
+    venta: 'Consumo por receta',
+    venta_masa: 'Consumo por receta',
+    anulacion_venta: 'Anulación',
+    merma: 'Merma',
+    ajuste: tipo === 'entrada' ? 'Ajuste positivo' : 'Ajuste negativo',
+    inventario_fisico: tipo === 'entrada' ? 'Ajuste positivo' : 'Ajuste negativo',
+    transformacion: tipo === 'entrada' ? 'Producción' : 'Transformación',
+    anulacion_transformacion: 'Anulación',
+    devolucion: 'Devolución',
+    traslado_entrada: 'Traslado entrada',
+    traslado_salida: 'Traslado salida',
+  };
+  if (map[ref]) return map[ref];
+  if (tipo === 'entrada') return 'Entrada';
+  if (tipo === 'salida') return 'Salida';
+  return 'Ajuste';
+}
+
+function resolverAlmacenInsumos(tx) {
+  const wh = tx.queryOne(
+    `SELECT id, name FROM warehouse_locations
+     WHERE is_active = 1
+       AND (linked_insumos = 1 OR LOWER(name) = LOWER('Almacen de insumos'))
+     ORDER BY linked_insumos DESC
+     LIMIT 1`
+  );
+  return { id: wh?.id || '', name: wh?.name || '' };
+}
+
 function normalizeKardexTimestamp(eventAt) {
   const raw = String(eventAt || '').trim();
   if (!raw) return null;
@@ -68,11 +118,13 @@ function registrarEntrada(tx, { insumoId, cantidad, costoUnitario, referencia, r
 
   const kid = uuidv4();
   const ts = normalizeKardexTimestamp(eventAt);
+  const meta = kardexMeta(arguments[1] || {});
   tx.run(
     `INSERT INTO kardex (
       id, id_insumo, tipo_movimiento, cantidad, costo_unitario, costo_total,
-      stock_anterior, stock_resultante, metodo_valorizacion, referencia, referencia_id, fecha, created_at, created_by
-    ) VALUES (?, ?, 'entrada', ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')), ?)`,
+      stock_anterior, stock_resultante, metodo_valorizacion, referencia, referencia_id, fecha, created_at, created_by,
+      motivo, receta_id, almacen_id, unidad_original, cantidad_original, ip
+    ) VALUES (?, ?, 'entrada', ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')), ?, ?, ?, ?, ?, ?, ?)`,
     [
       kid,
       insumoId,
@@ -87,6 +139,12 @@ function registrarEntrada(tx, { insumoId, cantidad, costoUnitario, referencia, r
       ts,
       ts,
       userId || null,
+      meta.motivo,
+      meta.recetaId,
+      meta.almacenId,
+      meta.unidadOriginal,
+      meta.cantidadOriginal,
+      meta.ip,
     ]
   );
   return kid;
@@ -168,11 +226,13 @@ function registrarSalida(tx, { insumoId, cantidad, unidadesSalida, soloMasa, ref
 
   const kid = uuidv4();
   const ts = normalizeKardexTimestamp(eventAt);
+  const meta = kardexMeta(arguments[1] || {});
   tx.run(
     `INSERT INTO kardex (
       id, id_insumo, tipo_movimiento, cantidad, costo_unitario, costo_total,
-      stock_anterior, stock_resultante, metodo_valorizacion, referencia, referencia_id, fecha, created_at, created_by
-    ) VALUES (?, ?, 'salida', ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')), ?)`,
+      stock_anterior, stock_resultante, metodo_valorizacion, referencia, referencia_id, fecha, created_at, created_by,
+      motivo, receta_id, almacen_id, unidad_original, cantidad_original, ip
+    ) VALUES (?, ?, 'salida', ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')), ?, ?, ?, ?, ?, ?, ?)`,
     [
       kid,
       insumoId,
@@ -187,6 +247,12 @@ function registrarSalida(tx, { insumoId, cantidad, unidadesSalida, soloMasa, ref
       ts,
       ts,
       userId || null,
+      meta.motivo,
+      meta.recetaId,
+      meta.almacenId,
+      meta.unidadOriginal,
+      meta.cantidadOriginal,
+      meta.ip,
     ]
   );
   return kid;
@@ -195,24 +261,21 @@ function registrarSalida(tx, { insumoId, cantidad, unidadesSalida, soloMasa, ref
 /**
  * Salida por merma o ajuste manual (usa costo promedio).
  */
-function registrarAjusteSalida(tx, { insumoId, cantidad, referencia, referenciaId, userId }) {
-  return registrarSalida(tx, { insumoId, cantidad, referencia: referencia || 'merma', referenciaId, userId });
+function registrarAjusteSalida(tx, params) {
+  return registrarSalida(tx, { ...params, referencia: params.referencia || 'merma' });
 }
 
 /**
  * Ajuste de entrada por hallazgo (sobrante de inventario físico) — costo a valor promedio.
  */
-function registrarAjusteEntrada(tx, { insumoId, cantidad, referencia, referenciaId, userId }) {
-  const ins = tx.queryOne('SELECT * FROM insumos WHERE id = ?', [insumoId]);
-  if (!ins) throw new Error(`Insumo no encontrado: ${insumoId}`);
+function registrarAjusteEntrada(tx, params) {
+  const ins = tx.queryOne('SELECT * FROM insumos WHERE id = ?', [params.insumoId]);
+  if (!ins) throw new Error(`Insumo no encontrado: ${params.insumoId}`);
   const costoU = Number(ins.costo_promedio || 0);
   return registrarEntrada(tx, {
-    insumoId,
-    cantidad,
+    ...params,
     costoUnitario: costoU,
-    referencia: referencia || 'ajuste',
-    referenciaId,
-    userId,
+    referencia: params.referencia || 'ajuste',
   });
 }
 
@@ -354,6 +417,12 @@ function salidaInsumosPorProducto(tx, { productId, quantity, referencia, referen
   const qtyLine = Number(quantity || 0);
   if (!pid || qtyLine <= 0) return { skipped: true, reason: 'sin_producto' };
 
+  const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [pid]);
+  // El no transformable se descuenta del almacén del producto. No volver a descontar insumos.
+  if (product && String(product.process_type || '') === 'non_transformed') {
+    return { skipped: true, reason: 'stock_almacen' };
+  }
+
   const rec = tx.queryOne(
     `SELECT * FROM recetas WHERE product_id = ? AND activo = 1 LIMIT 1`,
     [pid],
@@ -370,10 +439,29 @@ function salidaInsumosPorProducto(tx, { productId, quantity, referencia, referen
     return any ? { skipped: false } : { skipped: true, reason: 'sin_cantidad' };
   }
 
+  const resultadoId = String(rec.insumo_resultado_id || '').trim();
+  const rendimiento = Number(rec.rendimiento || 0);
+  if (resultadoId && rendimiento > 0) {
+    registrarSalida(tx, {
+      insumoId: resultadoId,
+      cantidad: rendimiento * qtyLine,
+      referencia: 'venta',
+      referenciaId,
+      userId,
+      eventAt,
+      recetaId: rec.id,
+      motivo: 'Consumo del transformable producido',
+    });
+    return { skipped: false };
+  }
+
   const dets = tx.queryAll('SELECT * FROM receta_detalle WHERE receta_id = ?', [rec.id]);
   for (const d of dets) {
     const need = Number(d.cantidad_usada) * qtyLine;
     if (need <= 0) continue;
+    const insLine = tx.queryOne('SELECT insumo_clase FROM insumos WHERE id = ?', [d.insumo_id]);
+    const esDoble = String(insLine?.insumo_clase || '').toLowerCase() === 'doble';
+    // El doble ya se fabricó con sus directos. La venta solo descuenta este insumo.
     registrarSalida(tx, {
       insumoId: d.insumo_id,
       cantidad: need,
@@ -381,6 +469,7 @@ function salidaInsumosPorProducto(tx, { productId, quantity, referencia, referen
       referenciaId,
       userId,
       eventAt,
+      motivo: esDoble ? 'Consumo de insumo doble' : '',
     });
   }
   return { skipped: false };
@@ -511,6 +600,240 @@ function cerrarInventarioFisico(tx, inventarioId, userId) {
   tx.run(`UPDATE inventario_fisico SET estado = 'cerrado' WHERE id = ?`, [inventarioId]);
 }
 
+/**
+ * Produce un transformable: descuenta ingredientes y entra el resultado en un solo paso.
+ * Las cantidades de la receta ya están en la unidad base del insumo (igual que la venta).
+ */
+function ejecutarTransformacion(tx, { recetaId, lotes, userId, motivo, ip }) {
+  const lot = Number(lotes);
+  if (!(lot > 0) || !Number.isFinite(lot)) throw new Error('Indica cuántos lotes producir (mayor a 0)');
+  const rec = tx.queryOne('SELECT * FROM recetas WHERE id = ?', [recetaId]);
+  if (!rec || !Number(rec.activo)) throw new Error('Receta no encontrada o inactiva');
+  const resultadoId = String(rec.insumo_resultado_id || '').trim();
+  const rendimiento = Number(rec.rendimiento || 0);
+  if (!resultadoId || !(rendimiento > 0)) {
+    throw new Error('Esta receta descuenta insumos al vender. Para producir, indica el transformable y cuánto rinde un lote.');
+  }
+  if (String(rec.product_id || '').trim()) {
+    throw new Error('Esta receta está vinculada a un plato. Crea una receta de producción aparte para no descontar los ingredientes dos veces.');
+  }
+  const resultado = tx.queryOne('SELECT * FROM insumos WHERE id = ?', [resultadoId]);
+  if (!resultado || !Number(resultado.activo)) throw new Error('El transformable a producir no existe o está inactivo');
+  const dets = tx.queryAll('SELECT * FROM receta_detalle WHERE receta_id = ?', [rec.id]);
+  if (!dets.length) throw new Error('La receta no tiene ingredientes');
+
+  const faltantes = [];
+  for (const d of dets) {
+    const need = Number(d.cantidad_usada) * lot;
+    if (!(need > 0)) continue;
+    const ins = tx.queryOne('SELECT nombre, unidad_medida, stock_actual, activo FROM insumos WHERE id = ?', [d.insumo_id]);
+    if (!ins || !Number(ins.activo)) {
+      faltantes.push(d.insumo_id);
+      continue;
+    }
+    if (Number(ins.stock_actual || 0) + 1e-9 < need) {
+      faltantes.push(`${ins.nombre}: hay ${Number(ins.stock_actual || 0)} ${ins.unidad_medida}, se requieren ${need}`);
+    }
+  }
+  if (faltantes.length) {
+    throw new Error(`Stock insuficiente para producir. ${faltantes.join(' · ')}`);
+  }
+
+  const opId = uuidv4();
+  const producido = rendimiento * lot;
+  const almacen = resolverAlmacenInsumos(tx);
+  const nota = String(motivo || '').trim() || `Producción ${rec.nombre_plato}`;
+  let costoTotal = 0;
+  for (const d of dets) {
+    const need = Number(d.cantidad_usada) * lot;
+    if (!(need > 0)) continue;
+    const ins = tx.queryOne('SELECT costo_promedio, unidad_medida FROM insumos WHERE id = ?', [d.insumo_id]);
+    costoTotal += need * Number(ins?.costo_promedio || 0);
+    registrarSalida(tx, {
+      insumoId: d.insumo_id,
+      cantidad: need,
+      referencia: 'transformacion',
+      referenciaId: opId,
+      userId,
+      motivo: nota,
+      recetaId: rec.id,
+      almacenId: almacen.id,
+      unidadOriginal: ins?.unidad_medida || '',
+      cantidadOriginal: need,
+      ip,
+    });
+  }
+  const costoU = producido > 0 ? costoTotal / producido : 0;
+  registrarEntrada(tx, {
+    insumoId: resultadoId,
+    cantidad: producido,
+    costoUnitario: costoU,
+    referencia: 'transformacion',
+    referenciaId: opId,
+    userId,
+    motivo: nota,
+    recetaId: rec.id,
+    almacenId: almacen.id,
+    unidadOriginal: resultado.unidad_medida || '',
+    cantidadOriginal: producido,
+    ip,
+  });
+  tx.run(
+    `INSERT INTO transformaciones (
+      id, receta_id, insumo_resultado_id, lotes, cantidad_producida, costo_unitario, costo_total, motivo, estado, created_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmada', ?)`,
+    [opId, rec.id, resultadoId, lot, producido, costoU, costoTotal, nota, userId || null]
+  );
+  return {
+    id: opId,
+    cantidad_producida: producido,
+    costo_unitario: costoU,
+    costo_total: costoTotal,
+    insumo_resultado_id: resultadoId,
+  };
+}
+
+/** Anula una transformación con movimientos inversos. No borra el kardex original. */
+function anularTransformacion(tx, transformacionId, userId, motivo, ip) {
+  const t = tx.queryOne('SELECT * FROM transformaciones WHERE id = ?', [transformacionId]);
+  if (!t) throw new Error('Transformación no encontrada');
+  if (String(t.estado) === 'anulada') throw new Error('Esta transformación ya está anulada');
+  const rows = tx.queryAll(
+    `SELECT * FROM kardex WHERE referencia = 'transformacion' AND referencia_id = ? ORDER BY datetime(created_at) ASC`,
+    [String(transformacionId)]
+  );
+  if (!rows.length) throw new Error('La transformación no tiene movimientos de kardex');
+  const anulaId = uuidv4();
+  const nota = String(motivo || '').trim() || 'Anulación de transformación';
+  const almacen = resolverAlmacenInsumos(tx);
+  for (const k of rows.filter((r) => r.tipo_movimiento === 'entrada')) {
+    registrarSalida(tx, {
+      insumoId: k.id_insumo,
+      cantidad: Number(k.cantidad),
+      referencia: 'anulacion_transformacion',
+      referenciaId: anulaId,
+      userId,
+      motivo: nota,
+      recetaId: t.receta_id,
+      almacenId: almacen.id,
+      ip,
+    });
+  }
+  for (const k of rows.filter((r) => r.tipo_movimiento === 'salida')) {
+    registrarEntrada(tx, {
+      insumoId: k.id_insumo,
+      cantidad: Number(k.cantidad),
+      costoUnitario: Number(k.costo_unitario || 0),
+      referencia: 'anulacion_transformacion',
+      referenciaId: anulaId,
+      userId,
+      motivo: nota,
+      recetaId: t.receta_id,
+      almacenId: almacen.id,
+      ip,
+    });
+  }
+  tx.run(`UPDATE transformaciones SET estado = 'anulada', anulacion_id = ? WHERE id = ?`, [anulaId, t.id]);
+  return { anulacion_id: anulaId };
+}
+
+/**
+ * Compara stock_actual con el último saldo del kardex. No corrige nada.
+ */
+function auditarConsistenciaKardex(tx) {
+  const insumos = tx.queryAll(
+    `SELECT id, nombre, unidad_medida, stock_actual, tipo FROM insumos WHERE activo = 1`
+  );
+  const inconsistencias = [];
+  for (const ins of insumos) {
+    const movs = tx.queryAll(
+      `SELECT tipo_movimiento, cantidad, stock_anterior, stock_resultante
+       FROM kardex WHERE id_insumo = ?
+       ORDER BY datetime(created_at) ASC, rowid ASC`,
+      [ins.id]
+    );
+    const stock = Number(ins.stock_actual || 0);
+    if (!movs.length) {
+      if (Math.abs(stock) > 1e-3) {
+        inconsistencias.push({
+          insumo_id: ins.id,
+          nombre: ins.nombre,
+          stock_actual: stock,
+          saldo_kardex: 0,
+          detalle: 'Hay stock sin movimientos de kardex',
+        });
+      }
+      continue;
+    }
+    let roto = false;
+    let prev = null;
+    for (const m of movs) {
+      if (prev && Math.abs(Number(m.stock_anterior) - Number(prev.stock_resultante)) > 1e-3) {
+        inconsistencias.push({
+          insumo_id: ins.id,
+          nombre: ins.nombre,
+          stock_actual: stock,
+          saldo_kardex: Number(movs[movs.length - 1].stock_resultante),
+          detalle: 'El saldo no encadena con el movimiento anterior',
+        });
+        roto = true;
+        break;
+      }
+      const delta = String(m.tipo_movimiento) === 'salida' ? -Number(m.cantidad) : Number(m.cantidad);
+      const expected = Number(m.stock_anterior) + delta;
+      if (Math.abs(expected - Number(m.stock_resultante)) > 1e-3) {
+        inconsistencias.push({
+          insumo_id: ins.id,
+          nombre: ins.nombre,
+          stock_actual: stock,
+          saldo_kardex: Number(m.stock_resultante),
+          detalle: 'La cantidad del movimiento no cuadra con el saldo',
+        });
+        roto = true;
+        break;
+      }
+      prev = m;
+    }
+    if (roto) continue;
+    const saldo = Number(movs[movs.length - 1].stock_resultante);
+    if (Math.abs(saldo - stock) > 1e-3) {
+      inconsistencias.push({
+        insumo_id: ins.id,
+        nombre: ins.nombre,
+        stock_actual: stock,
+        saldo_kardex: saldo,
+        detalle: 'El stock actual no coincide con el último saldo del kardex',
+      });
+    }
+  }
+  return { ok: inconsistencias.length === 0, inconsistencias };
+}
+
+function resumenKardex(insumo, movimientos) {
+  const movs = Array.isArray(movimientos) ? movimientos : [];
+  let entradas = 0;
+  let salidas = 0;
+  for (const m of movs) {
+    const q = Number(m.cantidad || 0);
+    if (m.tipo_movimiento === 'salida') salidas += q;
+    else entradas += q;
+  }
+  const stockInicial = movs.length ? Number(movs[0].stock_anterior || 0) : Number(insumo?.stock_actual || 0);
+  const saldo = stockInicial + entradas - salidas;
+  const stockActual = Number(insumo?.stock_actual || 0);
+  const valor = stockActual * Number(insumo?.costo_promedio || 0);
+  return {
+    stock_inicial: stockInicial,
+    entradas,
+    salidas,
+    saldo,
+    stock_actual: stockActual,
+    valor,
+    unidad: insumo?.unidad_medida || '',
+    cuadra: Math.abs(saldo - stockActual) <= 1e-3,
+  };
+}
+
 module.exports = {
   registrarEntrada,
   registrarSalida,
@@ -523,4 +846,10 @@ module.exports = {
   revertirSalidasVentaPedido,
   registrarCompraInsumos,
   cerrarInventarioFisico,
+  ejecutarTransformacion,
+  anularTransformacion,
+  auditarConsistenciaKardex,
+  resumenKardex,
+  etiquetaMovimiento,
+  resolverAlmacenInsumos,
 };
