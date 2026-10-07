@@ -46,10 +46,12 @@ export default function RecetaEditor({
   products = [],
   recetaId = '',
   insumos: insumosProp = null,
+  modoFijo = '',
   onSaved,
   onCancel,
 }) {
   const locked = Boolean(productId);
+  const modoBloqueado = modoFijo === 'produccion' || modoFijo === 'venta' ? modoFijo : '';
   const [insumos, setInsumos] = useState(Array.isArray(insumosProp) ? insumosProp : []);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -59,7 +61,7 @@ export default function RecetaEditor({
     product_id: productId || '',
     activo: true,
     lines: [emptyLine()],
-    modo: 'venta',
+    modo: modoBloqueado || 'venta',
     insumo_resultado_id: '',
     rendimiento: '',
   });
@@ -88,7 +90,7 @@ export default function RecetaEditor({
               product_id: productId || '',
               activo: true,
               lines: [emptyLine()],
-              modo: 'venta',
+              modo: modoBloqueado || 'venta',
               insumo_resultado_id: '',
               rendimiento: '',
             });
@@ -108,7 +110,7 @@ export default function RecetaEditor({
           lines: r.detalles?.length
             ? r.detalles.map((d) => ({ insumo_id: d.insumo_id, qty: toInputQty(d.cantidad_usada, d.unidad_medida) }))
             : [emptyLine()],
-          modo: esProduccion ? 'produccion' : 'venta',
+          modo: modoBloqueado || (esProduccion ? 'produccion' : 'venta'),
           insumo_resultado_id: esProduccion ? String(r.insumo_resultado_id) : '',
           rendimiento: esProduccion ? toInputQty(r.rendimiento, resultado?.unidad_medida) : '',
         });
@@ -119,7 +121,7 @@ export default function RecetaEditor({
       }
     })();
     return () => { cancelled = true; };
-  }, [recetaId, productId, productName, locked, insumosProp]);
+  }, [recetaId, productId, productName, locked, insumosProp, modoBloqueado]);
 
   const selectedProduct = useMemo(
     () => products.find((p) => String(p.id) === String(form.product_id)),
@@ -150,7 +152,7 @@ export default function RecetaEditor({
   const save = async (e) => {
     e.preventDefault();
     const nombre = form.nombre_plato.trim();
-    const esProduccion = form.modo === 'produccion' && !locked;
+    const esProduccion = (modoBloqueado === 'produccion' || form.modo === 'produccion') && !locked;
     if (!nombre || (!esProduccion && !form.product_id)) {
       toast.error('Nombre de la receta y producto del menú son obligatorios');
       return;
@@ -229,7 +231,7 @@ export default function RecetaEditor({
 
   return (
     <form onSubmit={save} className="space-y-4">
-      {!locked && (
+      {!locked && !modoBloqueado && (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"

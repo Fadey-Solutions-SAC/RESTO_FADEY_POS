@@ -158,6 +158,7 @@ export default function LogisticaKardexModule() {
   const [compraLines, setCompraLines] = useState([{ insumo_id: '', cantidad: '', costo_unitario: '', unidades: '' }]);
   const [editingRecetaId, setEditingRecetaId] = useState('');
   const [recetaEditorKey, setRecetaEditorKey] = useState(0);
+  const [recetaVista, setRecetaVista] = useState('nueva');
 
   const [kardexInsumo, setKardexInsumo] = useState('');
   const [kardexFrom, setKardexFrom] = useState('');
@@ -1169,41 +1170,120 @@ export default function LogisticaKardexModule() {
 
       {tab === 'recetas' && (
         <div className="space-y-4">
-          <div className="bg-[var(--ui-surface-2)] p-4 rounded-xl border border-[color:var(--ui-border)]">
-            <p className="text-sm font-semibold text-[var(--ui-body-text)] mb-3">
-              {editingRecetaId ? 'Editar receta' : 'Nueva receta'}
-            </p>
-            <RecetaEditor
-              key={`${editingRecetaId || 'new'}-${recetaEditorKey}`}
-              recetaId={editingRecetaId}
-              products={products.filter((p) => p.process_type !== 'non_transformed')}
-              insumos={insumos}
-              onSaved={() => {
-                setEditingRecetaId('');
-                setRecetaEditorKey((k) => k + 1);
-                loadCore();
-              }}
-              onCancel={editingRecetaId ? () => setEditingRecetaId('') : undefined}
-            />
-          </div>
-          <div className="border border-slate-600/50 rounded-lg overflow-hidden">
-            {recetas.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between p-2 border-b border-slate-600/40 last:border-0"
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'nueva', label: 'Nueva receta' },
+              { id: 'lista', label: 'Recetas' },
+              { id: 'dobles', label: 'Insumos dobles' },
+            ].map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => {
+                  setRecetaVista(v.id);
+                  setEditingRecetaId('');
+                  setRecetaEditorKey((k) => k + 1);
+                }}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
+                  recetaVista === v.id
+                    ? 'bg-[#ea580c] text-white border-[#ea580c]'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
               >
-                <div>
-                  <span className="font-medium">{r.nombre_plato}</span>
-                  <span className="ui-text-muted text-sm ml-2">
-                    · {r.resultado_nombre ? `Produce ${r.resultado_nombre}` : (r.product_name || r.product_id)}
-                  </span>
-                  <span className="ui-text-muted text-xs ml-2">
-                    · {Number(r.insumos_count || 0)} insumo(s){Number(r.activo) === 1 ? '' : ' · inactiva'}
-                  </span>
+                {v.label}
+              </button>
+            ))}
+          </div>
+
+          {recetaVista === 'nueva' && (
+            <div className="bg-[var(--ui-surface-2)] p-4 rounded-xl border border-[color:var(--ui-border)]">
+              <p className="text-sm font-semibold text-[var(--ui-body-text)] mb-3">
+                {editingRecetaId ? 'Editar receta' : 'Nueva receta'}
+              </p>
+              <RecetaEditor
+                key={`venta-${editingRecetaId || 'new'}-${recetaEditorKey}`}
+                recetaId={editingRecetaId}
+                modoFijo="venta"
+                products={products.filter((p) => p.process_type !== 'non_transformed')}
+                insumos={insumos}
+                onSaved={() => {
+                  setEditingRecetaId('');
+                  setRecetaEditorKey((k) => k + 1);
+                  setRecetaVista('lista');
+                  loadCore();
+                }}
+                onCancel={editingRecetaId ? () => { setEditingRecetaId(''); setRecetaVista('lista'); } : undefined}
+              />
+            </div>
+          )}
+
+          {recetaVista === 'lista' && (
+            <div className="border border-slate-600/50 rounded-lg overflow-hidden">
+              {recetas.filter((r) => !String(r.insumo_resultado_id || '').trim()).map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between p-2 border-b border-slate-600/40 last:border-0"
+                >
+                  <div>
+                    <span className="font-medium">{r.nombre_plato}</span>
+                    <span className="ui-text-muted text-sm ml-2">· {r.product_name || r.product_id}</span>
+                    <span className="ui-text-muted text-xs ml-2">
+                      · {Number(r.insumos_count || 0)} insumo(s){Number(r.activo) === 1 ? '' : ' · inactiva'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-amber-400/90 text-sm"
+                    onClick={() => {
+                      setEditingRecetaId(r.id);
+                      setRecetaVista('nueva');
+                      setRecetaEditorKey((k) => k + 1);
+                    }}
+                  >
+                    Editar
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  {r.insumo_resultado_id ? (
-                    <>
+              ))}
+              {!recetas.some((r) => !String(r.insumo_resultado_id || '').trim()) && (
+                <p className="p-4 ui-text-muted text-sm">No hay recetas de platos. Créala en Nueva receta.</p>
+              )}
+            </div>
+          )}
+
+          {recetaVista === 'dobles' && (
+            <div className="space-y-4">
+              <div className="bg-[var(--ui-surface-2)] p-4 rounded-xl border border-[color:var(--ui-border)]">
+                <p className="text-sm font-semibold text-[var(--ui-body-text)] mb-3">
+                  {editingRecetaId ? 'Editar fabricación' : 'Fabricar insumo doble'}
+                </p>
+                <RecetaEditor
+                  key={`doble-${editingRecetaId || 'new'}-${recetaEditorKey}`}
+                  recetaId={editingRecetaId}
+                  modoFijo="produccion"
+                  products={products.filter((p) => p.process_type !== 'non_transformed')}
+                  insumos={insumos}
+                  onSaved={() => {
+                    setEditingRecetaId('');
+                    setRecetaEditorKey((k) => k + 1);
+                    loadCore();
+                  }}
+                  onCancel={editingRecetaId ? () => setEditingRecetaId('') : undefined}
+                />
+              </div>
+              <div className="border border-slate-600/50 rounded-lg overflow-hidden">
+                {recetas.filter((r) => String(r.insumo_resultado_id || '').trim()).map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between gap-2 p-2 border-b border-slate-600/40 last:border-0"
+                  >
+                    <div>
+                      <span className="font-medium">{r.resultado_nombre || r.nombre_plato}</span>
+                      <span className="ui-text-muted text-sm ml-2">· {r.nombre_plato}</span>
+                      <span className="ui-text-muted text-xs ml-2">
+                        · {Number(r.insumos_count || 0)} directo(s){Number(r.activo) === 1 ? '' : ' · inactiva'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
                       <input
                         type="number"
                         min="0.01"
@@ -1216,16 +1296,25 @@ export default function LogisticaKardexModule() {
                       <button type="button" className="text-teal-300 text-sm" onClick={() => producirTransformable(r)}>
                         Producir
                       </button>
-                    </>
-                  ) : null}
-                  <button type="button" className="text-amber-400/90 text-sm" onClick={() => { setEditingRecetaId(r.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-                    Editar
-                  </button>
-                </div>
+                      <button
+                        type="button"
+                        className="text-amber-400/90 text-sm"
+                        onClick={() => {
+                          setEditingRecetaId(r.id);
+                          setRecetaEditorKey((k) => k + 1);
+                        }}
+                      >
+                        Editar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!recetas.some((r) => String(r.insumo_resultado_id || '').trim()) && (
+                  <p className="p-4 ui-text-muted text-sm">No hay insumos dobles fabricados. Arriba eliges el doble y sus directos.</p>
+                )}
               </div>
-            ))}
-            {!recetas.length && <p className="p-4 ui-text-muted text-sm">No hay recetas. Crea una aquí o desde Productos → Editar producto → Agregar receta.</p>}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
