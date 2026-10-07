@@ -311,6 +311,168 @@ function pickQrSlot(data, width, height, first, second) {
     : first;
 }
 
+/** Cuadro del QR de muestra: el más grande, recortado a sus esquinas, sin el texto de arriba. */
+function slotOnSampleQr(data, width, height) {
+  const luma = new Float32Array(width * height);
+  for (let i = 0; i < width * height; i += 1) {
+    const o = i * 4;
+    luma[i] = data[o] * 0.3 + data[o + 1] * 0.59 + data[o + 2] * 0.11;
+  }
+  const step = 4;
+  const bw = Math.floor(width / step);
+  const bh = Math.floor(height / step);
+  if (bw < 8 || bh < 8) return null;
+  const stride = bw + 1;
+  const transI = new Float64Array(stride * (bh + 1));
+  const darkI = new Float64Array(stride * (bh + 1));
+  for (let by = 0; by < bh; by += 1) {
+    for (let bx = 0; bx < bw; bx += 1) {
+      let transitions = 0;
+      let darkCount = 0;
+      let samples = 0;
+      const x0 = bx * step;
+      const y0 = by * step;
+      for (let y = y0; y < y0 + step && y < height; y += 1) {
+        for (let x = x0; x < x0 + step && x < width; x += 1) {
+          const index = y * width + x;
+          const bit = luma[index] < 100 ? 1 : 0;
+          darkCount += bit;
+          samples += 1;
+          if (x + 1 < x0 + step && bit !== (luma[index + 1] < 100 ? 1 : 0)) transitions += 1;
+          if (y + 1 < y0 + step && bit !== (luma[index + width] < 100 ? 1 : 0)) transitions += 1;
+        }
+      }
+      const idx = (by + 1) * stride + (bx + 1);
+      transI[idx] = transitions + transI[(by + 1) * stride + bx] + transI[by * stride + (bx + 1)] - transI[by * stride + bx];
+      darkI[idx] = (samples ? darkCount / samples : 0) + darkI[(by + 1) * stride + bx] + darkI[by * stride + (bx + 1)] - darkI[by * stride + bx];
+    }
+  }
+  const rectSum = (integral, x, y, s) => integral[(y + s) * stride + (x + s)] - integral[y * stride + (x + s)] - integral[(y + s) * stride + x] + integral[y * stride + x];
+  const minSide = Math.min(width, height);
+  let best = null;
+  const minS = Math.max(6, Math.round((0.16 * minSide) / step));
+  const maxS = Math.round((0.42 * minSide) / step);
+  for (let s = minS; s <= maxS; s += Math.max(1, Math.round(s * 0.08))) {
+    const jump = Math.max(1, Math.round(s * 0.06));
+    for (let y = 0; y <= bh - s; y += jump) {
+      for (let x = 0; x <= bw - s; x += jump) {
+        const cells = s * s;
+        const darkRatio = rectSum(darkI, x, y, s) / cells;
+        if (darkRatio < 0.22 || darkRatio > 0.62) continue;
+        const density = rectSum(transI, x, y, s) / cells;
+        const score = density * Math.sqrt(s * step);
+        if (!best || score > best.score) best = { score, x: x * step, y: y * step, size: s * step };
+      }
+    }
+  }
+  if (!best) return null;
+  const isDark = (x, y) => luma[y * width + x] < 100;
+  let seedX = Math.min(width - 1, Math.round(best.x + best.size / 2));
+  let seedY = Math.min(height - 1, Math.round(best.y + best.size / 2));
+  if (!isDark(seedX, seedY)) {
+    let foundSeed = false;
+    for (let radius = 1; radius < 48 && !foundSeed; radius += 1) {
+      for (let dy = -radius; dy <= radius && !foundSeed; dy += 1) {
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          const nx = seedX + dx;
+          const ny = seedY + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          if (isDark(nx, ny)) {
+            seedX = nx;
+            seedY = ny;
+            foundSeed = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!foundSeed) return null;
+  }
+  const seen = new Uint8Array(width * height);
+  const queue = [seedY * width + seedX];
+  seen[seedY * width + seedX] = 1;
+  let minX = seedX;
+  let maxX = seedX;
+  let minY = seedY;
+  let maxY = seedY;
+  const maxR = best.size * 0.62;
+  while (queue.length) {
+    const id = queue.pop();
+    const x = id % width;
+    const y = (id / width) | 0;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+    for (let dy = -2; dy <= 2; dy += 1) {
+      for (let dx = -2; dx <= 2; dx += 1) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        if ((nx - seedX) ** 2 + (ny - seedY) ** 2 > maxR * maxR) continue;
+        const next = ny * width + nx;
+        if (seen[next] || !isDark(nx, ny)) continue;
+        seen[next] = 1;
+        queue.push(next);
+      }
+    }
+  }
+  let top = minY;
+  let bottom = maxY;
+  let left = minX;
+  let right = maxX;
+  const bandDark = (x0, y0, x1, y1) => {
+    let darkCount = 0;
+    let n = 0;
+    const xa = Math.max(0, x0);
+    const ya = Math.max(0, y0);
+    const xb = Math.min(width - 1, x1);
+    const yb = Math.min(height - 1, y1);
+    for (let y = ya; y <= yb; y += 1) {
+      for (let x = xa; x <= xb; x += 1) {
+        n += 1;
+        if (luma[y * width + x] < 100) darkCount += 1;
+      }
+    }
+    return n ? darkCount / n : 0;
+  };
+  const rowIsFinder = (y, x0, x1, dir) => {
+    const span = Math.max(1, x1 - x0);
+    const edge = Math.max(4, Math.round(span * 0.2));
+    const thick = Math.max(2, Math.round(span * 0.07));
+    const y0 = dir > 0 ? y : y - thick + 1;
+    const y1 = dir > 0 ? y + thick - 1 : y;
+    if (y0 < 0 || y1 >= height) return false;
+    return bandDark(x0, y0, x0 + edge, y1) > 0.55 && bandDark(x1 - edge, y0, x1, y1) > 0.55;
+  };
+  const colIsFinder = (x, y0, y1, dir) => {
+    const span = Math.max(1, y1 - y0);
+    const edge = Math.max(4, Math.round(span * 0.2));
+    const thick = Math.max(2, Math.round(span * 0.07));
+    const x0 = dir > 0 ? x : x - thick + 1;
+    const x1 = dir > 0 ? x + thick - 1 : x;
+    if (x0 < 0 || x1 >= width) return false;
+    return bandDark(x0, y0, x1, y0 + edge) > 0.55 && bandDark(x0, y1 - edge, x1, y1) > 0.55;
+  };
+  while (bottom - top > 12 && !rowIsFinder(top, left, right, 1)) top += 1;
+  while (bottom - top > 12 && !rowIsFinder(bottom, left, right, -1)) bottom -= 1;
+  while (right - left > 12 && !colIsFinder(left, top, bottom, 1)) left += 1;
+  while (right - left > 12 && !colIsFinder(right, top, bottom, -1)) right -= 1;
+  const maxTopTrim = Math.max(2, Math.round((bottom - top) * 0.08));
+  let trimmed = 0;
+  while (trimmed < maxTopTrim && bottom - top > 12) {
+    const edge = Math.max(4, Math.round((right - left) * 0.18));
+    if (bandDark(left, top, left + edge, Math.min(height - 1, top + 2)) >= 0.78) break;
+    top += 1;
+    trimmed += 1;
+  }
+  const boxW = right - left + 1;
+  const boxH = bottom - top + 1;
+  if (boxW < 24 || boxH < 24) return null;
+  if (boxW / boxH < 0.75 || boxW / boxH > 1.35) return null;
+  return { x: left, y: top, w: boxW, h: boxH };
+}
+
 /** Busca el QR que ya trae el diseño y devuelve su cuadro en píxeles de la imagen. */
 function detectFormatQrSlot(img) {
   if (qrSlotCache.has(img)) return qrSlotCache.get(img);
@@ -331,11 +493,17 @@ function detectFormatQrSlot(img) {
     w,
     h,
   );
-  const strict = slotFromContrast(imageData.data, w, h, 115);
-  const loose = slotFromContrast(imageData.data, w, h, backgroundThreshold(imageData.data, w, h));
-  const slot = decoded || pickQrSlot(imageData.data, w, h, strict, loose);
+  const sample = slotOnSampleQr(imageData.data, w, h);
+  const decodedArea = decoded ? decoded.size * decoded.size : 0;
+  const sampleArea = sample ? sample.w * sample.h : 0;
+  const slot = sampleArea > decodedArea ? sample : (decoded || sample);
   const mapped = slot
-    ? { x: slot.x / scanScale, y: slot.y / scanScale, size: slot.size / scanScale }
+    ? {
+      x: slot.x / scanScale,
+      y: slot.y / scanScale,
+      w: (slot.w || slot.size) / scanScale,
+      h: (slot.h || slot.size) / scanScale,
+    }
     : null;
   qrSlotCache.set(img, mapped);
   return mapped;
@@ -361,7 +529,9 @@ export async function renderTableQrA5({ url, tableNumber, formatImage }) {
   const fit = containPlacement(formatImage, width, height);
   ctx.drawImage(formatImage, fit.x, fit.y, fit.w, fit.h);
 
-  const qrPx = Math.max(32, Math.round(slot.size * fit.scale));
+  const qw = Math.max(32, Math.round((slot.w || slot.size) * fit.scale));
+  const qh = Math.max(32, Math.round((slot.h || slot.size) * fit.scale));
+  const qrPx = Math.max(qw, qh);
   const qrCanvas = document.createElement('canvas');
   await QRCode.toCanvas(qrCanvas, url, {
     width: qrPx,
@@ -373,14 +543,14 @@ export async function renderTableQrA5({ url, tableNumber, formatImage }) {
   const x = Math.round(fit.x + slot.x * fit.scale);
   const y = Math.round(fit.y + slot.y * fit.scale);
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(x, y, qrPx, qrPx);
+  ctx.fillRect(x, y, qw, qh);
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(qrCanvas, x, y, qrPx, qrPx);
+  ctx.drawImage(qrCanvas, x, y, qw, qh);
 
   const label = String(tableNumber ?? '').trim() || '—';
-  const cx = x + qrPx / 2;
-  const cy = y + qrPx / 2;
-  const radius = qrPx * 0.145;
+  const cx = x + qw / 2;
+  const cy = y + qh / 2;
+  const radius = Math.min(qw, qh) * 0.145;
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
