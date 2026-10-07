@@ -27,7 +27,7 @@ const {
   closedDaysAnswer,
   weekdayAdviceAnswer,
 } = require('./fadeyAiForecast');
-const { detectLanguage, toSpanishQuery, translateResult } = require('./fadeyAiI18n');
+const { detectLanguage, toSpanishQuery, prepareSalesQuery, translateResult } = require('./fadeyAiI18n');
 const {
   formatDisplayDateKey,
   resolveRegionalTimezone,
@@ -401,17 +401,21 @@ function formatSalesReply(r, user = null) {
  */
 function detectPaymentMethodFilter(message) {
   const m = String(message || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  if (!/venta|vend|cobr|pag|ingres|entr(o|aron|ado)|recaud|factur|total|cuanto|monto|recibi/.test(m)) return null;
-  if (/\b(abrir|cerrar|arqueo|apertura|cierre)\b/.test(m) && !/venta|vend|cobrad/.test(m)) return null;
+  if (!/venta|vend|cobr|pag|ingres|entr(o|aron|ado)|recaud|factur|total|cuanto|monto|recibi|sales|sold/.test(m)) return null;
+  if (/\b(abrir|cerrar|arqueo|apertura|cierre)\b/.test(m) && !/venta|vend|cobrad|sales|sold/.test(m)) return null;
 
   const nonCash = /\b(sin|no|excepto|menos|salvo|aparte del?|fuera del?)\s+(el\s+|en\s+|con\s+)?efectivo\b/.test(m)
     || /\bque no (sea|sean|fue|fueron|es|son)( en| con)? efectivo\b/.test(m)
     || /\bdistint\w* (a|al|de|del) efectivo\b/.test(m)
-    || /\b(pagos?|medios?|metodos?|cobros?|ventas?)\s+(digitales|electronic\w*)\b/.test(m);
+    || /\b(pagos?|medios?|metodos?|cobros?|ventas?)\s+(digitales|electronic\w*)\b/.test(m)
+    || /\bnon[-\s]?cash\b/.test(m)
+    || /\bcashless\b/.test(m)
+    || /\b(without|except|excluding|not)\s+(in\s+|by\s+|with\s+)?cash\b/.test(m)
+    || /\bother than cash\b/.test(m);
   if (nonCash) return 'noncash';
 
   const found = [];
-  if (/\befectivo\b|\bal contado\b/.test(m)) found.push('efectivo');
+  if (/\befectivo\b|\bal contado\b|\bcash\b/.test(m)) found.push('efectivo');
   if (/\byape\b/.test(m)) found.push('yape');
   if (/\bplin\b/.test(m)) found.push('plin');
   if (/\btarjetas?\b|\bvisa\b|\bmastercard\b/.test(m)) found.push('tarjeta');
@@ -1120,13 +1124,13 @@ async function chat(user, message, context = {}) {
 
   const memory = recall(user.id);
   const detected = detectLanguage(text);
-  const lang = memory.profile.lang === 'en' || memory.profile.lang === 'es' ? memory.profile.lang : detected;
-  const query = detected === 'en' ? toSpanishQuery(text) : text;
+  const lang = detected;
+  const query = prepareSalesQuery(detected === 'en' ? toSpanishQuery(text) : text);
 
   const memoryAnswer = handleMemoryCommand(user, text);
   if (memoryAnswer) {
     let out = memoryAnswer;
-    if (lang === 'en' && !/^Got it/.test(out.reply)) out = translateResult(out, { isGuide: false });
+    if (lang === 'en' && !/^Got it/.test(out.reply)) out = await translateResult(out, { isGuide: false });
     saveMessage(user.id, 'assistant', out.reply, out.sources);
     return { ...out, lang, mode: 'local', status: getStatus(), creator_mode: isMasterCreator(user) };
   }
@@ -1137,7 +1141,7 @@ async function chat(user, message, context = {}) {
       sources: [{ kind: 'tool', title: 'user_memory' }],
     };
     LAST_FULL_REPLY.delete(String(user.id));
-    if (lang === 'en') full = translateResult(full, { isGuide: false });
+    if (lang === 'en') full = await translateResult(full, { isGuide: false });
     saveMessage(user.id, 'assistant', full.reply, full.sources);
     return { ...full, lang, mode: 'local', status: getStatus(), creator_mode: isMasterCreator(user) };
   }
@@ -1177,7 +1181,7 @@ async function chat(user, message, context = {}) {
   if (lang === 'en') {
     const src = Array.isArray(result.sources) ? result.sources[0] : null;
     const isGuide = !!src && (src.kind === 'guide' || src.kind === 'config' || src.title === 'search_guides');
-    result = translateResult(result, { isGuide });
+    result = await translateResult(result, { isGuide });
   }
   saveMessage(user.id, 'assistant', result.reply, result.sources);
   return {
@@ -1197,4 +1201,5 @@ module.exports = {
   getChatDayInfo,
   bootstrapKnowledge,
   purgeFadeyAiChatIfNewDay,
+  detectPaymentMethodFilter,
 };

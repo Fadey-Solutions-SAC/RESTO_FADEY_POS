@@ -1,7 +1,10 @@
 /**
  * IA Fadey bilingüe: si el usuario escribe en inglés, se entiende la pregunta
- * (traducida a términos del POS en español) y la respuesta se devuelve en inglés.
+ * (traducida a términos del POS en español) y la respuesta se devuelve en inglés
+ * con Google Traductor. Si escribe en español, la respuesta se queda en español.
+ * Sin internet, el inglés usa el diccionario local.
  */
+const { translateEsToEn, translateManyEsToEn } = require('./fadeyAiGoogleTranslate');
 
 const EN_WORDS = new Set([
   'the', 'what', 'how', 'is', 'are', 'was', 'were', 'my', 'me', 'i', 'you', 'your', 'do', 'does', 'did', 'can', 'could',
@@ -233,6 +236,28 @@ function toSpanishQuery(message) {
   let q = normalize(raw).replace(/[?!]+/g, ' ').replace(/\s+/g, ' ').trim();
   for (const [re, rep] of EN_TO_ES_QUERY) q = q.replace(re, rep);
   return q.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Preguntas mixtas o con typos («eoeal cash ventas», «non-cash for the month»)
+ * se pliegan a español antes de buscar el dato. No toca frases que no hablen de ventas.
+ */
+function prepareSalesQuery(message) {
+  let m = String(message || '');
+  m = m.replace(/\b(eoeal|eoetal|totla|toatl|totol|totl|totaal|ttal|totsl|totall|toal)\b/gi, 'total');
+  const looksSales = /venta|vend|cobr|pag|total|cuanto|monto|sales|sold|cash|efectivo|mes|month/i.test(m);
+  if (!looksSales) return m.replace(/\s+/g, ' ').trim();
+  m = m.replace(/\bcash (register|drawer|box)\b/gi, 'caja');
+  m = m.replace(/\bnon[-\s]?cash\b/gi, 'sin efectivo');
+  m = m.replace(/\bcashless\b/gi, 'sin efectivo');
+  m = m.replace(/\b(without|except|excluding|not)\s+(in\s+|by\s+|with\s+)?cash\b/gi, 'sin efectivo');
+  m = m.replace(/\bother than cash\b/gi, 'sin efectivo');
+  m = m.replace(/\b(in|by|with)\s+cash\b/gi, 'en efectivo');
+  m = m.replace(/\bcash\b/gi, 'efectivo');
+  m = m.replace(/\b(for|of|in|during)\s+(the|this)\s+month\b/gi, 'este mes');
+  m = m.replace(/\bthis month\b/gi, 'este mes');
+  m = m.replace(/\bfor the month\b/gi, 'este mes');
+  return m.replace(/\s+/g, ' ').trim();
 }
 
 /* ───────────── Español → inglés (respuestas) ───────────── */
@@ -621,43 +646,114 @@ function translateReport(report) {
     lang: 'en',
     title: translateToEnglish(report.title),
     subtitle: translateToEnglish(report.subtitle),
-    kpis: report.kpis.map((k) => ({ ...k, label: translateToEnglish(k.label) })),
-    charts: report.charts.map((c) => ({
+    kpis: (report.kpis || []).map((k) => ({ ...k, label: translateToEnglish(k.label) })),
+    charts: (report.charts || []).map((c) => ({
       ...c,
       title: translateToEnglish(c.title),
       series: c.series?.map((s) => ({ ...s, label: translateToEnglish(s.label) })),
-      data: c.data.map((d) => ({ ...d, name: translateCell(d.name) })),
+      data: (c.data || []).map((d) => ({ ...d, name: translateCell(d.name) })),
     })),
-    tables: report.tables.map((t) => ({
+    tables: (report.tables || []).map((t) => ({
       ...t,
       title: translateToEnglish(t.title),
-      columns: t.columns.map((col) => ({ ...col, label: translateToEnglish(col.label) })),
-      rows: t.rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, translateCell(v)]))),
+      columns: (t.columns || []).map((col) => ({ ...col, label: translateToEnglish(col.label) })),
+      rows: (t.rows || []).map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, translateCell(v)]))),
       totals: t.totals ? Object.fromEntries(Object.entries(t.totals).map(([k, v]) => [k, translateCell(v)])) : t.totals,
     })),
-    insights: report.insights.map((s) => translateToEnglish(s)),
+    insights: (report.insights || []).map((s) => translateToEnglish(s)),
   };
 }
 
-/** Traduce el resultado completo del chat (texto, opciones y fuentes con informe). */
-function translateResult(result, { isGuide = false } = {}) {
+function applyPhraseMap(report, map) {
+  const tr = (s) => (typeof s === 'string' && map.has(s) ? map.get(s) : translateToEnglish(s));
+  return {
+    ...report,
+    lang: 'en',
+    title: tr(report.title),
+    subtitle: tr(report.subtitle),
+    kpis: (report.kpis || []).map((k) => ({ ...k, label: tr(k.label) })),
+    charts: (report.charts || []).map((c) => ({
+      ...c,
+      title: tr(c.title),
+      series: c.series?.map((s) => ({ ...s, label: tr(s.label) })),
+      data: (c.data || []).map((d) => ({ ...d, name: translateCell(d.name) })),
+    })),
+    tables: (report.tables || []).map((t) => ({
+      ...t,
+      title: tr(t.title),
+      columns: (t.columns || []).map((col) => ({ ...col, label: tr(col.label) })),
+      rows: (t.rows || []).map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, translateCell(v)]))),
+      totals: t.totals ? Object.fromEntries(Object.entries(t.totals).map(([k, v]) => [k, translateCell(v)])) : t.totals,
+    })),
+    insights: (report.insights || []).map((s) => tr(s)),
+  };
+}
+
+function reportPhrases(report) {
+  const list = [];
+  const add = (s) => { if (typeof s === 'string' && s.trim()) list.push(s); };
+  add(report.title);
+  add(report.subtitle);
+  (report.kpis || []).forEach((k) => add(k.label));
+  (report.charts || []).forEach((c) => {
+    add(c.title);
+    (c.series || []).forEach((s) => add(s.label));
+  });
+  (report.tables || []).forEach((t) => {
+    add(t.title);
+    (t.columns || []).forEach((col) => add(col.label));
+  });
+  (report.insights || []).forEach(add);
+  return list;
+}
+
+/** Traduce el resultado completo del chat. Google si hay red; diccionario si no. */
+async function translateResult(result, { isGuide = false } = {}) {
   if (!result) return result;
   if (result.translated) return result;
-  let reply = translateToEnglish(result.reply);
-  if (isGuide) reply = `(This guide is written in Spanish.)\n\n${result.reply}`;
+
+  const googleReply = await translateEsToEn(result.reply);
+  let reply;
+  if (googleReply) reply = googleReply;
+  else if (isGuide) reply = `(This guide is written in Spanish.)\n\n${result.reply}`;
+  else reply = translateToEnglish(result.reply);
+
+  let options = result.options;
+  if (Array.isArray(options) && options.length) {
+    const mapped = await translateManyEsToEn(options);
+    options = options.map((o) => (mapped && mapped.get(o)) || translateToEnglish(o));
+  }
+
+  let sources = result.sources;
+  if (Array.isArray(sources)) {
+    const next = [];
+    for (const s of sources) {
+      if (!(s?.title === 'report' && s.report) || s.report.lang === 'en') {
+        next.push(s);
+        continue;
+      }
+      const mapped = await translateManyEsToEn(reportPhrases(s.report));
+      next.push({
+        ...s,
+        report: mapped ? applyPhraseMap(s.report, mapped) : translateReport(s.report),
+      });
+    }
+    sources = next;
+  }
+
   return {
     ...result,
     reply,
-    options: Array.isArray(result.options) ? result.options.map((o) => translateToEnglish(o)) : result.options,
-    sources: Array.isArray(result.sources)
-      ? result.sources.map((s) => (s?.title === 'report' && s.report ? { ...s, report: translateReport(s.report) } : s))
-      : result.sources,
+    options,
+    sources,
+    translated: true,
   };
 }
 
 module.exports = {
   detectLanguage,
   toSpanishQuery,
+  prepareSalesQuery,
   translateToEnglish,
   translateReport,
   translateResult,

@@ -228,9 +228,10 @@ function parseStructured(userId, body, isQuestion) {
   const langMatch = n.match(/(?:habla(?:me)?|responde(?:me)?|contesta(?:me)?|escribe(?:me)?)\s+(?:siempre\s+)?en\s+(ingles|espanol|castellano)/)
     || n.match(/(?:always\s+)?(?:answer|reply|speak|talk)(?:\s+to\s+me)?\s+(?:always\s+)?in\s+(english|spanish)/);
   if (langMatch && !isQuestion) {
-    const lang = /ingles|english/.test(langMatch[1]) ? 'en' : 'es';
-    remember(userId, 'profile', 'lang', lang);
-    return lang === 'en' ? 'Got it, I will answer you in English from now on.' : 'Listo, te responderé siempre en español.';
+    const askedEn = /english/.test(langMatch[1]) || /\b(answer|reply|speak|talk)\b/.test(n);
+    return askedEn
+      ? 'I answer in the language of each message: English if you write in English, Spanish if you write in Spanish.'
+      : 'Te respondo en el idioma de cada mensaje: español si escribes en español, inglés si escribes en inglés.';
   }
 
   const goalMatch = n.match(/(?:mi|nuestra|la)\s+meta(?:\s+de\s+ventas?)?(?:\s+(diaria|del dia|por dia|al dia|mensual|del mes|por mes|al mes))?(?:\s+de\s+ventas?)?\s+(?:es|son|sera|seria|de|:)\s+(?:de\s+)?((?:s\/\.?\s*)?\d[\d.,]*\s*(?:mil)?)/)

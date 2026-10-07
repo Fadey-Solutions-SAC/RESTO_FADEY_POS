@@ -24,7 +24,7 @@ import {
   insumoValorInventario,
 } from '../utils/insumoUnidadMedida';
 import toast from 'react-hot-toast';
-import { MdWarning, MdInventory2, MdAdd, MdList, MdExpandMore, MdExpandLess } from 'react-icons/md';
+import { MdInventory2, MdAdd, MdList, MdExpandMore, MdExpandLess } from 'react-icons/md';
 import Modal from './Modal';
 import RecetaEditor from './RecetaEditor';
 
@@ -37,14 +37,12 @@ function foldProductName(value) {
 }
 
 const TABS = [
-  { id: 'dashboard', label: 'Resumen' },
   { id: 'insumos', label: 'Insumos' },
   { id: 'compras', label: 'Compras' },
   { id: 'recetas', label: 'Recetas' },
   { id: 'kardex', label: 'Kardex' },
   { id: 'inv_fisico', label: 'Inventario de transformables' },
   { id: 'inv_no_transform', label: 'Inventario de no transformables' },
-  { id: 'ajustes', label: 'Ajustes / mermas' },
 ];
 
 const BASE = '/kardex-inventory';
@@ -122,7 +120,7 @@ function InventarioFisicoResumenLine({ f, b, s }) {
 }
 
 export default function LogisticaKardexModule() {
-  const [tab, setTab] = useState('dashboard');
+  const [tab, setTab] = useState('insumos');
   const [insumos, setInsumos] = useState([]);
   /** Área activa en pestaña Insumos (cada lista tiene su propio catálogo en BD vía `insumo_area`). */
   const [insumoAreaTab, setInsumoAreaTab] = useState('cocina');
@@ -130,8 +128,6 @@ export default function LogisticaKardexModule() {
   const [showInsumoAddForm, setShowInsumoAddForm] = useState(false);
   const [compraAreaTab, setCompraAreaTab] = useState('cocina');
   const [invFisicoAreaTab, setInvFisicoAreaTab] = useState('cocina');
-  const [ajusteAreaTab, setAjusteAreaTab] = useState('cocina');
-  const [dashboard, setDashboard] = useState(null);
   const [products, setProducts] = useState([]);
   const [recetas, setRecetas] = useState([]);
   const [invList, setInvList] = useState([]);
@@ -149,10 +145,6 @@ export default function LogisticaKardexModule() {
   const [kardexData, setKardexData] = useState(null);
 
   const [invDetalles, setInvDetalles] = useState([{ insumo_id: '', stock_real: '' }]);
-  const [ajusteForm, setAjusteForm] = useState({
-    insumo_id: '', cantidad: '', tipo: 'salida', referencia: 'merma',
-  });
-
   const [whProducts, setWhProducts] = useState([]);
   const [whWarehouses, setWhWarehouses] = useState([]);
   const [cuadreWarehouseId, setCuadreWarehouseId] = useState('');
@@ -163,15 +155,13 @@ export default function LogisticaKardexModule() {
   const [reconciliationHistory, setReconciliationHistory] = useState([]);
 
   const loadCore = useCallback(async () => {
-    const [ins, dash, prods, rec, inv] = await Promise.all([
+    const [ins, prods, rec, inv] = await Promise.all([
       api.get(`${BASE}/insumos`),
-      api.get(`${BASE}/dashboard`),
       api.get('/products').catch(() => []),
       api.get(`${BASE}/recetas`),
       api.get(`${BASE}/inventario-fisico`),
     ]);
     setInsumos(Array.isArray(ins) ? ins : []);
-    setDashboard(dash);
     setProducts(Array.isArray(prods) ? prods : []);
     setRecetas(Array.isArray(rec) ? rec : []);
     setInvList(Array.isArray(inv) ? inv : []);
@@ -203,13 +193,8 @@ export default function LogisticaKardexModule() {
     () => insumosListaActiva.reduce((s, i) => s + insumoValorInventario(i), 0),
     [insumosListaActiva]
   );
-  const valorInsumosTotal = useMemo(
-    () => insumos.reduce((s, i) => s + insumoValorInventario(i), 0),
-    [insumos]
-  );
   const insumosCompraFiltrados = compraAreaTab === 'bar' ? insumosBar : insumosCocina;
   const insumosInvFisicoFiltrados = invFisicoAreaTab === 'bar' ? insumosBar : insumosCocina;
-  const insumosAjusteFiltrados = ajusteAreaTab === 'bar' ? insumosBar : insumosCocina;
 
   const loadWhData = useCallback(async () => {
     const data = await api.get('/inventory/warehouse-stock');
@@ -251,10 +236,6 @@ export default function LogisticaKardexModule() {
   useEffect(() => {
     setInvDetalles([{ insumo_id: '', stock_real: '' }]);
   }, [invFisicoAreaTab]);
-
-  useEffect(() => {
-    setAjusteForm((f) => ({ ...f, insumo_id: '' }));
-  }, [ajusteAreaTab]);
 
   useEffect(() => {
     if (tab !== 'inv_no_transform') return;
@@ -447,32 +428,6 @@ export default function LogisticaKardexModule() {
     }
   };
 
-  const enviarAjuste = async (e) => {
-    e.preventDefault();
-    if (!ajusteForm.insumo_id || !ajusteForm.cantidad) {
-      toast.error('Insumo y cantidad requeridos');
-      return;
-    }
-    try {
-      const cantidadAjuste = parseLocaleNumber(ajusteForm.cantidad);
-      if (!Number.isFinite(cantidadAjuste) || cantidadAjuste <= 0) {
-        toast.error('La cantidad del ajuste debe ser un número mayor a 0 (en kg/L según U.M. del insumo).');
-        return;
-      }
-      await api.post(`${BASE}/ajustes`, {
-        insumo_id: ajusteForm.insumo_id,
-        cantidad: cantidadAjuste,
-        tipo: ajusteForm.tipo,
-        referencia: ajusteForm.referencia || (ajusteForm.tipo === 'entrada' ? 'ajuste' : 'merma'),
-      });
-      toast.success('Ajuste registrado');
-      setAjusteForm({ insumo_id: '', cantidad: '', tipo: 'salida', referencia: 'merma' });
-      loadCore();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  };
-
   const descargarKardex = async (format = 'excel') => {
     if (!kardexInsumo) return;
     const token = localStorage.getItem('token');
@@ -519,11 +474,42 @@ export default function LogisticaKardexModule() {
       return an.localeCompare(bn, 'es');
     });
 
-  const jumpCuadreByLetter = (raw) => {
-    const next = typeof raw === 'function' ? raw : () => raw;
-    setCuadreLetter((prev) => String(next(prev) || '').replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]/g, '').slice(0, 12));
+  const setCuadreLetterOnly = (raw) => {
+    const letter = String(raw || '').replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]/g, '').slice(-1).toLocaleUpperCase('es');
+    setCuadreLetter(letter);
     cuadreListRef.current?.scrollTo({ top: 0 });
   };
+
+  useEffect(() => {
+    if (tab !== 'inv_no_transform' || showReconciliationsModal) return undefined;
+    const onKey = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      const target = e.target;
+      const tag = target?.tagName;
+      if (tag === 'SELECT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      const isLetterBox = target?.dataset?.cuadreLetter != null;
+      const isCount = tag === 'INPUT' && target.type === 'number';
+      if (tag === 'INPUT' && !isCount && !isLetterBox) return;
+      if (e.key === 'Escape') {
+        setCuadreLetter('');
+        return;
+      }
+      if (e.key === 'Backspace') {
+        if (isCount && String(target.value || '')) return;
+        e.preventDefault();
+        setCuadreLetter('');
+        return;
+      }
+      if (e.repeat) return;
+      if (/^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]$/.test(e.key)) {
+        e.preventDefault();
+        setCuadreLetter(e.key.toLocaleUpperCase('es'));
+        cuadreListRef.current?.scrollTo({ top: 0 });
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [tab, showReconciliationsModal]);
 
   const getLogisticsCurrentStock = (product) => {
     if (!cuadreWarehouseId) return Number(product.stock || 0);
@@ -612,87 +598,6 @@ export default function LogisticaKardexModule() {
           </button>
         ))}
       </div>
-
-      {tab === 'dashboard' && dashboard && (
-        <div className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-          <div className="bg-[var(--ui-surface)] rounded-xl border border-[color:var(--ui-border)] p-4">
-            <p className="text-[var(--ui-muted)] text-sm">Valor del inventario</p>
-            <p className="text-2xl font-bold ui-text-success mt-1">{formatCurrency(dashboard.valor_inventario_total)}</p>
-            <p className="text-sm text-[var(--ui-body-text)] mt-2">
-              Valor de insumos:{' '}
-              <span className="font-semibold ui-text-success">{formatCurrency(valorInsumosTotal)}</span>
-            </p>
-            <p className="text-xs text-[var(--ui-muted)] mt-1">{dashboard.total_insumos} insumos activos</p>
-          </div>
-          <div className="bg-[var(--ui-surface)] rounded-xl border border-[color:var(--ui-live-alert-warning-border)] p-4" style={{ background: 'var(--ui-live-alert-warning-bg)' }}>
-            <p className="ui-text-warning text-sm flex items-center gap-1.5 font-semibold">
-              <MdWarning className="inline" /> Bajo mínimo (U o kg/L según creación)
-            </p>
-            <p className="text-xl font-bold ui-text-warning mt-1">{dashboard.insumos_bajo_minimo?.length || 0}</p>
-            <ul className="mt-2 max-h-28 overflow-y-auto text-sm space-y-0.5">
-              {(dashboard.insumos_bajo_minimo || []).map((i) => {
-                const um = String(i.unidad_medida || 'kg').replace(/[0-9]/g, '').trim() || 'kg';
-                const uMin = Number(i.minimo_unidades) || 0;
-                const sMin = Number(i.stock_minimo) || 0;
-                const detail = isUnidadUm(um)
-                  ? `${formatInsumoQty(insumoStockEnUnidades(i))} U / mín. ${formatInsumoQty(uMin)} U`
-                  : ((uMin > 0 && Number(i.stock_unidades) < uMin)
-                    ? `${formatInsumoQty(Number(i.stock_unidades) || 0)} U / mín. ${formatInsumoQty(uMin)} U`
-                    : `${formatInsumoWithUnit(Number(i.stock_actual) || 0, um)} / mín. ${formatInsumoQty(sMin)} ${um}`);
-                const tag = (i.insumo_area || 'cocina') === 'bar' ? 'Bar' : 'Cocina';
-                return (
-                  <li key={i.id} className="flex justify-between text-[var(--ui-body-text)] gap-2">
-                    <span>
-                      <span className="text-[10px] uppercase ui-text-info mr-1 font-semibold">{tag}</span>
-                      {i.nombre}
-                    </span>
-                    <span className="ui-text-danger text-right font-medium">{detail}</span>
-                  </li>
-                );
-              })}
-            </ul>
-            {(!dashboard.insumos_bajo_minimo || !dashboard.insumos_bajo_minimo.length) && (
-              <p className="ui-text-muted text-sm mt-1">Ninguno por debajo del mínimo configurado.</p>
-            )}
-          </div>
-          </div>
-          {dashboard.por_area && (
-            <div className="grid gap-3 md:grid-cols-2">
-              <div
-                className="rounded-xl border p-3 text-sm"
-                style={{
-                  borderColor: 'var(--ui-live-alert-info-border)',
-                  background: 'var(--ui-live-alert-info-bg)',
-                }}
-              >
-                <p className="font-semibold ui-text-info mb-1">Insumos de cocina</p>
-                <p className="text-[var(--ui-body-text)]">
-                  {dashboard.por_area.cocina?.total_insumos ?? 0} activos · valor{' '}
-                  <span className="ui-text-success font-semibold">{formatCurrency(dashboard.por_area.cocina?.valor_inventario ?? 0)}</span>
-                  {' · '}
-                  <span className="ui-text-warning font-semibold">{dashboard.por_area.cocina?.bajo_minimo_count ?? 0}</span> bajo mínimo
-                </p>
-              </div>
-              <div
-                className="rounded-xl border p-3 text-sm"
-                style={{
-                  borderColor: 'color-mix(in srgb, var(--ui-accent) 40%, var(--ui-border))',
-                  background: 'color-mix(in srgb, var(--ui-accent) 10%, var(--ui-surface))',
-                }}
-              >
-                <p className="font-semibold mb-1" style={{ color: 'var(--ui-accent)' }}>Insumos de bar</p>
-                <p className="text-[var(--ui-body-text)]">
-                  {dashboard.por_area.bar?.total_insumos ?? 0} activos · valor{' '}
-                  <span className="ui-text-success font-semibold">{formatCurrency(dashboard.por_area.bar?.valor_inventario ?? 0)}</span>
-                  {' · '}
-                  <span className="ui-text-warning font-semibold">{dashboard.por_area.bar?.bajo_minimo_count ?? 0}</span> bajo mínimo
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {tab === 'insumos' && (
         <div className="space-y-4">
@@ -1529,18 +1434,12 @@ export default function LogisticaKardexModule() {
             <label className="flex items-center gap-2 text-sm text-[var(--ui-muted)]">
               Letra:
               <input
+                data-cuadre-letter=""
                 value={cuadreLetter}
-                onChange={(e) => jumpCuadreByLetter(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    e.preventDefault();
-                    jumpCuadreByLetter('');
-                  }
-                }}
-                placeholder="C"
-                maxLength={12}
-                className="w-24 bg-[var(--ui-surface)] border border-[color:var(--ui-border)] rounded-lg px-2 py-1.5 text-[var(--ui-body-text)] text-sm uppercase"
-                aria-label="Poner primero los productos que empiezan con esta letra"
+                onChange={(e) => setCuadreLetterOnly(e.target.value)}
+                maxLength={1}
+                className="w-10 text-center bg-[var(--ui-surface)] border border-[color:var(--ui-border)] rounded-lg px-2 py-1.5 text-[var(--ui-body-text)] text-sm uppercase"
+                aria-label="Una letra: pone primero los productos que empiezan con ella"
               />
             </label>
             <button
@@ -1554,26 +1453,6 @@ export default function LogisticaKardexModule() {
           <div
             ref={cuadreListRef}
             className="overflow-x-auto max-h-[70vh] overflow-y-auto rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]"
-            onKeyDown={(e) => {
-              const target = e.target;
-              if (target?.dataset?.cuadreLetter != null) return;
-              if (target?.tagName === 'SELECT' || target?.tagName === 'TEXTAREA') return;
-              if (target?.tagName === 'INPUT' && target.type !== 'number') return;
-              if (e.ctrlKey || e.metaKey || e.altKey) return;
-              if (e.key === 'Escape') {
-                jumpCuadreByLetter('');
-                return;
-              }
-              if (e.key === 'Backspace' && target?.type === 'number' && !String(target.value || '')) {
-                e.preventDefault();
-                jumpCuadreByLetter((prev) => prev.slice(0, -1));
-                return;
-              }
-              if (/^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]$/.test(e.key)) {
-                if (target?.type === 'number') e.preventDefault();
-                jumpCuadreByLetter((prev) => prev + e.key);
-              }
-            }}
           >
             <table className="w-full text-sm min-w-[900px]">
               <thead>
@@ -1640,81 +1519,6 @@ export default function LogisticaKardexModule() {
             </button>
           </div>
         </div>
-      )}
-
-      {tab === 'ajustes' && (
-        <form onSubmit={enviarAjuste} className="max-w-md space-y-3">
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-xs text-[var(--ui-muted)]">Ajuste en:</span>
-            <button
-              type="button"
-              onClick={() => setAjusteAreaTab('cocina')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
-                ajusteAreaTab === 'cocina'
-                  ? 'bg-sky-600/90 text-white border-sky-500'
-                  : 'border-[color:var(--ui-border)] text-[var(--ui-body-text)]'
-              }`}
-            >
-              Cocina
-            </button>
-            <button
-              type="button"
-              onClick={() => setAjusteAreaTab('bar')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
-                ajusteAreaTab === 'bar'
-                  ? 'bg-indigo-600/90 text-white border-indigo-500'
-                  : 'border-[color:var(--ui-border)] text-[var(--ui-body-text)]'
-              }`}
-            >
-              Bar
-            </button>
-          </div>
-          <p className="text-[var(--ui-body-text)] text-sm">Entrada manual o salida por merma (al costo promedio al salir).</p>
-          <div>
-            <label className="block text-xs ui-text-muted">Insumo</label>
-            <select
-              className="input-field text-sm py-1.5 w-full"
-              value={ajusteForm.insumo_id}
-              onChange={(e) => setAjusteForm((f) => ({ ...f, insumo_id: e.target.value }))}
-            >
-              <option value="">—</option>
-              {insumosAjusteFiltrados.map((i) => (
-                <option key={i.id} value={i.id}>{insumoOptionStockLabel(i)}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs ui-text-muted">Cantidad (kg / L) &gt; 0</label>
-            <input
-              type="number"
-              min="0.0001"
-              step="0.0001"
-              className="input-field text-sm py-1.5 w-full"
-              value={ajusteForm.cantidad}
-              onChange={(e) => setAjusteForm((f) => ({ ...f, cantidad: e.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="block text-xs ui-text-muted">Tipo</label>
-            <select
-              className="input-field text-sm py-1.5 w-full"
-              value={ajusteForm.tipo}
-              onChange={(e) => setAjusteForm((f) => ({ ...f, tipo: e.target.value }))}
-            >
-              <option value="salida">Salida (merma / pérdida)</option>
-              <option value="entrada">Entrada (ajuste a favor)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs ui-text-muted">Referencia (merma, ajuste, etc.)</label>
-            <input
-              className="input-field text-sm py-1.5 w-full"
-              value={ajusteForm.referencia}
-              onChange={(e) => setAjusteForm((f) => ({ ...f, referencia: e.target.value }))}
-            />
-          </div>
-          <button type="submit" className="btn-primary">Registrar ajuste</button>
-        </form>
       )}
 
       <Modal
