@@ -4,7 +4,8 @@ import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen, MdDownload, MdPrint } from 'react-icons/md';
-import { downloadTableQrA5, printTableQrA5Sheets } from '../../utils/tableQrPrint';
+import QRCode from 'qrcode';
+import { downloadTableQrA5, normalizeQrSlot, printTableQrA5Sheets, suggestFormatQrSlot } from '../../utils/tableQrPrint';
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import {
@@ -82,6 +83,144 @@ function selfOrderUrlForTable(number) {
   return `${base}/auto-pedido?mesa=${encodeURIComponent(String(number))}`;
 }
 
+function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onCommit, onUseFrame, placing }) {
+  const frameRef = useRef(null);
+  const dragRef = useRef(null);
+  const onChangeRef = useRef(onChange);
+  const onCommitRef = useRef(onCommit);
+  const [preview, setPreview] = useState('');
+  onChangeRef.current = onChange;
+  onCommitRef.current = onCommit;
+
+  useEffect(() => {
+    let cancel = false;
+    QRCode.toDataURL('mesa', {
+      margin: 0,
+      width: 240,
+      errorCorrectionLevel: 'H',
+      color: { dark: '#111827', light: '#ffffff' },
+    }).then((url) => {
+      if (!cancel) setPreview(url);
+    }).catch(() => {});
+    return () => { cancel = true; };
+  }, []);
+
+  useEffect(() => {
+    const move = (event) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const dx = (event.clientX - drag.px) / drag.rect.width;
+      const dy = (event.clientY - drag.py) / drag.rect.height;
+      const start = drag.slot;
+      const next = drag.mode === 'resize'
+        ? normalizeQrSlot({ ...start, w: start.w + dx, h: start.h + dy })
+        : normalizeQrSlot({ ...start, x: start.x + dx, y: start.y + dy });
+      if (!next) return;
+      drag.current = next;
+      onChangeRef.current(next);
+    };
+    const up = () => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      dragRef.current = null;
+      onCommitRef.current(drag.current || drag.slot);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, []);
+
+  const start = (event, mode) => {
+    if (!slot || !frameRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (mode === 'move') event.currentTarget.focus();
+    onDragStart?.();
+    dragRef.current = {
+      mode,
+      px: event.clientX,
+      py: event.clientY,
+      slot: { ...slot },
+      current: { ...slot },
+      rect: frameRef.current.getBoundingClientRect(),
+    };
+  };
+
+  const nudge = (event) => {
+    if (!slot) return;
+    const step = event.shiftKey ? 0.02 : 0.004;
+    let next = null;
+    if (event.key === 'ArrowLeft') next = normalizeQrSlot({ ...slot, x: slot.x - step });
+    if (event.key === 'ArrowRight') next = normalizeQrSlot({ ...slot, x: slot.x + step });
+    if (event.key === 'ArrowUp') next = normalizeQrSlot({ ...slot, y: slot.y - step });
+    if (event.key === 'ArrowDown') next = normalizeQrSlot({ ...slot, y: slot.y + step });
+    if (!next) return;
+    event.preventDefault();
+    onChange(next);
+    onCommit(next);
+  };
+
+  return (
+    <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <div
+          ref={frameRef}
+          className="relative mx-auto w-full max-w-[260px] shrink-0 bg-white rounded-lg border border-slate-200"
+        >
+          <img src={imageUrl} alt="Formato de impresión" className="block w-full h-auto select-none" draggable={false} />
+          {slot ? (
+            <div
+              tabIndex={0}
+              aria-label="Lugar del código QR. Arrastre para moverlo."
+              className="absolute border-2 border-violet-600 cursor-move touch-none outline-none focus:ring-2 focus:ring-violet-400"
+              style={{
+                left: `${slot.x * 100}%`,
+                top: `${slot.y * 100}%`,
+                width: `${slot.w * 100}%`,
+                height: `${slot.h * 100}%`,
+              }}
+              onPointerDown={(e) => start(e, 'move')}
+              onKeyDown={nudge}
+            >
+              {preview ? (
+                <img src={preview} alt="" className="absolute inset-0 w-full h-full object-contain bg-white/80 pointer-events-none" />
+              ) : null}
+              <span
+                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center rounded-full bg-white border-2 border-slate-900 font-bold text-slate-900 pointer-events-none"
+                style={{ width: '29%', height: '29%', fontSize: '0.65rem' }}
+              >
+                {sampleNumber}
+              </span>
+              <span
+                className="absolute -right-1.5 -bottom-1.5 h-4 w-4 rounded-sm border-2 border-white bg-violet-600 cursor-nwse-resize"
+                onPointerDown={(e) => start(e, 'resize')}
+                aria-hidden
+              />
+            </div>
+          ) : null}
+        </div>
+        <div className="min-w-0 text-sm">
+          <p className="font-medium rf-section-title">Lugar del QR</p>
+          <p className="mt-1 text-xs text-[var(--ui-muted)]">
+            Arrastre el recuadro hasta el marco del diseño. La esquina violeta cambia el tamaño. Con el recuadro seleccionado, las flechas lo mueven con más precisión.
+          </p>
+          <button
+            type="button"
+            className="btn-secondary mt-3 text-sm"
+            disabled={placing}
+            onClick={onUseFrame}
+          >
+            {placing ? 'Buscando recuadro…' : 'Usar el recuadro del diseño'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AutoPedidoAdmin() {
   const { user } = useAuth();
   const canSave = user?.role === 'admin' || user?.role === 'master_admin';
@@ -106,7 +245,11 @@ export default function AutoPedidoAdmin() {
   const [printingQrTableId, setPrintingQrTableId] = useState('');
   const [qrHome, setQrHome] = useState('productos');
   const [qrFormat, setQrFormat] = useState('');
+  const [qrSlot, setQrSlot] = useState(null);
+  const [qrDataReady, setQrDataReady] = useState(false);
+  const [placingQrSlot, setPlacingQrSlot] = useState(false);
   const [uploadingQrFormat, setUploadingQrFormat] = useState(false);
+  const draggingSlotRef = useRef(false);
   const [savingQrHome, setSavingQrHome] = useState(false);
   const cartasDirtyRef = useRef(false);
   const loadSeqRef = useRef(0);
@@ -132,6 +275,7 @@ export default function AutoPedidoAdmin() {
         const home = String(cData?.qr_home || '').trim().toLowerCase();
         setQrHome(home === 'cartas' || home === 'ambos' ? home : 'productos');
         setQrFormat(String(cData?.qr_format || '').trim());
+        if (!draggingSlotRef.current) setQrSlot(normalizeQrSlot(cData?.qr_slot));
         setTables(Array.isArray(tData) ? tData : []);
         setProducts(Array.isArray(pData) ? pData : []);
         setCategories(Array.isArray(catData) ? catData : []);
@@ -140,7 +284,10 @@ export default function AutoPedidoAdmin() {
         if (seq === loadSeqRef.current) toast.error(e.message);
       })
       .finally(() => {
-        if (seq === loadSeqRef.current) setLoading(false);
+        if (seq === loadSeqRef.current) {
+          setLoading(false);
+          setQrDataReady(true);
+        }
       });
   }, []);
 
@@ -148,9 +295,26 @@ export default function AutoPedidoAdmin() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!qrDataReady || !qrFormat || qrSlot) return undefined;
+    let cancel = false;
+    setPlacingQrSlot(true);
+    suggestFormatQrSlot(resolveMediaUrl(qrFormat))
+      .then((suggested) => {
+        if (cancel || !suggested) return;
+        setQrSlot((current) => current || suggested);
+        return saveQrSlot(suggested, { silent: true });
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancel) setPlacingQrSlot(false);
+      });
+    return () => { cancel = true; };
+  }, [qrDataReady, qrFormat, qrSlot]);
+
   useSocket('staff-data-update', (p) => {
     const d = p?.domain;
-    if (['auto_pedido_cartas', 'auto_pedido_qr_home', 'auto_pedido_qr_format', 'modifiers', 'discounts', 'offers', 'combos', 'catalog'].includes(d)) {
+    if (['auto_pedido_cartas', 'auto_pedido_qr_home', 'auto_pedido_qr_format', 'auto_pedido_qr_slot', 'modifiers', 'discounts', 'offers', 'combos', 'catalog'].includes(d)) {
       void load();
     }
   });
@@ -349,6 +513,38 @@ export default function AutoPedidoAdmin() {
     return url;
   };
 
+  const saveQrSlot = async (slot, { silent } = {}) => {
+    const clean = normalizeQrSlot(slot);
+    if (!clean || !canSave) return;
+    try {
+      const data = await api.put('/admin-modules/auto-pedido/qr-slot', { qr_slot: clean });
+      if (!draggingSlotRef.current && data?.qr_slot) setQrSlot(normalizeQrSlot(data.qr_slot));
+    } catch (err) {
+      if (!silent) toast.error(err.message || 'No se pudo guardar el lugar del QR');
+    }
+  };
+
+  const placeQrOnFrame = async () => {
+    const url = requireQrFormat();
+    if (!url || placingQrSlot) return;
+    setPlacingQrSlot(true);
+    try {
+      const suggested = await suggestFormatQrSlot(url);
+      if (!suggested) {
+        toast.error('No se encontró el recuadro. Arrástrelo usted mismo.');
+        return;
+      }
+      draggingSlotRef.current = false;
+      setQrSlot(suggested);
+      await saveQrSlot(suggested, { silent: true });
+      toast.success('QR colocado en el recuadro');
+    } catch (err) {
+      toast.error(err.message || 'No se pudo ubicar el recuadro');
+    } finally {
+      setPlacingQrSlot(false);
+    }
+  };
+
   const uploadQrFormat = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -363,6 +559,7 @@ export default function AutoPedidoAdmin() {
       const { url } = await api.upload(file);
       const data = await api.put('/admin-modules/auto-pedido/qr-format', { qr_format: url || '' });
       setQrFormat(String(data?.qr_format || url || '').trim());
+      setQrSlot(normalizeQrSlot(data?.qr_slot));
       toast.success('Formato de impresión cargado', { id: tid });
     } catch (err) {
       toast.error(err.message || 'No se pudo cargar el formato', { id: tid });
@@ -377,6 +574,7 @@ export default function AutoPedidoAdmin() {
     try {
       await api.put('/admin-modules/auto-pedido/qr-format', { qr_format: '' });
       setQrFormat('');
+      setQrSlot(null);
       toast.success('Formato quitado');
     } catch (err) {
       toast.error(err.message || 'No se pudo quitar el formato');
@@ -393,6 +591,7 @@ export default function AutoPedidoAdmin() {
         url: selfOrderUrlForTable(table.number),
         tableNumber: table.number,
         formatImageUrl,
+        slot: qrSlot,
       });
     } catch (err) {
       toast.error(err.message || 'No se pudo descargar el QR');
@@ -414,7 +613,7 @@ export default function AutoPedidoAdmin() {
     setPrintingQrTableId(busyId);
     const tid = toast.loading(sheets.length > 1 ? 'Preparando hojas A5…' : 'Preparando hoja A5…');
     try {
-      await printTableQrA5Sheets(sheets, formatImageUrl);
+      await printTableQrA5Sheets(sheets, formatImageUrl, qrSlot);
       toast.success(sheets.length > 1 ? `${sheets.length} hojas A5 listas para imprimir` : 'Hoja A5 lista para imprimir', { id: tid });
     } catch (err) {
       toast.error(err.message || 'No se pudo imprimir el QR', { id: tid });
@@ -862,7 +1061,7 @@ export default function AutoPedidoAdmin() {
           <div className="min-w-0">
             <h2 className="text-lg font-semibold rf-section-title">Enlaces y QR por mesa</h2>
             <p className="text-xs text-[var(--ui-muted)] mt-1 max-w-xl">
-              Cargue la imagen del diseño (vertical, tamaño A5) con su QR ya colocado. Al imprimir, el QR de cada mesa ocupa ese mismo lugar y tamaño, con el número en el círculo del centro. La hoja completa solo sale en la impresión.
+              Cargue el diseño vertical (A5). El QR de cada mesa se imprime dentro del recuadro, con el número en el círculo del centro. Puede moverlo en la vista previa antes de imprimir. La hoja completa solo sale en la impresión.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -911,6 +1110,22 @@ export default function AutoPedidoAdmin() {
             </button>
           </div>
         </div>
+        {qrFormat ? (
+          <QrSlotEditor
+            imageUrl={resolveMediaUrl(qrFormat)}
+            slot={qrSlot}
+            sampleNumber={tables[0]?.number ?? '1'}
+            placing={placingQrSlot}
+            onDragStart={() => { draggingSlotRef.current = true; }}
+            onChange={setQrSlot}
+            onCommit={(slot) => {
+              draggingSlotRef.current = false;
+              setQrSlot(slot);
+              void saveQrSlot(slot);
+            }}
+            onUseFrame={() => void placeQrOnFrame()}
+          />
+        ) : null}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {tables.map((t) => {
             const url = selfOrderUrlForTable(t.number);

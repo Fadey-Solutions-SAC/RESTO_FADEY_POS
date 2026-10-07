@@ -481,7 +481,149 @@ function slotOnSampleQr(data, width, height, level = 100) {
   return { x: left, y: top, w: boxW, h: boxH };
 }
 
-/** Busca el QR que ya trae el diseño y devuelve su cuadro en píxeles de la imagen. */
+/** Marco vacío del diseño: borde oscuro y centro claro. El QR se imprime dentro de ese recuadro. */
+function slotOnEmptyFrame(data, width, height) {
+  const luma = new Float32Array(width * height);
+  for (let i = 0; i < width * height; i += 1) {
+    const o = i * 4;
+    luma[i] = data[o] * 0.3 + data[o + 1] * 0.59 + data[o + 2] * 0.11;
+  }
+  const darkAt = (x, y) => luma[y * width + x] < 165;
+  const minSide = Math.min(width, height);
+  const minLen = minSide * 0.14;
+  const maxLen = minSide * 0.62;
+
+  const longestRun = (length, isDark) => {
+    let best = null;
+    let start = -1;
+    let gap = 0;
+    const close = (end) => {
+      const len = end - start;
+      if (len >= minLen && len <= maxLen && (!best || len > best.b - best.a)) best = { a: start, b: end };
+    };
+    for (let i = 0; i <= length; i += 1) {
+      if (i < length && isDark(i)) {
+        if (start < 0) start = i;
+        gap = 0;
+      } else if (start >= 0) {
+        gap += 1;
+        if (gap > 4 || i === length) {
+          close(i - gap);
+          start = -1;
+          gap = 0;
+        }
+      }
+    }
+    return best;
+  };
+
+  const sideLight = (samples) => {
+    if (!samples.length) return false;
+    let dark = 0;
+    samples.forEach((on) => { if (on) dark += 1; });
+    return dark / samples.length < 0.22;
+  };
+
+  const pushLine = (lines, line, key) => {
+    const prev = lines[lines.length - 1];
+    if (prev && line[key] - prev[key] < 3) {
+      const prevLen = prev.b - prev.a;
+      const nextLen = line.b - line.a;
+      if (nextLen >= prevLen) lines[lines.length - 1] = line;
+      return;
+    }
+    lines.push(line);
+  };
+
+  const hLines = [];
+  for (let y = 2; y < height - 2; y += 1) {
+    const run = longestRun(width, (x) => darkAt(x, y));
+    if (!run) continue;
+    const below = [];
+    const above = [];
+    for (let x = run.a; x < run.b; x += 3) {
+      below.push(darkAt(x, Math.min(height - 1, y + 6)));
+      above.push(darkAt(x, Math.max(0, y - 6)));
+    }
+    if (!sideLight(below) && !sideLight(above)) continue;
+    pushLine(hLines, { y, a: run.a, b: run.b }, 'y');
+  }
+  const vLines = [];
+  for (let x = 2; x < width - 2; x += 1) {
+    const run = longestRun(height, (y) => darkAt(x, y));
+    if (!run) continue;
+    const right = [];
+    const left = [];
+    for (let y = run.a; y < run.b; y += 3) {
+      right.push(darkAt(Math.min(width - 1, x + 6), y));
+      left.push(darkAt(Math.max(0, x - 6), y));
+    }
+    if (!sideLight(right) && !sideLight(left)) continue;
+    pushLine(vLines, { x, a: run.a, b: run.b }, 'x');
+  }
+
+  let best = null;
+  for (let i = 0; i < hLines.length; i += 1) {
+    for (let j = i + 1; j < hLines.length; j += 1) {
+      const top = hLines[i].y < hLines[j].y ? hLines[i] : hLines[j];
+      const bottom = top === hLines[i] ? hLines[j] : hLines[i];
+      const boxH = bottom.y - top.y;
+      if (boxH < minLen || boxH > maxLen) continue;
+      const overlapA = Math.max(top.a, bottom.a);
+      const overlapB = Math.min(top.b, bottom.b);
+      if (overlapB - overlapA < boxH * 0.7) continue;
+      const leftCandidates = vLines.filter((line) => (
+        Math.abs(line.x - overlapA) < boxH * 0.12
+        && line.a < top.y + boxH * 0.35
+        && line.b > bottom.y - boxH * 0.35
+      ));
+      const rightCandidates = vLines.filter((line) => (
+        Math.abs(line.x - overlapB) < boxH * 0.12
+        && line.a < top.y + boxH * 0.35
+        && line.b > bottom.y - boxH * 0.35
+      ));
+      if (!leftCandidates.length || !rightCandidates.length) continue;
+      const left = leftCandidates.reduce((a, b) => (Math.abs(b.x - overlapA) < Math.abs(a.x - overlapA) ? b : a));
+      const right = rightCandidates.reduce((a, b) => (Math.abs(b.x - overlapB) < Math.abs(a.x - overlapB) ? b : a));
+      const boxW = right.x - left.x;
+      if (boxW < minLen || boxW / boxH < 0.82 || boxW / boxH > 1.22) continue;
+      if (left.x < width * 0.06 || right.x > width * 0.94) continue;
+      const rim = Math.max(4, Math.round(Math.min(boxW, boxH) * 0.06));
+      let rimDark = 0;
+      let rimN = 0;
+      for (let y = top.y + 3; y <= top.y + rim + 6; y += 2) {
+        for (let x = left.x + rim; x <= right.x - rim; x += 2) {
+          rimN += 1;
+          if (darkAt(x, y)) rimDark += 1;
+        }
+      }
+      if (!rimN || rimDark / rimN > 0.18) continue;
+      const inset = Math.round(Math.min(boxW, boxH) * 0.12);
+      let dark = 0;
+      let n = 0;
+      for (let y = top.y + inset; y < bottom.y - inset; y += 3) {
+        for (let x = left.x + inset; x < right.x - inset; x += 3) {
+          n += 1;
+          if (darkAt(x, y)) dark += 1;
+        }
+      }
+      const density = n ? dark / n : 1;
+      if (density > 0.08) continue;
+      const score = boxW * boxH * (1 - density);
+      if (!best || score > best.score) {
+        best = { x: left.x, y: top.y, w: boxW, h: boxH, score };
+      }
+    }
+  }
+  if (!best) return null;
+  const pad = Math.round(Math.min(best.w, best.h) * 0.045);
+  const w = best.w - pad * 2;
+  const h = best.h - pad * 2;
+  if (w < 24 || h < 24) return null;
+  return { x: best.x + pad, y: best.y + pad, w, h };
+}
+
+/** Busca el recuadro vacío o el QR de muestra y devuelve su cuadro en píxeles de la imagen. */
 function detectFormatQrSlot(img) {
   if (qrSlotCache.has(img)) return qrSlotCache.get(img);
   const naturalW = img.naturalWidth || img.width;
@@ -496,6 +638,17 @@ function detectFormatQrSlot(img) {
   const scanCtx = scan.getContext('2d', { willReadFrequently: true });
   scanCtx.drawImage(img, 0, 0, w, h);
   const imageData = scanCtx.getImageData(0, 0, w, h);
+  const frame = slotOnEmptyFrame(imageData.data, w, h);
+  if (frame) {
+    const mappedFrame = {
+      x: frame.x / scanScale,
+      y: frame.y / scanScale,
+      w: frame.w / scanScale,
+      h: frame.h / scanScale,
+    };
+    qrSlotCache.set(img, mappedFrame);
+    return mappedFrame;
+  }
   const decoded = slotFromDecodedQr(
     jsQR(imageData.data, w, h, { inversionAttempts: 'attemptBoth' }),
     w,
@@ -522,44 +675,94 @@ function detectFormatQrSlot(img) {
  * Hoja A5: formato subido + QR de la mesa, con el número dentro de un círculo al centro del QR.
  * No se muestra en pantalla; solo se usa para imprimir o descargar el archivo de imprenta.
  */
-export async function renderTableQrA5({ url, tableNumber, formatImage }) {
+export function normalizeQrSlot(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const x = Number(raw.x);
+  const y = Number(raw.y);
+  const w = Number(raw.w);
+  const h = Number(raw.h);
+  if (![x, y, w, h].every(Number.isFinite)) return null;
+  const nw = Math.min(0.8, Math.max(0.06, w));
+  const nh = Math.min(0.8, Math.max(0.06, h));
+  const nx = Math.min(Math.max(0, x), 1 - nw);
+  const ny = Math.min(Math.max(0, y), 1 - nh);
+  return { x: nx, y: ny, w: nw, h: nh };
+}
+
+function slotFromSaved(formatImage, slot) {
+  const norm = normalizeQrSlot(slot);
+  if (!norm) return null;
+  const naturalW = formatImage.naturalWidth || formatImage.width;
+  const naturalH = formatImage.naturalHeight || formatImage.height;
+  return {
+    x: norm.x * naturalW,
+    y: norm.y * naturalH,
+    w: norm.w * naturalW,
+    h: norm.h * naturalH,
+  };
+}
+
+/** Lugar sugerido del QR, en fracciones del ancho y alto de la imagen. */
+export async function suggestFormatQrSlot(formatImageUrl) {
+  const formatImage = await loadHtmlImage(formatImageUrl);
+  const naturalW = formatImage.naturalWidth || formatImage.width;
+  const naturalH = formatImage.naturalHeight || formatImage.height;
+  const found = detectFormatQrSlot(formatImage);
+  if (found?.w && found?.h) {
+    return normalizeQrSlot({
+      x: found.x / naturalW,
+      y: found.y / naturalH,
+      w: found.w / naturalW,
+      h: found.h / naturalH,
+    });
+  }
+  const side = Math.min(naturalW, naturalH) * 0.32;
+  return normalizeQrSlot({
+    x: (naturalW - side) / 2 / naturalW,
+    y: ((naturalH - side) * 0.58) / naturalH,
+    w: side / naturalW,
+    h: side / naturalH,
+  });
+}
+
+export async function renderTableQrA5({ url, tableNumber, formatImage, slot }) {
   if (!formatImage) throw new Error('Cargue el formato de imagen antes de imprimir');
   const { width, height } = a5Pixels();
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  const slot = detectFormatQrSlot(formatImage);
-  if (!slot) {
-    throw new Error('El formato debe incluir un código QR. Ese QR marca el lugar y el tamaño del de cada mesa.');
+  const placed = slotFromSaved(formatImage, slot) || detectFormatQrSlot(formatImage);
+  if (!placed) {
+    throw new Error('No se encontró el recuadro del QR. Ajuste el lugar en la vista previa.');
   }
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, width, height);
   const fit = containPlacement(formatImage, width, height);
   ctx.drawImage(formatImage, fit.x, fit.y, fit.w, fit.h);
 
-  const qw = Math.max(32, Math.round((slot.w || slot.size) * fit.scale));
-  const qh = Math.max(32, Math.round((slot.h || slot.size) * fit.scale));
-  const qrPx = Math.max(qw, qh);
+  const slotW = Math.max(32, (placed.w || placed.size) * fit.scale);
+  const slotH = Math.max(32, (placed.h || placed.size) * fit.scale);
+  const side = Math.max(32, Math.round(Math.min(slotW, slotH)));
   const qrCanvas = document.createElement('canvas');
   await QRCode.toCanvas(qrCanvas, url, {
-    width: qrPx,
+    width: side,
     margin: 0,
     errorCorrectionLevel: 'H',
     color: { dark: '#111827', light: '#ffffff' },
   });
 
-  const x = Math.round(fit.x + slot.x * fit.scale);
-  const y = Math.round(fit.y + slot.y * fit.scale);
+  const x = Math.round(fit.x + placed.x * fit.scale + (slotW - side) / 2);
+  const y = Math.round(fit.y + placed.y * fit.scale + (slotH - side) / 2);
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(x, y, qw, qh);
+  ctx.fillRect(x, y, side, side);
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(qrCanvas, x, y, qw, qh);
+  ctx.drawImage(qrCanvas, x, y, side, side);
 
   const label = String(tableNumber ?? '').trim() || '—';
-  const cx = x + qw / 2;
-  const cy = y + qh / 2;
-  const radius = Math.min(qw, qh) * 0.145;
+  const cx = x + side / 2;
+  const cy = y + side / 2;
+  const radius = side * 0.145;
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
@@ -583,9 +786,9 @@ async function canvasToPngBlob(canvas) {
   return blob;
 }
 
-export async function downloadTableQrA5({ url, tableNumber, formatImageUrl }) {
+export async function downloadTableQrA5({ url, tableNumber, formatImageUrl, slot }) {
   const formatImage = await loadHtmlImage(formatImageUrl);
-  const canvas = await renderTableQrA5({ url, tableNumber, formatImage });
+  const canvas = await renderTableQrA5({ url, tableNumber, formatImage, slot });
   const blob = await canvasToPngBlob(canvas);
   const href = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -644,7 +847,7 @@ function printA5Images(dataUrls) {
 }
 
 /** Imprime una o varias hojas A5. El formato completo no se muestra en la pantalla del sistema. */
-export async function printTableQrA5Sheets(sheets, formatImageUrl) {
+export async function printTableQrA5Sheets(sheets, formatImageUrl, slot) {
   const list = Array.isArray(sheets) ? sheets.filter((s) => s?.url) : [];
   if (!list.length) throw new Error('No hay mesas para imprimir');
   if (!formatImageUrl) throw new Error('Cargue el formato de imagen antes de imprimir');
@@ -655,6 +858,7 @@ export async function printTableQrA5Sheets(sheets, formatImageUrl) {
       url: sheet.url,
       tableNumber: sheet.tableNumber,
       formatImage,
+      slot,
     });
     dataUrls.push(canvas.toDataURL('image/png'));
   }

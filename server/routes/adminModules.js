@@ -140,6 +140,11 @@ function mergeSettingsBlob(prevParsed, incoming, { catalogEdits = [] } = {}) {
   } else {
     delete merged.auto_pedido_qr_format;
   }
+  if (Object.prototype.hasOwnProperty.call(prev, 'auto_pedido_qr_slot')) {
+    merged.auto_pedido_qr_slot = prev.auto_pedido_qr_slot;
+  } else {
+    delete merged.auto_pedido_qr_slot;
+  }
   try {
     const { shouldKeepPreviousCatalog } = require('../services/settingsCatalogRecover');
     const confirmed = {
@@ -465,10 +470,54 @@ function readAutoPedidoQrFormatFromDb() {
   }
 }
 
+function normalizeQrSlot(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const x = Number(raw.x);
+  const y = Number(raw.y);
+  const w = Number(raw.w);
+  const h = Number(raw.h);
+  if (![x, y, w, h].every(Number.isFinite)) return null;
+  const nw = Math.min(0.8, Math.max(0.06, w));
+  const nh = Math.min(0.8, Math.max(0.06, h));
+  const nx = Math.min(Math.max(0, x), 1 - nw);
+  const ny = Math.min(Math.max(0, y), 1 - nh);
+  return {
+    x: Math.round(nx * 10000) / 10000,
+    y: Math.round(ny * 10000) / 10000,
+    w: Math.round(nw * 10000) / 10000,
+    h: Math.round(nh * 10000) / 10000,
+  };
+}
+
+function readAutoPedidoQrSlotFromDb() {
+  const settingsObj = parseJsonSafe(queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings'])?.value, {});
+  return normalizeQrSlot(settingsObj.auto_pedido_qr_slot);
+}
+
+function persistAutoPedidoQrSlot(raw) {
+  const clean = raw == null || raw === '' ? null : normalizeQrSlot(raw);
+  if (raw != null && raw !== '' && !clean) throw new Error('El lugar del QR no es válido');
+  const prevRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
+  const settingsObj = parseJsonSafe(prevRow?.value, {});
+  settingsObj.auto_pedido_qr_slot = clean;
+  runSql(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+    ['settings', JSON.stringify(settingsObj)]
+  );
+  const { saveDb } = require('../database');
+  saveDb();
+  return clean;
+}
+
 function persistAutoPedidoQrFormat(url) {
   const clean = normalizeQrFormatUrl(url);
   const prevRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
   const settingsObj = parseJsonSafe(prevRow?.value, {});
+  if (String(settingsObj.auto_pedido_qr_format || '') !== clean) {
+    settingsObj.auto_pedido_qr_slot = null;
+  }
   settingsObj.auto_pedido_qr_format = clean;
   runSql(
     `INSERT INTO app_settings (key, value, updated_at)
@@ -512,6 +561,7 @@ router.get('/auto-pedido/cartas', (req, res) => {
     cartas,
     qr_home: normalizeAutoPedidoQrHome(settingsObj.auto_pedido_qr_home),
     qr_format: readAutoPedidoQrFormatFromDb(),
+    qr_slot: readAutoPedidoQrSlotFromDb(),
   });
 });
 
@@ -566,9 +616,27 @@ router.put('/auto-pedido/qr-format', requireRole('admin'), (req, res) => {
       details: { has_format: Boolean(url) },
     });
     broadcastStaffData('auto_pedido_qr_format');
-    res.json({ qr_format: url });
+    res.json({ qr_format: url, qr_slot: readAutoPedidoQrSlotFromDb() });
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo guardar el formato' });
+  }
+});
+
+router.put('/auto-pedido/qr-slot', requireRole('admin'), (req, res) => {
+  try {
+    const slot = persistAutoPedidoQrSlot(req.body?.qr_slot);
+    logAudit({
+      actorUserId: req.user.id,
+      actorName: req.user.full_name || req.user.username || '',
+      action: 'app_settings.auto_pedido_qr_slot',
+      resourceType: 'app_settings',
+      resourceId: 'settings',
+      details: { has_slot: Boolean(slot) },
+    });
+    broadcastStaffData('auto_pedido_qr_slot');
+    res.json({ qr_slot: slot });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'No se pudo guardar el lugar del QR' });
   }
 });
 
