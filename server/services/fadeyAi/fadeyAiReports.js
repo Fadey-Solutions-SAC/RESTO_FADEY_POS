@@ -6,8 +6,8 @@ const { queryOne } = require('../../database');
 const { getPaidSalesEventSql, metricsFromPaidOrdersWhere } = require('../../utils/salesAccountGrouping');
 const { getBusinessTodayDateKey, shiftBusinessDateKey, sqlBusinessTimestamp } = require('../../utils/appDateTime');
 const { isNonTransformedLowStockSql, effectiveMinStock } = require('../../utils/productStockThreshold');
-const { resolveNaturalPeriod, normalizeSpanish, displayDateKey } = require('./fadeyAiDateParse');
-const { canUseTool, deniedToolMessage } = require('./fadeyAiAccess');
+const { resolveNaturalPeriod, normalizeSpanish, displayDateKey, previousComparablePeriod } = require('./fadeyAiDateParse');
+const { canUseTool, deniedToolMessage, isPlanModuleEnabled } = require('./fadeyAiAccess');
 const {
   PAID_WHERE,
   CHANNEL_LABELS,
@@ -18,6 +18,7 @@ const {
   customerStats,
   loadPaidOrderRows,
   unitCostBreakdown,
+  summarizeSurveys,
 } = require('./fadeyAiBusinessAnalysis');
 
 const PAY_LABELS = {
@@ -38,6 +39,8 @@ const pct = (n) => `${Number(n || 0).toFixed(1)}%`;
 const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
 
 function detectReportType(m) {
+  if (/\b(encuesta|encuestas|satisfaccion)\b/.test(m)) return 'encuestas';
+  if (/\bfidelizacion\b/.test(m) && !/\bclientes?\b/.test(m)) return 'encuestas';
   if (/\b(costo|costos|margen|margenes|food ?cost|rentabilidad|ganancia)\b/.test(m)) return 'costos';
   if (/\b(inventario|stock|almacen|insumos?|existencias)\b/.test(m)) return 'inventario';
   if (/\b(cliente|clientes|fidelizacion|recurrentes?)\b/.test(m)) return 'clientes';
@@ -53,6 +56,7 @@ const TYPE_TOOL = {
   personal: 'sales_summary',
   costos: 'cost_insights',
   inventario: 'low_stock',
+  encuestas: 'survey_insights',
 };
 
 function isReportRequest(message) {
@@ -71,9 +75,7 @@ function resolvePeriod(message) {
 }
 
 function previousPeriod(p) {
-  const span = daysBetween(p.from, p.to);
-  const to = shiftBusinessDateKey(p.from, -1);
-  return { from: shiftBusinessDateKey(to, -(span - 1)), to };
+  return previousComparablePeriod(p);
 }
 
 function dateRangeKeys(from, to) {
@@ -126,6 +128,7 @@ function buildSalesReport(period) {
   const cur = metricsFromPaidOrdersWhere(where, [period.from, period.to]);
   const before = metricsFromPaidOrdersWhere(where, [prev.from, prev.to]);
   const report = baseReport('ventas', 'Informe de ventas', period);
+  report.compare_label = prev.label;
   const ticket = cur.orders ? cur.sales / cur.orders : 0;
   const prevTicket = before.orders ? before.sales / before.orders : 0;
 
@@ -300,7 +303,7 @@ function buildSalesReport(period) {
 
   const insights = [];
   const dSales = deltaPct(cur.sales, before.sales);
-  if (dSales != null) insights.push(`Las ventas ${dSales >= 0 ? 'subieron' : 'bajaron'} ${Math.abs(dSales).toFixed(1)}% frente al período anterior (${money(before.sales)}).`);
+  if (dSales != null) insights.push(`Las ventas ${dSales >= 0 ? 'subieron' : 'bajaron'} ${Math.abs(dSales).toFixed(1)}% frente a ${prev.label} (${money(before.sales)}).`);
   const bestDay = [...daily].sort((a, b) => b.ventas - a.ventas)[0];
   if (bestDay?.ventas > 0) insights.push(`Mejor ${byMonth ? 'mes' : 'día'}: ${bestDay.fecha} con ${money(bestDay.ventas)} (${bestDay.cuentas} cuentas).`);
   const peak = [...hours].sort((a, b) => b.ventas - a.ventas)[0];
@@ -414,6 +417,7 @@ function buildCustomersReport(period) {
   const cur = metricsFromPaidOrdersWhere(where, [period.from, period.to]);
   const before = metricsFromPaidOrdersWhere(where, [prev.from, prev.to]);
   const report = baseReport('clientes', 'Informe de clientes', period);
+  report.compare_label = prev.label;
   const rows = loadPaidOrderRows(ps, period.from, period.to);
   const customers = customerStats(rows);
   const identifiedOrders = customers.reduce((s, c) => s + c.orders, 0);
@@ -748,7 +752,97 @@ const BUILDERS = {
   personal: buildStaffReport,
   costos: buildCostsReport,
   inventario: buildInventoryReport,
+  encuestas: buildSurveyReport,
 };
+
+function appendSurveysToReport(report, period) {
+  const summary = summarizeSurveys(period.from, period.to);
+  if (!summary) return;
+  report.kpis.push({ label: 'Encuestas', value: summary.count, format: 'int' });
+  if (!summary.count) {
+    report.insights.push('Fidelización está activo en el plan, pero no hay encuestas en este período.');
+    return;
+  }
+  report.kpis.push({ label: 'Calificación encuestas', value: r2(summary.overall), format: 'number' });
+  if (summary.staff[0]) {
+    report.kpis.push({
+      label: 'Personal mejor calificado',
+      value: `${summary.staff[0].name} · ${summary.staff[0].average.toFixed(1)}/5`,
+    });
+  }
+  const aspects = summary.aspects.map((a) => ({
+    aspecto: a.label,
+    promedio: r2(a.average),
+    respuestas: a.count,
+  }));
+  if (aspects.length) {
+    report.charts.push({
+      id: 'survey-aspects',
+      type: 'bar',
+      title: 'Encuestas: calificación por aspecto',
+      format: 'number',
+      data: aspects.map((a) => ({ name: a.aspecto, value: a.promedio })),
+    });
+    report.tables.push({
+      title: 'Encuestas por aspecto',
+      columns: [
+        { key: 'aspecto', label: 'Aspecto' },
+        { key: 'promedio', label: 'Promedio', format: 'number' },
+        { key: 'respuestas', label: 'Respuestas', format: 'int' },
+      ],
+      rows: aspects,
+    });
+    const worst = summary.aspects[0];
+    const best = summary.aspects[summary.aspects.length - 1];
+    report.insights.push(`Encuestas: lo más bajo es ${worst.label} (${worst.average.toFixed(1)}/5)${summary.aspects.length > 1 ? ` y lo mejor es ${best.label} (${best.average.toFixed(1)}/5)` : ''}.`);
+  }
+  if (summary.improveRank.length) {
+    report.tables.push({
+      title: 'Encuestas: qué mejorar',
+      columns: [
+        { key: 'aspecto', label: 'Qué mejorar' },
+        { key: 'menciones', label: 'Menciones', format: 'int' },
+      ],
+      rows: summary.improveRank.map((x) => ({ aspecto: x.label, menciones: x.count })),
+    });
+    report.insights.push(`Encuestas: lo que más piden mejorar es ${summary.improveRank[0].label} (${summary.improveRank[0].count}).`);
+  }
+  if (summary.likedRank.length) {
+    report.tables.push({
+      title: 'Encuestas: lo que más gusta',
+      columns: [
+        { key: 'aspecto', label: 'Qué gusta' },
+        { key: 'menciones', label: 'Menciones', format: 'int' },
+      ],
+      rows: summary.likedRank.map((x) => ({ aspecto: x.label, menciones: x.count })),
+    });
+  }
+  if (summary.staff.length) {
+    report.charts.push({
+      id: 'survey-staff',
+      type: 'hbar',
+      title: 'Encuestas: personal mejor calificado',
+      format: 'number',
+      data: summary.staff.slice(0, 8).map((w) => ({ name: w.name, value: r2(w.average) })),
+    });
+    report.tables.push({
+      title: 'Encuestas: personal',
+      columns: [
+        { key: 'nombre', label: 'Personal' },
+        { key: 'promedio', label: 'Promedio', format: 'number' },
+        { key: 'encuestas', label: 'Encuestas', format: 'int' },
+      ],
+      rows: summary.staff.map((w) => ({ nombre: w.name, promedio: r2(w.average), encuestas: w.count })),
+    });
+    report.insights.push(`Encuestas: el personal mejor calificado es ${summary.staff[0].name} (${summary.staff[0].average.toFixed(1)}/5).`);
+  }
+}
+
+function buildSurveyReport(period) {
+  const report = baseReport('encuestas', 'Informe de encuestas', period);
+  appendSurveysToReport(report, period);
+  return report;
+}
 
 function formatValue(v, format) {
   if (format === 'money') return money(v);
@@ -767,16 +861,25 @@ function buildReportAnswer(message, user) {
   if (!isReportRequest(message)) return null;
   const m = normalizeSpanish(message);
   const type = detectReportType(m);
+  if (type === 'encuestas' && !isPlanModuleEnabled('fidelizacion')) {
+    return {
+      reply: 'Fidelización no está activo en el plan de este negocio, así que el informe no incluye encuestas. El administrador maestro puede activar ese módulo en el plan.',
+      sources: [{ kind: 'tool', title: 'plan_module_off' }],
+    };
+  }
   const tool = TYPE_TOOL[type];
   if (!canUseTool(user, tool)) {
     return { reply: deniedToolMessage(tool), sources: [{ kind: 'tool', title: 'permission_denied' }] };
   }
   const period = resolvePeriod(message);
   const report = BUILDERS[type](period);
+  if (type !== 'encuestas' && isPlanModuleEnabled('fidelizacion')) {
+    appendSurveysToReport(report, period);
+  }
 
   const lines = [`**${report.title}** — ${report.subtitle}`, ''];
   report.kpis.forEach((k) => {
-    const delta = k.delta != null ? ` (${k.delta >= 0 ? '+' : ''}${k.delta.toFixed(1)}% vs período anterior)` : '';
+    const delta = k.delta != null ? ` (${k.delta >= 0 ? '+' : ''}${k.delta.toFixed(1)}% vs ${report.compare_label || 'el período anterior'})` : '';
     lines.push(`• ${k.label}: ${formatValue(k.value, k.format)}${delta}`);
   });
   if (report.insights.length) {

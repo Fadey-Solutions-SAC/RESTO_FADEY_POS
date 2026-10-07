@@ -301,6 +301,16 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   }, []);
   const historyRange = historyOpen ? historyDateRange() : null;
 
+  const isKitchenItemReady = useCallback((item) => {
+    return Boolean(String(item?.station_cocina_ready_at || '').trim());
+  }, []);
+
+  const getPendingStationItems = useCallback((items = []) => {
+    const stationItems = getStationItems(items);
+    if (!usesItemLevelReady) return stationItems;
+    return stationItems.filter((item) => !isKitchenItemReady(item));
+  }, [usesItemLevelReady, getStationItems, isKitchenItemReady]);
+
   const isKitchenItemHighlighted = useCallback(
     (item, orderId) => {
       if (!usesItemLevelReady || !itemHighlightActive(item, highlightItemIds, orderId)) return false;
@@ -312,16 +322,6 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     },
     [usesItemLevelReady, highlightItemIds, orders, getPendingStationItems],
   );
-
-  const isKitchenItemReady = useCallback((item) => {
-    return Boolean(String(item?.station_cocina_ready_at || '').trim());
-  }, []);
-
-  const getPendingStationItems = useCallback((items = []) => {
-    const stationItems = getStationItems(items);
-    if (!usesItemLevelReady) return stationItems;
-    return stationItems.filter((item) => !isKitchenItemReady(item));
-  }, [usesItemLevelReady, getStationItems, isKitchenItemReady]);
 
   const isComandaDoneForStation = useCallback((order) => {
     if (!usesItemLevelReady) {

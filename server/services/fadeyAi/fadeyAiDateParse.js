@@ -85,7 +85,7 @@ function normalize(message) {
 }
 
 function day(key, label) {
-  return { scope: 'range', from: key, to: key, label: label || dayLabel(key), explicit: true };
+  return { scope: 'day', from: key, to: key, label: label || dayLabel(key), explicit: true };
 }
 
 function range(from, to, label) {
@@ -162,7 +162,100 @@ function monthRange(y, mo, today) {
   const from = toKey(y, mo, 1);
   const last = toKey(y, mo, daysInMonth(y, mo));
   const to = last > today ? today : last;
-  return range(from, to, `${MONTH_NAMES[mo]} ${y}`);
+  return { ...range(from, to, `${MONTH_NAMES[mo]} ${y}`), scope: 'month' };
+}
+
+function spanDays(from, to) {
+  const a = keyToUtc(from);
+  const b = keyToUtc(to);
+  return Math.round((b - a) / 86400000) + 1;
+}
+
+function shiftMonth(y, m, delta) {
+  let mo = m + delta;
+  let yy = y;
+  while (mo < 1) { mo += 12; yy -= 1; }
+  while (mo > 12) { mo -= 12; yy += 1; }
+  return { y: yy, m: mo };
+}
+
+/**
+ * Período equivalente para comparar:
+ * un día contra el mismo día de la semana anterior,
+ * una semana contra la semana anterior (mismos días),
+ * un mes contra el mismo tramo del mes anterior,
+ * un año contra el mismo tramo del año anterior.
+ */
+function previousComparablePeriod(period) {
+  const from = String(period?.from || '');
+  const to = String(period?.to || '');
+  if (!from || !to) return { from, to, label: 'el período anterior' };
+  const scope = String(period.scope || '');
+
+  if (scope === 'day' || scope === 'today' || scope === 'yesterday' || from === to) {
+    const prev = shift(from, -7);
+    const name = WEEKDAY_NAMES[weekday(prev)];
+    return { from: prev, to: prev, scope: 'day', label: `el ${name} anterior (${display(prev)})` };
+  }
+
+  const weekend = weekday(from) === 6 && (to === shift(from, 1) || (weekday(to) === 0 && spanDays(from, to) <= 2));
+  if (scope === 'weekend' || weekend) {
+    const pf = shift(from, -7);
+    const pt = shift(to, -7);
+    return { from: pf, to: pt, scope: 'weekend', label: `el fin de semana anterior (${display(pf)} → ${display(pt)})` };
+  }
+
+  if (scope === 'week') {
+    const pf = shift(from, -7);
+    const pt = shift(to, -7);
+    return { from: pf, to: pt, scope: 'week', label: `la semana anterior (${display(pf)} → ${display(pt)})` };
+  }
+
+  if (scope === 'month') {
+    const a = parseKey(from);
+    const b = parseKey(to);
+    if (a.d === 1 && a.y === b.y && a.m === b.m) {
+      const prev = shiftMonth(a.y, a.m, -1);
+      const prevLast = daysInMonth(prev.y, prev.m);
+      const full = b.d === daysInMonth(b.y, b.m);
+      const endDay = full ? prevLast : Math.min(b.d, prevLast);
+      const pf = toKey(prev.y, prev.m, 1);
+      const pt = toKey(prev.y, prev.m, endDay);
+      return {
+        from: pf,
+        to: pt,
+        scope: 'month',
+        label: full
+          ? `${MONTH_NAMES[prev.m]} ${prev.y} (${display(pf)} → ${display(pt)})`
+          : `los mismos días de ${MONTH_NAMES[prev.m]} (${display(pf)} → ${display(pt)})`,
+      };
+    }
+  }
+
+  if (scope === 'year') {
+    const a = parseKey(from);
+    const b = parseKey(to);
+    const full = a.m === 1 && a.d === 1 && b.m === 12 && b.d === 31;
+    const dim = daysInMonth(b.y - 1, b.m);
+    const pf = toKey(a.y - 1, 1, 1);
+    const pt = full ? toKey(a.y - 1, 12, 31) : toKey(b.y - 1, b.m, Math.min(b.d, dim));
+    return {
+      from: pf,
+      to: pt,
+      scope: 'year',
+      label: full ? `el año ${a.y - 1}` : `el mismo tramo de ${a.y - 1} (${display(pf)} → ${display(pt)})`,
+    };
+  }
+
+  const span = spanDays(from, to);
+  const pt = shift(from, -1);
+  const pf = shift(pt, -(span - 1));
+  return {
+    from: pf,
+    to: pt,
+    scope: 'range',
+    label: `el período anterior equivalente (${display(pf)} → ${display(pt)})`,
+  };
 }
 
 /**
@@ -206,7 +299,7 @@ function resolveNaturalPeriod(message, today, opts = {}) {
       if (/^dia/.test(unit)) return day(shift(today, -n), `hace ${n} día(s) (${dayLabel(shift(today, -n))})`);
       if (/^semana/.test(unit)) {
         const from = mondayOf(shift(today, -7 * n));
-        return range(from, shift(from, 6), `semana de hace ${n} (${display(from)} → ${display(shift(from, 6))})`);
+        return { ...range(from, shift(from, 6), `semana de hace ${n} (${display(from)} → ${display(shift(from, 6))})`), scope: 'week' };
       }
       let y = t.y; let mo = t.m - n;
       while (mo < 1) { mo += 12; y -= 1; }
@@ -242,13 +335,13 @@ function resolveNaturalPeriod(message, today, opts = {}) {
     let sat = shift(today, -((dow - 6 + 7) % 7));
     if (pasado && sat >= shift(today, -1) && dow !== 1) sat = shift(sat, -7);
     const sun = shift(sat, 1) > today ? today : shift(sat, 1);
-    return range(sat, sun, `fin de semana (${display(sat)} → ${display(sun)})`);
+    return { ...range(sat, sun, `fin de semana (${display(sat)} → ${display(sun)})`), scope: 'weekend' };
   }
 
   if (/ultim[oa]s?\s+(\d+|siete|quince|treinta)\s*dias/.test(m)) {
     const n = wordToNumber(m.match(/ultim[oa]s?\s+(\d+|siete|quince|treinta)\s*dias/)[1]) || 7;
     const from = shift(today, -(n - 1));
-    return { ...range(from, today, `últimos ${n} días (${display(from)} → ${display(today)})`), scope: 'week' };
+    return { ...range(from, today, `últimos ${n} días (${display(from)} → ${display(today)})`), scope: 'rolling' };
   }
   if (/semana pasada|la semana anterior|ultima semana/.test(m)) {
     const from = shift(mondayOf(today), -7);
@@ -276,10 +369,10 @@ function resolveNaturalPeriod(message, today, opts = {}) {
     return { ...range(toKey(t.y, t.m, 1), today, `este mes (${pad(t.m)}/${t.y})`), scope: 'month' };
   }
   if (/ano pasado|ano anterior/.test(m)) {
-    return range(toKey(t.y - 1, 1, 1), toKey(t.y - 1, 12, 31), `año ${t.y - 1}`);
+    return { ...range(toKey(t.y - 1, 1, 1), toKey(t.y - 1, 12, 31), `año ${t.y - 1}`), scope: 'year' };
   }
   if (/este ano|del ano|en el ano|lo que va del ano/.test(m)) {
-    return range(toKey(t.y, 1, 1), today, `año ${t.y}`);
+    return { ...range(toKey(t.y, 1, 1), today, `año ${t.y}`), scope: 'year' };
   }
 
   const bare = findBareDayOfMonth(m, today);
@@ -298,6 +391,7 @@ function resolveNaturalPeriod(message, today, opts = {}) {
 
 module.exports = {
   resolveNaturalPeriod,
+  previousComparablePeriod,
   normalizeSpanish: normalize,
   displayDateKey: display,
 };

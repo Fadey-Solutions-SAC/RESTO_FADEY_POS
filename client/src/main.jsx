@@ -23,7 +23,7 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       const showDebug = import.meta.env.DEV;
       return (
-        <div style={{ padding: 40, fontFamily: 'monospace' }}>
+        <div style={{ padding: 40, fontFamily: 'sans-serif', background: '#f8fafc', color: '#0f172a', minHeight: '100vh' }}>
           <h1 style={{ color: 'red' }}>{i18n.t('common:app.unexpectedError')}</h1>
           <pre style={{ background: '#fee', padding: 20, borderRadius: 8, whiteSpace: 'pre-wrap' }}>
             {showDebug ? `${this.state.error?.message}\n${this.state.error?.stack}` : i18n.t('common:app.unexpectedError')}

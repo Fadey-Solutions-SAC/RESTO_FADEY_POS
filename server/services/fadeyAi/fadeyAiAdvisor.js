@@ -6,7 +6,7 @@
 const { queryOne } = require('../../database');
 const { getPaidSalesEventSql } = require('../../utils/salesAccountGrouping');
 const { getBusinessTodayDateKey, shiftBusinessDateKey, sqlBusinessTimestamp } = require('../../utils/appDateTime');
-const { resolveNaturalPeriod, normalizeSpanish, displayDateKey } = require('./fadeyAiDateParse');
+const { resolveNaturalPeriod, normalizeSpanish, displayDateKey, previousComparablePeriod } = require('./fadeyAiDateParse');
 const { canUseTool, deniedToolMessage } = require('./fadeyAiAccess');
 const {
   PAID_WHERE,
@@ -79,8 +79,9 @@ function weekdayCounts(from, to) {
 function analyze(period) {
   const ps = getPaidSalesEventSql();
   const days = daysBetween(period.from, period.to);
-  const prevTo = shiftBusinessDateKey(period.from, -1);
-  const prevFrom = shiftBusinessDateKey(prevTo, -(days - 1));
+  const prevPeriod = previousComparablePeriod(period);
+  const prevFrom = prevPeriod.from;
+  const prevTo = prevPeriod.to;
 
   const orders = loadPaidOrderRows(ps, period.from, period.to);
   const revenue = orders.reduce((s, o) => s + Number(o.total || 0), 0);
@@ -214,7 +215,7 @@ function analyze(period) {
   )?.v || 0);
 
   return {
-    period, days, orders, revenue, ticket, prev, prevTicket,
+    period, days, orders, revenue, ticket, prev, prevTicket, prevLabel: prevPeriod.label,
     weekdays, openDays, hours, channel,
     productStats, withCost, grossMarginPct, cogs, costedRevenue, noCostSold, unsold,
     topPairs, singleItem, orderCount: byOrder.size, avgItemPrice,
@@ -550,8 +551,8 @@ function buildAdvisorAnswer(message, user, { lang = 'es' } = {}) {
   // SITUACIÓN
   const situation = [];
   if (delta != null) {
-    situation.push(T(`Tus ventas cobradas ${delta >= 0 ? 'subieron' : 'bajaron'} ${Math.abs(delta).toFixed(1)}% frente a los ${a.days} días anteriores`,
-      `Your paid sales ${delta >= 0 ? 'rose' : 'fell'} ${Math.abs(delta).toFixed(1)}% versus the previous ${a.days} days`));
+    situation.push(T(`Tus ventas cobradas ${delta >= 0 ? 'subieron' : 'bajaron'} ${Math.abs(delta).toFixed(1)}% frente a ${a.prevLabel || 'el período anterior'}`,
+      `Your paid sales ${delta >= 0 ? 'rose' : 'fell'} ${Math.abs(delta).toFixed(1)}% versus ${a.prevLabel || 'the previous equivalent period'}`));
   } else {
     situation.push(T('No hay ventas del período anterior para comparar', 'There are no sales in the previous period to compare'));
   }

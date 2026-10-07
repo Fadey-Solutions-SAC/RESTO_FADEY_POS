@@ -17,7 +17,7 @@ const {
 } = require('./fadeyAiKnowledgeService');
 const { runTool, resolveSalesPeriod } = require('./fadeyAiTools');
 const { buildSupportAnswer } = require('./fadeyAiSupport');
-const { buildReportAnswer } = require('./fadeyAiReports');
+const { buildReportAnswer, isReportRequest } = require('./fadeyAiReports');
 const { buildPurchaseAnswer } = require('./fadeyAiPurchase');
 const { buildAdvisorAnswer, analyze: analyzeBusiness, resolveAdvicePeriod } = require('./fadeyAiAdvisor');
 const { buildConceptAnswer } = require('./fadeyAiConcepts');
@@ -33,7 +33,9 @@ const {
   resolveRegionalTimezone,
   partsFromDate,
   DEFAULT_TIMEZONE,
+  getBusinessTodayDateKey,
 } = require('../../utils/appDateTime');
+const { resolveNaturalPeriod } = require('./fadeyAiDateParse');
 const {
   suggestionOptionsForUser,
   accessIntroForUser,
@@ -43,6 +45,7 @@ const {
   guideAllowedForUser,
   canUseTool,
   deniedToolMessage,
+  isPlanModuleEnabled,
 } = require('./fadeyAiAccess');
 const {
   recall,
@@ -584,14 +587,24 @@ function tryDirectDataAnswer(message, user) {
   const m = String(message || '').toLowerCase();
   if (isExplicitHowToMessage(m)) return null;
 
-  if (/encuesta/.test(m) && !/c[oó]mo\s+(configurar|crear|armar|hacer|usar)|configurar la encuesta|descargar el qr|formato de la encuesta/.test(m)) {
+  if (/encuesta/.test(m) && !isReportRequest(message) && !/c[oó]mo\s+(configurar|crear|armar|hacer|usar)|configurar la encuesta|descargar el qr|formato de la encuesta/.test(m)) {
+    if (!isPlanModuleEnabled('fidelizacion')) {
+      return {
+        chunks: ['Fidelización no está activo en el plan de este negocio, así que no hay encuestas para mostrar.'],
+        sources: [{ kind: 'tool', title: 'plan_module_off' }],
+      };
+    }
     if (!canUseTool(user, 'survey_insights')) {
       return {
         chunks: [deniedToolMessage('survey_insights')],
         sources: [{ kind: 'tool', title: 'permission_denied' }],
       };
     }
-    const survey = toolSurveyInsights();
+    const period = resolveNaturalPeriod(message, getBusinessTodayDateKey(queryOne), { defaultScope: 'month' });
+    const survey = toolSurveyInsights(
+      period.explicit ? period.from : null,
+      period.explicit ? period.to : null,
+    );
     if (survey?.text) {
       return {
         chunks: [survey.text],

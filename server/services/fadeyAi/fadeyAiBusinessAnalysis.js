@@ -144,26 +144,21 @@ function parseSurveyJson(raw, fallback) {
   }
 }
 
-/** Lee las respuestas reales de Fidelización: aspectos a mejorar y personal mejor calificado. */
-function toolSurveyInsights() {
+/** Resumen de encuestas de un rango. null si la tabla no existe. count 0 si no hay respuestas. */
+function summarizeSurveys(from, to) {
+  if (!tableExists('loyalty_surveys')) return null;
   const { readLoyaltySurveyForm } = require('../../loyaltySurveyQuestions');
-  if (!tableExists('loyalty_surveys')) {
-    return { ok: true, text: 'Aún no hay encuestas guardadas en Fidelización.' };
-  }
   const form = readLoyaltySurveyForm();
+  const ranged = Boolean(from && to);
   const rows = safeAll(
     `SELECT rating, answers_json, waiter_user_id, waiter_name, liked_json, improve_json, liked_other, improve_other
      FROM loyalty_surveys
+     ${ranged ? `WHERE date(COALESCE(NULLIF(visit_date, ''), created_at)) >= date(?)
+       AND date(COALESCE(NULLIF(visit_date, ''), created_at)) <= date(?)` : ''}
      ORDER BY datetime(created_at) DESC
      LIMIT 500`,
+    ranged ? [from, to] : [],
   );
-  if (!rows.length) {
-    return {
-      ok: true,
-      text: 'El módulo de encuestas está activo, pero todavía no hay respuestas. Cuando los clientes completen el QR, aquí verás qué aspectos mejorar y qué personal sale mejor calificado.',
-    };
-  }
-
   const questionLabel = new Map((form.questions || []).map((q) => [q.id, q.label]));
   const likedLabel = new Map((form.liked_options || []).map((o) => [o.id, o.label]));
   const improveLabel = new Map((form.improve_options || []).map((o) => [o.id, o.label]));
@@ -222,52 +217,82 @@ function toolSurveyInsights() {
   const staff = [...waiters.values()]
     .map((w) => ({ ...w, average: w.sum / w.count }))
     .sort((a, b) => b.average - a.average || b.count - a.count);
-  const overall = rows.reduce((s, r) => s + Number(r.rating || 0), 0) / rows.length;
+  const overall = rows.length
+    ? rows.reduce((s, r) => s + Number(r.rating || 0), 0) / rows.length
+    : 0;
 
-  const lines = [`**Encuestas de clientes** (${rows.length} respuesta${rows.length === 1 ? '' : 's'})`];
-  lines.push(`Calificación general: ${overall.toFixed(1)}/5.`);
+  return {
+    count: rows.length,
+    overall,
+    aspects,
+    improveRank,
+    likedRank,
+    staff,
+  };
+}
 
+function formatSurveySummary(summary, heading) {
+  const lines = [heading || `**Encuestas de clientes** (${summary.count} respuesta${summary.count === 1 ? '' : 's'})`];
+  lines.push(`Calificación general: ${summary.overall.toFixed(1)}/5.`);
   lines.push('', '**Aspectos a mejorar**');
-  if (aspects.length) {
-    const weak = aspects.filter((a) => a.average < 4);
-    const focus = (weak.length ? weak : aspects).slice(0, 3);
+  if (summary.aspects.length) {
+    const weak = summary.aspects.filter((a) => a.average < 4);
+    const focus = (weak.length ? weak : summary.aspects).slice(0, 3);
     focus.forEach((a, i) => {
       lines.push(`${i + 1}. ${a.label}: ${a.average.toFixed(1)}/5 (${a.count} respuesta${a.count === 1 ? '' : 's'})`);
     });
-    if (aspects[aspects.length - 1] && aspects.length > 1) {
-      const best = aspects[aspects.length - 1];
+    const best = summary.aspects[summary.aspects.length - 1];
+    if (best && summary.aspects.length > 1) {
       lines.push(`Lo mejor calificado: ${best.label} (${best.average.toFixed(1)}/5).`);
     }
   } else {
     lines.push('Las respuestas no traen calificación por aspecto.');
   }
-  if (improveRank.length) {
-    lines.push(`Lo que más piden mejorar: ${improveRank.slice(0, 3).map((x) => `${x.label} (${x.count})`).join(', ')}.`);
+  if (summary.improveRank.length) {
+    lines.push(`Lo que más piden mejorar: ${summary.improveRank.slice(0, 3).map((x) => `${x.label} (${x.count})`).join(', ')}.`);
   }
-  if (likedRank.length) {
-    lines.push(`Lo que más les gusta: ${likedRank.slice(0, 3).map((x) => `${x.label} (${x.count})`).join(', ')}.`);
+  if (summary.likedRank.length) {
+    lines.push(`Lo que más les gusta: ${summary.likedRank.slice(0, 3).map((x) => `${x.label} (${x.count})`).join(', ')}.`);
   }
-
   lines.push('', '**Personal mejor calificado**');
-  if (staff.length) {
-    const top = staff[0];
+  if (summary.staff.length) {
+    const top = summary.staff[0];
     lines.push(`Top: ${top.name} con ${top.average.toFixed(1)}/5 en ${top.count} encuesta${top.count === 1 ? '' : 's'}.`);
-    staff.slice(0, 5).forEach((w, i) => {
+    summary.staff.slice(0, 5).forEach((w, i) => {
       lines.push(`${i + 1}. ${w.name}: ${w.average.toFixed(1)}/5 · ${w.count} encuesta${w.count === 1 ? '' : 's'}`);
     });
   } else {
     lines.push('Ninguna encuesta tiene personal marcado, así que no hay un top todavía.');
   }
+  return lines.join('\n');
+}
 
-  return { ok: true, text: lines.join('\n') };
+/** Lee las respuestas reales de Fidelización. Con from/to limita al período pedido. */
+function toolSurveyInsights(from, to) {
+  const summary = summarizeSurveys(from, to);
+  if (!summary) {
+    return { ok: true, text: 'Aún no hay encuestas guardadas en Fidelización.' };
+  }
+  if (!summary.count) {
+    const range = from && to ? ` del ${from} al ${to}` : '';
+    return {
+      ok: true,
+      text: `El módulo de encuestas está activo, pero no hay respuestas${range}. Cuando los clientes completen el QR, aquí verás qué aspectos mejorar y qué personal sale mejor calificado.`,
+    };
+  }
+  const heading = from && to
+    ? `**Encuestas de clientes** (${summary.count} respuesta${summary.count === 1 ? '' : 's'}, ${from} al ${to})`
+    : `**Encuestas de clientes** (${summary.count} respuesta${summary.count === 1 ? '' : 's'})`;
+  return { ok: true, text: formatSurveySummary(summary, heading) };
 }
 
 function toolCustomerInsights(args = {}) {
   const period = resolvePeriod(args, 'month');
   const ps = getPaidSalesEventSql();
-  const span = daysBetween(period.from, period.to);
-  const prevTo = shiftBusinessDateKey(period.from, -1);
-  const prevFrom = shiftBusinessDateKey(prevTo, -(span - 1));
+  const { previousComparablePeriod } = require('./fadeyAiDateParse');
+  const prevPeriod = previousComparablePeriod(period);
+  const prevTo = prevPeriod.to;
+  const prevFrom = prevPeriod.from;
 
   const where = `${ps.ORDER_DATE} >= date(?) AND ${ps.ORDER_DATE} <= date(?)`;
   const cur = metricsFromPaidOrdersWhere(where, [period.from, period.to]);
@@ -310,10 +335,12 @@ function toolCustomerInsights(args = {}) {
   }
   const dowSorted = [...byDow.entries()].sort((a, b) => b[1] - a[1]);
   const hourSorted = [...byHour.entries()].sort((a, b) => b[1] - a[1]);
-  const surveys = surveyStats(period.from, period.to);
+  const surveysRaw = surveyStats(period.from, period.to);
+  const { isPlanModuleEnabled } = require('./fadeyAiAccess');
+  const surveys = surveysRaw && isPlanModuleEnabled('fidelizacion') ? surveysRaw : null;
 
   const lines = [title];
-  lines.push(`Cuentas atendidas: ${cur.orders}${accountsDelta != null ? ` (${accountsDelta >= 0 ? '+' : ''}${accountsDelta.toFixed(1)}% vs período anterior)` : ''}.`);
+  lines.push(`Cuentas atendidas: ${cur.orders}${accountsDelta != null ? ` (${accountsDelta >= 0 ? '+' : ''}${accountsDelta.toFixed(1)}% vs ${prevPeriod.label})` : ''}.`);
   lines.push(`Ticket promedio: ${money(avgTicket)}${prevTicket != null ? ` (antes ${money(prevTicket)})` : ''}. Total cobrado: ${money(cur.sales)}.`);
   if (byChannel.size > 1 || (byChannel.size === 1 && !byChannel.has('Salón'))) {
     const parts = [...byChannel.entries()].sort((a, b) => b[1] - a[1])
@@ -588,6 +615,7 @@ module.exports = {
   toolCustomerInsights,
   toolCostInsights,
   toolSurveyInsights,
+  summarizeSurveys,
   PAID_WHERE,
   CHANNEL_LABELS,
   WEEKDAY_LABELS,

@@ -102,6 +102,18 @@ function enrichUser(user) {
   }
 }
 
+function isPlanModuleEnabled(moduleId) {
+  const { getControlConfig } = require('../../masterAdminService');
+  const { isModuleEnabledForPlan } = require('../../planModuleCatalog');
+  const { normalizePlan } = require('../../servicePlan');
+  const control = getControlConfig();
+  return isModuleEnabledForPlan(
+    normalizePlan(control.service_plan),
+    moduleId,
+    control.service_plan_module_overrides,
+  );
+}
+
 function isFullAccess(user) {
   const r = roleLc(user);
   return r === 'admin' || r === 'master_admin';
@@ -294,6 +306,7 @@ module.exports = {
   describeUserAccess,
   canUseTool,
   deniedToolMessage,
+  isPlanModuleEnabled,
   guideAllowedForUser,
   filterGuidesForUser,
   filterGuideHitsForUser,
