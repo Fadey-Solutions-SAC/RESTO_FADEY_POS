@@ -601,10 +601,6 @@ export default function LogisticaKardexModule() {
 
   return (
     <div className="logistica-kardex-module space-y-4 text-[var(--ui-body-text)]">
-      <div>
-        <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[var(--ui-body-text)]">Control de Recursos - Inventario y Kardex</h2>
-        <p className="mt-0.5 text-sm text-[var(--ui-muted)]">Gestiona tus insumos, compras, recetas e inventarios de manera eficiente</p>
-      </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 pb-1">
         {TABS.map((t) => {
           const Icon = t.Icon;

@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen, MdDownload, MdPrint } from 'react-icons/md';
 import QRCode from 'qrcode';
-import { downloadTableQrA5, normalizeQrSlot, prepareAutoPedidoLogo, printTableQrA5Sheets, suggestFormatQrSlot } from '../../utils/tableQrPrint';
+import { downloadTableQrA5, normalizeQrSlot, printTableQrA5Sheets, suggestFormatQrSlot } from '../../utils/tableQrPrint';
 import { QR_PRINT_FORMATS, qrPrintFormatBySrc } from '../../data/qrPrintFormats';
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
@@ -84,22 +84,14 @@ function selfOrderUrlForTable(number) {
   return `${base}/auto-pedido?mesa=${encodeURIComponent(String(number))}`;
 }
 
-function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onCommit, onUseFrame, placing, logoUrl, logoSlot, logoShape }) {
+function signNamePreviewPx(name) {
+  const len = Math.max(1, String(name || '').trim().length);
+  return Math.max(6, Math.min(11, 72 / (len * 0.55)));
+}
+
+function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onCommit, onUseFrame, placing, logoUrl, logoSlot, logoShape, restaurantName }) {
   const frameRef = useRef(null);
   const dragRef = useRef(null);
-  const [logoCut, setLogoCut] = useState(null);
-
-  useEffect(() => {
-    if (!logoUrl) {
-      setLogoCut(null);
-      return undefined;
-    }
-    let cancel = false;
-    prepareAutoPedidoLogo(logoUrl)
-      .then((cut) => { if (!cancel) setLogoCut(cut); })
-      .catch(() => { if (!cancel) setLogoCut({ url: logoUrl, fit: 'contain' }); });
-    return () => { cancel = true; };
-  }, [logoUrl]);
   const onChangeRef = useRef(onChange);
   const onCommitRef = useRef(onCommit);
   const [preview, setPreview] = useState('');
@@ -194,14 +186,29 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
                 width: `${logoSlot.w * 100}%`,
                 height: `${logoSlot.h * 100}%`,
                 borderRadius: logoShape === 'roundrect' ? '16%' : '50%',
+                background: '#f6ead2',
               }}
             >
               {logoUrl ? (
                 <img
-                  src={logoCut?.url || logoUrl}
+                  src={logoUrl}
                   alt=""
-                  className={`h-full w-full ${logoCut?.fit === 'cover' ? 'object-cover' : 'object-contain'}`}
+                  className="absolute left-[14%] object-cover"
+                  style={{
+                    top: restaurantName ? '6%' : '8%',
+                    width: '72%',
+                    height: restaurantName ? '56%' : '84%',
+                    borderRadius: logoShape === 'roundrect' ? '12%' : '50%',
+                  }}
                 />
+              ) : null}
+              {restaurantName ? (
+                <span
+                  className="absolute left-[14%] right-[14%] text-center font-bold leading-none text-[#3f2a16]"
+                  style={{ bottom: '10%', fontSize: `${signNamePreviewPx(restaurantName)}px` }}
+                >
+                  {restaurantName}
+                </span>
               ) : null}
             </div>
           ) : null}
@@ -284,6 +291,7 @@ export default function AutoPedidoAdmin() {
   const [qrFormat, setQrFormat] = useState('');
   const [qrSlot, setQrSlot] = useState(null);
   const [restaurantLogo, setRestaurantLogo] = useState('');
+  const [restaurantName, setRestaurantName] = useState('');
   const [qrDataReady, setQrDataReady] = useState(false);
   const [placingQrSlot, setPlacingQrSlot] = useState(false);
   const [uploadingQrFormat, setUploadingQrFormat] = useState(false);
@@ -324,6 +332,7 @@ export default function AutoPedidoAdmin() {
         setProducts(Array.isArray(pData) ? pData : []);
         setCategories(Array.isArray(catData) ? catData : []);
         setRestaurantLogo(String(restaurantData?.logo || '').trim());
+        setRestaurantName(String(restaurantData?.name || '').trim());
       })
       .catch((e) => {
         if (seq === loadSeqRef.current) toast.error(e.message);
@@ -642,6 +651,7 @@ export default function AutoPedidoAdmin() {
     if (!url) return null;
     return {
       url,
+      name: restaurantName,
       slot: preset?.logo || { x: 0.32, y: 0.05, w: 0.36, h: 0.13 },
       shape: preset?.logoShape || 'ellipse',
     };
@@ -677,6 +687,7 @@ export default function AutoPedidoAdmin() {
         logoUrl: logo?.url || '',
         logoSlot: logo?.slot,
         logoShape: logo?.shape,
+        restaurantName: logo?.name || '',
       });
     } catch (err) {
       toast.error(err.message || 'No se pudo descargar el QR');
@@ -1223,6 +1234,7 @@ export default function AutoPedidoAdmin() {
             imageUrl={resolveMediaUrl(qrFormat)}
             slot={qrSlot}
             logoUrl={resolveMediaUrl(restaurantLogo)}
+            restaurantName={restaurantName}
             logoSlot={qrPrintFormatBySrc(qrFormat)?.logo}
             logoShape={qrPrintFormatBySrc(qrFormat)?.logoShape || 'ellipse'}
             sampleNumber={tables[0]?.number ?? '1'}
