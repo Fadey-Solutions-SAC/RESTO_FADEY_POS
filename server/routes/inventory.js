@@ -220,18 +220,48 @@ router.get('/alerts', authenticateToken, requireRole('admin', 'cajero'), (req, r
 });
 
 router.put('/adjust/:product_id', authenticateToken, requireRole('admin'), (req, res) => {
-  const { quantity_change, reason } = req.body;
-  if (quantity_change === undefined) return res.status(400).json({ error: 'Cantidad es requerida' });
+  ensureWarehouseTables();
+  const { quantity_change, reason, warehouse_id } = req.body;
+  if (quantity_change === undefined || Number.isNaN(Number(quantity_change))) {
+    return res.status(400).json({ error: 'Cantidad es requerida' });
+  }
+  const delta = Number(quantity_change);
+  if (delta === 0) return res.status(400).json({ error: 'Cantidad inválida' });
 
   const product = queryOne('SELECT * FROM products WHERE id = ?', [req.params.product_id]);
   if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
 
-  const newStock = product.stock + quantity_change;
-  if (newStock < 0) return res.status(400).json({ error: 'Stock no puede ser negativo' });
+  const warehouse = queryOne(
+    'SELECT * FROM warehouse_locations WHERE id = ? AND is_active = 1',
+    [warehouse_id || product.stock_warehouse_id],
+  ) || queryOne(
+    "SELECT * FROM warehouse_locations WHERE LOWER(name) = LOWER('Almacen Principal') AND is_active = 1",
+  ) || queryOne('SELECT * FROM warehouse_locations WHERE is_active = 1 ORDER BY name LIMIT 1');
+  if (!warehouse) return res.status(400).json({ error: 'No hay un almacén activo para aplicar el ajuste' });
 
-  runSql('UPDATE products SET stock = ? WHERE id = ?', [newStock, req.params.product_id]);
-  runSql('INSERT INTO inventory_logs (id, product_id, quantity_change, previous_stock, new_stock, reason, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)', [uuidv4(), req.params.product_id, quantity_change, product.stock, newStock, reason || '', req.user.id]);
-  emitInventoryUpdate({ productId: req.params.product_id });
+  ensureLegacyStockDistribution(product.id, warehouse.id);
+  let stockRow = getWarehouseStockRow(product.id, warehouse.id);
+  if (!stockRow) {
+    runSql(
+      'INSERT INTO inventory_warehouse_stocks (id, product_id, warehouse_id, quantity, updated_at) VALUES (?, ?, ?, 0, datetime(\'now\'))',
+      [uuidv4(), product.id, warehouse.id],
+    );
+    stockRow = getWarehouseStockRow(product.id, warehouse.id);
+  }
+  const previousWarehouse = Number(stockRow?.quantity || 0);
+  const nextWarehouse = previousWarehouse + delta;
+  if (nextWarehouse < 0) return res.status(400).json({ error: 'Stock insuficiente en el almacén' });
+
+  runSql(
+    'UPDATE inventory_warehouse_stocks SET quantity = ?, updated_at = datetime(\'now\') WHERE id = ?',
+    [nextWarehouse, stockRow.id],
+  );
+  const previousStock = Number(product.stock || 0);
+  const newStock = recalculateProductStock(product.id);
+  runSql(
+    'INSERT INTO inventory_logs (id, product_id, quantity_change, previous_stock, new_stock, reason, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [uuidv4(), req.params.product_id, delta, previousStock, newStock, `${reason || 'Ajuste'} [${warehouse.name}]`, req.user.id],
+  );
   logAudit({
     actorUserId: req.user.id,
     actorName: req.user.full_name || req.user.username || '',

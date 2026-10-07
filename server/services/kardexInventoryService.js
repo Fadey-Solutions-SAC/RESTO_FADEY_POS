@@ -484,7 +484,10 @@ function cerrarInventarioFisico(tx, inventarioId, userId) {
 
   const dets = tx.queryAll('SELECT * FROM inventario_fisico_detalle WHERE inventario_id = ?', [inventarioId]);
   for (const d of dets) {
-    const diff = Number(d.diferencia || 0);
+    const ins = tx.queryOne('SELECT stock_actual FROM insumos WHERE id = ?', [d.insumo_id]);
+    const current = Number(ins?.stock_actual || 0);
+    const counted = Number(d.stock_real || 0);
+    const diff = counted - current;
     if (Math.abs(diff) < 1e-9) continue;
     if (diff > 0) {
       registrarAjusteEntrada(tx, {

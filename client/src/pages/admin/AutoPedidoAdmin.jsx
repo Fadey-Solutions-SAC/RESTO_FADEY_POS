@@ -679,51 +679,60 @@ export default function AutoPedidoAdmin() {
     }
   };
 
-  const importImagesFromFolder = async (event) => {
-    const files = Array.from(event.target.files || []).filter(isImageFile);
-    event.target.value = '';
+  const importImagesFromServer = async () => {
     if (!canSave || importingFolder) return;
-    if (!files.length) {
-      toast.error('La carpeta no tiene imágenes (jpg, png, webp…)');
-      return;
-    }
-    const { matches, unmatched, ambiguous } = matchImageFilesToProducts(files, products);
-    if (!matches.length) {
-      openFolderImportResult({ assigned: [], failed: [], unmatched, ambiguous });
-      return;
-    }
     setImportingFolder(true);
-    const tid = toast.loading(`Asignando ${matches.length} imagen(es)…`);
-    const assigned = [];
-    const failed = [];
-    for (let i = 0; i < matches.length; i += 1) {
-      const { file, product } = matches[i];
-      toast.loading(`Asignando imágenes ${i + 1}/${matches.length}…`, { id: tid });
-      try {
-        const { url } = await api.upload(file);
-        await api.put(`/products/${product.id}`, { image: url || '', image_source: 'manual' });
-        assigned.push({ file, product });
-      } catch (err) {
-        failed.push({ file, product, error: err.message || 'Error al subir' });
+    const tid = toast.loading('Leyendo imágenes del servidor…');
+    try {
+      const data = await api.get('/admin-modules/auto-pedido/server-images');
+      const files = (Array.isArray(data?.images) ? data.images : []).filter(isImageFile);
+      if (!files.length) {
+        toast.error('El servidor no tiene fotos de productos', { id: tid });
+        return;
       }
+      const { matches, unmatched, ambiguous } = matchImageFilesToProducts(files, products);
+      if (!matches.length) {
+        toast.dismiss(tid);
+        openFolderImportResult({ assigned: [], failed: [], unmatched, ambiguous });
+        return;
+      }
+      const assigned = [];
+      const failed = [];
+      for (let i = 0; i < matches.length; i += 1) {
+        const { file, product } = matches[i];
+        toast.loading(`Asignando imágenes ${i + 1}/${matches.length}…`, { id: tid });
+        try {
+          await api.put(`/products/${product.id}`, { image: file.url || '', image_source: 'manual' });
+          assigned.push({ file, product });
+        } catch (err) {
+          failed.push({ file, product, error: err.message || 'No se pudo asignar' });
+        }
+      }
+      toast.dismiss(tid);
+      openFolderImportResult({ assigned, failed, unmatched, ambiguous });
+      load();
+    } catch (err) {
+      toast.error(err.message || 'No se pudieron leer las imágenes del servidor', { id: tid });
+    } finally {
+      setImportingFolder(false);
     }
-    toast.dismiss(tid);
-    setImportingFolder(false);
-    openFolderImportResult({ assigned, failed, unmatched, ambiguous });
-    load();
+  };
+
+  const revokePreviewUrl = (url) => {
+    if (String(url || '').startsWith('blob:')) URL.revokeObjectURL(url);
   };
 
   const openFolderImportResult = ({ assigned, failed, unmatched, ambiguous }) => {
     const toPending = (file, reason, extra = {}) => ({
-      key: `${reason}:${file.webkitRelativePath || file.name}:${file.size}`,
+      key: `${reason}:${file.url || file.name}`,
       file,
       reason,
-      previewUrl: URL.createObjectURL(file),
+      previewUrl: file.url ? resolveMediaUrl(file.url) : URL.createObjectURL(file),
       candidates: extra.candidates || [],
       productId: extra.productId || (extra.candidates?.[0]?.id ?? ''),
     });
     setFolderImportResult((prev) => {
-      prev?.pending?.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      prev?.pending?.forEach((item) => revokePreviewUrl(item.previewUrl));
       return {
         assigned,
         pending: [
@@ -755,7 +764,7 @@ export default function AutoPedidoAdmin() {
     setFolderImportResult((prev) => {
       if (!prev) return prev;
       const item = prev.pending.find((p) => p.key === key);
-      if (item) URL.revokeObjectURL(item.previewUrl);
+      if (item) revokePreviewUrl(item.previewUrl);
       return { ...prev, pending: prev.pending.filter((p) => p.key !== key) };
     });
   };
@@ -766,9 +775,9 @@ export default function AutoPedidoAdmin() {
     if (!item || !product || !canSave || assigningPendingKey) return;
     setAssigningPendingKey(key);
     try {
-      const { url } = await api.upload(item.file);
-      await api.put(`/products/${product.id}`, { image: url || '', image_source: 'manual' });
-      URL.revokeObjectURL(item.previewUrl);
+      const imageUrl = item.file?.url || (await api.upload(item.file))?.url || '';
+      await api.put(`/products/${product.id}`, { image: imageUrl, image_source: 'manual' });
+      revokePreviewUrl(item.previewUrl);
       setFolderImportResult((prev) => (prev ? {
         assigned: [...prev.assigned, { file: item.file, product }],
         pending: prev.pending.filter((p) => p.key !== key),
@@ -805,30 +814,21 @@ export default function AutoPedidoAdmin() {
         <div className="min-w-0">
           <p className="font-semibold text-[var(--ui-body-text)]">Productos e imágenes del menú</p>
           <p className="text-xs text-[var(--ui-muted)] mt-1">
-            Elija una carpeta con fotos nombradas igual que el producto (ej. «Lomo saltado.jpg») y se asignan solas. Las que no coincidan puede asignarlas a mano eligiendo el producto.
+            Toma las fotos que ya están en el servidor, nombradas igual que el producto (ej. «Lomo saltado.jpg»), y las asigna solas. Las que no coincidan puede asignarlas a mano.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 w-full">
           {canSave ? (
             <>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                webkitdirectory=""
-                directory=""
-                id="auto-pedido-image-folder"
-                className="sr-only"
-                onChange={(e) => void importImagesFromFolder(e)}
+              <button
+                type="button"
+                onClick={() => void importImagesFromServer()}
                 disabled={importingFolder}
-              />
-              <label
-                htmlFor="auto-pedido-image-folder"
-                className={`btn-secondary text-sm inline-flex items-center justify-center gap-2 px-4 py-2.5 ${importingFolder ? 'opacity-60 pointer-events-none' : 'cursor-pointer'}`}
+                className="btn-secondary text-sm inline-flex items-center justify-center gap-2 px-4 py-2.5"
               >
                 <MdFolderOpen className="text-lg" />
-                {importingFolder ? 'Asignando…' : 'Cargar carpeta de imágenes'}
-              </label>
+                {importingFolder ? 'Asignando…' : 'Cargar imágenes del servidor'}
+              </button>
               {pendingFolderCount && !showFolderImportModal ? (
                 <button
                   type="button"
@@ -1173,7 +1173,7 @@ export default function AutoPedidoAdmin() {
       <Modal
         isOpen={showFolderImportModal && Boolean(folderImportResult)}
         onClose={closeFolderImportModal}
-        title="Imágenes desde carpeta"
+        title="Imágenes del servidor"
         size="lg"
       >
         {folderImportResult ? (
@@ -1218,7 +1218,7 @@ export default function AutoPedidoAdmin() {
                             <p className="text-[11px] text-[var(--ui-muted)]">
                               {item.reason === 'ambiguous' && 'Coincide con varios productos'}
                               {item.reason === 'unmatched' && 'Sin producto con ese nombre'}
-                              {item.reason === 'failed' && `Error: ${item.error || 'no se pudo subir'}`}
+                              {item.reason === 'failed' && `Error: ${item.error || 'no se pudo asignar'}`}
                             </p>
                           </div>
                         </div>

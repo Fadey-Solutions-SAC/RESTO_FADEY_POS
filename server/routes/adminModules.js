@@ -1,4 +1,7 @@
+const fs = require('fs');
+const path = require('path');
 const router = require('express').Router();
+const { getUploadsRoot } = require('../uploadsPath');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const { queryAll, queryOne, runSql, logAudit } = require('../database');
@@ -544,6 +547,60 @@ function persistAutoPedidoQrHome(mode) {
   saveDb();
   return settingsObj.auto_pedido_qr_home;
 }
+
+const SERVER_IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif', '.bmp']);
+const RANDOM_UPLOAD_NAME = /^\d{10,}-[a-z0-9]{6,}\.[a-z0-9]+$/i;
+
+function listNamedServerImages(dir, urlBase, { skipRandomNames = false } = {}) {
+  if (!dir || !fs.existsSync(dir)) return [];
+  let names = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch (_) {
+    return [];
+  }
+  const images = [];
+  for (const name of names) {
+    if (!name || name.startsWith('.')) continue;
+    const abs = path.join(dir, name);
+    let stat;
+    try {
+      stat = fs.statSync(abs);
+    } catch (_) {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+    if (!SERVER_IMAGE_EXT.has(path.extname(name).toLowerCase())) continue;
+    if (skipRandomNames && RANDOM_UPLOAD_NAME.test(name)) continue;
+    images.push({ name, url: `${urlBase}/${encodeURIComponent(name)}` });
+  }
+  return images;
+}
+
+function listAutoPedidoServerImages() {
+  const uploadsRoot = getUploadsRoot();
+  const groups = [
+    listNamedServerImages(path.join(uploadsRoot, 'productos'), '/uploads/productos'),
+    listNamedServerImages(path.join(__dirname, '..', '..', 'imagenes qr'), '/imagenes-qr'),
+    listNamedServerImages(uploadsRoot, '/uploads', { skipRandomNames: true }),
+  ];
+  const seen = new Set();
+  const images = [];
+  for (const group of groups) {
+    for (const image of group) {
+      const key = String(image.name || '').toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      images.push(image);
+    }
+  }
+  images.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  return images;
+}
+
+router.get('/auto-pedido/server-images', requireRole('admin'), (req, res) => {
+  res.json({ images: listAutoPedidoServerImages() });
+});
 
 router.get('/auto-pedido/cartas', (req, res) => {
   const settingsObj = parseJsonSafe(queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings'])?.value, {});

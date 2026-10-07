@@ -152,6 +152,10 @@ try {
 const billingCertsDir = path.join(uploadsDir, 'billing-certs');
 if (!fs.existsSync(billingCertsDir)) fs.mkdirSync(billingCertsDir, { recursive: true });
 app.use('/uploads', express.static(uploadsDir));
+const productImagesDir = path.join(__dirname, '..', 'imagenes qr');
+if (fs.existsSync(productImagesDir)) {
+  app.use('/imagenes-qr', express.static(productImagesDir));
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),

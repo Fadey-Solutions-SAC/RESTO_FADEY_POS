@@ -130,6 +130,17 @@ function productInventoryInvestment(p) {
   return Number(pc) * Number(p.stock || 0);
 }
 
+function productStockTotal(p) {
+  const rows = p?.warehouse_stocks || [];
+  if (!rows.length) return Number(p?.stock || 0);
+  return rows.reduce((sum, ws) => sum + Number(ws.quantity || 0), 0);
+}
+
+function productQtyInWarehouse(p, warehouseId) {
+  const row = (p?.warehouse_stocks || []).find((ws) => String(ws.warehouse_id) === String(warehouseId));
+  return Number(row?.quantity || 0);
+}
+
 function productLinkedToWarehouse(p, whId) {
   if (!whId) return true;
   if (String(p.stock_warehouse_id || '') === String(whId)) return true;
@@ -785,8 +796,8 @@ export default function Almacen() {
   const totalValue = selectedIsInsumosWarehouse
     ? insumosTotalValue
     : isAllWarehousesView(selectedWarehouseView)
-      ? products.reduce((s, p) => s + (p.price * p.stock), 0)
-      : productsForSelectedWarehouse.reduce((s, p) => s + (p.price * p.stock), 0);
+      ? products.reduce((s, p) => s + (p.price * productStockTotal(p)), 0)
+      : productsForSelectedWarehouse.reduce((s, p) => s + (p.price * productQtyInWarehouse(p, selectedWarehouseView)), 0);
   const totalInventoryInvestment = selectedIsInsumosWarehouse
     ? insumosTotalValue
     : isAllWarehousesView(selectedWarehouseView)
@@ -2126,8 +2137,8 @@ export default function Almacen() {
             selectedIsInsumosWarehouse
               ? insumosTotalUnits
               : isAllWarehousesView(selectedWarehouseView)
-                ? products.reduce((s, p) => s + p.stock, 0) + insumosActivos.reduce((s, i) => s + insumoStockEnUnidades(i), 0)
-                : productsForSelectedWarehouse.reduce((s, p) => s + p.stock, 0)
+                ? products.reduce((s, p) => s + productStockTotal(p), 0) + insumosActivos.reduce((s, i) => s + insumoStockEnUnidades(i), 0)
+                : productsForSelectedWarehouse.reduce((s, p) => s + productQtyInWarehouse(p, selectedWarehouseView), 0)
           }
         />
       </div>
@@ -2452,15 +2463,15 @@ export default function Almacen() {
                   {!selectedIsPrincipalWarehouse && (
                     <td className="py-3 font-bold">{p.stock_kitchen || 0}</td>
                   )}
-                  <td className="py-3 font-bold">{p.stock}</td>
-                  <td className="py-3">{formatCurrency(p.price * p.stock)}</td>
+                  <td className="py-3 font-bold">{productStockTotal(p)}</td>
+                  <td className="py-3">{formatCurrency(p.price * productStockTotal(p))}</td>
                   <td className="py-3"><span className={
-                    productStockStatus(p.stock, p.min_stock) === 'normal'
+                    productStockStatus(productStockTotal(p), p.min_stock) === 'normal'
                       ? UI_BADGE.emerald
-                      : productStockStatus(p.stock, p.min_stock) === 'low'
+                      : productStockStatus(productStockTotal(p), p.min_stock) === 'low'
                         ? UI_BADGE.amber
                         : UI_BADGE.red
-                  }>{productStockStatus(p.stock, p.min_stock) === 'normal' ? 'Normal' : productStockStatus(p.stock, p.min_stock) === 'low' ? 'Bajo' : 'Agotado'}</span></td>
+                  }>{productStockStatus(productStockTotal(p), p.min_stock) === 'normal' ? 'Normal' : productStockStatus(productStockTotal(p), p.min_stock) === 'low' ? 'Bajo' : 'Agotado'}</span></td>
                   <td className="py-2 whitespace-nowrap text-right">
                     <div className="inline-flex flex-nowrap items-center justify-end gap-1.5">
                       <button
