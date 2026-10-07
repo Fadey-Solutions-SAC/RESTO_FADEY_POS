@@ -135,6 +135,11 @@ function mergeSettingsBlob(prevParsed, incoming, { catalogEdits = [] } = {}) {
   } else {
     delete merged.auto_pedido_qr_home;
   }
+  if (Object.prototype.hasOwnProperty.call(prev, 'auto_pedido_qr_format')) {
+    merged.auto_pedido_qr_format = prev.auto_pedido_qr_format;
+  } else {
+    delete merged.auto_pedido_qr_format;
+  }
   try {
     const { shouldKeepPreviousCatalog } = require('../services/settingsCatalogRecover');
     const confirmed = {
@@ -444,6 +449,38 @@ function readAutoPedidoQrHomeFromDb() {
   return normalizeAutoPedidoQrHome(settingsObj.auto_pedido_qr_home);
 }
 
+function normalizeQrFormatUrl(value) {
+  const url = String(value || '').trim().slice(0, 500);
+  if (!url) return '';
+  if (url.startsWith('/uploads/') || url.startsWith('/cartas/') || /^https?:\/\//i.test(url)) return url;
+  throw new Error('El formato debe ser una imagen subida al sistema');
+}
+
+function readAutoPedidoQrFormatFromDb() {
+  const settingsObj = parseJsonSafe(queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings'])?.value, {});
+  try {
+    return normalizeQrFormatUrl(settingsObj.auto_pedido_qr_format);
+  } catch (_) {
+    return '';
+  }
+}
+
+function persistAutoPedidoQrFormat(url) {
+  const clean = normalizeQrFormatUrl(url);
+  const prevRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
+  const settingsObj = parseJsonSafe(prevRow?.value, {});
+  settingsObj.auto_pedido_qr_format = clean;
+  runSql(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+    ['settings', JSON.stringify(settingsObj)]
+  );
+  const { saveDb } = require('../database');
+  saveDb();
+  return clean;
+}
+
 function persistAutoPedidoQrHome(mode) {
   const prevRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
   const settingsObj = parseJsonSafe(prevRow?.value, {});
@@ -474,6 +511,7 @@ router.get('/auto-pedido/cartas', (req, res) => {
   res.json({
     cartas,
     qr_home: normalizeAutoPedidoQrHome(settingsObj.auto_pedido_qr_home),
+    qr_format: readAutoPedidoQrFormatFromDb(),
   });
 });
 
@@ -513,6 +551,24 @@ router.put('/auto-pedido/qr-home', requireRole('admin'), (req, res) => {
     res.json({ qr_home: mode });
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo guardar' });
+  }
+});
+
+router.put('/auto-pedido/qr-format', requireRole('admin'), (req, res) => {
+  try {
+    const url = persistAutoPedidoQrFormat(req.body?.qr_format ?? req.body?.url ?? '');
+    logAudit({
+      actorUserId: req.user.id,
+      actorName: req.user.full_name || req.user.username || '',
+      action: 'app_settings.auto_pedido_qr_format',
+      resourceType: 'app_settings',
+      resourceId: 'settings',
+      details: { has_format: Boolean(url) },
+    });
+    broadcastStaffData('auto_pedido_qr_format');
+    res.json({ qr_format: url });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'No se pudo guardar el formato' });
   }
 });
 

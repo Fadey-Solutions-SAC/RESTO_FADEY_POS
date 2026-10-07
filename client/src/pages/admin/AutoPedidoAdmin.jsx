@@ -4,7 +4,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen, MdDownload, MdPrint } from 'react-icons/md';
-import { downloadTableQrPng, printTableQrThermal } from '../../utils/tableQrPrint';
+import { downloadTableQrA5, printTableQrA5Sheets } from '../../utils/tableQrPrint';
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import {
@@ -105,6 +105,8 @@ export default function AutoPedidoAdmin() {
   const [assigningPendingKey, setAssigningPendingKey] = useState('');
   const [printingQrTableId, setPrintingQrTableId] = useState('');
   const [qrHome, setQrHome] = useState('productos');
+  const [qrFormat, setQrFormat] = useState('');
+  const [uploadingQrFormat, setUploadingQrFormat] = useState(false);
   const [savingQrHome, setSavingQrHome] = useState(false);
   const cartasDirtyRef = useRef(false);
   const loadSeqRef = useRef(0);
@@ -129,6 +131,7 @@ export default function AutoPedidoAdmin() {
         }
         const home = String(cData?.qr_home || '').trim().toLowerCase();
         setQrHome(home === 'cartas' || home === 'ambos' ? home : 'productos');
+        setQrFormat(String(cData?.qr_format || '').trim());
         setTables(Array.isArray(tData) ? tData : []);
         setProducts(Array.isArray(pData) ? pData : []);
         setCategories(Array.isArray(catData) ? catData : []);
@@ -147,7 +150,7 @@ export default function AutoPedidoAdmin() {
 
   useSocket('staff-data-update', (p) => {
     const d = p?.domain;
-    if (['auto_pedido_cartas', 'auto_pedido_qr_home', 'modifiers', 'discounts', 'offers', 'combos', 'catalog'].includes(d)) {
+    if (['auto_pedido_cartas', 'auto_pedido_qr_home', 'auto_pedido_qr_format', 'modifiers', 'discounts', 'offers', 'combos', 'catalog'].includes(d)) {
       void load();
     }
   });
@@ -337,35 +340,91 @@ export default function AutoPedidoAdmin() {
     navigator.clipboard.writeText(url).then(() => toast.success('Enlace copiado')).catch(() => toast.error('No se pudo copiar'));
   };
 
-  const downloadTableQr = async (table) => {
+  const requireQrFormat = () => {
+    const url = resolveMediaUrl(qrFormat);
+    if (!url) {
+      toast.error('Cargue el formato de imagen (A5) antes de armar la hoja');
+      return '';
+    }
+    return url;
+  };
+
+  const uploadQrFormat = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !canSave || uploadingQrFormat) return;
+    if (!String(file.type || '').startsWith('image/')) {
+      toast.error('El formato debe ser una imagen');
+      return;
+    }
+    setUploadingQrFormat(true);
+    const tid = toast.loading('Subiendo formato…');
     try {
-      await downloadTableQrPng({
+      const { url } = await api.upload(file);
+      const data = await api.put('/admin-modules/auto-pedido/qr-format', { qr_format: url || '' });
+      setQrFormat(String(data?.qr_format || url || '').trim());
+      toast.success('Formato de impresión cargado', { id: tid });
+    } catch (err) {
+      toast.error(err.message || 'No se pudo cargar el formato', { id: tid });
+    } finally {
+      setUploadingQrFormat(false);
+    }
+  };
+
+  const clearQrFormat = async () => {
+    if (!canSave || uploadingQrFormat) return;
+    setUploadingQrFormat(true);
+    try {
+      await api.put('/admin-modules/auto-pedido/qr-format', { qr_format: '' });
+      setQrFormat('');
+      toast.success('Formato quitado');
+    } catch (err) {
+      toast.error(err.message || 'No se pudo quitar el formato');
+    } finally {
+      setUploadingQrFormat(false);
+    }
+  };
+
+  const downloadTableQr = async (table) => {
+    const formatImageUrl = requireQrFormat();
+    if (!formatImageUrl) return;
+    try {
+      await downloadTableQrA5({
         url: selfOrderUrlForTable(table.number),
-        title: table.name || `Mesa ${table.number}`,
-        subtitle: `Mesa ${table.number}`,
+        tableNumber: table.number,
+        formatImageUrl,
       });
     } catch (err) {
       toast.error(err.message || 'No se pudo descargar el QR');
     }
   };
 
-  const printTableQr = async (table) => {
+  const printTableSheets = async (list, busyId) => {
     if (printingQrTableId) return;
-    setPrintingQrTableId(table.id);
-    const tid = toast.loading('Imprimiendo QR…');
+    const formatImageUrl = requireQrFormat();
+    if (!formatImageUrl) return;
+    const sheets = (list || []).map((table) => ({
+      url: selfOrderUrlForTable(table.number),
+      tableNumber: table.number,
+    }));
+    if (!sheets.length) {
+      toast.error('No hay mesas para imprimir');
+      return;
+    }
+    setPrintingQrTableId(busyId);
+    const tid = toast.loading(sheets.length > 1 ? 'Preparando hojas A5…' : 'Preparando hoja A5…');
     try {
-      await printTableQrThermal({
-        url: selfOrderUrlForTable(table.number),
-        title: table.name || `Mesa ${table.number}`,
-        subtitle: `Mesa ${table.number}`,
-      });
-      toast.success(`QR de ${table.name || `Mesa ${table.number}`} impreso`, { id: tid });
+      await printTableQrA5Sheets(sheets, formatImageUrl);
+      toast.success(sheets.length > 1 ? `${sheets.length} hojas A5 listas para imprimir` : 'Hoja A5 lista para imprimir', { id: tid });
     } catch (err) {
       toast.error(err.message || 'No se pudo imprimir el QR', { id: tid });
     } finally {
       setPrintingQrTableId('');
     }
   };
+
+  const printTableQr = (table) => printTableSheets([table], table.id);
+  const printAllTableQr = () => printTableSheets(tables, 'all');
 
   const filteredProducts = products.filter((p) => {
     if (Number(p.is_active || 0) === 0) return false;
@@ -799,7 +858,59 @@ export default function AutoPedidoAdmin() {
       </div>
 
       <div className="card">
-        <h2 className="text-lg font-semibold rf-section-title mb-4">Enlaces y QR por mesa</h2>
+        <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold rf-section-title">Enlaces y QR por mesa</h2>
+            <p className="text-xs text-[var(--ui-muted)] mt-1 max-w-xl">
+              Cargue la imagen del diseño (vertical, tamaño A5). Al imprimir, cada mesa combina ese formato con su QR y el número dentro de un círculo al centro. La hoja completa no se muestra aquí: solo sale en la impresión.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {qrFormat ? (
+              <span className="text-xs font-medium text-emerald-700">Formato cargado</span>
+            ) : (
+              <span className="text-xs text-[var(--ui-muted)]">Sin formato</span>
+            )}
+            {canSave ? (
+              <>
+                <input
+                  type="file"
+                  accept="image/*"
+                  id="auto-pedido-qr-format"
+                  className="sr-only"
+                  onChange={(e) => void uploadQrFormat(e)}
+                  disabled={uploadingQrFormat}
+                />
+                <label
+                  htmlFor="auto-pedido-qr-format"
+                  className={`btn-secondary text-sm inline-flex items-center gap-1 ${uploadingQrFormat ? 'opacity-60 pointer-events-none' : 'cursor-pointer'}`}
+                >
+                  <MdUploadFile />
+                  {uploadingQrFormat ? 'Subiendo…' : (qrFormat ? 'Cambiar formato' : 'Cargar formato')}
+                </label>
+                {qrFormat ? (
+                  <button
+                    type="button"
+                    className="btn-secondary text-sm"
+                    disabled={uploadingQrFormat}
+                    onClick={() => void clearQrFormat()}
+                  >
+                    Quitar
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+            <button
+              type="button"
+              className="btn-primary text-sm inline-flex items-center gap-1"
+              disabled={Boolean(printingQrTableId) || tables.length === 0}
+              onClick={() => void printAllTableQr()}
+            >
+              <MdPrint />
+              {printingQrTableId === 'all' ? 'Preparando…' : 'Imprimir todas (A5)'}
+            </button>
+          </div>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {tables.map((t) => {
             const url = selfOrderUrlForTable(t.number);
@@ -821,7 +932,7 @@ export default function AutoPedidoAdmin() {
                     type="button"
                     onClick={() => void downloadTableQr(t)}
                     className="w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)]"
-                    title="Descargar QR (PNG)"
+                    title="Descargar hoja A5"
                     aria-label={`Descargar QR de ${t.name}`}
                   >
                     <MdDownload className="text-lg" />
@@ -831,7 +942,7 @@ export default function AutoPedidoAdmin() {
                     onClick={() => void printTableQr(t)}
                     disabled={Boolean(printingQrTableId)}
                     className="w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[color:var(--ui-border)] text-[var(--ui-accent)] hover:bg-[var(--ui-sidebar-hover)] disabled:opacity-50"
-                    title="Imprimir QR en ticketera (Caja)"
+                    title="Imprimir hoja A5"
                     aria-label={`Imprimir QR de ${t.name}`}
                   >
                     <MdPrint className="text-lg" />
