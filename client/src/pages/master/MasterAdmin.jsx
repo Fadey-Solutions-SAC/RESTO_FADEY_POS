@@ -703,7 +703,7 @@ export default function MasterAdmin() {
                       <div>
                         <p className="text-sm text-[var(--ui-body-text)]">Prueba de mensajes IA</p>
                         <p className="text-[11px] text-[var(--ui-muted)] mt-0.5">
-                          Toma las preguntas que escribiste en este web service y las envía ahora a la plataforma.
+                          A medianoche se envían solos y después se borran del chat. Este botón manda ahora los que ya están escritos, solo para probar, y no los borra.
                         </p>
                       </div>
                       <button
@@ -716,8 +716,8 @@ export default function MasterAdmin() {
                             const result = await api.post('/master-admin/ai-messages/test', {});
                             toast.success(
                               result?.messageCount
-                                ? `Prueba enviada: ${result.messageCount} pregunta${result.messageCount === 1 ? '' : 's'}.`
-                                : 'Prueba enviada a la plataforma.',
+                                ? `Prueba enviada: ${result.messageCount} mensaje${result.messageCount === 1 ? '' : 's'}. A medianoche se envían de nuevo y ahí sí se borran.`
+                                : 'Prueba enviada. A medianoche sigue el envío automático.',
                             );
                           } catch (err) {
                             toast.error(err.message || 'No se pudo enviar la prueba.');

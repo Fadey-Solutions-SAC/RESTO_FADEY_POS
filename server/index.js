@@ -588,9 +588,17 @@ async function start() {
     const { purgeFadeyAiChatIfNewDay } = require('./services/fadeyAi/fadeyAiChatService');
     const { flushAiTrainingQuestions } = require('./services/fadeyAi/fadeyAiQuestionExport');
     const flushTrainingQuestions = () => {
-      flushAiTrainingQuestions().catch((err) => {
-        console.warn('[fadey-ai] envío de preguntas:', err.message || err);
-      });
+      flushAiTrainingQuestions()
+        .catch((err) => {
+          console.warn('[fadey-ai] envío de preguntas:', err.message || err);
+        })
+        .finally(() => {
+          try {
+            purgeFadeyAiChatIfNewDay();
+          } catch (err) {
+            console.warn('[fadey-ai] purge chat:', err.message || err);
+          }
+        });
     };
     setInterval(() => {
       try {
@@ -600,21 +608,11 @@ async function start() {
       }
     }, 20 * 60 * 1000);
     setInterval(() => {
-      try {
-        purgeFadeyAiChatIfNewDay();
-      } catch (err) {
-        console.warn('[fadey-ai] purge chat:', err.message || err);
-      }
       flushTrainingQuestions();
     }, 60 * 1000);
     setTimeout(() => {
       try {
         runFadeyAiMonitorCycle();
-      } catch (_) {
-        /* noop */
-      }
-      try {
-        purgeFadeyAiChatIfNewDay();
       } catch (_) {
         /* noop */
       }

@@ -108,11 +108,17 @@ function saveMessage(userId, role, content, sources = null) {
   );
   if (role === 'user') {
     try {
-      recordUserAiQuestion({ userId, content, createdAt });
+      recordUserAiQuestion({ userId, content, createdAt, sourceChatId: id });
     } catch (err) {
       console.warn('[fadey-ai] no se guardó la pregunta para el panel:', err.message || err);
     }
   }
+  const { flushAiTrainingQuestions } = require('./fadeyAiQuestionExport');
+  flushAiTrainingQuestions()
+    .catch((err) => console.warn('[fadey-ai] envío de preguntas:', err.message || err))
+    .finally(() => {
+      try { purgeFadeyAiChatIfNewDay(); } catch (_) { /* el chat no se bloquea */ }
+    });
   return id;
 }
 
@@ -150,8 +156,18 @@ function getChatDayInfo() {
 function purgeFadeyAiChatIfNewDay() {
   ensureFadeyAiSchema();
   const { day: today, timezone } = getChatDayInfo();
+  let hold = new Set();
+  try {
+    const { chatDaysWaitingToSend } = require('./fadeyAiQuestionExport');
+    hold = new Set(chatDaysWaitingToSend());
+  } catch (err) {
+    console.warn('[fadey-ai] no se pudo revisar el envío antes de borrar:', err.message || err);
+  }
   const rows = queryAll('SELECT id, created_at FROM fadey_ai_chat_messages') || [];
-  const stale = rows.filter((r) => messageDayKey(r.created_at, timezone) < today).map((r) => r.id);
+  const stale = rows.filter((r) => {
+    const day = messageDayKey(r.created_at, timezone);
+    return day < today && !hold.has(day);
+  }).map((r) => r.id);
   for (let i = 0; i < stale.length; i += 200) {
     const ids = stale.slice(i, i + 200);
     runSql(`DELETE FROM fadey_ai_chat_messages WHERE id IN (${ids.map(() => '?').join(',')})`, ids);

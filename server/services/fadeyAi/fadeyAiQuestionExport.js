@@ -66,6 +66,12 @@ function ensureQuestionExportSchema() {
   } catch (_) {
     /* columna ya existe */
   }
+  try {
+    runSql('ALTER TABLE fadey_ai_training_questions ADD COLUMN source_chat_id TEXT');
+  } catch (_) {
+    /* columna ya existe */
+  }
+  runSql(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fadey_ai_training_source ON fadey_ai_training_questions(source_chat_id)`);
   schemaReady = true;
 }
 
@@ -78,31 +84,72 @@ function todayKey() {
   return String(businessNow() || '').slice(0, 10);
 }
 
-function recordUserAiQuestion({ userId, content, createdAt } = {}) {
+function recordUserAiQuestion({ userId, content, createdAt, businessDay, sourceChatId, userName, userRole } = {}) {
   const text = String(content || '').trim().slice(0, MAX_TEXT);
   const uid = String(userId || '').trim();
   if (!text || !uid) return null;
   ensureQuestionExportSchema();
+  const sourceId = String(sourceChatId || '').trim();
+  if (sourceId) {
+    const existing = queryOne(
+      'SELECT id FROM fadey_ai_training_questions WHERE source_chat_id = ?',
+      [sourceId],
+    );
+    if (existing?.id) return existing.id;
+  }
   const user = queryOne('SELECT full_name, role FROM users WHERE id = ?', [uid]);
-  const role = String(user?.role || '').trim().toLowerCase();
+  const role = String(userRole || user?.role || '').trim().toLowerCase();
   const created = String(createdAt || businessNow());
   const id = uuidv4();
   runSql(
     `INSERT INTO fadey_ai_training_questions
-      (id, user_id, user_name, user_role, category, content, business_day, created_at, sent_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      (id, user_id, user_name, user_role, category, content, business_day, created_at, sent_at, source_chat_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
     [
       id,
       uid,
-      String(user?.full_name || '').trim() || 'Usuario',
+      String(userName || user?.full_name || '').trim() || 'Usuario',
       role,
       categoryForRole(role),
       text,
-      created.slice(0, 10),
+      String(businessDay || created).slice(0, 10),
       created,
+      sourceId || null,
     ],
   );
   return id;
+}
+
+/** Copia al lote de envío las preguntas del chat que todavía no están guardadas. */
+function backfillChatQuestions() {
+  ensureQuestionExportSchema();
+  const rows = queryAll(
+    `SELECT id, user_id, content, created_at
+     FROM fadey_ai_chat_messages
+     WHERE role = 'user'`,
+  ) || [];
+  let copied = 0;
+  for (const row of rows) {
+    const before = queryOne(
+      'SELECT id FROM fadey_ai_training_questions WHERE source_chat_id = ?',
+      [row.id],
+    );
+    if (before?.id) continue;
+    const saved = recordUserAiQuestion({
+      userId: row.user_id,
+      content: row.content,
+      createdAt: row.created_at,
+      sourceChatId: row.id,
+    });
+    if (saved) copied += 1;
+  }
+  return copied;
+}
+
+/** Días cerrados que todavía no se enviaron. El chat de esos días no se borra. */
+function chatDaysWaitingToSend() {
+  backfillChatQuestions();
+  return daysWithUnsent(todayKey());
 }
 
 function rowsForDay(day) {
@@ -264,6 +311,7 @@ async function flushAiTrainingQuestions({ includeToday = false, force = false } 
   flushLock = true;
   try {
     ensureQuestionExportSchema();
+    backfillChatQuestions();
     const today = todayKey();
     const days = daysWithUnsent(includeToday ? '9999-99-99' : today);
     if (!force && !includeToday && days.length && lastAttemptIsRecent()) {
@@ -329,66 +377,48 @@ function getAiTrainingInbox() {
 }
 
 /**
- * Prueba del administrador maestro: envía ya las preguntas que él escribió
- * en este web service. No marca como enviadas las del resto del personal.
+ * Prueba del administrador maestro: envía ya los mensajes escritos en este
+ * web service. No los marca como enviados ni los borra; a medianoche sale el lote real.
  */
-async function sendOwnAiMessagesTest({ userId, userName, userRole } = {}) {
+async function sendWrittenMessagesTest() {
   ensureQuestionExportSchema();
-  const uid = String(userId || '').trim();
-  if (!uid) return { ok: false, error: 'No se identificó al administrador maestro.' };
-
-  const rows = queryAll(
-    `SELECT id, user_id, user_name, user_role, category, content, created_at, sent_at, business_day
-     FROM fadey_ai_training_questions
-     WHERE user_id = ?
-     ORDER BY created_at ASC, rowid ASC`,
-    [uid],
-  ) || [];
-  if (!rows.length) {
+  backfillChatQuestions();
+  const days = (queryAll(
+    `SELECT DISTINCT business_day FROM fadey_ai_training_questions ORDER BY business_day ASC`,
+  ) || []).map((row) => String(row.business_day || '')).filter(Boolean);
+  if (!days.length) {
     return {
       ok: false,
-      error: 'Todavía no hay preguntas tuyas en este web service. Escribe a la IA y vuelve a enviar la prueba.',
+      error: 'Todavía no hay mensajes escritos en este web service. Escribe a la IA y vuelve a probar.',
     };
   }
   if (!isCentralSyncConfigured()) {
     return {
       ok: false,
-      messageCount: rows.length,
       error: 'Conexión con el panel no configurada. Esta prueba usa las mismas variables del pago del plan.',
     };
   }
 
-  const named = rows.map((row) => ({
-    ...row,
-    user_name: String(row.user_name || '').trim() && row.user_name !== 'Usuario'
-      ? row.user_name
-      : (String(userName || '').trim() || 'Administrador maestro'),
-    user_role: String(row.user_role || userRole || 'master_admin'),
-    category: row.category || 'administracion',
-  }));
-  const day = todayKey();
-  const payload = buildDayPayload(day, named);
-  payload.test = true;
-  payload.purpose = 'ai_training_test';
-  payload.batchId = `ai-messages-test:${payload.webServiceId}:${uid}:${day}`;
-
   const client = createCentralSyncClient();
-  const res = await client.syncAiTrainingMessages(payload);
-  if (res?.ok) {
-    const now = businessNow();
-    const ids = named.map((row) => row.id);
-    runSql(
-      `UPDATE fadey_ai_training_questions SET sent_at = ? WHERE id IN (${ids.map(() => '?').join(',')})`,
-      [now, ...ids],
-    );
-    return { ok: true, messageCount: named.length, businessDay: day };
+  let messageCount = 0;
+  for (const day of days) {
+    const rows = rowsForDay(day);
+    if (!rows.length) continue;
+    const payload = buildDayPayload(day, rows);
+    payload.test = true;
+    payload.purpose = 'ai_training_test';
+    payload.batchId = `ai-messages-test:${payload.webServiceId}:${day}`;
+    const res = await client.syncAiTrainingMessages(payload);
+    if (!res?.ok) {
+      const status = Number(res?.status || 0);
+      const error = status === 404
+        ? 'El panel todavía no tiene el recibidor POST /api/ai-messages.'
+        : (res?.data?.error || res?.error || (status ? `HTTP ${status}` : 'No se pudo enviar'));
+      return { ok: false, error, status, messageCount, days };
+    }
+    messageCount += rows.length;
   }
-
-  const status = Number(res?.status || 0);
-  const error = status === 404
-    ? 'El panel todavía no tiene el recibidor POST /api/ai-messages.'
-    : (res?.data?.error || res?.error || (status ? `HTTP ${status}` : 'No se pudo enviar'));
-  return { ok: false, error, status, messageCount: named.length };
+  return { ok: true, test: true, messageCount, days, businessDay: todayKey() };
 }
 
 module.exports = {
@@ -397,6 +427,7 @@ module.exports = {
   recordUserAiQuestion,
   flushAiTrainingQuestions,
   getAiTrainingInbox,
-  sendOwnAiMessagesTest,
+  sendWrittenMessagesTest,
+  chatDaysWaitingToSend,
   groupRows,
 };
