@@ -7,6 +7,7 @@
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql } = require('../../database');
 const { businessNow } = require('./fadeyAiKnowledgeService');
+const { ensureFadeyAiSchema } = require('./ensureFadeyAiSchema');
 const { readClientIdentity, isCentralSyncConfigured } = require('../../../packages/shared-config');
 const { createCentralSyncClient } = require('../../../packages/shared-api');
 const { getRestaurantContext } = require('../centralSyncService');
@@ -71,7 +72,11 @@ function ensureQuestionExportSchema() {
   } catch (_) {
     /* columna ya existe */
   }
-  runSql(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fadey_ai_training_source ON fadey_ai_training_questions(source_chat_id)`);
+  try {
+    runSql(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fadey_ai_training_source ON fadey_ai_training_questions(source_chat_id)`);
+  } catch (_) {
+    /* índice ya existe o había duplicados; el envío no debe quedar bloqueado */
+  }
   schemaReady = true;
 }
 
@@ -120,30 +125,88 @@ function recordUserAiQuestion({ userId, content, createdAt, businessDay, sourceC
   return id;
 }
 
-/** Copia al lote de envío las preguntas del chat que todavía no están guardadas. */
+/**
+ * Copia al lote de envío las preguntas del chat y las que la IA ya aprendió.
+ * Esas frases aprendidas siguen en la base aunque el chat se borre a medianoche.
+ */
 function backfillChatQuestions() {
+  ensureFadeyAiSchema();
   ensureQuestionExportSchema();
-  const rows = queryAll(
-    `SELECT id, user_id, content, created_at
-     FROM fadey_ai_chat_messages
-     WHERE role = 'user'`,
-  ) || [];
-  let copied = 0;
-  for (const row of rows) {
-    const before = queryOne(
-      'SELECT id FROM fadey_ai_training_questions WHERE source_chat_id = ?',
-      [row.id],
-    );
-    if (before?.id) continue;
-    const saved = recordUserAiQuestion({
-      userId: row.user_id,
-      content: row.content,
-      createdAt: row.created_at,
-      sourceChatId: row.id,
-    });
-    if (saved) copied += 1;
+  const info = { copied: 0, chatCount: 0, learned: 0, lastError: '' };
+  let rows = [];
+  try {
+    rows = queryAll(
+      `SELECT id, user_id, content, created_at
+       FROM fadey_ai_chat_messages
+       WHERE lower(trim(coalesce(role, ''))) = 'user'`,
+    ) || [];
+  } catch (err) {
+    info.lastError = err.message || String(err);
+    rows = [];
   }
-  return copied;
+  info.chatCount = rows.length;
+  for (const row of rows) {
+    try {
+      const saved = recordUserAiQuestion({
+        userId: row.user_id || 'chat',
+        content: row.content,
+        createdAt: row.created_at,
+        sourceChatId: row.id,
+      });
+      if (saved) info.copied += 1;
+    } catch (err) {
+      info.lastError = err.message || String(err);
+    }
+  }
+  backfillLearnedPhrases(info);
+  return info;
+}
+
+function backfillLearnedPhrases(info) {
+  let phrases = [];
+  try {
+    phrases = queryAll(
+      `SELECT id, body, meta_json, updated_at
+       FROM fadey_ai_memory
+       WHERE kind = 'user_phrase'`,
+    ) || [];
+  } catch (err) {
+    info.lastError = info.lastError || err.message || String(err);
+    return;
+  }
+  for (const phrase of phrases) {
+    let examples = [];
+    try {
+      const meta = JSON.parse(phrase.meta_json || '{}');
+      if (Array.isArray(meta.examples)) examples = meta.examples;
+    } catch (_) {
+      examples = [];
+    }
+    if (!examples.length && phrase.body) {
+      examples = String(phrase.body).split('\n');
+    }
+    const seen = new Set();
+    examples.forEach((example, index) => {
+      const text = String(example || '').replace(/\s+/g, ' ').trim();
+      const key = text.toLowerCase();
+      if (text.length < 4 || seen.has(key)) return;
+      seen.add(key);
+      info.learned += 1;
+      try {
+        const saved = recordUserAiQuestion({
+          userId: 'aprendidas',
+          userName: 'Preguntas aprendidas',
+          userRole: 'admin',
+          content: text,
+          createdAt: phrase.updated_at || businessNow(),
+          sourceChatId: `memory:${phrase.id}:${index}`,
+        });
+        if (saved) info.copied += 1;
+      } catch (err) {
+        info.lastError = err.message || String(err);
+      }
+    });
+  }
 }
 
 /** Días cerrados que todavía no se enviaron. El chat de esos días no se borra. */
@@ -336,11 +399,23 @@ function pruneOldQuestions() {
   );
 }
 
+function unsentRows() {
+  ensureQuestionExportSchema();
+  return queryAll(
+    `SELECT id, user_id, user_name, user_role, category, content, created_at, sent_at, business_day
+     FROM fadey_ai_training_questions
+     WHERE sent_at IS NULL
+     ORDER BY business_day ASC, created_at ASC, rowid ASC`,
+  ) || [];
+}
+
 function getAiTrainingInbox() {
   ensureQuestionExportSchema();
+  backfillChatQuestions();
   const today = todayKey();
   const identity = readClientIdentity();
-  const groups = groupRows(rowsForDay(today));
+  const pending = unsentRows();
+  const groups = groupRows(pending);
   const pendingDays = daysWithUnsent(today);
   const lastSend = queryOne(
     `SELECT business_day, status, error, sent_at, message_count
@@ -348,13 +423,14 @@ function getAiTrainingInbox() {
      ORDER BY COALESCE(sent_at, business_day) DESC
      LIMIT 1`,
   );
-  const todayCount = groups.reduce((n, g) => n + g.users.reduce((m, u) => m + u.messages.length, 0), 0);
+  const todayCount = pending.filter((row) => String(row.business_day || '') === today).length;
   return {
     today,
     configured: isCentralSyncConfigured(),
     endpoint: `${identity.centralPlatformUrl || ''}/api/ai-messages`,
     webServiceId: identity.webServiceId || identity.clientId || '',
     todayCount,
+    storedCount: pending.length,
     pendingDays,
     lastSend: lastSend
       ? {
@@ -382,14 +458,17 @@ function getAiTrainingInbox() {
  */
 async function sendWrittenMessagesTest() {
   ensureQuestionExportSchema();
-  backfillChatQuestions();
+  const collected = backfillChatQuestions();
   const days = (queryAll(
     `SELECT DISTINCT business_day FROM fadey_ai_training_questions ORDER BY business_day ASC`,
   ) || []).map((row) => String(row.business_day || '')).filter(Boolean);
   if (!days.length) {
+    const found = Number(collected.chatCount || 0) + Number(collected.learned || 0);
     return {
       ok: false,
-      error: 'Todavía no hay mensajes escritos en este web service. Escribe a la IA y vuelve a probar.',
+      error: found > 0
+        ? (collected.lastError || 'Había preguntas guardadas, pero no se pudieron preparar para el envío.')
+        : 'Este web service no tiene preguntas guardadas. El chat de días anteriores se borra a medianoche. Escribe una pregunta a la IA en este mismo servicio y pulsa de nuevo.',
     };
   }
   if (!isCentralSyncConfigured()) {

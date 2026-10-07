@@ -285,8 +285,12 @@ export default function MiRestaurant() {
       const data = await api.post('/platform-payments/ai-messages/send', { includeToday: includeToday === true });
       setAiMessages(data?.inbox || null);
       const failed = (data?.results || []).find((r) => r && r.ok === false);
-      if ((data?.days || []).length === 0) toast.success('No hay mensajes pendientes de envío.');
-      else if (failed) toast.error(String(failed.error || 'No se pudieron enviar los mensajes.'));
+      const stored = Number(data?.inbox?.storedCount || 0);
+      if ((data?.days || []).length === 0 && stored > 0 && includeToday !== true) {
+        toast.success(`Hay ${stored} pregunta${stored === 1 ? '' : 's'} guardada${stored === 1 ? '' : 's'}. Las de hoy se envían a medianoche, o pulsa «Enviar también el día de hoy».`);
+      } else if ((data?.days || []).length === 0) {
+        toast.error('Este web service no tiene preguntas guardadas. Escribe una a la IA y vuelve a intentar.');
+      } else if (failed) toast.error(String(failed.error || 'No se pudieron enviar los mensajes.'));
       else toast.success('Mensajes enviados al panel.');
     } catch (err) {
       toast.error(err?.message || 'No se pudieron enviar los mensajes.');
@@ -1383,8 +1387,9 @@ export default function MiRestaurant() {
               {aiMessagesOpen ? (
                 <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 space-y-3 text-sm">
                   <p className="text-[var(--ui-body-text)]">
-                    Preguntas que el personal escribió a la IA hoy
-                    {aiMessages?.today ? ` (${aiMessages.today})` : ''}.
+                    Preguntas guardadas para enviar al panel
+                    {aiMessages?.storedCount ? ` (${aiMessages.storedCount})` : ''}
+                    {aiMessages?.today ? ` · hoy ${aiMessages.today}` : ''}.
                     Al cerrar el día se agrupan por caja, mozo, producción y administración y se envían al panel, con la misma conexión del pago, para mejorar la IA.
                   </p>
                   {aiMessages?.configured === false ? (
@@ -1403,7 +1408,7 @@ export default function MiRestaurant() {
                     </p>
                   ) : null}
                   {(aiMessages?.groups || []).length === 0 ? (
-                    <p className="ui-text-muted">Hoy todavía no hay preguntas a la IA.</p>
+                    <p className="ui-text-muted">Este web service todavía no tiene preguntas guardadas. Escribe una a la IA y vuelve a abrir Mensajes. El chat de días anteriores se borra a medianoche.</p>
                   ) : (
                     <div className="space-y-3">
                       {aiMessages.groups.map((group) => (
