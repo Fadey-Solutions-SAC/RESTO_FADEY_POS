@@ -79,13 +79,20 @@ function a5Pixels() {
 }
 
 function loadHtmlImage(src) {
-  return new Promise((resolve, reject) => {
+  const fromUrl = (url, cors) => new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (cors) img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('No se pudo leer el formato de imagen'));
-    img.src = src;
+    img.src = url;
   });
+  return fetch(src, { mode: 'cors', credentials: 'omit' })
+    .then((res) => (res.ok ? res.blob() : Promise.reject(new Error('formato'))))
+    .then((blob) => {
+      const objectUrl = URL.createObjectURL(blob);
+      return fromUrl(objectUrl, false).finally(() => URL.revokeObjectURL(objectUrl));
+    })
+    .catch(() => fromUrl(src, true).catch(() => fromUrl(src, false)));
 }
 
 function containPlacement(img, width, height) {
@@ -312,7 +319,7 @@ function pickQrSlot(data, width, height, first, second) {
 }
 
 /** Cuadro del QR de muestra: el más grande, recortado a sus esquinas, sin el texto de arriba. */
-function slotOnSampleQr(data, width, height) {
+function slotOnSampleQr(data, width, height, level = 100) {
   const luma = new Float32Array(width * height);
   for (let i = 0; i < width * height; i += 1) {
     const o = i * 4;
@@ -335,11 +342,11 @@ function slotOnSampleQr(data, width, height) {
       for (let y = y0; y < y0 + step && y < height; y += 1) {
         for (let x = x0; x < x0 + step && x < width; x += 1) {
           const index = y * width + x;
-          const bit = luma[index] < 100 ? 1 : 0;
+          const bit = luma[index] < level ? 1 : 0;
           darkCount += bit;
           samples += 1;
-          if (x + 1 < x0 + step && bit !== (luma[index + 1] < 100 ? 1 : 0)) transitions += 1;
-          if (y + 1 < y0 + step && bit !== (luma[index + width] < 100 ? 1 : 0)) transitions += 1;
+          if (x + 1 < x0 + step && bit !== (luma[index + 1] < level ? 1 : 0)) transitions += 1;
+          if (y + 1 < y0 + step && bit !== (luma[index + width] < level ? 1 : 0)) transitions += 1;
         }
       }
       const idx = (by + 1) * stride + (bx + 1);
@@ -366,7 +373,7 @@ function slotOnSampleQr(data, width, height) {
     }
   }
   if (!best) return null;
-  const isDark = (x, y) => luma[y * width + x] < 100;
+  const isDark = (x, y) => luma[y * width + x] < level;
   let seedX = Math.min(width - 1, Math.round(best.x + best.size / 2));
   let seedY = Math.min(height - 1, Math.round(best.y + best.size / 2));
   if (!isDark(seedX, seedY)) {
@@ -431,7 +438,7 @@ function slotOnSampleQr(data, width, height) {
     for (let y = ya; y <= yb; y += 1) {
       for (let x = xa; x <= xb; x += 1) {
         n += 1;
-        if (luma[y * width + x] < 100) darkCount += 1;
+        if (luma[y * width + x] < level) darkCount += 1;
       }
     }
     return n ? darkCount / n : 0;
@@ -468,8 +475,9 @@ function slotOnSampleQr(data, width, height) {
   }
   const boxW = right - left + 1;
   const boxH = bottom - top + 1;
-  if (boxW < 24 || boxH < 24) return null;
-  if (boxW / boxH < 0.75 || boxW / boxH > 1.35) return null;
+  const square = { x: best.x, y: best.y, w: best.size, h: best.size };
+  if (boxW < 24 || boxH < 24) return square;
+  if (boxW / boxH < 0.75 || boxW / boxH > 1.35) return square;
   return { x: left, y: top, w: boxW, h: boxH };
 }
 
@@ -493,7 +501,8 @@ function detectFormatQrSlot(img) {
     w,
     h,
   );
-  const sample = slotOnSampleQr(imageData.data, w, h);
+  const sample = slotOnSampleQr(imageData.data, w, h, 100)
+    || slotOnSampleQr(imageData.data, w, h, 160);
   const decodedArea = decoded ? decoded.size * decoded.size : 0;
   const sampleArea = sample ? sample.w * sample.h : 0;
   const slot = sampleArea > decodedArea ? sample : (decoded || sample);
