@@ -139,18 +139,37 @@ function slotFromDecodedQr(found, width, height) {
   );
 }
 
-/** Si el QR del diseño no se puede leer, ubica el cuadrado de módulos por contraste. */
-function slotFromContrast(data, width, height) {
-  const step = 4;
-  const bw = Math.floor(width / step);
-  const bh = Math.floor(height / step);
-  if (bw < 8 || bh < 8) return null;
+function darkMask(data, width, height, threshold) {
   const dark = new Uint8Array(width * height);
   for (let i = 0; i < width * height; i += 1) {
     const o = i * 4;
     const luma = data[o] * 0.3 + data[o + 1] * 0.59 + data[o + 2] * 0.11;
-    dark[i] = luma < 115 ? 1 : 0;
+    dark[i] = luma < threshold ? 1 : 0;
   }
+  return dark;
+}
+
+function backgroundThreshold(data, width, height) {
+  const samples = [];
+  const stride = Math.max(1, Math.floor(Math.sqrt(width * height) / 90));
+  for (let y = 0; y < height; y += stride) {
+    for (let x = 0; x < width; x += stride) {
+      const o = (y * width + x) * 4;
+      samples.push(data[o] * 0.3 + data[o + 1] * 0.59 + data[o + 2] * 0.11);
+    }
+  }
+  samples.sort((a, b) => a - b);
+  const background = samples[Math.min(samples.length - 1, Math.floor(samples.length * 0.62))] || 200;
+  return Math.min(165, Math.max(90, background - 48));
+}
+
+/** Si el QR del diseño no se puede leer, ubica el cuadrado de módulos por contraste. */
+function slotFromContrast(data, width, height, threshold = 115) {
+  const step = 4;
+  const bw = Math.floor(width / step);
+  const bh = Math.floor(height / step);
+  if (bw < 8 || bh < 8) return null;
+  const dark = darkMask(data, width, height, threshold);
   const stride = bw + 1;
   const transI = new Float64Array(stride * (bh + 1));
   const darkI = new Float64Array(stride * (bh + 1));
@@ -230,6 +249,8 @@ function slotFromContrast(data, width, height) {
   let minY = seedY;
   let maxY = seedY;
   const gap = 2;
+  const maxRadius = Math.min(width, height) * 0.24;
+  const maxRadiusSq = maxRadius * maxRadius;
   while (queue.length) {
     const index = queue.pop();
     const x = index % width;
@@ -238,12 +259,13 @@ function slotFromContrast(data, width, height) {
     if (x > maxX) maxX = x;
     if (y < minY) minY = y;
     if (y > maxY) maxY = y;
-    if ((maxX - minX) > width * 0.6 || (maxY - minY) > height * 0.6) return null;
     for (let dy = -gap; dy <= gap; dy += 1) {
       for (let dx = -gap; dx <= gap; dx += 1) {
         const nx = x + dx;
         const ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const dist = (nx - seedX) * (nx - seedX) + (ny - seedY) * (ny - seedY);
+        if (dist > maxRadiusSq) continue;
         const next = ny * width + nx;
         if (seen[next] || !dark[next]) continue;
         seen[next] = 1;
@@ -251,7 +273,42 @@ function slotFromContrast(data, width, height) {
       }
     }
   }
-  return squareSlot(minX, minY, maxX, maxY, width, height);
+  return squareSlot(minX, minY, maxX, maxY, width, height) || {
+    x: best.x,
+    y: best.y,
+    size: Math.max(best.size, Math.min(width, height) * 0.16),
+  };
+}
+
+function slotDensity(data, width, height, slot) {
+  if (!slot) return -1;
+  const x0 = Math.max(0, Math.floor(slot.x));
+  const y0 = Math.max(0, Math.floor(slot.y));
+  const x1 = Math.min(width, Math.ceil(slot.x + slot.size));
+  const y1 = Math.min(height, Math.ceil(slot.y + slot.size));
+  let transitions = 0;
+  let count = 0;
+  for (let y = y0; y < y1; y += 2) {
+    for (let x = x0; x < x1; x += 2) {
+      const o = (y * width + x) * 4;
+      const luma = data[o] * 0.3 + data[o + 1] * 0.59 + data[o + 2] * 0.11;
+      if (x + 2 < x1) {
+        const o2 = (y * width + (x + 2)) * 4;
+        const next = data[o2] * 0.3 + data[o2 + 1] * 0.59 + data[o2 + 2] * 0.11;
+        if ((luma < 140) !== (next < 140)) transitions += 1;
+      }
+      count += 1;
+    }
+  }
+  return count ? transitions / count : -1;
+}
+
+function pickQrSlot(data, width, height, first, second) {
+  if (!first) return second || null;
+  if (!second) return first;
+  return slotDensity(data, width, height, second) > slotDensity(data, width, height, first)
+    ? second
+    : first;
 }
 
 /** Busca el QR que ya trae el diseño y devuelve su cuadro en píxeles de la imagen. */
@@ -274,7 +331,9 @@ function detectFormatQrSlot(img) {
     w,
     h,
   );
-  const slot = decoded || slotFromContrast(imageData.data, w, h);
+  const strict = slotFromContrast(imageData.data, w, h, 115);
+  const loose = slotFromContrast(imageData.data, w, h, backgroundThreshold(imageData.data, w, h));
+  const slot = decoded || pickQrSlot(imageData.data, w, h, strict, loose);
   const mapped = slot
     ? { x: slot.x / scanScale, y: slot.y / scanScale, size: slot.size / scanScale }
     : null;
