@@ -725,7 +725,88 @@ export async function suggestFormatQrSlot(formatImageUrl) {
   });
 }
 
-export async function renderTableQrA5({ url, tableNumber, formatImage, slot }) {
+function slotToPixels(slot, formatImage, fit) {
+  const norm = normalizeQrSlot(slot);
+  if (!norm) return null;
+  const naturalW = formatImage.naturalWidth || formatImage.width;
+  const naturalH = formatImage.naturalHeight || formatImage.height;
+  return {
+    x: fit.x + norm.x * naturalW * fit.scale,
+    y: fit.y + norm.y * naturalH * fit.scale,
+    w: norm.w * naturalW * fit.scale,
+    h: norm.h * naturalH * fit.scale,
+  };
+}
+
+function sampleSignFill(formatImage, slot) {
+  const naturalW = formatImage.naturalWidth || formatImage.width;
+  const naturalH = formatImage.naturalHeight || formatImage.height;
+  const points = [
+    [slot.x + slot.w * 0.18, slot.y + slot.h * 0.5],
+    [slot.x + slot.w * 0.82, slot.y + slot.h * 0.5],
+    [slot.x + slot.w * 0.5, slot.y + slot.h * 0.16],
+    [slot.x + slot.w * 0.5, slot.y + slot.h * 0.84],
+  ];
+  const probe = document.createElement('canvas');
+  probe.width = 1;
+  probe.height = 1;
+  const probeCtx = probe.getContext('2d', { willReadFrequently: true });
+  const samples = points.map(([nx, ny]) => {
+    const x = Math.min(naturalW - 1, Math.max(0, Math.round(nx * naturalW)));
+    const y = Math.min(naturalH - 1, Math.max(0, Math.round(ny * naturalH)));
+    probeCtx.clearRect(0, 0, 1, 1);
+    probeCtx.drawImage(formatImage, x, y, 1, 1, 0, 0, 1, 1);
+    const [r, g, b] = probeCtx.getImageData(0, 0, 1, 1).data;
+    return { r, g, b, l: r + g + b };
+  }).sort((a, b) => a.l - b.l);
+  const mid = samples[Math.floor(samples.length / 2)] || { r: 245, g: 236, b: 214 };
+  return `rgb(${mid.r}, ${mid.g}, ${mid.b})`;
+}
+
+function traceLogoClip(ctx, area, shape) {
+  const cx = area.x + area.w / 2;
+  const cy = area.y + area.h / 2;
+  ctx.beginPath();
+  if (shape === 'roundrect') {
+    const x = area.x + area.w * 0.08;
+    const y = area.y + area.h * 0.12;
+    const w = area.w * 0.84;
+    const h = area.h * 0.76;
+    const r = Math.min(w, h) * 0.12;
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, w, h, r);
+    } else {
+      ctx.rect(x, y, w, h);
+    }
+    return;
+  }
+  ctx.ellipse(cx, cy, area.w * 0.46, area.h * 0.42, 0, 0, Math.PI * 2);
+}
+
+/**
+ * Tapa el letrero «Tu logo aquí» y deja el logo configurado en el sistema.
+ * `slot` va en fracciones de la imagen del formato.
+ */
+export function placeSystemLogo(ctx, formatImage, logoImage, slot, fit, shape = 'ellipse') {
+  const area = slotToPixels(slot, formatImage, fit);
+  if (!ctx || !formatImage || !logoImage || !area?.w || !area?.h) return;
+  const fill = sampleSignFill(formatImage, normalizeQrSlot(slot));
+  ctx.save();
+  traceLogoClip(ctx, area, shape);
+  ctx.clip();
+  ctx.fillStyle = fill;
+  ctx.fillRect(area.x, area.y, area.w, area.h);
+  const pad = shape === 'roundrect' ? 0.22 : 0.18;
+  const maxW = area.w * (1 - pad * 2);
+  const maxH = area.h * (1 - pad * 2);
+  const scale = Math.min(maxW / logoImage.width, maxH / logoImage.height);
+  const dw = logoImage.width * scale;
+  const dh = logoImage.height * scale;
+  ctx.drawImage(logoImage, area.x + (area.w - dw) / 2, area.y + (area.h - dh) / 2, dw, dh);
+  ctx.restore();
+}
+
+export async function renderTableQrA5({ url, tableNumber, formatImage, slot, logoImage, logoSlot, logoShape }) {
   if (!formatImage) throw new Error('Cargue el formato de imagen antes de imprimir');
   const { width, height } = a5Pixels();
   const canvas = document.createElement('canvas');
@@ -740,6 +821,9 @@ export async function renderTableQrA5({ url, tableNumber, formatImage, slot }) {
   ctx.fillRect(0, 0, width, height);
   const fit = containPlacement(formatImage, width, height);
   ctx.drawImage(formatImage, fit.x, fit.y, fit.w, fit.h);
+  if (logoImage && logoSlot) {
+    placeSystemLogo(ctx, formatImage, logoImage, logoSlot, fit, logoShape);
+  }
 
   const slotW = Math.max(32, (placed.w || placed.size) * fit.scale);
   const slotH = Math.max(32, (placed.h || placed.size) * fit.scale);
@@ -786,9 +870,10 @@ async function canvasToPngBlob(canvas) {
   return blob;
 }
 
-export async function downloadTableQrA5({ url, tableNumber, formatImageUrl, slot }) {
+export async function downloadTableQrA5({ url, tableNumber, formatImageUrl, slot, logoUrl, logoSlot, logoShape }) {
   const formatImage = await loadHtmlImage(formatImageUrl);
-  const canvas = await renderTableQrA5({ url, tableNumber, formatImage, slot });
+  const logoImage = logoUrl ? await loadHtmlImage(logoUrl).catch(() => null) : null;
+  const canvas = await renderTableQrA5({ url, tableNumber, formatImage, slot, logoImage, logoSlot, logoShape });
   const blob = await canvasToPngBlob(canvas);
   const href = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -847,11 +932,12 @@ function printA5Images(dataUrls) {
 }
 
 /** Imprime una o varias hojas A5. El formato completo no se muestra en la pantalla del sistema. */
-export async function printTableQrA5Sheets(sheets, formatImageUrl, slot) {
+export async function printTableQrA5Sheets(sheets, formatImageUrl, slot, logo) {
   const list = Array.isArray(sheets) ? sheets.filter((s) => s?.url) : [];
   if (!list.length) throw new Error('No hay mesas para imprimir');
   if (!formatImageUrl) throw new Error('Cargue el formato de imagen antes de imprimir');
   const formatImage = await loadHtmlImage(formatImageUrl);
+  const logoImage = logo?.url ? await loadHtmlImage(logo.url).catch(() => null) : null;
   const dataUrls = [];
   for (const sheet of list) {
     const canvas = await renderTableQrA5({
@@ -859,6 +945,9 @@ export async function printTableQrA5Sheets(sheets, formatImageUrl, slot) {
       tableNumber: sheet.tableNumber,
       formatImage,
       slot,
+      logoImage,
+      logoSlot: logo?.slot,
+      logoShape: logo?.shape,
     });
     dataUrls.push(canvas.toDataURL('image/png'));
   }

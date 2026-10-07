@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen, MdDownload, MdPrint } from 'react-icons/md';
 import QRCode from 'qrcode';
 import { downloadTableQrA5, normalizeQrSlot, printTableQrA5Sheets, suggestFormatQrSlot } from '../../utils/tableQrPrint';
+import { QR_PRINT_FORMATS, qrPrintFormatBySrc } from '../../data/qrPrintFormats';
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import {
@@ -83,7 +84,7 @@ function selfOrderUrlForTable(number) {
   return `${base}/auto-pedido?mesa=${encodeURIComponent(String(number))}`;
 }
 
-function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onCommit, onUseFrame, placing }) {
+function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onCommit, onUseFrame, placing, logoUrl, logoSlot, logoShape }) {
   const frameRef = useRef(null);
   const dragRef = useRef(null);
   const onChangeRef = useRef(onChange);
@@ -171,6 +172,22 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
           className="relative mx-auto w-full max-w-[260px] shrink-0 bg-white rounded-lg border border-slate-200"
         >
           <img src={imageUrl} alt="Formato de impresión" className="block w-full h-auto select-none" draggable={false} />
+          {logoSlot ? (
+            <div
+              className="absolute overflow-hidden pointer-events-none"
+              style={{
+                left: `${logoSlot.x * 100}%`,
+                top: `${logoSlot.y * 100}%`,
+                width: `${logoSlot.w * 100}%`,
+                height: `${logoSlot.h * 100}%`,
+                borderRadius: logoShape === 'roundrect' ? '16%' : '50%',
+              }}
+            >
+              {logoUrl ? (
+                <img src={logoUrl} alt="" className="h-full w-full object-contain" />
+              ) : null}
+            </div>
+          ) : null}
           {slot ? (
             <div
               tabIndex={0}
@@ -206,6 +223,9 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
           <p className="font-medium rf-section-title">Lugar del QR</p>
           <p className="mt-1 text-xs text-[var(--ui-muted)]">
             Arrastre el recuadro hasta el marco del diseño. La esquina violeta cambia el tamaño. Con el recuadro seleccionado, las flechas lo mueven con más precisión.
+            {logoUrl
+              ? ' El logo de Mi Restaurante queda en el letrero de arriba.'
+              : ' Configure el logo en Mi Restaurante para colocarlo en el letrero.'}
           </p>
           <button
             type="button"
@@ -246,6 +266,7 @@ export default function AutoPedidoAdmin() {
   const [qrHome, setQrHome] = useState('productos');
   const [qrFormat, setQrFormat] = useState('');
   const [qrSlot, setQrSlot] = useState(null);
+  const [restaurantLogo, setRestaurantLogo] = useState('');
   const [qrDataReady, setQrDataReady] = useState(false);
   const [placingQrSlot, setPlacingQrSlot] = useState(false);
   const [uploadingQrFormat, setUploadingQrFormat] = useState(false);
@@ -266,8 +287,9 @@ export default function AutoPedidoAdmin() {
       api.get('/tables'),
       api.get('/products'),
       api.get('/categories'),
+      api.get('/restaurant').catch(() => ({})),
     ])
-      .then(([cData, tData, pData, catData]) => {
+      .then(([cData, tData, pData, catData, restaurantData]) => {
         if (seq !== loadSeqRef.current) return;
         if (!cartasDirtyRef.current) {
           setCartas(Array.isArray(cData.cartas) ? cData.cartas : []);
@@ -279,6 +301,7 @@ export default function AutoPedidoAdmin() {
         setTables(Array.isArray(tData) ? tData : []);
         setProducts(Array.isArray(pData) ? pData : []);
         setCategories(Array.isArray(catData) ? catData : []);
+        setRestaurantLogo(String(restaurantData?.logo || '').trim());
       })
       .catch((e) => {
         if (seq === loadSeqRef.current) toast.error(e.message);
@@ -297,6 +320,12 @@ export default function AutoPedidoAdmin() {
 
   useEffect(() => {
     if (!qrDataReady || !qrFormat || qrSlot) return undefined;
+    const preset = qrPrintFormatBySrc(qrFormat);
+    if (preset) {
+      setQrSlot(preset.qr);
+      void saveQrSlot(preset.qr, { silent: true });
+      return undefined;
+    }
     let cancel = false;
     setPlacingQrSlot(true);
     suggestFormatQrSlot(resolveMediaUrl(qrFormat))
@@ -507,7 +536,7 @@ export default function AutoPedidoAdmin() {
   const requireQrFormat = () => {
     const url = resolveMediaUrl(qrFormat);
     if (!url) {
-      toast.error('Cargue el formato de imagen (A5) antes de armar la hoja');
+      toast.error('Elija un formato de la fila antes de armar la hoja');
       return '';
     }
     return url;
@@ -583,15 +612,49 @@ export default function AutoPedidoAdmin() {
     }
   };
 
+  const logoPlacement = () => {
+    const preset = qrPrintFormatBySrc(qrFormat);
+    const url = resolveMediaUrl(restaurantLogo);
+    if (!url) return null;
+    return {
+      url,
+      slot: preset?.logo || { x: 0.32, y: 0.05, w: 0.36, h: 0.13 },
+      shape: preset?.logoShape || 'ellipse',
+    };
+  };
+
+  const chooseQrFormat = async (format) => {
+    if (!format || uploadingQrFormat) return;
+    setQrFormat(format.src);
+    setQrSlot(format.qr);
+    if (!canSave) return;
+    setUploadingQrFormat(true);
+    try {
+      const data = await api.put('/admin-modules/auto-pedido/qr-format', { qr_format: format.src });
+      setQrFormat(String(data?.qr_format || format.src).trim());
+      const slotData = await api.put('/admin-modules/auto-pedido/qr-slot', { qr_slot: format.qr });
+      if (!draggingSlotRef.current) setQrSlot(normalizeQrSlot(slotData?.qr_slot) || format.qr);
+      toast.success(`Formato ${format.name} listo para descargar`);
+    } catch (err) {
+      toast.error(err.message || 'No se pudo elegir el formato');
+    } finally {
+      setUploadingQrFormat(false);
+    }
+  };
+
   const downloadTableQr = async (table) => {
     const formatImageUrl = requireQrFormat();
     if (!formatImageUrl) return;
+    const logo = logoPlacement();
     try {
       await downloadTableQrA5({
         url: selfOrderUrlForTable(table.number),
         tableNumber: table.number,
         formatImageUrl,
         slot: qrSlot,
+        logoUrl: logo?.url || '',
+        logoSlot: logo?.slot,
+        logoShape: logo?.shape,
       });
     } catch (err) {
       toast.error(err.message || 'No se pudo descargar el QR');
@@ -613,7 +676,7 @@ export default function AutoPedidoAdmin() {
     setPrintingQrTableId(busyId);
     const tid = toast.loading(sheets.length > 1 ? 'Preparando hojas A5…' : 'Preparando hoja A5…');
     try {
-      await printTableQrA5Sheets(sheets, formatImageUrl, qrSlot);
+      await printTableQrA5Sheets(sheets, formatImageUrl, qrSlot, logoPlacement());
       toast.success(sheets.length > 1 ? `${sheets.length} hojas A5 listas para imprimir` : 'Hoja A5 lista para imprimir', { id: tid });
     } catch (err) {
       toast.error(err.message || 'No se pudo imprimir el QR', { id: tid });
@@ -1061,7 +1124,7 @@ export default function AutoPedidoAdmin() {
           <div className="min-w-0">
             <h2 className="text-lg font-semibold rf-section-title">Enlaces y QR por mesa</h2>
             <p className="text-xs text-[var(--ui-muted)] mt-1 max-w-xl">
-              Cargue el diseño vertical (A5). El QR de cada mesa se imprime dentro del recuadro, con el número en el círculo del centro. Puede moverlo en la vista previa antes de imprimir. La hoja completa solo sale en la impresión.
+              Elija un formato de la fila. El QR de cada mesa va en el recuadro y el logo de Mi Restaurante en el letrero de arriba. La hoja completa solo sale al descargar o imprimir.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -1110,10 +1173,36 @@ export default function AutoPedidoAdmin() {
             </button>
           </div>
         </div>
+        <div className="mb-4 flex gap-3 overflow-x-auto pb-2">
+          {QR_PRINT_FORMATS.map((format) => {
+            const selected = qrPrintFormatBySrc(qrFormat)?.id === format.id;
+            return (
+              <button
+                key={format.id}
+                type="button"
+                onClick={() => void chooseQrFormat(format)}
+                disabled={uploadingQrFormat}
+                className={`w-28 shrink-0 rounded-xl border bg-white p-1.5 text-left transition ${
+                  selected
+                    ? 'border-violet-600 ring-2 ring-violet-500'
+                    : 'border-slate-200 hover:border-violet-300'
+                }`}
+              >
+                <img src={format.src} alt="" className="h-44 w-full rounded-lg bg-slate-100 object-contain" />
+                <span className={`mt-1 block text-center text-xs font-medium ${selected ? 'text-violet-700' : 'text-slate-600'}`}>
+                  {format.name}
+                </span>
+              </button>
+            );
+          })}
+        </div>
         {qrFormat ? (
           <QrSlotEditor
             imageUrl={resolveMediaUrl(qrFormat)}
             slot={qrSlot}
+            logoUrl={resolveMediaUrl(restaurantLogo)}
+            logoSlot={qrPrintFormatBySrc(qrFormat)?.logo}
+            logoShape={qrPrintFormatBySrc(qrFormat)?.logoShape || 'ellipse'}
             sampleNumber={tables[0]?.number ?? '1'}
             placing={placingQrSlot}
             onDragStart={() => { draggingSlotRef.current = true; }}

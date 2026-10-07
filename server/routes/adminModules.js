@@ -460,7 +460,7 @@ function readAutoPedidoQrHomeFromDb() {
 function normalizeQrFormatUrl(value) {
   const url = String(value || '').trim().slice(0, 500);
   if (!url) return '';
-  if (url.startsWith('/uploads/') || url.startsWith('/cartas/') || /^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/uploads/') || url.startsWith('/cartas/') || url.startsWith('/qr-formats/') || /^https?:\/\//i.test(url)) return url;
   throw new Error('El formato debe ser una imagen subida al sistema');
 }
 
