@@ -24,7 +24,17 @@ import {
   insumoValorInventario,
 } from '../utils/insumoUnidadMedida';
 import toast from 'react-hot-toast';
-import { MdInventory2, MdAdd, MdList, MdExpandMore, MdExpandLess } from 'react-icons/md';
+import {
+  MdInventory2,
+  MdAdd,
+  MdList,
+  MdExpandLess,
+  MdShoppingCart,
+  MdBarChart,
+  MdSettings,
+  MdLocalBar,
+  MdViewInAr,
+} from 'react-icons/md';
 import Modal from './Modal';
 import RecetaEditor from './RecetaEditor';
 
@@ -36,13 +46,22 @@ function foldProductName(value) {
     .trim();
 }
 
+function ChefHatIcon({ className = 'w-6 h-6' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M8.2 9.2a3.2 3.2 0 0 1 2.6-3.1 3.4 3.4 0 0 1 6.4 1.5 3.5 3.5 0 0 1 2.3 4.6A3.6 3.6 0 0 1 16.2 16H7.8a3.6 3.6 0 0 1-3.3-3.8 3.5 3.5 0 0 1 2.2-4.5 3.2 3.2 0 0 1 1.5-1.5z" />
+      <path d="M8 17.2h8v1.5c0 .4-.4.8-.8.8H8.8a.8.8 0 0 1-.8-.8v-1.5z" />
+    </svg>
+  );
+}
+
 const TABS = [
-  { id: 'insumos', label: 'Insumos' },
-  { id: 'compras', label: 'Compras' },
-  { id: 'recetas', label: 'Recetas' },
-  { id: 'kardex', label: 'Kardex' },
-  { id: 'inv_fisico', label: 'Inventario de transformables' },
-  { id: 'inv_no_transform', label: 'Inventario de no transformables' },
+  { id: 'insumos', label: 'Insumos', Icon: MdInventory2, bg: '#e7f0ff', fg: '#1d4ed8', line: '#2563eb' },
+  { id: 'compras', label: 'Compras', Icon: MdShoppingCart, bg: '#e5f8ec', fg: '#15803d', line: '#16a34a' },
+  { id: 'recetas', label: 'Recetas', Icon: ChefHatIcon, bg: '#fff0e4', fg: '#c2410c', line: '#ea580c' },
+  { id: 'kardex', label: 'Kardex', Icon: MdBarChart, bg: '#f3e8ff', fg: '#6d28d9', line: '#7c3aed' },
+  { id: 'inv_fisico', label: 'Inventario de transformables', Icon: MdSettings, bg: '#e5f6fb', fg: '#0e7490', line: '#0891b2' },
+  { id: 'inv_no_transform', label: 'Inventario de no transformables', Icon: MdViewInAr, bg: '#fde7ee', fg: '#be123c', line: '#e11d48' },
 ];
 
 const BASE = '/kardex-inventory';
@@ -582,26 +601,35 @@ export default function LogisticaKardexModule() {
 
   return (
     <div className="logistica-kardex-module space-y-4 text-[var(--ui-body-text)]">
-      <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto overscroll-x-contain touch-pan-x border-b border-[color:var(--ui-border)] pb-2 -mx-1 px-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-              tab === t.id
-                ? 'bg-[var(--ui-accent)] text-white shadow-sm border border-[color:var(--ui-accent)]'
-                : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] border border-[color:var(--ui-border)]'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div>
+        <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[var(--ui-body-text)]">Control de Recursos - Inventario y Kardex</h2>
+        <p className="mt-0.5 text-sm text-[var(--ui-muted)]">Gestiona tus insumos, compras, recetas e inventarios de manera eficiente</p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 pb-1">
+        {TABS.map((t) => {
+          const Icon = t.Icon;
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className="relative flex items-center gap-2 rounded-xl px-3 py-3 text-left min-h-[72px] transition hover:brightness-[0.98]"
+              style={{ background: t.bg, color: t.fg }}
+            >
+              <Icon className="w-7 h-7 shrink-0" />
+              <span className="text-[13px] font-semibold leading-tight">{t.label}</span>
+              {active ? (
+                <span className="absolute left-4 right-4 -bottom-0.5 h-1 rounded-full" style={{ background: t.line }} />
+              ) : null}
+            </button>
+          );
+        })}
       </div>
 
       {tab === 'insumos' && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--ui-border)] pb-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => {
@@ -609,12 +637,13 @@ export default function LogisticaKardexModule() {
                 setEditingInsumoId('');
                 setInsumoForm(EMPTY_INSUMO_FORM());
               }}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition ${
                 insumoAreaTab === 'cocina'
-                  ? 'bg-sky-600/90 text-white border-sky-500'
-                  : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
+                  ? 'bg-[#2563eb] text-white border-[#2563eb]'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
               }`}
             >
+              <ChefHatIcon className="w-4 h-4" />
               Insumos de cocina
             </button>
             <button
@@ -624,26 +653,27 @@ export default function LogisticaKardexModule() {
                 setEditingInsumoId('');
                 setInsumoForm(EMPTY_INSUMO_FORM());
               }}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition ${
                 insumoAreaTab === 'bar'
-                  ? 'bg-indigo-600/90 text-white border-indigo-500'
-                  : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
+                  ? 'bg-[#2563eb] text-white border-[#2563eb]'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
               }`}
             >
+              <MdLocalBar className="text-lg" />
               Insumos de bar
             </button>
             <div className="flex-1 min-w-[8px]" aria-hidden="true" />
-            <p className="text-sm text-[var(--ui-body-text)] shrink-0">
+            <p className="text-sm text-[var(--ui-muted)] shrink-0">
               Valor insumos:{' '}
-              <span className="font-semibold ui-text-success tabular-nums">{formatCurrency(valorInsumosLista)}</span>
+              <span className="font-semibold text-emerald-600 tabular-nums">{formatCurrency(valorInsumosLista)}</span>
             </p>
             <button
               type="button"
               onClick={() => setShowInsumoAddForm((v) => !v)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition shrink-0 ${
+              className={`inline-flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-semibold border transition shrink-0 ${
                 showInsumoAddForm
-                  ? 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
-                  : 'bg-emerald-700/90 text-white border-emerald-600 hover:bg-emerald-600'
+                  ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  : 'bg-[#16a34a] text-white border-[#16a34a] hover:bg-[#15803d]'
               }`}
             >
               {showInsumoAddForm ? (
@@ -652,7 +682,7 @@ export default function LogisticaKardexModule() {
                 </>
               ) : (
                 <>
-                  <MdExpandMore className="text-lg" /> Agregar insumo
+                  <MdAdd className="text-lg" /> Agregar insumo
                 </>
               )}
             </button>

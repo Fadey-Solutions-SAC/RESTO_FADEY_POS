@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen, MdDownload, MdPrint } from 'react-icons/md';
 import QRCode from 'qrcode';
-import { downloadTableQrA5, normalizeQrSlot, printTableQrA5Sheets, suggestFormatQrSlot } from '../../utils/tableQrPrint';
+import { downloadTableQrA5, normalizeQrSlot, prepareAutoPedidoLogo, printTableQrA5Sheets, suggestFormatQrSlot } from '../../utils/tableQrPrint';
 import { QR_PRINT_FORMATS, qrPrintFormatBySrc } from '../../data/qrPrintFormats';
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
@@ -87,6 +87,19 @@ function selfOrderUrlForTable(number) {
 function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onCommit, onUseFrame, placing, logoUrl, logoSlot, logoShape }) {
   const frameRef = useRef(null);
   const dragRef = useRef(null);
+  const [logoCut, setLogoCut] = useState(null);
+
+  useEffect(() => {
+    if (!logoUrl) {
+      setLogoCut(null);
+      return undefined;
+    }
+    let cancel = false;
+    prepareAutoPedidoLogo(logoUrl)
+      .then((cut) => { if (!cancel) setLogoCut(cut); })
+      .catch(() => { if (!cancel) setLogoCut({ url: logoUrl, fit: 'contain' }); });
+    return () => { cancel = true; };
+  }, [logoUrl]);
   const onChangeRef = useRef(onChange);
   const onCommitRef = useRef(onCommit);
   const [preview, setPreview] = useState('');
@@ -184,7 +197,11 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
               }}
             >
               {logoUrl ? (
-                <img src={logoUrl} alt="" className="h-full w-full object-contain" />
+                <img
+                  src={logoCut?.url || logoUrl}
+                  alt=""
+                  className={`h-full w-full ${logoCut?.fit === 'cover' ? 'object-cover' : 'object-contain'}`}
+                />
               ) : null}
             </div>
           ) : null}
@@ -224,7 +241,7 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
           <p className="mt-1 text-xs text-[var(--ui-muted)]">
             Arrastre el recuadro hasta el marco del diseño. La esquina violeta cambia el tamaño. Con el recuadro seleccionado, las flechas lo mueven con más precisión.
             {logoUrl
-              ? ' El logo de Mi Restaurante queda en el letrero de arriba.'
+              ? ' El logo de Mi Restaurante se recorta al letrero de arriba.'
               : ' Configure el logo en Mi Restaurante para colocarlo en el letrero.'}
           </p>
           <button
@@ -274,14 +291,17 @@ export default function AutoPedidoAdmin() {
   const [savingQrHome, setSavingQrHome] = useState(false);
   const cartasDirtyRef = useRef(false);
   const loadSeqRef = useRef(0);
+  const bootedRef = useRef(false);
+  const qrEchoUntilRef = useRef(0);
 
   const markCartasEdited = () => {
     cartasDirtyRef.current = true;
   };
 
-  const load = useCallback(() => {
+  const load = useCallback((opts = {}) => {
     const seq = ++loadSeqRef.current;
-    setLoading(true);
+    const silent = opts.silent === true || bootedRef.current;
+    if (!silent) setLoading(true);
     Promise.all([
       api.get('/admin-modules/auto-pedido/cartas'),
       api.get('/tables'),
@@ -296,8 +316,10 @@ export default function AutoPedidoAdmin() {
         }
         const home = String(cData?.qr_home || '').trim().toLowerCase();
         setQrHome(home === 'cartas' || home === 'ambos' ? home : 'productos');
-        setQrFormat(String(cData?.qr_format || '').trim());
-        if (!draggingSlotRef.current) setQrSlot(normalizeQrSlot(cData?.qr_slot));
+        if (Date.now() >= qrEchoUntilRef.current) {
+          setQrFormat(String(cData?.qr_format || '').trim());
+          if (!draggingSlotRef.current) setQrSlot(normalizeQrSlot(cData?.qr_slot));
+        }
         setTables(Array.isArray(tData) ? tData : []);
         setProducts(Array.isArray(pData) ? pData : []);
         setCategories(Array.isArray(catData) ? catData : []);
@@ -308,6 +330,7 @@ export default function AutoPedidoAdmin() {
       })
       .finally(() => {
         if (seq === loadSeqRef.current) {
+          bootedRef.current = true;
           setLoading(false);
           setQrDataReady(true);
         }
@@ -343,12 +366,13 @@ export default function AutoPedidoAdmin() {
 
   useSocket('staff-data-update', (p) => {
     const d = p?.domain;
+    if (['auto_pedido_qr_format', 'auto_pedido_qr_slot'].includes(d) && Date.now() < qrEchoUntilRef.current) return;
     if (['auto_pedido_cartas', 'auto_pedido_qr_home', 'auto_pedido_qr_format', 'auto_pedido_qr_slot', 'modifiers', 'discounts', 'offers', 'combos', 'catalog'].includes(d)) {
-      void load();
+      void load({ silent: true });
     }
   });
   useSocket('inventory-update', () => {
-    void load();
+    void load({ silent: true });
   });
 
   useEffect(() => {
@@ -625,20 +649,18 @@ export default function AutoPedidoAdmin() {
 
   const chooseQrFormat = async (format) => {
     if (!format || uploadingQrFormat) return;
+    if (qrPrintFormatBySrc(qrFormat)?.id === format.id) return;
+    qrEchoUntilRef.current = Date.now() + 2500;
     setQrFormat(format.src);
     setQrSlot(format.qr);
     if (!canSave) return;
-    setUploadingQrFormat(true);
     try {
-      const data = await api.put('/admin-modules/auto-pedido/qr-format', { qr_format: format.src });
-      setQrFormat(String(data?.qr_format || format.src).trim());
-      const slotData = await api.put('/admin-modules/auto-pedido/qr-slot', { qr_slot: format.qr });
-      if (!draggingSlotRef.current) setQrSlot(normalizeQrSlot(slotData?.qr_slot) || format.qr);
-      toast.success(`Formato ${format.name} listo para descargar`);
+      await api.put('/admin-modules/auto-pedido/qr-format', { qr_format: format.src });
+      await api.put('/admin-modules/auto-pedido/qr-slot', { qr_slot: format.qr });
     } catch (err) {
+      qrEchoUntilRef.current = 0;
       toast.error(err.message || 'No se pudo elegir el formato');
-    } finally {
-      setUploadingQrFormat(false);
+      void load({ silent: true });
     }
   };
 

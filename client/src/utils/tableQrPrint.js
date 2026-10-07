@@ -783,26 +783,134 @@ function traceLogoClip(ctx, area, shape) {
   ctx.ellipse(cx, cy, area.w * 0.46, area.h * 0.42, 0, 0, Math.PI * 2);
 }
 
+function colorDistance(a, b) {
+  const dr = a[0] - b[0];
+  const dg = a[1] - b[1];
+  const db = a[2] - b[2];
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
 /**
- * Tapa el letrero «Tu logo aquí» y deja el logo configurado en el sistema.
+ * Quita el fondo plano pegado al borde (el cuadrado negro o blanco alrededor de la marca)
+ * y devuelve el logo listo para el letrero. `cover` si la imagen ya ocupa todo el cuadro.
+ */
+export function cropLogoForSign(logoImage) {
+  const sw = logoImage?.naturalWidth || logoImage?.width || 0;
+  const sh = logoImage?.naturalHeight || logoImage?.height || 0;
+  if (!sw || !sh) return null;
+  const scale = Math.min(1, 640 / Math.max(sw, sh));
+  const w = Math.max(1, Math.round(sw * scale));
+  const h = Math.max(1, Math.round(sh * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(logoImage, 0, 0, w, h);
+  let data;
+  try {
+    data = ctx.getImageData(0, 0, w, h);
+  } catch (_) {
+    return null;
+  }
+  const px = data.data;
+  const at = (x, y) => {
+    const i = (y * w + x) * 4;
+    return [px[i], px[i + 1], px[i + 2], px[i + 3]];
+  };
+  const corners = [at(0, 0), at(w - 1, 0), at(0, h - 1), at(w - 1, h - 1)];
+  const bg = corners[0];
+  const flatBg = corners.every((c) => colorDistance(c, bg) < 22);
+  const isBg = (x, y) => {
+    const c = at(x, y);
+    if (c[3] < 16) return true;
+    return flatBg && colorDistance(c, bg) < 38;
+  };
+  const seen = new Uint8Array(w * h);
+  const stack = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]];
+  let cleared = 0;
+  let minX = w;
+  let minY = h;
+  let maxX = -1;
+  let maxY = -1;
+  while (stack.length) {
+    const [x, y] = stack.pop();
+    if (x < 0 || y < 0 || x >= w || y >= h) continue;
+    const p = y * w + x;
+    if (seen[p]) continue;
+    seen[p] = 1;
+    if (!isBg(x, y)) {
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      continue;
+    }
+    const i = p * 4;
+    px[i + 3] = 0;
+    cleared += 1;
+    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+  }
+  if (maxX < 0 || cleared < w * h * 0.08) {
+    return { canvas, fit: 'cover' };
+  }
+  const pad = Math.round(Math.max(maxX - minX, maxY - minY) * 0.04);
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(w - 1, maxX + pad);
+  maxY = Math.min(h - 1, maxY + pad);
+  const bw = maxX - minX + 1;
+  const bh = maxY - minY + 1;
+  if (bw * bh < w * h * 0.02) return { canvas, fit: 'contain' };
+  ctx.putImageData(data, 0, 0);
+  const cut = document.createElement('canvas');
+  cut.width = bw;
+  cut.height = bh;
+  cut.getContext('2d').drawImage(canvas, minX, minY, bw, bh, 0, 0, bw, bh);
+  return { canvas: cut, fit: 'contain' };
+}
+
+const LOGO_CUT_CACHE = new Map();
+
+/** Recorte del logo de Mi Restaurante para la vista previa del autopedido. */
+export async function prepareAutoPedidoLogo(src) {
+  const key = String(src || '');
+  if (!key) return null;
+  if (LOGO_CUT_CACHE.has(key)) return LOGO_CUT_CACHE.get(key);
+  const image = await loadHtmlImage(key);
+  const cut = cropLogoForSign(image);
+  const result = cut
+    ? { url: cut.canvas.toDataURL('image/png'), fit: cut.fit }
+    : { url: key, fit: 'contain' };
+  LOGO_CUT_CACHE.set(key, result);
+  return result;
+}
+
+/**
+ * Tapa el letrero «Tu logo aquí» y deja el logo configurado en el sistema,
+ * recortado a la forma del cartel.
  * `slot` va en fracciones de la imagen del formato.
  */
 export function placeSystemLogo(ctx, formatImage, logoImage, slot, fit, shape = 'ellipse') {
   const area = slotToPixels(slot, formatImage, fit);
   if (!ctx || !formatImage || !logoImage || !area?.w || !area?.h) return;
+  const cut = cropLogoForSign(logoImage);
+  const source = cut?.canvas || logoImage;
+  const fitMode = cut?.fit || 'contain';
   const fill = sampleSignFill(formatImage, normalizeQrSlot(slot));
   ctx.save();
   traceLogoClip(ctx, area, shape);
   ctx.clip();
   ctx.fillStyle = fill;
   ctx.fillRect(area.x, area.y, area.w, area.h);
-  const pad = shape === 'roundrect' ? 0.22 : 0.18;
+  const pad = fitMode === 'cover' ? 0.02 : (shape === 'roundrect' ? 0.16 : 0.12);
   const maxW = area.w * (1 - pad * 2);
   const maxH = area.h * (1 - pad * 2);
-  const scale = Math.min(maxW / logoImage.width, maxH / logoImage.height);
-  const dw = logoImage.width * scale;
-  const dh = logoImage.height * scale;
-  ctx.drawImage(logoImage, area.x + (area.w - dw) / 2, area.y + (area.h - dh) / 2, dw, dh);
+  const scale = fitMode === 'cover'
+    ? Math.max(maxW / source.width, maxH / source.height)
+    : Math.min(maxW / source.width, maxH / source.height);
+  const dw = source.width * scale;
+  const dh = source.height * scale;
+  ctx.drawImage(source, area.x + (area.w - dw) / 2, area.y + (area.h - dh) / 2, dw, dh);
   ctx.restore();
 }
 
