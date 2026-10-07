@@ -862,7 +862,7 @@ export default function AutoPedidoAdmin() {
           <div className="min-w-0">
             <h2 className="text-lg font-semibold rf-section-title">Enlaces y QR por mesa</h2>
             <p className="text-xs text-[var(--ui-muted)] mt-1 max-w-xl">
-              Cargue la imagen del diseño (vertical, tamaño A5). Al imprimir, cada mesa combina ese formato con su QR y el número dentro de un círculo al centro. La hoja completa no se muestra aquí: solo sale en la impresión.
+              Cargue la imagen del diseño (vertical, tamaño A5) con su QR ya colocado. Al imprimir, el QR de cada mesa ocupa ese mismo lugar y tamaño, con el número en el círculo del centro. La hoja completa solo sale en la impresión.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
