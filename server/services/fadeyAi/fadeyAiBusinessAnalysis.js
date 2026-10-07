@@ -135,6 +135,133 @@ function surveyStats(from, to) {
   };
 }
 
+function parseSurveyJson(raw, fallback) {
+  try {
+    const value = JSON.parse(raw || '');
+    return value ?? fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+/** Lee las respuestas reales de Fidelización: aspectos a mejorar y personal mejor calificado. */
+function toolSurveyInsights() {
+  const { readLoyaltySurveyForm } = require('../../loyaltySurveyQuestions');
+  if (!tableExists('loyalty_surveys')) {
+    return { ok: true, text: 'Aún no hay encuestas guardadas en Fidelización.' };
+  }
+  const form = readLoyaltySurveyForm();
+  const rows = safeAll(
+    `SELECT rating, answers_json, waiter_user_id, waiter_name, liked_json, improve_json, liked_other, improve_other
+     FROM loyalty_surveys
+     ORDER BY datetime(created_at) DESC
+     LIMIT 500`,
+  );
+  if (!rows.length) {
+    return {
+      ok: true,
+      text: 'El módulo de encuestas está activo, pero todavía no hay respuestas. Cuando los clientes completen el QR, aquí verás qué aspectos mejorar y qué personal sale mejor calificado.',
+    };
+  }
+
+  const questionLabel = new Map((form.questions || []).map((q) => [q.id, q.label]));
+  const likedLabel = new Map((form.liked_options || []).map((o) => [o.id, o.label]));
+  const improveLabel = new Map((form.improve_options || []).map((o) => [o.id, o.label]));
+  const qSum = new Map();
+  const qCount = new Map();
+  const improve = new Map();
+  const liked = new Map();
+  const waiters = new Map();
+
+  for (const row of rows) {
+    const parsedAnswers = parseSurveyJson(row.answers_json, {});
+    const answers = parsedAnswers && typeof parsedAnswers === 'object' && !Array.isArray(parsedAnswers) ? parsedAnswers : {};
+    const improveList = parseSurveyJson(row.improve_json, []);
+    const likedList = parseSurveyJson(row.liked_json, []);
+    for (const [id, raw] of Object.entries(answers || {})) {
+      const value = Number(raw);
+      if (!Number.isFinite(value) || value < 1 || value > 5) continue;
+      qSum.set(id, (qSum.get(id) || 0) + value);
+      qCount.set(id, (qCount.get(id) || 0) + 1);
+    }
+    for (const id of (Array.isArray(improveList) ? improveList : [])) {
+      const key = String(id || '').trim();
+      if (key) improve.set(key, (improve.get(key) || 0) + 1);
+    }
+    const improveOther = String(row.improve_other || '').trim();
+    if (improveOther) improve.set(improveOther, (improve.get(improveOther) || 0) + 1);
+    for (const id of (Array.isArray(likedList) ? likedList : [])) {
+      const key = String(id || '').trim();
+      if (key) liked.set(key, (liked.get(key) || 0) + 1);
+    }
+    const waiterId = String(row.waiter_user_id || '').trim();
+    const rating = Number(row.rating || 0);
+    if (waiterId && rating >= 1) {
+      const name = String(row.waiter_name || '').trim() || 'Personal';
+      const cur = waiters.get(waiterId) || { name, count: 0, sum: 0 };
+      cur.count += 1;
+      cur.sum += rating;
+      if (name && name !== 'Personal') cur.name = name;
+      waiters.set(waiterId, cur);
+    }
+  }
+
+  const aspects = [...qCount.entries()]
+    .map(([id, count]) => ({
+      label: questionLabel.get(id) || id,
+      average: qSum.get(id) / count,
+      count,
+    }))
+    .sort((a, b) => a.average - b.average || b.count - a.count);
+  const improveRank = [...improve.entries()]
+    .map(([id, count]) => ({ label: improveLabel.get(id) || id, count }))
+    .sort((a, b) => b.count - a.count);
+  const likedRank = [...liked.entries()]
+    .map(([id, count]) => ({ label: likedLabel.get(id) || id, count }))
+    .sort((a, b) => b.count - a.count);
+  const staff = [...waiters.values()]
+    .map((w) => ({ ...w, average: w.sum / w.count }))
+    .sort((a, b) => b.average - a.average || b.count - a.count);
+  const overall = rows.reduce((s, r) => s + Number(r.rating || 0), 0) / rows.length;
+
+  const lines = [`**Encuestas de clientes** (${rows.length} respuesta${rows.length === 1 ? '' : 's'})`];
+  lines.push(`Calificación general: ${overall.toFixed(1)}/5.`);
+
+  lines.push('', '**Aspectos a mejorar**');
+  if (aspects.length) {
+    const weak = aspects.filter((a) => a.average < 4);
+    const focus = (weak.length ? weak : aspects).slice(0, 3);
+    focus.forEach((a, i) => {
+      lines.push(`${i + 1}. ${a.label}: ${a.average.toFixed(1)}/5 (${a.count} respuesta${a.count === 1 ? '' : 's'})`);
+    });
+    if (aspects[aspects.length - 1] && aspects.length > 1) {
+      const best = aspects[aspects.length - 1];
+      lines.push(`Lo mejor calificado: ${best.label} (${best.average.toFixed(1)}/5).`);
+    }
+  } else {
+    lines.push('Las respuestas no traen calificación por aspecto.');
+  }
+  if (improveRank.length) {
+    lines.push(`Lo que más piden mejorar: ${improveRank.slice(0, 3).map((x) => `${x.label} (${x.count})`).join(', ')}.`);
+  }
+  if (likedRank.length) {
+    lines.push(`Lo que más les gusta: ${likedRank.slice(0, 3).map((x) => `${x.label} (${x.count})`).join(', ')}.`);
+  }
+
+  lines.push('', '**Personal mejor calificado**');
+  if (staff.length) {
+    const top = staff[0];
+    lines.push(`Top: ${top.name} con ${top.average.toFixed(1)}/5 en ${top.count} encuesta${top.count === 1 ? '' : 's'}.`);
+    staff.slice(0, 5).forEach((w, i) => {
+      lines.push(`${i + 1}. ${w.name}: ${w.average.toFixed(1)}/5 · ${w.count} encuesta${w.count === 1 ? '' : 's'}`);
+    });
+  } else {
+    lines.push('Ninguna encuesta tiene personal marcado, así que no hay un top todavía.');
+  }
+
+  return { ok: true, text: lines.join('\n') };
+}
+
 function toolCustomerInsights(args = {}) {
   const period = resolvePeriod(args, 'month');
   const ps = getPaidSalesEventSql();
@@ -460,6 +587,7 @@ function toolCostInsights(args = {}) {
 module.exports = {
   toolCustomerInsights,
   toolCostInsights,
+  toolSurveyInsights,
   PAID_WHERE,
   CHANNEL_LABELS,
   WEEKDAY_LABELS,

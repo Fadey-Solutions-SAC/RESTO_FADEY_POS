@@ -14,7 +14,7 @@ import { defaultBillingPanel, defaultBillingPanelPresence } from '../../data/sun
 import { defaultMiRestaurantProfile, mergeMiRestaurantProfile } from '../../data/miRestaurantProfileDefaults';
 import MiRestaurantEmpresaHub from '../../components/miRestaurant/MiRestaurantEmpresaHub';
 import { isDeliveryEnabledValue, notifyDeliveryEnabledChanged } from '../../hooks/useDeliveryEnabled';
-import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory, MdDelete, MdSupportAgent, MdQrCode2, MdOpenInNew, MdSend } from 'react-icons/md';
+import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory, MdDelete, MdSupportAgent, MdQrCode2, MdOpenInNew, MdSend, MdForum } from 'react-icons/md';
 
 const PAGO_USO_WHATSAPP_SUPPORT = '934029719';
 const PAGO_USO_WHATSAPP_URL = `https://wa.me/51${PAGO_USO_WHATSAPP_SUPPORT}?text=${encodeURIComponent('Hola, necesito soporte sobre el pago por uso del sistema.')}`;
@@ -160,6 +160,9 @@ export default function MiRestaurant() {
   }, [pagoUsoComprobanteUi]);
   const [centralResyncBusy, setCentralResyncBusy] = useState(false);
   const [enviarComprobanteBusy, setEnviarComprobanteBusy] = useState(false);
+  const [aiMessagesOpen, setAiMessagesOpen] = useState(false);
+  const [aiMessages, setAiMessages] = useState(null);
+  const [aiMessagesBusy, setAiMessagesBusy] = useState(false);
   const [izipayPaso, setIzipayPasoState] = useState(() => {
     try {
       return localStorage.getItem(IZIPAY_PASO_STORAGE_KEY) === 'enviar' ? 'enviar' : 'pagar';
@@ -260,6 +263,37 @@ export default function MiRestaurant() {
       setCentralResyncBusy(false);
     }
   }, [canReadBillingConfig, refreshPagoUsoComprobanteSchedule]);
+
+  const loadAiMessages = useCallback(async () => {
+    if (!canReadBillingConfig) return;
+    setAiMessagesBusy(true);
+    try {
+      const data = await api.get('/platform-payments/ai-messages');
+      setAiMessages(data || null);
+      setAiMessagesOpen(true);
+    } catch (err) {
+      toast.error(err?.message || 'No se pudieron leer los mensajes de la IA.');
+    } finally {
+      setAiMessagesBusy(false);
+    }
+  }, [canReadBillingConfig]);
+
+  const sendAiMessages = useCallback(async (includeToday) => {
+    if (!canReadBillingConfig) return;
+    setAiMessagesBusy(true);
+    try {
+      const data = await api.post('/platform-payments/ai-messages/send', { includeToday: includeToday === true });
+      setAiMessages(data?.inbox || null);
+      const failed = (data?.results || []).find((r) => r && r.ok === false);
+      if ((data?.days || []).length === 0) toast.success('No hay mensajes pendientes de envío.');
+      else if (failed) toast.error(String(failed.error || 'No se pudieron enviar los mensajes.'));
+      else toast.success('Mensajes enviados al panel.');
+    } catch (err) {
+      toast.error(err?.message || 'No se pudieron enviar los mensajes.');
+    } finally {
+      setAiMessagesBusy(false);
+    }
+  }, [canReadBillingConfig]);
 
   const quitarComprobantePagoUso = useCallback(async () => {
     if (!canEditPagoUsoComprobante) {
@@ -1330,10 +1364,90 @@ export default function MiRestaurant() {
             </div>
           ) : activeView === 'pago_uso_sistema' ? (
             <div className="relative card space-y-5">
-              <div className="flex items-center gap-2">
-                <MdReceipt className="text-blue-600 text-2xl" />
-                <h3 className="font-bold text-[var(--ui-body-text)] text-lg">Pago de plan</h3>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <MdReceipt className="text-blue-600 text-2xl" />
+                  <h3 className="font-bold text-[var(--ui-body-text)] text-lg">Pago de plan</h3>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-1.5 text-sm font-medium text-[var(--ui-body-text)] hover:bg-[var(--ui-surface)] disabled:opacity-60"
+                  disabled={aiMessagesBusy}
+                  onClick={() => (aiMessagesOpen ? setAiMessagesOpen(false) : loadAiMessages())}
+                >
+                  <MdForum />
+                  {aiMessagesBusy && !aiMessagesOpen ? 'Abriendo…' : 'Mensajes'}
+                </button>
               </div>
+
+              {aiMessagesOpen ? (
+                <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 space-y-3 text-sm">
+                  <p className="text-[var(--ui-body-text)]">
+                    Preguntas que el personal escribió a la IA hoy
+                    {aiMessages?.today ? ` (${aiMessages.today})` : ''}.
+                    Al cerrar el día se agrupan por caja, mozo, producción y administración y se envían al panel, con la misma conexión del pago, para mejorar la IA.
+                  </p>
+                  {aiMessages?.configured === false ? (
+                    <p className="text-amber-800">La conexión con el panel no está configurada. Los mensajes se guardan aquí y se enviarán cuando el panel esté conectado.</p>
+                  ) : null}
+                  {(aiMessages?.pendingDays || []).length > 0 ? (
+                    <p className="text-amber-800">
+                      Pendientes de envío: {aiMessages.pendingDays.join(', ')}.
+                    </p>
+                  ) : null}
+                  {aiMessages?.lastSend ? (
+                    <p className="ui-text-muted">
+                      Último lote ({aiMessages.lastSend.businessDay}): {aiMessages.lastSend.status === 'enviado' ? 'enviado' : 'pendiente'}
+                      {aiMessages.lastSend.messageCount ? ` · ${aiMessages.lastSend.messageCount} mensaje${aiMessages.lastSend.messageCount === 1 ? '' : 's'}` : ''}
+                      {aiMessages.lastSend.error ? ` · ${aiMessages.lastSend.error}` : ''}
+                    </p>
+                  ) : null}
+                  {(aiMessages?.groups || []).length === 0 ? (
+                    <p className="ui-text-muted">Hoy todavía no hay preguntas a la IA.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {aiMessages.groups.map((group) => (
+                        <div key={group.id}>
+                          <p className="font-semibold text-[var(--ui-body-text)]">{group.label}</p>
+                          <ul className="mt-1 space-y-2">
+                            {group.users.map((user) => (
+                              <li key={user.userId}>
+                                <p className="font-medium text-[var(--ui-body-text)]">
+                                  {user.name}
+                                  <span className="ml-1 font-normal ui-text-muted">· {user.count} pregunta{user.count === 1 ? '' : 's'}</span>
+                                </p>
+                                <ul className="mt-0.5 list-disc pl-5 ui-text-muted">
+                                  {(user.messages || []).slice(-5).map((msg) => (
+                                    <li key={msg.id}>{msg.text}</li>
+                                  ))}
+                                </ul>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800 disabled:opacity-60"
+                      disabled={aiMessagesBusy}
+                      onClick={() => sendAiMessages(false)}
+                    >
+                      Enviar días cerrados
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md border border-[color:var(--ui-border)] px-3 py-1.5 text-xs font-medium text-[var(--ui-body-text)] disabled:opacity-60"
+                      disabled={aiMessagesBusy}
+                      onClick={() => sendAiMessages(true)}
+                    >
+                      Enviar también el día de hoy
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {pagoUsoComprobanteUi?.platform_payment?.show_approved_banner ? (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">

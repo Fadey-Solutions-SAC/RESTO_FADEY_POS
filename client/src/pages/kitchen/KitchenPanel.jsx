@@ -131,6 +131,8 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const params = useParams();
   const areaId = String(params?.areaId || areaIdProp || station || 'cocina').trim() || 'cocina';
   const [orders, setOrders] = useState([]);
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
   const { user } = useAuth();
   useStaffSessionHeartbeat(user);
   useAppLocaleBootstrap();
@@ -300,8 +302,15 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const historyRange = historyOpen ? historyDateRange() : null;
 
   const isKitchenItemHighlighted = useCallback(
-    (item, orderId) => usesItemLevelReady && itemHighlightActive(item, highlightItemIds, orderId),
-    [usesItemLevelReady, highlightItemIds],
+    (item, orderId) => {
+      if (!usesItemLevelReady || !itemHighlightActive(item, highlightItemIds, orderId)) return false;
+      const order = orders.find((o) => o.id === orderId);
+      const pending = getPendingStationItems(order?.items);
+      const everyPendingIsNew = pending.length > 0
+        && pending.every((it) => itemHighlightActive(it, highlightItemIds, orderId));
+      return !everyPendingIsNew;
+    },
+    [usesItemLevelReady, highlightItemIds, orders, getPendingStationItems],
   );
 
   const isKitchenItemReady = useCallback((item) => {
@@ -328,10 +337,10 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     return Boolean(String(getStationPreparingAt(order, areaId) || '').trim());
   }, [areaId]);
 
-  const visibleOrders = orders.filter((order) => {
+  const visibleOrders = sortByArrival(orders.filter((order) => {
     if (isComandaDoneForStation(order)) return false;
     return getPendingStationItems(order.items).length > 0;
-  });
+  }));
   const preparingCount = visibleOrders.filter((order) => isComandaPreparingForStation(order)).length;
 
   const [dispatchedTodayCount, setDispatchedTodayCount] = useState(0);
@@ -446,11 +455,14 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     const allNewIds = Array.isArray(payload?.new_item_ids) ? payload.new_item_ids : [];
     const stationNewIds = filterNewIdsForStation(order, allNewIds);
     if (usesItemLevelReady && orderId && stationNewIds.length) {
-      setHighlightItemIds((prev) => {
-        const next = new Set(prev);
-        stationNewIds.forEach((itemId) => next.add(kitchenHighlightKey(orderId, itemId)));
-        return next;
-      });
+      const alreadyOnBoard = ordersRef.current.some((o) => o.id === orderId);
+      if (alreadyOnBoard) {
+        setHighlightItemIds((prev) => {
+          const next = new Set(prev);
+          stationNewIds.forEach((itemId) => next.add(kitchenHighlightKey(orderId, itemId)));
+          return next;
+        });
+      }
     }
     loadOrders();
     if (payload?.merged && stationNewIds.length) {

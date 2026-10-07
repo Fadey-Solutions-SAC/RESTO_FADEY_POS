@@ -586,6 +586,12 @@ async function start() {
   try {
     const { runFadeyAiMonitorCycle } = require('./services/fadeyAi/fadeyAiMonitorService');
     const { purgeFadeyAiChatIfNewDay } = require('./services/fadeyAi/fadeyAiChatService');
+    const { flushAiTrainingQuestions } = require('./services/fadeyAi/fadeyAiQuestionExport');
+    const flushTrainingQuestions = () => {
+      flushAiTrainingQuestions().catch((err) => {
+        console.warn('[fadey-ai] envío de preguntas:', err.message || err);
+      });
+    };
     setInterval(() => {
       try {
         runFadeyAiMonitorCycle();
@@ -599,6 +605,7 @@ async function start() {
       } catch (err) {
         console.warn('[fadey-ai] purge chat:', err.message || err);
       }
+      flushTrainingQuestions();
     }, 60 * 1000);
     setTimeout(() => {
       try {
@@ -611,6 +618,7 @@ async function start() {
       } catch (_) {
         /* noop */
       }
+      flushTrainingQuestions();
     }, 45 * 1000);
   } catch (err) {
     console.warn('[fadey-ai] monitor no iniciado:', err.message || err);

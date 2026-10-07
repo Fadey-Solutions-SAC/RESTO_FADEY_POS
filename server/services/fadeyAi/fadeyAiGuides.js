@@ -31,7 +31,7 @@ Nota: no se puede cobrar con el turno cerrado; hay que abrir uno nuevo.`,
   },
   {
     id: 'guide-cobrar',
-    title: 'Cómo cobrar una mesa o pedido',
+    title: 'Cómo cobrar una mesa o cuenta',
     keywords: ['cobrar', 'pago', 'facturar', 'cobro', 'pagar cuenta', 'registrar venta', 'efectivo', 'tarjeta', 'yape', 'plin'],
     body: `Paso a paso — Cobrar:
 1. Asegúrate de tener turno de caja abierto.
@@ -89,9 +89,13 @@ Nota: requiere facturación electrónica / plan que lo permita. Si no ves la opc
   /* —— Mesas —— */
   {
     id: 'guide-mesas-pedido',
-    title: 'Cómo tomar un pedido en mesa',
-    keywords: ['pedido mesa', 'tomar pedido', 'enviar cocina', 'comanda', 'agregar productos mesa'],
-    body: `Paso a paso — Pedido en salón:
+    title: 'Cómo realizar un pedido',
+    keywords: [
+      'realizar un pedido', 'realizar pedido', 'hacer un pedido', 'hacer pedido',
+      'tomar un pedido', 'tomar pedido', 'pedido mesa', 'nuevo pedido',
+      'enviar cocina', 'comanda', 'agregar productos mesa',
+    ],
+    body: `Paso a paso — Realizar un pedido:
 1. Abre Mesas (mozo/admin) o Caja.
 2. Elige salón y toca la mesa libre o con cuenta.
 3. Agrega productos por categoría; indica notas o modificadores.

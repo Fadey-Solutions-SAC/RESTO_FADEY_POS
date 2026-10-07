@@ -1022,7 +1022,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
 
     if (isKitchenFlow && st === 'cocina' && orderItemId) {
       runSql(
-        "UPDATE order_items SET station_cocina_ready_at = datetime('now') WHERE id = ? AND order_id = ?",
+        "UPDATE order_items SET station_cocina_ready_at = datetime('now'), kitchen_highlight_at = NULL WHERE id = ? AND order_id = ?",
         [orderItemId, req.params.id],
       );
       const refreshedItems = getOrderItemsWithArea(order.id);
@@ -1050,6 +1050,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
           ready_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
           preparing_at: null,
         });
+        runSql('UPDATE order_items SET kitchen_highlight_at = NULL WHERE order_id = ?', [req.params.id]);
       }
     } else {
       runSql(

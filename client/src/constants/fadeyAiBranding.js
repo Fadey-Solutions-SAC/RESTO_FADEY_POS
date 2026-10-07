@@ -47,6 +47,7 @@ export const FADEY_AI_SUGGESTION_POOL = [
   '¿Cómo marcar asistencia con QR?',
   '¿Cómo cerrar caja?',
   '¿Cómo cobrar una mesa?',
+  '¿Cómo realizar un pedido?',
   '¿Cómo mover un pedido de mesa?',
   '¿Cómo liberar una mesa?',
   '¿Cómo registrar una venta?',

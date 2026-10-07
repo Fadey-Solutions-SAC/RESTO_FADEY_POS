@@ -79,6 +79,8 @@ function extractPhrases(q) {
     /nuevo\s+usuario/,
     /cerrar\s+caja/,
     /abrir\s+caja/,
+    /(?:realizar|hacer|tomar|crear)\s+(?:un\s+)?pedido/,
+    /nuevo\s+pedido/,
     /mover\s+(?:un?\s+)?pedido/,
     /cambiar\s+(?:una\s+)?mesa/,
     /traslad(?:ar|o)\s/,
@@ -146,6 +148,9 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
   const wantsLinkArea = /vincular|asignar/.test(q) && /area|produccion/.test(q);
   const wantsMove = /mover|traslad|transfer|cambiar\s+mesa/.test(q) && /pedido|cuenta|mesa/.test(q);
   const wantsCobrar = /cobrar|pagar\s+cuenta|registrar\s+venta/.test(q);
+  const wantsTakeOrder = /(?:realizar|hacer|tomar|crear)\s+(?:un\s+)?pedido|nuevo\s+pedido|pedido\s+en\s+mesa/.test(q)
+    && !wantsCobrar
+    && !/anular|cancelar|liberar|mover|traslad/.test(q);
   const wantsStock = /stock|kardex|inventario|existencia/.test(q);
   const wantsQr = /qr|auto\s*pedido/.test(q);
   const wantsEncuesta = /encuesta|satisfaccion|calificacion\s+(?:de\s+)?clientes|opinion/.test(q);
@@ -215,6 +220,8 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
     if (wantsLinkArea && id === 'guide-area-produccion') score += 50;
     if (wantsMove && id === 'guide-mover-pedido') score += 70;
     if (wantsCobrar && id === 'guide-cobrar') score += 60;
+    if (wantsTakeOrder && id === 'guide-mesas-pedido') score += 90;
+    if (wantsTakeOrder && id === 'guide-cobrar') score -= 80;
     if (wantsStock && (id === 'guide-inventario-kardex' || id === 'guide-recepcion')) score += 40;
     if (
       wantsQr
@@ -224,8 +231,9 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
     ) {
       score += 35;
     }
+    if (wantsEncuesta && /configurar|formato|qr|como /.test(q) && id === 'guide-encuesta-clientes') score += 90;
+    if (wantsEncuesta && !/configurar|formato|qr/.test(q) && id === 'guide-encuesta-clientes') score -= 80;
     if (wantsEncuesta) {
-      if (id === 'guide-encuesta-clientes') score += 90;
       if (id === 'guide-fidelizacion') score += 25;
       if (id === 'guide-creditos' || id === 'guide-clientes') score -= 60;
     }

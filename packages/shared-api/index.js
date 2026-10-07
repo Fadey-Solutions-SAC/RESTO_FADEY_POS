@@ -110,6 +110,14 @@ function createCentralSyncClient(options = {}) {
     async syncMinimalPayment(payment) {
       return postJson('/api/payments', payment);
     },
+    /**
+     * Preguntas de la IA agrupadas por usuario.
+     * El panel debe guardar por webServiceId + businessDay y reemplazar el lote si llega otra vez.
+     * silent404: el recibidor puede no existir todavía en la página.
+     */
+    async syncAiTrainingMessages(payload) {
+      return postJson('/api/ai-messages', payload, {}, { silent404: true });
+    },
     /** Perfil del POS hacia el panel (plan, URL Render, contacto). */
     async syncClientProfile(profile) {
       const res = await postJson('/api/clients/profile', profile, {}, { silent404: true });

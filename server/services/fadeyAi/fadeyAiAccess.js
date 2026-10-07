@@ -83,6 +83,7 @@ const TOOL_MODULES = {
   cost_insights: ['productos', 'almacen', 'informes', 'indicadores'],
   hr_insights: ['tiempo_trabajado', 'cocina', 'bar', 'produccion'],
   search_guides: null,
+  survey_insights: ['fidelizacion', 'clientes', 'caja'],
 };
 
 function roleLc(user) {
@@ -226,7 +227,7 @@ function suggestionOptionsForUser(user) {
     push('¿Cómo cerrar caja?');
   }
   if (hasAnyModule(u, ['mesas', 'caja'])) {
-    push('¿Cómo tomar un pedido en mesa?');
+    push('¿Cómo realizar un pedido?');
     push('¿Cómo mover un pedido de mesa?');
   }
   if (hasAnyModule(u, ['ventas', 'informes', 'caja', 'escritorio'])) {

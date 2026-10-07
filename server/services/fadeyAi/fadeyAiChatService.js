@@ -21,6 +21,7 @@ const { buildReportAnswer } = require('./fadeyAiReports');
 const { buildPurchaseAnswer } = require('./fadeyAiPurchase');
 const { buildAdvisorAnswer, analyze: analyzeBusiness, resolveAdvicePeriod } = require('./fadeyAiAdvisor');
 const { buildConceptAnswer } = require('./fadeyAiConcepts');
+const { toolSurveyInsights } = require('./fadeyAiBusinessAnalysis');
 const {
   forecastAnswer,
   closedDaysAnswer,
@@ -51,6 +52,7 @@ const {
   relevantFact,
   goalProgressLine,
 } = require('./fadeyAiUserMemory');
+const { recordUserAiQuestion } = require('./fadeyAiQuestionExport');
 
 const RATE = new Map();
 const MAX_PER_MIN = 20;
@@ -95,11 +97,19 @@ function saveMessage(userId, role, content, sources = null) {
   ensureFadeyAiSchema();
   purgeFadeyAiChatIfNewDay();
   const id = uuidv4();
+  const createdAt = businessNow();
   runSql(
     `INSERT INTO fadey_ai_chat_messages (id, user_id, role, content, sources_json, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, userId, role, content, sources ? JSON.stringify(sources) : null, businessNow()]
+    [id, userId, role, content, sources ? JSON.stringify(sources) : null, createdAt]
   );
+  if (role === 'user') {
+    try {
+      recordUserAiQuestion({ userId, content, createdAt });
+    } catch (err) {
+      console.warn('[fadey-ai] no se guardó la pregunta para el panel:', err.message || err);
+    }
+  }
   return id;
 }
 
@@ -573,6 +583,22 @@ function topProductsAnswer(m, user) {
 function tryDirectDataAnswer(message, user) {
   const m = String(message || '').toLowerCase();
   if (isExplicitHowToMessage(m)) return null;
+
+  if (/encuesta/.test(m) && !/c[oó]mo\s+(configurar|crear|armar|hacer|usar)|configurar la encuesta|descargar el qr|formato de la encuesta/.test(m)) {
+    if (!canUseTool(user, 'survey_insights')) {
+      return {
+        chunks: [deniedToolMessage('survey_insights')],
+        sources: [{ kind: 'tool', title: 'permission_denied' }],
+      };
+    }
+    const survey = toolSurveyInsights();
+    if (survey?.text) {
+      return {
+        chunks: [survey.text],
+        sources: [{ kind: 'tool', title: 'survey_insights' }],
+      };
+    }
+  }
 
   if (/qu[eé] puedo (hacer|ver|usar)|mis (m[oó]dulos|permisos)|a qu[eé] tengo acceso/.test(m)) {
     return {

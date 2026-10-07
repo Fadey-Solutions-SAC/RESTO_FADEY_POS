@@ -199,4 +199,21 @@ router.post('/factory-reset', (req, res) => {
   }
 });
 
+router.post('/ai-messages/test', async (req, res) => {
+  if (req.user?.role !== 'master_admin') {
+    return res.status(403).json({ error: 'Solo el administrador maestro puede enviar esta prueba.' });
+  }
+  try {
+    const { sendOwnAiMessagesTest } = require('../services/fadeyAi/fadeyAiQuestionExport');
+    const result = await sendOwnAiMessagesTest({
+      userId: req.user.id,
+      userName: req.user.full_name || req.user.username,
+      userRole: 'master_admin',
+    });
+    return res.status(result.ok ? 200 : 400).json(result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'No se pudo enviar la prueba.' });
+  }
+});
+
 module.exports = router;

@@ -53,6 +53,7 @@ const OPTION_PAIRS = [
   ['¿Cómo cobrar una mesa?', 'How do I charge a table?'],
   ['¿Cómo cerrar caja?', 'How do I close the cash register?'],
   ['¿Cómo tomar un pedido en mesa?', 'How do I take a table order?'],
+  ['¿Cómo realizar un pedido?', 'How do I place an order?'],
   ['¿Cómo mover un pedido de mesa?', 'How do I move an order to another table?'],
   ['¿Cuánto vendí hoy?', 'How much did I sell today?'],
   ['¿Hay demoras en cocina?', 'Are there kitchen delays?'],

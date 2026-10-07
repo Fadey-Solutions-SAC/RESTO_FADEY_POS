@@ -98,6 +98,7 @@ export default function MasterAdmin() {
   const [planLinkPagoDraft, setPlanLinkPagoDraft] = useState('');
   const [stockAlertsEnabled, setStockAlertsEnabled] = useState(true);
   const [fadeyAiEnabled, setFadeyAiEnabled] = useState(true);
+  const [aiTestBusy, setAiTestBusy] = useState(false);
 
   const loadDashboard = async () => {
     try {
@@ -698,6 +699,36 @@ export default function MasterAdmin() {
                     <p className="text-[11px] text-[var(--ui-muted)] -mt-1">
                       {planInfo.fadey_ai ? 'Incluida en este plan.' : 'No incluida en este plan (puede activarla como extra).'}
                     </p>
+                    <div className="flex items-center justify-between gap-3 border-t border-[color:var(--ui-border)] pt-3">
+                      <div>
+                        <p className="text-sm text-[var(--ui-body-text)]">Prueba de mensajes IA</p>
+                        <p className="text-[11px] text-[var(--ui-muted)] mt-0.5">
+                          Toma las preguntas que escribiste en este web service y las envía ahora a la plataforma.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary text-sm shrink-0"
+                        disabled={aiTestBusy}
+                        onClick={async () => {
+                          setAiTestBusy(true);
+                          try {
+                            const result = await api.post('/master-admin/ai-messages/test', {});
+                            toast.success(
+                              result?.messageCount
+                                ? `Prueba enviada: ${result.messageCount} pregunta${result.messageCount === 1 ? '' : 's'}.`
+                                : 'Prueba enviada a la plataforma.',
+                            );
+                          } catch (err) {
+                            toast.error(err.message || 'No se pudo enviar la prueba.');
+                          } finally {
+                            setAiTestBusy(false);
+                          }
+                        }}
+                      >
+                        {aiTestBusy ? 'Enviando…' : 'Enviar prueba'}
+                      </button>
+                    </div>
                     <label className="flex items-center justify-between gap-3 cursor-pointer">
                       <span className="text-sm text-[var(--ui-body-text)]">Alertas de stock</span>
                       <input

@@ -175,4 +175,29 @@ router.post('/resync', async (req, res) => {
   }
 });
 
+/** GET /api/platform-payments/ai-messages — preguntas de la IA agrupadas por usuario */
+router.get('/ai-messages', (req, res) => {
+  try {
+    const { getAiTrainingInbox } = require('../services/fadeyAi/fadeyAiQuestionExport');
+    return res.json(getAiTrainingInbox());
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'No se pudieron leer los mensajes.' });
+  }
+});
+
+/** POST /api/platform-payments/ai-messages/send — envía los días cerrados (o el de hoy) */
+router.post('/ai-messages/send', async (req, res) => {
+  try {
+    const { flushAiTrainingQuestions, getAiTrainingInbox } = require('../services/fadeyAi/fadeyAiQuestionExport');
+    const includeToday = req.body?.includeToday === true;
+    const result = await flushAiTrainingQuestions({ includeToday, force: true });
+    return res.json({
+      ...result,
+      inbox: getAiTrainingInbox(),
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'No se pudieron enviar los mensajes.' });
+  }
+});
+
 module.exports = router;

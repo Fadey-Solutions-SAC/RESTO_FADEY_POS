@@ -15,7 +15,8 @@ const {
   isMergeBlockedByDispatchedStation,
   getOrderAreaItemsTx,
 } = require('./services/tableOrderMergeService');
-const { allRequiredStationsReady, isStationCompleteForStation } = require('./utils/kitchenStationReady');
+const { allRequiredStationsReady, isStationCompleteForStation, isCocinaStationComplete, isBarStationComplete } = require('./utils/kitchenStationReady');
+const { orderHasBarItems, orderHasKitchenItems } = require('./utils/productionArea');
 const { tableNumbersMatch } = require('./utils/tableNumberMatch');
 const { deductNonTransformedStockTx } = require('./warehouseStock');
 const {
@@ -333,7 +334,14 @@ function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes } = 
     staffInHouseOrder,
     customerId: order.customer_id || '',
   });
-  const newItemIds = insertOrderLineRows(tx, lines, { staffInHouseOrder, highlightNew: true });
+  const existingArea = getOrderAreaItemsTx(tx, orderId);
+  const stationStillOpen =
+    existingArea.length > 0
+    && (
+      (orderHasKitchenItems(existingArea) && !isCocinaStationComplete(order, existingArea))
+      || (orderHasBarItems(existingArea) && !isBarStationComplete(order, existingArea))
+    );
+  const newItemIds = insertOrderLineRows(tx, lines, { staffInHouseOrder, highlightNew: stationStillOpen });
   recordPromotionUsagesTx(tx, orderId, lines, actor, { customerId: order.customer_id || '' });
 
   const nextSubtotal = round2(Number(order.subtotal || 0) + subtotalAdded);
@@ -871,7 +879,11 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
   const total = Math.max(0, subtotal - discountAmount + deliveryFee);
 
   const newItemIds = computeAddedLineIds(existingItems, orderItems);
-  const highlightIdSet = new Set(newItemIds);
+  // Verde solo si se agregan líneas a una comanda que ya tenía otras. Una comanda nueva
+  // (o el reemplazo completo tras un despacho) no hereda el resaltado.
+  const highlightIdSet = new Set(
+    newItemIds.length > 0 && newItemIds.length < orderItems.length ? newItemIds : [],
+  );
 
   tx.run(
     'UPDATE orders SET subtotal = ?, tax = 0, total = ?, updated_at = datetime(\'now\') WHERE id = ?',
