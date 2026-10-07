@@ -74,6 +74,7 @@ const EMPTY_INSUMO_FORM = () => ({
   minimo_unidades: '0',
   minimo_kg: '0',
   activo: true,
+  insumo_clase: 'directo',
 });
 
 function insumoOptionStockLabel(i) {
@@ -331,6 +332,7 @@ export default function LogisticaKardexModule() {
         stock_minimo: und ? 0 : (Number.isFinite(mk) && mk >= 0 ? mk : 0),
         activo: insumoForm.activo,
         insumo_area: insumoAreaTab,
+        insumo_clase: insumoForm.insumo_clase === 'doble' ? 'doble' : 'directo',
       };
       if (editingInsumoId) {
         await api.put(`${BASE}/insumos/${editingInsumoId}`, payload);
@@ -367,6 +369,7 @@ export default function LogisticaKardexModule() {
       minimo_unidades: masa ? '0' : String(Number(row.minimo_unidades || 0)),
       minimo_kg: und ? '0' : String(Number(row.stock_minimo || 0)),
       activo: Number(row.activo) !== 0,
+      insumo_clase: String(row.insumo_clase || 'directo').toLowerCase() === 'doble' ? 'doble' : 'directo',
     });
   };
 
@@ -753,7 +756,7 @@ export default function LogisticaKardexModule() {
             </button>
           </div>
           <p className="text-[var(--ui-body-text)] text-sm max-w-3xl">
-            El sistema usará la cantidad en productos (Unidad / Peso / Cantidad) para descontar y obtener el costo de producción total del producto.
+            <strong>Directo</strong> se compra y se usa tal cual (alitas, tomate, pollo). <strong>Doble</strong> se fabrica con directos (salsa de tomate) y también se puede comprar hecho. Si un plato usa el doble, la venta descuenta solo ese doble.
           </p>
           {showInsumoAddForm ? (
           <form
@@ -858,6 +861,18 @@ export default function LogisticaKardexModule() {
                   }
                 />
               </div>
+              <div className="shrink-0">
+                <label className="block text-xs ui-text-muted mb-0.5">Clase</label>
+                <select
+                  className="input-field text-sm py-1.5 w-[8.5rem]"
+                  value={insumoForm.insumo_clase === 'doble' ? 'doble' : 'directo'}
+                  onChange={(e) => setInsumoForm((f) => ({ ...f, insumo_clase: e.target.value === 'doble' ? 'doble' : 'directo' }))}
+                  title="Directo: materia que se compra. Doble: se prepara con directos, como una salsa."
+                >
+                  <option value="directo">Directo</option>
+                  <option value="doble">Doble</option>
+                </select>
+              </div>
               <label className="flex items-center gap-1.5 text-sm shrink-0 pb-0.5 whitespace-nowrap">
                 <input
                   type="checkbox"
@@ -890,6 +905,7 @@ export default function LogisticaKardexModule() {
               <thead>
                 <tr className="bg-[var(--ui-surface)] text-[var(--ui-body-text)] text-left border-b border-[color:var(--ui-border)]">
                   <th className="p-2.5">Insumo</th>
+                  <th className="p-2.5">Clase</th>
                   <th className="p-2.5">Cant. (kg / L)</th>
                   <th className="p-2.5">Cant. (U)</th>
                   <th
@@ -928,6 +944,11 @@ export default function LogisticaKardexModule() {
                       style={low ? { background: 'var(--ui-live-alert-warning-bg)' } : undefined}
                     >
                       <td className="p-2.5 font-medium text-[var(--ui-body-text)]">{i.nombre}</td>
+                      <td className="p-2.5">
+                        <span className={`text-[11px] font-medium ${String(i.insumo_clase || 'directo') === 'doble' ? 'text-orange-300' : 'text-sky-300'}`}>
+                          {String(i.insumo_clase || 'directo') === 'doble' ? 'Doble' : 'Directo'}
+                        </span>
+                      </td>
                       <td className="p-2.5 text-[var(--ui-body-text)] tabular-nums">
                         {showKg ? formatInsumoWithUnit(i.stock_actual, umc) : <span className="text-[var(--ui-muted)]">—</span>}
                       </td>
@@ -961,7 +982,7 @@ export default function LogisticaKardexModule() {
                 })}
                 {insumosListaActiva.length === 0 && (
                   <tr>
-                    <td colSpan="7" className="p-6 text-center text-[var(--ui-muted)] text-sm">
+                    <td colSpan="8" className="p-6 text-center text-[var(--ui-muted)] text-sm">
                       No hay insumos de {insumoAreaTab === 'bar' ? 'bar' : 'cocina'} todavía. Pulse{' '}
                       <strong className="text-[var(--ui-body-text)]">Agregar insumo</strong> arriba a la derecha, complete el
                       formulario y pulse Agregar.
@@ -972,7 +993,7 @@ export default function LogisticaKardexModule() {
               {insumosListaActiva.length > 0 && (
                 <tfoot>
                   <tr className="border-t border-[color:var(--ui-border)] font-semibold">
-                    <td className="p-2.5" colSpan="5">Total valor insumos</td>
+                    <td className="p-2.5" colSpan="6">Total valor insumos</td>
                     <td className="p-2.5 text-right ui-text-success tabular-nums">{formatCurrency(valorInsumosLista)}</td>
                     <td />
                   </tr>
