@@ -215,6 +215,32 @@ function loyaltyQuestionIds(form) {
   return f.questions.map((q) => q.id);
 }
 
+function foldSurveyText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+/** Pregunta de la encuesta que califica solo al mozo. */
+function attentionQuestionId(form) {
+  const questions = Array.isArray(form?.questions) ? form.questions : [];
+  const byId = questions.find((q) => foldSurveyText(q.id) === 'atencion');
+  if (byId) return String(byId.id);
+  const byLabel = questions.find((q) => {
+    const label = foldSurveyText(q.label);
+    return label.includes('atencion') && label.includes('personal');
+  });
+  return byLabel ? String(byLabel.id) : 'atencion';
+}
+
+function attentionScore(answers, questionId = 'atencion') {
+  if (!answers || typeof answers !== 'object') return null;
+  const value = Number(answers[questionId]);
+  if (!Number.isFinite(value) || value < 1 || value > 5) return null;
+  return value;
+}
+
 module.exports = {
   SETTINGS_KEY,
   FORM_VERSION,
@@ -232,6 +258,8 @@ module.exports = {
   readLoyaltySurveyForm,
   saveLoyaltySurveyForm,
   loyaltyQuestionIds,
+  attentionQuestionId,
+  attentionScore,
   LOYALTY_TEXT_STYLES,
   DEFAULT_TEXT_STYLE,
 };

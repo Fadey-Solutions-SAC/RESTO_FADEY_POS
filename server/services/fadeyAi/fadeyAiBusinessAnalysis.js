@@ -147,8 +147,9 @@ function parseSurveyJson(raw, fallback) {
 /** Resumen de encuestas de un rango. null si la tabla no existe. count 0 si no hay respuestas. */
 function summarizeSurveys(from, to) {
   if (!tableExists('loyalty_surveys')) return null;
-  const { readLoyaltySurveyForm } = require('../../loyaltySurveyQuestions');
+  const { readLoyaltySurveyForm, attentionQuestionId, attentionScore } = require('../../loyaltySurveyQuestions');
   const form = readLoyaltySurveyForm();
+  const attentionId = attentionQuestionId(form);
   const ranged = Boolean(from && to);
   const rows = safeAll(
     `SELECT rating, answers_json, waiter_user_id, waiter_name, liked_json, improve_json, liked_other, improve_other
@@ -190,8 +191,8 @@ function summarizeSurveys(from, to) {
       if (key) liked.set(key, (liked.get(key) || 0) + 1);
     }
     const waiterId = String(row.waiter_user_id || '').trim();
-    const rating = Number(row.rating || 0);
-    if (waiterId && rating >= 1) {
+    const rating = attentionScore(answers, attentionId);
+    if (waiterId && rating != null) {
       const name = String(row.waiter_name || '').trim() || 'Personal';
       const cur = waiters.get(waiterId) || { name, count: 0, sum: 0 };
       cur.count += 1;

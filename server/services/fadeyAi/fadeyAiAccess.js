@@ -84,6 +84,7 @@ const TOOL_MODULES = {
   hr_insights: ['tiempo_trabajado', 'cocina', 'bar', 'produccion'],
   search_guides: null,
   survey_insights: ['fidelizacion', 'clientes', 'caja'],
+  product_prices: ['productos', 'mesas', 'caja', 'cocina', 'bar', 'ventas', 'informes', 'produccion'],
 };
 
 function roleLc(user) {
@@ -250,6 +251,9 @@ function suggestionOptionsForUser(user) {
   }
   if (hasAnyModule(u, ['almacen', 'productos'])) {
     push('¿Hay stock bajo?');
+  }
+  if (hasAnyModule(u, ['productos', 'mesas', 'caja'])) {
+    push('Lista de productos con su precio');
   }
   if (hasModule(u, 'tiempo_trabajado')) {
     push('¿Quién está en jornada ahora?');

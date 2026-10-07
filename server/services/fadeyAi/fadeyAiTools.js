@@ -534,6 +534,172 @@ function toolSearchGuides(args = {}, user = null) {
   };
 }
 
+function foldCatalogText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function catalogMoney(n) {
+  return `S/ ${Number(n || 0).toFixed(2)}`;
+}
+
+/** Saca categoría, letra o nombre concreto de «lista de productos con precio». */
+function catalogFiltersFromMessage(message) {
+  const m = foldCatalogText(message);
+  let letter = '';
+  const letterMatch = m.match(/(?:empiez\w*|inici\w*|comienz\w*) con(?: la letra)? ([a-z0-9]{1,12})/)
+    || m.match(/\bletra ([a-z0-9])\b/);
+  if (letterMatch) letter = letterMatch[1];
+
+  let category = '';
+  const catMatch = m.match(/categoria ([a-z0-9 ]{2,40})/);
+  if (catMatch) {
+    category = catMatch[1]
+      .replace(/\b(con|y|su|sus|precio|precios|de|los|las|el|la)\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  let query = '';
+  const specific = m.match(/(?:precio|cuesta|cuestan|vale|valen|sale|salen|a como esta|a como) (?:de |del |de la |de los |de las |el |la |los |las )?(.{2,80})$/);
+  if (specific) {
+    const tail = specific[1]
+      .replace(/\b(con|su|sus|precio|precios|por favor|gracias|carta|menu|catalogo)\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const generic = /^(productos?|platos?|bebidas?|articulos?|items?|lista|listado|todo|todos|todas)$/.test(tail)
+      || /\b(productos?|platos?|carta|menu|listado|lista)\b/.test(tail);
+    if (!generic && tail.length >= 2) query = tail;
+  }
+  if (!query) {
+    const stop = new Set([
+      'dame', 'una', 'uno', 'unas', 'unos', 'los', 'las', 'del', 'con', 'sus', 'precio', 'precios',
+      'lista', 'listado', 'listar', 'listame', 'productos', 'producto', 'platos', 'plato', 'carta',
+      'menu', 'catalogo', 'que', 'hay', 'tenemos', 'vendemos', 'ofrecemos', 'cuales', 'son',
+      'muestrame', 'mostrar', 'por', 'favor', 'gracias', 'cuanto', 'cuesta', 'cuestan', 'vale',
+      'valen', 'sale', 'salen', 'como', 'esta', 'estan', 'empiezan', 'empieza', 'inician', 'letra',
+      'categoria', 'todos', 'todas', 'todo', 'activos', 'activo', 'quiero', 'necesito', 'ver',
+    ]);
+    const rest = m
+      .replace(/(?:empiez\w*|inici\w*|comienz\w*) con(?: la letra)? [a-z0-9]+/, ' ')
+      .replace(/\bletra [a-z0-9]\b/, ' ');
+    const words = rest.split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !stop.has(w));
+    if (words.length) query = words.join(' ');
+  }
+  return { letter, category, query };
+}
+
+function toolProductPrices(args = {}) {
+  const filters = catalogFiltersFromMessage(args.message || '');
+  const letter = foldCatalogText(args.letter || filters.letter).replace(/[^a-z0-9]/g, '').slice(0, 12);
+  const categoryHint = foldCatalogText(args.category || filters.category);
+  let query = foldCatalogText(args.query || filters.query);
+
+  const rows = queryAll(
+    `SELECT p.id, p.name, p.price, COALESCE(c.name, '') AS category_name
+     FROM products p
+     LEFT JOIN categories c ON c.id = p.category_id
+     WHERE IFNULL(p.is_active, 1) = 1
+     ORDER BY lower(COALESCE(c.name, '')), lower(p.name)`,
+  ) || [];
+  const variantRows = queryAll(
+    `SELECT product_id, name, price_modifier
+     FROM product_variants
+     WHERE IFNULL(is_active, 1) = 1
+     ORDER BY lower(name)`,
+  ) || [];
+  const variantsByProduct = new Map();
+  for (const v of variantRows) {
+    const id = String(v.product_id || '');
+    if (!variantsByProduct.has(id)) variantsByProduct.set(id, []);
+    variantsByProduct.get(id).push({
+      name: String(v.name || '').trim(),
+      modifier: Number(v.price_modifier || 0),
+    });
+  }
+
+  let items = rows.map((r) => ({
+    id: String(r.id || ''),
+    name: String(r.name || '').trim(),
+    price: Number(r.price || 0),
+    category: String(r.category_name || '').trim(),
+    variants: (variantsByProduct.get(String(r.id || '')) || []).filter((v) => v.name && Math.abs(v.modifier) > 0.001),
+  })).filter((r) => r.name);
+
+  const categoryNames = [...new Set(items.map((r) => r.category).filter(Boolean))];
+  let category = categoryHint;
+  if (!category) {
+    const mentioned = categoryNames.filter((name) => {
+      const folded = foldCatalogText(name);
+      if (folded.length >= 4 && foldCatalogText(args.message || '').includes(folded)) return true;
+      return folded.split(' ').filter((w) => w.length >= 5).some((w) => foldCatalogText(args.message || '').includes(w));
+    });
+    if (mentioned.length === 1) category = foldCatalogText(mentioned[0]);
+  }
+  if (category) {
+    items = items.filter((r) => {
+      const cat = foldCatalogText(r.category);
+      return cat.includes(category) || category.includes(cat);
+    });
+  }
+  if (letter) items = items.filter((r) => foldCatalogText(r.name).startsWith(letter));
+  if (query && category && (category.includes(query) || query.includes(category))) query = '';
+  if (query) {
+    const exact = items.filter((r) => foldCatalogText(r.name) === query);
+    const starts = items.filter((r) => foldCatalogText(r.name).startsWith(query));
+    const includes = items.filter((r) => foldCatalogText(r.name).includes(query));
+    const inCategory = items.filter((r) => foldCatalogText(r.category).includes(query));
+    items = exact.length ? exact : (starts.length ? starts : (includes.length ? includes : inCategory));
+  }
+
+  if (!items.length) {
+    return {
+      ok: true,
+      text: 'No encontré productos activos con ese nombre o esa categoría. Revisa el nombre en Productos.',
+      count: 0,
+    };
+  }
+
+  const groups = new Map();
+  for (const item of items) {
+    const key = item.category || 'Sin categoría';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  const maxLines = 100;
+  let shown = 0;
+  const bits = [];
+  if (query) bits.push(`«${query}»`);
+  if (letter) bits.push(`letra ${letter.toUpperCase()}`);
+  if (category) bits.push(category);
+  const lines = [
+    bits.length
+      ? `Productos con precio (${bits.join(', ')}) — ${items.length}`
+      : `Lista de productos con precio (${items.length})`,
+  ];
+  for (const [cat, list] of groups) {
+    if (shown >= maxLines) break;
+    lines.push('', cat);
+    for (const item of list) {
+      if (shown >= maxLines) break;
+      const price = item.price > 0 ? catalogMoney(item.price) : 'sin precio';
+      const extra = item.variants.length
+        ? ` (${item.variants.slice(0, 4).map((v) => `${v.name} ${catalogMoney(item.price + v.modifier)}`).join(', ')}${item.variants.length > 4 ? '…' : ''})`
+        : '';
+      lines.push(`- ${item.name} — ${price}${extra}`);
+      shown += 1;
+    }
+  }
+  if (items.length > shown) {
+    lines.push('', `Mostré ${shown} de ${items.length}. Pide una categoría o una letra para ver el resto.`);
+  }
+  return { ok: true, text: lines.join('\n'), count: items.length };
+}
+
 const TOOL_DEFS = [
   {
     type: 'function',
@@ -654,6 +820,22 @@ const TOOL_DEFS = [
           message: { type: 'string' },
           from: { type: 'string', description: 'YYYY-MM-DD' },
           to: { type: 'string', description: 'YYYY-MM-DD' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'product_prices',
+      description: 'Lista de productos activos de la carta con su precio de venta. Sirve para «lista de productos con su precio», «precio del ceviche», «bebidas con precio» o «productos que empiezan con C».',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'Pregunta original del usuario' },
+          query: { type: 'string', description: 'Nombre o parte del nombre del producto' },
+          category: { type: 'string' },
+          letter: { type: 'string' },
         },
       },
     },
@@ -873,6 +1055,8 @@ function runTool(name, args, user) {
       return require('./fadeyAiBusinessAnalysis').toolCostInsights(args || {});
     case 'hr_insights':
       return toolHrInsights(args || {}, user);
+    case 'product_prices':
+      return toolProductPrices(args || {});
     default:
       return { ok: false, error: `Herramienta desconocida: ${name}` };
   }

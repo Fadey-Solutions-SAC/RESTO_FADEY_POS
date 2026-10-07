@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   api,
   formatCurrency,
@@ -27,6 +27,14 @@ import toast from 'react-hot-toast';
 import { MdWarning, MdInventory2, MdAdd, MdList, MdExpandMore, MdExpandLess } from 'react-icons/md';
 import Modal from './Modal';
 import RecetaEditor from './RecetaEditor';
+
+function foldProductName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
 
 const TABS = [
   { id: 'dashboard', label: 'Resumen' },
@@ -148,7 +156,9 @@ export default function LogisticaKardexModule() {
   const [whProducts, setWhProducts] = useState([]);
   const [whWarehouses, setWhWarehouses] = useState([]);
   const [cuadreWarehouseId, setCuadreWarehouseId] = useState('');
+  const [cuadreLetter, setCuadreLetter] = useState('');
   const [logisticsCounted, setLogisticsCounted] = useState({});
+  const cuadreListRef = useRef(null);
   const [showReconciliationsModal, setShowReconciliationsModal] = useState(false);
   const [reconciliationHistory, setReconciliationHistory] = useState([]);
 
@@ -497,7 +507,23 @@ export default function LogisticaKardexModule() {
       if (!cuadreWarehouseId) return true;
       return (product.warehouse_stocks || []).some((ws) => sameWarehouseId(ws.warehouse_id, cuadreWarehouseId));
     })
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    .sort((a, b) => {
+      const an = foldProductName(a.name);
+      const bn = foldProductName(b.name);
+      const prefix = foldProductName(cuadreLetter);
+      if (prefix) {
+        const aHit = an.startsWith(prefix) ? 0 : 1;
+        const bHit = bn.startsWith(prefix) ? 0 : 1;
+        if (aHit !== bHit) return aHit - bHit;
+      }
+      return an.localeCompare(bn, 'es');
+    });
+
+  const jumpCuadreByLetter = (raw) => {
+    const next = typeof raw === 'function' ? raw : () => raw;
+    setCuadreLetter((prev) => String(next(prev) || '').replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]/g, '').slice(0, 12));
+    cuadreListRef.current?.scrollTo({ top: 0 });
+  };
 
   const getLogisticsCurrentStock = (product) => {
     if (!cuadreWarehouseId) return Number(product.stock || 0);
@@ -1500,6 +1526,23 @@ export default function LogisticaKardexModule() {
                 ))}
               </select>
             </label>
+            <label className="flex items-center gap-2 text-sm text-[var(--ui-muted)]">
+              Letra:
+              <input
+                value={cuadreLetter}
+                onChange={(e) => jumpCuadreByLetter(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    jumpCuadreByLetter('');
+                  }
+                }}
+                placeholder="C"
+                maxLength={12}
+                className="w-24 bg-[var(--ui-surface)] border border-[color:var(--ui-border)] rounded-lg px-2 py-1.5 text-[var(--ui-body-text)] text-sm uppercase"
+                aria-label="Poner primero los productos que empiezan con esta letra"
+              />
+            </label>
             <button
               type="button"
               onClick={() => setShowReconciliationsModal(true)}
@@ -1508,7 +1551,30 @@ export default function LogisticaKardexModule() {
               Historial de cuadres
             </button>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
+          <div
+            ref={cuadreListRef}
+            className="overflow-x-auto max-h-[70vh] overflow-y-auto rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]"
+            onKeyDown={(e) => {
+              const target = e.target;
+              if (target?.dataset?.cuadreLetter != null) return;
+              if (target?.tagName === 'SELECT' || target?.tagName === 'TEXTAREA') return;
+              if (target?.tagName === 'INPUT' && target.type !== 'number') return;
+              if (e.ctrlKey || e.metaKey || e.altKey) return;
+              if (e.key === 'Escape') {
+                jumpCuadreByLetter('');
+                return;
+              }
+              if (e.key === 'Backspace' && target?.type === 'number' && !String(target.value || '')) {
+                e.preventDefault();
+                jumpCuadreByLetter((prev) => prev.slice(0, -1));
+                return;
+              }
+              if (/^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]$/.test(e.key)) {
+                if (target?.type === 'number') e.preventDefault();
+                jumpCuadreByLetter((prev) => prev + e.key);
+              }
+            }}
+          >
             <table className="w-full text-sm min-w-[900px]">
               <thead>
                 <tr className="bg-[var(--ui-surface)] border-b border-[color:var(--ui-border)] text-left text-[var(--ui-body-text)]">
@@ -1528,8 +1594,10 @@ export default function LogisticaKardexModule() {
                   const unitCost = Number(product.price || 0);
                   const stock = getLogisticsCurrentStock(product);
                   const valuation = unitCost * stock;
+                  const letterPrefix = foldProductName(cuadreLetter);
+                  const matchesLetter = Boolean(letterPrefix) && foldProductName(product.name).startsWith(letterPrefix);
                   return (
-                    <tr key={product.id} className="border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
+                    <tr key={product.id} className={`border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)] ${matchesLetter ? 'bg-amber-500/10' : ''}`}>
                       <td className="p-2.5 text-[var(--ui-muted)]">#{String(idx + 1).padStart(3, '0')}</td>
                       <td className="p-2.5 font-medium text-[var(--ui-body-text)]">{product.name}</td>
                       <td className="p-2.5 text-[var(--ui-muted)]">{product.category_name || '—'}</td>

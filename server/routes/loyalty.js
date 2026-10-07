@@ -1,7 +1,13 @@
 const express = require('express');
 const { queryAll, queryOne, ensureLoyaltySurveysTable } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { readLoyaltySurveyForm, saveLoyaltySurveyForm, loyaltyQuestionIds } = require('../loyaltySurveyQuestions');
+const {
+  readLoyaltySurveyForm,
+  saveLoyaltySurveyForm,
+  loyaltyQuestionIds,
+  attentionQuestionId,
+  attentionScore,
+} = require('../loyaltySurveyQuestions');
 const { emitStaffDataUpdate } = require('../socketBroadcast');
 const { sendRouteError } = require('../utils/routeErrors');
 const { reconcileOrphanWaiterLoyaltySurveys } = require('../utils/purgeUserFromSystem');
@@ -27,14 +33,15 @@ function parseAnswers(raw) {
   }
 }
 
-function buildWaiterRatings(rows) {
+function buildWaiterRatings(rows, form) {
+  const questionId = attentionQuestionId(form);
   const byWaiter = new Map();
   for (const row of rows) {
     const wid = String(row.waiter_user_id || '').trim();
     if (!wid) continue;
     const name = String(row.waiter_name || '').trim() || 'Mozo';
-    const rating = Number(row.rating || 0);
-    if (!Number.isFinite(rating) || rating < 1) continue;
+    const rating = attentionScore(parseAnswers(row.answers_json), questionId);
+    if (rating == null) continue;
     let entry = byWaiter.get(wid);
     if (!entry) {
       entry = { waiter_user_id: wid, waiter_name: name, count: 0, sum: 0 };
@@ -184,6 +191,7 @@ router.get('/summary', (req, res) => {
     }));
     const labelByLiked = Object.fromEntries((form.liked_options || []).map((o) => [o.id, o.label]));
     const labelByImprove = Object.fromEntries((form.improve_options || []).map((o) => [o.id, o.label]));
+    const waiters = buildWaiterRatings(rows, form);
     const responses = rows.map((r) => {
       const liked = parseJsonList(r.liked_json);
       const improve = parseJsonList(r.improve_json);
@@ -207,7 +215,6 @@ router.get('/summary', (req, res) => {
         created_at: r.created_at,
       };
     });
-    const waiters = buildWaiterRatings(rows);
     const totalRow = queryOne('SELECT COUNT(*) AS c FROM loyalty_surveys');
     res.json({
       count: Number(totalRow?.c || n),
@@ -228,14 +235,15 @@ router.get('/summary', (req, res) => {
 router.get('/waiter-ratings', (req, res) => {
   try {
     reconcileOrphanWaiterLoyaltySurveys();
+    const form = readLoyaltySurveyForm();
     const rows = queryAll(
-      `SELECT waiter_user_id, waiter_name, rating, created_at
+      `SELECT waiter_user_id, waiter_name, answers_json, created_at
        FROM loyalty_surveys
        WHERE trim(COALESCE(waiter_user_id, '')) != ''
        ORDER BY datetime(created_at) DESC
        LIMIT 2000`,
     ) || [];
-    const waiters = buildWaiterRatings(rows);
+    const waiters = buildWaiterRatings(rows, form);
     const mozos = queryAll(
       `SELECT id, full_name, username, is_active
        FROM users

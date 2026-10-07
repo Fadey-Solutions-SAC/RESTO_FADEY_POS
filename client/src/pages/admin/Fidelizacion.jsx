@@ -598,11 +598,14 @@ export default function Fidelizacion() {
               </span>
               Calificación por mozo
             </h2>
+            <p className="mb-4 text-sm text-slate-500">
+              Solo cuenta la nota de Atención del personal. El resto de la encuesta no entra en este promedio.
+            </p>
             {loading ? (
               <p className="text-sm text-slate-500">Cargando…</p>
             ) : waiterRatings.length === 0 ? (
               <p className="text-sm text-slate-500">
-                Aún no hay encuestas con mozo seleccionado. Los clientes eligen el mozo después de su nombre.
+                Aún no hay notas de Atención del personal con mozo seleccionado.
               </p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

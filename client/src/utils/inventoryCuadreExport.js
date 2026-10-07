@@ -27,18 +27,40 @@ function csvCell(value) {
   return text;
 }
 
+function formatCuadreQty(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+  return String(n);
+}
+
+function formatCuadreAjuste(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || Math.abs(n) < 1e-9) return '0';
+  const body = formatCuadreQty(Math.abs(n));
+  return n > 0 ? `+${body}` : `-${body}`;
+}
+
+function cuadreCell(value) {
+  return String(value ?? '').replace(/[\t\r\n]/g, ' ').trim();
+}
+
+/**
+ * Contado y Ajuste van primero, separados por tabulación.
+ * Así el Bloc de notas los deja en la misma vertical aunque el nombre sea largo.
+ */
 function cuadreLinesTable(lines = []) {
   const sorted = sortProductsByName(lines.map((line) => ({ product_name: line.product_name, ...line })));
-  return buildFixedWidthTable({
-    headers: ['Producto', 'Contado', 'Ajuste'],
-    widths: [42, 10, 10],
-    aligns: ['left', 'right', 'right'],
-    rows: sorted.map((line) => {
-      const diff = Number(line.difference || 0);
-      const adj = diff > 0 ? `+${diff}` : String(diff);
-      return [line.product_name, Number(line.counted_stock || 0), adj];
-    }),
-  });
+  const row = (contado, ajuste, producto) => [cuadreCell(contado), cuadreCell(ajuste), cuadreCell(producto)].join('\t');
+  return [
+    row('Contado', 'Ajuste', 'Producto'),
+    '-'.repeat(56),
+    ...sorted.map((line) => row(
+      formatCuadreQty(line.counted_stock),
+      formatCuadreAjuste(line.difference),
+      line.product_name || 'Producto',
+    )),
+  ];
 }
 
 export function reconciliationToExportSession(rec) {
@@ -120,7 +142,7 @@ export function buildInventoryCuadresTxt(groups = [], { formatDateTime } = {}) {
         `  Cuadre ${String(session.id || '').slice(0, 8)} · ${formatDateTime ? formatDateTime(session.created_at) : session.created_at} · ${session.warehouse_name}`,
       );
       if (session.lines?.length) {
-        lines.push(...cuadreLinesTable(session.lines).map((row) => `    ${row}`));
+        lines.push(...cuadreLinesTable(session.lines));
       } else {
         lines.push('    (Sin productos)');
       }

@@ -554,6 +554,26 @@ function formatLowStockReply(r) {
   return `Stock bajo en productos no transformables (${r.count}):\n${lines.join('\n')}${more}`;
 }
 
+function foldCatalogQuestion(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+/** Carta viva: lista de productos con precio, o el precio de un plato. */
+function isProductCatalogQuestion(message) {
+  const m = foldCatalogQuestion(message);
+  if (/como (crear|cambiar|poner|editar|actualizar|subir|bajar|configurar|registrar)/.test(m)) return false;
+  if (/precio de compra|costo|margen|mas vendid|se vende mas|stock|inventario|compra sugerid/.test(m)) return false;
+  const about = /producto|plato|bebida|carta|menu|articulo|catalogo/.test(m);
+  const price = /precio|precios|\bcuesta\b|\bcuestan\b|\bvale\b|\bvalen\b|cuanto (cuesta|vale|sale)|a como|con su precio|y su precio/.test(m);
+  const list = /lista|listado|listar|enumer|que productos|cuales son los productos|que hay en la carta|muestrame (la|el) (carta|menu)|productos (que )?(hay|tenemos|vendemos|ofrec)/.test(m);
+  if (price && (about || /cuesta|vale|precio de|precio del|precio de la|a como/.test(m))) return true;
+  if (list && about) return true;
+  return false;
+}
+
 function isTopProductsQuestion(m) {
   if (/mesero|mozo|cajero/.test(m)) return false;
   return /(producto|plato|bebida|item|art[ií]culo)s?\b.*(m[aá]s\s+vend|se\s+vend\w*\s+m[aá]s|vend\w*\s+m[aá]s|m[aá]s\s+pedid|m[aá]s\s+sal|top)/.test(m)
@@ -692,6 +712,12 @@ function tryDirectDataAnswer(message, user) {
   if (/forma(s)? de pago|reparti.*(pago|yape|efectivo)|yape.*efectivo|efectivo.*yape|pagos \(yape|c[oó]mo se (pagan|cobran|repartieron)/.test(m)) {
     const r = runTool('sales_desk', { focus: 'payments', message }, user);
     const out = denyOrOk(r, 'sales_desk', 'payments');
+    if (out) return out;
+  }
+
+  if (isProductCatalogQuestion(m)) {
+    const r = runTool('product_prices', { message }, user);
+    const out = denyOrOk(r, 'product_prices');
     if (out) return out;
   }
 
@@ -837,8 +863,10 @@ function applyLearnedIntent(message, user, chunks, sources) {
       return true;
     }
   }
-  if (['business_insights', 'hr_insights', 'sales_summary', 'sales_desk', 'top_products', 'low_stock', 'active_staff', 'kitchen_open_orders'].includes(toolName)) {
-    const args = toolName === 'sales_summary'
+  if (['business_insights', 'hr_insights', 'sales_summary', 'sales_desk', 'top_products', 'low_stock', 'active_staff', 'kitchen_open_orders', 'product_prices'].includes(toolName)) {
+    const args = toolName === 'product_prices'
+      ? { message }
+      : toolName === 'sales_summary'
       ? (() => {
         const period = resolveSalesPeriod(message);
         return { scope: period.scope, from: period.from, to: period.to, label: period.label };
