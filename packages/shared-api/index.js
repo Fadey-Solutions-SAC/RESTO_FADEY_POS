@@ -118,6 +118,19 @@ function createCentralSyncClient(options = {}) {
     async syncAiTrainingMessages(payload) {
       return postJson('/api/ai-messages', payload, {}, { silent404: true });
     },
+    async syncPlatformNotice(notice) {
+      return postJson('/api/notices', notice, {}, { silent404: true });
+    },
+    async updatePlatformNotice(id, notice) {
+      return postJson(`/api/notices/${encodeURIComponent(id)}`, { ...notice, _method: 'PUT' }, {}, { silent404: true });
+    },
+    async deletePlatformNotice(id) {
+      return postJson(`/api/notices/${encodeURIComponent(id)}/delete`, {}, {}, { silent404: true });
+    },
+    async fetchPlatformNotices(plan) {
+      const qs = new URLSearchParams({ plan: String(plan || '') });
+      return getJson(`/api/notices/for-pos?${qs.toString()}`);
+    },
     /** Perfil del POS hacia el panel (plan, URL Render, contacto). */
     async syncClientProfile(profile) {
       const res = await postJson('/api/clients/profile', profile, {}, { silent404: true });

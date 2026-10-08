@@ -206,10 +206,51 @@ function recordSuccessfulPadronConsult() {
   });
 }
 
+function normalizeStoredAudience(raw) {
+  const s = String(raw || 'all').trim();
+  if (s === 'plans' || s === 'admin') return s;
+  return 'all';
+}
+
+function normalizeNoticePlans(raw) {
+  const { PLAN_KEYS } = require('./servicePlan');
+  const aliases = {
+    básico: 'basico',
+    basic: 'basico',
+    starter: 'emprendedor',
+    professional: 'profesional',
+    business: 'negocio',
+    intermedio: 'negocio',
+    intermediate: 'negocio',
+    pro: 'negocio',
+  };
+  const list = Array.isArray(raw) ? raw : [];
+  const set = [];
+  for (const item of list) {
+    const s = String(item || '').trim().toLowerCase().replace(/^plan\s+/, '');
+    const key = aliases[s] || s;
+    if (PLAN_KEYS.includes(key) && !set.includes(key)) set.push(key);
+  }
+  return set;
+}
+
+/** Quita del almacenamiento los avisos ya vencidos para no dejar historial muerto. */
+function purgeExpiredNotificationRows(list) {
+  const now = Date.now();
+  return (Array.isArray(list) ? list : []).filter((n) => {
+    if (!n?.expires_at) return true;
+    const t = new Date(n.expires_at).getTime();
+    if (Number.isNaN(t)) return true;
+    return t > now;
+  });
+}
+
 function getNotifications() {
   const raw = readSetting(MASTER_NOTIFICATIONS_KEY, []);
-  const list = Array.isArray(raw) ? raw : [];
-  return list.map((n) => ({
+  const source = Array.isArray(raw) ? raw : [];
+  const kept = purgeExpiredNotificationRows(source);
+  if (kept.length !== source.length) saveNotifications(kept);
+  return kept.map((n) => ({
     id: String(n?.id || uuidv4()),
     title: String(n?.title || 'Notificación').trim(),
     message: String(n?.message || '').trim(),
@@ -220,6 +261,10 @@ function getNotifications() {
     expires_at: n?.expires_at ? String(n.expires_at) : null,
     deleted_at: n?.deleted_at ? String(n.deleted_at) : null,
     updated_at: n?.updated_at ? String(n.updated_at) : null,
+    audience: normalizeStoredAudience(n?.audience),
+    target_plans: normalizeNoticePlans(n?.target_plans),
+    central_id: n?.central_id ? String(n.central_id) : '',
+    broadcast: n?.broadcast === true || Number(n?.broadcast) === 1 || String(n?.broadcast || '') === '1',
   })).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
@@ -235,10 +280,22 @@ function isNotificationActive(notification, nowDate = new Date()) {
   return expiresAt.getTime() > nowDate.getTime();
 }
 
+function restaurantPlanKey() {
+  const { normalizePlan } = require('./servicePlan');
+  return normalizePlan(getControlConfig().service_plan);
+}
+
+function noticeVisibleForPlan(notification, planKey) {
+  if (String(notification?.audience || 'all') !== 'plans') return true;
+  const plans = Array.isArray(notification?.target_plans) ? notification.target_plans : [];
+  return plans.includes(planKey);
+}
+
 function getActiveNotifications() {
   pruneDuplicateAutoLockNotifications();
   const now = new Date();
-  return getNotifications().filter((n) => isNotificationActive(n, now));
+  const plan = restaurantPlanKey();
+  return getNotifications().filter((n) => isNotificationActive(n, now) && noticeVisibleForPlan(n, plan));
 }
 
 function addNotification({
@@ -249,7 +306,10 @@ function addNotification({
   level = 'info',
   duration_hours = null,
   expires_at: explicitExpiresAt = null,
-  audience = '',
+  audience = 'all',
+  target_plans = [],
+  central_id = '',
+  broadcast = false,
 }) {
   const notifications = getNotifications();
   const expTrim =
@@ -264,6 +324,12 @@ function addNotification({
       ? new Date(Date.now() + (Number(duration_hours) * 60 * 60 * 1000)).toISOString()
       : null;
   }
+  const storedAudience = normalizeStoredAudience(audience);
+  const wantsPlans = storedAudience === 'plans';
+  const plans = wantsPlans ? normalizeNoticePlans(target_plans) : [];
+  if (wantsPlans && !plans.length) {
+    throw new Error('Elige al menos un plan');
+  }
   const entry = {
     id: uuidv4(),
     title: String(title || 'Notificación').trim(),
@@ -275,7 +341,10 @@ function addNotification({
     expires_at: expiresAt,
     deleted_at: null,
     updated_at: null,
-    ...(audience ? { audience: String(audience).trim() } : {}),
+    audience: wantsPlans ? 'plans' : storedAudience,
+    target_plans: plans,
+    central_id: String(central_id || '').trim(),
+    broadcast: broadcast === true || String(broadcast) === '1',
   };
   notifications.unshift(entry);
   saveNotifications(notifications);
@@ -390,7 +459,15 @@ function syncPagoUsoComprobanteAvisoFromPolicy({ nextDue, deadline, hasUrl }) {
   }
 }
 
-function updateNotification({ id, title, message, image_url = '', duration_hours = null }) {
+function updateNotification({
+  id,
+  title,
+  message,
+  image_url = '',
+  duration_hours = null,
+  audience,
+  target_plans,
+}) {
   const notifications = getNotifications();
   const idx = notifications.findIndex((n) => n.id === id);
   if (idx < 0) throw new Error('No se encontró la notificación');
@@ -399,12 +476,21 @@ function updateNotification({ id, title, message, image_url = '', duration_hours
   const expiresAt = hasDuration
     ? new Date(Date.now() + (Number(duration_hours) * 60 * 60 * 1000)).toISOString()
     : null;
+  const nextAudience = audience === undefined
+    ? normalizeStoredAudience(current.audience)
+    : normalizeStoredAudience(audience);
+  const plans = nextAudience === 'plans'
+    ? normalizeNoticePlans(target_plans === undefined ? current.target_plans : target_plans)
+    : [];
+  if (nextAudience === 'plans' && !plans.length) throw new Error('Elige al menos un plan');
   notifications[idx] = {
     ...current,
     title: String(title || current.title || 'Notificación').trim(),
     message: String(message || current.message || '').trim(),
     image_url: String(image_url || current.image_url || '').trim(),
     expires_at: expiresAt,
+    audience: nextAudience,
+    target_plans: plans,
     updated_at: new Date().toISOString(),
   };
   saveNotifications(notifications);
@@ -413,10 +499,83 @@ function updateNotification({ id, title, message, image_url = '', duration_hours
 
 function deleteNotification(id) {
   const notifications = getNotifications();
-  const next = notifications.filter((n) => n.id !== id);
-  if (next.length === notifications.length) throw new Error('No se encontró la notificación');
-  saveNotifications(next);
-  return { success: true };
+  const found = notifications.find((n) => n.id === id);
+  if (!found) throw new Error('No se encontró la notificación');
+  saveNotifications(notifications.filter((n) => n.id !== id));
+  return { success: true, central_id: String(found.central_id || '') };
+}
+
+function rememberCentralNoticeId(id, centralId) {
+  const remoteId = String(centralId || '').trim();
+  if (!remoteId) return null;
+  const notifications = getNotifications();
+  const idx = notifications.findIndex((n) => n.id === id);
+  if (idx < 0) return null;
+  notifications[idx] = {
+    ...notifications[idx],
+    central_id: remoteId,
+    updated_at: new Date().toISOString(),
+  };
+  saveNotifications(notifications);
+  return notifications[idx];
+}
+
+/** Incorpora los avisos que publicó la web central y quita los que allá ya no existen. */
+function mergeCentralNotices(remoteList) {
+  const remote = Array.isArray(remoteList) ? remoteList : [];
+  const local = getNotifications();
+  const remoteIds = new Set();
+  let changed = false;
+  for (const raw of remote) {
+    const centralId = String(raw?.id || '').trim();
+    if (!centralId) continue;
+    if (raw?.expires_at) {
+      const exp = new Date(raw.expires_at).getTime();
+      if (!Number.isNaN(exp) && exp <= Date.now()) continue;
+    }
+    remoteIds.add(centralId);
+    const wantsPlans = String(raw?.audience || 'all') === 'plans';
+    const mapped = {
+      title: String(raw?.title || 'Notificación').trim(),
+      message: String(raw?.message || '').trim(),
+      image_url: String(raw?.image_url || '').trim(),
+      level: 'info',
+      created_by: String(raw?.created_by || 'Web central').trim() || 'Web central',
+      created_at: String(raw?.created_at || new Date().toISOString()),
+      expires_at: raw?.expires_at ? String(raw.expires_at) : null,
+      updated_at: raw?.updated_at ? String(raw.updated_at) : new Date().toISOString(),
+      audience: wantsPlans ? 'plans' : 'all',
+      target_plans: wantsPlans ? normalizeNoticePlans(raw?.target_plans) : [],
+      central_id: centralId,
+      deleted_at: null,
+    };
+    const idx = local.findIndex((n) => String(n.central_id || '') === centralId);
+    if (idx < 0) {
+      local.unshift({ id: uuidv4(), ...mapped });
+      changed = true;
+      continue;
+    }
+    const cur = local[idx];
+    const same = cur.title === mapped.title
+      && cur.message === mapped.message
+      && String(cur.expires_at || '') === String(mapped.expires_at || '')
+      && cur.audience === mapped.audience
+      && JSON.stringify(cur.target_plans || []) === JSON.stringify(mapped.target_plans || [])
+      && String(cur.image_url || '') === mapped.image_url;
+    if (!same) {
+      local[idx] = { ...cur, ...mapped, id: cur.id, deleted_at: cur.deleted_at || null };
+      changed = true;
+    }
+  }
+  const plan = restaurantPlanKey();
+  const next = local.filter((n) => {
+    if (!n.central_id) return true;
+    if (remoteIds.has(String(n.central_id))) return true;
+    return Boolean(n.broadcast) && !noticeVisibleForPlan(n, plan);
+  });
+  if (next.length !== local.length) changed = true;
+  if (changed) saveNotifications(next);
+  return { changed, count: remoteIds.size };
 }
 
 /**
@@ -1145,6 +1304,8 @@ module.exports = {
   getNotifications,
   getActiveNotifications,
   addNotification,
+  rememberCentralNoticeId,
+  mergeCentralNotices,
   clearNotificationsByTitle,
   updateNotification,
   deleteNotification,

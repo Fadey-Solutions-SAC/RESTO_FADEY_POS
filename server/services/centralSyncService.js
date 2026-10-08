@@ -310,6 +310,63 @@ async function fetchCentralLicenseStatus() {
   return c.fetchLicenseStatus(c.identity.clientId);
 }
 
+function noticePayload(entry) {
+  const ctx = getRestaurantContext();
+  const identity = readClientIdentity();
+  let imageUrl = String(entry?.image_url || '').trim();
+  if (imageUrl.startsWith('/')) imageUrl = resolvePublicVoucherUrl(imageUrl);
+  return {
+    title: String(entry?.title || '').trim(),
+    message: String(entry?.message || '').trim(),
+    image_url: imageUrl,
+    audience: entry?.audience === 'plans' ? 'plans' : 'all',
+    target_plans: Array.isArray(entry?.target_plans) ? entry.target_plans : [],
+    expires_at: entry?.expires_at || null,
+    created_by: String(entry?.created_by || 'Administrador maestro').trim(),
+    created_at: entry?.created_at || new Date().toISOString(),
+    clientId: identity.clientId,
+    licenseKey: identity.licenseKey || identity.clientId,
+    webServiceId: identity.webServiceId || identity.clientId,
+    sourceWebServiceUrl: identity.publicApiUrl || '',
+    restaurantName: String(ctx.restaurant?.name || '').trim(),
+  };
+}
+
+async function pushPlatformNotice(entry) {
+  if (!isCentralSyncConfigured()) return { skipped: true };
+  return getClient().syncPlatformNotice(noticePayload(entry));
+}
+
+async function updatePlatformNotice(id, entry) {
+  if (!isCentralSyncConfigured()) return { skipped: true };
+  const remoteId = String(id || '').trim();
+  if (!remoteId) return { ok: false, error: 'id requerido' };
+  return getClient().updatePlatformNotice(remoteId, noticePayload(entry));
+}
+
+async function deletePlatformNotice(id) {
+  if (!isCentralSyncConfigured()) return { skipped: true };
+  const remoteId = String(id || '').trim();
+  if (!remoteId) return { ok: false };
+  return getClient().deletePlatformNotice(remoteId);
+}
+
+let lastNoticePullAt = 0;
+
+async function pullPlatformNotices(options = {}) {
+  if (!isCentralSyncConfigured()) return { skipped: true };
+  const force = options.force === true;
+  const now = Date.now();
+  if (!force && now - lastNoticePullAt < 20000) return { skipped: true, reason: 'cached' };
+  lastNoticePullAt = now;
+  const ctx = getRestaurantContext();
+  const res = await getClient().fetchPlatformNotices(ctx.plan);
+  if (!res?.ok || !Array.isArray(res.data?.notices)) return res;
+  const { mergeCentralNotices } = require('../masterAdminService');
+  mergeCentralNotices(res.data.notices);
+  return { ok: true, count: res.data.notices.length };
+}
+
 function getSyncStatus() {
   const identity = readClientIdentity();
   const diagnostics = getCentralSyncConfigDiagnostics(identity);
@@ -337,6 +394,10 @@ module.exports = {
   getSyncStatus,
   getRestaurantContext,
   fetchCentralLicenseStatus,
+  pushPlatformNotice,
+  updatePlatformNotice,
+  deletePlatformNotice,
+  pullPlatformNotices,
   resolvePublicVoucherUrl,
   buildMinimalPaymentPayload,
   resolveComprobanteAmount,

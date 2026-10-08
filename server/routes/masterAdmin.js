@@ -14,6 +14,7 @@ const {
   addNotification,
   updateNotification,
   deleteNotification,
+  rememberCentralNoticeId,
   dismissAdminNotification,
   dismissAdminNotificationsBulk,
   evaluateAutomaticBillingRules,
@@ -25,9 +26,41 @@ const {
 
 router.use(authenticateToken);
 
-router.get('/admin-notifications', (req, res) => {
+async function refreshCentralNotices() {
+  try {
+    const { pullPlatformNotices } = require('../services/centralSyncService');
+    await pullPlatformNotices();
+  } catch (_) {
+    /* la central puede estar caída; el POS sigue con lo ya guardado */
+  }
+}
+
+async function syncNoticeOut(entry) {
+  if (!entry || (!entry.broadcast && !entry.central_id)) return entry;
+  try {
+    const { pushPlatformNotice, updatePlatformNotice } = require('../services/centralSyncService');
+    if (entry.central_id) {
+      await updatePlatformNotice(entry.central_id, entry);
+      return entry;
+    }
+    const remote = await pushPlatformNotice(entry);
+    const remoteId = String(remote?.data?.id || remote?.data?.notice?.id || '').trim();
+    if (!remoteId) return entry;
+    return rememberCentralNoticeId(entry.id, remoteId) || { ...entry, central_id: remoteId };
+  } catch (err) {
+    console.warn('[central-notices]', err.message || err);
+    return entry;
+  }
+}
+
+router.get('/admin-notifications', async (req, res) => {
   const role = req.user?.role;
   const seesPagoUsoAviso = role === 'admin' || role === 'master_admin';
+  try {
+    await refreshCentralNotices();
+  } catch (_) {
+    /* opcional */
+  }
   try {
     const { readPagoUso } = require('../services/platformPaymentService');
     if (shouldSuppressBillingDueNotification(readPagoUso())) {
@@ -85,7 +118,8 @@ router.use((req, res, next) => {
   return next();
 });
 
-router.get('/dashboard', (req, res) => {
+router.get('/dashboard', async (req, res) => {
+  await refreshCentralNotices();
   const control = evaluateAutomaticBillingRules();
   const notifications = getNotifications().slice(0, 50);
   const adminUsers = queryAll(
@@ -113,23 +147,31 @@ router.put('/control', (req, res) => {
   res.json(next);
 });
 
-router.post('/notifications', (req, res) => {
-  const { title, message, image_url = '', duration_hours = null } = req.body || {};
+router.post('/notifications', async (req, res) => {
+  const { title, message, image_url = '', duration_hours = null, audience = 'all', target_plans = [] } = req.body || {};
   if (!title || !message) {
     return res.status(400).json({ error: 'Título y mensaje son obligatorios' });
   }
-  const saved = addNotification({
-    title,
-    message,
-    image_url,
-    duration_hours,
-    created_by: req.user?.full_name || req.user?.username || 'Administrador maestro',
-  });
-  return res.status(201).json(saved);
+  try {
+    const saved = addNotification({
+      title,
+      message,
+      image_url,
+      duration_hours,
+      audience: audience === 'plans' ? 'plans' : 'all',
+      target_plans,
+      broadcast: true,
+      created_by: req.user?.full_name || req.user?.username || 'Administrador maestro',
+    });
+    const synced = await syncNoticeOut(saved);
+    return res.status(201).json(synced);
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'No se pudo publicar' });
+  }
 });
 
-router.put('/notifications/:id', (req, res) => {
-  const { title, message, image_url = '', duration_hours = null } = req.body || {};
+router.put('/notifications/:id', async (req, res) => {
+  const { title, message, image_url = '', duration_hours = null, audience = 'all', target_plans = [] } = req.body || {};
   if (!title || !message) {
     return res.status(400).json({ error: 'Título y mensaje son obligatorios' });
   }
@@ -140,16 +182,27 @@ router.put('/notifications/:id', (req, res) => {
       message,
       image_url,
       duration_hours,
+      audience: audience === 'plans' ? 'plans' : audience === 'admin' ? 'admin' : 'all',
+      target_plans,
     });
-    return res.json(updated);
+    const synced = await syncNoticeOut(updated);
+    return res.json(synced);
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-router.delete('/notifications/:id', (req, res) => {
+router.delete('/notifications/:id', async (req, res) => {
   try {
     const result = deleteNotification(req.params.id);
+    if (result.central_id) {
+      try {
+        const { deletePlatformNotice } = require('../services/centralSyncService');
+        await deletePlatformNotice(result.central_id);
+      } catch (err) {
+        console.warn('[central-notices]', err.message || err);
+      }
+    }
     return res.json(result);
   } catch (err) {
     return res.status(400).json({ error: err.message });

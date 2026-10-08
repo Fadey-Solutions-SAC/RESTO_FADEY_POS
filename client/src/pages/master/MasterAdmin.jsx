@@ -66,7 +66,7 @@ export default function MasterAdmin() {
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
   const [adminForm, setAdminForm] = useState({ username: '', full_name: '', email: '', password: '' });
-  const [notifyForm, setNotifyForm] = useState({ title: '', message: '', image_url: '', duration_value: 1, duration_unit: 'hours', no_expiry: false });
+  const [notifyForm, setNotifyForm] = useState({ title: '', message: '', image_url: '', duration_value: 1, duration_unit: 'hours', no_expiry: false, audience: 'all', target_plans: [] });
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showMasterAccessModal, setShowMasterAccessModal] = useState(false);
   const [showCreateBuyerModal, setShowCreateBuyerModal] = useState(false);
@@ -82,7 +82,7 @@ export default function MasterAdmin() {
   const [notificationToDelete, setNotificationToDelete] = useState(null);
   const [deleteNotifyBusy, setDeleteNotifyBusy] = useState(false);
   const [editingNotification, setEditingNotification] = useState(null);
-  const [editNotifyForm, setEditNotifyForm] = useState({ title: '', message: '', image_url: '', duration_value: 1, duration_unit: 'hours', no_expiry: false });
+  const [editNotifyForm, setEditNotifyForm] = useState({ title: '', message: '', image_url: '', duration_value: 1, duration_unit: 'hours', no_expiry: false, audience: 'all', target_plans: [] });
   const [showEditBuyerModal, setShowEditBuyerModal] = useState(false);
   const [editingBuyer, setEditingBuyer] = useState(null);
   const [editBuyerForm, setEditBuyerForm] = useState({ username: '', full_name: '', email: '', password: '' });
@@ -192,6 +192,26 @@ export default function MasterAdmin() {
     }
   };
 
+  const planChoices = dashboard?.plan_catalog || [];
+
+  const togglePlan = (setter, key) => {
+    setter((prev) => {
+      const current = Array.isArray(prev.target_plans) ? prev.target_plans : [];
+      const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+      return { ...prev, target_plans: next };
+    });
+  };
+
+  const audienceSummary = (notice) => {
+    if (notice?.audience === 'admin') return 'Solo administradores de este local';
+    if (notice?.audience !== 'plans') return 'Todos los planes';
+    const names = (notice.target_plans || []).map((key) => {
+      const found = planChoices.find((p) => p.key === key);
+      return found?.label || key;
+    });
+    return names.length ? `Planes: ${names.join(', ')}` : 'Planes específicos';
+  };
+
   const resolveDurationHours = (formState) => {
     if (formState?.no_expiry) return null;
     const value = Math.max(1, Number(formState?.duration_value || 1));
@@ -287,14 +307,20 @@ export default function MasterAdmin() {
   const sendNotification = async (e) => {
     e.preventDefault();
     try {
+      if (notifyForm.audience === 'plans' && !(notifyForm.target_plans || []).length) {
+        toast.error('Elige al menos un plan');
+        return;
+      }
       await api.post('/master-admin/notifications', {
         title: notifyForm.title,
         message: notifyForm.message,
         image_url: notifyForm.image_url,
         duration_hours: resolveDurationHours(notifyForm),
+        audience: notifyForm.audience === 'plans' ? 'plans' : 'all',
+        target_plans: notifyForm.audience === 'plans' ? notifyForm.target_plans : [],
       });
       toast.success('Notificación publicada');
-      setNotifyForm({ title: '', message: '', image_url: '', duration_value: 1, duration_unit: 'hours', no_expiry: false });
+      setNotifyForm({ title: '', message: '', image_url: '', duration_value: 1, duration_unit: 'hours', no_expiry: false, audience: 'all', target_plans: [] });
       await loadDashboard();
     } catch (err) {
       toast.error(err.message);
@@ -329,6 +355,8 @@ export default function MasterAdmin() {
       duration_value: 1,
       duration_unit: 'hours',
       no_expiry: !notification?.expires_at,
+      audience: notification?.audience === 'plans' ? 'plans' : notification?.audience === 'admin' ? 'admin' : 'all',
+      target_plans: Array.isArray(notification?.target_plans) ? notification.target_plans : [],
     });
     setShowEditNotificationModal(true);
   };
@@ -337,11 +365,17 @@ export default function MasterAdmin() {
     e.preventDefault();
     if (!editingNotification?.id) return;
     try {
+      if (editNotifyForm.audience === 'plans' && !(editNotifyForm.target_plans || []).length) {
+        toast.error('Elige al menos un plan');
+        return;
+      }
       await api.put(`/master-admin/notifications/${editingNotification.id}`, {
         title: editNotifyForm.title,
         message: editNotifyForm.message,
         image_url: editNotifyForm.image_url,
         duration_hours: resolveDurationHours(editNotifyForm),
+        audience: editNotifyForm.audience === 'plans' ? 'plans' : editNotifyForm.audience === 'admin' ? 'admin' : 'all',
+        target_plans: editNotifyForm.audience === 'plans' ? editNotifyForm.target_plans : [],
       });
       toast.success('Notificación actualizada');
       setShowEditNotificationModal(false);
@@ -984,6 +1018,35 @@ export default function MasterAdmin() {
               <form onSubmit={sendNotification} className="space-y-3">
                 <input className="input-field" placeholder="Título" value={notifyForm.title} onChange={(e) => setNotifyForm((p) => ({ ...p, title: e.target.value }))} required />
                 <textarea className="input-field" rows={4} placeholder="Mensaje" value={notifyForm.message} onChange={(e) => setNotifyForm((p) => ({ ...p, message: e.target.value }))} required />
+                <div>
+                  <p className="text-sm font-medium text-[var(--ui-body-text)] mb-1">Destino</p>
+                  <div className="flex flex-wrap gap-3 text-sm">
+                    <label className="inline-flex items-center gap-2">
+                      <input type="radio" name="notice-audience" checked={notifyForm.audience !== 'plans'} onChange={() => setNotifyForm((p) => ({ ...p, audience: 'all', target_plans: [] }))} />
+                      Todos los planes
+                    </label>
+                    <label className="inline-flex items-center gap-2">
+                      <input type="radio" name="notice-audience" checked={notifyForm.audience === 'plans'} onChange={() => setNotifyForm((p) => ({ ...p, audience: 'plans' }))} />
+                      Planes específicos
+                    </label>
+                  </div>
+                  {notifyForm.audience === 'plans' ? (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {planChoices.map((plan) => (
+                        <label key={plan.key} className="inline-flex items-center gap-1.5 text-sm border rounded-lg px-2 py-1">
+                          <input
+                            type="checkbox"
+                            checked={(notifyForm.target_plans || []).includes(plan.key)}
+                            onChange={() => togglePlan(setNotifyForm, plan.key)}
+                          />
+                          {plan.label || plan.key}
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs ui-text-muted mt-1">Llega a todos los restaurantes conectados a la web central.</p>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <div>
                     <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Duración</label>
@@ -1052,7 +1115,8 @@ export default function MasterAdmin() {
                         </button>
                       </div>
                     </div>
-                    <p className="text-xs ui-text-muted mb-2">{new Date(n.created_at).toLocaleString('es-PE')} · {n.created_by}</p>
+                    <p className="text-xs ui-text-muted mb-1">{new Date(n.created_at).toLocaleString('es-PE')} · {n.created_by}</p>
+                    <p className="text-xs text-slate-500 mb-2">{audienceSummary(n)}{n.central_id ? ' · En la web central' : ''}</p>
                     <p className={`text-xs mb-2 ${n.expires_at && new Date(n.expires_at).getTime() <= Date.now() ? 'text-red-600' : 'text-emerald-600'}`}>{getRemainingLabel(n.expires_at)}</p>
                     {n.image_url ? (
                       <div className="mb-2 rounded-lg border border-slate-200 bg-white overflow-hidden">
@@ -1198,6 +1262,37 @@ export default function MasterAdmin() {
         <form onSubmit={submitEditNotification} className="space-y-3">
           <input className="input-field" placeholder="Título" value={editNotifyForm.title} onChange={(e) => setEditNotifyForm((p) => ({ ...p, title: e.target.value }))} required />
           <textarea className="input-field" rows={4} placeholder="Mensaje" value={editNotifyForm.message} onChange={(e) => setEditNotifyForm((p) => ({ ...p, message: e.target.value }))} required />
+          {editNotifyForm.audience === 'admin' ? (
+            <p className="text-xs ui-text-muted">Este aviso es interno del local. No se reenvía a otros planes.</p>
+          ) : (
+            <div>
+              <p className="text-sm font-medium text-[var(--ui-body-text)] mb-1">Destino</p>
+              <div className="flex flex-wrap gap-3 text-sm">
+                <label className="inline-flex items-center gap-2">
+                  <input type="radio" name="edit-notice-audience" checked={editNotifyForm.audience !== 'plans'} onChange={() => setEditNotifyForm((p) => ({ ...p, audience: 'all', target_plans: [] }))} />
+                  Todos los planes
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input type="radio" name="edit-notice-audience" checked={editNotifyForm.audience === 'plans'} onChange={() => setEditNotifyForm((p) => ({ ...p, audience: 'plans' }))} />
+                  Planes específicos
+                </label>
+              </div>
+              {editNotifyForm.audience === 'plans' ? (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {planChoices.map((plan) => (
+                    <label key={plan.key} className="inline-flex items-center gap-1.5 text-sm border rounded-lg px-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={(editNotifyForm.target_plans || []).includes(plan.key)}
+                        onChange={() => togglePlan(setEditNotifyForm, plan.key)}
+                      />
+                      {plan.label || plan.key}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )}
           <input className="input-field" placeholder="URL de imagen (opcional)" value={editNotifyForm.image_url} onChange={(e) => setEditNotifyForm((p) => ({ ...p, image_url: e.target.value }))} />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             <div>
