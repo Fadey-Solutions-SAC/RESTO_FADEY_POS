@@ -159,6 +159,7 @@ export default function LogisticaKardexModule() {
   const [editingRecetaId, setEditingRecetaId] = useState('');
   const [recetaEditorKey, setRecetaEditorKey] = useState(0);
   const [recetaVista, setRecetaVista] = useState('nueva');
+  const [formDobleAbierto, setFormDobleAbierto] = useState(false);
 
   const [kardexInsumo, setKardexInsumo] = useState('');
   const [kardexFrom, setKardexFrom] = useState('');
@@ -331,7 +332,7 @@ export default function LogisticaKardexModule() {
         cantidad_inicial: Number.isFinite(ci) && ci >= 0 ? ci : 0,
         minimo_unidades: masa ? 0 : (Number.isFinite(mu) && mu >= 0 ? mu : 0),
         stock_minimo: und ? 0 : (Number.isFinite(mk) && mk >= 0 ? mk : 0),
-        activo: insumoForm.activo,
+        activo: editingInsumoId ? insumoForm.activo : true,
         insumo_area: insumoAreaTab,
         insumo_clase: insumoForm.insumo_clase === 'doble' ? 'doble' : 'directo',
       };
@@ -874,14 +875,16 @@ export default function LogisticaKardexModule() {
                   <option value="doble">Doble</option>
                 </select>
               </div>
-              <label className="flex items-center gap-1.5 text-sm shrink-0 pb-0.5 whitespace-nowrap">
-                <input
-                  type="checkbox"
-                  checked={insumoForm.activo}
-                  onChange={(e) => setInsumoForm((f) => ({ ...f, activo: e.target.checked }))}
-                />
-                Activo
-              </label>
+              {editingInsumoId ? (
+                <label className="flex items-center gap-1.5 text-sm shrink-0 pb-0.5 whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={insumoForm.activo}
+                    onChange={(e) => setInsumoForm((f) => ({ ...f, activo: e.target.checked }))}
+                  />
+                  Activo
+                </label>
+              ) : null}
               <button type="submit" className="btn-primary flex items-center gap-1 text-sm shrink-0">
                 <MdAdd /> {editingInsumoId ? 'Guardar' : 'Agregar'}
               </button>
@@ -1182,6 +1185,7 @@ export default function LogisticaKardexModule() {
                 onClick={() => {
                   setRecetaVista(v.id);
                   setEditingRecetaId('');
+                  setFormDobleAbierto(false);
                   setRecetaEditorKey((k) => k + 1);
                 }}
                 className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
@@ -1252,23 +1256,18 @@ export default function LogisticaKardexModule() {
 
           {recetaVista === 'dobles' && (
             <div className="space-y-4">
-              <div className="bg-[var(--ui-surface-2)] p-4 rounded-xl border border-[color:var(--ui-border)]">
-                <p className="text-sm font-semibold text-[var(--ui-body-text)] mb-3">
-                  {editingRecetaId ? 'Editar fabricación' : 'Fabricar insumo doble'}
-                </p>
-                <RecetaEditor
-                  key={`doble-${editingRecetaId || 'new'}-${recetaEditorKey}`}
-                  recetaId={editingRecetaId}
-                  modoFijo="produccion"
-                  products={products.filter((p) => p.process_type !== 'non_transformed')}
-                  insumos={insumos}
-                  onSaved={() => {
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="btn-primary text-sm"
+                  onClick={() => {
                     setEditingRecetaId('');
                     setRecetaEditorKey((k) => k + 1);
-                    loadCore();
+                    setFormDobleAbierto(true);
                   }}
-                  onCancel={editingRecetaId ? () => setEditingRecetaId('') : undefined}
-                />
+                >
+                  Crear receta
+                </button>
               </div>
               <div className="border border-slate-600/50 rounded-lg overflow-hidden">
                 {recetas.filter((r) => String(r.insumo_resultado_id || '').trim()).map((r) => (
@@ -1302,6 +1301,7 @@ export default function LogisticaKardexModule() {
                         onClick={() => {
                           setEditingRecetaId(r.id);
                           setRecetaEditorKey((k) => k + 1);
+                          setFormDobleAbierto(true);
                         }}
                       >
                         Editar
@@ -1310,9 +1310,38 @@ export default function LogisticaKardexModule() {
                   </div>
                 ))}
                 {!recetas.some((r) => String(r.insumo_resultado_id || '').trim()) && (
-                  <p className="p-4 ui-text-muted text-sm">No hay insumos dobles fabricados. Arriba eliges el doble y sus directos.</p>
+                  <p className="p-4 ui-text-muted text-sm">No hay insumos dobles. Usa Crear receta para armar uno con sus directos.</p>
                 )}
               </div>
+              <Modal
+                isOpen={formDobleAbierto}
+                onClose={() => {
+                  setFormDobleAbierto(false);
+                  setEditingRecetaId('');
+                }}
+                title={editingRecetaId ? 'Editar fabricación' : 'Crear receta de insumo doble'}
+                size="xl"
+              >
+                <div className="modal-sheet-body">
+                  <RecetaEditor
+                    key={`doble-${editingRecetaId || 'new'}-${recetaEditorKey}`}
+                    recetaId={editingRecetaId}
+                    modoFijo="produccion"
+                    products={products.filter((p) => p.process_type !== 'non_transformed')}
+                    insumos={insumos}
+                    onSaved={() => {
+                      setEditingRecetaId('');
+                      setFormDobleAbierto(false);
+                      setRecetaEditorKey((k) => k + 1);
+                      loadCore();
+                    }}
+                    onCancel={() => {
+                      setEditingRecetaId('');
+                      setFormDobleAbierto(false);
+                    }}
+                  />
+                </div>
+              </Modal>
             </div>
           )}
         </div>

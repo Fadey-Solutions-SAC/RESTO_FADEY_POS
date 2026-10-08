@@ -57,7 +57,7 @@ export default function RecetaEditor({
   const [saving, setSaving] = useState(false);
   const [currentId, setCurrentId] = useState(recetaId || '');
   const [form, setForm] = useState({
-    nombre_plato: productName || '',
+    nombre_plato: String(productName || '').toUpperCase(),
     product_id: productId || '',
     activo: true,
     lines: [emptyLine()],
@@ -86,7 +86,7 @@ export default function RecetaEditor({
           if (!cancelled) {
             setCurrentId('');
             setForm({
-              nombre_plato: productName || '',
+              nombre_plato: String(productName || '').toUpperCase(),
               product_id: productId || '',
               activo: true,
               lines: [emptyLine()],
@@ -104,7 +104,7 @@ export default function RecetaEditor({
         const resultado = catalogo.find((i) => String(i.id) === String(r.insumo_resultado_id || ''));
         const esProduccion = Boolean(String(r.insumo_resultado_id || '').trim());
         setForm({
-          nombre_plato: locked ? (productName || r.nombre_plato || '') : (r.nombre_plato || ''),
+          nombre_plato: String(locked ? (productName || r.nombre_plato || '') : (r.nombre_plato || '')).toUpperCase(),
           product_id: locked ? productId : (r.product_id || ''),
           activo: Number(r.activo) === 1,
           lines: r.detalles?.length
@@ -151,7 +151,7 @@ export default function RecetaEditor({
 
   const save = async (e) => {
     e.preventDefault();
-    const nombre = form.nombre_plato.trim();
+    const nombre = form.nombre_plato.trim().toUpperCase();
     const esProduccion = (modoBloqueado === 'produccion' || form.modo === 'produccion') && !locked;
     if (!nombre || (!esProduccion && !form.product_id)) {
       toast.error('Nombre de la receta y producto del menú son obligatorios');
@@ -261,9 +261,10 @@ export default function RecetaEditor({
         <div>
           <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre de la receta</label>
           <input
-            className="input-field"
+            className="input-field uppercase"
             value={form.nombre_plato}
-            onChange={(e) => setForm((f) => ({ ...f, nombre_plato: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, nombre_plato: e.target.value.toUpperCase() }))}
+            autoCapitalize="characters"
             required
           />
         </div>
@@ -293,7 +294,7 @@ export default function RecetaEditor({
                 setForm((f) => ({
                   ...f,
                   product_id: e.target.value,
-                  nombre_plato: f.nombre_plato.trim() ? f.nombre_plato : (p?.name || ''),
+                  nombre_plato: f.nombre_plato.trim() ? f.nombre_plato : String(p?.name || '').toUpperCase(),
                 }));
               }}
             >
@@ -318,14 +319,16 @@ export default function RecetaEditor({
             />
           </div>
         ) : null}
-        <label className="flex items-center gap-2 text-sm pb-2">
-          <input
-            type="checkbox"
-            checked={form.activo}
-            onChange={(e) => setForm((f) => ({ ...f, activo: e.target.checked }))}
-          />
-          Activa
-        </label>
+        {currentId ? (
+          <label className="flex items-center gap-2 text-sm pb-2">
+            <input
+              type="checkbox"
+              checked={form.activo}
+              onChange={(e) => setForm((f) => ({ ...f, activo: e.target.checked }))}
+            />
+            Activa
+          </label>
+        ) : null}
       </div>
 
       <div className="space-y-2">
