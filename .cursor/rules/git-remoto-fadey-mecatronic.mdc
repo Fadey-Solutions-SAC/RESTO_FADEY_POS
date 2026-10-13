@@ -30,7 +30,7 @@ cd "c:\Users\Intel\OneDrive\RESTO FADEY POS"
 2. `git remote set-url origin https://github.com/Fadey-Solutions-SAC/RESTO_FADEY_POS.git`  
 3. `git remote -v`  
 4. Borrar credencial vieja si hace falta: `printf "protocol=https\nhost=github.com\n\n" | git credential-manager erase`  
-5. `git push -u origin main`  
+5. `<git push -u origin main>`  
 
 Login / token: cuenta **Fadey-Solutions-SAC**.
 
