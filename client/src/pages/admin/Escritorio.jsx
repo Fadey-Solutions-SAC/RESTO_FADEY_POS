@@ -447,6 +447,9 @@ export default function Escritorio() {
           generated_at: op.generated_at,
           activeOrders: op.summary?.activeOrders ?? 0,
           tablesWithActiveOrders: op.tablesWithActiveOrders ?? op.summary?.tablesWithActiveOrders ?? 0,
+          salonActiveOrderCount: op.salonActiveOrderCount ?? op.summary?.salonActiveOrderCount ?? 0,
+          productionQueueByArea: op.productionQueueByArea ?? op.summary?.productionQueueByArea ?? {},
+          deliveryReadyCount: op.deliveryReadyCount ?? op.summary?.deliveryReadyCount ?? 0,
           deliveryActiveCount: op.deliveryActiveCount ?? op.summary?.deliveryActiveCount ?? 0,
           inKitchenCount: op.inKitchenCount ?? op.summary?.inKitchenCount ?? 0,
           registerOpen: Boolean(op.summary?.registerOpen || opens.length || op.registerOpen?.id),
@@ -894,10 +897,13 @@ export default function Escritorio() {
     }
     return map;
   }, [orders, activeProductionAreas]);
-  const productionQueueTotal = useMemo(
-    () => Object.values(productionQueuesByArea).reduce((s, n) => s + Number(n || 0), 0),
-    [productionQueuesByArea]
-  );
+  const productionQueueTotal = useMemo(() => {
+    const serverMap = liveDash?.productionQueueByArea;
+    if (serverMap && typeof serverMap === 'object') {
+      return Object.values(serverMap).reduce((sum, n) => sum + Number(n || 0), 0);
+    }
+    return Object.values(productionQueuesByArea).reduce((sum, n) => sum + Number(n || 0), 0);
+  }, [liveDash?.productionQueueByArea, productionQueuesByArea]);
   const activeCajaStations = useMemo(
     () => (Array.isArray(cajaStations) ? cajaStations : []).filter((s) => s && (s.active !== false && s.active !== 0)),
     [cajaStations]
@@ -931,13 +937,15 @@ export default function Escritorio() {
     return list.filter((a) => !['kitchen_prep_demora', 'ready_demora', 'kitchen_load'].includes(String(a?.id || '')));
   }, [liveDash?.operationalAlerts, productionQueueTotal]);
   const showStockAlertPanel = liveDash?.businessIntel?.show_stock_alert_panel !== false;
-  const deliveryReady = useMemo(
-    () => orders.filter(o => o.type === 'delivery' && o.status === 'ready').length,
-    [orders]
+  const deliveryReady = Number(
+    liveDash?.deliveryReadyCount
+    ?? liveDash?.operationalSummary?.deliveryReadyCount
+    ?? 0,
   );
-  const salonActive = useMemo(
-    () => orders.filter(o => o.type === 'dine_in' && ['pending', 'preparing', 'ready'].includes(o.status)).length,
-    [orders]
+  const salonActive = Number(
+    liveDash?.salonActiveOrderCount
+    ?? liveDash?.operationalSummary?.salonActiveOrderCount
+    ?? 0,
   );
   const getQueueLevel = (value) => {
     if (value >= 10) return { label: 'Crítico', pill: 'bg-red-100 text-red-700', card: 'border-red-300 bg-red-50 ring-1 ring-red-300' };
@@ -1169,7 +1177,11 @@ export default function Escritorio() {
             {activeProductionAreas.map((area) => {
               const areaId = String(area.id || '').trim();
               if (!areaId) return null;
-              const queue = Number(productionQueuesByArea[areaId] || 0);
+              const queue = Number(
+                (liveDash?.productionQueueByArea && liveDash.productionQueueByArea[areaId] != null)
+                  ? liveDash.productionQueueByArea[areaId]
+                  : (liveDash?.operationalSummary?.productionQueueByArea?.[areaId] ?? productionQueuesByArea[areaId] ?? 0)
+              );
               const level = getQueueLevel(queue);
               const tone = productionAreaTone(areaId);
               const Icon = tone.icon;

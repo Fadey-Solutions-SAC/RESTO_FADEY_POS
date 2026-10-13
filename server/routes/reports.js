@@ -66,23 +66,56 @@ function readDeliveryEnabled() {
   }
 }
 
-/** Pedidos que aún aparecen en panel cocina o bar (misma regla que los módulos de producción). */
-function countVisibleProductionQueueOrders() {
-  const orders = queryAll(
+const UNPAID_OPEN_SQL = "IFNULL(TRIM(payment_status), 'pending') != 'paid'";
+
+/**
+ * Conteos del monitoreo con la misma regla que cada módulo:
+ * mesas = pedidos de salón aún sin cobrar en una mesa física;
+ * producción = lo que sigue visible en ese panel;
+ * delivery = pedidos delivery sin cobrar.
+ */
+function buildLiveAreaSnapshot() {
+  const { listActiveProductionAreas } = require('../services/productionAreasService');
+  const { loadAllActiveTableOrdersWithItems, attachActiveOrdersToTables } = require('../services/tableOrdersQueryService');
+  const areas = listActiveProductionAreas();
+  const openForProduction = queryAll(
     `SELECT * FROM orders
-     WHERE status IN ('pending', 'preparing')
-       AND status != 'cancelled'
-       AND IFNULL(payment_status, 'pending') != 'paid'`
+     WHERE status IN ('pending', 'preparing', 'ready')
+       AND ${UNPAID_OPEN_SQL}
+       AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= ${sqlBusinessNowExpr(queryOne)})`
   );
-  if (!orders.length) return 0;
-  const visibleIds = new Set();
   const getAreaItems = (orderId) => getOrderItemsWithProductionArea(orderId);
-  for (const station of ['cocina', 'bar']) {
-    filterKitchenOrdersForStation(orders, station, getAreaItems).forEach(({ order }) => {
+  const productionQueueByArea = {};
+  const visibleIds = new Set();
+  for (const area of areas) {
+    const id = String(area?.id || '').trim();
+    if (!id) continue;
+    const rows = filterKitchenOrdersForStation(openForProduction, id, getAreaItems);
+    productionQueueByArea[id] = rows.length;
+    rows.forEach(({ order }) => {
       if (order?.id) visibleIds.add(order.id);
     });
   }
-  return visibleIds.size;
+
+  const physicalTables = queryAll('SELECT id, number, status FROM tables');
+  const salonOrders = loadAllActiveTableOrdersWithItems().filter(
+    (order) => String(order?.type || 'dine_in') === 'dine_in'
+  );
+  const tableRows = physicalTables.map((table) => ({ ...table }));
+  attachActiveOrdersToTables(tableRows, salonOrders);
+  const occupiedTables = tableRows.filter((table) => Array.isArray(table.orders) && table.orders.length > 0);
+  const deliveryReady = queryOne(
+    `SELECT COUNT(*) as count FROM orders
+     WHERE type = 'delivery' AND status = 'ready' AND ${UNPAID_OPEN_SQL}`
+  );
+
+  return {
+    tablesWithActiveOrders: occupiedTables.length,
+    salonActiveOrderCount: occupiedTables.reduce((sum, table) => sum + table.orders.length, 0),
+    productionQueueByArea,
+    visibleProductionQueue: visibleIds.size,
+    deliveryReadyCount: Number(deliveryReady?.count || 0),
+  };
 }
 
 /** Ventas «en vivo»: turno de caja abierto; si no, último turno o día según horario del local. */
@@ -187,20 +220,17 @@ function buildOperationalIntelligence(opts = {}) {
   const predHorizonDays = Math.min(180, Math.max(1, Math.round(Number(biz.pred_horizon_days ?? 14))));
 
   const today = getLocalTodayDateKey();
-  const tablesWithActiveOrders = queryOne(
-    `SELECT COUNT(DISTINCT TRIM(o.table_number)) as count
-     FROM orders o
-     WHERE o.status IN ('pending','preparing','ready')
-       AND TRIM(IFNULL(o.table_number,'')) != ''
-       AND IFNULL(o.type,'dine_in') IN ('dine_in','pickup')`
-  );
+  const liveAreas = buildLiveAreaSnapshot();
+  const tablesWithActiveOrders = { count: liveAreas.tablesWithActiveOrders };
   const deliveryActive = queryOne(
     `SELECT COUNT(*) as count FROM orders
      WHERE type = 'delivery'
-       AND payment_status != 'paid'
+       AND ${UNPAID_OPEN_SQL}
        AND status IN ('pending','preparing','ready')`
   );
-  const inKitchen = queryOne(`SELECT COUNT(*) as count FROM orders WHERE status = 'preparing'`);
+  const inKitchen = queryOne(
+    `SELECT COUNT(*) as count FROM orders WHERE status = 'preparing' AND ${UNPAID_OPEN_SQL}`
+  );
   const openRegisters = getOpenRegistersOnActiveStations();
   const registerOpen = openRegisters[0] || null;
   const allOpenRows = queryAll(
@@ -211,14 +241,18 @@ function buildOperationalIntelligence(opts = {}) {
     (r) => !activeStationIds.has(String(r.caja_station_id || '').trim())
   ).length;
   const activeOrders = queryOne(
-    `SELECT COUNT(*) as count FROM orders WHERE status IN ('pending', 'preparing')
-     OR (${READY_NEEDS_CLOSURE_WHERE})`
+    `SELECT COUNT(*) as count FROM orders
+     WHERE ${UNPAID_OPEN_SQL}
+       AND (status IN ('pending', 'preparing') OR (${READY_NEEDS_CLOSURE_WHERE}))`
   );
-  const pendingCount = queryOne(`SELECT COUNT(*) as count FROM orders WHERE status = 'pending'`);
+  const pendingCount = queryOne(
+    `SELECT COUNT(*) as count FROM orders WHERE status = 'pending' AND ${UNPAID_OPEN_SQL}`
+  );
   const readyCount = queryOne(`SELECT COUNT(*) as count FROM orders WHERE ${READY_NEEDS_CLOSURE_WHERE}`);
   const kitchenPrepDelayed = queryOne(
     `SELECT COUNT(*) as count FROM orders
      WHERE status IN ('pending', 'preparing')
+       AND ${UNPAID_OPEN_SQL}
        AND (kitchen_release_at IS NULL OR trim(kitchen_release_at) = '' OR datetime(kitchen_release_at) <= ${sqlBusinessNowExpr(queryOne)})
        AND (
          (status = 'pending' AND (julianday('now') - julianday(created_at)) * 24 * 60 > ?)
@@ -250,6 +284,7 @@ function buildOperationalIntelligence(opts = {}) {
     `SELECT COUNT(DISTINCT o.id) as count
      FROM orders o
      WHERE o.status = 'preparing'
+       AND IFNULL(TRIM(o.payment_status), 'pending') != 'paid'
        AND EXISTS (
          SELECT 1 FROM order_items oi
          JOIN products p ON p.id = oi.product_id
@@ -277,12 +312,7 @@ function buildOperationalIntelligence(opts = {}) {
   }
   const slowMovingCount = { count: slowMovingData.product_ids.length };
 
-  let visibleProductionQueue = 0;
-  try {
-    visibleProductionQueue = countVisibleProductionQueueOrders();
-  } catch (err) {
-    console.warn('[reports] visible production queue:', err.message || err);
-  }
+  const visibleProductionQueue = Number(liveAreas.visibleProductionQueue || 0);
 
   const operationalAlerts = [];
   const lowN = Number(lowStockTotal?.count || lowStock?.length || 0);
@@ -534,6 +564,9 @@ function buildOperationalIntelligence(opts = {}) {
   const summary = {
     date: today,
     tablesWithActiveOrders: Number(tablesWithActiveOrders?.count || 0),
+    salonActiveOrderCount: Number(liveAreas.salonActiveOrderCount || 0),
+    productionQueueByArea: liveAreas.productionQueueByArea || {},
+    deliveryReadyCount: deliveryEnabled ? Number(liveAreas.deliveryReadyCount || 0) : 0,
     deliveryActiveCount: deliveryEnabled ? Number(deliveryActive?.count || 0) : null,
     inKitchenCount: Number(inKitchen?.count || 0),
     activeOrders: actN,
@@ -570,6 +603,9 @@ function buildOperationalIntelligence(opts = {}) {
       : null,
     openRegisters,
     tablesWithActiveOrders: summary.tablesWithActiveOrders,
+    salonActiveOrderCount: summary.salonActiveOrderCount,
+    productionQueueByArea: summary.productionQueueByArea,
+    deliveryReadyCount: summary.deliveryReadyCount,
     deliveryActiveCount: summary.deliveryActiveCount,
     inKitchenCount: summary.inKitchenCount,
     deliveryEnabled,
@@ -792,6 +828,9 @@ router.get('/dashboard', authenticateToken, requireRole('admin', 'cajero', 'mast
       lowStockCount: Number(op.summary?.lowStockCount || 0),
       paymentMethods,
       tablesWithActiveOrders: op.tablesWithActiveOrders,
+      salonActiveOrderCount: op.salonActiveOrderCount,
+      productionQueueByArea: op.productionQueueByArea || {},
+      deliveryReadyCount: op.deliveryReadyCount,
       deliveryActiveCount: op.deliveryActiveCount,
       inKitchenCount: op.inKitchenCount,
       registerOpen: op.summary.registerOpen,
@@ -824,6 +863,9 @@ router.get('/operational-alerts', authenticateToken, requireRole('admin', 'cajer
       openRegisters: op.openRegisters || [],
       registerOpen: op.registerOpen || null,
       tablesWithActiveOrders: op.tablesWithActiveOrders,
+      salonActiveOrderCount: op.salonActiveOrderCount,
+      productionQueueByArea: op.productionQueueByArea || {},
+      deliveryReadyCount: op.deliveryReadyCount,
       deliveryActiveCount: op.deliveryActiveCount,
       inKitchenCount: op.inKitchenCount,
       lowStockCount: Number(op.summary?.lowStockCount || 0),
