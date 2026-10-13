@@ -1059,29 +1059,18 @@ export default function Escritorio() {
 
   return (
     <div className="space-y-4">
-      <div id="monitoreo-vivo" className="card p-4 sm:p-5 scroll-mt-4">
-        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
-              <MdShowChart className="text-2xl" />
-            </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-lg font-bold text-[var(--ui-body-text)]">Monitoreo en vivo</h3>
-                {liveDash ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    Sistema en línea
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-xs text-[var(--ui-muted)] mt-0.5">Estado actual de tu negocio en tiempo real</p>
-              {liveDash?.generated_at ? (
-                <p className="text-[11px] text-[var(--ui-muted)]">
-                  Actualizado {formatInstantTime(liveDash.generated_at, { withSeconds: true })}
-                </p>
-              ) : null}
-            </div>
+      <div id="monitoreo-vivo" className="card p-4 scroll-mt-4">
+        <div className="flex items-center gap-2 mb-3 min-w-0">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600">
+            <MdShowChart className="text-lg" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-[var(--ui-body-text)]">Monitoreo en vivo</h3>
+            {liveDash?.generated_at ? (
+              <p className="text-xs text-[var(--ui-muted)]">
+                Actualizado {formatInstantTime(liveDash.generated_at, { withSeconds: true })}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -1104,7 +1093,7 @@ export default function Escritorio() {
 
         {liveDash ? (
           <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 mb-3">
             {(activeCajaStations.length
               ? activeCajaStations
               : [{ id: '_default', name: liveDash.liveSales?.label || 'Caja', active: 1 }]
@@ -1147,20 +1136,20 @@ export default function Escritorio() {
               return (
                 <div
                   key={sid || stationName}
-                  className="flex flex-col rounded-2xl border border-sky-100 bg-sky-50 px-3.5 py-3 min-h-[168px]"
+                  className="flex flex-col rounded-xl border border-sky-100 bg-sky-50 px-2.5 py-2"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0 text-sky-800">
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-sky-600 shadow-sm">
-                        <MdPointOfSale className="text-lg" />
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white text-sky-600 shadow-sm">
+                        <MdPointOfSale className="text-base" />
                       </span>
-                      <span className="font-semibold text-sm truncate">{stationName}</span>
+                      <span className="font-semibold text-xs truncate">{stationName}</span>
                     </div>
                     <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                       {isOpen ? 'Abierta' : 'Activa'}
                     </span>
                   </div>
-                  <p className="text-2xl font-bold text-sky-950 tabular-nums mt-3">
+                  <p className="text-lg font-bold text-sky-950 tabular-nums mt-1">
                     {formatCurrency(total)}
                   </p>
                   <p className="text-xs text-sky-800/80 mt-0.5 flex-1">
@@ -1170,7 +1159,7 @@ export default function Escritorio() {
                   <button
                     type="button"
                     onClick={() => navigate('/admin/caja')}
-                    className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                    className="mt-2 w-full rounded-lg bg-blue-600 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
                   >
                     Ir a Caja →
                   </button>
@@ -1192,25 +1181,25 @@ export default function Escritorio() {
               return (
                 <div
                   key={areaId}
-                  className={`flex flex-col rounded-2xl border px-3.5 py-3 min-h-[168px] ${areaSkin.card}`}
+                  className={`flex flex-col rounded-xl border px-2.5 py-2 ${areaSkin.card}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className={`flex items-center gap-2 min-w-0 ${areaSkin.title}`}>
-                      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl shadow-sm ${areaSkin.icon}`}>
-                        <Icon className="text-lg" />
+                      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg shadow-sm ${areaSkin.icon}`}>
+                        <Icon className="text-base" />
                       </span>
-                      <span className="font-semibold text-sm truncate">{area.name || areaId}</span>
+                      <span className="font-semibold text-xs truncate">{area.name || areaId}</span>
                     </div>
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${level.pill}`}>
                       {level.label}
                     </span>
                   </div>
-                  <p className={`text-2xl font-bold tabular-nums mt-3 ${areaSkin.value}`}>{queue}</p>
+                  <p className={`text-lg font-bold tabular-nums mt-1 ${areaSkin.value}`}>{queue}</p>
                   <p className={`text-xs mt-0.5 flex-1 ${areaSkin.sub}`}>Pedidos en cola</p>
                   <button
                     type="button"
                     onClick={() => navigate(`/admin/produccion/${areaId}`)}
-                    className={`mt-3 w-full rounded-xl px-3 py-2 text-sm font-semibold text-white transition-colors ${areaSkin.btn}`}
+                    className={`mt-2 w-full rounded-lg px-2 py-1 text-xs font-semibold text-white transition-colors ${areaSkin.btn}`}
                   >
                     Ir a {area.name || areaId} →
                   </button>
@@ -1218,19 +1207,19 @@ export default function Escritorio() {
               );
             })}
             {deliveryModuleActive ? (
-            <div className="flex flex-col rounded-2xl border border-cyan-100 bg-cyan-50 px-3.5 py-3 min-h-[168px]">
+            <div className="flex flex-col rounded-xl border border-cyan-100 bg-cyan-50 px-2.5 py-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0 text-cyan-950">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-cyan-600 shadow-sm">
-                    <MdDeliveryDining className="text-lg" />
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white text-cyan-600 shadow-sm">
+                    <MdDeliveryDining className="text-base" />
                   </span>
-                  <span className="font-semibold text-sm truncate">Delivery</span>
+                  <span className="font-semibold text-xs truncate">Delivery</span>
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${getQueueLevel(Number(liveDash.deliveryActiveCount || 0)).pill}`}>
                   {getQueueLevel(Number(liveDash.deliveryActiveCount || 0)).label}
                 </span>
               </div>
-              <p className="text-2xl font-bold text-cyan-950 tabular-nums mt-3">
+              <p className="text-lg font-bold text-cyan-950 tabular-nums mt-1">
                 {Number(liveDash.deliveryActiveCount || 0)}
               </p>
               <p className="text-xs text-cyan-900/80 mt-0.5 flex-1">
@@ -1239,25 +1228,25 @@ export default function Escritorio() {
               <button
                 type="button"
                 onClick={() => navigate('/admin/delivery')}
-                className="mt-3 w-full rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-700 transition-colors"
+                className="mt-2 w-full rounded-lg bg-cyan-600 px-2 py-1 text-xs font-semibold text-white hover:bg-cyan-700 transition-colors"
               >
                 Ir a Delivery →
               </button>
             </div>
             ) : null}
-            <div className="flex flex-col rounded-2xl border border-emerald-100 bg-emerald-50 px-3.5 py-3 min-h-[168px]">
+            <div className="flex flex-col rounded-xl border border-emerald-100 bg-emerald-50 px-2.5 py-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0 text-emerald-950">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-emerald-600 shadow-sm">
-                    <MdTableBar className="text-lg" />
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white text-emerald-600 shadow-sm">
+                    <MdTableBar className="text-base" />
                   </span>
-                  <span className="font-semibold text-sm truncate">Mesas</span>
+                  <span className="font-semibold text-xs truncate">Mesas</span>
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${getQueueLevel(Number(liveDash.tablesWithActiveOrders || 0)).pill}`}>
                   {getQueueLevel(Number(liveDash.tablesWithActiveOrders || 0)).label}
                 </span>
               </div>
-              <p className="text-2xl font-bold text-emerald-950 tabular-nums mt-3">
+              <p className="text-lg font-bold text-emerald-950 tabular-nums mt-1">
                 {Number(liveDash.tablesWithActiveOrders || 0)}
               </p>
               <p className="text-xs text-emerald-900/80 mt-0.5 flex-1">
@@ -1266,30 +1255,30 @@ export default function Escritorio() {
               <button
                 type="button"
                 onClick={() => navigate('/admin/mesas')}
-                className="mt-3 w-full rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 transition-colors"
+                className="mt-2 w-full rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
               >
                 Ir a Mesas →
               </button>
             </div>
             {showStockAlertPanel ? (
-            <div className="flex flex-col rounded-2xl border border-red-100 bg-red-50 px-3.5 py-3 min-h-[168px]">
+            <div className="flex flex-col rounded-xl border border-red-100 bg-red-50 px-2.5 py-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0 text-red-950">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-red-500 shadow-sm">
-                    <MdInventory2 className="text-lg" />
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white text-red-500 shadow-sm">
+                    <MdInventory2 className="text-base" />
                   </span>
-                  <span className="font-semibold text-sm truncate">Stock</span>
+                  <span className="font-semibold text-xs truncate">Stock</span>
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${lowStockMonitorCount > 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
                   {lowStockMonitorCount > 0 ? 'Bajo' : 'Normal'}
                 </span>
               </div>
-              <p className="text-2xl font-bold text-red-950 tabular-nums mt-3">{lowStockMonitorCount}</p>
+              <p className="text-lg font-bold text-red-950 tabular-nums mt-1">{lowStockMonitorCount}</p>
               <p className="text-xs text-red-900/80 mt-0.5 flex-1">Productos ≤ 10</p>
               <button
                 type="button"
                 onClick={() => navigate('/admin/almacen')}
-                className="mt-3 w-full rounded-xl bg-red-500 px-3 py-2 text-sm font-semibold text-white hover:bg-red-600 transition-colors"
+                className="mt-2 w-full rounded-lg bg-red-500 px-2 py-1 text-xs font-semibold text-white hover:bg-red-600 transition-colors"
               >
                 Ver Inventario →
               </button>
