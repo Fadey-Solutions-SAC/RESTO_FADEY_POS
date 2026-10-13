@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  MdAdd, MdCalendarMonth, MdCleaningServices, MdClose, MdDownload,
+  MdAccountBalanceWallet, MdAdd, MdCalendarMonth, MdCleaningServices, MdClose, MdDownload,
   MdEdit, MdFilterAlt, MdInventory2, MdPeople, MdPerson, MdPictureAsPdf,
   MdRefresh, MdSearch, MdShoppingCart, MdWallet,
 } from 'react-icons/md';
@@ -249,7 +249,13 @@ export default function InventoryExpensesDashboard({ onNewExpense }) {
   return (
     <div className="space-y-3">
       <section className="rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-4 shadow-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-end">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <span
+            aria-hidden="true"
+            className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-sky-100 text-sky-600 shadow-sm ring-1 ring-sky-200/70"
+          >
+            <MdAccountBalanceWallet className="text-4xl" />
+          </span>
           <div className="flex flex-wrap items-center gap-2">
             <label className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-2 py-1.5">
               <MdCalendarMonth className="text-sky-600" />
