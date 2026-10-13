@@ -1059,34 +1059,30 @@ export default function Escritorio() {
 
   return (
     <div className="space-y-4">
-      <div id="monitoreo-vivo" className="card p-4 scroll-mt-4">
-        <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <MdBolt className="text-xl text-[var(--ui-accent-muted)] shrink-0" />
+      <div id="monitoreo-vivo" className="card p-4 sm:p-5 scroll-mt-4">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+              <MdShowChart className="text-2xl" />
+            </span>
             <div className="min-w-0">
-              <h3 className="text-base font-semibold text-[var(--ui-body-text)]">Monitoreo en vivo</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-bold text-[var(--ui-body-text)]">Monitoreo en vivo</h3>
+                {liveDash ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Sistema en línea
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-xs text-[var(--ui-muted)] mt-0.5">Estado actual de tu negocio en tiempo real</p>
               {liveDash?.generated_at ? (
-                <p className="text-xs text-[var(--ui-muted)]">
+                <p className="text-[11px] text-[var(--ui-muted)]">
                   Actualizado {formatInstantTime(liveDash.generated_at, { withSeconds: true })}
                 </p>
               ) : null}
             </div>
           </div>
-          {liveDash ? (
-            <span
-              className={`text-xs font-medium px-2 py-1 rounded-lg border ${
-                monitorRegisterOpen ? 'ui-live-badge-open' : 'ui-live-badge-closed'
-              }`}
-            >
-              {monitorRegisterOpen
-                ? monitorOpenCount > 1
-                  ? `${monitorOpenCount} cajas abiertas`
-                  : (openCajaStations[0]?.name || liveDash.registerOpenSummary?.station_name)
-                    ? `Caja abierta · ${openCajaStations[0]?.name || liveDash.registerOpenSummary.station_name}`
-                    : 'Caja abierta'
-                : 'Sin caja abierta'}
-            </span>
-          ) : null}
         </div>
 
         {liveDashLoading && !liveDash ? (
@@ -1108,7 +1104,7 @@ export default function Escritorio() {
 
         {liveDash ? (
           <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 mb-4">
             {(activeCajaStations.length
               ? activeCajaStations
               : [{ id: '_default', name: liveDash.liveSales?.label || 'Caja', active: 1 }]
@@ -1149,25 +1145,36 @@ export default function Escritorio() {
               const stationName = station.name || perReg?.station_name || openReg?.station_name || 'Caja';
               const cashier = stationShift?.cajero_name || perReg?.user_name || openReg?.user_name || openReg?.cajero_name || '';
               return (
-                <button
+                <div
                   key={sid || stationName}
-                  type="button"
-                  onClick={() => navigate('/admin/caja')}
-                  className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-left hover:bg-sky-100 transition-colors"
+                  className="flex flex-col rounded-2xl border border-sky-100 bg-sky-50 px-3.5 py-3 min-h-[168px]"
                 >
-                  <div className="flex items-center gap-1.5 text-sky-700 font-semibold text-xs">
-                    <MdPointOfSale className="shrink-0" />
-                    <span className="truncate">{stationName}</span>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0 text-sky-800">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-sky-600 shadow-sm">
+                        <MdPointOfSale className="text-lg" />
+                      </span>
+                      <span className="font-semibold text-sm truncate">{stationName}</span>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      {isOpen ? 'Abierta' : 'Activa'}
+                    </span>
                   </div>
-                  <p className="text-lg font-bold text-sky-800 tabular-nums mt-1">
+                  <p className="text-2xl font-bold text-sky-950 tabular-nums mt-3">
                     {formatCurrency(total)}
                   </p>
-                  <p className="text-[11px] text-sky-700">
+                  <p className="text-xs text-sky-800/80 mt-0.5 flex-1">
                     {isOpen ? `${count} cobradas` : 'Sin turno activo'}
                     {isOpen && cashier ? ` · ${cashier}` : ''}
                   </p>
-                  <p className="text-[11px] font-medium text-sky-700 mt-0.5">Ir a Caja</p>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/admin/caja')}
+                    className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                  >
+                    Ir a Caja →
+                  </button>
+                </div>
               );
             })}
             {activeProductionAreas.map((area) => {
@@ -1177,77 +1184,116 @@ export default function Escritorio() {
               const level = getQueueLevel(queue);
               const tone = productionAreaTone(areaId);
               const Icon = tone.icon;
+              const areaSkin = areaId === 'bar'
+                ? { card: 'border-violet-100 bg-violet-50', icon: 'bg-white text-violet-600', title: 'text-violet-900', value: 'text-violet-950', sub: 'text-violet-800/80', btn: 'bg-violet-600 hover:bg-violet-700' }
+                : areaId === 'cocina'
+                  ? { card: 'border-orange-100 bg-orange-50', icon: 'bg-white text-orange-500', title: 'text-orange-950', value: 'text-orange-950', sub: 'text-orange-900/80', btn: 'bg-orange-500 hover:bg-orange-600' }
+                  : { card: 'border-teal-100 bg-teal-50', icon: 'bg-white text-teal-600', title: 'text-teal-950', value: 'text-teal-950', sub: 'text-teal-800/80', btn: 'bg-teal-600 hover:bg-teal-700' };
               return (
-                <button
+                <div
                   key={areaId}
-                  type="button"
-                  onClick={() => navigate(`/admin/produccion/${areaId}`)}
-                  className={`rounded-lg border px-3 py-2 text-left transition-colors hover:opacity-95 ${level.card}`}
+                  className={`flex flex-col rounded-2xl border px-3.5 py-3 min-h-[168px] ${areaSkin.card}`}
                 >
-                  <div className="flex items-center justify-between gap-1">
-                    <div className={`flex items-center gap-1.5 font-semibold text-xs ${tone.title}`}>
-                      <Icon className="shrink-0" />
-                      <span className="truncate">{area.name || areaId}</span>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className={`flex items-center gap-2 min-w-0 ${areaSkin.title}`}>
+                      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl shadow-sm ${areaSkin.icon}`}>
+                        <Icon className="text-lg" />
+                      </span>
+                      <span className="font-semibold text-sm truncate">{area.name || areaId}</span>
                     </div>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${level.pill}`}>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${level.pill}`}>
                       {level.label}
                     </span>
                   </div>
-                  <p className={`text-lg font-bold tabular-nums mt-1 ${tone.value}`}>{queue}</p>
-                  <p className={`text-[11px] ${tone.sub}`}>Pedidos en cola</p>
-                  <p className={`text-[11px] font-medium mt-0.5 ${tone.link}`}>
-                    Ir a {area.name || areaId}
-                  </p>
-                </button>
+                  <p className={`text-2xl font-bold tabular-nums mt-3 ${areaSkin.value}`}>{queue}</p>
+                  <p className={`text-xs mt-0.5 flex-1 ${areaSkin.sub}`}>Pedidos en cola</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admin/produccion/${areaId}`)}
+                    className={`mt-3 w-full rounded-xl px-3 py-2 text-sm font-semibold text-white transition-colors ${areaSkin.btn}`}
+                  >
+                    Ir a {area.name || areaId} →
+                  </button>
+                </div>
               );
             })}
             {deliveryModuleActive ? (
-            <button
-              type="button"
-              onClick={() => navigate('/admin/delivery')}
-              className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left hover:bg-emerald-100 transition-colors"
-            >
-              <div className="flex items-center gap-1.5 text-emerald-700 font-semibold text-xs">
-                <MdDeliveryDining className="shrink-0" />
-                Delivery
+            <div className="flex flex-col rounded-2xl border border-cyan-100 bg-cyan-50 px-3.5 py-3 min-h-[168px]">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0 text-cyan-950">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-cyan-600 shadow-sm">
+                    <MdDeliveryDining className="text-lg" />
+                  </span>
+                  <span className="font-semibold text-sm truncate">Delivery</span>
+                </div>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${getQueueLevel(Number(liveDash.deliveryActiveCount || 0)).pill}`}>
+                  {getQueueLevel(Number(liveDash.deliveryActiveCount || 0)).label}
+                </span>
               </div>
-              <p className="text-lg font-bold text-emerald-800 tabular-nums mt-1">
+              <p className="text-2xl font-bold text-cyan-950 tabular-nums mt-3">
                 {Number(liveDash.deliveryActiveCount || 0)}
               </p>
-              <p className="text-[11px] text-emerald-700">
+              <p className="text-xs text-cyan-900/80 mt-0.5 flex-1">
                 En curso · {deliveryReady} listos para repartir
               </p>
-              <p className="text-[11px] font-medium ui-live-link-emerald mt-0.5">Ir a Delivery</p>
-            </button>
+              <button
+                type="button"
+                onClick={() => navigate('/admin/delivery')}
+                className="mt-3 w-full rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-700 transition-colors"
+              >
+                Ir a Delivery →
+              </button>
+            </div>
             ) : null}
-            <button
-              type="button"
-              onClick={() => navigate('/admin/mesas')}
-              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-left hover:bg-rose-100 transition-colors"
-            >
-              <div className="flex items-center gap-1.5 text-rose-700 font-semibold text-xs">
-                <MdTableBar className="shrink-0" />
-                Mesas
+            <div className="flex flex-col rounded-2xl border border-emerald-100 bg-emerald-50 px-3.5 py-3 min-h-[168px]">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0 text-emerald-950">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-emerald-600 shadow-sm">
+                    <MdTableBar className="text-lg" />
+                  </span>
+                  <span className="font-semibold text-sm truncate">Mesas</span>
+                </div>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${getQueueLevel(Number(liveDash.tablesWithActiveOrders || 0)).pill}`}>
+                  {getQueueLevel(Number(liveDash.tablesWithActiveOrders || 0)).label}
+                </span>
               </div>
-              <p className="text-lg font-bold text-rose-800 tabular-nums mt-1">
+              <p className="text-2xl font-bold text-emerald-950 tabular-nums mt-3">
                 {Number(liveDash.tablesWithActiveOrders || 0)}
               </p>
-              <p className="text-[11px] text-rose-700">
+              <p className="text-xs text-emerald-900/80 mt-0.5 flex-1">
                 Con cuenta · {salonActive} pedidos en salón
               </p>
-              <p className="text-[11px] font-medium ui-live-link-rose mt-0.5">Ir a Mesas</p>
-            </button>
+              <button
+                type="button"
+                onClick={() => navigate('/admin/mesas')}
+                className="mt-3 w-full rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 transition-colors"
+              >
+                Ir a Mesas →
+              </button>
+            </div>
             {showStockAlertPanel ? (
-            <button
-              type="button"
-              onClick={() => navigate('/admin/almacen')}
-              className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-left hover:bg-[var(--ui-sidebar-hover)] transition-colors"
-            >
-              <p className="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]">Stock bajo</p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] tabular-nums mt-1">{lowStockMonitorCount}</p>
-              <p className="text-[11px] text-[var(--ui-muted)]">Inventario</p>
-              <p className="text-[11px] font-medium text-[var(--ui-accent-muted)] mt-0.5">Ir a Control De Recursos</p>
-            </button>
+            <div className="flex flex-col rounded-2xl border border-red-100 bg-red-50 px-3.5 py-3 min-h-[168px]">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0 text-red-950">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-red-500 shadow-sm">
+                    <MdInventory2 className="text-lg" />
+                  </span>
+                  <span className="font-semibold text-sm truncate">Stock</span>
+                </div>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${lowStockMonitorCount > 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  {lowStockMonitorCount > 0 ? 'Bajo' : 'Normal'}
+                </span>
+              </div>
+              <p className="text-2xl font-bold text-red-950 tabular-nums mt-3">{lowStockMonitorCount}</p>
+              <p className="text-xs text-red-900/80 mt-0.5 flex-1">Productos ≤ 10</p>
+              <button
+                type="button"
+                onClick={() => navigate('/admin/almacen')}
+                className="mt-3 w-full rounded-xl bg-red-500 px-3 py-2 text-sm font-semibold text-white hover:bg-red-600 transition-colors"
+              >
+                Ver Inventario →
+              </button>
+            </div>
             ) : null}
           </div>
           {liveDash.operationalSummary &&
@@ -1255,81 +1301,102 @@ export default function Escritorio() {
             liveDash.operationalSummary.readyCount != null ||
             liveDash.operationalSummary.staleReadyCount != null ||
             liveDash.activeOrders != null) ? (
-            <div className="flex flex-wrap gap-2 mb-3 text-[11px] text-[var(--ui-body-text)]">
-              <span className="rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-2 py-1 tabular-nums">
-                Activos: <strong>{Number(liveDash.activeOrders ?? 0)}</strong>
-              </span>
-              <span className="rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-2 py-1 tabular-nums">
-                Pendientes: <strong>{Number(liveDash.operationalSummary.pendingCount ?? 0)}</strong>
-              </span>
-              <span className="rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-2 py-1 tabular-nums">
-                Listos: <strong>{Number(liveDash.operationalSummary.readyCount ?? 0)}</strong>
-              </span>
-              {productionQueueTotal > 0 && Number(liveDash.operationalSummary.staleReadyCount ?? 0) > 0 ? (
-              <span
-                className="rounded-md border px-2 py-1 tabular-nums ui-live-pill-stale"
-              >
-                Listos {'>'}25 min: <strong>{Number(liveDash.operationalSummary.staleReadyCount ?? 0)}</strong>
-              </span>
-              ) : null}
-            </div>
-          ) : null}
-          {liveDash.insightToday ? (
-            <p className="text-xs text-[var(--ui-accent-muted)] mb-2">{liveDash.insightToday}</p>
-          ) : null}
-          <div className="border-t border-[color:var(--ui-border)] pt-3 flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              {visibleOperationalAlerts.length > 0 ? (
-                <ul className="space-y-1.5">
-                  {visibleOperationalAlerts.map((a) => {
-                    const alertBody = (
-                      <>
-                        <MdWarning className="shrink-0 text-lg ui-live-alert-icon mt-0.5" />
-                        <span className="min-w-0 flex-1">
-                          <span className="font-semibold">{a.title}: </span>
-                          {a.message}
-                          {a.linkTo && a.linkLabel ? (
-                            <span className="block mt-1 text-xs font-semibold ui-live-alert-link underline-offset-2 group-hover:underline">
-                              {a.linkLabel}
-                            </span>
-                          ) : null}
-                        </span>
-                      </>
-                    );
-                    const alertClass = `flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 ${
-                      a.severity === 'warning' ? 'ui-live-alert-warning' : 'ui-live-alert-info'
-                    }${a.linkTo ? ' group cursor-pointer hover:brightness-[0.98] transition' : ''}`;
-
-                    return (
-                      <li key={a.id}>
-                        {a.linkTo ? (
-                          <Link to={a.linkTo} className={alertClass} title={a.linkLabel || a.title}>
-                            {alertBody}
-                          </Link>
-                        ) : (
-                          <div className={alertClass}>{alertBody}</div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="text-xs text-[var(--ui-muted)]">Sin alertas operativas en este momento.</p>
-              )}
-            </div>
-            <Link
-              to="/admin/indicadores?tab=alertas"
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] transition-colors"
-              title="Ver alertas en Indicadores"
-            >
-              <MdNotificationsActive className="text-base text-[var(--ui-accent)]" />
-              Alertas
-              {visibleOperationalAlerts.length > 0 ? (
-                <span className="min-w-[1.15rem] h-[1.15rem] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold inline-flex items-center justify-center tabular-nums">
-                  {visibleOperationalAlerts.length > 99 ? '99+' : visibleOperationalAlerts.length}
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <div className="flex flex-wrap gap-2 text-xs text-[var(--ui-body-text)]">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-1.5 tabular-nums">
+                  <MdPeople className="text-sky-500" />
+                  Activos: <strong>{Number(liveDash.activeOrders ?? 0)}</strong>
                 </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-1.5 tabular-nums">
+                  <MdBolt className="text-sky-500" />
+                  Pendientes: <strong>{Number(liveDash.operationalSummary.pendingCount ?? 0)}</strong>
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-1.5 tabular-nums">
+                  <MdNotificationsActive className="text-emerald-500" />
+                  Listos: <strong>{Number(liveDash.operationalSummary.readyCount ?? 0)}</strong>
+                </span>
+                {productionQueueTotal > 0 && Number(liveDash.operationalSummary.staleReadyCount ?? 0) > 0 ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 tabular-nums ui-live-pill-stale">
+                  Listos {'>'}25 min: <strong>{Number(liveDash.operationalSummary.staleReadyCount ?? 0)}</strong>
+                </span>
+                ) : null}
+              </div>
+              {liveDash.insightToday ? (
+                <p className="inline-flex items-center gap-1.5 text-xs text-[var(--ui-muted)]">
+                  <MdDateRange className="shrink-0 text-sky-500" />
+                  {liveDash.insightToday}
+                </p>
               ) : null}
-            </Link>
+            </div>
+          ) : liveDash.insightToday ? (
+            <p className="inline-flex items-center gap-1.5 text-xs text-[var(--ui-muted)] mb-4">
+              <MdDateRange className="shrink-0 text-sky-500" />
+              {liveDash.insightToday}
+            </p>
+          ) : null}
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h4 className="inline-flex items-center gap-2 text-sm font-bold text-rose-700">
+                <MdWarning className="text-lg" />
+                Alertas del sistema
+              </h4>
+              <Link
+                to="/admin/indicadores?tab=alertas"
+                className="inline-flex items-center gap-2 text-xs font-semibold text-rose-600 hover:text-rose-700"
+                title="Ver alertas en Indicadores"
+              >
+                Ver todas →
+                {visibleOperationalAlerts.length > 0 ? (
+                  <span className="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold inline-flex items-center justify-center tabular-nums">
+                    {visibleOperationalAlerts.length > 99 ? '99+' : visibleOperationalAlerts.length}
+                  </span>
+                ) : null}
+              </Link>
+            </div>
+            {visibleOperationalAlerts.length > 0 ? (
+              <ul className="space-y-2">
+                {visibleOperationalAlerts.map((a) => {
+                  const alertId = String(a.id || '');
+                  const AlertIcon = alertId.includes('stock')
+                    ? MdInventory2
+                    : alertId.includes('caja')
+                      ? MdPointOfSale
+                      : alertId.includes('kitchen') || alertId.includes('cocina')
+                        ? MdKitchen
+                        : alertId.includes('bar')
+                          ? MdLocalBar
+                          : alertId.includes('delivery')
+                            ? MdDeliveryDining
+                            : alertId.includes('mesa') || alertId.includes('ready')
+                              ? MdTableBar
+                              : MdWarning;
+                  return (
+                    <li
+                      key={a.id}
+                      className="flex flex-wrap items-center gap-3 rounded-xl bg-white/70 px-3 py-2.5"
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-100 text-rose-600">
+                        <AlertIcon className="text-lg" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-rose-950">{a.title}</p>
+                        <p className="text-xs text-rose-900/80">{a.message}</p>
+                      </div>
+                      {a.linkTo && a.linkLabel ? (
+                        <Link
+                          to={a.linkTo}
+                          className="shrink-0 rounded-xl border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition-colors"
+                        >
+                          {a.linkLabel} →
+                        </Link>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-xs text-rose-800/80">Sin alertas operativas en este momento.</p>
+            )}
           </div>
           </>
         ) : null}

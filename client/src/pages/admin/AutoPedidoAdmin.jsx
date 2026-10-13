@@ -84,12 +84,7 @@ function selfOrderUrlForTable(number) {
   return `${base}/auto-pedido?mesa=${encodeURIComponent(String(number))}`;
 }
 
-function signNamePreviewPx(name) {
-  const len = Math.max(1, String(name || '').trim().length);
-  return Math.max(6, Math.min(11, 72 / (len * 0.55)));
-}
-
-function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onCommit, onUseFrame, placing, logoUrl, logoSlot, logoShape, restaurantName }) {
+function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onCommit, onUseFrame, placing, logoUrl, logoSlot, logoShape }) {
   const frameRef = useRef(null);
   const dragRef = useRef(null);
   const onChangeRef = useRef(onChange);
@@ -193,22 +188,14 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
                 <img
                   src={logoUrl}
                   alt=""
-                  className="absolute left-[14%] object-cover"
+                  className="absolute object-contain"
                   style={{
-                    top: restaurantName ? '6%' : '8%',
-                    width: '72%',
-                    height: restaurantName ? '56%' : '84%',
-                    borderRadius: logoShape === 'roundrect' ? '12%' : '50%',
+                    left: '10%',
+                    top: '10%',
+                    width: '80%',
+                    height: '80%',
                   }}
                 />
-              ) : null}
-              {restaurantName ? (
-                <span
-                  className="absolute left-[14%] right-[14%] text-center font-bold leading-none text-[#3f2a16]"
-                  style={{ bottom: '10%', fontSize: `${signNamePreviewPx(restaurantName)}px` }}
-                >
-                  {restaurantName}
-                </span>
               ) : null}
             </div>
           ) : null}
@@ -1234,7 +1221,6 @@ export default function AutoPedidoAdmin() {
             imageUrl={resolveMediaUrl(qrFormat)}
             slot={qrSlot}
             logoUrl={resolveMediaUrl(restaurantLogo)}
-            restaurantName={restaurantName}
             logoSlot={qrPrintFormatBySrc(qrFormat)?.logo}
             logoShape={qrPrintFormatBySrc(qrFormat)?.logoShape || 'ellipse'}
             sampleNumber={tables[0]?.number ?? '1'}

@@ -783,31 +783,12 @@ function traceLogoClip(ctx, area, shape) {
   ctx.ellipse(cx, cy, area.w * 0.46, area.h * 0.42, 0, 0, Math.PI * 2);
 }
 
-function drawNameFittedToLogo(ctx, name, centerX, centerY, maxW, maxH) {
-  const label = String(name || '').trim();
-  if (!label || maxW < 8 || maxH < 8) return;
-  let size = Math.floor(Math.min(maxH * 0.8, maxW * 0.28));
-  const min = Math.max(8, Math.floor(maxH * 0.28));
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#3f2a16';
-  while (size > min) {
-    ctx.font = `700 ${size}px Georgia, "Times New Roman", serif`;
-    if (ctx.measureText(label).width <= maxW) break;
-    size -= 1;
-  }
-  ctx.font = `700 ${size}px Georgia, "Times New Roman", serif`;
-  ctx.fillText(label, centerX, centerY, maxW);
-}
-
 /**
- * Deja el logo tal cual y solo lo recorta con la forma del letrero.
- * El nombre del local se escribe debajo, al ancho de ese logo.
+ * Solo el logo del local, contenido en el letrero. No escribe el nombre.
  */
-export function placeSystemLogo(ctx, formatImage, logoImage, slot, fit, shape = 'ellipse', restaurantName = '') {
+export function placeSystemLogo(ctx, formatImage, logoImage, slot, fit, shape = 'ellipse') {
   const area = slotToPixels(slot, formatImage, fit);
   if (!ctx || !formatImage || !logoImage || !area?.w || !area?.h) return;
-  const name = String(restaurantName || '').trim();
   const fill = sampleSignFill(formatImage, normalizeQrSlot(slot));
   ctx.save();
   traceLogoClip(ctx, area, shape);
@@ -816,15 +797,12 @@ export function placeSystemLogo(ctx, formatImage, logoImage, slot, fit, shape = 
   ctx.fillRect(area.x, area.y, area.w, area.h);
 
   const logoArea = {
-    x: area.x + area.w * 0.14,
-    y: area.y + area.h * (name ? 0.06 : 0.08),
-    w: area.w * 0.72,
-    h: area.h * (name ? 0.56 : 0.84),
+    x: area.x + area.w * 0.1,
+    y: area.y + area.h * 0.1,
+    w: area.w * 0.8,
+    h: area.h * 0.8,
   };
-  ctx.save();
-  traceLogoClip(ctx, logoArea, shape);
-  ctx.clip();
-  const scale = Math.max(logoArea.w / logoImage.width, logoArea.h / logoImage.height);
+  const scale = Math.min(logoArea.w / logoImage.width, logoArea.h / logoImage.height);
   const dw = logoImage.width * scale;
   const dh = logoImage.height * scale;
   ctx.drawImage(
@@ -835,21 +813,9 @@ export function placeSystemLogo(ctx, formatImage, logoImage, slot, fit, shape = 
     dh,
   );
   ctx.restore();
-
-  if (name) {
-    drawNameFittedToLogo(
-      ctx,
-      name,
-      area.x + area.w / 2,
-      area.y + area.h * 0.8,
-      logoArea.w,
-      area.h * 0.28,
-    );
-  }
-  ctx.restore();
 }
 
-export async function renderTableQrA5({ url, tableNumber, formatImage, slot, logoImage, logoSlot, logoShape, restaurantName }) {
+export async function renderTableQrA5({ url, tableNumber, formatImage, slot, logoImage, logoSlot, logoShape }) {
   if (!formatImage) throw new Error('Cargue el formato de imagen antes de imprimir');
   const { width, height } = a5Pixels();
   const canvas = document.createElement('canvas');
@@ -865,7 +831,7 @@ export async function renderTableQrA5({ url, tableNumber, formatImage, slot, log
   const fit = containPlacement(formatImage, width, height);
   ctx.drawImage(formatImage, fit.x, fit.y, fit.w, fit.h);
   if (logoImage && logoSlot) {
-    placeSystemLogo(ctx, formatImage, logoImage, logoSlot, fit, logoShape, restaurantName);
+    placeSystemLogo(ctx, formatImage, logoImage, logoSlot, fit, logoShape);
   }
 
   const slotW = Math.max(32, (placed.w || placed.size) * fit.scale);
