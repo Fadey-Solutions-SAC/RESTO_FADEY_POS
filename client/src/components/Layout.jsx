@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { isBrowserOffline, isNetworkFailure } from '../utils/offlinePos';
 import { useSocket } from '../hooks/useSocket';
-import { MdPointOfSale, MdLock, MdAdminPanelSettings, MdCheckCircle, MdClose } from 'react-icons/md';
+import { MdPointOfSale, MdLock, MdAdminPanelSettings, MdCheckCircle, MdClose, MdKeyboardArrowDown } from 'react-icons/md';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppLocaleBootstrap } from '../hooks/useAppLocaleBootstrap';
@@ -160,7 +160,7 @@ export default function Layout() {
               </div>
             ) : null}
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {user?.role === 'master_admin' && (
               <Link
                 to="/master"
@@ -180,15 +180,16 @@ export default function Layout() {
             <Link
               to="/admin/perfil"
               title="Mi perfil"
-              className="flex items-center gap-2 shrink-0 rounded-xl px-1.5 py-1 -mx-1.5 hover:bg-[var(--ui-sidebar-hover)] transition-colors"
+              className="group flex h-10 sm:h-12 items-center gap-2 sm:gap-2.5 shrink-0 rounded-xl sm:rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-1.5 sm:px-2.5 shadow-sm transition-all hover:-translate-y-px hover:bg-[var(--ui-sidebar-hover)] hover:shadow"
             >
-              <div className="w-8 h-8 bg-[var(--ui-sidebar-active-bg)] rounded-full flex items-center justify-center border border-[color:var(--ui-border)]">
-                <span className="text-[var(--ui-body-text)] text-xs font-bold">{user?.full_name?.[0] || 'U'}</span>
+              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-sky-400 to-blue-700 rounded-full flex items-center justify-center border border-white/60 shadow-sm">
+                <span className="text-white text-xs sm:text-sm font-bold uppercase">{user?.full_name?.[0] || user?.username?.[0] || 'U'}</span>
               </div>
-              <div className="hidden sm:block">
-                <p className="text-sm font-medium text-[var(--ui-body-text)] leading-tight">{user?.full_name || user?.username}</p>
-                <p className="text-xs text-[var(--ui-muted)] capitalize">{t(`roles.${user?.role}`, { defaultValue: user?.role })}</p>
+              <div className="hidden sm:block min-w-0 max-w-36 text-left">
+                <p className="text-sm font-semibold text-[var(--ui-body-text)] leading-tight truncate">{user?.full_name || user?.username}</p>
+                <p className="text-xs text-[var(--ui-muted)] capitalize leading-tight mt-0.5 truncate">{t(`roles.${user?.role}`, { defaultValue: user?.role })}</p>
               </div>
+              <MdKeyboardArrowDown className="hidden md:block text-xl text-[var(--ui-muted)] transition-transform group-hover:translate-y-0.5" aria-hidden="true" />
             </Link>
           </div>
         </header>

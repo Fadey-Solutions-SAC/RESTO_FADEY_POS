@@ -768,23 +768,23 @@ function traceLogoClip(ctx, area, shape) {
   const cy = area.y + area.h / 2;
   ctx.beginPath();
   if (shape === 'roundrect') {
-    const x = area.x + area.w * 0.08;
-    const y = area.y + area.h * 0.12;
-    const w = area.w * 0.84;
-    const h = area.h * 0.76;
-    const r = Math.min(w, h) * 0.12;
+    const r = Math.min(area.w, area.h) * 0.12;
     if (typeof ctx.roundRect === 'function') {
-      ctx.roundRect(x, y, w, h, r);
+      ctx.roundRect(area.x, area.y, area.w, area.h, r);
     } else {
-      ctx.rect(x, y, w, h);
+      ctx.rect(area.x, area.y, area.w, area.h);
     }
     return;
   }
-  ctx.ellipse(cx, cy, area.w * 0.46, area.h * 0.42, 0, 0, Math.PI * 2);
+  if (shape === 'circle') {
+    ctx.arc(cx, cy, Math.min(area.w, area.h) / 2, 0, Math.PI * 2);
+    return;
+  }
+  ctx.ellipse(cx, cy, area.w / 2, area.h / 2, 0, 0, Math.PI * 2);
 }
 
 /**
- * Solo el logo del local, contenido en el letrero. No escribe el nombre.
+ * Solo el logo del local, recortado con la forma y tamaño del letrero.
  */
 export function placeSystemLogo(ctx, formatImage, logoImage, slot, fit, shape = 'ellipse') {
   const area = slotToPixels(slot, formatImage, fit);
@@ -796,13 +796,16 @@ export function placeSystemLogo(ctx, formatImage, logoImage, slot, fit, shape = 
   ctx.fillStyle = fill;
   ctx.fillRect(area.x, area.y, area.w, area.h);
 
-  const logoArea = {
-    x: area.x + area.w * 0.1,
-    y: area.y + area.h * 0.1,
-    w: area.w * 0.8,
-    h: area.h * 0.8,
-  };
-  const scale = Math.min(logoArea.w / logoImage.width, logoArea.h / logoImage.height);
+  const side = Math.min(area.w, area.h);
+  const logoArea = shape === 'circle'
+    ? {
+        x: area.x + (area.w - side) / 2,
+        y: area.y + (area.h - side) / 2,
+        w: side,
+        h: side,
+      }
+    : area;
+  const scale = Math.max(logoArea.w / logoImage.width, logoArea.h / logoImage.height);
   const dw = logoImage.width * scale;
   const dh = logoImage.height * scale;
   ctx.drawImage(

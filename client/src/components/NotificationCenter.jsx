@@ -8,7 +8,7 @@ import StaffTeamChat from './StaffTeamChat';
 import FadeyAiChatPanel from './FadeyAiChatPanel';
 import DevicePermissionsBanner from './DevicePermissionsBanner';
 import toast from 'react-hot-toast';
-import { MdClose, MdChat, MdCampaign, MdDelete, MdUpload, MdRestaurant } from 'react-icons/md';
+import { MdClose, MdChat, MdNotifications, MdDelete, MdUpload, MdRestaurant } from 'react-icons/md';
 import { FADEY_AI_TAGLINE, FADEY_AI_CREATOR_MODE, getFadeyAiAvatarSrc, OPEN_FADEY_AI_EVENT, isFadeyAiCreatorMode } from '../constants/fadeyAiBranding';
 import {
   PAGO_USO_SUBIR_COMPROBANTE_AVISO_TITLE,
@@ -637,14 +637,16 @@ export default function NotificationCenter({ className = '' }) {
       : null;
 
   const btnClass = (active) =>
-    `relative shrink-0 p-1.5 sm:p-2 rounded-lg transition-colors ${
-      active ? 'bg-[var(--ui-sidebar-hover)]' : 'hover:bg-[var(--ui-sidebar-hover)]'
+    `relative grid h-9 w-9 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-xl border shadow-sm transition-all ${
+      active
+        ? 'border-[color:var(--ui-accent)] bg-[var(--ui-sidebar-hover)] text-[var(--ui-accent)] ring-1 ring-[color:var(--ui-accent)]/15'
+        : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:-translate-y-px hover:bg-[var(--ui-sidebar-hover)] hover:shadow'
     }`;
 
   if (!user || user?.type === 'customer') return null;
 
   return (
-    <div ref={rootRef} className={`relative flex items-center gap-0 shrink-0 ${className}`}>
+    <div ref={rootRef} className={`relative flex items-center gap-1.5 sm:gap-2 shrink-0 ${className}`}>
       {canUseFadeyAi ? (
         <button
           type="button"
@@ -657,7 +659,7 @@ export default function NotificationCenter({ className = '' }) {
           <img
             src={getFadeyAiAvatarSrc('saludo')}
             alt="PIX"
-            className="w-8 h-8 rounded-full object-cover border border-[color:var(--ui-border)]"
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover"
             draggable={false}
           />
         </button>
@@ -672,9 +674,9 @@ export default function NotificationCenter({ className = '' }) {
           aria-expanded={open && tab === 'avisos'}
           aria-label="Notificaciones"
         >
-          <MdCampaign className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
+          <MdNotifications className="text-[1.3rem] sm:text-[1.35rem]" />
           {visibleAdminNotifications.length > 0 ? (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold leading-none bg-red-500 text-white rounded-full ring-2 ring-[color:var(--ui-surface)] shadow-sm">
               {visibleAdminNotifications.length > 99 ? '99+' : visibleAdminNotifications.length}
             </span>
           ) : null}
@@ -689,9 +691,9 @@ export default function NotificationCenter({ className = '' }) {
         aria-expanded={open && tab === 'chat'}
         aria-label="Mensajes"
       >
-        <MdChat className="text-[1.35rem] sm:text-xl text-[var(--ui-body-text)]" />
+        <MdChat className="text-[1.3rem] sm:text-[1.35rem]" />
         {unreadChat > 0 ? (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-[#EF4444] text-white rounded-full">
+          <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold leading-none bg-red-500 text-white rounded-full ring-2 ring-[color:var(--ui-surface)] shadow-sm">
             {unreadChat > 99 ? '99+' : unreadChat}
           </span>
         ) : null}

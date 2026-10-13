@@ -180,7 +180,12 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
                 top: `${logoSlot.y * 100}%`,
                 width: `${logoSlot.w * 100}%`,
                 height: `${logoSlot.h * 100}%`,
-                borderRadius: logoShape === 'roundrect' ? '16%' : '50%',
+                borderRadius: logoShape === 'roundrect' ? '12%' : '0',
+                clipPath: logoShape === 'circle'
+                  ? 'circle(50% at 50% 50%)'
+                  : logoShape === 'ellipse'
+                    ? 'ellipse(50% 50% at 50% 50%)'
+                    : 'none',
                 background: '#f6ead2',
               }}
             >
@@ -188,13 +193,7 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
                 <img
                   src={logoUrl}
                   alt=""
-                  className="absolute object-contain"
-                  style={{
-                    left: '10%',
-                    top: '10%',
-                    width: '80%',
-                    height: '80%',
-                  }}
+                  className="absolute inset-0 h-full w-full object-cover"
                 />
               ) : null}
             </div>
