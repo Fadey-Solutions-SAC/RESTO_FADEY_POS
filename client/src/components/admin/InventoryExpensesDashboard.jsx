@@ -159,6 +159,20 @@ export default function InventoryExpensesDashboard({ onNewExpense }) {
     setFilters({ ...draft, search: String(draft.search || '').trim() });
   };
 
+  const applyHeaderFilter = (field, value) => {
+    const nextDraft = { ...draft, [field]: value };
+    setDraft(nextDraft);
+    if (field === 'user_id') {
+      setPage(1);
+      setFilters((prev) => ({ ...prev, user_id: value }));
+      return;
+    }
+    if (nextDraft.from && nextDraft.to && nextDraft.from <= nextDraft.to) {
+      setPage(1);
+      setFilters((prev) => ({ ...prev, from: nextDraft.from, to: nextDraft.to }));
+    }
+  };
+
   const clearFilters = () => {
     const next = { ...initialDateRange(), category: '', user_id: '', search: '' };
     setDraft(next);
@@ -235,21 +249,17 @@ export default function InventoryExpensesDashboard({ onNewExpense }) {
   return (
     <div className="space-y-3">
       <section className="rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-4 shadow-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-[var(--ui-body-text)]">Control de Recursos — Gastos</h2>
-            <p className="text-xs text-[var(--ui-muted)]">Registro y análisis de los gastos de tu negocio</p>
-          </div>
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-end">
           <div className="flex flex-wrap items-center gap-2">
             <label className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-2 py-1.5">
               <MdCalendarMonth className="text-sky-600" />
-              <input type="date" value={draft.from} onChange={(e) => setDraft((prev) => ({ ...prev, from: e.target.value }))} className="bg-transparent text-xs text-[var(--ui-body-text)] outline-none" />
+              <input type="date" value={draft.from} onChange={(e) => applyHeaderFilter('from', e.target.value)} className="bg-transparent text-xs text-[var(--ui-body-text)] outline-none" />
               <span className="text-xs text-[var(--ui-muted)]">a</span>
-              <input type="date" value={draft.to} onChange={(e) => setDraft((prev) => ({ ...prev, to: e.target.value }))} className="bg-transparent text-xs text-[var(--ui-body-text)] outline-none" />
+              <input type="date" value={draft.to} onChange={(e) => applyHeaderFilter('to', e.target.value)} className="bg-transparent text-xs text-[var(--ui-body-text)] outline-none" />
             </label>
             <label className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] px-2 py-1.5">
               <MdPerson className="text-sky-600" />
-              <select value={draft.user_id} onChange={(e) => setDraft((prev) => ({ ...prev, user_id: e.target.value }))} className="min-w-36 bg-transparent text-xs text-[var(--ui-body-text)] outline-none">
+              <select value={draft.user_id} onChange={(e) => applyHeaderFilter('user_id', e.target.value)} className="min-w-36 bg-transparent text-xs text-[var(--ui-body-text)] outline-none">
                 <option value="">Todos los usuarios</option>
                 {(data?.users || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>

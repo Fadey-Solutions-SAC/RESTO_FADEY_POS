@@ -132,6 +132,13 @@ async function main() {
     assert(panel.json.rows.some((row) => row.source_id === legacyPurchaseId && row.category === 'supplies'), 'la recepción histórica sin purchase_date sigue visible como compra de insumos');
     assert(panel.json.summary.variation_pct === 660, `variación esperada 660%, salió ${panel.json.summary.variation_pct}`);
 
+    const defaultPeriod = await api(server, 'GET', '/inventory/expenses-dashboard', { token: adminToken });
+    assert(defaultPeriod.status === 200, 'el periodo predeterminado carga el mes actual');
+    assert(defaultPeriod.json.period.from === '2026-10-01', `el periodo debe iniciar el primer día del mes, inició ${defaultPeriod.json.period.from}`);
+    assert(defaultPeriod.json.rows.some((row) => row.source_id === legacyPurchaseId), 'el gasto antiguo del mes aparece sin configurar filtros manualmente');
+    const priorPeriod = await api(server, 'GET', '/inventory/expenses-dashboard?from=2026-09-01&to=2026-09-30', { token: adminToken });
+    assert(priorPeriod.status === 200 && priorPeriod.json.summary.total === 100, 'al seleccionar el mes anterior se cargan sus gastos');
+
     const operating = await api(server, 'GET', '/inventory/expenses-dashboard?from=2026-10-01&to=2026-10-12&category=operating', { token: adminToken });
     assert(operating.json.summary.total === 320 && operating.json.rows.length === 1, 'el filtro por categoría afecta total y tabla');
 
