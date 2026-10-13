@@ -92,7 +92,7 @@ export default function MiRestaurant() {
   const cargarMontoPendingRef = useRef(null);
   const [restaurant, setRestaurant] = useState(null);
   const [profile, setProfile] = useState(() => defaultMiRestaurantProfile());
-  const [empresaTab, setEmpresaTab] = useState('info');
+  const [empresaTab, setEmpresaTab] = useState(() => searchParams.get('tab') || 'info');
   const [autosaveStatus, setAutosaveStatus] = useState('');
   const autosaveTimerRef = useRef(null);
   const skipAutosaveRef = useRef(true);
@@ -110,6 +110,11 @@ export default function MiRestaurant() {
   const [activeView, setActiveView] = useState(
     initialViewParam === 'series_contingencia' ? 'facturacion_electronica' : initialViewParam
   );
+  useEffect(() => {
+    const requested = String(searchParams.get('tab') || '').trim();
+    const allowed = new Set(['info', 'identidad', 'tickets', 'tributaria', 'delivery', 'qr', 'mensajes', 'schedule']);
+    if (requested && allowed.has(requested) && requested !== empresaTab) setEmpresaTab(requested);
+  }, [searchParams, empresaTab]);
   const [appConfig, setAppConfig] = useState({
     regional: { country: 'Peru', timezone: 'America/Lima', language: 'es', date_format: 'DD/MM/YYYY' },
     pagos_sistema: {

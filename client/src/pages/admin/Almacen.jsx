@@ -14,6 +14,7 @@ import { FaCoins } from 'react-icons/fa';
 import Modal from '../../components/Modal';
 import LogisticaKardexModule from '../../components/LogisticaKardexModule';
 import InsumoCreateModal from '../../components/InsumoCreateModal';
+import InventoryExpensesDashboard from '../../components/admin/InventoryExpensesDashboard';
 import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import {
@@ -578,9 +579,6 @@ export default function Almacen() {
 
   useSocket('inventory-update', () => {
     void load();
-    if (activeView === 'ir_modulo_gastos') {
-      api.get('/inventory/expenses').then((expenses) => setExpenseHistory(expenses || [])).catch(() => {});
-    }
   });
   useSocket('staff-data-update', (p) => {
     if (p?.domain === 'catalog') void load();
@@ -608,10 +606,6 @@ export default function Almacen() {
           });
           setReceptionForm(nextForm);
           setReceptionSelectedKeys((requirement?.items || []).map((item) => receptionReqKey(item.product_id)));
-        }
-        if (activeView === 'ir_modulo_gastos') {
-          const expenses = await api.get('/inventory/expenses');
-          setExpenseHistory(expenses || []);
         }
       } catch (err) {
         toast.error(err.message || 'No se pudo cargar la información');
@@ -1690,6 +1684,23 @@ export default function Almacen() {
         )}
 
         {activeView === 'ir_modulo_gastos' && (
+          <InventoryExpensesDashboard
+            onNewExpense={(kind) => {
+              if (kind === 'cash') {
+                navigate('/admin/caja?view=egresos');
+                return;
+              }
+              if (kind === 'payroll') {
+                navigate('/admin/mi-restaurant?view=mi_empresa&tab=schedule');
+                return;
+              }
+              setActiveView('recepcion');
+              setSearchParams({ view: 'recepcion' });
+            }}
+          />
+        )}
+
+        {/* Implementación anterior conservada temporalmente como referencia de compatibilidad.
           <div className="space-y-4">
             {expenseGroups.length === 0 ? (
               <div className="card">
@@ -1902,6 +1913,7 @@ export default function Almacen() {
           </div>
         </Modal>
 
+        */}
         {activeView === 'ir_modulo_logistica' && <LogisticaKardexModule />}
         <CreateProductModal
           isOpen={showCreateModal}

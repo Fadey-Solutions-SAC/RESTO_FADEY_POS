@@ -12,6 +12,7 @@ const {
 const { resolvePurchaseDate, parsePurchaseDateInput } = require('../utils/inventoryPurchaseDate');
 const { isUnidadUm, insumoStockEnUnidades } = require('../utils/insumoUnidadMedida');
 const { getOpenRegisterForUser } = require('../utils/openCashRegister');
+const { buildExpenseDashboard } = require('../services/expenseDashboardService');
 
 const router = express.Router();
 
@@ -817,12 +818,23 @@ router.get('/expenses', authenticateToken, requireRole('admin'), (req, res) => {
        LEFT JOIN products p ON p.id = ie.product_id
        LEFT JOIN insumos ins ON ins.id = ie.product_id
        LEFT JOIN warehouse_locations wl ON wl.id = ie.warehouse_id
-       ORDER BY ie.created_at DESC
-       LIMIT 100`
+       ORDER BY COALESCE(NULLIF(trim(ie.purchase_date), ''), ie.created_at) DESC, ie.created_at DESC`
     );
     res.json(expenses);
   } catch (err) {
     res.status(500).json({ error: err.message || 'No se pudo listar gastos' });
+  }
+});
+
+router.get('/expenses-dashboard', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    ensureWarehouseTables();
+    res.set('Cache-Control', 'no-store');
+    res.json(buildExpenseDashboard(req.query || {}));
+  } catch (err) {
+    res.status(err.statusCode || 500).json({
+      error: err.message || 'No se pudo cargar el panel de gastos',
+    });
   }
 });
 
@@ -892,11 +904,18 @@ router.put('/expenses', authenticateToken, requireRole('admin'), (req, res) => {
       }
     });
 
-    if (notes !== undefined && requirement_id) {
-      runSql(
-        'UPDATE inventory_expenses SET notes = ? WHERE requirement_id = ?',
-        [String(notes || ''), String(requirement_id)],
-      );
+    if (notes !== undefined) {
+      if (requirement_id) {
+        runSql(
+          'UPDATE inventory_expenses SET notes = ? WHERE requirement_id = ?',
+          [String(notes || ''), String(requirement_id)],
+        );
+      } else {
+        rows.forEach((row) => {
+          const id = String(row?.id || '').trim();
+          if (id) runSql('UPDATE inventory_expenses SET notes = ? WHERE id = ?', [String(notes || ''), id]);
+        });
+      }
     }
 
     if (changed === 0 && !hasNotes && !hasPurchaseDate) {
@@ -912,6 +931,7 @@ router.put('/expenses', authenticateToken, requireRole('admin'), (req, res) => {
       details: { updated_rows: changed },
     });
 
+    emitInventoryUpdate({});
     res.json({ success: true, updated: changed });
   } catch (err) {
     res.status(err.message?.includes('inválid') ? 400 : 500).json({

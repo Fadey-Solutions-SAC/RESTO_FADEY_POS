@@ -22,7 +22,7 @@ export const QR_PRINT_FORMATS = [
     src: '/qr-formats/polleria.jpg',
     logoShape: 'ellipse',
     qr: { x: 0.333, y: 0.442, w: 0.337, h: 0.213 },
-    logo: { x: 0.375, y: 0.082, w: 0.25, h: 0.095 },
+    logo: { x: 0.285, y: 0.058, w: 0.43, h: 0.16 },
   },
   {
     id: 'rio',
