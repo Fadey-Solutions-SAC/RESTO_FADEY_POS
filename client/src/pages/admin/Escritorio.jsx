@@ -1153,8 +1153,10 @@ export default function Escritorio() {
                       </span>
                       <span className="font-semibold text-xs truncate">{stationName}</span>
                     </div>
-                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                      {isOpen ? 'Abierta' : 'Activa'}
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {isOpen ? 'Abierta' : 'Cerrada'}
                     </span>
                   </div>
                   <p className="text-lg font-bold text-sky-950 tabular-nums mt-1">
