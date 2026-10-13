@@ -158,6 +158,18 @@ h1, h2, h3, h4 {
   box-shadow: var(--ui-shadow-sm);
 }
 
+.rf-shell-control {
+  background: color-mix(in srgb, var(--ui-accent-muted) 13%, transparent) !important;
+  border-color: color-mix(in srgb, var(--ui-accent-muted) 28%, transparent) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+}
+
+.rf-shell-control:hover,
+.rf-shell-control--active {
+  background: color-mix(in srgb, var(--ui-accent-muted) 22%, transparent) !important;
+  border-color: color-mix(in srgb, var(--ui-accent-muted) 42%, transparent) !important;
+}
+
 /* Cabecera: pastel del menú — colores bien distintos por tema */
 html[data-ui-theme='corporate_blue'] .rf-shell-header {
   background: #C4B5FD !important;

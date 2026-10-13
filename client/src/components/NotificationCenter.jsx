@@ -637,10 +637,10 @@ export default function NotificationCenter({ className = '' }) {
       : null;
 
   const btnClass = (active) =>
-    `relative grid h-9 w-9 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-xl border shadow-sm transition-all ${
+    `rf-shell-control relative grid h-9 w-9 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-md border transition-all ${
       active
-        ? 'border-[color:var(--ui-accent)] bg-[var(--ui-sidebar-hover)] text-[var(--ui-accent)] ring-1 ring-[color:var(--ui-accent)]/15'
-        : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:-translate-y-px hover:bg-[var(--ui-sidebar-hover)] hover:shadow'
+        ? 'rf-shell-control--active text-[var(--ui-accent)] ring-1 ring-[color:var(--ui-accent)]/15'
+        : 'text-[var(--ui-body-text)] hover:-translate-y-px'
     }`;
 
   if (!user || user?.type === 'customer') return null;
