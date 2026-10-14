@@ -474,7 +474,18 @@ function printUsbGdi(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
       ? `<div aria-hidden="true" style="height:0;overflow:hidden;font-family:Consolas,'Courier New',monospace;font-size:${fontPx}px;white-space:pre">${'&nbsp;'.repeat(colChars)}</div>`
       : '';
     const column = `<div style="width:max-content;max-width:${paperMm}mm;margin:0">${colSpacer}${logoBlock}${brandBlock}${bodyHtml}${footerImageBlock}</div>`;
-    const html = `<!DOCTYPE html><meta charset="utf-8"><style>@page{margin:0}html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;overflow:visible}body{width:${paperMm}mm;max-width:${paperMm}mm;margin:0 auto;box-sizing:border-box;overflow:visible}</style>${column}${footSpacer}`;
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@page{margin:0}
+html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;overflow:visible}
+body{width:${paperMm}mm;max-width:${paperMm}mm;margin:0 auto;box-sizing:border-box;overflow:visible}
+</style>
+</head>
+<body>${column}${footSpacer}</body>
+</html>`;
     const printWin = new BrowserWindow({
       show: false,
       webPreferences: { offscreen: true },
@@ -487,20 +498,30 @@ function printUsbGdi(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
         /* noop */
       }
     };
-    let tmpHtml = null;
-    if (html.length > 60000) {
-      tmpHtml = path.join(app.getPath('temp'), `resto-gdi-print-${Date.now()}.html`);
-      fs.writeFileSync(tmpHtml, html, 'utf8');
-      printWin.loadFile(tmpHtml);
-    } else {
-      printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    }
+    /**
+     * Siempre usar un HTML físico. Algunos equipos/driver térmicos procesaban la data URL como
+     * texto y terminaban imprimiendo el CSS (@page, body, etc.) encima de la nota.
+     */
+    const tmpHtml = path.join(
+      app.getPath('temp'),
+      `resto-gdi-print-${Date.now()}-${Math.random().toString(16).slice(2)}.html`,
+    );
+    fs.writeFileSync(tmpHtml, html, 'utf8');
+    printWin.loadFile(tmpHtml);
     printWin.webContents.on('did-fail-load', (_e, code, desc) => {
       cleanup(tmpHtml);
       printWin.close();
       reject(new Error(desc || `fallo al cargar vista de impresión (${code})`));
     });
-    printWin.webContents.on('did-finish-load', () => {
+    printWin.webContents.on('did-finish-load', async () => {
+      try {
+        await printWin.webContents.executeJavaScript(
+          'Promise.all(Array.from(document.images).map((img) => img.complete ? Promise.resolve() : new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; })))',
+          true,
+        );
+      } catch (_) {
+        /* Imprimir aun si una imagen remota no pudo decodificarse. */
+      }
       const targetName = String(printerName || '').trim();
       const finish = (success, failureReason) => {
         cleanup(tmpHtml);
