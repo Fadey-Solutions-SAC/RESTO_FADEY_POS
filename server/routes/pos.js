@@ -741,7 +741,12 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     charge_to_customer_account: chargeToAccountRaw,
     customer_id: customerIdRaw,
     payment_note: paymentNoteRaw,
+    defer_sale_note_print: deferSaleNotePrintRaw,
   } = body;
+  const deferSaleNotePrint =
+    deferSaleNotePrintRaw === true
+    || deferSaleNotePrintRaw === 1
+    || deferSaleNotePrintRaw === '1';
   const paymentNote = String(paymentNoteRaw || '').trim().slice(0, 300);
   const canSavePaymentNote = paymentNote ? ensureOrdersPaymentNoteColumn() : false;
   const chargeToCustomerAccount = chargeToAccountRaw === true || chargeToAccountRaw === 1 || chargeToAccountRaw === '1';
@@ -1057,12 +1062,14 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       },
     });
     const paidItems = paidOrders.flatMap((o) => (Array.isArray(o.items) ? o.items : []));
-    print('caja', {
-      title: 'VENTA CERRADA',
-      mesa: paidOrders[0]?.table_number || '',
-      items: paidItems,
-      text: `Cuenta(s) cobrada(s): ${accountCount}${paidOrders.length > accountCount ? ` (${paidOrders.length} comanda(s))` : ''}`,
-    }).catch((err) => console.error('[printing] caja cierre:', err.message || err));
+    if (!deferSaleNotePrint) {
+      print('caja', {
+        title: 'VENTA CERRADA',
+        mesa: paidOrders[0]?.table_number || '',
+        items: paidItems,
+        text: `Cuenta(s) cobrada(s): ${accountCount}${paidOrders.length > accountCount ? ` (${paidOrders.length} comanda(s))` : ''}`,
+      }).catch((err) => console.error('[printing] caja cierre:', err.message || err));
+    }
     const io = req.app.get('io');
     if (io) {
       for (const o of paidOrders) {

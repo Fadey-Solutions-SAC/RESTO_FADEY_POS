@@ -954,6 +954,9 @@ export default function POSPanel() {
   /** Zona/salón activo en mapa de mesas (pestañas tipo categoría). */
   const [selectedPosSalon, setSelectedPosSalon] = useState('');
   const [showBill, setShowBill] = useState(false);
+  /** Datos inmutables de la venta recién cobrada mientras se decide si imprimir la nota. */
+  const [salePrintPrompt, setSalePrintPrompt] = useState(null);
+  const [salePrintBusy, setSalePrintBusy] = useState(false);
   const [splitMode, setSplitMode] = useState(false);
   /** En dividir cuenta: ids de `order_items` incluidos en este cobro. */
   const [selectedOrderItemIds, setSelectedOrderItemIds] = useState([]);
@@ -2685,6 +2688,8 @@ export default function POSPanel() {
         ...posRegisterBody(),
         payment_method: checkoutPaymentMethod,
         discount_reason: discountConfig.reason,
+        // La interfaz preguntará si se imprime la nota; evita el ticket mínimo automático del servidor.
+        defer_sale_note_print: true,
       };
       if (chargeToAccount) {
         checkoutBody.charge_to_customer_account = true;
@@ -2805,21 +2810,7 @@ export default function POSPanel() {
         }
         const logoUrl = String(printRestaurantInfo.logo || '').trim() || undefined;
         const pw = cajaPaperWidthMm;
-        if (billingForm.doc_type === 'nota_venta') {
-          await printNotaVenta({
-            tableName: selectedTable?.name || '',
-            orders: ordersForPrint,
-            docs: issuedDocs,
-            paymentMethod: checkoutPaymentMethod,
-            discountTotal: totalDiscountToApply,
-            customer: {
-              doc_number: billingForm.customer_doc_number,
-              name: billingForm.customer_name,
-              address: billingForm.customer_address,
-              phone: billingForm.customer_phone,
-            },
-          });
-        } else if (billingForm.doc_type === 'boleta' || billingForm.doc_type === 'factura') {
+        if (billingForm.doc_type === 'boleta' || billingForm.doc_type === 'factura') {
           for (let i = 0; i < issuedDocs.length; i += 1) {
             const doc = issuedDocs[i];
             const ord = ordersForPrint[i];
@@ -2858,6 +2849,25 @@ export default function POSPanel() {
         toast.success(`${chargedCount} pedido(s) agregados a la cuenta de ${clientName}. Cobre después en Mi Clientes.`);
       } else {
         toast.success(`${chargedCount} pedido(s) cobrados en ${selectedTable.name}`);
+      }
+      if (
+        !chargeToAccount
+        && (issuedDocs.length === 0 || billingForm.doc_type === 'nota_venta')
+      ) {
+        setSalePrintPrompt({
+          tableName: selectedTable?.name || '',
+          orders: ordersForPrint,
+          docs: issuedDocs,
+          paymentMethod: checkoutPaymentMethod,
+          discountTotal: totalDiscountToApply,
+          total: payableTotal,
+          customer: {
+            doc_number: billingForm.customer_doc_number,
+            name: billingForm.customer_name,
+            address: billingForm.customer_address,
+            phone: billingForm.customer_phone,
+          },
+        });
       }
       setShowBill(false);
       setSplitMode(false);
@@ -4191,10 +4201,23 @@ export default function POSPanel() {
     customer,
     paymentMethod: paymentMethodArg,
     discountTotal = 0,
+    totalOverride,
   }) => {
-    const docText = (docs || []).map((d) => String(d?.full_number || '').trim()).filter(Boolean).join(' · ');
+    const documentNumbers = (docs || [])
+      .map((d) => String(d?.full_number || '').trim())
+      .filter(Boolean);
+    if (documentNumbers.length === 0) {
+      for (const order of orders || []) {
+        const number = String(order?.sale_document_number || '').trim();
+        if (number && !documentNumbers.includes(number)) documentNumbers.push(number);
+      }
+    }
+    const docText = documentNumbers.join(' · ');
     const groupedNota = groupItemsByProductNameForBill((orders || []).flatMap((o) => o.items || []));
-    const total = (orders || []).reduce((sum, o) => sum + getOrderChargeTotal(o), 0);
+    const calculatedTotal = (orders || []).reduce((sum, o) => sum + getOrderChargeTotal(o), 0);
+    const total = Number.isFinite(Number(totalOverride))
+      ? Number(totalOverride)
+      : calculatedTotal;
     const subtotalLines = groupedNota.reduce((s, g) => s + Number(g.subtotal != null ? g.subtotal : 0), 0);
     const customerLines = [
       customer?.name && `Nombre: ${customer.name}`,
@@ -4228,6 +4251,32 @@ export default function POSPanel() {
       toast.success('Nota de venta impresa');
     } else {
       toast.error(r.error || 'No se pudo imprimir nota de venta');
+    }
+    return r.ok;
+  };
+
+  const answerSalePrintPrompt = async (shouldPrint) => {
+    if (salePrintBusy) return;
+    if (!shouldPrint) {
+      setSalePrintPrompt(null);
+      return;
+    }
+    const snapshot = salePrintPrompt;
+    if (!snapshot) return;
+    setSalePrintBusy(true);
+    try {
+      const printed = await printNotaVenta({
+        tableName: snapshot.tableName,
+        orders: snapshot.orders,
+        docs: snapshot.docs || [],
+        customer: snapshot.customer,
+        paymentMethod: snapshot.paymentMethod,
+        discountTotal: snapshot.discountTotal,
+        totalOverride: snapshot.total,
+      });
+      if (printed) setSalePrintPrompt(null);
+    } finally {
+      setSalePrintBusy(false);
     }
   };
 
@@ -4282,13 +4331,28 @@ export default function POSPanel() {
     const orders = entry?.linkedOrders || [];
     if (!orders.length) return toast.error('Esta reserva no tiene pedidos pendientes para cobrar');
     try {
-      await api.post('/pos/checkout-table', {
+      const checkoutRes = await api.post('/pos/checkout-table', {
         ...posRegisterBody(),
         order_ids: orders.map(o => o.id),
         payment_method: paymentMethod || 'efectivo',
+        defer_sale_note_print: true,
       });
+      const paidOrders = Array.isArray(checkoutRes?.orders) && checkoutRes.orders.length
+        ? checkoutRes.orders
+        : orders;
       await api.put(`/admin-modules/reservations/${entry.reservation.id}`, { status: 'completed' }).catch(() => {});
       toast.success(`Reserva de ${entry.reservation.client_name} cobrada correctamente`);
+      setSalePrintPrompt({
+        tableName: String(paidOrders[0]?.table_number || ''),
+        orders: paidOrders,
+        paymentMethod: paymentMethod || 'efectivo',
+        discountTotal: 0,
+        total: Number(entry?.total || 0),
+        customer: {
+          name: String(entry.reservation.client_name || ''),
+          phone: String(entry.reservation.client_phone || entry.reservation.phone || ''),
+        },
+      });
       loadData();
     } catch (err) {
       toast.error(err.message);
@@ -5522,6 +5586,52 @@ export default function POSPanel() {
               className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-white bg-violet-600 hover:bg-violet-700"
             >
               Sí, desunir
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(salePrintPrompt)}
+        onClose={() => {
+          if (!salePrintBusy) setSalePrintPrompt(null);
+        }}
+        title="Venta cobrada"
+        size="sm"
+      >
+        <div className="space-y-4 text-center">
+          <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-sky-100 text-sky-600">
+            <MdPrint className="text-3xl" aria-hidden="true" />
+          </span>
+          <div>
+            <p className="text-base font-bold text-[var(--ui-body-text)]">
+              ¿Desea imprimir la nota de venta?
+            </p>
+            <p className="mt-1 text-sm text-[var(--ui-muted)]">
+              Total cobrado: <strong>{formatCurrency(salePrintPrompt?.total || 0)}</strong>
+            </p>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => void answerSalePrintPrompt(false)}
+              disabled={salePrintBusy}
+              className="btn-secondary flex-1"
+            >
+              No
+            </button>
+            <button
+              type="button"
+              onClick={() => void answerSalePrintPrompt(true)}
+              disabled={salePrintBusy}
+              className="btn-primary flex flex-1 items-center justify-center gap-2"
+            >
+              {salePrintBusy ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              ) : (
+                <MdPrint className="text-lg" />
+              )}
+              {salePrintBusy ? 'Imprimiendo…' : 'Sí, imprimir'}
             </button>
           </div>
         </div>
