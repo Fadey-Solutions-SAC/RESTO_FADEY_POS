@@ -474,17 +474,17 @@ function printUsbGdi(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
       ? `<div aria-hidden="true" style="height:0;overflow:hidden;font-family:Consolas,'Courier New',monospace;font-size:${fontPx}px;white-space:pre">${'&nbsp;'.repeat(colChars)}</div>`
       : '';
     const column = `<div style="width:max-content;max-width:${paperMm}mm;margin:0">${colSpacer}${logoBlock}${brandBlock}${bodyHtml}${footerImageBlock}</div>`;
+    /**
+     * Sin bloque <style>: algunos drivers térmicos GDI imprimen su contenido como texto.
+     * La cola recibe únicamente elementos con estilos internos y márgenes controlados por
+     * webContents.print, por lo que no existe CSS visible que pueda terminar en el papel.
+     */
     const html = `<!DOCTYPE html>
 <html>
-<head>
-<meta charset="utf-8">
-<style>
-@page{margin:0}
-html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;overflow:visible}
-body{width:${paperMm}mm;max-width:${paperMm}mm;margin:0 auto;box-sizing:border-box;overflow:visible}
-</style>
-</head>
-<body>${column}${footSpacer}</body>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;width:${paperMm}mm;max-width:${paperMm}mm;box-sizing:border-box;overflow:visible">
+${column}${footSpacer}
+</body>
 </html>`;
     const printWin = new BrowserWindow({
       show: false,
