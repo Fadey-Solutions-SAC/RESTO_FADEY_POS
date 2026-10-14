@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, formatCurrency, formatDateTime, formatDate, parseApiDate, isDateKeyInInclusiveRange, toLocalDateKey } from '../../utils/api';
+import { api, formatCurrency, formatDateTime, formatDate, parseApiDate, isDateKeyInInclusiveRange, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
 import { MdSearch, MdSave } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
-import { buildVentasDisplayGroups, isCourtesyOrder, orderMatchesMesaSearch, parseProductRemovalNotesFromOrder, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
+import { buildVentasDisplayGroups, getObservationRecordIds, groupItemsByProductNameForBill, isCourtesyOrder, orderMatchesMesaSearch, parseProductRemovalNotesFromOrder, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import SaleActionButtons, { SALE_ACTIONS } from '../../components/admin/SaleActionButtons';
 import { useAuth } from '../../context/AuthContext';
@@ -64,6 +64,228 @@ function orderReceiptHtml(order, groupedProducts = null) {
         <p><strong>Pago:</strong> ${formatOrderPaymentLabel(order, payLabel)}</p>
         <table><tbody>${itemsHtml}</tbody></table>
         <p class="total">Total: S/ ${Number(order.total || 0).toFixed(2)}</p>
+      </body>
+    </html>
+  `;
+}
+
+function escapeReceiptHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function notaVentaReceiptHtml({
+  restaurant,
+  orders,
+  document,
+  tableName,
+  widthMm,
+}) {
+  const sourceOrders = Array.isArray(orders) ? orders : [];
+  const primary = sourceOrders[0] || {};
+  const groupedRows = groupItemsByProductNameForBill(
+    sourceOrders.flatMap((order) => order.items || []),
+  );
+  const subtotal = groupedRows.reduce((sum, row) => sum + Number(row.subtotal || 0), 0);
+  const total = sourceOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+  const discount = Math.max(0, subtotal - total);
+  const customerName = String(primary.customer_name || '').trim();
+  const logo = String(restaurant?.logo || '').trim();
+  const businessName = String(
+    restaurant?.billing_nombre_comercial || restaurant?.name || 'RESTAURANTE',
+  ).trim();
+  const legalName = String(restaurant?.legal_name || '').trim();
+  const ruc = String(restaurant?.company_ruc || '').trim();
+  const address = String(
+    restaurant?.billing_emisor_direccion || restaurant?.address || '',
+  ).trim();
+  const phone = String(restaurant?.phone || '').trim();
+  const paidAt = parseApiDate(primary.paid_at || primary.updated_at || primary.created_at) || new Date();
+  const dateText = paidAt.toLocaleDateString('es-PE');
+  const timeText = paidAt.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+  const waiter = String(primary.created_by_user_name || '').trim();
+  const payment = formatOrderPaymentLabel(primary, payLabel) || '—';
+  const configuredFooter = String(
+    restaurant?.profile?.ticket?.footer_message
+    || restaurant?.profile?.ticket?.custom_footer
+    || '',
+  ).trim();
+  const footer = configuredFooter || '¡GRACIAS POR SU PREFERENCIA!';
+  const itemRows = groupedRows.map((row) => {
+    const qty = Number(row.qty || 0);
+    const unitPrice = row.unitPrice != null
+      ? Number(row.unitPrice)
+      : (qty > 0 ? Number(row.subtotal || 0) / qty : 0);
+    return `
+      <tr>
+        <td class="qty">${escapeReceiptHtml(qty)}</td>
+        <td class="description">${escapeReceiptHtml(row.name || 'Producto')}</td>
+        <td class="money">${escapeReceiptHtml(unitPrice.toFixed(2))}</td>
+        <td class="money">${escapeReceiptHtml(Number(row.subtotal || 0).toFixed(2))}</td>
+      </tr>
+    `;
+  }).join('');
+  const pageHeightMm = widthMm === 58 ? 220 : 260;
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <title></title>
+        <style>
+          @page { size: ${widthMm}mm ${pageHeightMm}mm; margin: 0; }
+          * { box-sizing: border-box; }
+          html, body {
+            width: ${widthMm}mm;
+            margin: 0;
+            padding: 0;
+            background: #fff;
+            color: #000;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          body { font-family: "Arial Narrow", Arial, sans-serif; }
+          .ticket {
+            width: ${widthMm}mm;
+            padding: ${widthMm === 58 ? 3 : 4}mm;
+            margin: 0;
+            font-size: ${widthMm === 58 ? 11 : 13}px;
+            line-height: 1.24;
+          }
+          .ticket-logo {
+            display: block;
+            max-width: ${widthMm === 58 ? 40 : 55}mm;
+            max-height: ${widthMm === 58 ? 20 : 26}mm;
+            margin: 0 auto 2mm;
+            object-fit: contain;
+          }
+          .center { text-align: center; }
+          .business { font-size: ${widthMm === 58 ? 16 : 20}px; font-weight: 900; }
+          .company-line { margin-top: 1px; font-weight: 600; }
+          .separator { border-top: 1.5px dashed #000; margin: 2.5mm 0; }
+          .document-title {
+            font-size: ${widthMm === 58 ? 18 : 22}px;
+            font-weight: 900;
+            letter-spacing: .6px;
+          }
+          .document-number {
+            margin-top: 1mm;
+            font-size: ${widthMm === 58 ? 15 : 18}px;
+            font-weight: 800;
+          }
+          .meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1mm 3mm;
+            font-weight: 700;
+          }
+          .meta div:nth-child(even) { text-align: right; }
+          .customer { margin-top: 2mm; font-weight: 700; }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: inherit;
+          }
+          th {
+            padding: 1.2mm .4mm;
+            border-top: 1.5px dashed #000;
+            border-bottom: 1.5px dashed #000;
+            text-align: left;
+            font-weight: 900;
+          }
+          td { padding: 1mm .4mm; vertical-align: top; font-weight: 600; }
+          .qty { width: 11%; text-align: center; }
+          .description { width: 49%; overflow-wrap: anywhere; }
+          .money { width: 20%; text-align: right; white-space: nowrap; }
+          .totals {
+            width: 72%;
+            margin-left: auto;
+            font-size: ${widthMm === 58 ? 12 : 14}px;
+          }
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 2mm;
+            margin: 1mm 0;
+            font-weight: 700;
+          }
+          .grand-total {
+            margin-top: 1.5mm;
+            font-size: ${widthMm === 58 ? 17 : 21}px;
+            font-weight: 900;
+          }
+          .footer {
+            margin-top: 3mm;
+            text-align: center;
+            font-size: ${widthMm === 58 ? 14 : 17}px;
+            font-weight: 900;
+            letter-spacing: .5px;
+          }
+          .return { margin-top: 1mm; text-align: center; font-weight: 800; }
+          @media screen {
+            body { background: #ececec; padding: 10px 0; }
+            .ticket { margin: 0 auto; background: #fff; min-height: 120mm; }
+          }
+          @media print {
+            html, body {
+              overflow: visible;
+            }
+            .ticket {
+              break-inside: avoid;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <main class="ticket">
+          ${logo ? `<img class="ticket-logo" src="${escapeReceiptHtml(logo)}" alt="" />` : ''}
+          <header class="center">
+            <div class="business">${escapeReceiptHtml(businessName.toUpperCase())}</div>
+            ${legalName ? `<div class="company-line">${escapeReceiptHtml(legalName.toUpperCase())}</div>` : ''}
+            ${ruc ? `<div class="company-line">RUC: ${escapeReceiptHtml(ruc)}</div>` : ''}
+            ${address ? `<div class="company-line">${escapeReceiptHtml(address)}</div>` : ''}
+            ${phone ? `<div class="company-line">Telf.: ${escapeReceiptHtml(phone)}</div>` : ''}
+          </header>
+          <div class="separator"></div>
+          <section class="center">
+            <div class="document-title">NOTA DE VENTA</div>
+            <div class="document-number">Nº ${escapeReceiptHtml(document?.full_number || '—')}</div>
+          </section>
+          <div class="separator"></div>
+          <section class="meta">
+            <div>FECHA: ${escapeReceiptHtml(dateText)}</div>
+            <div>HORA: ${escapeReceiptHtml(timeText)}</div>
+            <div>MESA: ${escapeReceiptHtml(tableName || '—')}</div>
+            <div>MOZO: ${escapeReceiptHtml(waiter || '—')}</div>
+          </section>
+          ${customerName ? `<div class="customer">CLIENTE: ${escapeReceiptHtml(customerName)}</div>` : ''}
+          <div class="customer">PAGO: ${escapeReceiptHtml(payment)}</div>
+          <div class="separator"></div>
+          <table>
+            <thead>
+              <tr>
+                <th class="qty">CANT.</th>
+                <th class="description">DESCRIPCIÓN</th>
+                <th class="money">P. UNIT.</th>
+                <th class="money">IMPORTE</th>
+              </tr>
+            </thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+          <div class="separator"></div>
+          <section class="totals">
+            <div class="total-row"><span>SUBTOTAL</span><span>${escapeReceiptHtml(formatCurrency(subtotal))}</span></div>
+            ${discount > 0.001 ? `<div class="total-row"><span>DESCUENTO</span><span>${escapeReceiptHtml(formatCurrency(discount))}</span></div>` : ''}
+            <div class="total-row grand-total"><span>TOTAL</span><span>${escapeReceiptHtml(formatCurrency(total))}</span></div>
+          </section>
+          <div class="separator"></div>
+          <div class="footer">${escapeReceiptHtml(footer.toUpperCase())}</div>
+          <div class="return">VUELVA PRONTO</div>
+        </main>
       </body>
     </html>
   `;
@@ -302,6 +524,7 @@ export default function Ventas() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [restaurantName, setRestaurantName] = useState('-');
+  const [restaurantInfo, setRestaurantInfo] = useState({ name: '', logo: '' });
   const [adjustmentRows, setAdjustmentRows] = useState([]);
   const [sortKey, setSortKey] = useState('fecha');
   const [sortDir, setSortDir] = useState('desc');
@@ -317,6 +540,10 @@ export default function Ventas() {
       const docsByOrder = new Map((docsData || []).map(d => [d.order_id, d]));
       const local = restaurant?.name || '-';
       setRestaurantName(local);
+      setRestaurantInfo({
+        ...restaurant,
+        logo: resolveMediaUrl(restaurant?.logo || ''),
+      });
       const merged = (ordersData || [])
         .filter((o) => !isCourtesyOrder(o))
         .map(o => ({ ...o, document: docsByOrder.get(o.id) || null, local_name: local }));
@@ -622,6 +849,18 @@ export default function Ventas() {
 
   const openGroupReceipt = (group) => {
     const primary = group.primary;
+    const accountDocument = getAccountDocument(group);
+    if (String(accountDocument.doc_type || 'nota_venta') === 'nota_venta') {
+      const widthMm = Number(restaurantInfo?.profile?.ticket?.paper_width_mm) === 58 ? 58 : 80;
+      openReceiptHtml(notaVentaReceiptHtml({
+        restaurant: restaurantInfo,
+        orders: group.orders || [primary],
+        document: accountDocument,
+        tableName: group.mesaLabel || primary?.table_number || '',
+        widthMm,
+      }));
+      return;
+    }
     const lines = group.groupedProducts.map((p) => ({
       name: p.name,
       qty: p.qty,
@@ -634,6 +873,21 @@ export default function Ventas() {
   };
 
   const openReceipt = (order, group = null) => {
+    if (group && String(getAccountDocument(group).doc_type || 'nota_venta') === 'nota_venta') {
+      openGroupReceipt(group);
+      return;
+    }
+    if (!group && String(getOrderDocument(order).doc_type || 'nota_venta') === 'nota_venta') {
+      const widthMm = Number(restaurantInfo?.profile?.ticket?.paper_width_mm) === 58 ? 58 : 80;
+      openReceiptHtml(notaVentaReceiptHtml({
+        restaurant: restaurantInfo,
+        orders: [order],
+        document: getOrderDocument(order),
+        tableName: order.table_number || '',
+        widthMm,
+      }));
+      return;
+    }
     if (group?.isMesa && group.comprobanteCount > 1) {
       openGroupReceipt(group);
       return;
