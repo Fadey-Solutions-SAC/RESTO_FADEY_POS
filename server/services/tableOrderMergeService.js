@@ -1,6 +1,6 @@
 const { tableNumbersMatch, normalizeTableNumber } = require('../utils/tableNumberMatch');
-const { resolveProductionArea, orderHasBarItems, orderHasKitchenItems } = require('../utils/productionArea');
-const { isCocinaStationComplete, isBarStationComplete, isStationMarkedReady } = require('../utils/kitchenStationReady');
+const { resolveProductionArea } = require('../utils/productionArea');
+const { isStationCompleteForStation, orderHasStationWork } = require('../utils/kitchenStationReady');
 const { sqlBusinessNowExpr } = require('../utils/appDateTime');
 const { queryOne: dbQueryOne } = require('../database');
 
@@ -84,15 +84,11 @@ function getOrderAreaItemsTx(tx, orderId) {
      WHERE oi.order_id = ?`,
     [orderId],
   );
-  return enrichOrderItemsWithComboAreasTx(items);
+  return enrichOrderItemsWithComboAreasTx(tx, items);
 }
 
-/** Clasifica ítems entrantes (POST mesa) por estación cocina/bar. */
-function classifyIncomingItemsProductionTx(tx, items) {
-  let hasKitchen = false;
-  let hasBar = false;
-  if (!Array.isArray(items)) return { hasKitchen, hasBar };
-
+function addIncomingItemAreaIds(tx, items, areas) {
+  if (!Array.isArray(items)) return;
   for (const item of items) {
     const comboId = String(item.combo_id || '').trim();
     if (comboId) {
@@ -104,41 +100,45 @@ function classifyIncomingItemsProductionTx(tx, items) {
         [comboId],
       );
       for (const ci of comboItems) {
-        if (resolveProductionArea(ci.production_area) === 'bar') hasBar = true;
-        else hasKitchen = true;
+        areas.add(resolveProductionArea(ci.production_area));
       }
       continue;
     }
     const product = tx.queryOne('SELECT production_area FROM products WHERE id = ?', [item.product_id]);
-    if (resolveProductionArea(product?.production_area) === 'bar') hasBar = true;
-    else hasKitchen = true;
+    areas.add(resolveProductionArea(product?.production_area));
   }
-  return { hasKitchen, hasBar };
+}
+
+/** Clasifica ítems entrantes (POST mesa) por estación cocina/bar. */
+function classifyIncomingItemsProductionTx(tx, items) {
+  const areas = new Set();
+  addIncomingItemAreaIds(tx, items, areas);
+  return {
+    hasKitchen: [...areas].some((id) => id !== 'bar'),
+    hasBar: areas.has('bar'),
+  };
+}
+
+function classifyIncomingItemAreaIdsTx(tx, items) {
+  const areas = new Set();
+  addIncomingItemAreaIds(tx, items, areas);
+  return areas;
 }
 
 /**
- * Si la estación (cocina/bar) del pedido entrante ya cerró/despachó la comanda,
+ * Si la estación del pedido entrante ya cerró/despachó esa área,
  * no fusionar: el caller debe crear una comanda nueva.
  */
 function isMergeBlockedByDispatchedStation(tx, order, incomingItems) {
   if (!order?.id || !Array.isArray(incomingItems) || !incomingItems.length) return false;
 
-  const { hasKitchen, hasBar } = classifyIncomingItemsProductionTx(tx, incomingItems);
-  if (!hasKitchen && !hasBar) return false;
+  const incomingAreas = classifyIncomingItemAreaIdsTx(tx, incomingItems);
+  if (!incomingAreas.size) return false;
 
   const areaItems = getOrderAreaItemsTx(tx, order.id);
-
-  if (hasKitchen) {
-    const kitchenDispatched =
-      isStationMarkedReady(order, 'cocina') ||
-      (orderHasKitchenItems(areaItems) && isCocinaStationComplete(order, areaItems));
-    if (kitchenDispatched) return true;
-  }
-  if (hasBar) {
-    const barDispatched =
-      isStationMarkedReady(order, 'bar') ||
-      (orderHasBarItems(areaItems) && isBarStationComplete(order, areaItems));
-    if (barDispatched) return true;
+  for (const areaId of incomingAreas) {
+    if (!orderHasStationWork(areaItems, areaId)) continue;
+    if (isStationCompleteForStation(order, areaItems, areaId)) return true;
   }
   return false;
 }

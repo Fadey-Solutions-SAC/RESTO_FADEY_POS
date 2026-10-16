@@ -15,8 +15,8 @@ const {
   isMergeBlockedByDispatchedStation,
   getOrderAreaItemsTx,
 } = require('./services/tableOrderMergeService');
-const { allRequiredStationsReady, isStationCompleteForStation, isCocinaStationComplete, isBarStationComplete } = require('./utils/kitchenStationReady');
-const { orderHasBarItems, orderHasKitchenItems } = require('./utils/productionArea');
+const { allRequiredStationsReady, isStationCompleteForStation } = require('./utils/kitchenStationReady');
+const { collectOrderProductionAreaIds } = require('./utils/productionArea');
 const { tableNumbersMatch } = require('./utils/tableNumberMatch');
 const { deductNonTransformedStockTx } = require('./warehouseStock');
 const {
@@ -335,13 +335,13 @@ function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes } = 
     customerId: order.customer_id || '',
   });
   const existingArea = getOrderAreaItemsTx(tx, orderId);
-  const stationStillOpen =
-    existingArea.length > 0
-    && (
-      (orderHasKitchenItems(existingArea) && !isCocinaStationComplete(order, existingArea))
-      || (orderHasBarItems(existingArea) && !isBarStationComplete(order, existingArea))
-    );
-  const newItemIds = insertOrderLineRows(tx, lines, { staffInHouseOrder, highlightNew: stationStillOpen });
+  const stationStillOpen = collectOrderProductionAreaIds(existingArea).some(
+    (aid) => !isStationCompleteForStation(order, existingArea, aid),
+  );
+  const newItemIds = insertOrderLineRows(tx, lines, {
+    staffInHouseOrder,
+    highlightNew: stationStillOpen || existingArea.length > 0,
+  });
   recordPromotionUsagesTx(tx, orderId, lines, actor, { customerId: order.customer_id || '' });
 
   const nextSubtotal = round2(Number(order.subtotal || 0) + subtotalAdded);

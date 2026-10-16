@@ -244,17 +244,21 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     try {
       const qs = new URLSearchParams();
       qs.set('station', areaId);
-      const data = await api.get(`/orders/kitchen?${qs.toString()}`);
-      setOrders(sortByArrival(Array.isArray(data) ? data : []));
-      if (usesItemLevelReady) {
+      const incoming = Array.isArray(data) ? data : [];
+      setOrders(sortByArrival(incoming));
+      setHighlightItemIds((prev) => {
+        const live = new Set(incoming.map((order) => String(order.id)));
         const ids = new Set();
-        (data || []).forEach((order) => {
+        for (const key of prev) {
+          if (live.has(String(key).split(':')[0])) ids.add(key);
+        }
+        incoming.forEach((order) => {
           getStationItems(order?.items).forEach((item) => {
             if (itemHighlightActive(item, null, order.id)) ids.add(kitchenHighlightKey(order.id, item.id));
           });
         });
-        setHighlightItemIds(ids);
-      }
+        return ids;
+      });
     } catch (err) {
       console.error(err);
       if (String(err?.message || '').includes('403') || String(err?.message || '').toLowerCase().includes('permiso')) {
@@ -313,14 +317,12 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
 
   const isKitchenItemHighlighted = useCallback(
     (item, orderId) => {
-      if (!usesItemLevelReady || !itemHighlightActive(item, highlightItemIds, orderId)) return false;
+      if (!itemHighlightActive(item, highlightItemIds, orderId)) return false;
       const order = orders.find((o) => o.id === orderId);
-      const pending = getPendingStationItems(order?.items);
-      const everyPendingIsNew = pending.length > 0
-        && pending.every((it) => itemHighlightActive(it, highlightItemIds, orderId));
-      return !everyPendingIsNew;
+      const stationItems = getStationItems(order?.items);
+      return stationItems.some((it) => !itemHighlightActive(it, highlightItemIds, orderId));
     },
-    [usesItemLevelReady, highlightItemIds, orders, getPendingStationItems],
+    [highlightItemIds, orders, getStationItems],
   );
 
   const isComandaDoneForStation = useCallback((order) => {
@@ -454,7 +456,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     const orderId = order?.id;
     const allNewIds = Array.isArray(payload?.new_item_ids) ? payload.new_item_ids : [];
     const stationNewIds = filterNewIdsForStation(order, allNewIds);
-    if (usesItemLevelReady && orderId && stationNewIds.length) {
+    if (orderId && stationNewIds.length) {
       const alreadyOnBoard = ordersRef.current.some((o) => o.id === orderId);
       if (alreadyOnBoard) {
         setHighlightItemIds((prev) => {
@@ -605,7 +607,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
   const PREP_OVERDUE_MS = delayMinutes > 0 ? delayMinutes * 60000 : KITCHEN_PREP_OVERDUE_MS;
 
   const getOrderTimerAnchor = (order) => {
-    return order?.kitchen_last_send_at || order?.created_at || getStationPreparingAt(order, areaId);
+    return order?.created_at || getStationPreparingAt(order, areaId);
   };
 
   const getTimeDiff = (order) => {
@@ -936,7 +938,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
 
               <div className="space-y-2 px-4 py-3">
                 {getPendingStationItems(order.items).map((item) => {
-                  const itemHighlighted = usesItemLevelReady && isKitchenItemHighlighted(item, order.id);
+                  const itemHighlighted = isKitchenItemHighlighted(item, order.id);
                   const itemBusyKey = `${order.id}:${item.id}`;
                   return (
                   <div

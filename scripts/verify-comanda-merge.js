@@ -8,6 +8,7 @@ const {
   isMergeBlockedByDispatchedStation,
   isOrderMergeableState,
   orderMatchesTableScope,
+  getOrderAreaItemsTx,
   TABLE_ORDER_MERGE_WINDOW_MINUTES,
 } = require('../server/services/tableOrderMergeService');
 
@@ -131,6 +132,9 @@ assert(
   'cocina en curso + ítem cocina → sí fusionar',
   !isMergeBlockedByDispatchedStation(txActive2, activeKitchenOrder, [{ product_id: 'p1' }]),
 );
+
+const areaItems = getOrderAreaItemsTx(txActive2, 'o2');
+assert('ítems de comanda activa no se pierden al leer el área', Array.isArray(areaItems) && areaItems.length === 1);
 
 console.log(`\n${passed} ok, ${failed} fallos`);
 process.exit(failed > 0 ? 1 : 0);
