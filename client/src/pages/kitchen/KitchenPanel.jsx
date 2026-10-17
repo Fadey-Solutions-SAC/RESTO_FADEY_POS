@@ -244,6 +244,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     try {
       const qs = new URLSearchParams();
       qs.set('station', areaId);
+      const data = await api.get(`/orders/kitchen?${qs.toString()}`);
       const incoming = Array.isArray(data) ? data : [];
       setOrders(sortByArrival(incoming));
       setHighlightItemIds((prev) => {
