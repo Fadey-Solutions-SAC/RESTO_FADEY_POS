@@ -24,6 +24,32 @@
     "asistencia": "QR attendance",
     "configuracion": "Settings"
   },
+  "navGroups": {
+    "inicio": {
+      "title": "HOME",
+      "subtitle": "General access and business overview"
+    },
+    "operacion": {
+      "title": "OPERATIONS",
+      "subtitle": "Tools for daily restaurant service"
+    },
+    "comercial": {
+      "title": "COMMERCIAL",
+      "subtitle": "Customers, sales and commercial relationships"
+    },
+    "catalogo": {
+      "title": "PRODUCTS AND CATALOG",
+      "subtitle": "Catalog and available products"
+    },
+    "control": {
+      "title": "CONTROL AND ANALYSIS",
+      "subtitle": "Operational tracking, indicators and reports"
+    },
+    "administracion": {
+      "title": "ADMINISTRATION",
+      "subtitle": "General setup and internal restaurant management"
+    }
+  },
   "hrSub": {
     "panel": "HR panel",
     "asistencia": "QR attendance"

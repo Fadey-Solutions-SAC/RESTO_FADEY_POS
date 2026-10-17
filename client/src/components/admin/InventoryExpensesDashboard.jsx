@@ -6,7 +6,7 @@ import {
 import {
   MdAccountBalanceWallet, MdAdd, MdCalendarMonth, MdCleaningServices, MdClose, MdDownload,
   MdEdit, MdFilterAlt, MdInventory2, MdPeople, MdPerson, MdPictureAsPdf,
-  MdRefresh, MdSearch, MdShoppingCart, MdWallet,
+  MdRefresh, MdSearch, MdShoppingCart, MdVisibility, MdWallet,
 } from 'react-icons/md';
 import toast from 'react-hot-toast';
 import { api, formatCurrency, formatDateKey, formatDateTime, toLocalDateKey } from '../../utils/api';
@@ -111,6 +111,7 @@ export default function InventoryExpensesDashboard({ onNewExpense }) {
   const [exporting, setExporting] = useState('');
   const [restaurantName, setRestaurantName] = useState('Resto Fadey');
   const [newExpenseOpen, setNewExpenseOpen] = useState(false);
+  const [detailGroup, setDetailGroup] = useState(null);
   const [editRow, setEditRow] = useState(null);
   const [editForm, setEditForm] = useState({ quantity: '', unit_cost: '', purchase_date: '', notes: '', password: '' });
   const [saving, setSaving] = useState(false);
@@ -139,6 +140,13 @@ export default function InventoryExpensesDashboard({ onNewExpense }) {
   }, []);
 
   useSocket('inventory-update', () => void loadData());
+
+  useEffect(() => {
+    setDetailGroup((current) => {
+      if (!current?.id || !data?.groups) return current;
+      return data.groups.find((group) => group.id === current.id) || current;
+    });
+  }, [data]);
 
   const chartData = data?.summary?.by_category || [];
   const hasData = Number(data?.summary?.total || 0) > 0 && chartData.some((row) => Number(row.amount || 0) > 0);
@@ -380,53 +388,62 @@ export default function InventoryExpensesDashboard({ onNewExpense }) {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1050px] text-xs">
+          <table className="w-full min-w-[860px] text-xs">
             <thead className="bg-sky-100 text-slate-800">
               <tr>
-                <th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">Fecha</th>
-                <th className="px-3 py-2 text-left">Categoría</th><th className="px-3 py-2 text-left">Producto / concepto</th>
-                <th className="px-3 py-2 text-right">Cantidad</th><th className="px-3 py-2 text-right">Precio unitario</th>
-                <th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2 text-left">Usuario</th>
-                <th className="px-3 py-2 text-left">Almacén</th><th className="px-3 py-2 text-left">Pago</th>
-                <th className="px-3 py-2 text-left">Nota</th><th className="px-3 py-2 text-center">Acciones</th>
+                <th className="px-3 py-2 text-left">#</th>
+                <th className="px-3 py-2 text-left">Fecha</th>
+                <th className="px-3 py-2 text-left">Categoría</th>
+                <th className="px-3 py-2 text-left">Resumen de la compra</th>
+                <th className="px-3 py-2 text-right">Ítems</th>
+                <th className="px-3 py-2 text-right">Total</th>
+                <th className="px-3 py-2 text-left">Usuario</th>
+                <th className="px-3 py-2 text-left">Almacén</th>
+                <th className="px-3 py-2 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {(data?.rows || []).map((row, index) => {
-                const skin = CATEGORY_STYLE[row.category] || CATEGORY_STYLE.other;
+              {(data?.groups || []).map((group, index) => {
+                const skin = CATEGORY_STYLE[group.category] || CATEGORY_STYLE.other;
                 return (
-                  <tr key={row.id} className="border-t border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]">
+                  <tr
+                    key={group.id}
+                    className="cursor-pointer border-t border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]"
+                    onClick={() => setDetailGroup(group)}
+                  >
                     <td className="px-3 py-2 tabular-nums">{(data.pagination.page - 1) * data.pagination.page_size + index + 1}</td>
-                    <td className="px-3 py-2 whitespace-nowrap" title={formatDateTime(row.occurred_at)}>{formatDateKey(row.date_key)}</td>
-                    <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${skin.badge}`}>{row.category_name}</span></td>
-                    <td className="max-w-64 px-3 py-2 font-medium text-[var(--ui-body-text)]"><span className="line-clamp-2">{row.concept}</span></td>
-                    <td className="px-3 py-2 text-right tabular-nums">{row.quantity}</td>
-                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.unit_cost)}</td>
-                    <td className="px-3 py-2 text-right font-bold tabular-nums whitespace-nowrap">{formatCurrency(row.total)}</td>
-                    <td className="px-3 py-2">{row.user_name}</td>
-                    <td className="px-3 py-2">{row.warehouse_name || '—'}</td>
-                    <td className="px-3 py-2">{row.payment_status === 'paid' ? 'Pagado' : '—'}</td>
-                    <td className="max-w-56 px-3 py-2 text-[var(--ui-muted)]"><span className="line-clamp-2">{row.notes || '—'}</span></td>
+                    <td className="px-3 py-2 whitespace-nowrap" title={formatDateTime(group.occurred_at)}>{formatDateKey(group.date_key)}</td>
+                    <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${skin.badge}`}>{group.category_name}</span></td>
+                    <td className="max-w-80 px-3 py-2 font-medium text-[var(--ui-body-text)]"><span className="line-clamp-2">{group.concept}</span></td>
+                    <td className="px-3 py-2 text-right tabular-nums">{group.item_count}</td>
+                    <td className="px-3 py-2 text-right font-bold tabular-nums whitespace-nowrap">{formatCurrency(group.total)}</td>
+                    <td className="px-3 py-2">{group.user_name || '—'}</td>
+                    <td className="px-3 py-2">{group.warehouse_name || '—'}</td>
                     <td className="px-3 py-2 text-center">
-                      {row.can_edit ? (
-                        <button type="button" onClick={() => startEdit(row)} className="inline-grid h-7 w-7 place-items-center rounded-md bg-sky-50 text-sky-700 hover:bg-sky-100" title="Editar compra"><MdEdit /></button>
-                      ) : <span className="text-[10px] text-[var(--ui-muted)]">Solo lectura</span>}
+                      <button
+                        type="button"
+                        onClick={(event) => { event.stopPropagation(); setDetailGroup(group); }}
+                        className="inline-grid h-7 w-7 place-items-center rounded-md bg-sky-50 text-sky-700 hover:bg-sky-100"
+                        title="Ver detalle de la compra"
+                      >
+                        <MdVisibility />
+                      </button>
                     </td>
                   </tr>
                 );
               })}
-              {!data?.rows?.length ? (
-                <tr><td colSpan="12" className="px-4 py-12 text-center text-sm text-[var(--ui-muted)]">No existen movimientos para los filtros seleccionados.</td></tr>
+              {!data?.groups?.length ? (
+                <tr><td colSpan="9" className="px-4 py-12 text-center text-sm text-[var(--ui-muted)]">No existen movimientos para los filtros seleccionados.</td></tr>
               ) : null}
             </tbody>
-            {data?.rows?.length ? (
-              <tfoot><tr className="border-t-2 border-sky-200 bg-sky-50 font-bold text-slate-900"><td colSpan="6" className="px-3 py-2">TOTAL DEL FILTRO</td><td className="px-3 py-2 text-right">{formatCurrency(data.summary.total)}</td><td colSpan="5" /></tr></tfoot>
+            {data?.groups?.length ? (
+              <tfoot><tr className="border-t-2 border-sky-200 bg-sky-50 font-bold text-slate-900"><td colSpan="5" className="px-3 py-2">TOTAL DEL FILTRO</td><td className="px-3 py-2 text-right">{formatCurrency(data.summary.total)}</td><td colSpan="3" /></tr></tfoot>
             ) : null}
           </table>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--ui-border)] px-3 py-2 text-xs">
-          <span className="text-[var(--ui-muted)]">{data?.pagination?.total_rows || 0} registro(s)</span>
+          <span className="text-[var(--ui-muted)]">{data?.pagination?.total_rows || 0} compra(s) · {data?.pagination?.total_items || 0} producto(s)</span>
           <div className="flex items-center gap-2">
             <button type="button" className="btn-secondary px-3 py-1.5 text-xs" disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</button>
             <span className="text-[var(--ui-body-text)]">Página {data?.pagination?.page || 1} de {data?.pagination?.total_pages || 1}</span>
@@ -434,6 +451,74 @@ export default function InventoryExpensesDashboard({ onNewExpense }) {
           </div>
         </div>
       </section>
+
+      <Modal
+        isOpen={Boolean(detailGroup)}
+        onClose={() => { if (!saving) setDetailGroup(null); }}
+        title={detailGroup ? `Detalle de compra · ${formatDateKey(detailGroup.date_key)}` : 'Detalle de compra'}
+        size="xl"
+      >
+        {detailGroup ? (
+          <div className="space-y-4">
+            <div className="grid gap-2 rounded-lg bg-[var(--ui-body-bg)] p-3 text-xs sm:grid-cols-2">
+              <p><span className="text-[var(--ui-muted)]">Fecha:</span> <strong className="text-[var(--ui-body-text)]">{formatDateKey(detailGroup.date_key)}</strong></p>
+              <p><span className="text-[var(--ui-muted)]">Categoría:</span> <strong className="text-[var(--ui-body-text)]">{detailGroup.category_name}</strong></p>
+              <p><span className="text-[var(--ui-muted)]">Productos:</span> <strong className="text-[var(--ui-body-text)]">{detailGroup.item_count}</strong></p>
+              <p><span className="text-[var(--ui-muted)]">Total:</span> <strong className="text-[var(--ui-body-text)]">{formatCurrency(detailGroup.total)}</strong></p>
+              <p><span className="text-[var(--ui-muted)]">Usuario:</span> <strong className="text-[var(--ui-body-text)]">{detailGroup.user_name || '—'}</strong></p>
+              <p><span className="text-[var(--ui-muted)]">Almacén:</span> <strong className="text-[var(--ui-body-text)]">{detailGroup.warehouse_name || '—'}</strong></p>
+              <p className="sm:col-span-2"><span className="text-[var(--ui-muted)]">Pago:</span> <strong className="text-[var(--ui-body-text)]">{detailGroup.payment_status === 'paid' ? 'Pagado' : (detailGroup.payment_status === 'mixed' ? 'Parcial' : '—')}</strong></p>
+              <p className="sm:col-span-2"><span className="text-[var(--ui-muted)]">Nota:</span> <strong className="text-[var(--ui-body-text)]">{detailGroup.notes || '—'}</strong></p>
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-[color:var(--ui-border)]">
+              <table className="w-full min-w-[720px] text-xs">
+                <thead className="bg-sky-100 text-slate-800">
+                  <tr>
+                    <th className="px-3 py-2 text-left">#</th>
+                    <th className="px-3 py-2 text-left">Producto / concepto</th>
+                    <th className="px-3 py-2 text-right">Cantidad</th>
+                    <th className="px-3 py-2 text-right">Precio unitario</th>
+                    <th className="px-3 py-2 text-right">Total</th>
+                    <th className="px-3 py-2 text-left">Usuario</th>
+                    <th className="px-3 py-2 text-left">Almacén</th>
+                    <th className="px-3 py-2 text-left">Nota</th>
+                    <th className="px-3 py-2 text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(detailGroup.items || []).map((row, index) => (
+                    <tr key={row.id} className="border-t border-[color:var(--ui-border)]">
+                      <td className="px-3 py-2 tabular-nums">{index + 1}</td>
+                      <td className="px-3 py-2 font-medium text-[var(--ui-body-text)]">{row.concept}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{row.quantity}</td>
+                      <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.unit_cost)}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums whitespace-nowrap">{formatCurrency(row.total)}</td>
+                      <td className="px-3 py-2">{row.user_name || '—'}</td>
+                      <td className="px-3 py-2">{row.warehouse_name || '—'}</td>
+                      <td className="max-w-48 px-3 py-2 text-[var(--ui-muted)]">{row.notes || '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        {row.can_edit ? (
+                          <button type="button" onClick={() => startEdit(row)} className="inline-grid h-7 w-7 place-items-center rounded-md bg-sky-50 text-sky-700 hover:bg-sky-100" title="Editar producto"><MdEdit /></button>
+                        ) : <span className="text-[10px] text-[var(--ui-muted)]">Solo lectura</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-sky-200 bg-sky-50 font-bold text-slate-900">
+                    <td colSpan="4" className="px-3 py-2">TOTAL DE LA COMPRA</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(detailGroup.total)}</td>
+                    <td colSpan="4" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <div className="flex justify-end">
+              <button type="button" className="btn-secondary inline-flex items-center gap-1" onClick={() => setDetailGroup(null)}><MdClose /> Cerrar</button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal isOpen={Boolean(editRow)} onClose={() => { if (!saving) setEditRow(null); }} title="Editar gasto de compra" size="md">
         {editRow ? (

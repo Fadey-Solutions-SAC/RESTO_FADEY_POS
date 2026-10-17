@@ -222,7 +222,7 @@ function summarize(rows) {
   const byCategory = CATEGORY_META.map((category) => {
     const categoryRows = (rows || []).filter((row) => row.category === category.id);
     const amount = round2(categoryRows.reduce((sum, row) => sum + Number(row.total || 0), 0));
-    const operations = new Set(categoryRows.map((row) => row.group_id || row.id)).size;
+    const operations = new Set(categoryRows.map((row) => `${row.date_key || ''}:${row.category}`)).size;
     return {
       ...category,
       amount,
@@ -230,7 +230,88 @@ function summarize(rows) {
       percentage: total > 0 ? round2((amount / total) * 100) : 0,
     };
   });
-  return { total, operations: new Set((rows || []).map((row) => row.group_id || row.id)).size, by_category: byCategory };
+  return {
+    total,
+    operations: new Set((rows || []).map((row) => `${row.date_key || ''}:${row.category}`)).size,
+    by_category: byCategory,
+  };
+}
+
+function uniqueList(values) {
+  return [...new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean))];
+}
+
+function groupConceptLabel(items) {
+  const names = (items || []).map((item) => String(item.concept || '').trim()).filter(Boolean);
+  if (!names.length) return '—';
+  if (names.length === 1) return names[0];
+  const preview = names.slice(0, 2).join(', ');
+  const extra = names.length > 2 ? ` y ${names.length - 2} más` : '';
+  return `${names.length} productos: ${preview}${extra}`;
+}
+
+/** Un grupo por fecha + categoría (todas las compras del día juntas). */
+function groupExpenseRows(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const key = `${row.date_key || ''}::${row.category || 'other'}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        id: `group:${key}`,
+        date_key: row.date_key,
+        occurred_at: row.occurred_at,
+        category: row.category,
+        category_name: row.category_name,
+        item_count: 0,
+        quantity: 0,
+        total: 0,
+        user_names: [],
+        warehouse_names: [],
+        notes: [],
+        payment_statuses: [],
+        requirement_ids: [],
+        can_edit: false,
+        items: [],
+      });
+    }
+    const group = map.get(key);
+    group.items.push(row);
+    group.item_count += 1;
+    group.quantity = round2(group.quantity + Number(row.quantity || 0));
+    group.total = round2(group.total + Number(row.total || 0));
+    if (String(row.occurred_at || '') > String(group.occurred_at || '')) {
+      group.occurred_at = row.occurred_at;
+    }
+    if (row.can_edit) group.can_edit = true;
+    if (row.user_name) group.user_names.push(row.user_name);
+    if (row.warehouse_name) group.warehouse_names.push(row.warehouse_name);
+    if (row.notes) group.notes.push(row.notes);
+    if (row.payment_status) group.payment_statuses.push(row.payment_status);
+    if (row.requirement_id) group.requirement_ids.push(row.requirement_id);
+  }
+
+  return [...map.values()]
+    .map((group) => {
+      const userNames = uniqueList(group.user_names);
+      const warehouseNames = uniqueList(group.warehouse_names);
+      const notes = uniqueList(group.notes);
+      const payments = uniqueList(group.payment_statuses);
+      return {
+        ...group,
+        user_names: userNames,
+        warehouse_names: warehouseNames,
+        requirement_ids: uniqueList(group.requirement_ids),
+        user_name: userNames.join(', ') || '—',
+        warehouse_name: warehouseNames.join(', ') || '—',
+        notes: notes.join(' · '),
+        payment_status: payments.length === 1 && payments[0] === 'paid' ? 'paid' : (payments.includes('paid') ? 'mixed' : ''),
+        concept: groupConceptLabel(group.items),
+      };
+    })
+    .sort((a, b) => (
+      String(b.date_key || '').localeCompare(String(a.date_key || ''))
+      || String(b.occurred_at || '').localeCompare(String(a.occurred_at || ''))
+    ));
 }
 
 function buildExpenseDashboard(params = {}) {
@@ -250,9 +331,10 @@ function buildExpenseDashboard(params = {}) {
     .map((row) => [String(row.user_id), { id: String(row.user_id), name: row.user_name || 'Usuario' }])).values()]
     .sort((a, b) => a.name.localeCompare(b.name, 'es'));
   const filtered = filterRows(rawRows, params);
+  const groups = groupExpenseRows(filtered);
   const exporting = String(params.export || '') === '1';
   const pageSize = exporting
-    ? Math.max(1, filtered.length)
+    ? Math.max(1, groups.length || 1)
     : Math.min(100, Math.max(10, Number.parseInt(params.page_size, 10) || 25));
   const summary = summarize(filtered);
 
@@ -264,6 +346,7 @@ function buildExpenseDashboard(params = {}) {
     : null;
 
   const offset = (page - 1) * pageSize;
+  const pageGroups = groups.slice(offset, offset + pageSize);
   return {
     period: { from, to },
     previous_period: { ...previousRange, total: previousTotal },
@@ -280,12 +363,14 @@ function buildExpenseDashboard(params = {}) {
     },
     categories: CATEGORY_META,
     users,
-    rows: filtered.slice(offset, offset + pageSize),
+    groups: pageGroups,
+    rows: exporting ? filtered : pageGroups.flatMap((group) => group.items),
     pagination: {
       page,
       page_size: pageSize,
-      total_rows: filtered.length,
-      total_pages: Math.max(1, Math.ceil(filtered.length / pageSize)),
+      total_rows: groups.length,
+      total_items: filtered.length,
+      total_pages: Math.max(1, Math.ceil((groups.length || 1) / pageSize) || 1),
     },
   };
 }
@@ -294,6 +379,7 @@ module.exports = {
   CATEGORY_META,
   buildExpenseDashboard,
   filterRows,
+  groupExpenseRows,
   queryExpenseRows,
   shiftPreviousRange,
   summarize,

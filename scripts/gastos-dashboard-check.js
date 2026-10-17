@@ -81,11 +81,18 @@ async function main() {
     assert(init.status === 200, `el panel debe inicializar tablas (${init.status})`);
 
     const purchaseId = uuidv4();
+    const purchaseIdB = uuidv4();
     runSql(
       `INSERT INTO inventory_expenses
        (id, requirement_id, product_id, warehouse_id, quantity, unit_cost, total_cost, notes, created_by, created_at, purchase_date)
        VALUES (?, 'req-uno', '', '', 100, 0.5, 50, 'Recepción de compra', ?, '2026-10-12 15:00:00', '2026-10-12')`,
       [purchaseId, adminId],
+    );
+    runSql(
+      `INSERT INTO inventory_expenses
+       (id, requirement_id, product_id, warehouse_id, quantity, unit_cost, total_cost, notes, created_by, created_at, purchase_date)
+       VALUES (?, 'req-uno', '', '', 20, 1.5, 30, 'Segundo producto del mismo día', ?, '2026-10-12 15:05:00', '2026-10-12')`,
+      [purchaseIdB, adminId],
     );
     const legacyPurchaseId = uuidv4();
     runSql(
@@ -122,15 +129,19 @@ async function main() {
 
     const panel = await api(server, 'GET', '/inventory/expenses-dashboard?from=2026-10-01&to=2026-10-12', { token: adminToken });
     assert(panel.status === 200, `el panel responde (${panel.status})`);
-    assert(panel.json.summary.total === 760, `total esperado 760, salió ${panel.json.summary.total}`);
+    assert(panel.json.summary.total === 790, `total esperado 790, salió ${panel.json.summary.total}`);
     const amounts = Object.fromEntries(panel.json.summary.by_category.map((row) => [row.id, row.amount]));
-    assert(amounts.supplies === 80, `compras esperado 80, salió ${amounts.supplies}`);
+    assert(amounts.supplies === 110, `compras esperado 110, salió ${amounts.supplies}`);
+    const purchaseGroup = (panel.json.groups || []).find((row) => row.date_key === '2026-10-12' && row.category === 'supplies');
+    assert(purchaseGroup && purchaseGroup.item_count === 2, 'las compras del mismo día deben ir en un solo grupo');
+    assert(Array.isArray(purchaseGroup.items) && purchaseGroup.items.length === 2, 'el detalle del grupo debe traer los productos');
+    assert(purchaseGroup.total === 80, `el total del grupo del 12 debe ser 80, salió ${purchaseGroup.total}`);
     assert(amounts.operating === 320, `operativos esperado 320, salió ${amounts.operating}`);
     assert(amounts.staff === 250, `personal esperado 250, salió ${amounts.staff}`);
     assert(amounts.other === 110, `otros esperado 110, salió ${amounts.other}`);
     assert(!panel.json.rows.some((row) => row.concept.startsWith('Compra por recepción')), 'el egreso automático no se duplica');
     assert(panel.json.rows.some((row) => row.source_id === legacyPurchaseId && row.category === 'supplies'), 'la recepción histórica sin purchase_date sigue visible como compra de insumos');
-    assert(panel.json.summary.variation_pct === 660, `variación esperada 660%, salió ${panel.json.summary.variation_pct}`);
+    assert(panel.json.summary.variation_pct === 690, `variación esperada 690%, salió ${panel.json.summary.variation_pct}`);
 
     const defaultPeriod = await api(server, 'GET', '/inventory/expenses-dashboard', { token: adminToken });
     assert(defaultPeriod.status === 200, 'el periodo predeterminado carga el mes actual');

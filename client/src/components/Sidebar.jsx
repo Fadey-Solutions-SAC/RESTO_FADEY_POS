@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { ADMIN_MODULE_PATHS, PRIMARY_MODULE_BY_ROLE, canAccessStaffModule, hasModulePermission } from '../utils/staffModuleAccess';
+import { groupNavLinks, sortProductionAreasForNav } from '../utils/navMenuGroups';
 import { useShowDeliveryUi } from '../hooks/useDeliveryEnabled';
 import { usePrintingModule } from '../hooks/usePrintingModule';
 import EndShiftModal from './EndShiftModal';
@@ -81,20 +82,8 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
     api
       .get('/production-areas/active')
       .then((list) => {
-        const areas = (Array.isArray(list) ? list : [])
-          .map((a) => ({
-            id: String(a?.id || '').trim(),
-            name: String(a?.name || '').trim() || String(a?.id || ''),
-          }))
-          .filter((a) => a.id);
+        const areas = sortProductionAreasForNav(list);
         // Siempre reemplazar: si se eliminó Cocina/Bar, deben desaparecer del menú.
-        const rank = (id) => (id === 'cocina' ? 0 : id === 'bar' ? 1 : 2);
-        areas.sort((a, b) => {
-          const ra = rank(a.id);
-          const rb = rank(b.id);
-          if (ra !== rb) return ra - rb;
-          return String(a.name).localeCompare(String(b.name), 'es');
-        });
         setProductionAreas(areas);
       })
       .catch(() => {});
@@ -364,6 +353,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
       .map((link, idx) => ({ link, idx, p: linkPriority(link) }))
       .sort((a, b) => a.p - b.p || a.idx - b.idx)
       .map((row) => row.link);
+  const navGroups = groupNavLinks(visibleLinks);
 
   const linkClass = ({ isActive }) =>
     `rf-nav-link ${isActive ? 'rf-nav-link--active' : ''}`;
@@ -445,7 +435,16 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
       </div>
 
       <nav className="rf-sidebar__nav flex-1 px-1.5 py-2 space-y-0.5 overflow-y-auto scrollbar-thin">
-        {visibleLinks.map(link => (
+        {navGroups.map((group, groupIndex) => (
+          <div key={group.id} className="rf-nav-group-block">
+            {!isCollapsed && group.title ? (
+              <div className="rf-nav-group" aria-label={`${group.title}. ${group.subtitle}`}>
+                <p className="rf-nav-group__title">{t(`navGroups.${group.id}.title`, { defaultValue: group.title })}</p>
+                <p className="rf-nav-group__subtitle">{t(`navGroups.${group.id}.subtitle`, { defaultValue: group.subtitle })}</p>
+              </div>
+            ) : null}
+            {isCollapsed && groupIndex > 0 ? <div className="rf-nav-group-divider" aria-hidden="true" /> : null}
+            {group.items.map((link) => (
           <div key={link.to}>
             <NavLink
               to={
@@ -628,6 +627,8 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                 ))}
               </div>
             )}
+          </div>
+            ))}
           </div>
         ))}
       </nav>

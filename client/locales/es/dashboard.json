@@ -24,6 +24,32 @@
     "asistencia": "Asistencia QR",
     "configuracion": "Configuración"
   },
+  "navGroups": {
+    "inicio": {
+      "title": "INICIO",
+      "subtitle": "Acceso general y resumen del negocio"
+    },
+    "operacion": {
+      "title": "OPERACIÓN",
+      "subtitle": "Herramientas para la atención y el funcionamiento diario del restaurante"
+    },
+    "comercial": {
+      "title": "GESTIÓN COMERCIAL",
+      "subtitle": "Clientes, ventas y relaciones comerciales"
+    },
+    "catalogo": {
+      "title": "PRODUCTOS Y CATÁLOGO",
+      "subtitle": "Administración del catálogo y los productos disponibles"
+    },
+    "control": {
+      "title": "CONTROL Y ANÁLISIS",
+      "subtitle": "Seguimiento operativo, indicadores e informes del negocio"
+    },
+    "administracion": {
+      "title": "ADMINISTRACIÓN",
+      "subtitle": "Configuración general y gestión interna del restaurante"
+    }
+  },
   "hrSub": {
     "panel": "Panel RR. HH.",
     "asistencia": "Asistencia QR"
