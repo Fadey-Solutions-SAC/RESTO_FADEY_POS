@@ -1,9 +1,64 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { MdChevronLeft, MdChevronRight } from 'react-icons/md';
 import { resolveMediaUrl } from '../utils/api';
+import { isGeneratedCarta } from '../utils/autoPedidoCartaShape';
+import { cartaPresetById, resolvePresetBackgroundHref } from '../data/cartaBackgroundPresets';
+import { buildMenuCartaSvgBlob, parseMenuLines } from '../utils/generateMenuCartaSvg';
 
 function isPdfUrl(url) {
   return /\.pdf(\?|$)/i.test(String(url || ''));
+}
+
+function CartaGeneratedSlide({ carta }) {
+  const [src, setSrc] = useState('');
+  useEffect(() => {
+    let cancel = false;
+    let createdUrl = '';
+    const generated = carta?.generated || {};
+    (async () => {
+      let backgroundHref = '';
+      try {
+        backgroundHref = await resolvePresetBackgroundHref(generated.presetId);
+      } catch {
+        backgroundHref = cartaPresetById(generated.presetId).src || '';
+      }
+      if (cancel) return;
+      const blob = buildMenuCartaSvgBlob({
+        rows: parseMenuLines(generated.text),
+        title: generated.title || carta.name || 'Nuestra carta',
+        colors: generated.colors,
+        style: generated.style,
+        presetId: generated.presetId,
+        page: 'a4',
+        backgroundHref,
+      });
+      createdUrl = URL.createObjectURL(blob);
+      if (cancel) {
+        URL.revokeObjectURL(createdUrl);
+        return;
+      }
+      setSrc(createdUrl);
+    })();
+    return () => {
+      cancel = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [carta.id, carta.name, carta.generated?.title, carta.generated?.text, carta.generated?.presetId, carta.generated?.style]);
+
+  if (!src) {
+    return (
+      <div className="flex items-center justify-center text-sm text-[var(--ui-muted)] p-6">
+        Cargando carta generada…
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={carta.name}
+      className="max-h-full max-w-full w-auto h-auto object-contain rounded-lg border border-[#334155]"
+    />
+  );
 }
 
 /**
@@ -105,24 +160,26 @@ export default function CartasHorizontalCarousel({ cartas = [], className = '', 
               key={c.id}
               className="snap-center shrink-0 w-full h-full min-w-full flex items-center justify-center bg-[var(--ui-body-bg)] px-2 pb-2 box-border"
             >
-              {c.url && isPdfUrl(c.url) ? (
+              {isGeneratedCarta(c) ? (
+                <CartaGeneratedSlide carta={c} />
+              ) : c.url && isPdfUrl(c.url) ? (
                 <iframe
                   title={c.name}
                   src={resolveMediaUrl(c.url)}
                   className="w-full h-full min-h-[280px] rounded-lg border border-[#334155] bg-white"
                 />
-              ) : c.url && brokenUrls.has(c.url) ? (
-                <div className="flex flex-col items-center justify-center gap-1 text-center text-sm text-[var(--ui-muted)] p-6 rounded-lg border border-dashed border-[#334155]">
-                  <span className="font-semibold text-[var(--ui-body-text)]">{c.name}</span>
-                  <span>Archivo no disponible o no es una imagen válida</span>
-                </div>
-              ) : c.url ? (
+              ) : c.url && !brokenUrls.has(c.url) ? (
                 <img
                   src={resolveMediaUrl(c.url)}
                   alt={c.name}
                   onError={() => markBroken(c.url)}
                   className="max-h-full max-w-full w-auto h-auto object-contain rounded-lg border border-[#334155]"
                 />
+              ) : c.url ? (
+                <div className="flex flex-col items-center justify-center gap-1 text-center text-sm text-[var(--ui-muted)] p-6 rounded-lg border border-dashed border-[#334155]">
+                  <span className="font-semibold text-[var(--ui-body-text)]">{c.name}</span>
+                  <span>Archivo no disponible o no es una imagen válida</span>
+                </div>
               ) : null}
             </div>
           ))}

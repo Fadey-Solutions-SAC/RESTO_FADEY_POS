@@ -52,6 +52,44 @@ export const DEFAULT_MENU_CARTA_COLORS = {
   price: '#3f2e1e',
 };
 
+/** Texto extra, tamaños y márgenes editables. El subtítulo queda vacío a propósito (no forzar «MENÚ»). */
+export const DEFAULT_CARTA_STYLE = {
+  subtitle: '',
+  footer: 'Gracias por su visita',
+  titleSize: 36,
+  subtitleSize: 13,
+  itemSize: 20,
+  sectionSize: 18,
+  priceSize: 20,
+  marginLeft: 96,
+  marginRight: 110,
+  marginTop: 72,
+  marginBottom: 56,
+};
+
+function clampStyleSize(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+export function normalizeCartaStyle(styleIn = {}) {
+  const src = styleIn && typeof styleIn === 'object' ? styleIn : {};
+  return {
+    subtitle: String(src.subtitle ?? DEFAULT_CARTA_STYLE.subtitle).slice(0, 80),
+    footer: String(src.footer ?? DEFAULT_CARTA_STYLE.footer).slice(0, 120),
+    titleSize: clampStyleSize(src.titleSize, 20, 56, DEFAULT_CARTA_STYLE.titleSize),
+    subtitleSize: clampStyleSize(src.subtitleSize, 8, 24, DEFAULT_CARTA_STYLE.subtitleSize),
+    itemSize: clampStyleSize(src.itemSize, 12, 32, DEFAULT_CARTA_STYLE.itemSize),
+    sectionSize: clampStyleSize(src.sectionSize, 10, 28, DEFAULT_CARTA_STYLE.sectionSize),
+    priceSize: clampStyleSize(src.priceSize, 12, 32, DEFAULT_CARTA_STYLE.priceSize),
+    marginLeft: clampStyleSize(src.marginLeft, 40, 200, DEFAULT_CARTA_STYLE.marginLeft),
+    marginRight: clampStyleSize(src.marginRight, 40, 200, DEFAULT_CARTA_STYLE.marginRight),
+    marginTop: clampStyleSize(src.marginTop, 30, 220, DEFAULT_CARTA_STYLE.marginTop),
+    marginBottom: clampStyleSize(src.marginBottom, 30, 180, DEFAULT_CARTA_STYLE.marginBottom),
+  };
+}
+
 /**
  * Interpreta líneas de menú.
  * - Línea con # al inicio (tras espacios): solo ahí es categoría / sección en la carta.
@@ -155,12 +193,14 @@ export function buildMenuCartaSvgString({
   rows,
   title = 'Nuestra carta',
   colors: colorsIn = {},
+  style: styleIn = {},
   presetId = DEFAULT_CARTA_PRESET_ID,
   page = 'a4',
   backgroundHref = '',
 } = {}) {
   const preset = cartaPresetById(presetId);
   const c = { ...DEFAULT_MENU_CARTA_COLORS, ...preset.colors, ...colorsIn };
+  const style = normalizeCartaStyle(styleIn);
   const bg = normalizeHex(c.bg, DEFAULT_MENU_CARTA_COLORS.bg);
   const text = normalizeHex(c.text, DEFAULT_MENU_CARTA_COLORS.text);
   const titleFill = normalizeHex(c.title || c.text, DEFAULT_MENU_CARTA_COLORS.title);
@@ -180,11 +220,24 @@ export function buildMenuCartaSvgString({
   const hasPhoto = Boolean(imageHref);
 
   const isA4 = page !== 'auto';
+  const scale = isA4 ? 1 : 0.72;
   const W = isA4 ? 794 : 420;
-  const padX = isA4 ? (hasPhoto ? 88 : 64) : 36;
-  const titleBlock = isA4 ? 132 : 88;
-  const lineHSection = isA4 ? 46 : 40;
-  const lineHItem = isA4 ? 78 : 52;
+  const padL = Math.round(style.marginLeft * scale);
+  const padR = Math.round(style.marginRight * scale);
+  const padT = Math.round(style.marginTop * scale);
+  const padB = Math.round(style.marginBottom * scale);
+  const padX = Math.round((padL + padR) / 2);
+  const fontTitle = Math.round(style.titleSize * scale);
+  const fontSubtitle = Math.round(style.subtitleSize * scale);
+  const fontName = Math.round(style.itemSize * scale);
+  const fontPrice = Math.round(style.priceSize * scale);
+  const fontSection = Math.round(style.sectionSize * scale);
+  const fontDesc = Math.max(10, Math.round(style.itemSize * 0.65 * scale));
+  const subtitleText = String(style.subtitle || '').trim();
+  const footerText = String(style.footer || '').trim();
+  const titleBlock = Math.round(padT + fontTitle + (subtitleText ? fontSubtitle + 18 : 10) + 12);
+  const lineHSection = Math.max(32, Math.round(fontSection * 2.4));
+  const lineHItem = Math.max(44, Math.round(fontName * 3.6));
   const list = Array.isArray(rows) ? rows : [];
 
   let totalH = titleBlock + 28 + 36;
@@ -227,62 +280,66 @@ export function buildMenuCartaSvgString({
     );
   } else {
     parts.push(...buildPresetDecor(preset.pattern, W, H, padX, lineStroke, section));
-    parts.push(`<rect x="${padX}" y="${isA4 ? 48 : 36}" width="${W - padX * 2}" height="3" fill="url(#accent)" rx="1.5"/>`);
+    parts.push(`<rect x="${padL}" y="${padT}" width="${Math.max(0, W - padL - padR)}" height="3" fill="url(#accent)" rx="1.5"/>`);
   }
+  const titleY = padT + fontTitle;
   parts.push(
-    `<text x="${W / 2}" y="${isA4 ? 96 : 72}" text-anchor="middle" fill="${titleFill}" font-family="system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="${isA4 ? 36 : 26}" font-weight="700" letter-spacing="0.02em">${escapeXml(title)}</text>`
+    `<text x="${W / 2}" y="${titleY}" text-anchor="middle" fill="${titleFill}" font-family="system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="${fontTitle}" font-weight="700" letter-spacing="0.02em">${escapeXml(title)}</text>`
   );
-  parts.push(
-    `<text x="${W / 2}" y="${isA4 ? 124 : 96}" text-anchor="middle" fill="${subtitleFill}" font-family="system-ui,-apple-system,sans-serif" font-size="${isA4 ? 13 : 11}" letter-spacing="0.14em">MENÚ</text>`
-  );
+  if (subtitleText) {
+    parts.push(
+      `<text x="${W / 2}" y="${titleY + fontSubtitle + 10}" text-anchor="middle" fill="${subtitleFill}" font-family="system-ui,-apple-system,sans-serif" font-size="${fontSubtitle}" letter-spacing="0.14em">${escapeXml(subtitleText)}</text>`
+    );
+  }
 
-  let y = titleBlock + (isA4 ? 36 : 28);
-  const nameMax = isA4 ? 46 : 36;
-  const descMax = isA4 ? 62 : 42;
-  const fontName = isA4 ? 20 : 16;
-  const fontDesc = isA4 ? 13 : 11;
-  const fontSection = isA4 ? 18 : 15;
+  let y = titleBlock + 16;
+  const innerW = Math.max(160, W - padL - padR);
+  const priceReserve = Math.round(fontPrice * 5.4);
+  const nameMax = Math.max(16, Math.floor((innerW - priceReserve) / Math.max(8, fontName * 0.52)));
+  const descMax = Math.max(20, Math.floor(innerW / Math.max(6, fontDesc * 0.48)));
 
   for (const r of list) {
-    if (y > H - 56) break;
+    if (y > H - padB - 16) break;
     if (r.kind === 'section') {
       parts.push(
-        `<text x="${padX}" y="${y}" fill="${section}" font-family="system-ui,-apple-system,sans-serif" font-size="${fontSection}" font-weight="700" letter-spacing="0.06em">${escapeXml(r.label)}</text>`
+        `<text x="${padL}" y="${y}" fill="${section}" font-family="system-ui,-apple-system,sans-serif" font-size="${fontSection}" font-weight="700" letter-spacing="0.06em">${escapeXml(r.label)}</text>`
       );
       parts.push(
-        `<line x1="${padX}" y1="${y + 10}" x2="${W - padX}" y2="${y + 10}" stroke="${lineStroke}" stroke-width="1"/>`
+        `<line x1="${padL}" y1="${y + 10}" x2="${W - padR}" y2="${y + 10}" stroke="${lineStroke}" stroke-width="1"/>`
       );
       y += lineHSection + 8;
     } else {
       const name = escapeXml(clipMenuName(r.name, nameMax));
       const hasPrice = r.price != null && Number.isFinite(Number(r.price));
       parts.push(
-        `<text x="${padX}" y="${y}" fill="${text}" font-family="system-ui,-apple-system,sans-serif" font-size="${fontName}" font-weight="600">${name}</text>`
+        `<text x="${padL}" y="${y}" fill="${text}" font-family="system-ui,-apple-system,sans-serif" font-size="${fontName}" font-weight="600">${name}</text>`
       );
       if (hasPrice) {
         parts.push(
-          `<text x="${W - padX}" y="${y}" text-anchor="end" fill="${price}" font-family="system-ui,-apple-system,sans-serif" font-size="${fontName}" font-weight="700">${escapeXml(formatPriceS(r.price))}</text>`
+          `<text x="${W - padR}" y="${y}" text-anchor="end" fill="${price}" font-family="system-ui,-apple-system,sans-serif" font-size="${fontPrice}" font-weight="700">${escapeXml(formatPriceS(r.price))}</text>`
         );
       }
       const descLines = wrapWords(r.description, descMax, 2);
       descLines.forEach((line, idx) => {
         parts.push(
-          `<text x="${padX}" y="${y + 22 + idx * 16}" fill="${descFill}" font-family="system-ui,-apple-system,sans-serif" font-size="${fontDesc}" font-weight="400">${escapeXml(line)}</text>`
+          `<text x="${padL}" y="${y + 22 + idx * 16}" fill="${descFill}" font-family="system-ui,-apple-system,sans-serif" font-size="${fontDesc}" font-weight="400">${escapeXml(line)}</text>`
         );
       });
       y += lineHItem;
     }
   }
 
-  parts.push(
-    `<text x="${W / 2}" y="${H - 28}" text-anchor="middle" fill="${footerFill}" font-family="system-ui,-apple-system,sans-serif" font-size="${isA4 ? 12 : 10}">Gracias por su visita</text>`
-  );
+  if (footerText) {
+    parts.push(
+      `<text x="${W / 2}" y="${H - padB}" text-anchor="middle" fill="${footerFill}" font-family="system-ui,-apple-system,sans-serif" font-size="${isA4 ? 12 : 10}">${escapeXml(footerText)}</text>`
+    );
+  }
   parts.push('</svg>');
   return parts.join('');
 }
 
 /** Blob listo para `api.upload` (image/svg+xml). */
-export function buildMenuCartaSvgBlob({ rows, title, colors, presetId, page = 'a4', backgroundHref }) {
-  const svg = buildMenuCartaSvgString({ rows, title, colors, presetId, page, backgroundHref });
+export function buildMenuCartaSvgBlob({ rows, title, colors, style, presetId, page = 'a4', backgroundHref }) {
+  const svg = buildMenuCartaSvgString({ rows, title, colors, style, presetId, page, backgroundHref });
   return new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
 }

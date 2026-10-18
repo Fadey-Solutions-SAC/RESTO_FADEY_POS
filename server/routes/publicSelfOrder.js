@@ -57,13 +57,19 @@ function getAutoPedidoCartas() {
   const raw = s.auto_pedido_cartas;
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((c, i) => ({
-      id: String(c.id || `carta-${i}`),
-      name: String(c.name || `Carta ${i + 1}`),
-      url: String(c.url || '').trim(),
-      sort: Number(c.sort ?? i),
-    }))
-    .filter((c) => c.url)
+    .map((c, i) => {
+      const generated = c.generated && typeof c.generated === 'object' ? c.generated : null;
+      const url = String(c.url || '').trim();
+      return {
+        id: String(c.id || `carta-${i}`),
+        name: String(c.name || `Carta ${i + 1}`),
+        url,
+        source: String(c.source || '') === 'generated' || generated ? 'generated' : url ? 'upload' : '',
+        generated: generated || undefined,
+        sort: Number(c.sort ?? i),
+      };
+    })
+    .filter((c) => c.url || c.generated)
     .sort((a, b) => a.sort - b.sort);
 }
 

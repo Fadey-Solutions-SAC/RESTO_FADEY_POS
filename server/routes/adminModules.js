@@ -398,16 +398,58 @@ router.get('/printer-routes', requireRole('admin', 'master_admin'), (req, res) =
   }
 });
 
+function clampGeneratedSize(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+function normalizeGeneratedCartaPayload(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const title = String(raw.title || '').trim().slice(0, 200);
+  const text = String(raw.text || '').slice(0, 20000);
+  const presetId = String(raw.presetId || '').trim().slice(0, 80);
+  const colorsIn = raw.colors && typeof raw.colors === 'object' && !Array.isArray(raw.colors) ? raw.colors : {};
+  const colors = {};
+  for (const key of ['bg', 'text', 'title', 'section', 'price']) {
+    const value = String(colorsIn[key] || '').trim().slice(0, 20);
+    if (value) colors[key] = value;
+  }
+  const styleIn = raw.style && typeof raw.style === 'object' && !Array.isArray(raw.style) ? raw.style : {};
+  const style = {
+    subtitle: String(styleIn.subtitle || '').trim().slice(0, 80),
+    footer: String(styleIn.footer ?? 'Gracias por su visita').slice(0, 120),
+    titleSize: clampGeneratedSize(styleIn.titleSize, 20, 56, 36),
+    subtitleSize: clampGeneratedSize(styleIn.subtitleSize, 8, 24, 13),
+    itemSize: clampGeneratedSize(styleIn.itemSize, 12, 32, 20),
+    sectionSize: clampGeneratedSize(styleIn.sectionSize, 10, 28, 18),
+    priceSize: clampGeneratedSize(styleIn.priceSize, 12, 32, 20),
+    marginLeft: clampGeneratedSize(styleIn.marginLeft, 40, 200, 96),
+    marginRight: clampGeneratedSize(styleIn.marginRight, 40, 200, 110),
+    marginTop: clampGeneratedSize(styleIn.marginTop, 30, 220, 72),
+    marginBottom: clampGeneratedSize(styleIn.marginBottom, 30, 180, 56),
+  };
+  if (!title && !text.trim()) return null;
+  return { title, text, presetId, colors, style };
+}
+
 function normalizeAutoPedidoCartas(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((c, i) => ({
-      id: String(c.id || '').trim() || uuidv4(),
-      name: String(c.name || '').trim() || `Carta ${i + 1}`,
-      url: String(c.url || '').trim(),
-      sort: Number.isFinite(Number(c.sort)) ? Number(c.sort) : i,
-    }))
-    .filter((c) => c.url)
+    .map((c, i) => {
+      const generated = normalizeGeneratedCartaPayload(c.generated);
+      const url = String(c.url || '').trim();
+      const source = generated || String(c.source || '') === 'generated' ? 'generated' : url ? 'upload' : '';
+      return {
+        id: String(c.id || '').trim() || uuidv4(),
+        name: String(c.name || '').trim() || `Carta ${i + 1}`,
+        url,
+        source,
+        generated: generated || undefined,
+        sort: Number.isFinite(Number(c.sort)) ? Number(c.sort) : i,
+      };
+    })
+    .filter((c) => c.url || c.generated)
     .sort((a, b) => a.sort - b.sort);
 }
 

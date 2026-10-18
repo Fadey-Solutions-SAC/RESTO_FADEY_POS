@@ -3,7 +3,7 @@ import { api, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
-import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen, MdDownload, MdPrint } from 'react-icons/md';
+import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen, MdDownload, MdPrint, MdFullscreen, MdFullscreenExit, MdOpenInFull, MdCloseFullscreen } from 'react-icons/md';
 import QRCode from 'qrcode';
 import { downloadTableQrA5, normalizeQrSlot, printTableQrA5Sheets, suggestFormatQrSlot } from '../../utils/tableQrPrint';
 import { QR_PRINT_FORMATS, qrPrintFormatBySrc } from '../../data/qrPrintFormats';
@@ -13,10 +13,13 @@ import {
   parseMenuLines,
   buildMenuCartaSvgBlob,
   DEFAULT_MENU_CARTA_COLORS,
+  DEFAULT_CARTA_STYLE,
+  normalizeCartaStyle,
   normalizeHex,
 } from '../../utils/generateMenuCartaSvg';
 import { CARTA_BACKGROUND_PRESETS, DEFAULT_CARTA_PRESET_ID, cartaPresetById, resolvePresetBackgroundHref } from '../../data/cartaBackgroundPresets';
 import { CARTA_MAX_PRODUCTS, buildCartaTextFromCategory } from '../../utils/cartaFromCatalog';
+import { buildGeneratedCartaPayload, cartaHasDisplayableContent, isGeneratedCarta } from '../../utils/autoPedidoCartaShape';
 import { downloadMenuCartaPngA4, buildMenuCartaPngBlob } from '../../utils/downloadCartaPngA4';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import { isImageFile, matchImageFilesToProducts } from '../../utils/productImageFolderMatch';
@@ -263,7 +266,10 @@ export default function AutoPedidoAdmin() {
   const [genTitle, setGenTitle] = useState('Nuestra carta');
   const [genText, setGenText] = useState(MENU_GEN_PLACEHOLDER);
   const [genPreviewUrl, setGenPreviewUrl] = useState('');
+  const [genPreviewMode, setGenPreviewMode] = useState('split');
+  const [genPreviewFull, setGenPreviewFull] = useState(false);
   const [genColors, setGenColors] = useState(() => ({ ...DEFAULT_MENU_CARTA_COLORS }));
+  const [genStyle, setGenStyle] = useState(() => ({ ...DEFAULT_CARTA_STYLE }));
   const [genPresetId, setGenPresetId] = useState(DEFAULT_CARTA_PRESET_ID);
   const [genCategoryId, setGenCategoryId] = useState('');
   const [genExporting, setGenExporting] = useState(false);
@@ -387,6 +393,7 @@ export default function AutoPedidoAdmin() {
         rows,
         title: genTitle.trim() || 'Nuestra carta',
         colors: genColors,
+        style: genStyle,
         presetId: genPresetId,
         page: 'a4',
         backgroundHref,
@@ -406,7 +413,7 @@ export default function AutoPedidoAdmin() {
       cancel = true;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [genOpenIndex, genText, genTitle, genColors, genPresetId]);
+  }, [genOpenIndex, genText, genTitle, genColors, genStyle, genPresetId]);
 
   const addRow = () => {
     markCartasEdited();
@@ -430,7 +437,7 @@ export default function AutoPedidoAdmin() {
     markCartasEdited();
     setCartas(next);
     if (!isPersisted) return;
-    if (next.some((c) => !String(c.url || '').trim())) {
+    if (next.some((c) => !cartaHasDisplayableContent(c))) {
       toast('Carta quitada. Complete las demás y pulse Guardar para confirmar.');
       return;
     }
@@ -438,11 +445,22 @@ export default function AutoPedidoAdmin() {
   };
 
   const openGenerator = (index) => {
+    const current = cartas[index];
+    const generated = current?.generated;
     const firstCat = categories[0];
-    setGenTitle(firstCat?.name || 'Nuestra carta');
-    setGenText(MENU_GEN_PLACEHOLDER);
-    setGenPresetId(DEFAULT_CARTA_PRESET_ID);
-    setGenColors({ ...DEFAULT_MENU_CARTA_COLORS });
+    if (generated && (generated.text || generated.title)) {
+      setGenTitle(generated.title || current.name || firstCat?.name || 'Nuestra carta');
+      setGenText(generated.text || MENU_GEN_PLACEHOLDER);
+      setGenPresetId(generated.presetId || DEFAULT_CARTA_PRESET_ID);
+      setGenColors({ ...DEFAULT_MENU_CARTA_COLORS, ...generated.colors });
+      setGenStyle(normalizeCartaStyle(generated.style));
+    } else {
+      setGenTitle(current?.name || firstCat?.name || 'Nuestra carta');
+      setGenText(MENU_GEN_PLACEHOLDER);
+      setGenPresetId(DEFAULT_CARTA_PRESET_ID);
+      setGenColors({ ...DEFAULT_MENU_CARTA_COLORS });
+      setGenStyle({ ...DEFAULT_CARTA_STYLE });
+    }
     setGenCategoryId(firstCat?.id || '');
     setGenOpenIndex(index);
   };
@@ -476,12 +494,24 @@ export default function AutoPedidoAdmin() {
   const closeGenerator = () => {
     setGenOpenIndex(null);
     setGenPreviewUrl('');
+    setGenPreviewMode('split');
+    setGenPreviewFull(false);
   };
+
+  useEffect(() => {
+    if (!genPreviewFull) return undefined;
+    const onKey = (event) => {
+      if (event.key === 'Escape') setGenPreviewFull(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [genPreviewFull]);
 
   const cartaGeneratorPayload = () => ({
     rows: parseMenuLines(genText),
     title: genTitle.trim() || 'Nuestra carta',
     colors: genColors,
+    style: normalizeCartaStyle(genStyle),
     presetId: genPresetId,
   });
 
@@ -506,21 +536,48 @@ export default function AutoPedidoAdmin() {
   const applyGeneratedCarta = async () => {
     if (!canSave || genOpenIndex === null) return;
     const payload = cartaGeneratorPayload();
-    if (!payload.rows.some((r) => r.kind === 'item' && r.price != null && Number.isFinite(Number(r.price)))) {
-      toast.error('Añade al menos una línea con precio al final (ej. Lomo saltado  35)');
+    if (!payload.rows.some((r) => r.kind === 'item')) {
+      toast.error('Escribe o carga al menos un producto');
       return;
     }
-    const tid = toast.loading('Generando PNG A4 y subiendo…');
+    const generated = buildGeneratedCartaPayload({
+      title: payload.title,
+      text: genText,
+      presetId: payload.presetId,
+      colors: payload.colors,
+      style: payload.style,
+    });
+    const tid = toast.loading('Guardando carta generada…');
     try {
-      const blob = await buildMenuCartaPngBlob(payload);
-      const file = new File([blob], `carta-${Date.now()}.png`, { type: 'image/png' });
-      const { url } = await api.upload(file);
+      let url = String(cartas[genOpenIndex]?.url || '').trim();
+      try {
+        const blob = await buildMenuCartaPngBlob(payload);
+        const file = new File([blob], `carta-${Date.now()}.png`, { type: 'image/png' });
+        const uploaded = await api.upload(file);
+        url = String(uploaded?.url || url).trim();
+      } catch {
+        url = '';
+      }
+      const next = cartas.map((c, i) => (
+        i === genOpenIndex
+          ? {
+              ...c,
+              name: generated.title || c.name || `Carta ${i + 1}`,
+              url,
+              source: 'generated',
+              generated,
+            }
+          : c
+      ));
       markCartasEdited();
-      updateRow(genOpenIndex, 'url', url || '');
-      toast.success('Carta generada aplicada. Pulsa Guardar para persistir.', { id: tid });
+      setCartas(next);
       closeGenerator();
+      const saved = await persistCartas(next, 'Carta generada guardada en carta QR', tid);
+      if (!saved) {
+        toast.error('No se pudo guardar la carta generada', { id: tid });
+      }
     } catch (err) {
-      toast.error(err.message || 'No se pudo subir la carta', { id: tid });
+      toast.error(err.message || 'No se pudo guardar la carta generada', { id: tid });
     }
   };
 
@@ -565,28 +622,40 @@ export default function AutoPedidoAdmin() {
 
   const save = () => persistCartas(cartas, 'Cartas guardadas');
 
-  const persistCartas = async (list, successMessage) => {
-    if (!canSave) return;
-    const tid = toast.loading('Guardando…');
+  const persistCartas = async (list, successMessage, toastId) => {
+    if (!canSave) return false;
+    const tid = toastId || toast.loading('Guardando…');
     try {
-      const normalized = list.map((c, i) => ({
+      const ready = list.filter((c) => cartaHasDisplayableContent(c));
+      if (!ready.length) {
+        toast.error('Genere una carta, suba un archivo o indique una URL', { id: tid });
+        return false;
+      }
+      const normalized = ready.map((c, i) => ({
         id: String(c.id || '').startsWith('tmp-') ? '' : c.id,
         name: c.name || `Carta ${i + 1}`,
         url: String(c.url || '').trim(),
+        source: isGeneratedCarta(c) ? 'generated' : c.url ? 'upload' : '',
+        generated: isGeneratedCarta(c)
+          ? buildGeneratedCartaPayload(c.generated || {
+              title: c.name,
+              text: '',
+              presetId: '',
+              colors: {},
+              style: {},
+            })
+          : undefined,
         sort: i,
       }));
-      const invalid = normalized.find((c) => !c.url);
-      if (invalid) {
-        toast.error('Cada carta debe tener una URL válida', { id: tid });
-        return;
-      }
       const data = await api.put('/admin-modules/auto-pedido/cartas', { cartas: normalized });
       loadSeqRef.current += 1;
       cartasDirtyRef.current = false;
       setCartas(data.cartas || normalized);
       toast.success(successMessage, { id: tid });
+      return true;
     } catch (e) {
       toast.error(e.message || 'No se pudo guardar', { id: tid });
+      return false;
     }
   };
 
@@ -1140,7 +1209,7 @@ export default function AutoPedidoAdmin() {
             )}
             <div className="space-y-3">
               {cartas.length === 0 && (
-                <p className="ui-text-muted text-sm">No hay cartas. Añade una y sube un archivo o indica una URL.</p>
+                <p className="ui-text-muted text-sm">No hay cartas. Genere una o suba un archivo.</p>
               )}
               {cartas.map((c, i) => (
                 <div key={c.id || i} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-slate-200 rounded-lg p-3">
@@ -1154,14 +1223,25 @@ export default function AutoPedidoAdmin() {
                     />
                   </div>
                   <div className="md:col-span-6">
-                    <label className="block text-xs ui-text-muted mb-1">URL (imagen o PDF)</label>
-                    <input
-                      className="input-field font-mono text-sm"
-                      value={c.url}
-                      onChange={(e) => updateRow(i, 'url', e.target.value)}
-                      placeholder="https://…, /cartas/… o /uploads/…"
-                      disabled={!canSave}
-                    />
+                    {isGeneratedCarta(c) ? (
+                      <>
+                        <label className="block text-xs ui-text-muted mb-1">Origen</label>
+                        <p className="input-field bg-[var(--ui-surface-2)] text-sm">
+                          Carta generada en el sistema
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <label className="block text-xs ui-text-muted mb-1">URL (imagen o PDF)</label>
+                        <input
+                          className="input-field font-mono text-sm"
+                          value={c.url}
+                          onChange={(e) => updateRow(i, 'url', e.target.value)}
+                          placeholder="https://…, /cartas/… o /uploads/…"
+                          disabled={!canSave}
+                        />
+                      </>
+                    )}
                   </div>
                   <div className="md:col-span-2">
                     <span className="block text-xs ui-text-muted mb-1">Archivo</span>
@@ -1200,7 +1280,7 @@ export default function AutoPedidoAdmin() {
                       disabled={!canSave}
                     >
                       <MdRestaurantMenu className="text-lg" />
-                      Generar carta desde texto (platos y precios)
+                      {isGeneratedCarta(c) ? 'Editar carta (textos, colores y tamaños)' : 'Generar carta desde texto (platos y precios)'}
                     </button>
                   </div>
                 </div>
@@ -1508,7 +1588,7 @@ export default function AutoPedidoAdmin() {
       <Modal
         isOpen={genOpenIndex !== null}
         onClose={closeGenerator}
-        title="Generar carta desde texto"
+        title={genOpenIndex !== null && isGeneratedCarta(cartas[genOpenIndex]) ? 'Editar carta del sistema' : 'Generar carta desde texto'}
         size="wide"
         variant="dark"
         maxHeightClass="max-h-[min(98dvh,calc(100dvh-0.5rem))]"
@@ -1568,18 +1648,38 @@ export default function AutoPedidoAdmin() {
               </button>
             </div>
           </div>
-          <div className="grid shrink-0 grid-cols-1 items-start gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,260px)] lg:gap-3">
-            <div>
-              <label className="mb-0.5 block text-xs font-medium text-[var(--ui-muted)]">Título de la carta</label>
-              <input
-                className="input-field py-1.5 text-sm"
-                value={genTitle}
-                onChange={(e) => setGenTitle(e.target.value)}
-                placeholder="Nuestra carta"
-              />
+          <div className="grid shrink-0 grid-cols-1 items-start gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,280px)] lg:gap-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="min-w-0 text-xs font-medium text-[var(--ui-muted)]">
+                Título
+                <input
+                  className="input-field mt-0.5 py-1.5 text-sm"
+                  value={genTitle}
+                  onChange={(e) => setGenTitle(e.target.value)}
+                  placeholder="Vinos y champán"
+                />
+              </label>
+              <label className="min-w-0 text-xs font-medium text-[var(--ui-muted)]">
+                Subtítulo
+                <input
+                  className="input-field mt-0.5 py-1.5 text-sm"
+                  value={genStyle.subtitle}
+                  onChange={(e) => setGenStyle((s) => ({ ...s, subtitle: e.target.value }))}
+                  placeholder="Vacío si no quiere texto (ej. no ponga MENÚ en vinos)"
+                />
+              </label>
+              <label className="min-w-0 text-xs font-medium text-[var(--ui-muted)] sm:col-span-2">
+                Pie
+                <input
+                  className="input-field mt-0.5 py-1.5 text-sm"
+                  value={genStyle.footer}
+                  onChange={(e) => setGenStyle((s) => ({ ...s, footer: e.target.value }))}
+                  placeholder="Gracias por su visita"
+                />
+              </label>
             </div>
             <div>
-              <p className="mb-1 text-xs font-medium text-[var(--ui-muted)]">Colores del fondo</p>
+              <p className="mb-1 text-xs font-medium text-[var(--ui-muted)]">Colores</p>
               <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
                 <label className="flex flex-col gap-1 text-[11px] text-[var(--ui-muted)]">
                   Título
@@ -1618,40 +1718,131 @@ export default function AutoPedidoAdmin() {
                   />
                 </label>
               </div>
+              <p className="mb-1 mt-2 text-xs font-medium text-[var(--ui-muted)]">Tamaños</p>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                {[
+                  ['titleSize', 'Título', 20, 56],
+                  ['subtitleSize', 'Subtítulo', 8, 24],
+                  ['itemSize', 'Texto', 12, 32],
+                  ['sectionSize', 'Sección', 10, 28],
+                  ['priceSize', 'Precio', 12, 32],
+                ].map(([key, label, min, max]) => (
+                  <label key={key} className="flex flex-col gap-0.5 text-[11px] text-[var(--ui-muted)]">
+                    {label}
+                    <input
+                      type="number"
+                      min={min}
+                      max={max}
+                      value={genStyle[key]}
+                      onChange={(e) => setGenStyle((s) => ({ ...s, [key]: Number(e.target.value) }))}
+                      className="input-field py-1 text-sm"
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="mb-1 mt-2 text-xs font-medium text-[var(--ui-muted)]">Márgenes</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  ['marginLeft', 'Izquierda', 40, 200],
+                  ['marginRight', 'Derecha', 40, 200],
+                  ['marginTop', 'Arriba', 30, 220],
+                  ['marginBottom', 'Abajo', 30, 180],
+                ].map(([key, label, min, max]) => (
+                  <label key={key} className="flex flex-col gap-0.5 text-[11px] text-[var(--ui-muted)]">
+                    {label}
+                    <input
+                      type="number"
+                      min={min}
+                      max={max}
+                      value={genStyle[key]}
+                      onChange={(e) => setGenStyle((s) => ({ ...s, [key]: Number(e.target.value) }))}
+                      className="input-field py-1 text-sm"
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-[10px] leading-snug text-[var(--ui-muted)]">
+                Si un precio se sale del marco, suba el margen derecho.
+              </p>
             </div>
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-2 pt-1">
-            <div className="mb-0.5 hidden shrink-0 items-end gap-3 xl:grid xl:grid-cols-2">
-              <label className="block text-xs font-medium text-[var(--ui-muted)]">Contenido</label>
-              <label className="block text-xs font-medium text-[var(--ui-muted)]">Vista previa</label>
-            </div>
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 xl:grid-cols-2 xl:gap-3">
-              <div className="flex min-h-0 flex-1 flex-col">
-                <label className="mb-0.5 block shrink-0 text-xs font-medium text-[var(--ui-muted)] xl:sr-only">Contenido</label>
-                <div className="flex min-h-0 flex-1 flex-col">
-                  <MenuCartaSyntaxEditor
-                    value={genText}
-                    onChange={setGenText}
-                    bgColor={normalizeHex(genColors.bg, DEFAULT_MENU_CARTA_COLORS.bg)}
-                    textColor={normalizeHex(genColors.text, DEFAULT_MENU_CARTA_COLORS.text)}
-                    sectionColor={normalizeHex(genColors.section, DEFAULT_MENU_CARTA_COLORS.section)}
-                  />
-                </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-medium text-[var(--ui-muted)]">
+                {genPreviewMode === 'max' ? 'Vista previa maximizada' : 'Contenido y vista previa'}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs inline-flex items-center gap-1 py-1.5 px-2"
+                  onClick={() => setGenPreviewFull(true)}
+                  disabled={!genPreviewUrl}
+                >
+                  <MdFullscreen />
+                  Vista completa
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary text-xs inline-flex items-center gap-1 py-1.5 px-2"
+                  onClick={() => setGenPreviewMode('max')}
+                  disabled={genPreviewMode === 'max'}
+                >
+                  <MdOpenInFull />
+                  Maximizar
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary text-xs inline-flex items-center gap-1 py-1.5 px-2"
+                  onClick={() => setGenPreviewMode(genPreviewMode === 'split' ? 'min' : 'split')}
+                >
+                  {genPreviewMode === 'min' ? <MdOpenInFull /> : <MdCloseFullscreen />}
+                  {genPreviewMode === 'min' ? 'Restaurar' : 'Minimizar'}
+                </button>
               </div>
-              <div className="flex min-h-0 flex-1 flex-col">
-                <label className="mb-0.5 block shrink-0 text-xs font-medium text-[var(--ui-muted)] xl:sr-only">Vista previa</label>
+            </div>
+            <div
+              className={`grid min-h-0 flex-1 gap-2 ${
+                genPreviewMode === 'max'
+                  ? 'grid-cols-1'
+                  : genPreviewMode === 'min'
+                    ? 'grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(8rem,11rem)]'
+                    : 'grid-cols-1 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]'
+              }`}
+            >
+              {genPreviewMode !== 'max' ? (
+                <div className="flex min-h-0 min-w-0 flex-col">
+                  <label className="mb-0.5 block shrink-0 text-xs font-medium text-[var(--ui-muted)]">Contenido</label>
+                  <div className="flex min-h-[12rem] min-w-0 flex-1 flex-col">
+                    <MenuCartaSyntaxEditor
+                      value={genText}
+                      onChange={setGenText}
+                      bgColor={normalizeHex(genColors.bg, DEFAULT_MENU_CARTA_COLORS.bg)}
+                      textColor={normalizeHex(genColors.text, DEFAULT_MENU_CARTA_COLORS.text)}
+                      sectionColor={normalizeHex(genColors.section, DEFAULT_MENU_CARTA_COLORS.section)}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              <div className="flex min-h-0 min-w-0 flex-col">
+                <label className="mb-0.5 block shrink-0 text-xs font-medium text-[var(--ui-muted)]">Vista previa</label>
                 <div
-                  className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-xl border border-[color:var(--ui-border)] p-3"
+                  className={`flex min-w-0 items-start justify-center overflow-auto rounded-xl border border-[color:var(--ui-border)] p-3 ${
+                    genPreviewMode === 'min' ? 'min-h-[10rem] h-40' : 'min-h-[32rem] h-[min(72vh,820px)] flex-1'
+                  }`}
                   style={{ backgroundColor: normalizeHex(genColors.bg, DEFAULT_MENU_CARTA_COLORS.bg) }}
                 >
                   {genPreviewUrl ? (
                     <img
                       src={genPreviewUrl}
                       alt="Vista previa de la carta generada"
-                      className="max-h-full max-w-full h-auto w-auto rounded-lg object-contain"
+                      className={`rounded-lg object-contain object-top ${
+                        genPreviewMode === 'min'
+                          ? 'max-h-full max-w-full h-full w-auto'
+                          : 'h-full w-auto max-w-full'
+                      }`}
                     />
                   ) : (
-                    <p className="px-4 text-center text-sm text-[var(--ui-muted)]">Escribe platos y precios para ver la vista previa</p>
+                    <p className="px-4 self-center text-center text-sm text-[var(--ui-muted)]">Escribe platos y precios para ver la vista previa</p>
                   )}
                 </div>
               </div>
@@ -1671,11 +1862,38 @@ export default function AutoPedidoAdmin() {
               {genExporting ? 'Preparando…' : 'Descargar PNG A4'}
             </button>
             <button type="button" onClick={() => void applyGeneratedCarta()} className="btn-primary text-sm" disabled={!canSave}>
-              Subir y aplicar a «{genOpenIndex !== null ? cartas[genOpenIndex]?.name || 'esta carta' : ''}»
+              Guardar en carta QR
             </button>
           </div>
         </div>
       </Modal>
+      {genPreviewFull ? (
+        <div className="fixed inset-0 z-[80] flex flex-col bg-black/90">
+          <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 text-white">
+            <p className="text-sm font-medium">Vista completa de la carta</p>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-sm hover:bg-white/20"
+              onClick={() => setGenPreviewFull(false)}
+            >
+              <MdFullscreenExit />
+              Cerrar
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+            {genPreviewUrl ? (
+              <img
+                src={genPreviewUrl}
+                alt="Vista completa de la carta"
+                className="mx-auto h-auto w-auto max-w-full rounded-lg shadow-2xl"
+                style={{ maxHeight: 'none', minHeight: '80vh' }}
+              />
+            ) : (
+              <p className="py-16 text-center text-sm text-white/70">No hay vista previa</p>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -39,10 +39,36 @@ Wantán frito  18`);
   assert.ok(svg.includes('S/ 10'));
   assert.ok(svg.includes('/carta-formats/crema.jpeg'));
   assert.ok(svg.includes('#14532d'));
+  assert.ok(!svg.includes('>MENÚ</text>'));
+
+  const svgWine = buildMenuCartaSvgString({
+    rows: parseMenuLines('Malbec  63'),
+    title: 'Vinos y champán',
+    presetId: 'negro',
+    page: 'a4',
+    style: { subtitle: '', titleSize: 30 },
+  });
+  assert.ok(!svgWine.includes('>MENÚ</text>'));
+  assert.ok(svgWine.includes('Vinos y champán'));
+
+  const svgMargin = buildMenuCartaSvgString({
+    rows: parseMenuLines('Malbec  63'),
+    title: 'Vinos',
+    presetId: 'negro',
+    page: 'a4',
+    style: { marginRight: 160, marginLeft: 120 },
+  });
+  assert.ok(svgMargin.includes('x="634"'));
+  assert.ok(svgMargin.includes('x="120"'));
 
   const { CARTA_BACKGROUND_PRESETS } = await import('../client/src/data/cartaBackgroundPresets.js');
   assert.ok(CARTA_BACKGROUND_PRESETS.length >= 11);
   assert.ok(CARTA_BACKGROUND_PRESETS.every((row) => row.src && row.colors?.text && row.colors?.title && row.colors?.section));
+
+  const { cartaHasDisplayableContent, isGeneratedCarta } = await import('../client/src/utils/autoPedidoCartaShape.js');
+  assert.ok(isGeneratedCarta({ source: 'generated', generated: { title: 'Entradas', text: 'Lomo 35' } }));
+  assert.ok(cartaHasDisplayableContent({ source: 'generated', generated: { title: 'Entradas', text: 'Lomo 35' }, url: '' }));
+  assert.ok(!cartaHasDisplayableContent({ name: 'Carta 1', url: '' }));
 
   console.log('verify-carta-generator: ok');
 }
