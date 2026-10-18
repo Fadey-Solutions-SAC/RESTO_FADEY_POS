@@ -31,10 +31,9 @@ export function buildCartaTextFromCategory({ category, products } = {}) {
   const all = productsForCartaCategory(products, category?.id);
   const used = all.slice(0, CARTA_MAX_PRODUCTS);
   const title = oneLine(category?.name) || 'Nuestra carta';
-  const lines = [`# ${title}`, ...used.map(formatCartaProductLine)];
   return {
     title,
-    text: lines.join('\n'),
+    text: used.map(formatCartaProductLine).join('\n'),
     used: used.length,
     omitted: Math.max(0, all.length - used.length),
   };

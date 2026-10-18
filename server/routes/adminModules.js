@@ -418,6 +418,7 @@ function normalizeGeneratedCartaPayload(raw) {
   const styleIn = raw.style && typeof raw.style === 'object' && !Array.isArray(raw.style) ? raw.style : {};
   const style = {
     subtitle: String(styleIn.subtitle || '').trim().slice(0, 80),
+    sectionLabel: String(styleIn.sectionLabel || '').trim().slice(0, 80),
     footer: String(styleIn.footer ?? 'Gracias por su visita').slice(0, 120),
     titleSize: clampGeneratedSize(styleIn.titleSize, 20, 56, 36),
     subtitleSize: clampGeneratedSize(styleIn.subtitleSize, 8, 24, 13),

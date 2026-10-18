@@ -449,11 +449,16 @@ export default function AutoPedidoAdmin() {
     const generated = current?.generated;
     const firstCat = categories[0];
     if (generated && (generated.text || generated.title)) {
+      const nextStyle = normalizeCartaStyle(generated.style);
+      if (!nextStyle.sectionLabel) {
+        const firstSection = parseMenuLines(generated.text).find((row) => row.kind === 'section');
+        if (firstSection?.label) nextStyle.sectionLabel = firstSection.label;
+      }
       setGenTitle(generated.title || current.name || firstCat?.name || 'Nuestra carta');
       setGenText(generated.text || MENU_GEN_PLACEHOLDER);
       setGenPresetId(generated.presetId || DEFAULT_CARTA_PRESET_ID);
       setGenColors({ ...DEFAULT_MENU_CARTA_COLORS, ...generated.colors });
-      setGenStyle(normalizeCartaStyle(generated.style));
+      setGenStyle(nextStyle);
     } else {
       setGenTitle(current?.name || firstCat?.name || 'Nuestra carta');
       setGenText(MENU_GEN_PLACEHOLDER);
@@ -483,6 +488,7 @@ export default function AutoPedidoAdmin() {
       return;
     }
     setGenTitle(packed.title);
+    setGenStyle((s) => ({ ...s, sectionLabel: packed.title }));
     setGenText(packed.text);
     if (packed.omitted) {
       toast(`Se cargaron ${packed.used} productos (máximo ${CARTA_MAX_PRODUCTS} por carta).`, { icon: 'ℹ️' });
@@ -1183,85 +1189,81 @@ export default function AutoPedidoAdmin() {
       ) : null}
 
       <div className="card mb-6">
-        <div className="flex flex-col lg:flex-row gap-6 lg:items-stretch">
-          <div className="lg:w-[min(100%,420px)] shrink-0 rounded-xl border border-slate-200 bg-[var(--ui-surface)] overflow-hidden min-h-[280px] lg:min-h-[460px] flex flex-col">
-            <CartasHorizontalCarousel cartas={cartas} className="flex-1 min-h-0" />
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+          <h2 className="text-lg font-semibold rf-section-title">Cartas</h2>
+          <div className="flex gap-2">
+            <button type="button" onClick={addRow} className="btn-secondary text-sm inline-flex items-center gap-1">
+              <MdAdd /> Añadir
+            </button>
+            {canSave && cartas.some((c) => !cartaHasDisplayableContent(c)) ? (
+              <button type="button" onClick={save} className="btn-primary text-sm inline-flex items-center gap-1">
+                <MdSave /> Guardar
+              </button>
+            ) : null}
           </div>
-
-          <div className="flex-1 min-w-0 flex flex-col">
-            <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-              <h2 className="text-lg font-semibold rf-section-title">Cartas</h2>
-              <div className="flex gap-2">
-                <button type="button" onClick={addRow} className="btn-secondary text-sm inline-flex items-center gap-1">
-                  <MdAdd /> Añadir
-                </button>
-                {canSave ? (
-                  <button type="button" onClick={save} className="btn-primary text-sm inline-flex items-center gap-1">
-                    <MdSave /> Guardar
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            {!canSave && (
-              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-                Solo un usuario administrador puede guardar cambios en las cartas.
-              </p>
+        </div>
+        {!canSave && (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+            Solo un usuario administrador puede guardar cambios en las cartas.
+          </p>
+        )}
+        <div className="flex flex-col gap-4">
+          <div className="rounded-xl border border-slate-200 bg-[var(--ui-surface)] overflow-hidden min-h-[280px] lg:min-h-[520px] flex flex-col">
+            <CartasHorizontalCarousel cartas={cartas.filter((c) => cartaHasDisplayableContent(c))} className="flex-1 min-h-0" />
+          </div>
+          <div className="space-y-2">
+            {cartas.length === 0 && (
+              <p className="ui-text-muted text-sm">No hay cartas. Pulse Añadir para generar una.</p>
             )}
-            <div className="space-y-3">
-              {cartas.length === 0 && (
-                <p className="ui-text-muted text-sm">No hay cartas. Genere una o suba un archivo.</p>
-              )}
-              {cartas.map((c, i) => (
-                <div key={c.id || i} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-slate-200 rounded-lg p-3">
-                  <div className="md:col-span-3">
-                    <label className="block text-xs ui-text-muted mb-1">Nombre</label>
-                    <input
-                      className="input-field"
-                      value={c.name}
-                      onChange={(e) => updateRow(i, 'name', e.target.value)}
-                      disabled={!canSave}
-                    />
-                  </div>
-                  <div className="md:col-span-6">
-                    {isGeneratedCarta(c) ? (
-                      <>
-                        <label className="block text-xs ui-text-muted mb-1">Origen</label>
-                        <p className="input-field bg-[var(--ui-surface-2)] text-sm">
-                          Carta generada en el sistema
-                        </p>
-                      </>
+            {cartas.map((c, i) => {
+              const ready = cartaHasDisplayableContent(c);
+              return (
+                <div
+                  key={c.id || i}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2"
+                >
+                  <p className="min-w-0 truncate font-medium text-[var(--ui-body-text)]">
+                    {c.name || `Carta ${i + 1}`}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {ready ? (
+                      <button
+                        type="button"
+                        onClick={() => openGenerator(i)}
+                        className="btn-secondary text-sm inline-flex items-center gap-1"
+                        disabled={!canSave}
+                      >
+                        <MdEdit />
+                        Editar
+                      </button>
                     ) : (
                       <>
-                        <label className="block text-xs ui-text-muted mb-1">URL (imagen o PDF)</label>
+                        <button
+                          type="button"
+                          onClick={() => openGenerator(i)}
+                          className="btn-secondary text-sm inline-flex items-center gap-1"
+                          disabled={!canSave}
+                        >
+                          <MdRestaurantMenu />
+                          Generar
+                        </button>
                         <input
-                          className="input-field font-mono text-sm"
-                          value={c.url}
-                          onChange={(e) => updateRow(i, 'url', e.target.value)}
-                          placeholder="https://…, /cartas/… o /uploads/…"
+                          type="file"
+                          accept="image/*,.pdf,application/pdf"
+                          id={`carta-upload-${i}`}
+                          className="sr-only"
+                          onChange={(e) => uploadCartaFile(i, e)}
                           disabled={!canSave}
                         />
+                        <label
+                          htmlFor={`carta-upload-${i}`}
+                          className={`btn-secondary text-sm inline-flex items-center gap-1 py-2 ${!canSave ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
+                        >
+                          <MdUploadFile />
+                          Subir
+                        </label>
                       </>
                     )}
-                  </div>
-                  <div className="md:col-span-2">
-                    <span className="block text-xs ui-text-muted mb-1">Archivo</span>
-                    <input
-                      type="file"
-                      accept="image/*,.pdf,application/pdf"
-                      id={`carta-upload-${i}`}
-                      className="sr-only"
-                      onChange={(e) => uploadCartaFile(i, e)}
-                      disabled={!canSave}
-                    />
-                    <label
-                      htmlFor={`carta-upload-${i}`}
-                      className={`btn-secondary text-sm w-full inline-flex items-center justify-center gap-1 py-2 ${!canSave ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
-                    >
-                      <MdUploadFile className="text-lg shrink-0" />
-                      Subir
-                    </label>
-                  </div>
-                  <div className="md:col-span-1 flex justify-end">
                     <button
                       type="button"
                       onClick={() => void removeRow(i)}
@@ -1272,20 +1274,9 @@ export default function AutoPedidoAdmin() {
                       <MdDelete className="text-xl" />
                     </button>
                   </div>
-                  <div className="md:col-span-12 pt-1 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => openGenerator(i)}
-                      className="text-sm inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 font-medium disabled:opacity-50"
-                      disabled={!canSave}
-                    >
-                      <MdRestaurantMenu className="text-lg" />
-                      {isGeneratedCarta(c) ? 'Editar carta (textos, colores y tamaños)' : 'Generar carta desde texto (platos y precios)'}
-                    </button>
-                  </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -1649,7 +1640,7 @@ export default function AutoPedidoAdmin() {
             </div>
           </div>
           <div className="flex shrink-0 flex-col gap-2 xl:flex-row xl:items-end xl:gap-3">
-            <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <label className="min-w-0 text-[11px] font-medium text-[var(--ui-muted)]">
                 Título
                 <input
@@ -1666,6 +1657,15 @@ export default function AutoPedidoAdmin() {
                   value={genStyle.subtitle}
                   onChange={(e) => setGenStyle((s) => ({ ...s, subtitle: e.target.value }))}
                   placeholder="Opcional"
+                />
+              </label>
+              <label className="min-w-0 text-[11px] font-medium text-[var(--ui-muted)]">
+                Sección
+                <input
+                  className="input-field mt-0.5 py-1.5 text-sm"
+                  value={genStyle.sectionLabel}
+                  onChange={(e) => setGenStyle((s) => ({ ...s, sectionLabel: e.target.value }))}
+                  placeholder="Texto de la sección"
                 />
               </label>
               <label className="min-w-0 text-[11px] font-medium text-[var(--ui-muted)]">
@@ -1802,6 +1802,23 @@ export default function AutoPedidoAdmin() {
                       sectionColor={normalizeHex(genColors.section, DEFAULT_MENU_CARTA_COLORS.section)}
                     />
                   </div>
+                  <div className="mt-2 flex shrink-0 flex-wrap gap-2">
+                    <button type="button" onClick={closeGenerator} className="btn-secondary text-sm">
+                      Cerrar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void downloadGeneratedCartaPng()}
+                      className="btn-secondary text-sm inline-flex items-center gap-1"
+                      disabled={genExporting}
+                    >
+                      <MdDownload />
+                      {genExporting ? 'Preparando…' : 'Descargar PNG A4'}
+                    </button>
+                    <button type="button" onClick={() => void applyGeneratedCarta()} className="btn-primary text-sm" disabled={!canSave}>
+                      Guardar en carta QR
+                    </button>
+                  </div>
                 </div>
               ) : null}
               <div className="flex min-h-0 min-w-0 flex-col">
@@ -1828,23 +1845,25 @@ export default function AutoPedidoAdmin() {
                 </div>
               </div>
             </div>
-          </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-[color:var(--ui-border)] pt-2">
-            <button type="button" onClick={closeGenerator} className="btn-secondary text-sm">
-              Cerrar
-            </button>
-            <button
-              type="button"
-              onClick={() => void downloadGeneratedCartaPng()}
-              className="btn-secondary text-sm inline-flex items-center gap-1"
-              disabled={genExporting}
-            >
-              <MdDownload />
-              {genExporting ? 'Preparando…' : 'Descargar PNG A4'}
-            </button>
-            <button type="button" onClick={() => void applyGeneratedCarta()} className="btn-primary text-sm" disabled={!canSave}>
-              Guardar en carta QR
-            </button>
+            {genPreviewMode === 'max' ? (
+              <div className="mt-2 flex shrink-0 flex-wrap gap-2">
+                <button type="button" onClick={closeGenerator} className="btn-secondary text-sm">
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void downloadGeneratedCartaPng()}
+                  className="btn-secondary text-sm inline-flex items-center gap-1"
+                  disabled={genExporting}
+                >
+                  <MdDownload />
+                  {genExporting ? 'Preparando…' : 'Descargar PNG A4'}
+                </button>
+                <button type="button" onClick={() => void applyGeneratedCarta()} className="btn-primary text-sm" disabled={!canSave}>
+                  Guardar en carta QR
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       </Modal>

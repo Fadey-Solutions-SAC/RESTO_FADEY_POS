@@ -27,6 +27,7 @@ Wantán frito  18`);
   assert.strictEqual(packed.used, CARTA_MAX_PRODUCTS);
   assert.strictEqual(packed.omitted, 2);
   assert.ok(packed.text.includes('Plato 1 | Desc 1  10'));
+  assert.ok(!packed.text.startsWith('# '));
 
   const svg = buildMenuCartaSvgString({
     rows: packed.text ? parseMenuLines(packed.text) : [],
@@ -50,6 +51,17 @@ Wantán frito  18`);
   });
   assert.ok(!svgWine.includes('>MENÚ</text>'));
   assert.ok(svgWine.includes('Vinos y champán'));
+
+  const svgSection = buildMenuCartaSvgString({
+    rows: parseMenuLines('# Bebidas frias\nBanana latte  12'),
+    title: 'Carta del día',
+    page: 'a4',
+    style: { subtitle: 'Bar', sectionLabel: 'Jugos y latte' },
+    presetId: 'crema',
+  });
+  assert.ok(svgSection.includes('Carta del día'));
+  assert.ok(svgSection.includes('Jugos y latte'));
+  assert.ok(!svgSection.includes('>Bebidas frias</text>'));
 
   const svgMargin = buildMenuCartaSvgString({
     rows: parseMenuLines('Malbec  63'),

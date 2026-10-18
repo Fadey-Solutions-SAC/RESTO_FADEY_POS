@@ -55,6 +55,7 @@ export const DEFAULT_MENU_CARTA_COLORS = {
 /** Texto extra, tamaños y márgenes editables. El subtítulo queda vacío a propósito (no forzar «MENÚ»). */
 export const DEFAULT_CARTA_STYLE = {
   subtitle: '',
+  sectionLabel: '',
   footer: 'Gracias por su visita',
   titleSize: 36,
   subtitleSize: 13,
@@ -77,6 +78,7 @@ export function normalizeCartaStyle(styleIn = {}) {
   const src = styleIn && typeof styleIn === 'object' ? styleIn : {};
   return {
     subtitle: String(src.subtitle ?? DEFAULT_CARTA_STYLE.subtitle).slice(0, 80),
+    sectionLabel: String(src.sectionLabel ?? DEFAULT_CARTA_STYLE.sectionLabel).slice(0, 80),
     footer: String(src.footer ?? DEFAULT_CARTA_STYLE.footer).slice(0, 120),
     titleSize: clampStyleSize(src.titleSize, 20, 56, DEFAULT_CARTA_STYLE.titleSize),
     subtitleSize: clampStyleSize(src.subtitleSize, 8, 24, DEFAULT_CARTA_STYLE.subtitleSize),
@@ -238,7 +240,13 @@ export function buildMenuCartaSvgString({
   const titleBlock = Math.round(padT + fontTitle + (subtitleText ? fontSubtitle + 18 : 10) + 12);
   const lineHSection = Math.max(32, Math.round(fontSection * 2.4));
   const lineHItem = Math.max(44, Math.round(fontName * 3.6));
-  const list = Array.isArray(rows) ? rows : [];
+  const rawRows = Array.isArray(rows) ? rows : [];
+  const leadingSection = rawRows[0]?.kind === 'section' ? rawRows[0].label : '';
+  const restRows = rawRows[0]?.kind === 'section' ? rawRows.slice(1) : rawRows;
+  const sectionHeading = String(style.sectionLabel || '').trim() || leadingSection;
+  const list = sectionHeading
+    ? [{ kind: 'section', label: sectionHeading }, ...restRows]
+    : restRows;
 
   let totalH = titleBlock + 28 + 36;
   for (const r of list) {
