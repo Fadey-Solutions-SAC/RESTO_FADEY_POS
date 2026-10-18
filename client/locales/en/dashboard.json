@@ -35,11 +35,7 @@
     },
     "comercial": {
       "title": "COMMERCIAL",
-      "subtitle": "Customers, sales and commercial relationships"
-    },
-    "catalogo": {
-      "title": "PRODUCTS AND CATALOG",
-      "subtitle": "Catalog and available products"
+      "subtitle": "Customers, sales, products and commercial relationships"
     },
     "control": {
       "title": "CONTROL AND ANALYSIS",

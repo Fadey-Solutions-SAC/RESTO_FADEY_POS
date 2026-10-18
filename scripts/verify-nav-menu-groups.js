@@ -22,8 +22,8 @@ async function main() {
   const ids = [...block.matchAll(/moduleId: '([^']+)'/g)].map((m) => m[1]);
   const expected = [
     'escritorio', 'caja', 'mesas', 'produccion', 'cocina', 'bar', 'delivery',
-    'reservas', 'auto_pedido', 'ventas', 'clientes', 'fidelizacion', 'creditos', 'ofertas',
-    'productos', 'almacen', 'indicadores', 'informes',
+    'reservas', 'auto_pedido', 'ventas', 'productos', 'clientes', 'fidelizacion', 'creditos', 'ofertas',
+    'almacen', 'indicadores', 'informes',
     'mi_restaurant', 'tiempo_trabajado', 'configuracion',
   ];
   assert.deepStrictEqual(ids, expected, 'ADMIN_MODULE_PATHS debe conservar todos los módulos y el orden visual');
@@ -44,12 +44,9 @@ async function main() {
   );
   assert.deepStrictEqual(
     grouped.find((g) => g.id === 'comercial').items.map((i) => i.moduleId),
-    ['ventas', 'clientes', 'fidelizacion', 'creditos', 'ofertas'],
+    ['ventas', 'productos', 'clientes', 'fidelizacion', 'creditos', 'ofertas'],
   );
-  assert.deepStrictEqual(
-    grouped.find((g) => g.id === 'catalogo').items.map((i) => i.moduleId),
-    ['productos'],
-  );
+  assert.ok(!grouped.some((g) => g.id === 'catalogo'), 'el grupo Productos y catálogo no debe existir');
   assert.deepStrictEqual(
     grouped.find((g) => g.id === 'control').items.map((i) => i.moduleId),
     ['almacen', 'indicadores', 'informes'],

@@ -35,11 +35,7 @@
     },
     "comercial": {
       "title": "GESTIÓN COMERCIAL",
-      "subtitle": "Clientes, ventas y relaciones comerciales"
-    },
-    "catalogo": {
-      "title": "PRODUCTOS Y CATÁLOGO",
-      "subtitle": "Administración del catálogo y los productos disponibles"
+      "subtitle": "Clientes, ventas, productos y relaciones comerciales"
     },
     "control": {
       "title": "CONTROL Y ANÁLISIS",

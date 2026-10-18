@@ -19,14 +19,8 @@ export const NAV_MENU_GROUPS = [
   {
     id: 'comercial',
     title: 'GESTIÓN COMERCIAL',
-    subtitle: 'Clientes, ventas y relaciones comerciales',
-    moduleIds: ['ventas', 'clientes', 'fidelizacion', 'creditos', 'ofertas'],
-  },
-  {
-    id: 'catalogo',
-    title: 'PRODUCTOS Y CATÁLOGO',
-    subtitle: 'Administración del catálogo y los productos disponibles',
-    moduleIds: ['productos'],
+    subtitle: 'Clientes, ventas, productos y relaciones comerciales',
+    moduleIds: ['ventas', 'productos', 'clientes', 'fidelizacion', 'creditos', 'ofertas'],
   },
   {
     id: 'control',
