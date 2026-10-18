@@ -7,7 +7,7 @@ import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu,
 import QRCode from 'qrcode';
 import { downloadTableQrA5, normalizeQrSlot, printTableQrA5Sheets, suggestFormatQrSlot } from '../../utils/tableQrPrint';
 import { QR_PRINT_FORMATS, qrPrintFormatBySrc } from '../../data/qrPrintFormats';
-import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
+import { CartaPreviewMedia } from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import {
   parseMenuLines,
@@ -268,6 +268,7 @@ export default function AutoPedidoAdmin() {
   const [genPreviewUrl, setGenPreviewUrl] = useState('');
   const [genPreviewMode, setGenPreviewMode] = useState('split');
   const [genPreviewFull, setGenPreviewFull] = useState(false);
+  const [cartaFullIndex, setCartaFullIndex] = useState(null);
   const [genColors, setGenColors] = useState(() => ({ ...DEFAULT_MENU_CARTA_COLORS }));
   const [genStyle, setGenStyle] = useState(() => ({ ...DEFAULT_CARTA_STYLE }));
   const [genPresetId, setGenPresetId] = useState(DEFAULT_CARTA_PRESET_ID);
@@ -505,13 +506,15 @@ export default function AutoPedidoAdmin() {
   };
 
   useEffect(() => {
-    if (!genPreviewFull) return undefined;
+    if (!genPreviewFull && cartaFullIndex == null) return undefined;
     const onKey = (event) => {
-      if (event.key === 'Escape') setGenPreviewFull(false);
+      if (event.key !== 'Escape') return;
+      setGenPreviewFull(false);
+      setCartaFullIndex(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [genPreviewFull]);
+  }, [genPreviewFull, cartaFullIndex]);
 
   const cartaGeneratorPayload = () => ({
     rows: parseMenuLines(genText),
@@ -1207,77 +1210,101 @@ export default function AutoPedidoAdmin() {
             Solo un usuario administrador puede guardar cambios en las cartas.
           </p>
         )}
-        <div className="flex flex-col gap-4">
-          <div className="rounded-xl border border-slate-200 bg-[var(--ui-surface)] overflow-hidden min-h-[280px] lg:min-h-[520px] flex flex-col">
-            <CartasHorizontalCarousel cartas={cartas.filter((c) => cartaHasDisplayableContent(c))} className="flex-1 min-h-0" />
-          </div>
-          <div className="space-y-2">
-            {cartas.length === 0 && (
-              <p className="ui-text-muted text-sm">No hay cartas. Pulse Añadir para generar una.</p>
-            )}
-            {cartas.map((c, i) => {
-              const ready = cartaHasDisplayableContent(c);
-              return (
-                <div
-                  key={c.id || i}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2"
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {cartas.length === 0 && (
+            <p className="ui-text-muted text-sm py-6">No hay cartas. Pulse Añadir para generar una a la derecha.</p>
+          )}
+          {cartas.map((c, i) => {
+            const ready = cartaHasDisplayableContent(c);
+            return (
+              <div
+                key={c.id || i}
+                className="w-[11.5rem] shrink-0 rounded-xl border border-slate-200 bg-[var(--ui-surface)] p-2 flex flex-col"
+              >
+                <button
+                  type="button"
+                  className="aspect-[210/297] w-full overflow-hidden rounded-lg border border-slate-200 bg-[var(--ui-surface-2)] flex items-center justify-center"
+                  onClick={() => ready && setCartaFullIndex(i)}
+                  disabled={!ready}
+                  title={ready ? 'Maximizar' : 'Sin carta'}
                 >
-                  <p className="min-w-0 truncate font-medium text-[var(--ui-body-text)]">
-                    {c.name || `Carta ${i + 1}`}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    {ready ? (
+                  {ready && isGeneratedCarta(c) ? (
+                    <CartaPreviewMedia carta={c} className="max-h-full max-w-full object-contain" />
+                  ) : ready && c.url ? (
+                    <img
+                      src={resolveMediaUrl(c.url)}
+                      alt={c.name || `Carta ${i + 1}`}
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  ) : (
+                    <span className="px-2 text-center text-[11px] text-[var(--ui-muted)]">Nueva carta</span>
+                  )}
+                </button>
+                <p className="mt-2 truncate text-sm font-medium text-[var(--ui-body-text)]">
+                  {c.name || `Carta ${i + 1}`}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {ready ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setCartaFullIndex(i)}
+                        className="btn-secondary text-[11px] py-1 px-2 inline-flex items-center gap-1"
+                      >
+                        <MdFullscreen />
+                        Maximizar
+                      </button>
                       <button
                         type="button"
                         onClick={() => openGenerator(i)}
-                        className="btn-secondary text-sm inline-flex items-center gap-1"
+                        className="btn-secondary text-[11px] py-1 px-2 inline-flex items-center gap-1"
                         disabled={!canSave}
                       >
                         <MdEdit />
                         Editar
                       </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => openGenerator(i)}
-                          className="btn-secondary text-sm inline-flex items-center gap-1"
-                          disabled={!canSave}
-                        >
-                          <MdRestaurantMenu />
-                          Generar
-                        </button>
-                        <input
-                          type="file"
-                          accept="image/*,.pdf,application/pdf"
-                          id={`carta-upload-${i}`}
-                          className="sr-only"
-                          onChange={(e) => uploadCartaFile(i, e)}
-                          disabled={!canSave}
-                        />
-                        <label
-                          htmlFor={`carta-upload-${i}`}
-                          className={`btn-secondary text-sm inline-flex items-center gap-1 py-2 ${!canSave ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
-                        >
-                          <MdUploadFile />
-                          Subir
-                        </label>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void removeRow(i)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                      disabled={!canSave}
-                      aria-label="Eliminar"
-                    >
-                      <MdDelete className="text-xl" />
-                    </button>
-                  </div>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openGenerator(i)}
+                        className="btn-secondary text-[11px] py-1 px-2 inline-flex items-center gap-1"
+                        disabled={!canSave}
+                      >
+                        <MdRestaurantMenu />
+                        Generar
+                      </button>
+                      <input
+                        type="file"
+                        accept="image/*,.pdf,application/pdf"
+                        id={`carta-upload-${i}`}
+                        className="sr-only"
+                        onChange={(e) => uploadCartaFile(i, e)}
+                        disabled={!canSave}
+                      />
+                      <label
+                        htmlFor={`carta-upload-${i}`}
+                        className={`btn-secondary text-[11px] py-1 px-2 inline-flex items-center gap-1 ${!canSave ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
+                      >
+                        <MdUploadFile />
+                        Subir
+                      </label>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void removeRow(i)}
+                    className="p-1 text-red-600 hover:bg-red-50 rounded-lg ml-auto"
+                    disabled={!canSave}
+                    aria-label="Eliminar"
+                  >
+                    <MdDelete className="text-lg" />
+                  </button>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -1867,6 +1894,37 @@ export default function AutoPedidoAdmin() {
           </div>
         </div>
       </Modal>
+      {cartaFullIndex != null && cartas[cartaFullIndex] ? (
+        <div className="fixed inset-0 z-[80] flex flex-col bg-black/90">
+          <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 text-white">
+            <p className="text-sm font-medium">{cartas[cartaFullIndex].name || 'Carta'}</p>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-sm hover:bg-white/20"
+              onClick={() => setCartaFullIndex(null)}
+            >
+              <MdFullscreenExit />
+              Cerrar
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto px-4 pb-4 flex items-center justify-center">
+            {isGeneratedCarta(cartas[cartaFullIndex]) ? (
+              <CartaPreviewMedia
+                carta={cartas[cartaFullIndex]}
+                className="max-h-[calc(100dvh-5rem)] max-w-full object-contain rounded-lg shadow-2xl"
+              />
+            ) : cartas[cartaFullIndex].url ? (
+              <img
+                src={resolveMediaUrl(cartas[cartaFullIndex].url)}
+                alt={cartas[cartaFullIndex].name || 'Carta'}
+                className="max-h-[calc(100dvh-5rem)] max-w-full object-contain rounded-lg shadow-2xl"
+              />
+            ) : (
+              <p className="py-16 text-center text-sm text-white/70">No hay carta</p>
+            )}
+          </div>
+        </div>
+      ) : null}
       {genPreviewFull ? (
         <div className="fixed inset-0 z-[80] flex flex-col bg-black/90">
           <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 text-white">

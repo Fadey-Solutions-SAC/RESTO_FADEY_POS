@@ -9,7 +9,7 @@ function isPdfUrl(url) {
   return /\.pdf(\?|$)/i.test(String(url || ''));
 }
 
-function CartaGeneratedSlide({ carta }) {
+export function CartaPreviewMedia({ carta, className = '' }) {
   const [src, setSrc] = useState('');
   useEffect(() => {
     let cancel = false;
@@ -56,9 +56,13 @@ function CartaGeneratedSlide({ carta }) {
     <img
       src={src}
       alt={carta.name}
-      className="max-h-full max-w-full w-auto h-auto object-contain rounded-lg border border-[#334155]"
+      className={`max-h-full max-w-full w-auto h-auto object-contain ${className}`}
     />
   );
+}
+
+function CartaGeneratedSlide({ carta }) {
+  return <CartaPreviewMedia carta={carta} className="rounded-lg border border-[#334155]" />;
 }
 
 /**
