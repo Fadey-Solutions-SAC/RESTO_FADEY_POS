@@ -1648,9 +1648,9 @@ export default function AutoPedidoAdmin() {
               </button>
             </div>
           </div>
-          <div className="grid shrink-0 grid-cols-1 items-start gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,280px)] lg:gap-3">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="min-w-0 text-xs font-medium text-[var(--ui-muted)]">
+          <div className="flex shrink-0 flex-col gap-2 xl:flex-row xl:items-end xl:gap-3">
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-3">
+              <label className="min-w-0 text-[11px] font-medium text-[var(--ui-muted)]">
                 Título
                 <input
                   className="input-field mt-0.5 py-1.5 text-sm"
@@ -1659,16 +1659,16 @@ export default function AutoPedidoAdmin() {
                   placeholder="Vinos y champán"
                 />
               </label>
-              <label className="min-w-0 text-xs font-medium text-[var(--ui-muted)]">
+              <label className="min-w-0 text-[11px] font-medium text-[var(--ui-muted)]">
                 Subtítulo
                 <input
                   className="input-field mt-0.5 py-1.5 text-sm"
                   value={genStyle.subtitle}
                   onChange={(e) => setGenStyle((s) => ({ ...s, subtitle: e.target.value }))}
-                  placeholder="Vacío si no quiere texto (ej. no ponga MENÚ en vinos)"
+                  placeholder="Opcional"
                 />
               </label>
-              <label className="min-w-0 text-xs font-medium text-[var(--ui-muted)] sm:col-span-2">
+              <label className="min-w-0 text-[11px] font-medium text-[var(--ui-muted)]">
                 Pie
                 <input
                   className="input-field mt-0.5 py-1.5 text-sm"
@@ -1678,56 +1678,38 @@ export default function AutoPedidoAdmin() {
                 />
               </label>
             </div>
-            <div>
-              <p className="mb-1 text-xs font-medium text-[var(--ui-muted)]">Colores</p>
-              <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
-                <label className="flex flex-col gap-1 text-[11px] text-[var(--ui-muted)]">
-                  Título
-                  <input
-                    type="color"
-                    value={normalizeHex(genColors.title, DEFAULT_MENU_CARTA_COLORS.title)}
-                    onChange={(e) => setGenColors((c) => ({ ...c, title: e.target.value }))}
-                    className="h-9 w-full min-w-0 rounded border border-[color:var(--ui-border)] cursor-pointer bg-[var(--ui-surface-2)] p-0.5"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-[11px] text-[var(--ui-muted)]">
-                  Texto
-                  <input
-                    type="color"
-                    value={normalizeHex(genColors.text, DEFAULT_MENU_CARTA_COLORS.text)}
-                    onChange={(e) => setGenColors((c) => ({ ...c, text: e.target.value }))}
-                    className="h-9 w-full min-w-0 rounded border border-[color:var(--ui-border)] cursor-pointer bg-[var(--ui-surface-2)] p-0.5"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-[11px] text-[var(--ui-muted)]">
-                  Subtítulos
-                  <input
-                    type="color"
-                    value={normalizeHex(genColors.section, DEFAULT_MENU_CARTA_COLORS.section)}
-                    onChange={(e) => setGenColors((c) => ({ ...c, section: e.target.value }))}
-                    className="h-9 w-full min-w-0 rounded border border-[color:var(--ui-border)] cursor-pointer bg-[var(--ui-surface-2)] p-0.5"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-[11px] text-[var(--ui-muted)]">
-                  Precios
-                  <input
-                    type="color"
-                    value={normalizeHex(genColors.price, DEFAULT_MENU_CARTA_COLORS.price)}
-                    onChange={(e) => setGenColors((c) => ({ ...c, price: e.target.value }))}
-                    className="h-9 w-full min-w-0 rounded border border-[color:var(--ui-border)] cursor-pointer bg-[var(--ui-surface-2)] p-0.5"
-                  />
-                </label>
+            <div className="shrink-0">
+              <p className="mb-0.5 text-[11px] font-medium text-[var(--ui-muted)]">Colores</p>
+              <div className="flex gap-1.5">
+                {[
+                  ['title', 'Título', DEFAULT_MENU_CARTA_COLORS.title],
+                  ['text', 'Texto', DEFAULT_MENU_CARTA_COLORS.text],
+                  ['section', 'Sección', DEFAULT_MENU_CARTA_COLORS.section],
+                  ['price', 'Precio', DEFAULT_MENU_CARTA_COLORS.price],
+                ].map(([key, label, fallback]) => (
+                  <label key={key} className="flex w-14 flex-col gap-0.5 text-[10px] text-[var(--ui-muted)]">
+                    {label}
+                    <input
+                      type="color"
+                      value={normalizeHex(genColors[key], fallback)}
+                      onChange={(e) => setGenColors((c) => ({ ...c, [key]: e.target.value }))}
+                      className="h-8 w-full min-w-0 rounded border border-[color:var(--ui-border)] cursor-pointer bg-[var(--ui-surface-2)] p-0.5"
+                    />
+                  </label>
+                ))}
               </div>
-              <p className="mb-1 mt-2 text-xs font-medium text-[var(--ui-muted)]">Tamaños</p>
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="mb-0.5 text-[11px] font-medium text-[var(--ui-muted)]">Tamaños</p>
+              <div className="flex gap-1.5">
                 {[
                   ['titleSize', 'Título', 20, 56],
-                  ['subtitleSize', 'Subtítulo', 8, 24],
+                  ['subtitleSize', 'Subtít.', 8, 24],
                   ['itemSize', 'Texto', 12, 32],
                   ['sectionSize', 'Sección', 10, 28],
                   ['priceSize', 'Precio', 12, 32],
                 ].map(([key, label, min, max]) => (
-                  <label key={key} className="flex flex-col gap-0.5 text-[11px] text-[var(--ui-muted)]">
+                  <label key={key} className="min-w-0 flex-1 text-[10px] text-[var(--ui-muted)]">
                     {label}
                     <input
                       type="number"
@@ -1735,20 +1717,22 @@ export default function AutoPedidoAdmin() {
                       max={max}
                       value={genStyle[key]}
                       onChange={(e) => setGenStyle((s) => ({ ...s, [key]: Number(e.target.value) }))}
-                      className="input-field py-1 text-sm"
+                      className="input-field mt-0.5 py-1 text-sm"
                     />
                   </label>
                 ))}
               </div>
-              <p className="mb-1 mt-2 text-xs font-medium text-[var(--ui-muted)]">Márgenes</p>
-              <div className="grid grid-cols-2 gap-1.5">
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="mb-0.5 text-[11px] font-medium text-[var(--ui-muted)]">Márgenes</p>
+              <div className="flex gap-1.5">
                 {[
-                  ['marginLeft', 'Izquierda', 40, 200],
-                  ['marginRight', 'Derecha', 40, 200],
+                  ['marginLeft', 'Izq.', 40, 200],
+                  ['marginRight', 'Der.', 40, 200],
                   ['marginTop', 'Arriba', 30, 220],
                   ['marginBottom', 'Abajo', 30, 180],
                 ].map(([key, label, min, max]) => (
-                  <label key={key} className="flex flex-col gap-0.5 text-[11px] text-[var(--ui-muted)]">
+                  <label key={key} className="min-w-0 flex-1 text-[10px] text-[var(--ui-muted)]">
                     {label}
                     <input
                       type="number"
@@ -1756,14 +1740,11 @@ export default function AutoPedidoAdmin() {
                       max={max}
                       value={genStyle[key]}
                       onChange={(e) => setGenStyle((s) => ({ ...s, [key]: Number(e.target.value) }))}
-                      className="input-field py-1 text-sm"
+                      className="input-field mt-0.5 py-1 text-sm"
                     />
                   </label>
                 ))}
               </div>
-              <p className="mt-1 text-[10px] leading-snug text-[var(--ui-muted)]">
-                Si un precio se sale del marco, suba el margen derecho.
-              </p>
             </div>
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-2 pt-1">
