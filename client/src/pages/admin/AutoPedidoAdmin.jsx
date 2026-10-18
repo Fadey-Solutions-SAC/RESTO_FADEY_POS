@@ -15,6 +15,9 @@ import {
   DEFAULT_MENU_CARTA_COLORS,
   normalizeHex,
 } from '../../utils/generateMenuCartaSvg';
+import { CARTA_BACKGROUND_PRESETS, DEFAULT_CARTA_PRESET_ID, cartaPresetById, resolvePresetBackgroundHref } from '../../data/cartaBackgroundPresets';
+import { CARTA_MAX_PRODUCTS, buildCartaTextFromCategory } from '../../utils/cartaFromCatalog';
+import { downloadMenuCartaPngA4, buildMenuCartaPngBlob } from '../../utils/downloadCartaPngA4';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
 import { isImageFile, matchImageFilesToProducts } from '../../utils/productImageFolderMatch';
 import {
@@ -69,15 +72,9 @@ function MenuCartaSyntaxEditor({ value, onChange, bgColor, textColor, sectionCol
 }
 
 const MENU_GEN_PLACEHOLDER = `# Entradas
-Ceviche clásico  28
-Wantán frito  18
-
-# Platos fuertes
-Lomo saltado  38
-Ají de gallina  32
-
-Postres
-Helado de vainilla  10`;
+Ceviche clásico | Pescado fresco al limón  28
+Wantán frito | Crujiente con salsa tamarindo  18
+Lomo saltado | Carne, papas y arroz  38`;
 
 function selfOrderUrlForTable(number) {
   const base = typeof window !== 'undefined' ? window.location.origin : '';
@@ -267,6 +264,9 @@ export default function AutoPedidoAdmin() {
   const [genText, setGenText] = useState(MENU_GEN_PLACEHOLDER);
   const [genPreviewUrl, setGenPreviewUrl] = useState('');
   const [genColors, setGenColors] = useState(() => ({ ...DEFAULT_MENU_CARTA_COLORS }));
+  const [genPresetId, setGenPresetId] = useState(DEFAULT_CARTA_PRESET_ID);
+  const [genCategoryId, setGenCategoryId] = useState('');
+  const [genExporting, setGenExporting] = useState(false);
   const [showProductCatalog, setShowProductCatalog] = useState(false);
   const [importingFolder, setImportingFolder] = useState(false);
   const [folderImportResult, setFolderImportResult] = useState(null);
@@ -372,19 +372,41 @@ export default function AutoPedidoAdmin() {
 
   useEffect(() => {
     if (genOpenIndex === null) return undefined;
+    let cancel = false;
+    let createdUrl = '';
     const rows = parseMenuLines(genText);
-    const blob = buildMenuCartaSvgBlob({
-      rows,
-      title: genTitle.trim() || 'Nuestra carta',
-      colors: genColors,
-    });
-    const url = URL.createObjectURL(blob);
-    setGenPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return url;
-    });
-    return () => URL.revokeObjectURL(url);
-  }, [genOpenIndex, genText, genTitle, genColors]);
+    (async () => {
+      let backgroundHref = '';
+      try {
+        backgroundHref = await resolvePresetBackgroundHref(genPresetId);
+      } catch {
+        backgroundHref = cartaPresetById(genPresetId).src || '';
+      }
+      if (cancel) return;
+      const blob = buildMenuCartaSvgBlob({
+        rows,
+        title: genTitle.trim() || 'Nuestra carta',
+        colors: genColors,
+        presetId: genPresetId,
+        page: 'a4',
+        backgroundHref,
+      });
+      const url = URL.createObjectURL(blob);
+      createdUrl = url;
+      if (cancel) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      setGenPreviewUrl((prev) => {
+        if (prev && prev !== url) URL.revokeObjectURL(prev);
+        return url;
+      });
+    })();
+    return () => {
+      cancel = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [genOpenIndex, genText, genTitle, genColors, genPresetId]);
 
   const addRow = () => {
     markCartasEdited();
@@ -416,10 +438,39 @@ export default function AutoPedidoAdmin() {
   };
 
   const openGenerator = (index) => {
-    setGenTitle('Nuestra carta');
+    const firstCat = categories[0];
+    setGenTitle(firstCat?.name || 'Nuestra carta');
     setGenText(MENU_GEN_PLACEHOLDER);
+    setGenPresetId(DEFAULT_CARTA_PRESET_ID);
     setGenColors({ ...DEFAULT_MENU_CARTA_COLORS });
+    setGenCategoryId(firstCat?.id || '');
     setGenOpenIndex(index);
+  };
+
+  const applyCartaPreset = (presetId) => {
+    const preset = cartaPresetById(presetId);
+    setGenPresetId(preset.id);
+    setGenColors({ ...preset.colors });
+  };
+
+  const loadProductsIntoCarta = () => {
+    const category = categories.find((row) => String(row.id) === String(genCategoryId));
+    if (!category) {
+      toast.error('Elija una categoría');
+      return;
+    }
+    const packed = buildCartaTextFromCategory({ category, products });
+    if (!packed.used) {
+      toast.error('Esa categoría no tiene productos activos');
+      return;
+    }
+    setGenTitle(packed.title);
+    setGenText(packed.text);
+    if (packed.omitted) {
+      toast(`Se cargaron ${packed.used} productos (máximo ${CARTA_MAX_PRODUCTS} por carta).`, { icon: 'ℹ️' });
+    } else {
+      toast.success(`${packed.used} producto(s) cargados en la carta`);
+    }
   };
 
   const closeGenerator = () => {
@@ -427,21 +478,42 @@ export default function AutoPedidoAdmin() {
     setGenPreviewUrl('');
   };
 
+  const cartaGeneratorPayload = () => ({
+    rows: parseMenuLines(genText),
+    title: genTitle.trim() || 'Nuestra carta',
+    colors: genColors,
+    presetId: genPresetId,
+  });
+
+  const downloadGeneratedCartaPng = async () => {
+    const payload = cartaGeneratorPayload();
+    if (!payload.rows.some((r) => r.kind === 'item')) {
+      toast.error('Escribe o carga al menos un producto');
+      return;
+    }
+    setGenExporting(true);
+    const tid = toast.loading('Preparando PNG A4…');
+    try {
+      await downloadMenuCartaPngA4(payload);
+      toast.success('Carta descargada en PNG A4', { id: tid });
+    } catch (err) {
+      toast.error(err.message || 'No se pudo descargar el PNG', { id: tid });
+    } finally {
+      setGenExporting(false);
+    }
+  };
+
   const applyGeneratedCarta = async () => {
     if (!canSave || genOpenIndex === null) return;
-    const rows = parseMenuLines(genText);
-    if (!rows.some((r) => r.kind === 'item' && r.price != null && Number.isFinite(Number(r.price)))) {
+    const payload = cartaGeneratorPayload();
+    if (!payload.rows.some((r) => r.kind === 'item' && r.price != null && Number.isFinite(Number(r.price)))) {
       toast.error('Añade al menos una línea con precio al final (ej. Lomo saltado  35)');
       return;
     }
-    const tid = toast.loading('Generando y subiendo…');
+    const tid = toast.loading('Generando PNG A4 y subiendo…');
     try {
-      const blob = buildMenuCartaSvgBlob({
-        rows,
-        title: genTitle.trim() || 'Nuestra carta',
-        colors: genColors,
-      });
-      const file = new File([blob], `carta-${Date.now()}.svg`, { type: 'image/svg+xml' });
+      const blob = await buildMenuCartaPngBlob(payload);
+      const file = new File([blob], `carta-${Date.now()}.png`, { type: 'image/png' });
       const { url } = await api.upload(file);
       markCartasEdited();
       updateRow(genOpenIndex, 'url', url || '');
@@ -1444,9 +1516,58 @@ export default function AutoPedidoAdmin() {
       >
         <div className="flex min-h-0 flex-1 flex-col gap-2 text-[var(--ui-body-text)]">
           <p className="shrink-0 text-[11px] leading-snug text-[var(--ui-muted)] sm:text-xs">
-            Una línea por plato y precio al final (opcional <span className="font-mono text-[var(--ui-accent)]">S/</span>). Categoría solo si la línea empieza por{' '}
-            <span className="font-mono text-[var(--ui-accent)]">#</span>.
+            Una carta por categoría, máximo {CARTA_MAX_PRODUCTS} productos. Escriba{' '}
+            <span className="font-mono text-[var(--ui-accent)]">Nombre | descripción  precio</span>
+            {' '}o cargue los productos de una categoría.
           </p>
+          <div className="shrink-0 space-y-2">
+            <p className="text-xs font-medium text-[var(--ui-muted)]">Fondos por color</p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {CARTA_BACKGROUND_PRESETS.map((preset) => {
+                const selected = genPresetId === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applyCartaPreset(preset.id)}
+                    className={`w-20 shrink-0 rounded-lg border p-1 text-left ${
+                      selected
+                        ? 'border-[color:var(--ui-accent)] ring-2 ring-[color:var(--ui-accent)]'
+                        : 'border-[color:var(--ui-border)]'
+                    }`}
+                    title={`${preset.name}: texto ${preset.colors.text}, título ${preset.colors.title}, subtítulos ${preset.colors.section}`}
+                  >
+                    <span
+                      className="block h-14 w-full overflow-hidden rounded-md bg-cover bg-center"
+                      style={{
+                        backgroundColor: preset.colors.bg,
+                        backgroundImage: `url(${preset.src})`,
+                      }}
+                    />
+                    <span className="mt-1 block truncate text-center text-[10px] font-medium">{preset.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="min-w-0 flex-1 text-xs font-medium text-[var(--ui-muted)]">
+                Cargar productos de una categoría
+                <select
+                  className="input-field mt-0.5 py-1.5 text-sm"
+                  value={genCategoryId}
+                  onChange={(e) => setGenCategoryId(e.target.value)}
+                >
+                  <option value="">Elegir categoría…</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="btn-secondary text-sm shrink-0" onClick={loadProductsIntoCarta}>
+                Cargar en la carta
+              </button>
+            </div>
+          </div>
           <div className="grid shrink-0 grid-cols-1 items-start gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,260px)] lg:gap-3">
             <div>
               <label className="mb-0.5 block text-xs font-medium text-[var(--ui-muted)]">Título de la carta</label>
@@ -1458,14 +1579,14 @@ export default function AutoPedidoAdmin() {
               />
             </div>
             <div>
-              <p className="mb-1 text-xs font-medium text-[var(--ui-muted)]">Colores</p>
+              <p className="mb-1 text-xs font-medium text-[var(--ui-muted)]">Colores del fondo</p>
               <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
                 <label className="flex flex-col gap-1 text-[11px] text-[var(--ui-muted)]">
-                  Fondo
+                  Título
                   <input
                     type="color"
-                    value={normalizeHex(genColors.bg, DEFAULT_MENU_CARTA_COLORS.bg)}
-                    onChange={(e) => setGenColors((c) => ({ ...c, bg: e.target.value }))}
+                    value={normalizeHex(genColors.title, DEFAULT_MENU_CARTA_COLORS.title)}
+                    onChange={(e) => setGenColors((c) => ({ ...c, title: e.target.value }))}
                     className="h-9 w-full min-w-0 rounded border border-[color:var(--ui-border)] cursor-pointer bg-[var(--ui-surface-2)] p-0.5"
                   />
                 </label>
@@ -1479,7 +1600,7 @@ export default function AutoPedidoAdmin() {
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-[11px] text-[var(--ui-muted)]">
-                  Líneas #
+                  Subtítulos
                   <input
                     type="color"
                     value={normalizeHex(genColors.section, DEFAULT_MENU_CARTA_COLORS.section)}
@@ -1540,7 +1661,16 @@ export default function AutoPedidoAdmin() {
             <button type="button" onClick={closeGenerator} className="btn-secondary text-sm">
               Cerrar
             </button>
-            <button type="button" onClick={applyGeneratedCarta} className="btn-primary text-sm" disabled={!canSave}>
+            <button
+              type="button"
+              onClick={() => void downloadGeneratedCartaPng()}
+              className="btn-secondary text-sm inline-flex items-center gap-1"
+              disabled={genExporting}
+            >
+              <MdDownload />
+              {genExporting ? 'Preparando…' : 'Descargar PNG A4'}
+            </button>
+            <button type="button" onClick={() => void applyGeneratedCarta()} className="btn-primary text-sm" disabled={!canSave}>
               Subir y aplicar a «{genOpenIndex !== null ? cartas[genOpenIndex]?.name || 'esta carta' : ''}»
             </button>
           </div>
