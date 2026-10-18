@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, formatDateTime, getApiBase, hasElectronPrinting, electronPrinting } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../context/AuthContext';
@@ -119,6 +119,7 @@ function resolveAreaLabel(form, areaId) {
 }
 
 export default function Fidelizacion() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const canEdit = user?.role === 'admin' || user?.role === 'master_admin';
   const [searchParams, setSearchParams] = useSearchParams();
@@ -393,10 +394,19 @@ export default function Fidelizacion() {
             {view === 'panel' ? 'Resumen de fidelización' : 'Configuración de la encuesta'}
           </h1>
           <p className="text-sm text-slate-500">
-            {view === 'panel' ? 'Lo que opinan tus clientes en las encuestas' : 'Arme el cuadro de la encuesta y descargue el QR'}
+            {view === 'panel'
+              ? 'Encuestas de clientes. Tras el envío, el cliente puede activar o consultar su GIT Cards.'
+              : 'Arme el cuadro de la encuesta y descargue el QR. El mismo código lleva a GIT Cards.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/admin/clientes/git-cards')}
+            className="rf-tab-btn inline-flex items-center gap-1.5"
+          >
+            <MdStars className="text-lg" /> GIT Cards
+          </button>
           {VIEWS.map((t) => {
             const Icon = t.icon;
             return (

@@ -1034,6 +1034,90 @@ async function initDatabase() {
     db.run('CREATE INDEX IF NOT EXISTS idx_loyalty_surveys_created_at ON loyalty_surveys(created_at)');
     /** Índice waiter solo tras ensureLoyaltySurveysTable (ALTER en DBs antiguas). */
     db.run(`
+      CREATE TABLE IF NOT EXISTS git_cards_cycles (
+        id TEXT PRIMARY KEY,
+        customer_id TEXT NOT NULL,
+        restaurant_id TEXT DEFAULT '',
+        goal INTEGER NOT NULL,
+        min_spend REAL NOT NULL,
+        started_at TEXT NOT NULL,
+        expires_at TEXT DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'active',
+        completed_at TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS git_cards_advances (
+        id TEXT PRIMARY KEY,
+        cycle_id TEXT NOT NULL,
+        customer_id TEXT NOT NULL,
+        restaurant_id TEXT DEFAULT '',
+        order_id TEXT NOT NULL,
+        amount REAL NOT NULL,
+        status TEXT NOT NULL,
+        reject_reason TEXT DEFAULT '',
+        decided_by TEXT DEFAULT '',
+        decided_by_name TEXT DEFAULT '',
+        decided_at TEXT DEFAULT '',
+        survey_ok INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(order_id)
+      )
+    `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS git_cards_rewards (
+        id TEXT PRIMARY KEY,
+        cycle_id TEXT NOT NULL,
+        customer_id TEXT NOT NULL,
+        restaurant_id TEXT DEFAULT '',
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        issued_at TEXT NOT NULL,
+        expires_at TEXT DEFAULT '',
+        redeemed_at TEXT DEFAULT '',
+        redeemed_by TEXT DEFAULT '',
+        redeemed_by_name TEXT DEFAULT '',
+        UNIQUE(cycle_id)
+      )
+    `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS git_cards_events (
+        id TEXT PRIMARY KEY,
+        customer_id TEXT NOT NULL,
+        restaurant_id TEXT DEFAULT '',
+        cycle_id TEXT DEFAULT '',
+        kind TEXT NOT NULL,
+        detail TEXT DEFAULT '',
+        order_id TEXT DEFAULT '',
+        amount REAL DEFAULT 0,
+        actor_id TEXT DEFAULT '',
+        actor_name TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS git_cards_access (
+        customer_id TEXT PRIMARY KEY,
+        restaurant_id TEXT DEFAULT '',
+        token TEXT NOT NULL UNIQUE,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS git_cards_surveys (
+        id TEXT PRIMARY KEY,
+        customer_id TEXT NOT NULL,
+        restaurant_id TEXT DEFAULT '',
+        completed_at TEXT NOT NULL,
+        answers_json TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.run('CREATE INDEX IF NOT EXISTS idx_git_cards_cycles_customer ON git_cards_cycles(customer_id, status)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_git_cards_advances_cycle ON git_cards_advances(cycle_id, status)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_git_cards_rewards_customer ON git_cards_rewards(customer_id, status)');
+    db.run(`
       CREATE TABLE IF NOT EXISTS categories (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -3699,6 +3783,8 @@ function ensureLoyaltySurveysTable() {
     ['improve_json', "ALTER TABLE loyalty_surveys ADD COLUMN improve_json TEXT DEFAULT '[]'"],
     ['liked_other', "ALTER TABLE loyalty_surveys ADD COLUMN liked_other TEXT DEFAULT ''"],
     ['improve_other', "ALTER TABLE loyalty_surveys ADD COLUMN improve_other TEXT DEFAULT ''"],
+    ['customer_id', "ALTER TABLE loyalty_surveys ADD COLUMN customer_id TEXT DEFAULT ''"],
+    ['restaurant_id', "ALTER TABLE loyalty_surveys ADD COLUMN restaurant_id TEXT DEFAULT ''"],
   ];
   /** Siempre intentar ALTER: en Render/sql.js el PRAGMA a veces no refleja columnas a tiempo. */
   for (const [colName, ddl] of needed) {

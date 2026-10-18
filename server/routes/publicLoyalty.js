@@ -10,8 +10,15 @@ const {
   visibleAreaOptions,
 } = require('../loyaltySurveyQuestions');
 const { sendRouteError } = require('../utils/routeErrors');
+const {
+  createLoyaltyContinueSession,
+  readLoyaltyContinue,
+  linkLoyaltyContinue,
+  publicProgramSummary,
+} = require('../gitCardsService');
 
 const router = express.Router();
+const getLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 40 });
 const postLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 8 });
 
 function clampRating(value) {
@@ -89,6 +96,7 @@ router.get('/form', (req, res) => {
       ...form,
       area_options: visibleAreaOptions(form),
       waiters: listActiveWaiters(),
+      git_cards: publicProgramSummary(),
     });
   } catch (err) {
     sendRouteError(res, req, err, 'No se pudo cargar la encuesta');
@@ -196,10 +204,48 @@ router.post('/', postLimiter, (req, res) => {
         throw insertErr;
       }
     }
+    try {
+      const restaurant = queryOne('SELECT id FROM restaurants LIMIT 1');
+      runSql(
+        "UPDATE loyalty_surveys SET restaurant_id = COALESCE(NULLIF(restaurant_id, ''), ?) WHERE id = ?",
+        [String(restaurant?.id || ''), id],
+      );
+    } catch (_) {
+      /* columnas nuevas pueden no existir en el primer intento */
+    }
     emitStaffDataUpdate({ domain: 'loyalty' });
-    res.status(201).json({ success: true, id });
+    const continueToken = createLoyaltyContinueSession(id);
+    res.status(201).json({ success: true, id, continue_token: continueToken });
   } catch (err) {
     sendRouteError(res, req, err, 'No se pudo enviar la encuesta');
+  }
+});
+
+router.post('/git-cards/start', postLimiter, (req, res) => {
+  try {
+    const token = createLoyaltyContinueSession('');
+    res.status(201).json({ continue_token: token, git_cards: publicProgramSummary() });
+  } catch (err) {
+    sendRouteError(res, req, err, 'No se pudo iniciar GIT Cards');
+  }
+});
+
+router.get('/continue/:token', getLimiter, (req, res) => {
+  try {
+    res.json(readLoyaltyContinue(req.params.token));
+  } catch (err) {
+    sendRouteError(res, req, err, 'No se pudo continuar a GIT Cards');
+  }
+});
+
+router.post('/continue/:token/link', postLimiter, (req, res) => {
+  try {
+    const payload = linkLoyaltyContinue(req.params.token, req.body || {});
+    emitStaffDataUpdate({ domain: 'git_cards' });
+    emitStaffDataUpdate({ domain: 'customers' });
+    res.json(payload);
+  } catch (err) {
+    sendRouteError(res, req, err, 'No se pudo vincular GIT Cards');
   }
 });
 

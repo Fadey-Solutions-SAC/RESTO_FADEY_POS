@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, resolveMediaUrl } from '../../utils/api';
 import { surveyTypeClass, DEFAULT_LOYALTY_TEXT_STYLE } from '../../utils/loyaltySurveyTypography';
+import GitCardVisual from '../../components/GitCardVisual';
 import toast from 'react-hot-toast';
+
+const CONTINUE_KEY = 'rf_git_cards_continue';
 
 const FALLBACK_NAME = 'Resto Fadey App';
 
@@ -63,6 +66,12 @@ export default function EncuestaPublica() {
   const [likedOther, setLikedOther] = useState('');
   const [improveOther, setImproveOther] = useState('');
   const [comment, setComment] = useState('');
+  const [gitCards, setGitCards] = useState({ enabled: true, survey_required: false, program_name: 'GIT Cards' });
+  const [continueToken, setContinueToken] = useState('');
+  const [continueData, setContinueData] = useState(null);
+  const [gitStep, setGitStep] = useState('');
+  const [identity, setIdentity] = useState({ name: '', phone: '', doc_number: '' });
+  const [linking, setLinking] = useState(false);
 
   const scale = useMemo(
     () => (Array.isArray(form.rating_scale) && form.rating_scale.length ? form.rating_scale : DEFAULT_SCALE),
@@ -99,12 +108,31 @@ export default function EncuestaPublica() {
           show_comment: data?.show_comment !== false,
           waiters,
         }));
+        if (data?.git_cards) setGitCards(data.git_cards);
         if (waiters.length === 1) setWaiterId(String(waiters[0].id || ''));
         const areas = Array.isArray(data?.area_options) ? data.area_options : [];
         if (areas.length === 1) setVisitArea(String(areas[0].id || ''));
       })
       .catch((e) => toast.error(e.message || 'No se pudo cargar la encuesta'))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const stored = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(CONTINUE_KEY) : '';
+    if (!stored) return;
+    setContinueToken(stored);
+    api.get(`/public/loyalty/continue/${encodeURIComponent(stored)}`)
+      .then((data) => {
+        setContinueData(data);
+        setDone(true);
+        setGitStep(data.linked ? 'card' : 'thanks');
+        if (data.survey?.customer_name) {
+          setIdentity((prev) => ({ ...prev, name: prev.name || data.survey.customer_name }));
+        }
+      })
+      .catch(() => {
+        sessionStorage.removeItem(CONTINUE_KEY);
+      });
   }, []);
 
   const setAnswer = (id, value) => {
@@ -138,7 +166,7 @@ export default function EncuestaPublica() {
     }
     setSending(true);
     try {
-      await api.post('/public/loyalty', {
+      const result = await api.post('/public/loyalty', {
         customer_name: name.trim(),
         waiter_user_id: waiterId || undefined,
         visit_date: visitDate,
@@ -151,11 +179,76 @@ export default function EncuestaPublica() {
         improve_other: improveOther.trim(),
         comment: form.show_comment ? comment.trim() : '',
       });
+      if (!result?.success || !result?.continue_token) {
+        toast.error('La encuesta no se registró. Intente de nuevo.');
+        return;
+      }
+      sessionStorage.setItem(CONTINUE_KEY, result.continue_token);
+      setContinueToken(result.continue_token);
+      setIdentity((prev) => ({ ...prev, name: name.trim() }));
       setDone(true);
+      setGitStep('thanks');
     } catch (err) {
       toast.error(err.message || 'No se pudo enviar');
     } finally {
       setSending(false);
+    }
+  };
+
+  const startWithoutSurvey = async () => {
+    setSending(true);
+    try {
+      const result = await api.post('/public/loyalty/git-cards/start', {});
+      if (!result?.continue_token) throw new Error('No se pudo iniciar GIT Cards');
+      sessionStorage.setItem(CONTINUE_KEY, result.continue_token);
+      setContinueToken(result.continue_token);
+      setDone(true);
+      setGitStep('identify');
+    } catch (err) {
+      toast.error(err.message || 'No se pudo continuar');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const loadContinue = async (token = continueToken) => {
+    const data = await api.get(`/public/loyalty/continue/${encodeURIComponent(token)}`);
+    setContinueData(data);
+    return data;
+  };
+
+  const submitIdentity = async (e) => {
+    e.preventDefault();
+    if (!continueToken) {
+      toast.error('No hay una encuesta o sesión válida para continuar.');
+      return;
+    }
+    setLinking(true);
+    try {
+      const data = await api.post(`/public/loyalty/continue/${encodeURIComponent(continueToken)}/link`, {
+        name: identity.name || name,
+        phone: identity.phone,
+        doc_number: identity.doc_number,
+      });
+      setContinueData(data);
+      setGitStep('card');
+    } catch (err) {
+      toast.error(err.message || 'No se pudo vincular la tarjeta');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const continueToGit = async () => {
+    if (!continueToken) {
+      toast.error('No se pudo continuar a GIT Cards.');
+      return;
+    }
+    try {
+      const data = await loadContinue();
+      setGitStep(data.linked ? 'card' : 'identify');
+    } catch (err) {
+      toast.error(err.message || 'No se pudo continuar');
     }
   };
 
@@ -176,13 +269,53 @@ export default function EncuestaPublica() {
 
             {loading ? (
               <p className="rf-survey-sheet__sub text-center py-8">Cargando encuesta…</p>
+            ) : done && gitStep === 'card' && continueData?.card ? (
+              <div className="space-y-4 py-2">
+                <h2 className="rf-survey-sheet__section-title !border-0 !pb-0">Su {continueData.program_name || 'GIT Cards'}</h2>
+                <GitCardVisual card={continueData.card} />
+                <p className="rf-survey-sheet__sub">{continueData.next_step}</p>
+                {(continueData.rewards || []).length ? (
+                  <ul className="space-y-1 text-sm text-slate-600">
+                    {continueData.rewards.map((r, i) => (
+                      <li key={`${r.title}-${i}`}>{r.title} · {r.status}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : done && gitStep === 'identify' ? (
+              <form onSubmit={submitIdentity} className="rf-survey-sheet__form space-y-4 py-2">
+                <h2 className="rf-survey-sheet__section-title !border-0 !pb-0">
+                  {continueData?.linked ? 'Consultar GIT Cards' : 'Activar o recuperar GIT Cards'}
+                </h2>
+                <p className="rf-survey-sheet__sub">
+                  Use el teléfono o documento ya registrado en el restaurante. Si es la primera vez, se creará su ficha de cliente.
+                </p>
+                <label className="rf-survey-field">
+                  <span>Nombre</span>
+                  <input value={identity.name} onChange={(e) => setIdentity((p) => ({ ...p, name: e.target.value }))} required />
+                </label>
+                <label className="rf-survey-field">
+                  <span>Teléfono</span>
+                  <input value={identity.phone} onChange={(e) => setIdentity((p) => ({ ...p, phone: e.target.value }))} inputMode="tel" />
+                </label>
+                <label className="rf-survey-field">
+                  <span>DNI o RUC (opcional)</span>
+                  <input value={identity.doc_number} onChange={(e) => setIdentity((p) => ({ ...p, doc_number: e.target.value }))} inputMode="numeric" />
+                </label>
+                <button type="submit" className="rf-survey-submit" disabled={linking}>
+                  {linking ? 'Vinculando…' : 'Continuar'}
+                </button>
+              </form>
             ) : done ? (
-              <div className="text-center py-8 space-y-2">
+              <div className="text-center py-8 space-y-4">
                 <h2 className="rf-survey-sheet__section-title !border-0 !pb-0">{form.thanks_title || 'Gracias'}</h2>
                 <p className="rf-survey-sheet__sub">
                   {form.thanks_message
                     || `Recibimos tu opinión. Nos ayuda a mejorar tu experiencia en ${form.restaurant_name}.`}
                 </p>
+                <button type="button" className="rf-survey-submit" onClick={continueToGit}>
+                  {continueData?.linked ? 'Ver mi GIT Cards' : 'Continuar a GIT Cards'}
+                </button>
               </div>
             ) : (
               <form onSubmit={submit} className="rf-survey-sheet__form space-y-5">
@@ -354,6 +487,11 @@ export default function EncuestaPublica() {
                 <button type="submit" className="rf-survey-submit" disabled={sending}>
                   {sending ? 'Enviando…' : (form.submit_label || 'Enviar encuesta')}
                 </button>
+                {gitCards.enabled && !gitCards.survey_required ? (
+                  <button type="button" className="rf-survey-sheet__sub underline" onClick={startWithoutSurvey} disabled={sending}>
+                    Ya tengo GIT Cards o quiero activarla sin encuesta
+                  </button>
+                ) : null}
               </form>
             )}
           </div>

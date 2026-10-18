@@ -964,6 +964,12 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
       [reason, req.params.id]
     );
     emitInventoryUpdate({});
+    try {
+      const { handleVoidedOrder } = require('../gitCardsService');
+      handleVoidedOrder(req.params.id, req.user || {});
+    } catch (err) {
+      console.warn('[git-cards] no se pudo registrar la anulación:', err.message || err);
+    }
   } else if (status === 'delivered' && String(order.payment_status || '') === 'paid') {
     try {
       withTransaction((tx) => {
@@ -1354,6 +1360,12 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
       markProductsSoldOnPaidOrder(req.params.id);
     } catch (err) {
       console.warn('[product-sales-idle] venta cobrada no registrada:', err.message || err);
+    }
+    try {
+      const { considerPaidOrder } = require('../gitCardsService');
+      considerPaidOrder(req.params.id, req.user || {});
+    } catch (err) {
+      console.warn('[git-cards] no se pudo evaluar la venta cobrada:', err.message || err);
     }
   }
   res.json(fresh);

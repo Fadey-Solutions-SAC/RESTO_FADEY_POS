@@ -21,6 +21,8 @@ import SelfOrder from './pages/public/SelfOrder';
 import SelfOrderCliente from './pages/public/SelfOrderCliente';
 import Creditos from './pages/admin/Creditos';
 import Clientes from './pages/admin/Clientes';
+import GitCardsAdmin from './pages/admin/GitCardsAdmin';
+import GitCardPublic from './pages/public/GitCardPublic';
 import Productos from './pages/admin/Productos';
 import Promociones from './pages/admin/Promociones';
 import Almacen from './pages/admin/Almacen';
@@ -213,6 +215,7 @@ function AppRoutes({ user }) {
     <>
       <Routes>
       <Route path="/auto-pedido" element={<SelfOrder />} />
+      <Route path="/git-cards/:token" element={<GitCardPublic />} />
       <Route path="/encuesta" element={<EncuestaPublica />} />
       <Route path="/firmar-contrato" element={<FirmarContratoMovil />} />
       <Route path="/auto-pedido-cliente" element={<SelfOrderCliente />} />
@@ -233,6 +236,8 @@ function AppRoutes({ user }) {
         <Route path="auto-pedido" element={<AdminOnlyAutoPedido />} />
         <Route path="creditos" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="creditos"><Creditos /></ProtectedRoute>} />
         <Route path="clientes" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="clientes"><Clientes /></ProtectedRoute>} />
+        <Route path="clientes/git-cards" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="clientes"><GitCardsAdmin /></ProtectedRoute>} />
+        <Route path="clientes/git-cards/:customerId" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="clientes"><GitCardsAdmin /></ProtectedRoute>} />
         <Route path="productos" element={<ProtectedRoute roles={['admin']} moduleId="productos"><Productos /></ProtectedRoute>} />
         <Route path="promociones" element={<ProtectedRoute roles={['admin']} moduleIds={['ofertas', 'descuentos']}><Promociones /></ProtectedRoute>} />
         <Route path="ofertas" element={<Navigate to="/admin/promociones" replace />} />

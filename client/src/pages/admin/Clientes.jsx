@@ -111,18 +111,21 @@ export default function Clientes() {
   const [showModal, setShowModal] = useState(false);
   const [editClient, setEditClient] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [gitCardsEnrolled, setGitCardsEnrolled] = useState(0);
   const searchRef = useRef('');
 
   const load = useCallback(async (term) => {
     const q = term !== undefined && term !== null ? String(term) : searchRef.current;
     setLoading(true);
     try {
-      const [data, ordersData] = await Promise.all([
+      const [data, ordersData, gitSummary] = await Promise.all([
         api.get(`/admin-modules/customers${q ? `?q=${encodeURIComponent(q)}` : ''}`),
         api.get('/orders?limit=600').catch(() => []),
+        api.get('/git-cards/summary').catch(() => ({ enrolled: 0 })),
       ]);
       setClientes(data || []);
       setOrders(ordersData || []);
+      setGitCardsEnrolled(Number(gitSummary?.enrolled || 0));
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -139,7 +142,7 @@ export default function Clientes() {
   }, [load]);
 
   useSocket('staff-data-update', (p) => {
-    if (p?.domain === 'customers') void load('');
+    if (p?.domain === 'customers' || p?.domain === 'git_cards') void load('');
   });
   useSocket('order-update', () => {
     void load('');
@@ -216,7 +219,6 @@ export default function Clientes() {
       active: enriched.filter((c) => c._active).length,
       withDebt: enriched.filter((c) => c._debt > 0).length,
       debtTotal: enriched.reduce((s, c) => s + c._debt, 0),
-      frequent: enriched.filter((c) => c._visits >= FREQUENT_VISITS).length,
     };
   }, [enriched]);
 
@@ -410,13 +412,13 @@ export default function Clientes() {
       filter: 'debt',
     },
     {
-      key: 'frequent',
-      title: 'Clientes frecuentes',
-      value: kpis.frequent,
+      key: 'git-cards',
+      title: 'GIT Cards',
+      value: gitCardsEnrolled,
       Icon: MdStar,
       bubble: 'bg-amber-100 text-amber-600',
       bg: 'from-amber-50/80 to-white',
-      filter: 'frequent',
+      href: '/admin/clientes/git-cards',
     },
   ];
 
@@ -427,9 +429,9 @@ export default function Clientes() {
           <button
             key={k.key}
             type="button"
-            onClick={() => setStatusFilter(k.filter)}
+            onClick={() => (k.href ? navigate(k.href) : setStatusFilter(k.filter))}
             className={`group flex h-full min-w-0 flex-col justify-center gap-3 rounded-2xl border bg-gradient-to-br p-5 text-left shadow-sm transition hover:shadow-md ${k.bg} ${
-              statusFilter === k.filter && k.filter !== 'all' ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
+              !k.href && statusFilter === k.filter && k.filter !== 'all' ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
             }`}
           >
             <span className="block truncate whitespace-nowrap text-sm font-semibold text-slate-800" title={k.title}>{k.title}</span>
@@ -608,6 +610,9 @@ export default function Clientes() {
                           </button>
                           {openMenuId === c.id && (
                             <div className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-left shadow-lg">
+                              <button type="button" onClick={() => navigate(`/admin/clientes/git-cards/${c.id}`)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                                <MdStar className="text-amber-600" /> Perfil GIT Cards
+                              </button>
                               <button type="button" onClick={() => goToCajaToChargeCustomer(c)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                                 <MdAttachMoney className="text-emerald-600" /> Ir a caja a cobrar
                               </button>
@@ -774,6 +779,13 @@ export default function Clientes() {
             <div className="flex gap-3">
               <button type="button" onClick={() => { const c = viewClient; setViewClientId(''); openEdit(c); }} className="btn-secondary flex flex-1 items-center justify-center gap-2">
                 <MdEdit /> Editar
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(`/admin/clientes/git-cards/${viewClient.id}`)}
+                className="btn-secondary flex flex-1 items-center justify-center gap-2"
+              >
+                <MdStar /> GIT Cards
               </button>
               <button type="button" onClick={() => setViewClientId('')} className="btn-primary flex-1">Cerrar</button>
             </div>

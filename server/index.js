@@ -290,6 +290,7 @@ app.use('/api/auth/customer/login', authLimiter);
 
 app.use('/api/public/self-order', require('./routes/publicSelfOrder'));
 app.use('/api/public/loyalty', require('./routes/publicLoyalty'));
+app.use('/api/public/git-cards', require('./routes/publicGitCards'));
 app.use('/api/fadey', require('./routes/publicFadey'));
 app.use('/fadey', require('./routes/publicFadey'));
 app.get('/api/local', (req, res) => {
@@ -302,6 +303,7 @@ app.get('/api/local', (req, res) => {
   }
 });
 app.use('/api/loyalty', require('./routes/loyalty'));
+app.use('/api/git-cards', require('./routes/gitCards'));
 app.use('/api/system', require('./routes/system'));
 app.use('/api/license', require('./routes/license'));
 app.use('/api/auth', require('./routes/auth'));

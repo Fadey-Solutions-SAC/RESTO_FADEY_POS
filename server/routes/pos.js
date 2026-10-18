@@ -1026,6 +1026,12 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       } catch (err) {
         console.warn('[product-sales-idle] venta cobrada no registrada:', err.message || err);
       }
+      try {
+        const { considerPaidOrder } = require('../gitCardsService');
+        salesOrderIds.forEach((id) => considerPaidOrder(id, req.user || {}));
+      } catch (err) {
+        console.warn('[git-cards] no se pudo evaluar el cobro de caja:', err.message || err);
+      }
     }
     const paidOrders = chargedOrderIds
       .map((id) => {
