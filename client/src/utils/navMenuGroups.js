@@ -6,8 +6,8 @@
 export const NAV_MENU_GROUPS = [
   {
     id: 'inicio',
-    title: 'INICIO',
-    subtitle: 'Acceso general y resumen del negocio',
+    title: '',
+    subtitle: '',
     moduleIds: ['escritorio'],
   },
   {
