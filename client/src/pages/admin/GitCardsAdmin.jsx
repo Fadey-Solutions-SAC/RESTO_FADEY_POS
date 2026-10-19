@@ -283,23 +283,19 @@ export default function GitCardsAdmin() {
         <GitCardsPromotions canEdit={canConfigRole(user)} onClose={cancelConfig} />
       ) : (
         <>
-      <div className="mb-4 flex min-w-0 items-start gap-3">
+      <div className="mb-4 flex min-w-0 items-center gap-2">
         <button
           type="button"
           onClick={() => {
             if (customerId) navigate('/admin/clientes/git-cards');
             else navigate('/admin/clientes');
           }}
-          className="btn-secondary mt-0.5 inline-flex h-10 shrink-0 items-center gap-1 px-3 text-sm"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+          aria-label={customerId ? 'Volver a GIT Cards' : 'Volver a clientes'}
         >
-          <MdArrowBack /> {customerId ? 'Lista GIT Cards' : 'Clientes'}
+          <MdArrowBack className="text-xl" />
         </button>
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold leading-tight tracking-tight text-[var(--ui-body-text)]">GIT Cards</h1>
-          <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--ui-muted)]">
-            Fidelización por compras elegibles. Cada cobro que cumpla las reglas suma un avance a la tarjeta del cliente.
-          </p>
-        </div>
+        <h1 className="min-w-0 truncate text-2xl font-bold leading-tight tracking-tight text-[var(--ui-body-text)]">GIT Cards</h1>
       </div>
 
       {customerId ? (

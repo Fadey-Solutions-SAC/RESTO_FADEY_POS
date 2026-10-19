@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   MdAdd, MdPause, MdPlayArrow, MdStop, MdEdit, MdVisibility, MdDelete,
-  MdChevronLeft, MdChevronRight, MdSearch,
+  MdArrowBack, MdChevronLeft, MdChevronRight, MdSearch,
 } from 'react-icons/md';
 import { api, formatCurrency, formatDate } from '../../utils/api';
 import GitCardVisual from '../../components/GitCardVisual';
@@ -317,16 +317,16 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-[var(--ui-body-text)]">Promociones y recompensas</h2>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--ui-muted)]">
-            Crea promociones, define sus recompensas y administra las tarjetas de fidelización de tus clientes.
-          </p>
-        </div>
-        <button type="button" onClick={onClose} className="btn-secondary px-3 py-2 text-sm">
-          Volver a clientes
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
+          aria-label="Volver a GIT Cards"
+        >
+          <MdArrowBack className="text-xl" />
         </button>
+        <h2 className="min-w-0 truncate text-xl font-bold tracking-tight text-[var(--ui-body-text)]">Promociones y recompensas</h2>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
