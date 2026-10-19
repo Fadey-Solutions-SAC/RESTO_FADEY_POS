@@ -945,6 +945,7 @@ export default function POSPanel() {
   /** Cliente GIT Cards asociado temporalmente a cada mesa hasta el cobro. */
   const [gitCardByTable, setGitCardByTable] = useState({});
   const [gitClientesOpen, setGitClientesOpen] = useState(false);
+  const [gitCardsEnabled, setGitCardsEnabled] = useState(true);
   /** Modal mover mesa / mover pedidos. */
   const [mesaTransfer, setMesaTransfer] = useState(null);
   /** Modo selección múltiple para unir mesas en el mapa. */
@@ -1594,6 +1595,12 @@ export default function POSPanel() {
   }, [selectedTable?.id]);
 
   useEffect(() => {
+    api.get('/git-cards/summary')
+      .then((row) => setGitCardsEnabled(row?.enabled !== false))
+      .catch(() => setGitCardsEnabled(true));
+  }, []);
+
+  useEffect(() => {
     const posRole = posRoleOf(user);
     if (posRole !== 'cajero' && posRole !== 'mozo') return;
     const cajaId = String(user?.caja_station_id || '').trim();
@@ -1692,6 +1699,16 @@ export default function POSPanel() {
       void loadData({ includeCatalog: true });
     }
     if (d === 'reservations') void syncReservationAlertToasts();
+    if (d === 'git_cards') {
+      api.get('/git-cards/summary').then((row) => {
+        const on = row?.enabled !== false;
+        setGitCardsEnabled(on);
+        if (!on) {
+          setGitClientesOpen(false);
+          setGitCardByTable({});
+        }
+      }).catch(() => {});
+    }
   });
   useSocket('reservation-reminder', (payload) => {
     void loadData({ includeCatalog: true });
@@ -2717,12 +2734,14 @@ export default function POSPanel() {
         checkoutBody.charge_to_customer_account = true;
         checkoutBody.customer_id = billingCustomerId;
       } else {
-        const gitCustomerId = String(
-          gitCardByTable[selectedTable?.id]?.id || '',
-        ).trim();
-        if (gitCustomerId) checkoutBody.git_card_customer_id = gitCustomerId;
-        const gitDiscountRewardId = String(gitCardByTable[selectedTable?.id]?.discount_reward?.id || '').trim();
-        if (gitDiscountRewardId) checkoutBody.git_discount_reward_id = gitDiscountRewardId;
+        if (gitCardsEnabled) {
+          const gitCustomerId = String(
+            gitCardByTable[selectedTable?.id]?.id || '',
+          ).trim();
+          if (gitCustomerId) checkoutBody.git_card_customer_id = gitCustomerId;
+          const gitDiscountRewardId = String(gitCardByTable[selectedTable?.id]?.discount_reward?.id || '').trim();
+          if (gitDiscountRewardId) checkoutBody.git_discount_reward_id = gitDiscountRewardId;
+        }
         if (checkoutPaymentBreakdown) {
           checkoutBody.payment_breakdown = checkoutPaymentBreakdown;
         }
@@ -4910,15 +4929,17 @@ export default function POSPanel() {
             <h2 id="pos-mesa-detail-title" className="font-semibold flex items-center gap-2 text-base sm:text-lg min-w-0 truncate text-[var(--ui-body-text)]">
               <MdTableRestaurant className="shrink-0 text-[var(--ui-accent-muted)]" />
               <span className="truncate">{tableDetail.name}</span>
-              <button
-                type="button"
-                onClick={() => setGitClientesOpen(true)}
-                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-400/60 bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-800 hover:bg-amber-100"
-                title="Seleccionar cliente GIT Cards"
-              >
-                <MdStar className="text-sm" />
-                GIT Clientes
-              </button>
+              {gitCardsEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => setGitClientesOpen(true)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-400/60 bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-800 hover:bg-amber-100"
+                  title="Seleccionar cliente GIT Cards"
+                >
+                  <MdStar className="text-sm" />
+                  GIT Clientes
+                </button>
+              ) : null}
             </h2>
             <button
               type="button"
@@ -4932,7 +4953,7 @@ export default function POSPanel() {
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 sm:p-4 lg:p-5">
             <div className="flex min-h-0 w-full max-w-full flex-1 flex-col gap-3">
-              {tableDetail && gitCardByTable[tableDetail.id] ? (
+              {gitCardsEnabled && tableDetail && gitCardByTable[tableDetail.id] ? (
                 <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2">
                   <p className="min-w-0 truncate text-sm font-semibold text-amber-950">
                     GIT Cards: {gitCardByTable[tableDetail.id].name}
@@ -5659,24 +5680,26 @@ export default function POSPanel() {
         </div>
       </Modal>
 
-      <GitClientesCajaModal
-        open={gitClientesOpen}
-        onClose={() => setGitClientesOpen(false)}
-        onSelect={(customer) => {
-          const tableId = tableDetail?.id || selectedTable?.id;
-          if (tableId && customer?.id) {
-            setGitCardByTable((prev) => ({
-              ...prev,
-              [tableId]: {
-                id: customer.id,
-                name: customer.name,
-                discount_reward: customer.discount_reward || null,
-              },
-            }));
-          }
-          setGitClientesOpen(false);
-        }}
-      />
+      {gitCardsEnabled ? (
+        <GitClientesCajaModal
+          open={gitClientesOpen}
+          onClose={() => setGitClientesOpen(false)}
+          onSelect={(customer) => {
+            const tableId = tableDetail?.id || selectedTable?.id;
+            if (tableId && customer?.id) {
+              setGitCardByTable((prev) => ({
+                ...prev,
+                [tableId]: {
+                  id: customer.id,
+                  name: customer.name,
+                  discount_reward: customer.discount_reward || null,
+                },
+              }));
+            }
+            setGitClientesOpen(false);
+          }}
+        />
+      ) : null}
 
       <Modal
         isOpen={Boolean(salePrintPrompt)}
@@ -6196,7 +6219,7 @@ export default function POSPanel() {
                         {selectedTable ? getTableDisplayLabel(selectedTable) : '—'}
                       </p>
                     </div>
-                    {selectedTable && gitCardByTable[selectedTable.id] ? (
+                    {gitCardsEnabled && selectedTable && gitCardByTable[selectedTable.id] ? (
                       <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2">
                         <div className="min-w-0">
                           <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Cliente GIT Cards</p>
@@ -6230,7 +6253,7 @@ export default function POSPanel() {
                           </button>
                         </div>
                       </div>
-                    ) : selectedTable ? (
+                    ) : gitCardsEnabled && selectedTable ? (
                       <button
                         type="button"
                         onClick={() => setGitClientesOpen(true)}

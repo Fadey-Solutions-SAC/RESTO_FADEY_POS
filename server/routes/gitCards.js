@@ -52,6 +52,7 @@ router.get('/summary', requireRole('admin', 'cajero'), (req, res) => {
     processExpirations();
     const summary = adminDashboardSummary();
     res.json({
+      enabled: summary.enabled !== false,
       enrolled: summary.registered,
       registered: summary.registered,
       active_cards: summary.active_cards,

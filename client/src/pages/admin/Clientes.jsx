@@ -112,6 +112,7 @@ export default function Clientes() {
   const [editClient, setEditClient] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [gitCardsEnrolled, setGitCardsEnrolled] = useState(0);
+  const [gitCardsEnabled, setGitCardsEnabled] = useState(true);
   const searchRef = useRef('');
 
   const load = useCallback(async (term) => {
@@ -121,10 +122,11 @@ export default function Clientes() {
       const [data, ordersData, gitSummary] = await Promise.all([
         api.get(`/admin-modules/customers${q ? `?q=${encodeURIComponent(q)}` : ''}`),
         api.get('/orders?limit=600').catch(() => []),
-        api.get('/git-cards/summary').catch(() => ({ enrolled: 0 })),
+        api.get('/git-cards/summary').catch(() => ({ enrolled: 0, enabled: true })),
       ]);
       setClientes(data || []);
       setOrders(ordersData || []);
+      setGitCardsEnabled(gitSummary?.enabled !== false);
       setGitCardsEnrolled(Number(gitSummary?.enrolled || 0));
     } catch (err) {
       toast.error(err.message);
@@ -411,7 +413,7 @@ export default function Clientes() {
       bg: 'from-violet-50/80 to-white',
       filter: 'debt',
     },
-    {
+    ...(gitCardsEnabled ? [{
       key: 'git-cards',
       title: 'GIT Cards',
       value: gitCardsEnrolled,
@@ -419,12 +421,12 @@ export default function Clientes() {
       bubble: 'bg-amber-100 text-amber-600',
       bg: 'from-amber-50/80 to-white',
       href: '/admin/clientes/git-cards',
-    },
+    }] : []),
   ];
 
   return (
     <div>
-      <div className="mb-5 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+      <div className={`mb-5 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 ${gitCardsEnabled ? 'lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]' : 'lg:grid-cols-4'}`}>
         {kpiCards.map((k) => (
           <button
             key={k.key}
@@ -610,9 +612,11 @@ export default function Clientes() {
                           </button>
                           {openMenuId === c.id && (
                             <div className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-left shadow-lg">
-                              <button type="button" onClick={() => navigate(`/admin/clientes/git-cards/${c.id}`)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                                <MdStar className="text-amber-600" /> Perfil GIT Cards
-                              </button>
+                              {gitCardsEnabled && (
+                                <button type="button" onClick={() => navigate(`/admin/clientes/git-cards/${c.id}`)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                                  <MdStar className="text-amber-600" /> Perfil GIT Cards
+                                </button>
+                              )}
                               <button type="button" onClick={() => goToCajaToChargeCustomer(c)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                                 <MdAttachMoney className="text-emerald-600" /> Ir a caja a cobrar
                               </button>
@@ -780,13 +784,15 @@ export default function Clientes() {
               <button type="button" onClick={() => { const c = viewClient; setViewClientId(''); openEdit(c); }} className="btn-secondary flex flex-1 items-center justify-center gap-2">
                 <MdEdit /> Editar
               </button>
-              <button
-                type="button"
-                onClick={() => navigate(`/admin/clientes/git-cards/${viewClient.id}`)}
-                className="btn-secondary flex flex-1 items-center justify-center gap-2"
-              >
-                <MdStar /> GIT Cards
-              </button>
+              {gitCardsEnabled && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/admin/clientes/git-cards/${viewClient.id}`)}
+                  className="btn-secondary flex flex-1 items-center justify-center gap-2"
+                >
+                  <MdStar /> GIT Cards
+                </button>
+              )}
               <button type="button" onClick={() => setViewClientId('')} className="btn-primary flex-1">Cerrar</button>
             </div>
           </div>

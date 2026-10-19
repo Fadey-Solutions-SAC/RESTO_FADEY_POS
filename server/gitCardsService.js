@@ -15,6 +15,8 @@ const CARD_STYLES = {
 
 const DEFAULT_CONFIG = {
   enabled: true,
+  /** Interruptor de restaurante: oculta el módulo en encuesta, Clientes y Caja sin borrar la promoción. */
+  module_enabled: true,
   program_name: 'GIT Cards',
   restaurant_name: '',
   logo_url: '',
@@ -78,6 +80,7 @@ function normalizeConfig(raw) {
   const cycleDays = Number(src.cycle_valid_days);
   return {
     enabled: src.enabled !== false,
+    module_enabled: src.module_enabled !== false,
     program_name: String(src.program_name || DEFAULT_CONFIG.program_name).trim() || 'GIT Cards',
     restaurant_name: String(src.restaurant_name || '').trim(),
     logo_url: String(src.logo_url || '').trim(),
@@ -401,18 +404,26 @@ function assertRestaurant(rowRestaurantId) {
   }
 }
 
+function readStoredGitCardsSettings() {
+  const row = queryOne('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
+  return parseJson(row?.value, {});
+}
+
 function getConfig() {
   ensureGitCardsTables();
   const restaurant = currentRestaurant();
+  const storedRaw = readStoredGitCardsSettings();
+  const moduleEnabled = storedRaw.module_enabled !== false;
   const promo = getPrimaryPromotion();
   if (promo) {
     const cfg = promotionToConfig(promo);
+    cfg.module_enabled = moduleEnabled;
     if (!cfg.restaurant_name) cfg.restaurant_name = String(restaurant.name || '').trim();
     if (!cfg.logo_url) cfg.logo_url = String(restaurant.logo || '').trim();
     return cfg;
   }
-  const row = queryOne('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-  const stored = normalizeConfig(parseJson(row?.value, {}));
+  const stored = normalizeConfig(storedRaw);
+  stored.module_enabled = moduleEnabled;
   if (!stored.restaurant_name) stored.restaurant_name = String(restaurant.name || '').trim();
   if (!stored.logo_url) stored.logo_url = String(restaurant.logo || '').trim();
   return stored;
@@ -579,6 +590,7 @@ function insertEvent(txOrNull, payload) {
 }
 
 function programIsOpen(config = getConfig()) {
+  if (config.module_enabled === false) return false;
   if (!config.enabled) return false;
   if (!config.program_expires_at) return true;
   const exp = Date.parse(config.program_expires_at);
@@ -878,6 +890,9 @@ function considerPaidOrder(orderId, actor = {}) {
   const cycleForRules = getActiveCycle(customerId);
   const promoForRules = getPromotion(cycleForRules?.promotion_id) || getPrimaryPromotion();
   const config = promoForRules ? promotionToConfig(promoForRules) : getConfig();
+  if (config.module_enabled === false) {
+    return { skipped: 'module_disabled' };
+  }
   if (!config.enabled || !promotionAcceptsAdvances(promoForRules || { status: config.enabled ? 'active' : 'paused', end_at: config.program_expires_at })) {
     return { skipped: promoForRules?.status === 'paused' ? 'paused' : (config.enabled ? 'program_expired' : 'disabled') };
   }
@@ -1788,7 +1803,7 @@ function publicProgramSummary() {
   try {
     const config = getConfig();
     return {
-      enabled: config.enabled,
+      enabled: config.module_enabled !== false,
       survey_required: config.survey_required,
       program_name: config.program_name,
     };
@@ -1866,6 +1881,7 @@ function adminDashboardSummary() {
     [restaurantId],
   );
   return {
+    enabled: getConfig().module_enabled !== false,
     registered: Number(registeredRow?.c || 0),
     active_cards: Number(activeRow?.c || 0),
     inactive_cards: Number(inactiveRow?.c || 0),

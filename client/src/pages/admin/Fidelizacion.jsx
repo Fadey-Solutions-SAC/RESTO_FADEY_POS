@@ -133,6 +133,8 @@ export default function Fidelizacion() {
   const [saving, setSaving] = useState(false);
   const [downloadingQr, setDownloadingQr] = useState(false);
   const [savingPrecuentaQr, setSavingPrecuentaQr] = useState(false);
+  const [gitCardsEnabled, setGitCardsEnabled] = useState(true);
+  const [savingGitCards, setSavingGitCards] = useState(false);
   const [viewResponse, setViewResponse] = useState(null);
   const [printingSurveyId, setPrintingSurveyId] = useState('');
   const url = useMemo(() => surveyUrl(), []);
@@ -173,14 +175,39 @@ export default function Fidelizacion() {
       .finally(() => setFormLoading(false));
   }, []);
 
+  const loadGitCardsFlag = useCallback(() => {
+    api
+      .get('/git-cards/config')
+      .then((row) => setGitCardsEnabled(row?.config?.module_enabled !== false))
+      .catch(() => setGitCardsEnabled(true));
+  }, []);
+
   useEffect(() => {
     loadSummary();
     loadForm();
-  }, [loadSummary, loadForm]);
+    loadGitCardsFlag();
+  }, [loadSummary, loadForm, loadGitCardsFlag]);
 
   useSocket('staff-data-update', (p) => {
     if (p?.domain === 'loyalty') loadSummary();
+    if (p?.domain === 'git_cards') loadGitCardsFlag();
   });
+
+  const toggleGitCardsModule = async (enabled) => {
+    if (!canEdit) return;
+    setSavingGitCards(true);
+    try {
+      const saved = await api.put('/git-cards/config', { module_enabled: enabled });
+      setGitCardsEnabled(saved?.config?.module_enabled !== false);
+      toast.success(enabled
+        ? 'GIT Cards activado. Aparecerá en la encuesta, Clientes y Caja.'
+        : 'GIT Cards desactivado. Sus opciones ya no se muestran.');
+    } catch (e) {
+      toast.error(e.message || 'No se pudo guardar GIT Cards');
+    } finally {
+      setSavingGitCards(false);
+    }
+  };
 
   const printSurveyOnCaja = useCallback(async (row) => {
     if (!row) return;
@@ -395,18 +422,24 @@ export default function Fidelizacion() {
           </h1>
           <p className="text-sm text-slate-500">
             {view === 'panel'
-              ? 'Encuestas de clientes. Tras el envío, el cliente puede activar o consultar su GIT Cards.'
-              : 'Arme el cuadro de la encuesta y descargue el QR. El mismo código lleva a GIT Cards.'}
+              ? (gitCardsEnabled
+                ? 'Encuestas de clientes. Tras el envío, el cliente puede activar o consultar su GIT Cards.'
+                : 'Encuestas de clientes. GIT Cards está desactivado en este restaurante.')
+              : (gitCardsEnabled
+                ? 'Arme el cuadro de la encuesta y descargue el QR. El mismo código puede llevar a GIT Cards.'
+                : 'Arme el cuadro de la encuesta y descargue el QR. Solo encuesta: GIT Cards está desactivado.')}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate('/admin/clientes/git-cards')}
-            className="rf-tab-btn inline-flex items-center gap-1.5"
-          >
-            <MdStars className="text-lg" /> GIT Cards
-          </button>
+          {gitCardsEnabled ? (
+            <button
+              type="button"
+              onClick={() => navigate('/admin/clientes/git-cards')}
+              className="rf-tab-btn inline-flex items-center gap-1.5"
+            >
+              <MdStars className="text-lg" /> GIT Cards
+            </button>
+          ) : null}
           {VIEWS.map((t) => {
             const Icon = t.icon;
             return (
@@ -1078,6 +1111,29 @@ export default function Fidelizacion() {
                   checked={form.print_qr_on_precuenta === true}
                   disabled={!canEdit || savingPrecuentaQr || formLoading}
                   onChange={(e) => togglePrecuentaQr(e.target.checked)}
+                />
+                <span
+                  aria-hidden
+                  className="relative shrink-0 w-11 h-6 rounded-full bg-gray-300 transition-colors peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"
+                />
+              </label>
+              <label
+                className={`mt-3 w-full flex items-center justify-between gap-3 rounded-xl border ui-border px-3 py-2.5 text-left ${
+                  canEdit ? 'cursor-pointer' : 'opacity-60'
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">Módulo GIT Cards</span>
+                  <span className="block text-[11px] ui-text-muted">
+                    Si está desactivado, el cliente solo ve «Enviar encuesta». También se oculta en Clientes y en Caja.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={gitCardsEnabled}
+                  disabled={!canEdit || savingGitCards || formLoading}
+                  onChange={(e) => toggleGitCardsModule(e.target.checked)}
                 />
                 <span
                   aria-hidden

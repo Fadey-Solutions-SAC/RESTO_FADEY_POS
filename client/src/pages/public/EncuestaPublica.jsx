@@ -76,6 +76,7 @@ export default function EncuestaPublica() {
     () => (Array.isArray(form.rating_scale) && form.rating_scale.length ? form.rating_scale : DEFAULT_SCALE),
     [form.rating_scale],
   );
+  const gitCardsEnabled = form?.git_cards?.enabled !== false;
 
   useEffect(() => {
     const html = document.documentElement;
@@ -259,18 +260,22 @@ export default function EncuestaPublica() {
               <p className="rf-survey-sheet__sub text-center py-8">Cargando…</p>
             ) : screen === 'home' ? (
               <nav className="rf-survey-actions" aria-label="Opciones de fidelización">
-                <button type="button" className="rf-survey-action" onClick={() => setScreen('lookup')}>
-                  <strong>Ver mi GIT Card</strong>
-                  <span>Consulta tu progreso y tus recompensas.</span>
-                </button>
                 <button type="button" className="rf-survey-action" onClick={() => setScreen('survey')}>
                   <strong>Enviar encuesta</strong>
                   <span>Comparte tu experiencia.</span>
                 </button>
-                <button type="button" className="rf-survey-action" onClick={startRegister} disabled={sending}>
-                  <strong>Registrar mi GIT Card</strong>
-                  <span>Regístrate para participar en el programa.</span>
-                </button>
+                {gitCardsEnabled ? (
+                  <>
+                    <button type="button" className="rf-survey-action" onClick={() => setScreen('lookup')}>
+                      <strong>Ver mi GIT Card</strong>
+                      <span>Consulta tu progreso y tus recompensas.</span>
+                    </button>
+                    <button type="button" className="rf-survey-action" onClick={startRegister} disabled={sending}>
+                      <strong>Registrar mi GIT Card</strong>
+                      <span>Regístrate para participar en el programa.</span>
+                    </button>
+                  </>
+                ) : null}
               </nav>
             ) : screen === 'lookup' ? (
               <form onSubmit={lookupCard} className="rf-survey-sheet__form space-y-4 py-2">
