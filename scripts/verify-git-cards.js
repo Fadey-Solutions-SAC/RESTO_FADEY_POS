@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Pruebas GIT Cards con datos aislados (DB temporal).
- * Cubre reglas de configuración, elegibilidad, aprobación, rechazo,
- * recompensa única, canje único, encuesta y reinicio.
+ * Cubre reglas de configuración, elegibilidad, avance automático al cobro,
+ * selector de Caja, recompensa única, canje único, encuesta y reinicio.
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -111,30 +111,46 @@ async function main() {
   });
 
   let firstEligible;
-  await checkAsync('D. compra 250 queda pendiente y no suma progreso', () => {
+  await checkAsync('D. compra 250 registra un avance automático', () => {
+    git.getOrCreateActiveCycle(customerId);
     firstEligible = insertOrder({ customerId, restaurantId: restaurant.id, total: 250 });
     const result = git.considerPaidOrder(firstEligible, { id: 'caja', username: 'caja' });
-    assert.strictEqual(result.pending, true);
-    assert.strictEqual(result.advance.status, 'pending');
+    assert.strictEqual(result.approved, true);
+    assert.strictEqual(result.advance.status, 'approved');
     const profile = git.getMemberProfile(customerId);
-    assert.strictEqual(profile.card.progress.confirmed, 0);
-    assert.strictEqual(profile.card.progress.pending, 1);
+    assert.strictEqual(profile.card.progress.confirmed, 1);
+    assert.strictEqual(profile.card.progress.pending, 0);
+    const retry = git.considerPaidOrder(firstEligible, { id: 'caja', username: 'caja' });
+    assert.strictEqual(retry.skipped, 'already');
+    const again = git.getMemberProfile(customerId);
+    assert.strictEqual(again.card.progress.confirmed, 1);
+    assert.strictEqual(
+      queryAll('SELECT id FROM git_cards_advances WHERE order_id = ?', [firstEligible]).length,
+      1,
+    );
   });
 
-  await checkAsync('E. aprobación única e idempotente', () => {
+  await checkAsync('E. decideAdvance sobre un avance ya confirmado es idempotente', () => {
     const first = git.decideAdvance(queryOne('SELECT id FROM git_cards_advances WHERE order_id = ?', [firstEligible]).id, 'approve', '', { id: 'caja', username: 'caja' });
-    assert.strictEqual(first.advance.status, 'approved');
-    assert.strictEqual(first.already, undefined);
-    const second = git.decideAdvance(first.advance.id, 'approve', '', { id: 'caja', username: 'caja' });
-    assert.strictEqual(second.already, true);
+    assert.strictEqual(first.already, true);
     const profile = git.getMemberProfile(customerId);
     assert.strictEqual(profile.card.progress.confirmed, 1);
   });
 
-  await checkAsync('F. rechazo conserva motivo y no suma', () => {
+  await checkAsync('F. rechazo de pendiente legado conserva motivo y no suma', () => {
     const orderId = insertOrder({ customerId, restaurantId: restaurant.id, total: 260 });
-    const pending = git.considerPaidOrder(orderId, { id: 'caja', username: 'caja' });
-    const decided = git.decideAdvance(pending.advance.id, 'reject', 'Ticket no corresponde al cliente', { id: 'caja', username: 'caja' });
+    const cycle = queryOne(
+      "SELECT * FROM git_cards_cycles WHERE customer_id = ? AND status = 'active' ORDER BY datetime(started_at) DESC LIMIT 1",
+      [customerId],
+    );
+    const advanceId = uuidv4();
+    runSql(
+      `INSERT INTO git_cards_advances
+        (id, cycle_id, customer_id, restaurant_id, order_id, amount, status, survey_ok)
+       VALUES (?, ?, ?, ?, ?, 260, 'pending', 1)`,
+      [advanceId, cycle.id, customerId, restaurant.id, orderId],
+    );
+    const decided = git.decideAdvance(advanceId, 'reject', 'Ticket no corresponde al cliente', { id: 'caja', username: 'caja' });
     assert.strictEqual(decided.advance.status, 'rejected');
     const profile = git.getMemberProfile(customerId);
     assert.strictEqual(profile.card.progress.confirmed, 1);
@@ -142,18 +158,17 @@ async function main() {
   });
 
   let rewardId;
-  await checkAsync('G. tres aprobaciones emiten una sola recompensa', () => {
+  await checkAsync('G. tres cobros elegibles emiten una sola recompensa', () => {
     const second = insertOrder({ customerId, restaurantId: restaurant.id, total: 250 });
     const third = insertOrder({ customerId, restaurantId: restaurant.id, total: 300 });
     const a2 = git.considerPaidOrder(second, { id: 'caja', username: 'caja' });
-    const a3 = git.considerPaidOrder(third, { id: 'caja', username: 'caja' });
-    git.decideAdvance(a2.advance.id, 'approve', '', { id: 'caja', username: 'caja' });
-    const last = git.decideAdvance(a3.advance.id, 'approve', '', { id: 'caja', username: 'caja' });
+    const last = git.considerPaidOrder(third, { id: 'caja', username: 'caja' });
+    assert.strictEqual(a2.approved, true);
     assert.ok(last.completed);
     assert.ok(last.reward);
     const rewards = queryAll('SELECT * FROM git_cards_rewards WHERE customer_id = ?', [customerId]);
     assert.strictEqual(rewards.length, 1);
-    git.decideAdvance(a3.advance.id, 'approve', '', { id: 'caja', username: 'caja' });
+    git.considerPaidOrder(third, { id: 'caja', username: 'caja' });
     const rewardsAgain = queryAll('SELECT * FROM git_cards_rewards WHERE customer_id = ?', [customerId]);
     assert.strictEqual(rewardsAgain.length, 1);
     rewardId = rewards[0].id;
@@ -181,12 +196,13 @@ async function main() {
       `INSERT INTO customers (id, name, email, password_hash, phone) VALUES (?, 'Cliente Encuesta', ?, 'x', '999000111')`,
       [otherId, `${otherId}@git.test`],
     );
+    git.getOrCreateActiveCycle(otherId);
     const orderId = insertOrder({ customerId: otherId, restaurantId: restaurant.id, total: 250 });
     const blocked = git.considerPaidOrder(orderId, { id: 'caja', username: 'caja' });
     assert.strictEqual(blocked.skipped, 'survey');
     git.recordSurvey(otherId, { rating: 5 });
     const allowed = git.considerPaidOrder(orderId, { id: 'caja', username: 'caja' });
-    assert.strictEqual(allowed.pending, true);
+    assert.strictEqual(allowed.approved, true);
     git.saveConfig({ survey_required: false }, { id: 'verify', username: 'verify' });
   });
 
@@ -273,7 +289,7 @@ async function main() {
     assert.strictEqual(customers.length, 1);
   });
 
-  await checkAsync('Fidelización E-G. encuesta no crea avance; compra pendiente no suma', () => {
+  await checkAsync('Fidelización E-G. encuesta no crea avance; cobro elegible sí suma', () => {
     const ana = queryOne("SELECT * FROM customers WHERE doc_number = '87654321'");
     const before = git.getMemberProfile(ana.id);
     const confirmed = before.card.progress.confirmed;
@@ -290,11 +306,8 @@ async function main() {
     const afterSurvey = git.getMemberProfile(ana.id);
     assert.strictEqual(afterSurvey.card.progress.confirmed, confirmed);
     const orderId = insertOrder({ customerId: ana.id, restaurantId: restaurant.id, total: 250 });
-    const pending = git.considerPaidOrder(orderId, { id: 'caja', username: 'caja' });
-    assert.strictEqual(pending.pending, true);
-    const mid = git.getMemberProfile(ana.id);
-    assert.strictEqual(mid.card.progress.confirmed, confirmed);
-    git.decideAdvance(pending.advance.id, 'approve', '', { id: 'caja', username: 'caja' });
+    const paid = git.considerPaidOrder(orderId, { id: 'caja', username: 'caja' });
+    assert.strictEqual(paid.approved, true);
     const after = git.getMemberProfile(ana.id);
     assert.strictEqual(after.card.progress.confirmed, confirmed + 1);
     assert.ok((after.surveys || []).length >= 1);
@@ -307,9 +320,9 @@ async function main() {
       `INSERT INTO customers (id, name, email, password_hash, phone) VALUES (?, 'Reward Pub', ?, 'x', '911111111')`,
       [cid, `${cid}@git.test`],
     );
+    git.getOrCreateActiveCycle(cid);
     const o1 = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 20 });
-    const p = git.considerPaidOrder(o1, { id: 'caja', username: 'caja' });
-    const decided = git.decideAdvance(p.advance.id, 'approve', '', { id: 'caja', username: 'caja' });
+    const decided = git.considerPaidOrder(o1, { id: 'caja', username: 'caja' });
     assert.ok(decided.reward);
     const customer = queryOne('SELECT id, name, phone, doc_number FROM customers WHERE id = ?', [cid]);
     const card = git.publicCardPayload(customer);
@@ -355,6 +368,99 @@ async function main() {
       assert.ok(!String(err.message).includes('Ana'));
     }
     assert.ok(unknown);
+  });
+
+  await checkAsync('Caja. selector busca por nombre, inicial y DNI', () => {
+    const byName = git.listEligibleCajaClients('Cliente GIT');
+    assert.ok(byName.program_open);
+    assert.ok(byName.rows.some((row) => row.id === customerId));
+    const byLetter = git.listEligibleCajaClients('c');
+    assert.ok(byLetter.rows.some((row) => row.id === customerId));
+    const byDni = git.listEligibleCajaClients('12345678');
+    assert.ok(byDni.rows.some((row) => row.id === customerId));
+    assert.ok(!JSON.stringify(byDni.rows).includes('12345678'));
+    const stranger = git.listEligibleCajaClients('zzz-no-existe');
+    assert.ok(!stranger.rows.some((row) => row.id === customerId));
+  });
+
+  await checkAsync('Caja. vista previa no modifica el progreso', () => {
+    const before = git.getMemberProfile(customerId);
+    const preview = git.previewCajaGitCustomer(customerId);
+    assert.strictEqual(preview.customer.id, customerId);
+    assert.ok(preview.card);
+    const after = git.getMemberProfile(customerId);
+    assert.strictEqual(after.card.progress.confirmed, before.card.progress.confirmed);
+    assert.strictEqual(after.advances.length, before.advances.length);
+  });
+
+  await checkAsync('Admin. indicadores coinciden con persistencia y no duplican', () => {
+    const summary = git.adminDashboardSummary();
+    const restaurantId = restaurant.id;
+    const registered = Number(queryOne(
+      `SELECT COUNT(*) as c FROM (
+         SELECT customer_id FROM git_cards_cycles WHERE IFNULL(restaurant_id, '') IN ('', ?)
+         UNION
+         SELECT customer_id FROM git_cards_access WHERE IFNULL(restaurant_id, '') IN ('', ?)
+       )`,
+      [restaurantId, restaurantId],
+    )?.c || 0);
+    const active = Number(queryOne(
+      `SELECT COUNT(DISTINCT customer_id) as c FROM git_cards_cycles
+       WHERE status = 'active'
+         AND IFNULL(restaurant_id, '') IN ('', ?)
+         AND (IFNULL(expires_at, '') = '' OR datetime(expires_at) > datetime('now'))`,
+      [restaurantId],
+    )?.c || 0);
+    const pending = Number(queryOne(
+      `SELECT COUNT(*) as c FROM git_cards_advances
+       WHERE status = 'pending' AND IFNULL(restaurant_id, '') IN ('', ?)`,
+      [restaurantId],
+    )?.c || 0);
+    const rewards = Number(queryOne(
+      `SELECT COUNT(*) as c FROM git_cards_rewards
+       WHERE status = 'available'
+         AND IFNULL(restaurant_id, '') IN ('', ?)
+         AND (IFNULL(expires_at, '') = '' OR datetime(expires_at) > datetime('now'))`,
+      [restaurantId],
+    )?.c || 0);
+    assert.strictEqual(summary.registered, registered);
+    assert.strictEqual(summary.active_cards, active);
+    assert.strictEqual(summary.pending_purchases, pending);
+    assert.strictEqual(summary.available_rewards, rewards);
+    assert.strictEqual(summary.registered, git.summaryCount());
+    const byDni = git.listMembers({ q: '12345678', pageSize: 50 });
+    assert.ok(byDni.rows.some((row) => row.customer_id === customerId));
+    assert.ok(!JSON.stringify(byDni.rows).includes('12345678'));
+    const actives = git.listMembers({ status: 'active', pageSize: 50 });
+    assert.ok(actives.rows.every((row) => row.status === 'active' || (row.status_flags || []).includes('active')));
+    const rewardsList = git.listMembers({ status: 'reward_available', pageSize: 50 });
+    assert.ok(rewardsList.rows.every((row) => row.status === 'reward_available' || (row.status_flags || []).includes('reward_available')));
+    const preview = git.previewCajaGitCustomer(customerId);
+    const before = git.getMemberProfile(customerId);
+    const afterPreview = git.getMemberProfile(customerId);
+    assert.ok(preview.card);
+    assert.strictEqual(afterPreview.card.progress.confirmed, before.card.progress.confirmed);
+  });
+
+  await checkAsync('Caja. cobro fallido, cancelado o sin cliente no avanza', () => {
+    const unpaid = insertOrder({ customerId, restaurantId: restaurant.id, total: 250, payment: 'pending' });
+    assert.strictEqual(git.considerPaidOrder(unpaid, { id: 'caja', username: 'caja' }).skipped, 'unpaid');
+    const cancelled = insertOrder({
+      customerId,
+      restaurantId: restaurant.id,
+      total: 250,
+      status: 'cancelled',
+    });
+    assert.strictEqual(git.considerPaidOrder(cancelled, { id: 'caja', username: 'caja' }).skipped, 'cancelled');
+    const noCustomer = insertOrder({ customerId: '', restaurantId: restaurant.id, total: 250 });
+    assert.strictEqual(git.considerPaidOrder(noCustomer, { id: 'caja', username: 'caja' }).skipped, 'no_customer');
+    const noCardId = `git-test-${uuidv4()}`;
+    runSql(
+      `INSERT INTO customers (id, name, email, password_hash, phone) VALUES (?, 'Sin Tarjeta', ?, 'x', '900000000')`,
+      [noCardId, `${noCardId}@git.test`],
+    );
+    const noCardOrder = insertOrder({ customerId: noCardId, restaurantId: restaurant.id, total: 250 });
+    assert.strictEqual(git.considerPaidOrder(noCardOrder, { id: 'caja', username: 'caja' }).skipped, 'no_active_card');
   });
 
   await checkAsync('Público. registro reutiliza tarjeta y no suma avance', () => {

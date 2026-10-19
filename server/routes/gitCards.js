@@ -9,9 +9,11 @@ const {
   getMemberProfile,
   decideAdvance,
   redeemReward,
-  summaryCount,
+  adminDashboardSummary,
   cardStyles,
   processExpirations,
+  listEligibleCajaClients,
+  previewCajaGitCustomer,
 } = require('../gitCardsService');
 
 const router = express.Router();
@@ -37,8 +39,13 @@ function sendErr(res, err) {
 router.get('/summary', requireRole('admin', 'cajero'), (req, res) => {
   try {
     processExpirations();
+    const summary = adminDashboardSummary();
     res.json({
-      enrolled: summaryCount(),
+      enrolled: summary.registered,
+      registered: summary.registered,
+      active_cards: summary.active_cards,
+      pending_purchases: summary.pending_purchases,
+      available_rewards: summary.available_rewards,
       config: getConfig(),
     });
   } catch (err) {
@@ -62,6 +69,24 @@ router.put('/config', requireRole('admin'), (req, res) => {
     const config = saveConfig(req.body || {}, req.user || {});
     emitStaffDataUpdate({ domain: 'git_cards' });
     res.json({ config });
+  } catch (err) {
+    sendErr(res, err);
+  }
+});
+
+router.get('/caja/clients', requireRole('admin', 'cajero'), (req, res) => {
+  try {
+    processExpirations();
+    res.json(listEligibleCajaClients(req.query?.q));
+  } catch (err) {
+    sendErr(res, err);
+  }
+});
+
+router.get('/caja/clients/:customerId/preview', requireRole('admin', 'cajero'), (req, res) => {
+  try {
+    processExpirations();
+    res.json(previewCajaGitCustomer(req.params.customerId));
   } catch (err) {
     sendErr(res, err);
   }

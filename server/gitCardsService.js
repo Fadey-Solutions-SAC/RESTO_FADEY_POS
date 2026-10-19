@@ -22,7 +22,7 @@ const DEFAULT_CONFIG = {
   card_accent: '',
   reward_title: 'Recompensa GIT Cards',
   reward_description: 'Al completar la tarjeta recibe la recompensa configurada.',
-  info_text: 'Cada compra que alcance el consumo mínimo y sea aprobada suma un avance.',
+  info_text: 'Cada compra cobrada que alcance el consumo mínimo suma un avance.',
   min_spend: 250,
   goal: 3,
   survey_required: false,
@@ -554,8 +554,37 @@ function notifyStaff(kind, title, body) {
   }
 }
 
+function completeApprovedCycleIfNeeded(tx, advance, actor = {}) {
+  const cycle = tx.queryOne('SELECT * FROM git_cards_cycles WHERE id = ?', [advance.cycle_id]);
+  const approved = countApproved(advance.cycle_id, tx);
+  const goal = Number(cycle?.goal || getConfig().goal);
+  if (!cycle || approved < goal || cycle.status !== 'active') {
+    return { reward: null, completed: false };
+  }
+  tx.run(
+    "UPDATE git_cards_cycles SET status = 'completed', completed_at = ? WHERE id = ? AND status = 'active'",
+    [nowIso(), cycle.id],
+  );
+  const reward = issueRewardIfNeeded(tx, cycle, getConfig(), actor);
+  const config = getConfig();
+  if (config.auto_reset && programIsOpen(config)) {
+    const stillActive = tx.queryOne(
+      "SELECT id FROM git_cards_cycles WHERE customer_id = ? AND status = 'active' LIMIT 1",
+      [advance.customer_id],
+    );
+    if (!stillActive) createCycle(advance.customer_id, config, tx);
+  }
+  return { reward, completed: true };
+}
+
+function isUniqueConstraintError(err) {
+  const msg = String(err?.message || err || '');
+  return /UNIQUE constraint failed|unique constraint/i.test(msg);
+}
+
 function considerPaidOrder(orderId, actor = {}) {
   ensureGitCardsTables();
+  processExpirations();
   const order = queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
   if (!order) return { skipped: 'missing_order' };
   const config = getConfig();
@@ -573,7 +602,23 @@ function considerPaidOrder(orderId, actor = {}) {
   }
 
   const existing = queryOne('SELECT * FROM git_cards_advances WHERE order_id = ?', [order.id]);
-  if (existing) return { skipped: 'already', advance: existing };
+  if (existing) {
+    if (existing.status === 'pending') {
+      try {
+        const decided = decideAdvance(existing.id, 'approve', '', actor);
+        return {
+          approved: true,
+          recovered: true,
+          advance: decided.advance || existing,
+          reward: decided.reward || null,
+          completed: !!decided.completed,
+        };
+      } catch (err) {
+        return { skipped: 'already', advance: existing, error: err.message };
+      }
+    }
+    return { skipped: 'already', advance: existing };
+  }
 
   const amount = round2(order.total);
   if (!isEligibleAmount(amount, config.min_spend)) {
@@ -603,45 +648,84 @@ function considerPaidOrder(orderId, actor = {}) {
     return { skipped: 'survey' };
   }
 
+  const activeCycle = getActiveCycle(customerId);
+  if (!activeCycle) return { skipped: 'no_active_card' };
+  try {
+    assertRestaurant(activeCycle.restaurant_id);
+  } catch (err) {
+    return { skipped: 'restaurant' };
+  }
+
   let created = null;
-  withTransaction((tx) => {
-    const again = tx.queryOne('SELECT * FROM git_cards_advances WHERE order_id = ?', [order.id]);
-    if (again) {
-      created = again;
-      return;
-    }
-    let cycle = tx.queryOne(
-      `SELECT * FROM git_cards_cycles
-       WHERE customer_id = ? AND status = 'active'
-       ORDER BY datetime(started_at) DESC LIMIT 1`,
-      [customerId],
-    );
-    if (!cycle) {
-      const cycleId = createCycle(customerId, config, tx);
-      cycle = tx.queryOne('SELECT * FROM git_cards_cycles WHERE id = ?', [cycleId]);
-    }
-    const id = uuidv4();
-    tx.run(
-      `INSERT INTO git_cards_advances
-        (id, cycle_id, customer_id, restaurant_id, order_id, amount, status, survey_ok)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', 1)`,
-      [id, cycle.id, customerId, cycle.restaurant_id || currentRestaurantId(), order.id, amount],
-    );
-    insertEvent(tx, {
-      customer_id: customerId,
-      restaurant_id: cycle.restaurant_id,
-      cycle_id: cycle.id,
-      kind: 'advance_pending',
-      detail: `Compra ${amount} pendiente de validación`,
-      order_id: order.id,
-      amount,
-      actor_id: actor.id || '',
-      actor_name: actor.full_name || actor.username || '',
+  let completed = false;
+  let reward = null;
+  try {
+    withTransaction((tx) => {
+      const again = tx.queryOne('SELECT * FROM git_cards_advances WHERE order_id = ?', [order.id]);
+      if (again) {
+        created = again;
+        return;
+      }
+      const cycle = tx.queryOne(
+        `SELECT * FROM git_cards_cycles
+         WHERE customer_id = ? AND status = 'active'
+         ORDER BY datetime(started_at) DESC LIMIT 1`,
+        [customerId],
+      );
+      if (!cycle) {
+        created = { skipped: 'no_active_card' };
+        return;
+      }
+      const id = uuidv4();
+      const decidedAt = nowIso();
+      tx.run(
+        `INSERT INTO git_cards_advances
+          (id, cycle_id, customer_id, restaurant_id, order_id, amount, status, survey_ok, decided_by, decided_by_name, decided_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'approved', 1, ?, ?, ?)`,
+        [
+          id,
+          cycle.id,
+          customerId,
+          cycle.restaurant_id || currentRestaurantId(),
+          order.id,
+          amount,
+          actor.id || '',
+          actor.full_name || actor.username || '',
+          decidedAt,
+        ],
+      );
+      insertEvent(tx, {
+        customer_id: customerId,
+        restaurant_id: cycle.restaurant_id,
+        cycle_id: cycle.id,
+        kind: 'advance_approved',
+        detail: `Avance automático · compra ${amount}`,
+        order_id: order.id,
+        amount,
+        actor_id: actor.id || '',
+        actor_name: actor.full_name || actor.username || '',
+      });
+      created = tx.queryOne('SELECT * FROM git_cards_advances WHERE id = ?', [id]);
+      const done = completeApprovedCycleIfNeeded(tx, created, actor);
+      completed = !!done.completed;
+      reward = done.reward || null;
     });
-    created = tx.queryOne('SELECT * FROM git_cards_advances WHERE id = ?', [id]);
-  });
-  notifyStaff('pending', 'GIT Cards: compra pendiente', `${customer.name || 'Cliente'} · S/ ${amount}`);
-  return { pending: true, advance: created };
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      const again = queryOne('SELECT * FROM git_cards_advances WHERE order_id = ?', [order.id]);
+      return { skipped: 'already', advance: again };
+    }
+    throw err;
+  }
+  if (created?.skipped) return created;
+  if (!created) return { skipped: 'already' };
+  if (created.status !== 'approved') {
+    return { skipped: 'already', advance: created };
+  }
+  if (completed) {
+    notifyStaff('completed', 'GIT Cards: tarjeta completada', 'Se emitió una recompensa');
+  }
+  return { approved: true, advance: created, reward, completed };
 }
 
 function handleVoidedOrder(orderId, actor = {}) {
@@ -764,25 +848,9 @@ function decideAdvance(advanceId, decision, reason, actor = {}) {
     let reward = null;
     let completed = false;
     if (wanted === 'approved') {
-      const cycle = tx.queryOne('SELECT * FROM git_cards_cycles WHERE id = ?', [advance.cycle_id]);
-      const approved = countApproved(advance.cycle_id, tx);
-      const goal = Number(cycle?.goal || getConfig().goal);
-      if (cycle && approved >= goal && cycle.status === 'active') {
-        tx.run(
-          "UPDATE git_cards_cycles SET status = 'completed', completed_at = ? WHERE id = ? AND status = 'active'",
-          [nowIso(), cycle.id],
-        );
-        reward = issueRewardIfNeeded(tx, cycle, getConfig(), actor);
-        completed = true;
-        const config = getConfig();
-        if (config.auto_reset && programIsOpen(config)) {
-          const stillActive = tx.queryOne(
-            "SELECT id FROM git_cards_cycles WHERE customer_id = ? AND status = 'active' LIMIT 1",
-            [advance.customer_id],
-          );
-          if (!stillActive) createCycle(advance.customer_id, config, tx);
-        }
-      }
+      const done = completeApprovedCycleIfNeeded(tx, updated, actor);
+      reward = done.reward;
+      completed = done.completed;
     }
     return { advance: updated, reward, completed };
   });
@@ -790,8 +858,6 @@ function decideAdvance(advanceId, decision, reason, actor = {}) {
   if (result.already) return result;
   if (result.completed) {
     notifyStaff('completed', 'GIT Cards: tarjeta completada', 'Se emitió una recompensa');
-  } else if (wanted === 'approved') {
-    notifyStaff('advance', 'GIT Cards: avance confirmado', `+1 avance`);
   }
   return result;
 }
@@ -953,13 +1019,24 @@ function publicCardPayload(customer, extra = {}) {
 function listMembers({ q = '', status = 'all', page = 1, pageSize = 10 } = {}) {
   ensureGitCardsTables();
   processExpirations();
+  const restaurantId = currentRestaurantId();
   const customers = queryAll(
-    `SELECT id, name, email, phone, doc_type, doc_number, created_at
-     FROM customers
-     ORDER BY datetime(created_at) DESC
+    `SELECT c.id, c.name, c.email, c.phone, c.doc_type, c.doc_number, c.created_at
+     FROM customers c
+     WHERE c.id IN (
+       SELECT customer_id FROM git_cards_cycles
+       WHERE IFNULL(restaurant_id, '') IN ('', ?)
+       UNION
+       SELECT customer_id FROM git_cards_access
+       WHERE IFNULL(restaurant_id, '') IN ('', ?)
+     )
+     ORDER BY datetime(c.created_at) DESC
      LIMIT 500`,
+    [restaurantId, restaurantId],
   ) || [];
-  const needle = String(q || '').trim().toLowerCase();
+  const needle = String(q || '').trim();
+  const needleLower = needle.toLowerCase();
+  const needleDigits = needle.replace(/\D/g, '');
   const rows = customers.map((c) => {
     const cycle = getActiveCycle(c.id) || queryOne(
       `SELECT * FROM git_cards_cycles WHERE customer_id = ? ORDER BY datetime(started_at) DESC LIMIT 1`,
@@ -990,17 +1067,24 @@ function listMembers({ q = '', status = 'all', page = 1, pageSize = 10 } = {}) {
       rewards_available: rewards.filter((r) => r.status === 'available').length,
       last_activity: lastEligible?.created_at || '',
       last_amount: lastEligible ? Number(lastEligible.amount || 0) : 0,
+      _doc: String(c.doc_number || ''),
     };
   }).filter((row) => {
-    if (needle) {
+    if (needleLower) {
       const hay = `${row.name} ${row.phone}`.toLowerCase();
-      if (!hay.includes(needle)) return false;
+      const docDigits = String(row._doc || '').replace(/\D/g, '');
+      const matchesText = hay.includes(needleLower);
+      const matchesDoc = needleDigits ? docDigits.includes(needleDigits) : false;
+      if (!matchesText && !matchesDoc) return false;
     }
     if (status && status !== 'all') {
       if (status === 'none') return row.status === 'none';
       return row.status === status || row.status_flags.includes(status);
     }
     return true;
+  }).map((row) => {
+    const { _doc, ...safe } = row;
+    return safe;
   });
   const total = rows.length;
   const safePage = Math.max(1, Number(page) || 1);
@@ -1395,17 +1479,179 @@ function publicProgramSummary() {
   }
 }
 
-function summaryCount() {
+function restaurantScopeSql(alias) {
+  return `(IFNULL(${alias}.restaurant_id, '') = '' OR ${alias}.restaurant_id = ?)`;
+}
+
+function adminDashboardSummary() {
   ensureGitCardsTables();
-  const row = queryOne(
-    `SELECT COUNT(DISTINCT customer_id) as c
-     FROM git_cards_cycles`,
+  processExpirations();
+  const restaurantId = currentRestaurantId();
+  const scope = restaurantScopeSql('x');
+  const registeredRow = queryOne(
+    `SELECT COUNT(*) as c FROM (
+       SELECT customer_id FROM git_cards_cycles x WHERE ${scope}
+       UNION
+       SELECT customer_id FROM git_cards_access x WHERE ${scope}
+     )`,
+    [restaurantId, restaurantId],
   );
-  return Number(row?.c || 0);
+  const activeRow = queryOne(
+    `SELECT COUNT(DISTINCT customer_id) as c
+     FROM git_cards_cycles x
+     WHERE x.status = 'active'
+       AND ${scope}
+       AND (IFNULL(x.expires_at, '') = '' OR datetime(x.expires_at) > datetime('now'))`,
+    [restaurantId],
+  );
+  const pendingRow = queryOne(
+    `SELECT COUNT(*) as c
+     FROM git_cards_advances x
+     WHERE x.status = 'pending'
+       AND ${scope}`,
+    [restaurantId],
+  );
+  const rewardsRow = queryOne(
+    `SELECT COUNT(*) as c
+     FROM git_cards_rewards x
+     WHERE x.status = 'available'
+       AND ${scope}
+       AND (IFNULL(x.expires_at, '') = '' OR datetime(x.expires_at) > datetime('now'))`,
+    [restaurantId],
+  );
+  return {
+    registered: Number(registeredRow?.c || 0),
+    active_cards: Number(activeRow?.c || 0),
+    pending_purchases: Number(pendingRow?.c || 0),
+    available_rewards: Number(rewardsRow?.c || 0),
+  };
+}
+
+function summaryCount() {
+  return adminDashboardSummary().registered;
 }
 
 function cardStyles() {
   return Object.entries(CARD_STYLES).map(([id, colors]) => ({ id, ...colors }));
+}
+
+function cycleIsCajaEligible(cycle) {
+  if (!cycle || cycle.status !== 'active') return false;
+  if (cycle.expires_at && Date.parse(cycle.expires_at) <= Date.now()) return false;
+  try {
+    assertRestaurant(cycle.restaurant_id);
+  } catch (_) {
+    return false;
+  }
+  return true;
+}
+
+function matchesCajaClientSearch(row, needle) {
+  const q = String(needle || '').trim().toLowerCase();
+  if (!q) return true;
+  const name = String(row.name || '').trim().toLowerCase();
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (name.startsWith(q)) return true;
+  if (parts.some((part) => part.startsWith(q))) return true;
+  if (name.includes(q)) return true;
+  const qDigits = String(needle || '').replace(/\D/g, '');
+  const doc = String(row.doc_number || '').replace(/\D/g, '');
+  if (qDigits && doc.includes(qDigits)) return true;
+  return false;
+}
+
+function toCajaClientRow(row) {
+  const progress = cycleProgress({
+    id: row.id,
+    goal: row.goal,
+    status: row.status,
+  });
+  return {
+    id: row.customer_id,
+    name: row.name,
+    doc_masked: maskDoc(row.doc_number),
+    cycle_id: row.id,
+    status: 'active',
+    progress: {
+      confirmed: progress.confirmed,
+      pending: progress.pending,
+      goal: progress.goal,
+    },
+    expires_at: row.expires_at || '',
+  };
+}
+
+function listEligibleCajaClients(q = '') {
+  ensureGitCardsTables();
+  processExpirations();
+  const config = getConfig();
+  if (!config.enabled || !programIsOpen(config)) {
+    return { rows: [], program_open: false };
+  }
+  const restaurantId = currentRestaurantId();
+  const cycles = queryAll(
+    `SELECT cy.id, cy.customer_id, cy.goal, cy.status, cy.expires_at, cy.restaurant_id,
+            c.name, c.doc_number
+     FROM git_cards_cycles cy
+     JOIN customers c ON c.id = cy.customer_id
+     WHERE cy.status = 'active'
+       AND (IFNULL(cy.restaurant_id, '') = '' OR cy.restaurant_id = ?)
+     ORDER BY lower(c.name) ASC
+     LIMIT 300`,
+    [restaurantId],
+  ) || [];
+  const eligible = cycles.filter((row) => cycleIsCajaEligible(row));
+  const needle = String(q || '').trim();
+  const filtered = needle ? eligible.filter((row) => matchesCajaClientSearch(row, needle)) : eligible;
+  return {
+    rows: filtered.slice(0, 30).map(toCajaClientRow),
+    program_open: true,
+  };
+}
+
+function previewCajaGitCustomer(customerId) {
+  ensureGitCardsTables();
+  processExpirations();
+  const id = String(customerId || '').trim();
+  if (!id) {
+    const err = new Error('Cliente no encontrado');
+    err.status = 404;
+    throw err;
+  }
+  const customer = queryOne('SELECT id, name, doc_number FROM customers WHERE id = ?', [id]);
+  if (!customer) {
+    const err = new Error('Cliente no encontrado');
+    err.status = 404;
+    throw err;
+  }
+  const cycle = getActiveCycle(customer.id);
+  if (cycle) {
+    try {
+      assertRestaurant(cycle.restaurant_id);
+    } catch (err) {
+      throw err;
+    }
+  }
+  const card = publicCardPayload(customer);
+  return {
+    customer: {
+      id: customer.id,
+      name: customer.name,
+      doc_masked: maskDoc(customer.doc_number),
+    },
+    card,
+    eligible: cycleIsCajaEligible(cycle) && programIsOpen(getConfig()),
+  };
+}
+
+function resolveCajaGitCustomer(customerId) {
+  const preview = previewCajaGitCustomer(customerId);
+  if (!preview.eligible) {
+    const err = new Error('El cliente no tiene una GIT Card activa para participar.');
+    err.status = 400;
+    throw err;
+  }
+  return { id: preview.customer.id, name: preview.customer.name };
 }
 
 module.exports = {
@@ -1427,10 +1673,12 @@ module.exports = {
   publicCardPayload,
   findAccessByToken,
   getOrCreateAccess,
+  getOrCreateActiveCycle,
   recordSurvey,
   customerHasSurvey,
   processExpirations,
   summaryCount,
+  adminDashboardSummary,
   cardStyles,
   maskDoc,
   programIsOpen,
@@ -1445,4 +1693,7 @@ module.exports = {
   sanitizedRewards,
   findCustomerByIdentity,
   attachLoyaltySurveyAsGitEvidence,
+  listEligibleCajaClients,
+  previewCajaGitCustomer,
+  resolveCajaGitCustomer,
 };

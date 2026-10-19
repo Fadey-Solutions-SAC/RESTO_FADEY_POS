@@ -740,6 +740,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     tip_amount: tipAmountRaw,
     charge_to_customer_account: chargeToAccountRaw,
     customer_id: customerIdRaw,
+    git_card_customer_id: gitCardCustomerIdRaw,
     payment_note: paymentNoteRaw,
     defer_sale_note_print: deferSaleNotePrintRaw,
   } = body;
@@ -751,6 +752,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
   const canSavePaymentNote = paymentNote ? ensureOrdersPaymentNoteColumn() : false;
   const chargeToCustomerAccount = chargeToAccountRaw === true || chargeToAccountRaw === 1 || chargeToAccountRaw === '1';
   const customerIdForAccount = String(customerIdRaw || '').trim();
+  const gitCardCustomerId = String(gitCardCustomerIdRaw || '').trim();
   const orderItemIds = [
     ...new Set(
       (Array.isArray(orderItemIdsBody) ? orderItemIdsBody : [])
@@ -800,25 +802,43 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
   const formatCheckoutSoles = (n) => `S/ ${Number(n || 0).toFixed(2)}`;
 
   let accountCustomer = null;
+  let gitCardCustomer = null;
   if (chargeToCustomerAccount) {
     if (!customerIdForAccount) {
       return res.status(400).json({ error: 'Seleccione un cliente de Mi Clientes' });
     }
     accountCustomer = queryOne('SELECT id, name FROM customers WHERE id = ?', [customerIdForAccount]);
     if (!accountCustomer) return res.status(400).json({ error: 'Cliente no encontrado en Mi Clientes' });
-  } else if (paymentBreakdownObj) {
-    try {
-      for (const k of Object.keys(paymentBreakdownObj)) {
-        assertPaymentMethodAllowed(k, { allowOnline: true });
+  } else if (gitCardCustomerId) {
+    const customer = queryOne('SELECT id, name FROM customers WHERE id = ?', [gitCardCustomerId]);
+    if (customer) {
+      try {
+        const { previewCajaGitCustomer } = require('../gitCardsService');
+        previewCajaGitCustomer(customer.id);
+        gitCardCustomer = { id: customer.id, name: customer.name };
+      } catch (err) {
+        if (err.status === 403) {
+          return res.status(403).json({ error: err.message || 'No autorizado para este restaurante' });
+        }
+        gitCardCustomer = { id: customer.id, name: customer.name };
       }
-    } catch (err) {
-      return res.status(400).json({ error: err.message });
     }
-  } else if (!isCourtesyCheckout) {
-    try {
-      assertPaymentMethodAllowed(paymentMethod, { allowOnline: true });
-    } catch (err) {
-      return res.status(400).json({ error: err.message });
+  }
+  if (!chargeToCustomerAccount) {
+    if (paymentBreakdownObj) {
+      try {
+        for (const k of Object.keys(paymentBreakdownObj)) {
+          assertPaymentMethodAllowed(k, { allowOnline: true });
+        }
+      } catch (err) {
+        return res.status(400).json({ error: err.message });
+      }
+    } else if (!isCourtesyCheckout) {
+      try {
+        assertPaymentMethodAllowed(paymentMethod, { allowOnline: true });
+      } catch (err) {
+        return res.status(400).json({ error: err.message });
+      }
     }
   }
 
@@ -959,12 +979,23 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
             [nextStatus, accountCustomer.id, accountCustomer.name, row.id]
           );
         } else {
-          tx.run(
-            `UPDATE orders SET payment_method = ?, payment_status = 'paid', status = ?,
-              payment_breakdown = ?, tip_amount = ?, cash_register_id = ?,
-              paid_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
-            [primaryMethod, nextStatus, br, tipForOrder, register.id, row.id]
-          );
+          if (gitCardCustomer) {
+            tx.run(
+              `UPDATE orders SET payment_method = ?, payment_status = 'paid', status = ?,
+                customer_id = ?,
+                customer_name = CASE WHEN IFNULL(TRIM(customer_name), '') = '' THEN ? ELSE customer_name END,
+                payment_breakdown = ?, tip_amount = ?, cash_register_id = ?,
+                paid_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+              [primaryMethod, nextStatus, gitCardCustomer.id, gitCardCustomer.name, br, tipForOrder, register.id, row.id]
+            );
+          } else {
+            tx.run(
+              `UPDATE orders SET payment_method = ?, payment_status = 'paid', status = ?,
+                payment_breakdown = ?, tip_amount = ?, cash_register_id = ?,
+                paid_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+              [primaryMethod, nextStatus, br, tipForOrder, register.id, row.id]
+            );
+          }
           if (primaryMethod !== COURTESY_PAYMENT_METHOD) {
             tx.run(
               "UPDATE electronic_documents SET payment_method = ?, updated_at = datetime('now') WHERE order_id = ?",
@@ -1029,6 +1060,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
       try {
         const { considerPaidOrder } = require('../gitCardsService');
         salesOrderIds.forEach((id) => considerPaidOrder(id, req.user || {}));
+        emitStaffDataUpdate({ domain: 'git_cards' });
       } catch (err) {
         console.warn('[git-cards] no se pudo evaluar el cobro de caja:', err.message || err);
       }

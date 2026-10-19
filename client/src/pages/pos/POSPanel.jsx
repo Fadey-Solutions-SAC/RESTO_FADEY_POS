@@ -414,6 +414,7 @@ import {
   getTableDisplayLabel,
 } from '../../utils/mesaMapTableVisual';
 import { readGetCache, invalidateGetCache, REGISTER_STATE_CACHE_PATHS } from '../../utils/offlinePos';
+import GitClientesCajaModal from '../../components/GitClientesCajaModal';
 import {
   MdPointOfSale, MdTableRestaurant, MdReceipt,
   MdCheckCircle, MdAttachMoney, MdPeople, MdClose,
@@ -424,6 +425,7 @@ import {
   MdEdit, MdDelete, MdPrint, MdSave,
   MdSwapHoriz, MdOpenWith, MdCallMerge,
   MdStorage, MdShoppingCart, MdCreditCard, MdPhoneIphone, MdLanguage,
+  MdStar,
 } from 'react-icons/md';
 
 /** Valor del selector de método que activa el cobro con varios medios. */
@@ -939,6 +941,9 @@ export default function POSPanel() {
   const [tableDetail, setTableDetail] = useState(null);
   /** Detalle de mesa (productos + acciones) en ventana superpuesta. */
   const [mesaDetailModalOpen, setMesaDetailModalOpen] = useState(false);
+  /** Cliente GIT Cards asociado temporalmente a cada mesa hasta el cobro. */
+  const [gitCardByTable, setGitCardByTable] = useState({});
+  const [gitClientesOpen, setGitClientesOpen] = useState(false);
   /** Modal mover mesa / mover pedidos. */
   const [mesaTransfer, setMesaTransfer] = useState(null);
   /** Modo selección múltiple para unir mesas en el mapa. */
@@ -2694,8 +2699,14 @@ export default function POSPanel() {
       if (chargeToAccount) {
         checkoutBody.charge_to_customer_account = true;
         checkoutBody.customer_id = billingCustomerId;
-      } else if (checkoutPaymentBreakdown) {
-        checkoutBody.payment_breakdown = checkoutPaymentBreakdown;
+      } else {
+        const gitCustomerId = String(
+          gitCardByTable[selectedTable?.id]?.id || '',
+        ).trim();
+        if (gitCustomerId) checkoutBody.git_card_customer_id = gitCustomerId;
+        if (checkoutPaymentBreakdown) {
+          checkoutBody.payment_breakdown = checkoutPaymentBreakdown;
+        }
       }
       if (!chargeToAccount && tipPayEnabled) {
         const tipVal = roundMoneySoles(parseFloat(String(checkoutTipAmount).replace(',', '.')) || 0);
@@ -2875,6 +2886,16 @@ export default function POSPanel() {
       setSelectedOrderItemQtys({});
       setDiscountConfig({ ...EMPTY_DISCOUNT_CONFIG });
       clientCheckoutOpenedKeyRef.current = '';
+      if (selectedTable?.id) {
+        const memberIds = Array.isArray(selectedTable.union_member_ids) && selectedTable.union_member_ids.length
+          ? selectedTable.union_member_ids
+          : [selectedTable.id];
+        setGitCardByTable((prev) => {
+          const next = { ...prev };
+          memberIds.forEach((id) => { delete next[id]; });
+          return next;
+        });
+      }
       setSelectedTable(null);
       setTableDetail(null);
       setMesaDetailModalOpen(false);
@@ -4870,6 +4891,15 @@ export default function POSPanel() {
             <h2 id="pos-mesa-detail-title" className="font-semibold flex items-center gap-2 text-base sm:text-lg min-w-0 truncate text-[var(--ui-body-text)]">
               <MdTableRestaurant className="shrink-0 text-[var(--ui-accent-muted)]" />
               <span className="truncate">{tableDetail.name}</span>
+              <button
+                type="button"
+                onClick={() => setGitClientesOpen(true)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-400/60 bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-800 hover:bg-amber-100"
+                title="Seleccionar cliente GIT Cards"
+              >
+                <MdStar className="text-sm" />
+                GIT Clientes
+              </button>
             </h2>
             <button
               type="button"
@@ -4883,6 +4913,25 @@ export default function POSPanel() {
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 sm:p-4 lg:p-5">
             <div className="flex min-h-0 w-full max-w-full flex-1 flex-col gap-3">
+              {tableDetail && gitCardByTable[tableDetail.id] ? (
+                <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2">
+                  <p className="min-w-0 truncate text-sm font-semibold text-amber-950">
+                    GIT Cards: {gitCardByTable[tableDetail.id].name}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setGitCardByTable((prev) => {
+                      const next = { ...prev };
+                      delete next[tableDetail.id];
+                      return next;
+                    })}
+                    className="shrink-0 text-[11px] font-semibold text-rose-700 hover:underline"
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ) : null}
+
               <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[color:var(--ui-border)] pb-3">
                 <div className="min-w-0">
                   <p className="text-xs text-[var(--ui-muted)]">
@@ -5591,6 +5640,21 @@ export default function POSPanel() {
         </div>
       </Modal>
 
+      <GitClientesCajaModal
+        open={gitClientesOpen}
+        onClose={() => setGitClientesOpen(false)}
+        onSelect={(customer) => {
+          const tableId = tableDetail?.id || selectedTable?.id;
+          if (tableId && customer?.id) {
+            setGitCardByTable((prev) => ({
+              ...prev,
+              [tableId]: { id: customer.id, name: customer.name },
+            }));
+          }
+          setGitClientesOpen(false);
+        }}
+      />
+
       <Modal
         isOpen={Boolean(salePrintPrompt)}
         onClose={() => {
@@ -6109,6 +6173,44 @@ export default function POSPanel() {
                         {selectedTable ? getTableDisplayLabel(selectedTable) : '—'}
                       </p>
                     </div>
+                    {selectedTable && gitCardByTable[selectedTable.id] ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Cliente GIT Cards</p>
+                          <p className="truncate text-sm font-semibold text-amber-950">
+                            {gitCardByTable[selectedTable.id].name}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setGitClientesOpen(true)}
+                            className="rounded-md px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100"
+                          >
+                            Cambiar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setGitCardByTable((prev) => {
+                              const next = { ...prev };
+                              delete next[selectedTable.id];
+                              return next;
+                            })}
+                            className="rounded-md px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                      </div>
+                    ) : selectedTable ? (
+                      <button
+                        type="button"
+                        onClick={() => setGitClientesOpen(true)}
+                        className="w-full rounded-lg border border-dashed border-amber-300/80 bg-amber-50/60 px-3 py-2 text-left text-xs font-semibold text-amber-800 hover:bg-amber-50"
+                      >
+                        Asociar cliente GIT Cards (opcional)
+                      </button>
+                    ) : null}
                     <div className="text-right border-b border-[color:var(--ui-border)] pb-3">
                       <p className="text-2xl sm:text-3xl font-bold text-[var(--ui-accent-muted)] tabular-nums">{formatCurrency(payableTotal)}</p>
                       <p className="text-xs text-[var(--ui-muted)] mt-0.5">Total a pagar</p>

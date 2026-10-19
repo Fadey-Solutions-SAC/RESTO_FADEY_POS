@@ -11,7 +11,7 @@ const { getOrderWithItems, createOrMergeTableOrderInTransaction, replaceOrderLin
 const { loadActiveTableOrders, deriveTableStatus } = require('../services/tableOrdersQueryService');
 const { restoreNonTransformedStockForOrder } = require('../warehouseStock');
 const kardexInventory = require('../services/kardexInventoryService');
-const { emitInventoryUpdate, emitBillingDocumentUpdate } = require('../socketBroadcast');
+const { emitInventoryUpdate, emitBillingDocumentUpdate, emitStaffDataUpdate } = require('../socketBroadcast');
 const { recordWorkActivityEvent } = require('../services/workActivityTracker');
 const { logRouteError, publicErrorMessage } = require('../utils/routeErrors');
 const { sqlBusinessTimestamp, getBusinessTodayDateKey, sqlBusinessNowExpr } = require('../utils/appDateTime');
@@ -1364,6 +1364,7 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
     try {
       const { considerPaidOrder } = require('../gitCardsService');
       considerPaidOrder(req.params.id, req.user || {});
+      emitStaffDataUpdate({ domain: 'git_cards' });
     } catch (err) {
       console.warn('[git-cards] no se pudo evaluar la venta cobrada:', err.message || err);
     }

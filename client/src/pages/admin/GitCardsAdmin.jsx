@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import {
   MdArrowBack, MdSettings, MdSearch, MdVisibility, MdCheck, MdClose,
   MdContentCopy, MdRedeem, MdChevronLeft, MdChevronRight,
+  MdPeople, MdStyle, MdHourglassEmpty, MdCardGiftcard,
 } from 'react-icons/md';
 
 const PAGE_SIZE = 10;
@@ -81,6 +82,10 @@ export default function GitCardsAdmin() {
   const [profile, setProfile] = useState(null);
   const [rejectId, setRejectId] = useState('');
   const [rejectReason, setRejectReason] = useState('');
+  const [summary, setSummary] = useState(null);
+  const [summaryError, setSummaryError] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(config), [draft, config]);
 
@@ -97,6 +102,22 @@ export default function GitCardsAdmin() {
     setTotal(Number(data.total || 0));
   }, [search, statusFilter, page]);
 
+  const loadSummary = useCallback(async () => {
+    try {
+      const data = await api.get('/git-cards/summary');
+      setSummary({
+        registered: Number(data.registered ?? data.enrolled ?? 0),
+        active_cards: Number(data.active_cards ?? 0),
+        pending_purchases: Number(data.pending_purchases ?? 0),
+        available_rewards: Number(data.available_rewards ?? 0),
+      });
+      setSummaryError('');
+    } catch (err) {
+      setSummary(null);
+      setSummaryError(err.message || 'No se pudieron cargar los indicadores');
+    }
+  }, []);
+
   const loadProfile = useCallback(async () => {
     if (!customerId) {
       setProfile(null);
@@ -111,13 +132,15 @@ export default function GitCardsAdmin() {
     try {
       await loadConfig();
       if (customerId) await loadProfile();
-      else await loadMembers();
+      else {
+        await Promise.all([loadMembers(), loadSummary()]);
+      }
     } catch (err) {
       toast.error(err.message || 'No se pudo cargar GIT Cards');
     } finally {
       setLoading(false);
     }
-  }, [customerId, loadConfig, loadMembers, loadProfile]);
+  }, [customerId, loadConfig, loadMembers, loadProfile, loadSummary]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -129,7 +152,7 @@ export default function GitCardsAdmin() {
       setDraft(data.config);
       toast.success('Configuración guardada');
       setView('lista');
-      await loadMembers();
+      await Promise.all([loadMembers(), loadSummary()]);
     } catch (err) {
       toast.error(err.message || 'No se pudo guardar');
     } finally {
@@ -175,6 +198,24 @@ export default function GitCardsAdmin() {
     }
   };
 
+  const applyKpiFilter = (nextStatus) => {
+    setStatusFilter(nextStatus);
+    setPage(1);
+  };
+
+  const openPreview = async (customerIdToPreview) => {
+    setPreviewLoading(true);
+    setPreview({ customerId: customerIdToPreview });
+    try {
+      const data = await api.get(`/git-cards/caja/clients/${encodeURIComponent(customerIdToPreview)}/preview`);
+      setPreview({ customerId: customerIdToPreview, ...data });
+    } catch (err) {
+      setPreview({ customerId: customerIdToPreview, error: err.message || 'No se pudo consultar la tarjeta' });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const copyLink = async (path) => {
     const url = `${window.location.origin}${path}`;
     try {
@@ -189,8 +230,8 @@ export default function GitCardsAdmin() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
           <button
             type="button"
             onClick={() => {
@@ -198,20 +239,22 @@ export default function GitCardsAdmin() {
               else if (view === 'config') cancelConfig();
               else navigate('/admin/clientes');
             }}
-            className="inline-flex h-10 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="mt-0.5 inline-flex h-10 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            <MdArrowBack /> {customerId ? 'Lista GIT Cards' : view === 'config' ? 'Lista de clientes' : 'Clientes'}
+            <MdArrowBack /> {customerId || view === 'config' ? 'Lista GIT Cards' : 'Clientes'}
           </button>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">GIT Cards</h1>
-            <p className="text-sm text-slate-500">Fidelización por compras elegibles</p>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold leading-tight tracking-tight text-slate-900">GIT Cards</h1>
+            <p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">
+              Fidelización por compras elegibles. Cada cobro que cumpla las reglas suma un avance a la tarjeta del cliente.
+            </p>
           </div>
         </div>
         {!customerId && view === 'lista' ? (
           <button
             type="button"
             onClick={() => setView('config')}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800"
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800"
           >
             <MdSettings /> Configuración
           </button>
@@ -251,9 +294,58 @@ export default function GitCardsAdmin() {
           pages={pages}
           setPage={setPage}
           total={total}
+          summary={summary}
+          summaryError={summaryError}
+          onKpiFilter={applyKpiFilter}
+          onPreview={openPreview}
           onOpen={(id) => navigate(`/admin/clientes/git-cards/${id}`)}
         />
       )}
+
+      {preview ? (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-900">Tarjeta digital</h3>
+                <p className="text-xs text-slate-500">Consulta de solo lectura. No modifica avances ni recompensas.</p>
+              </div>
+              <button type="button" onClick={() => setPreview(null)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Cerrar">
+                <MdClose />
+              </button>
+            </div>
+            {previewLoading ? (
+              <p className="py-8 text-center text-sm text-slate-500">Consultando tarjeta…</p>
+            ) : preview.error ? (
+              <p className="py-6 text-center text-sm text-rose-600">{preview.error}</p>
+            ) : preview.card ? (
+              <div className="space-y-3">
+                <GitCardVisual card={preview.card} compact />
+                <p className="text-xs text-slate-500">
+                  {preview.card.cycle?.expires_at
+                    ? `Vigencia: ${formatDate(preview.card.cycle.expires_at)}`
+                    : 'Vigencia: sin fecha de vencimiento'}
+                  {preview.card.progress?.pending ? ` · ${preview.card.progress.pending} pendiente(s)` : ''}
+                  {preview.card.status === 'reward_available' ? ' · Recompensa disponible' : ''}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = preview.customerId;
+                    setPreview(null);
+                    if (id) navigate(`/admin/clientes/git-cards/${id}`);
+                  }}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Abrir perfil
+                </button>
+              </div>
+            ) : (
+              <p className="py-6 text-center text-sm text-slate-500">Sin datos de tarjeta.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {rejectId ? (
         <div className="fixed inset-0 z-40 grid place-items-center bg-slate-900/40 p-4">
@@ -277,82 +369,249 @@ export default function GitCardsAdmin() {
   );
 }
 
-function ListView({ loading, members, search, setSearch, statusFilter, setStatusFilter, page, pages, setPage, total, onOpen }) {
+const KPI_CARDS = [
+  {
+    key: 'registered',
+    title: 'Clientes registrados',
+    desc: 'Personas vinculadas al programa, sin duplicar.',
+    filter: 'all',
+    Icon: MdPeople,
+    bubble: 'bg-blue-100 text-blue-600',
+    bg: 'from-blue-50/80 to-white',
+  },
+  {
+    key: 'active_cards',
+    title: 'Tarjetas activas',
+    desc: 'Ciclos vigentes en curso.',
+    filter: 'active',
+    Icon: MdStyle,
+    bubble: 'bg-emerald-100 text-emerald-600',
+    bg: 'from-emerald-50/80 to-white',
+  },
+  {
+    key: 'pending_purchases',
+    title: 'Compras pendientes',
+    desc: 'Operaciones aún sin procesar.',
+    filter: 'pending',
+    Icon: MdHourglassEmpty,
+    bubble: 'bg-amber-100 text-amber-700',
+    bg: 'from-amber-50/80 to-white',
+  },
+  {
+    key: 'available_rewards',
+    title: 'Recompensas disponibles',
+    desc: 'Premios listos para canjear.',
+    filter: 'reward_available',
+    Icon: MdCardGiftcard,
+    bubble: 'bg-violet-100 text-violet-600',
+    bg: 'from-violet-50/80 to-white',
+  },
+];
+
+function statusDotClass(status) {
+  if (status === 'active') return 'bg-emerald-500';
+  if (status === 'pending') return 'bg-amber-500';
+  if (status === 'reward_available') return 'bg-violet-500';
+  if (status === 'expired') return 'bg-rose-500';
+  if (status === 'none') return 'bg-slate-300';
+  return 'bg-slate-400';
+}
+
+function ListView({
+  loading,
+  members,
+  search,
+  setSearch,
+  statusFilter,
+  setStatusFilter,
+  page,
+  pages,
+  setPage,
+  total,
+  summary,
+  summaryError,
+  onKpiFilter,
+  onPreview,
+  onOpen,
+}) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[14rem] flex-1">
-          <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o teléfono..."
-            className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-          />
+    <div className="space-y-4">
+      {summaryError ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          No se pudieron cargar los indicadores: {summaryError}
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-10 rounded-xl border border-slate-200 px-3 text-sm"
-        >
-          <option value="all">Todos los estados</option>
-          {Object.entries(STATUS_LABEL).map(([id, label]) => (
-            <option key={id} value={id}>{label}</option>
-          ))}
-        </select>
-      </div>
-      {loading ? (
-        <div className="py-10 text-center text-slate-500">Cargando GIT Cards...</div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="py-3 pr-3">Cliente</th>
-                <th className="py-3 pr-3">Contacto</th>
-                <th className="py-3 pr-3">Estado</th>
-                <th className="py-3 pr-3">Progreso</th>
-                <th className="py-3 pr-3">Pendientes</th>
-                <th className="py-3 pr-3">Recompensas</th>
-                <th className="py-3 pr-3">Última actividad</th>
-                <th className="py-3 pr-2 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.length ? members.map((row) => (
-                <tr key={row.customer_id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 pr-3 font-semibold text-slate-900">{row.name}</td>
-                  <td className="py-3 pr-3 text-slate-600">{row.phone || '—'}</td>
-                  <td className="py-3 pr-3">
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLASS[row.status] || STATUS_CLASS.none}`}>
-                      {STATUS_LABEL[row.status] || row.status}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-3 tabular-nums">{row.progress?.confirmed || 0} / {row.progress?.goal || 0}</td>
-                  <td className="py-3 pr-3 tabular-nums">{row.pending_count || 0}</td>
-                  <td className="py-3 pr-3 tabular-nums">{row.rewards_available || 0}</td>
-                  <td className="py-3 pr-3 text-slate-600">{row.last_activity ? formatDate(row.last_activity) : '—'}</td>
-                  <td className="py-3 pr-2 text-right">
-                    <button type="button" onClick={() => onOpen(row.customer_id)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600" title="Perfil GIT Cards">
-                      <MdVisibility />
-                    </button>
-                  </td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={8} className="py-10 text-center text-slate-500">No hay clientes para mostrar.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {KPI_CARDS.map((k) => {
+            const selected = statusFilter === k.filter;
+            const value = summary ? summary[k.key] : '—';
+            return (
+              <button
+                key={k.key}
+                type="button"
+                onClick={() => onKpiFilter(k.filter)}
+                className={`group flex min-h-0 flex-col gap-2 rounded-2xl border bg-gradient-to-br p-4 text-left shadow-sm transition hover:shadow-md ${k.bg} ${
+                  selected ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <span className={`grid h-10 w-10 place-items-center rounded-full ${k.bubble}`}>
+                  <k.Icon className="text-xl" />
+                </span>
+                <span className="text-3xl font-bold leading-none tabular-nums text-slate-900">
+                  {summary ? value : '—'}
+                </span>
+                <span className="text-sm font-semibold text-slate-800">{k.title}</span>
+                <span className="text-xs leading-snug text-slate-500">{k.desc}</span>
+              </button>
+            );
+          })}
         </div>
       )}
-      <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
-        <span>{total} cliente(s)</span>
-        <div className="flex items-center gap-2">
-          <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg p-2 hover:bg-slate-100 disabled:opacity-40"><MdChevronLeft /></button>
-          <span>{page} / {pages}</span>
-          <button type="button" disabled={page >= pages} onClick={() => setPage(page + 1)} className="rounded-lg p-2 hover:bg-slate-100 disabled:opacity-40"><MdChevronRight /></button>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[14rem] flex-1">
+            <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre, teléfono o DNI"
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="h-10 rounded-xl border border-slate-200 px-3 text-sm"
+          >
+            <option value="all">Todos los estados</option>
+            {Object.entries(STATUS_LABEL).map(([id, label]) => (
+              <option key={id} value={id}>{label}</option>
+            ))}
+          </select>
+          {statusFilter !== 'all' ? (
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Quitar filtro
+            </button>
+          ) : null}
+        </div>
+        {loading ? (
+          <div className="py-10 text-center text-slate-500">Cargando GIT Cards...</div>
+        ) : (
+          <>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[960px] table-fixed text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="w-[18%] py-3 pr-3">Cliente</th>
+                    <th className="w-[14%] py-3 pr-3">Contacto</th>
+                    <th className="w-[16%] py-3 pr-3">Estado</th>
+                    <th className="w-[10%] py-3 pr-3">Progreso</th>
+                    <th className="w-[9%] py-3 pr-3 text-center">Pendientes</th>
+                    <th className="w-[10%] py-3 pr-3 text-center">Recompensas</th>
+                    <th className="w-[15%] py-3 pr-3">Última actividad</th>
+                    <th className="w-[8%] py-3 pr-1 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.length ? members.map((row) => (
+                    <tr key={row.customer_id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="py-3 pr-3">
+                        <button type="button" onClick={() => onOpen(row.customer_id)} className="flex min-w-0 items-center gap-2 text-left">
+                          <span className={`h-2 w-2 shrink-0 rounded-full ${statusDotClass(row.status)}`} aria-hidden="true" />
+                          <span className="truncate font-semibold text-slate-900">{row.name}</span>
+                        </button>
+                      </td>
+                      <td className="truncate py-3 pr-3 text-slate-600">
+                        <span className="block truncate">{row.phone || '—'}</span>
+                        {row.doc_masked ? <span className="block truncate text-xs text-slate-400">DNI {row.doc_masked}</span> : null}
+                      </td>
+                      <td className="py-3 pr-3">
+                        <span className={`inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLASS[row.status] || STATUS_CLASS.none}`}>
+                          {STATUS_LABEL[row.status] || row.status}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-3 tabular-nums text-slate-800">{row.progress?.confirmed || 0} / {row.progress?.goal || 0}</td>
+                      <td className="py-3 pr-3 text-center tabular-nums">
+                        <span className={row.pending_count ? 'font-semibold text-amber-700' : 'text-slate-500'}>
+                          {row.pending_count || 0}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-3 text-center tabular-nums">
+                        <span className={row.rewards_available ? 'font-semibold text-violet-700' : 'text-slate-500'}>
+                          {row.rewards_available || 0}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-3 text-slate-600">{row.last_activity ? formatDate(row.last_activity) : '—'}</td>
+                      <td className="py-3 pr-1 text-right">
+                        <button
+                          type="button"
+                          onClick={() => onPreview(row.customer_id)}
+                          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600"
+                          title="Ver tarjeta digital"
+                        >
+                          <MdVisibility />
+                        </button>
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={8} className="py-10 text-center text-slate-500">No hay clientes para mostrar.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-3 md:hidden">
+              {members.length ? members.map((row) => (
+                <article key={row.customer_id} className="rounded-xl border border-slate-200 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <button type="button" onClick={() => onOpen(row.customer_id)} className="min-w-0 text-left">
+                      <p className="flex items-center gap-2 font-semibold text-slate-900">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${statusDotClass(row.status)}`} aria-hidden="true" />
+                        <span className="truncate">{row.name}</span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">{row.phone || 'Sin teléfono'}{row.doc_masked ? ` · DNI ${row.doc_masked}` : ''}</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onPreview(row.customer_id)}
+                      className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                      title="Ver tarjeta digital"
+                    >
+                      <MdVisibility />
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                    <span className={`rounded-full px-2.5 py-1 font-semibold ${STATUS_CLASS[row.status] || STATUS_CLASS.none}`}>
+                      {STATUS_LABEL[row.status] || row.status}
+                    </span>
+                    <span className="text-slate-600">Progreso {row.progress?.confirmed || 0}/{row.progress?.goal || 0}</span>
+                    <span className={row.pending_count ? 'font-semibold text-amber-700' : 'text-slate-500'}>Pend. {row.pending_count || 0}</span>
+                    <span className={row.rewards_available ? 'font-semibold text-violet-700' : 'text-slate-500'}>Recomp. {row.rewards_available || 0}</span>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Última actividad: {row.last_activity ? formatDate(row.last_activity) : '—'}
+                  </p>
+                </article>
+              )) : (
+                <p className="py-8 text-center text-sm text-slate-500">No hay clientes para mostrar.</p>
+              )}
+            </div>
+          </>
+        )}
+        <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
+          <span>{total} cliente(s)</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg p-2 hover:bg-slate-100 disabled:opacity-40"><MdChevronLeft /></button>
+            <span>{page} / {pages}</span>
+            <button type="button" disabled={page >= pages} onClick={() => setPage(page + 1)} className="rounded-lg p-2 hover:bg-slate-100 disabled:opacity-40"><MdChevronRight /></button>
+          </div>
         </div>
       </div>
     </div>
