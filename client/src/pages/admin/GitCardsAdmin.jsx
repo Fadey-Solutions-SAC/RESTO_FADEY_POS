@@ -12,6 +12,7 @@ import {
 } from 'react-icons/md';
 
 const PAGE_SIZE = 10;
+const LIST_COLS = 'minmax(14rem,2.2fr) minmax(9rem,1fr) minmax(10.5rem,1.1fr) 6rem 6rem minmax(8rem,1fr) 3.25rem';
 
 const STATUS_LABEL = {
   none: 'Sin tarjeta activa',
@@ -278,40 +279,30 @@ export default function GitCardsAdmin() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (customerId) navigate('/admin/clientes/git-cards');
-              else if (view === 'config') cancelConfig();
-              else navigate('/admin/clientes');
-            }}
-            className="mt-0.5 inline-flex h-10 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            <MdArrowBack /> {customerId || view === 'config' ? 'Lista GIT Cards' : 'Clientes'}
-          </button>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold leading-tight tracking-tight text-slate-900">GIT Cards</h1>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">
-              Fidelización por compras elegibles. Cada cobro que cumpla las reglas suma un avance a la tarjeta del cliente.
-            </p>
-          </div>
-        </div>
-        {!customerId && view === 'lista' ? (
-          <button
-            type="button"
-            onClick={() => setView('config')}
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            <MdSettings /> Configuración
-          </button>
-        ) : null}
-      </div>
-
       {view === 'config' && !customerId ? (
         <GitCardsPromotions canEdit={canConfigRole(user)} onClose={cancelConfig} />
-      ) : customerId ? (
+      ) : (
+        <>
+      <div className="mb-4 flex min-w-0 items-start gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            if (customerId) navigate('/admin/clientes/git-cards');
+            else navigate('/admin/clientes');
+          }}
+          className="btn-secondary mt-0.5 inline-flex h-10 shrink-0 items-center gap-1 px-3 text-sm"
+        >
+          <MdArrowBack /> {customerId ? 'Lista GIT Cards' : 'Clientes'}
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight tracking-tight text-[var(--ui-body-text)]">GIT Cards</h1>
+          <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--ui-muted)]">
+            Fidelización por compras elegibles. Cada cobro que cumpla las reglas suma un avance a la tarjeta del cliente.
+          </p>
+        </div>
+      </div>
+
+      {customerId ? (
         <ProfileView
           loading={loading}
           profile={profile}
@@ -336,7 +327,9 @@ export default function GitCardsAdmin() {
           summary={summary}
           summaryError={summaryError}
           canEnroll={canValidateRole(user)}
+          canConfig={canConfigRole(user)}
           onAddClient={() => { setEnrollForm(EMPTY_ENROLL); setShowEnroll(true); }}
+          onOpenConfig={() => setView('config')}
           onPreview={openPreview}
           onOpen={(id) => navigate(`/admin/clientes/git-cards/${id}`)}
         />
@@ -406,8 +399,8 @@ export default function GitCardsAdmin() {
               <input name="git-enroll-address" autoComplete="off" value={enrollForm.address} onChange={(e) => setEnrollForm((prev) => ({ ...prev, address: e.target.value }))} className="input-field" />
             </label>
             <div className="flex gap-2 pt-1">
-              <button type="button" onClick={() => setShowEnroll(false)} className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancelar</button>
-              <button type="submit" disabled={enrolling} className="flex-1 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+              <button type="button" onClick={() => setShowEnroll(false)} className="btn-secondary flex-1 px-3 py-2 text-sm">Cancelar</button>
+              <button type="submit" disabled={enrolling} className="btn-primary flex-1 px-3 py-2 text-sm">
                 {enrolling ? 'Guardando…' : 'Registrar'}
               </button>
             </div>
@@ -448,7 +441,7 @@ export default function GitCardsAdmin() {
                     setPreview(null);
                     if (id) navigate(`/admin/clientes/git-cards/${id}`);
                   }}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  className="btn-secondary w-full px-3 py-2 text-sm"
                 >
                   Abrir perfil
                 </button>
@@ -478,6 +471,8 @@ export default function GitCardsAdmin() {
           </div>
         </div>
       ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -514,7 +509,9 @@ function ListView({
   summary,
   summaryError,
   canEnroll,
+  canConfig,
   onAddClient,
+  onOpenConfig,
   onPreview,
   onOpen,
 }) {
@@ -527,123 +524,125 @@ function ListView({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <div className="relative w-full max-w-xs">
-            <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Nombre, teléfono o DNI"
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 rounded-lg border border-slate-200 px-2.5 text-xs text-slate-600"
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[12rem] flex-1">
+          <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base text-[var(--ui-muted)]" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Nombre, teléfono o DNI"
+            className="input-field h-10 w-full pl-8 text-sm"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="input-field h-10 w-auto min-w-[10rem] text-sm"
+        >
+          <option value="all">Todos los estados</option>
+          {Object.entries(STATUS_LABEL).map(([id, label]) => (
+            <option key={id} value={id}>{label}</option>
+          ))}
+        </select>
+        {statusFilter !== 'all' ? (
+          <button
+            type="button"
+            onClick={() => setStatusFilter('all')}
+            className="btn-secondary h-10 px-3 text-xs"
           >
-            <option value="all">Todos los estados</option>
-            {Object.entries(STATUS_LABEL).map(([id, label]) => (
-              <option key={id} value={id}>{label}</option>
-            ))}
-          </select>
-          {statusFilter !== 'all' ? (
-            <button
-              type="button"
-              onClick={() => setStatusFilter('all')}
-              className="h-9 rounded-lg px-2 text-xs font-medium text-slate-500 hover:bg-slate-100"
-            >
-              Quitar filtro
+            Quitar filtro
+          </button>
+        ) : null}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {canEnroll ? (
+            <button type="button" onClick={onAddClient} className="btn-primary inline-flex h-10 items-center gap-1.5 px-3 text-sm">
+              <MdPersonAdd className="text-base" /> Agregar cliente
+            </button>
+          ) : null}
+          {canConfig ? (
+            <button type="button" onClick={onOpenConfig} className="btn-primary inline-flex h-10 items-center gap-1.5 px-3 text-sm">
+              <MdSettings className="text-base" /> Configuración
             </button>
           ) : null}
         </div>
-        {canEnroll ? (
-          <button
-            type="button"
-            onClick={onAddClient}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            <MdPersonAdd className="text-base" /> Agregar cliente
-          </button>
-        ) : null}
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-4 shadow-sm sm:p-5">
         {loading ? (
-          <div className="py-10 text-center text-slate-500">Cargando GIT Cards...</div>
+          <div className="py-10 text-center text-[var(--ui-muted)]">Cargando GIT Cards...</div>
         ) : (
           <>
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[860px] table-fixed text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="w-[20%] py-3 pr-3 align-bottom">
-                      <span className="block">Cliente</span>
-                      <span className="mt-1 block text-lg font-bold normal-case tabular-nums tracking-normal text-slate-900">{counts.registered}</span>
-                    </th>
-                    <th className="w-[16%] py-3 pr-3 align-bottom">Contacto</th>
-                    <th className="w-[16%] py-3 pr-3 align-bottom">
-                      <span className="block">Estado</span>
-                      <span className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs font-semibold normal-case tracking-normal">
-                        <span className="text-emerald-600">Activas <span className="tabular-nums">{counts.active}</span></span>
-                        <span className="text-rose-600">Inactivas <span className="tabular-nums">{counts.inactive}</span></span>
+              <div className="min-w-[64rem]">
+                <div
+                  className="grid items-end gap-x-4 border-b border-[color:var(--ui-border)] pb-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]"
+                  style={{ gridTemplateColumns: LIST_COLS }}
+                >
+                  <div className="min-w-0">
+                    <span className="block">Cliente</span>
+                    <span className="mt-1 block text-lg font-bold normal-case tabular-nums tracking-normal text-[var(--ui-body-text)]">{counts.registered}</span>
+                  </div>
+                  <div className="min-w-0">Contacto</div>
+                  <div className="min-w-0">
+                    <span className="block">Estado</span>
+                    <span className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs font-semibold normal-case tracking-normal">
+                      <span className="text-emerald-600">Activas <span className="tabular-nums">{counts.active}</span></span>
+                      <span className="text-rose-600">Inactivas <span className="tabular-nums">{counts.inactive}</span></span>
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block">Progreso</span>
+                    <span className="mt-1 block text-xs font-semibold normal-case tracking-normal text-[var(--ui-body-text)]">
+                      <span className="tabular-nums">{counts.near}</span> próximos
+                    </span>
+                  </div>
+                  <div className="min-w-0 text-center">Pendientes</div>
+                  <div className="min-w-0">Última actividad</div>
+                  <div className="min-w-0 text-right">Acciones</div>
+                </div>
+                {members.length ? members.map((row) => (
+                  <div
+                    key={row.customer_id}
+                    className="grid items-center gap-x-4 border-b border-[color:var(--ui-border)] py-3 text-sm last:border-b-0 hover:bg-[var(--ui-sidebar-hover)]"
+                    style={{ gridTemplateColumns: LIST_COLS }}
+                  >
+                    <div className="min-w-0">
+                      <button type="button" onClick={() => onOpen(row.customer_id)} className="flex w-full min-w-0 items-center gap-2 text-left">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${statusDotClass(row.status)}`} aria-hidden="true" />
+                        <span className="block min-w-0 truncate font-semibold text-[var(--ui-body-text)]" title={row.name}>{row.name}</span>
+                      </button>
+                    </div>
+                    <div className="min-w-0 text-[var(--ui-muted)]">
+                      <span className="block truncate">{row.phone || '—'}</span>
+                      {row.doc_masked ? <span className="block truncate text-xs opacity-80">DNI {row.doc_masked}</span> : null}
+                    </div>
+                    <div className="min-w-0">
+                      <span className={`inline-block max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLASS[row.status] || STATUS_CLASS.none}`}>
+                        {STATUS_LABEL[row.status] || row.status}
                       </span>
-                    </th>
-                    <th className="w-[12%] py-3 pr-3 align-bottom">
-                      <span className="block">Progreso</span>
-                      <span className="mt-1 block text-xs font-semibold normal-case tracking-normal text-slate-800">
-                        <span className="tabular-nums">{counts.near}</span> próximos
+                    </div>
+                    <div className="min-w-0 tabular-nums text-[var(--ui-body-text)]">{row.progress?.confirmed || 0} / {row.progress?.goal || 0}</div>
+                    <div className="min-w-0 text-center tabular-nums">
+                      <span className={row.pending_count ? 'font-semibold text-amber-700' : 'text-[var(--ui-muted)]'}>
+                        {row.pending_count || 0}
                       </span>
-                    </th>
-                    <th className="w-[10%] py-3 pr-3 text-center align-bottom">Pendientes</th>
-                    <th className="w-[18%] py-3 pr-3 align-bottom">Última actividad</th>
-                    <th className="w-[8%] py-3 pr-1 text-right align-bottom">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.length ? members.map((row) => (
-                    <tr key={row.customer_id} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="py-3 pr-3">
-                        <button type="button" onClick={() => onOpen(row.customer_id)} className="flex min-w-0 items-center gap-2 text-left">
-                          <span className={`h-2 w-2 shrink-0 rounded-full ${statusDotClass(row.status)}`} aria-hidden="true" />
-                          <span className="truncate font-semibold text-slate-900">{row.name}</span>
-                        </button>
-                      </td>
-                      <td className="truncate py-3 pr-3 text-slate-600">
-                        <span className="block truncate">{row.phone || '—'}</span>
-                        {row.doc_masked ? <span className="block truncate text-xs text-slate-400">DNI {row.doc_masked}</span> : null}
-                      </td>
-                      <td className="py-3 pr-3">
-                        <span className={`inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLASS[row.status] || STATUS_CLASS.none}`}>
-                          {STATUS_LABEL[row.status] || row.status}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-3 tabular-nums text-slate-800">{row.progress?.confirmed || 0} / {row.progress?.goal || 0}</td>
-                      <td className="py-3 pr-3 text-center tabular-nums">
-                        <span className={row.pending_count ? 'font-semibold text-amber-700' : 'text-slate-500'}>
-                          {row.pending_count || 0}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-3 text-slate-600">{row.last_activity ? formatDate(row.last_activity) : '—'}</td>
-                      <td className="py-3 pr-1 text-right">
-                        <button
-                          type="button"
-                          onClick={() => onPreview(row.customer_id)}
-                          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600"
-                          title="Ver tarjeta digital"
-                        >
-                          <MdVisibility />
-                        </button>
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr>
-                      <td colSpan={7} className="py-10 text-center text-slate-500">No hay clientes para mostrar.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    </div>
+                    <div className="min-w-0 truncate text-[var(--ui-muted)]">{row.last_activity ? formatDate(row.last_activity) : '—'}</div>
+                    <div className="min-w-0 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onPreview(row.customer_id)}
+                        className="rounded-lg p-2 text-[var(--ui-muted)] hover:bg-[var(--ui-sidebar-hover)] hover:text-[var(--ui-accent)]"
+                        title="Ver tarjeta digital"
+                      >
+                        <MdVisibility />
+                      </button>
+                    </div>
+                  </div>
+                )) : (
+                  <p className="py-10 text-center text-[var(--ui-muted)]">No hay clientes para mostrar.</p>
+                )}
+              </div>
             </div>
 
             <div className="space-y-3 md:hidden">

@@ -319,12 +319,12 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">Promociones y recompensas</h2>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
+          <h2 className="text-xl font-bold tracking-tight text-[var(--ui-body-text)]">Promociones y recompensas</h2>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--ui-muted)]">
             Crea promociones, define sus recompensas y administra las tarjetas de fidelización de tus clientes.
           </p>
         </div>
-        <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+        <button type="button" onClick={onClose} className="btn-secondary px-3 py-2 text-sm">
           Volver a clientes
         </button>
       </div>
@@ -338,7 +338,7 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
         <button
           type="button"
           onClick={openNew}
-          className="inline-flex h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800"
+          className="btn-primary inline-flex h-11 items-center gap-2 px-4 text-sm"
         >
           <MdAdd /> Nueva promoción
         </button>
@@ -350,21 +350,21 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
         ) : data.promotions.length ? (
           <ul className="divide-y divide-slate-100">
             {data.promotions.map((promo) => (
-              <li key={promo.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                <span className="h-9 w-9 shrink-0 rounded-xl" style={{ background: promo.style?.bg || '#1e4b8e' }} title={promo.style?.label} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-slate-900">{promo.name}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASS[promo.status] || STATUS_CLASS.draft}`}>
+              <li key={promo.id} className="flex items-start gap-3 px-4 py-3">
+                <span className="mt-0.5 h-9 w-9 shrink-0 rounded-xl" style={{ background: promo.style?.bg || '#1e4b8e' }} title={promo.style?.label} />
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="min-w-0 truncate font-semibold text-[var(--ui-body-text)]" title={promo.name}>{promo.name}</p>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASS[promo.status] || STATUS_CLASS.draft}`}>
                       {STATUS_LABEL[promo.status] || promo.status}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 truncate text-xs text-[var(--ui-muted)]" title={`${promo.reward_label} · ${promo.benefit_label}`}>
                     {promo.reward_label} · {promo.benefit_label} · meta {promo.goal} · mín. {formatCurrency(promo.min_spend)}
                     {promo.start_at || promo.end_at ? ` · ${promo.start_at ? formatDate(promo.start_at) : '—'} a ${promo.end_at ? formatDate(promo.end_at) : 'sin fin'}` : ''}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex shrink-0 flex-wrap justify-end gap-1">
                   <IconBtn title="Ver detalles" onClick={() => openDetail(promo.id)}><MdVisibility /></IconBtn>
                   {canEdit && promo.status !== 'ended' ? <IconBtn title="Editar" onClick={() => openEdit(promo.id)}><MdEdit /></IconBtn> : null}
                   {canEdit && ['draft', 'scheduled', 'paused'].includes(promo.status) ? (
@@ -408,7 +408,7 @@ function Wizard({
               key={s.id}
               type="button"
               onClick={() => setStep(s.id)}
-              className={`h-1.5 flex-1 rounded-full ${s.id <= step ? 'bg-slate-900' : 'bg-slate-200'}`}
+              className={`h-1.5 flex-1 rounded-full ${s.id <= step ? 'bg-[var(--ui-accent)]' : 'bg-[color:var(--ui-border)]'}`}
               title={s.title}
             />
           ))}
@@ -481,7 +481,7 @@ function Wizard({
                 key={opt.id}
                 type="button"
                 onClick={() => setField('reward_kind', opt.id)}
-                className={`rounded-2xl border px-3 py-3 text-left ${draft.reward_kind === opt.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-800'}`}
+                className={`rounded-2xl border px-3 py-3 text-left ${draft.reward_kind === opt.id ? 'border-[var(--ui-accent)] bg-[var(--ui-accent)] text-white' : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)]'}`}
               >
                 <p className="font-semibold">{opt.title}</p>
                 <p className={`mt-1 text-xs ${draft.reward_kind === opt.id ? 'text-white/80' : 'text-slate-500'}`}>{opt.hint}</p>
@@ -509,7 +509,7 @@ function Wizard({
                       variant_name: '',
                       reward_title: p.name,
                     }))}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${draft.product_id === p.id ? 'bg-slate-900 text-white' : 'hover:bg-slate-50'}`}
+                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${draft.product_id === p.id ? 'bg-[var(--ui-accent)] text-white' : 'hover:bg-[var(--ui-sidebar-hover)]'}`}
                   >
                     <span>
                       <span className="font-semibold">{p.name}</span>
@@ -652,23 +652,23 @@ function Wizard({
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <button type="button" onClick={onCancel} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <button type="button" onClick={onCancel} className="btn-secondary px-4 py-2 text-sm">
           Cancelar
         </button>
         <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={step <= 1} onClick={() => setStep(step - 1)} className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40">
+          <button type="button" disabled={step <= 1} onClick={() => setStep(step - 1)} className="btn-secondary inline-flex items-center gap-1 px-4 py-2 text-sm disabled:opacity-40">
             <MdChevronLeft /> Atrás
           </button>
           {step < 5 ? (
-            <button type="button" onClick={() => setStep(step + 1)} className="inline-flex items-center gap-1 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+            <button type="button" onClick={() => setStep(step + 1)} className="btn-primary inline-flex items-center gap-1 px-4 py-2 text-sm">
               Continuar <MdChevronRight />
             </button>
           ) : null}
-          <button type="button" disabled={!canEdit || saving} onClick={onSaveDraft} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <button type="button" disabled={!canEdit || saving} onClick={onSaveDraft} className="btn-secondary px-4 py-2 text-sm">
             Guardar borrador
           </button>
           {step === 5 ? (
-            <button type="button" disabled={!canEdit || saving} onClick={onActivate} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+            <button type="button" disabled={!canEdit || saving} onClick={onActivate} className="btn-primary px-4 py-2 text-sm">
               Activar
             </button>
           ) : null}
@@ -708,10 +708,10 @@ function DetailView({ promo, canEdit, onBack, onEdit, onActivate, onPause, onEnd
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
-        {canEdit && promo.status !== 'ended' ? <button type="button" onClick={onEdit} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Editar</button> : null}
-        {canEdit && ['draft', 'scheduled', 'paused'].includes(promo.status) ? <button type="button" onClick={onActivate} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Activar</button> : null}
+        {canEdit && promo.status !== 'ended' ? <button type="button" onClick={onEdit} className="btn-primary px-4 py-2 text-sm">Editar</button> : null}
+        {canEdit && ['draft', 'scheduled', 'paused'].includes(promo.status) ? <button type="button" onClick={onActivate} className="btn-primary px-4 py-2 text-sm">Activar</button> : null}
         {canEdit && promo.status === 'active' ? <button type="button" onClick={onPause} className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white">Pausar</button> : null}
-        {canEdit && promo.status !== 'ended' ? <button type="button" onClick={onEnd} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Finalizar</button> : null}
+        {canEdit && promo.status !== 'ended' ? <button type="button" onClick={onEnd} className="btn-secondary px-4 py-2 text-sm">Finalizar</button> : null}
         {canEdit && promo.can_delete ? <button type="button" onClick={onDelete} className="rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700">Eliminar</button> : null}
       </div>
     </div>
@@ -751,9 +751,9 @@ function ReviewCard({ label, value }) {
 
 function Kpi({ label, value }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
+    <div className="rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-4 py-3 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)]">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-[var(--ui-body-text)]">{value}</p>
     </div>
   );
 }
