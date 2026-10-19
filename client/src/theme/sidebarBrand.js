@@ -1,37 +1,33 @@
 /**
- * Marca Resto Fadey en sidebar según tema (referencia branding).
- * Corporativo → morado | Minimal White → azul | Emerald Business → verde
+ * Marca Resto Fadey (RY) en sidebar y previews de tema.
+ * Misma forma en todos los temas; solo cambia el color del acento.
  */
 
+const RY = {
+  corporate: '/branding/sidebar-mark-corporate.png?v=2',
+  minimal: '/branding/sidebar-mark-minimal.png?v=2',
+  emerald: '/branding/sidebar-mark-emerald.png?v=2',
+  gold: '/branding/sidebar-mark-gold.png?v=2',
+  sunset: '/branding/sidebar-mark-sunset.png?v=2',
+};
+
 export const SIDEBAR_BRAND_MARKS = {
-  corporate_blue: {
-    src: '/branding/sidebar-mark-corporate.png?v=1',
-    fadey: '#C084FC',
-  },
-  purple: {
-    src: '/branding/sidebar-mark-corporate.png?v=1',
-    fadey: '#C084FC',
-  },
-  minimal_white: {
-    src: '/branding/sidebar-mark-minimal.png?v=1',
-    fadey: '#38BDF8',
-  },
-  blue: {
-    src: '/branding/sidebar-mark-minimal.png?v=1',
-    fadey: '#38BDF8',
-  },
-  emerald_business: {
-    src: '/branding/sidebar-mark-emerald.png?v=1',
-    fadey: '#34D399',
-  },
-  green: {
-    src: '/branding/sidebar-mark-emerald.png?v=1',
-    fadey: '#34D399',
-  },
+  corporate_blue: { src: RY.corporate, fadey: '#C084FC' },
+  purple: { src: RY.corporate, fadey: '#C084FC' },
+  dark_elegance: { src: RY.minimal, fadey: '#38BDF8' },
+  minimal_white: { src: RY.minimal, fadey: '#38BDF8' },
+  blue: { src: RY.minimal, fadey: '#38BDF8' },
+  light: { src: RY.minimal, fadey: '#38BDF8' },
+  dark: { src: RY.minimal, fadey: '#38BDF8' },
+  gray: { src: RY.minimal, fadey: '#94A3B8' },
+  gold_premium: { src: RY.gold, fadey: '#E8C547' },
+  emerald_business: { src: RY.emerald, fadey: '#34D399' },
+  green: { src: RY.emerald, fadey: '#34D399' },
+  sunset_modern: { src: RY.sunset, fadey: '#FB923C' },
 };
 
 const FALLBACK_MARK = {
-  src: '/branding/resto-fadey-logo.png',
+  src: RY.minimal,
   fadey: 'var(--ui-accent-muted, #38bdf8)',
 };
 

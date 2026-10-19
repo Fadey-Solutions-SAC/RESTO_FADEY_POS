@@ -3426,14 +3426,14 @@ function SalonMesasSection({ appSettings }) {
   if (loading) return <div className="flex justify-center py-8"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-[200px]">
+    <div className="space-y-4 min-w-0 max-w-full">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end sm:justify-between gap-3 min-w-0">
+        <div className="w-full sm:min-w-[200px] sm:w-auto min-w-0">
           <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Caja</label>
           <select
             value={selectedCajaId}
             onChange={(e) => setSelectedCajaId(e.target.value)}
-            className="input-field"
+            className="input-field w-full"
           >
             {activeCajas.length === 0 ? (
               <option value={PRIMARY_CAJA_ID}>Caja Principal</option>
@@ -3444,33 +3444,33 @@ function SalonMesasSection({ appSettings }) {
             )}
           </select>
         </div>
-        <div className="flex items-center gap-3 ml-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 sm:ml-auto min-w-0">
           <p className="text-sm ui-text-muted">
             {filteredSalones.length} salón(es) · {filteredTables.length} mesa(s)
             {savingSalones ? ' · Guardando…' : ''}
           </p>
-          <button onClick={openNewSalon} className="btn-primary flex items-center gap-2 text-sm"><MdAdd /> Nuevo Salón</button>
+          <button onClick={openNewSalon} className="btn-primary inline-flex items-center justify-center gap-2 text-sm w-full sm:w-auto"><MdAdd /> Nuevo Salón</button>
         </div>
       </div>
 
       {filteredSalones.map(salon => {
         const mesasSalon = tablesForSalon(salon, filteredTables, filteredSalones);
         return (
-          <div key={salon.id} className="card">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gold-100 rounded-xl flex items-center justify-center">
+          <div key={salon.id} className="card min-w-0 max-w-full overflow-hidden">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 min-w-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 bg-gold-100 rounded-xl flex items-center justify-center shrink-0">
                   <MdTableRestaurant className="text-xl text-gold-600" />
                 </div>
-                <div>
-                  <h3 className="font-bold rf-section-title">
+                <div className="min-w-0">
+                  <h3 className="font-bold rf-section-title truncate">
                     {salon.name}
                   </h3>
-                  {salon.description && <p className="text-xs text-[var(--ui-muted)]">{salon.description}</p>}
+                  {salon.description && <p className="text-xs text-[var(--ui-muted)] truncate">{salon.description}</p>}
                 </div>
-                <span className="px-2 py-0.5 bg-slate-100 ui-text-muted text-xs rounded-full">{mesasSalon.length} mesas</span>
+                <span className="px-2 py-0.5 bg-slate-100 ui-text-muted text-xs rounded-full shrink-0">{mesasSalon.length} mesas</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 shrink-0">
                 <button onClick={() => openNewMesa(salon.id)} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-600 text-xs rounded-lg hover:bg-emerald-100 font-medium">
                   <MdAdd /> Agregar Mesa
                 </button>
@@ -3486,15 +3486,18 @@ function SalonMesasSection({ appSettings }) {
                 <button onClick={() => openNewMesa(salon.id)} className="text-xs text-gold-600 font-medium mt-1 hover:underline">Agregar primera mesa</button>
               </div>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-slate-200">
-                <table className="w-full text-sm">
+              <div
+                className="overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] rounded-xl border border-slate-200 max-w-full"
+                style={{ touchAction: 'pan-x pan-y' }}
+              >
+                <table className="w-full min-w-[36rem] text-sm">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="text-left p-3 font-semibold text-[var(--ui-muted)]">Mesa</th>
-                      <th className="text-left p-3 font-semibold text-[var(--ui-muted)]">Nombre</th>
-                      <th className="text-center p-3 font-semibold text-[var(--ui-muted)]">Personas</th>
-                      <th className="text-center p-3 font-semibold text-[var(--ui-muted)]">Estado</th>
-                      <th className="text-center p-3 font-semibold text-[var(--ui-muted)] w-28">Acciones</th>
+                      <th className="text-left p-3 font-semibold text-[var(--ui-muted)] whitespace-nowrap">Mesa</th>
+                      <th className="text-left p-3 font-semibold text-[var(--ui-muted)] whitespace-nowrap">Nombre</th>
+                      <th className="text-center p-3 font-semibold text-[var(--ui-muted)] whitespace-nowrap">Personas</th>
+                      <th className="text-center p-3 font-semibold text-[var(--ui-muted)] whitespace-nowrap">Estado</th>
+                      <th className="text-center p-3 font-semibold text-[var(--ui-muted)] whitespace-nowrap w-28">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3511,8 +3514,8 @@ function SalonMesasSection({ appSettings }) {
                             </div>
                           </div>
                         </td>
-                        <td className="p-3 font-medium text-slate-700">{getTableDisplayLabel(t)}</td>
-                        <td className="p-3 text-center">
+                        <td className="p-3 font-medium text-slate-700 whitespace-nowrap">{getTableDisplayLabel(t)}</td>
+                        <td className="p-3 text-center whitespace-nowrap">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded-full text-xs font-medium text-[var(--ui-muted)]">
                             <MdPeople className="text-sm" /> {t.capacity}
                           </span>
