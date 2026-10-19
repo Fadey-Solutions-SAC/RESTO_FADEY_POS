@@ -493,12 +493,16 @@ function summaryValues(summary) {
 
 function HeaderLabel({ children, values, align = 'left' }) {
   return (
-    <div className={`flex min-w-0 items-baseline justify-between gap-2 ${align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : ''}`}>
+    <div
+      className={`flex min-w-0 items-baseline gap-1 ${
+        align === 'center' ? 'justify-center text-center' : align === 'right' ? 'justify-end text-right' : 'justify-start'
+      }`}
+    >
       <span className="min-w-0 truncate">{children}</span>
       {values?.length ? (
-        <span className="flex shrink-0 items-baseline gap-1.5 normal-case tracking-normal">
+        <span className="flex shrink-0 items-baseline gap-1 normal-case tracking-normal">
           {values.map((item) => (
-            <span key={item.key} className={`text-lg font-bold tabular-nums ${item.className}`}>
+            <span key={item.key} className={`text-[11px] font-semibold tabular-nums leading-none ${item.className}`}>
               {item.value}
             </span>
           ))}

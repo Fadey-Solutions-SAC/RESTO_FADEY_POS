@@ -4,11 +4,11 @@
  */
 
 const RY = {
-  corporate: '/branding/sidebar-mark-corporate.png?v=2',
-  minimal: '/branding/sidebar-mark-minimal.png?v=2',
-  emerald: '/branding/sidebar-mark-emerald.png?v=2',
-  gold: '/branding/sidebar-mark-gold.png?v=2',
-  sunset: '/branding/sidebar-mark-sunset.png?v=2',
+  corporate: '/branding/sidebar-mark-corporate.png?v=3',
+  minimal: '/branding/sidebar-mark-minimal.png?v=3',
+  emerald: '/branding/sidebar-mark-emerald.png?v=3',
+  gold: '/branding/sidebar-mark-gold.png?v=3',
+  sunset: '/branding/sidebar-mark-sunset.png?v=3',
 };
 
 export const SIDEBAR_BRAND_MARKS = {
