@@ -491,6 +491,23 @@ function summaryValues(summary) {
   };
 }
 
+function HeaderLabel({ children, values, align = 'left' }) {
+  return (
+    <div className={`flex min-w-0 items-baseline justify-between gap-2 ${align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : ''}`}>
+      <span className="min-w-0 truncate">{children}</span>
+      {values?.length ? (
+        <span className="flex shrink-0 items-baseline gap-1.5 normal-case tracking-normal">
+          {values.map((item) => (
+            <span key={item.key} className={`text-lg font-bold tabular-nums ${item.className}`}>
+              {item.value}
+            </span>
+          ))}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function ListView({
   loading,
   members,
@@ -571,27 +588,24 @@ function ListView({
             <div className="hidden overflow-x-auto md:block">
               <div className="min-w-[64rem]">
                 <div
-                  className="grid items-end gap-x-4 border-b border-[color:var(--ui-border)] pb-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]"
+                  className="grid items-center gap-x-4 border-b border-[color:var(--ui-border)] pb-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]"
                   style={{ gridTemplateColumns: LIST_COLS }}
                 >
-                  <div className="min-w-0">
-                    <span className="block">Cliente</span>
-                    <span className="mt-1 block text-lg font-bold normal-case tabular-nums tracking-normal text-[var(--ui-body-text)]">{counts.registered}</span>
-                  </div>
+                  <HeaderLabel values={[{ key: 'registered', value: counts.registered, className: 'text-[var(--ui-body-text)]' }]}>
+                    Cliente
+                  </HeaderLabel>
                   <div className="min-w-0">Contacto</div>
-                  <div className="min-w-0">
-                    <span className="block">Estado</span>
-                    <span className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs font-semibold normal-case tracking-normal">
-                      <span className="text-emerald-600">Activas <span className="tabular-nums">{counts.active}</span></span>
-                      <span className="text-rose-600">Inactivas <span className="tabular-nums">{counts.inactive}</span></span>
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <span className="block">Progreso</span>
-                    <span className="mt-1 block text-xs font-semibold normal-case tracking-normal text-[var(--ui-body-text)]">
-                      <span className="tabular-nums">{counts.near}</span> próximos
-                    </span>
-                  </div>
+                  <HeaderLabel
+                    values={[
+                      { key: 'active', value: counts.active, className: 'text-emerald-600' },
+                      { key: 'inactive', value: counts.inactive, className: 'text-rose-600' },
+                    ]}
+                  >
+                    Estado
+                  </HeaderLabel>
+                  <HeaderLabel values={[{ key: 'near', value: counts.near, className: 'text-[var(--ui-body-text)]' }]}>
+                    Progreso
+                  </HeaderLabel>
                   <div className="min-w-0 text-center">Pendientes</div>
                   <div className="min-w-0">Última actividad</div>
                   <div className="min-w-0 text-right">Acciones</div>
@@ -642,22 +656,21 @@ function ListView({
             </div>
 
             <div className="space-y-3 md:hidden">
-              <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Cliente</p>
-                  <p className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">{counts.registered}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Estado</p>
-                  <p className="mt-0.5 text-xs font-semibold">
-                    <span className="text-emerald-600">Activas {counts.active}</span>
-                    <span className="ml-2 text-rose-600">Inactivas {counts.inactive}</span>
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Progreso</p>
-                  <p className="mt-0.5 text-xs font-semibold text-slate-800">{counts.near} próximos</p>
-                </div>
+              <div className="grid grid-cols-3 gap-2 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]">
+                <HeaderLabel values={[{ key: 'registered', value: counts.registered, className: 'text-[var(--ui-body-text)]' }]}>
+                  Cliente
+                </HeaderLabel>
+                <HeaderLabel
+                  values={[
+                    { key: 'active', value: counts.active, className: 'text-emerald-600' },
+                    { key: 'inactive', value: counts.inactive, className: 'text-rose-600' },
+                  ]}
+                >
+                  Estado
+                </HeaderLabel>
+                <HeaderLabel values={[{ key: 'near', value: counts.near, className: 'text-[var(--ui-body-text)]' }]}>
+                  Progreso
+                </HeaderLabel>
               </div>
               {members.length ? members.map((row) => (
                 <article key={row.customer_id} className="rounded-xl border border-slate-200 p-3">
