@@ -1947,6 +1947,47 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
     cursor: wait;
   }
 
+  .rf-survey-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+  }
+
+  .rf-survey-action {
+    width: 100%;
+    text-align: left;
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: 1rem;
+    background: color-mix(in srgb, #fff 8%, transparent);
+    padding: 0.95rem 1rem;
+    cursor: pointer;
+  }
+
+  .rf-survey-action strong {
+    display: block;
+    font-size: 1rem;
+  }
+
+  .rf-survey-action span {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.85rem;
+    opacity: 0.78;
+  }
+
+  .rf-survey-back {
+    display: inline-block;
+    margin-bottom: 0.75rem;
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: 0.9rem;
+    text-decoration: underline;
+    cursor: pointer;
+    opacity: 0.8;
+  }
+
   /* Mini preview en admin Fidelización */
   .rf-survey-preview-shell {
     background: #000414;

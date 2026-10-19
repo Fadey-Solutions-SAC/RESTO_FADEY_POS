@@ -332,6 +332,42 @@ async function main() {
     assert.ok(denied);
   });
 
+  await checkAsync('Público. consulta por nombre y DNI sin crear tarjeta', () => {
+    const ana = queryOne("SELECT * FROM customers WHERE doc_number = '87654321'");
+    const cyclesBefore = queryAll('SELECT id FROM git_cards_cycles WHERE customer_id = ?', [ana.id]).length;
+    const found = git.lookupPublicGitCard({ name: 'Ana GIT Fidel', doc_number: '87654321' });
+    assert.ok(found.card);
+    assert.strictEqual(found.created_customer, false);
+    const cyclesAfter = queryAll('SELECT id FROM git_cards_cycles WHERE customer_id = ?', [ana.id]).length;
+    assert.strictEqual(cyclesAfter, cyclesBefore);
+    let missed = false;
+    try {
+      git.lookupPublicGitCard({ name: 'Otra Persona', doc_number: '87654321' });
+    } catch (err) {
+      missed = err.status === 404 && /No encontramos/i.test(err.message);
+    }
+    assert.ok(missed);
+    let unknown = false;
+    try {
+      git.lookupPublicGitCard({ name: 'Ana GIT Fidel', doc_number: '00000000' });
+    } catch (err) {
+      unknown = err.status === 404 && /No encontramos/i.test(err.message);
+      assert.ok(!String(err.message).includes('Ana'));
+    }
+    assert.ok(unknown);
+  });
+
+  await checkAsync('Público. registro reutiliza tarjeta y no suma avance', () => {
+    const ana = queryOne("SELECT * FROM customers WHERE doc_number = '87654321'");
+    const before = git.getMemberProfile(ana.id);
+    const token = git.createLoyaltyContinueSession('');
+    const again = git.linkLoyaltyContinue(token, { name: 'Ana GIT Fidel', phone: '987654321', doc_number: '87654321' });
+    assert.strictEqual(again.created_customer, false);
+    const after = git.getMemberProfile(ana.id);
+    assert.strictEqual(after.card.progress.confirmed, before.card.progress.confirmed);
+    assert.strictEqual(after.rewards.length, before.rewards.length);
+  });
+
   const failed = results.filter((r) => !r.ok);
   console.log(`\nResultado: ${results.length - failed.length}/${results.length} pruebas OK`);
   try { fs.unlinkSync(process.env.DB_PATH); } catch (_) { /* noop */ }

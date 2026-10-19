@@ -1121,6 +1121,78 @@ function sanitizedRewards(customerId) {
   }));
 }
 
+function normalizePersonName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function namesMatch(given, stored) {
+  const givenTokens = normalizePersonName(given).split(' ').filter((t) => t.length > 1);
+  const storedTokens = normalizePersonName(stored).split(' ').filter((t) => t.length > 1);
+  if (!givenTokens.length || !storedTokens.length) return false;
+  if (givenTokens[0] !== storedTokens[0]) return false;
+  if (storedTokens.length >= 2) {
+    return givenTokens.includes(storedTokens[storedTokens.length - 1]);
+  }
+  return true;
+}
+
+function customerHasGitCard(customerId) {
+  if (!customerId) return false;
+  const access = queryOne('SELECT customer_id FROM git_cards_access WHERE customer_id = ? LIMIT 1', [customerId]);
+  if (access) return true;
+  const cycle = queryOne('SELECT id FROM git_cards_cycles WHERE customer_id = ? LIMIT 1', [customerId]);
+  return !!cycle;
+}
+
+const LOOKUP_MISS = 'No encontramos una GIT Card con esos datos. Verifique el nombre y el DNI.';
+
+function lookupPublicGitCard({ name, doc_number }) {
+  ensureGitCardsTables();
+  processExpirations();
+  const displayName = String(name || '').trim();
+  const doc = String(doc_number || '').replace(/\D/g, '');
+  if (displayName.length < 2 || doc.length < 8) {
+    const err = new Error('Indique su nombre y DNI para consultar su tarjeta.');
+    err.status = 400;
+    throw err;
+  }
+  const customer = queryOne(
+    "SELECT * FROM customers WHERE replace(IFNULL(doc_number,''), ' ', '') = ? LIMIT 1",
+    [doc],
+  );
+  if (!customer || !namesMatch(displayName, customer.name) || !customerHasGitCard(customer.id)) {
+    const err = new Error(LOOKUP_MISS);
+    err.status = 404;
+    throw err;
+  }
+  try {
+    const access = queryOne('SELECT restaurant_id FROM git_cards_access WHERE customer_id = ? LIMIT 1', [customer.id]);
+    const cycle = queryOne('SELECT restaurant_id FROM git_cards_cycles WHERE customer_id = ? LIMIT 1', [customer.id]);
+    assertRestaurant(access?.restaurant_id || cycle?.restaurant_id);
+  } catch (_) {
+    const err = new Error(LOOKUP_MISS);
+    err.status = 404;
+    throw err;
+  }
+  const card = publicCardPayload(customer, { includeContact: false });
+  return {
+    linked: true,
+    created_customer: false,
+    program_name: card.program_name,
+    restaurant_name: card.restaurant_name,
+    card,
+    rewards: sanitizedRewards(customer.id),
+    next_step: card.next_step,
+    action: publicAction(card),
+  };
+}
+
 function findCustomerByIdentity({ phone, doc_number }) {
   const phoneN = normalizePhone(phone);
   const doc = String(doc_number || '').replace(/\D/g, '');
@@ -1365,6 +1437,9 @@ module.exports = {
   createLoyaltyContinueSession,
   readLoyaltyContinue,
   linkLoyaltyContinue,
+  lookupPublicGitCard,
+  namesMatch,
+  customerHasGitCard,
   publicProgramSummary,
   publicGitHint,
   sanitizedRewards,

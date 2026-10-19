@@ -23,7 +23,7 @@ function toggleId(list, id) {
 export default function EncuestaPublica() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [done, setDone] = useState(false);
+  const [screen, setScreen] = useState('home');
   const [form, setForm] = useState({
     restaurant_name: FALLBACK_NAME,
     logo: '',
@@ -66,12 +66,11 @@ export default function EncuestaPublica() {
   const [likedOther, setLikedOther] = useState('');
   const [improveOther, setImproveOther] = useState('');
   const [comment, setComment] = useState('');
-  const [gitCards, setGitCards] = useState({ enabled: true, survey_required: false, program_name: 'GIT Cards' });
   const [continueToken, setContinueToken] = useState('');
   const [continueData, setContinueData] = useState(null);
-  const [gitStep, setGitStep] = useState('');
   const [identity, setIdentity] = useState({ name: '', phone: '', doc_number: '' });
   const [linking, setLinking] = useState(false);
+  const [registerNotice, setRegisterNotice] = useState('');
 
   const scale = useMemo(
     () => (Array.isArray(form.rating_scale) && form.rating_scale.length ? form.rating_scale : DEFAULT_SCALE),
@@ -108,7 +107,6 @@ export default function EncuestaPublica() {
           show_comment: data?.show_comment !== false,
           waiters,
         }));
-        if (data?.git_cards) setGitCards(data.git_cards);
         if (waiters.length === 1) setWaiterId(String(waiters[0].id || ''));
         const areas = Array.isArray(data?.area_options) ? data.area_options : [];
         if (areas.length === 1) setVisitArea(String(areas[0].id || ''));
@@ -117,23 +115,10 @@ export default function EncuestaPublica() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    const stored = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(CONTINUE_KEY) : '';
-    if (!stored) return;
-    setContinueToken(stored);
-    api.get(`/public/loyalty/continue/${encodeURIComponent(stored)}`)
-      .then((data) => {
-        setContinueData(data);
-        setDone(true);
-        setGitStep(data.linked ? 'card' : 'thanks');
-        if (data.survey?.customer_name) {
-          setIdentity((prev) => ({ ...prev, name: prev.name || data.survey.customer_name }));
-        }
-      })
-      .catch(() => {
-        sessionStorage.removeItem(CONTINUE_KEY);
-      });
-  }, []);
+  const goHome = () => {
+    setScreen('home');
+    setRegisterNotice('');
+  };
 
   const setAnswer = (id, value) => {
     setAnswers((prev) => ({ ...prev, [id]: value }));
@@ -179,15 +164,15 @@ export default function EncuestaPublica() {
         improve_other: improveOther.trim(),
         comment: form.show_comment ? comment.trim() : '',
       });
-      if (!result?.success || !result?.continue_token) {
+      if (!result?.success) {
         toast.error('La encuesta no se registró. Intente de nuevo.');
         return;
       }
-      sessionStorage.setItem(CONTINUE_KEY, result.continue_token);
-      setContinueToken(result.continue_token);
-      setIdentity((prev) => ({ ...prev, name: name.trim() }));
-      setDone(true);
-      setGitStep('thanks');
+      if (result.continue_token) {
+        sessionStorage.setItem(CONTINUE_KEY, result.continue_token);
+        setContinueToken(result.continue_token);
+      }
+      setScreen('thanks');
     } catch (err) {
       toast.error(err.message || 'No se pudo enviar');
     } finally {
@@ -195,15 +180,16 @@ export default function EncuestaPublica() {
     }
   };
 
-  const startWithoutSurvey = async () => {
+  const startRegister = async () => {
     setSending(true);
+    setRegisterNotice('');
     try {
       const result = await api.post('/public/loyalty/git-cards/start', {});
-      if (!result?.continue_token) throw new Error('No se pudo iniciar GIT Cards');
+      if (!result?.continue_token) throw new Error('No se pudo iniciar el registro');
       sessionStorage.setItem(CONTINUE_KEY, result.continue_token);
       setContinueToken(result.continue_token);
-      setDone(true);
-      setGitStep('identify');
+      setIdentity((prev) => ({ ...prev, name: prev.name || name }));
+      setScreen('register');
     } catch (err) {
       toast.error(err.message || 'No se pudo continuar');
     } finally {
@@ -211,44 +197,46 @@ export default function EncuestaPublica() {
     }
   };
 
-  const loadContinue = async (token = continueToken) => {
-    const data = await api.get(`/public/loyalty/continue/${encodeURIComponent(token)}`);
-    setContinueData(data);
-    return data;
-  };
-
-  const submitIdentity = async (e) => {
+  const lookupCard = async (e) => {
     e.preventDefault();
-    if (!continueToken) {
-      toast.error('No hay una encuesta o sesión válida para continuar.');
-      return;
-    }
     setLinking(true);
     try {
-      const data = await api.post(`/public/loyalty/continue/${encodeURIComponent(continueToken)}/link`, {
-        name: identity.name || name,
-        phone: identity.phone,
+      const data = await api.post('/public/loyalty/git-cards/lookup', {
+        name: identity.name,
         doc_number: identity.doc_number,
       });
       setContinueData(data);
-      setGitStep('card');
+      setRegisterNotice('');
+      setScreen('card');
     } catch (err) {
-      toast.error(err.message || 'No se pudo vincular la tarjeta');
+      toast.error(err.message || 'No encontramos una GIT Card con esos datos.');
     } finally {
       setLinking(false);
     }
   };
 
-  const continueToGit = async () => {
+  const submitRegister = async (e) => {
+    e.preventDefault();
     if (!continueToken) {
-      toast.error('No se pudo continuar a GIT Cards.');
+      toast.error('No hay una sesión válida para registrar la tarjeta.');
       return;
     }
+    setLinking(true);
     try {
-      const data = await loadContinue();
-      setGitStep(data.linked ? 'card' : 'identify');
+      const data = await api.post(`/public/loyalty/continue/${encodeURIComponent(continueToken)}/link`, {
+        name: identity.name,
+        phone: identity.phone,
+        doc_number: identity.doc_number,
+      });
+      setContinueData(data);
+      setRegisterNotice(data.created_customer
+        ? 'Su GIT Card quedó registrada. Ya puede consultarla.'
+        : 'Ya tenía una GIT Card. Mostramos la tarjeta existente.');
+      setScreen('card');
     } catch (err) {
-      toast.error(err.message || 'No se pudo continuar');
+      toast.error(err.message || 'No se pudo registrar la tarjeta');
+    } finally {
+      setLinking(false);
     }
   };
 
@@ -268,57 +256,89 @@ export default function EncuestaPublica() {
             </header>
 
             {loading ? (
-              <p className="rf-survey-sheet__sub text-center py-8">Cargando encuesta…</p>
-            ) : done && gitStep === 'card' && continueData?.card ? (
-              <div className="space-y-4 py-2">
-                <h2 className="rf-survey-sheet__section-title !border-0 !pb-0">Su {continueData.program_name || 'GIT Cards'}</h2>
-                <GitCardVisual card={continueData.card} />
-                <p className="rf-survey-sheet__sub">{continueData.next_step}</p>
-                {(continueData.rewards || []).length ? (
-                  <ul className="space-y-1 text-sm text-slate-600">
-                    {continueData.rewards.map((r, i) => (
-                      <li key={`${r.title}-${i}`}>{r.title} · {r.status}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : done && gitStep === 'identify' ? (
-              <form onSubmit={submitIdentity} className="rf-survey-sheet__form space-y-4 py-2">
-                <h2 className="rf-survey-sheet__section-title !border-0 !pb-0">
-                  {continueData?.linked ? 'Consultar GIT Cards' : 'Activar o recuperar GIT Cards'}
-                </h2>
+              <p className="rf-survey-sheet__sub text-center py-8">Cargando…</p>
+            ) : screen === 'home' ? (
+              <nav className="rf-survey-actions" aria-label="Opciones de fidelización">
+                <button type="button" className="rf-survey-action" onClick={() => setScreen('lookup')}>
+                  <strong>Ver mi GIT Card</strong>
+                  <span>Consulta tu progreso y tus recompensas.</span>
+                </button>
+                <button type="button" className="rf-survey-action" onClick={() => setScreen('survey')}>
+                  <strong>Enviar encuesta</strong>
+                  <span>Comparte tu experiencia.</span>
+                </button>
+                <button type="button" className="rf-survey-action" onClick={startRegister} disabled={sending}>
+                  <strong>Registrar mi GIT Card</strong>
+                  <span>Regístrate para participar en el programa.</span>
+                </button>
+              </nav>
+            ) : screen === 'lookup' ? (
+              <form onSubmit={lookupCard} className="rf-survey-sheet__form space-y-4 py-2">
+                <button type="button" className="rf-survey-back" onClick={goHome}>Volver</button>
+                <h2 className="rf-survey-sheet__section-title !border-0 !pb-0">Ver mi GIT Card</h2>
+                <p className="rf-survey-sheet__sub">Ingrese el nombre y el DNI con los que se registró.</p>
+                <label className="rf-survey-field">
+                  <span>Nombre</span>
+                  <input value={identity.name} onChange={(e) => setIdentity((p) => ({ ...p, name: e.target.value }))} required autoComplete="name" />
+                </label>
+                <label className="rf-survey-field">
+                  <span>DNI</span>
+                  <input value={identity.doc_number} onChange={(e) => setIdentity((p) => ({ ...p, doc_number: e.target.value }))} inputMode="numeric" required />
+                </label>
+                <button type="submit" className="rf-survey-submit" disabled={linking}>
+                  {linking ? 'Consultando…' : 'Consultar'}
+                </button>
+              </form>
+            ) : screen === 'register' ? (
+              <form onSubmit={submitRegister} className="rf-survey-sheet__form space-y-4 py-2">
+                <button type="button" className="rf-survey-back" onClick={goHome}>Volver</button>
+                <h2 className="rf-survey-sheet__section-title !border-0 !pb-0">Registrar mi GIT Card</h2>
                 <p className="rf-survey-sheet__sub">
-                  Use el teléfono o documento ya registrado en el restaurante. Si es la primera vez, se creará su ficha de cliente.
+                  Si ya está registrado, mostraremos su tarjeta existente. El registro no suma avances ni recompensas.
                 </p>
                 <label className="rf-survey-field">
                   <span>Nombre</span>
-                  <input value={identity.name} onChange={(e) => setIdentity((p) => ({ ...p, name: e.target.value }))} required />
+                  <input value={identity.name} onChange={(e) => setIdentity((p) => ({ ...p, name: e.target.value }))} required autoComplete="name" />
                 </label>
                 <label className="rf-survey-field">
                   <span>Teléfono</span>
                   <input value={identity.phone} onChange={(e) => setIdentity((p) => ({ ...p, phone: e.target.value }))} inputMode="tel" />
                 </label>
                 <label className="rf-survey-field">
-                  <span>DNI o RUC (opcional)</span>
-                  <input value={identity.doc_number} onChange={(e) => setIdentity((p) => ({ ...p, doc_number: e.target.value }))} inputMode="numeric" />
+                  <span>DNI o RUC</span>
+                  <input value={identity.doc_number} onChange={(e) => setIdentity((p) => ({ ...p, doc_number: e.target.value }))} inputMode="numeric" required />
                 </label>
                 <button type="submit" className="rf-survey-submit" disabled={linking}>
-                  {linking ? 'Vinculando…' : 'Continuar'}
+                  {linking ? 'Registrando…' : 'Registrar'}
                 </button>
               </form>
-            ) : done ? (
+            ) : screen === 'card' && continueData?.card ? (
+              <div className="space-y-4 py-2">
+                <button type="button" className="rf-survey-back" onClick={goHome}>Volver</button>
+                <h2 className="rf-survey-sheet__section-title !border-0 !pb-0">Su {continueData.program_name || 'GIT Cards'}</h2>
+                {registerNotice ? <p className="rf-survey-sheet__sub">{registerNotice}</p> : null}
+                <GitCardVisual card={continueData.card} />
+                <p className="rf-survey-sheet__sub">{continueData.next_step}</p>
+                {(continueData.rewards || []).length ? (
+                  <ul className="space-y-1 text-sm opacity-80">
+                    {continueData.rewards.map((r, i) => (
+                      <li key={`${r.title}-${i}`}>{r.title} · {r.status}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : screen === 'thanks' ? (
               <div className="text-center py-8 space-y-4">
                 <h2 className="rf-survey-sheet__section-title !border-0 !pb-0">{form.thanks_title || 'Gracias'}</h2>
                 <p className="rf-survey-sheet__sub">
                   {form.thanks_message
                     || `Recibimos tu opinión. Nos ayuda a mejorar tu experiencia en ${form.restaurant_name}.`}
                 </p>
-                <button type="button" className="rf-survey-submit" onClick={continueToGit}>
-                  {continueData?.linked ? 'Ver mi GIT Cards' : 'Continuar a GIT Cards'}
-                </button>
+                <button type="button" className="rf-survey-submit" onClick={goHome}>Volver al inicio</button>
               </div>
             ) : (
               <form onSubmit={submit} className="rf-survey-sheet__form space-y-5">
+                <button type="button" className="rf-survey-back" onClick={goHome}>Volver</button>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label className="rf-survey-field">
                     <span>{form.name_label}</span>
@@ -487,11 +507,6 @@ export default function EncuestaPublica() {
                 <button type="submit" className="rf-survey-submit" disabled={sending}>
                   {sending ? 'Enviando…' : (form.submit_label || 'Enviar encuesta')}
                 </button>
-                {gitCards.enabled && !gitCards.survey_required ? (
-                  <button type="button" className="rf-survey-sheet__sub underline" onClick={startWithoutSurvey} disabled={sending}>
-                    Ya tengo GIT Cards o quiero activarla sin encuesta
-                  </button>
-                ) : null}
               </form>
             )}
           </div>

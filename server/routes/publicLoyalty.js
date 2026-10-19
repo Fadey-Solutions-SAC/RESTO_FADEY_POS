@@ -14,6 +14,7 @@ const {
   createLoyaltyContinueSession,
   readLoyaltyContinue,
   linkLoyaltyContinue,
+  lookupPublicGitCard,
   publicProgramSummary,
 } = require('../gitCardsService');
 
@@ -218,6 +219,14 @@ router.post('/', postLimiter, (req, res) => {
     res.status(201).json({ success: true, id, continue_token: continueToken });
   } catch (err) {
     sendRouteError(res, req, err, 'No se pudo enviar la encuesta');
+  }
+});
+
+router.post('/git-cards/lookup', postLimiter, (req, res) => {
+  try {
+    res.json(lookupPublicGitCard(req.body || {}));
+  } catch (err) {
+    sendRouteError(res, req, err, 'No se pudo consultar GIT Cards', Number(err?.status || 400));
   }
 });
 
