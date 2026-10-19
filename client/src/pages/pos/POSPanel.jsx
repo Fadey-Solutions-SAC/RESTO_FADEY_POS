@@ -385,6 +385,7 @@ function isCourtesyDiscountReason(text) {
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
+import { REFRESH_MS } from '../../constants/refreshIntervals';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import { useMesaOrderLock } from '../../hooks/useMesaOrderLock';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
@@ -1234,6 +1235,7 @@ export default function POSPanel() {
   }, []);
 
   const loadData = async (opts = {}) => {
+    const includeCatalog = opts.includeCatalog !== false;
     const gen = loadDataGenRef.current + 1;
     loadDataGenRef.current = gen;
     try {
@@ -1391,6 +1393,7 @@ export default function POSPanel() {
       });
       setLoading(false);
 
+      if (includeCatalog) {
       const [
         prods,
         cats,
@@ -1453,6 +1456,7 @@ export default function POSPanel() {
           : Number(daily.sales.total_sales || 0)
       );
       setReservations(reservationsData || []);
+      }
 
       if (selectedTableIdRef.current) {
         const selId = selectedTableIdRef.current;
@@ -1632,14 +1636,25 @@ export default function POSPanel() {
     ) {
       return;
     }
-    void loadData();
+    void loadData({ includeCatalog: false });
   };
 
   useEffect(() => {
     void loadData();
     void loadPrinterConfig();
   }, []);
-  useActiveInterval(pollPosData, 10000);
+  useActiveInterval(pollPosData, REFRESH_MS.POS_OPERATIONAL);
+  useActiveInterval(() => {
+    if (
+      checkoutInFlightRef.current
+      || showBillRef.current
+      || showMenuRef.current
+      || mesaDetailModalOpenRef.current
+    ) {
+      return;
+    }
+    void loadData({ includeCatalog: true });
+  }, REFRESH_MS.POS_CATALOG);
   useSocket('register-update', (payload) => {
     if (payload?.action === 'close') {
       const closedId = String(payload.registerId || '').trim();
@@ -1662,22 +1677,24 @@ export default function POSPanel() {
         }
       }
     }
-    void loadData();
+    void loadData({ includeCatalog: false });
   });
   useSocket('order-update', () => {
-    void loadData();
+    void loadData({ includeCatalog: false });
     void syncReservationAlertToasts();
   });
-  useSocket('table-update', loadData);
-  useSocket('salones-update', loadData);
-  useSocket('inventory-update', loadData);
+  useSocket('table-update', () => { void loadData({ includeCatalog: false }); });
+  useSocket('salones-update', () => { void loadData({ includeCatalog: false }); });
+  useSocket('inventory-update', () => { void loadData({ includeCatalog: true }); });
   useSocket('staff-data-update', (payload) => {
     const d = payload?.domain;
-    if (['modifiers', 'reservations', 'customers', 'app_config', 'catalog', 'combos'].includes(d)) void loadData();
+    if (['modifiers', 'reservations', 'customers', 'app_config', 'catalog', 'combos'].includes(d)) {
+      void loadData({ includeCatalog: true });
+    }
     if (d === 'reservations') void syncReservationAlertToasts();
   });
   useSocket('reservation-reminder', (payload) => {
-    void loadData();
+    void loadData({ includeCatalog: true });
     const r = payload?.reservation;
     if (r?.id) {
       const toastId = reservationCajaToastId(r.id);
@@ -1886,7 +1903,7 @@ export default function POSPanel() {
 
   useEffect(() => {
     loadBillingStatus();
-    const timer = setInterval(loadBillingStatus, 15000);
+    const timer = setInterval(loadBillingStatus, REFRESH_MS.POS_BILLING);
     const handleOnline = () => loadBillingStatus();
     const handleOffline = () => setBillingStatus(prev => ({ ...prev, provider_reachable: false }));
     window.addEventListener('online', handleOnline);

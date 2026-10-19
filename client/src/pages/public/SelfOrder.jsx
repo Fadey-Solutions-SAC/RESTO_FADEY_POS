@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, formatCurrency } from '../../utils/api';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
+import { REFRESH_MS } from '../../constants/refreshIntervals';
 import { useSocket } from '../../hooks/useSocket';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
@@ -100,7 +101,7 @@ export default function SelfOrder() {
     loadOrders();
   }, [loadOrders, bootstrap?.table?.id]);
 
-  useActiveInterval(loadOrders, 8000);
+  useActiveInterval(loadOrders, REFRESH_MS.SELF_ORDER);
 
   const STAFF_CATALOG_DOMAINS = useMemo(
     () => new Set(['modifiers', 'auto_pedido_cartas', 'auto_pedido_qr_home', 'discounts', 'offers', 'combos', 'catalog']),

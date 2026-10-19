@@ -151,10 +151,28 @@ try {
 }
 const billingCertsDir = path.join(uploadsDir, 'billing-certs');
 if (!fs.existsSync(billingCertsDir)) fs.mkdirSync(billingCertsDir, { recursive: true });
-app.use('/uploads', express.static(uploadsDir));
+function setPublicMediaCache(res, filePath) {
+  const normalized = String(filePath || '').replace(/\\/g, '/');
+  if (normalized.includes('/billing-certs/') || normalized.endsWith('/billing-certs')) {
+    res.setHeader('Cache-Control', 'no-store');
+    return;
+  }
+  res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+}
+app.use('/uploads', express.static(uploadsDir, {
+  maxAge: '7d',
+  etag: true,
+  lastModified: true,
+  setHeaders: setPublicMediaCache,
+}));
 const productImagesDir = path.join(__dirname, '..', 'imagenes qr');
 if (fs.existsSync(productImagesDir)) {
-  app.use('/imagenes-qr', express.static(productImagesDir));
+  app.use('/imagenes-qr', express.static(productImagesDir, {
+    maxAge: '7d',
+    etag: true,
+    lastModified: true,
+    setHeaders: setPublicMediaCache,
+  }));
 }
 
 const storage = multer.diskStorage({

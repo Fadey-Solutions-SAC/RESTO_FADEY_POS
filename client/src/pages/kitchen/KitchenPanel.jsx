@@ -4,6 +4,7 @@ import { api, ORDER_TYPES, formatTime, parseApiDate } from '../../utils/api';
 import { getKitchenOrderNotesDisplay } from '../../utils/reservationKitchenNotes';
 import { useSocket, useSocketEmit } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
+import { REFRESH_MS } from '../../constants/refreshIntervals';
 import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
@@ -272,7 +273,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
     loadOrders();
     emit(isBar ? 'join-bar' : 'join-kitchen');
   }, [areaId]);
-  useActiveInterval(loadOrders, 10000);
+  useActiveInterval(loadOrders, REFRESH_MS.KITCHEN);
   useEffect(() => {
     const id = setInterval(() => setClockTick((n) => n + 1), 15000);
     return () => clearInterval(id);

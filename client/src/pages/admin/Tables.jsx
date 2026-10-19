@@ -3,6 +3,7 @@ import { api, formatCurrency } from '../../utils/api';
 import { mergeOrderingCatalog, buildOrderItemsPayload, filterOrderingProducts } from '../../utils/orderingCatalog';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
+import { REFRESH_MS } from '../../constants/refreshIntervals';
 import { useAuth } from '../../context/AuthContext';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import Modal from '../../components/Modal';
@@ -165,7 +166,7 @@ export default function Tables() {
     loadTables();
   }, [loadTables]);
 
-  useActiveInterval(pollTables, 10000);
+  useActiveInterval(pollTables, REFRESH_MS.TABLES);
   useSocket('order-update', loadTables);
   useSocket('table-update', loadTables);
   useEffect(() => {

@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { api, formatCurrency, parseApiDate, PAYMENT_METHODS, formatInstantTime, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
+import { REFRESH_MS } from '../../constants/refreshIntervals';
 import { useDeliverySettings } from '../../hooks/useDeliveryEnabled';
 import { useNavigate, Link } from 'react-router-dom';
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, ComposedChart } from 'recharts';
@@ -515,7 +516,7 @@ export default function Escritorio() {
   useEffect(() => {
     loadData();
   }, []);
-  useActiveInterval(loadData, 10000);
+  useActiveInterval(loadData, REFRESH_MS.ESCRITORIO_ORDERS);
 
   useEffect(() => {
     void loadRegisterPeriodReport();
@@ -531,7 +532,7 @@ export default function Escritorio() {
     loadCajaStations();
     const onFocus = () => loadCajaStations();
     window.addEventListener('focus', onFocus);
-    const timer = window.setInterval(loadCajaStations, 15000);
+    const timer = window.setInterval(loadCajaStations, REFRESH_MS.ESCRITORIO_CAJA_STATIONS);
     return () => {
       window.removeEventListener('focus', onFocus);
       window.clearInterval(timer);
@@ -550,16 +551,13 @@ export default function Escritorio() {
     }, 120);
     return () => window.clearTimeout(t);
   }, [loading, liveDashLoading]);
-  useActiveInterval(loadLiveDash, 15000);
+  useActiveInterval(loadLiveDash, REFRESH_MS.ESCRITORIO_LIVE);
   useSocket('order-update', () => {
-    loadData();
     void loadLiveDash();
-    void loadRegisterPeriodReport();
   });
   useSocket('table-update', loadLiveDash);
   useSocket('delivery-update', loadLiveDash);
   useSocket('register-update', () => {
-    loadData();
     void loadLiveDash();
     void loadRegisterPeriodReport();
   });

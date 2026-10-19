@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { isBrowserOffline, isNetworkFailure } from '../utils/offlinePos';
 import { useSocket } from '../hooks/useSocket';
+import { REFRESH_MS } from '../constants/refreshIntervals';
 import { MdPointOfSale, MdLock, MdAdminPanelSettings, MdCheckCircle, MdClose } from 'react-icons/md';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -58,7 +59,7 @@ export default function Layout() {
   useEffect(() => {
     if (user?.role === 'mozo') {
       checkCaja();
-      const interval = setInterval(checkCaja, 15000);
+      const interval = setInterval(checkCaja, REFRESH_MS.LAYOUT_CAJA);
       return () => clearInterval(interval);
     }
     setCajaOpen(true);

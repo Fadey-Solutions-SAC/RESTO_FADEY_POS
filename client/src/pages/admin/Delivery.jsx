@@ -13,6 +13,7 @@ import { mergeOrderingCatalog, buildOrderItemsPayload, filterOrderingProducts } 
 import { showStockInOrderingUI } from '../../utils/productStockDisplay';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
+import { REFRESH_MS } from '../../constants/refreshIntervals';
 import { UI_BADGE } from '../../utils/uiBadges';
 import Modal from '../../components/Modal';
 import PromotionBadge from '../../components/promotions/PromotionBadge';
@@ -51,7 +52,7 @@ export default function Delivery() {
   const [restaurantAddress, setRestaurantAddress] = useState('');
 
   const load = useCallback(() => {
-    api.get('/orders').then((data) => {
+    api.get('/orders?type=delivery&limit=500').then((data) => {
       const list = Array.isArray(data) ? data : [];
       setOrders(list.filter((o) => o.type === 'delivery'));
     }).catch(console.error).finally(() => setLoading(false));
@@ -82,7 +83,7 @@ export default function Delivery() {
     }
     load();
   }, [isMozo, load, loadProducts]);
-  useActiveInterval(load, isMozo ? 0 : 10000);
+  useActiveInterval(load, isMozo ? 0 : REFRESH_MS.ADMIN_DELIVERY);
   useSocket('order-update', isMozo ? () => {} : load);
   useSocket('delivery-update', isMozo ? () => {} : load);
   useSocket('inventory-update', loadProducts);

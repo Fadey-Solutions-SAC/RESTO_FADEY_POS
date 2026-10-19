@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api, formatCurrency, formatDate, labelDeliveryPaymentModality } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
+import { REFRESH_MS } from '../../constants/refreshIntervals';
 import { useAuth } from '../../context/AuthContext';
 import { useAppLocaleBootstrap } from '../../hooks/useAppLocaleBootstrap';
 import useStaffSessionHeartbeat from '../../hooks/useStaffSessionHeartbeat';
@@ -87,7 +88,7 @@ export default function DeliveryPanel() {
   useEffect(() => {
     api.get('/restaurant').then((r) => setRestaurantAddress(String(r?.address || '').trim())).catch(() => {});
   }, []);
-  useActiveInterval(loadData, 10000);
+  useActiveInterval(loadData, REFRESH_MS.DELIVERY);
 
   useSocket('new-order', loadData);
   useSocket('order-update', loadData);
