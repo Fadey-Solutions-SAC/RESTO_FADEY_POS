@@ -3,18 +3,20 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api, formatCurrency, formatDate } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import GitCardVisual from '../../components/GitCardVisual';
+import GitCardsPromotions from './GitCardsPromotions';
 import toast from 'react-hot-toast';
 import {
   MdArrowBack, MdSettings, MdSearch, MdVisibility, MdCheck, MdClose,
   MdContentCopy, MdRedeem, MdChevronLeft, MdChevronRight,
-  MdPeople, MdStyle, MdHourglassEmpty, MdCardGiftcard,
+  MdPeople, MdAccessTime, MdPersonAdd,
 } from 'react-icons/md';
 
 const PAGE_SIZE = 10;
 
 const STATUS_LABEL = {
   none: 'Sin tarjeta activa',
-  active: 'Activo',
+  active: 'Activa',
+  inactive: 'Inactiva',
   pending: 'Con compra pendiente',
   completed: 'Tarjeta completada',
   reward_available: 'Recompensa disponible',
@@ -30,6 +32,7 @@ const STATUS_CLASS = {
   reward_available: 'bg-violet-50 text-violet-700',
   reward_used: 'bg-slate-100 text-slate-600',
   expired: 'bg-rose-50 text-rose-700',
+  inactive: 'bg-rose-50 text-rose-700',
 };
 
 const EMPTY_CONFIG = {
@@ -53,6 +56,23 @@ const EMPTY_CONFIG = {
   cycle_valid_days: 90,
   auto_reset: true,
 };
+
+const EMPTY_ENROLL = {
+  name: '',
+  phone: '',
+  email: '',
+  address: '',
+  password: '',
+  doc_type: '1',
+  doc_number: '',
+};
+
+function normalizeCustomerEmail(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw.toLowerCase() === '@gmail.com') return '';
+  if (raw.includes('@')) return raw;
+  return `${raw}@gmail.com`;
+}
 
 function canValidateRole(user) {
   const role = String(user?.role || '').toLowerCase();
@@ -86,6 +106,9 @@ export default function GitCardsAdmin() {
   const [summaryError, setSummaryError] = useState('');
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [showEnroll, setShowEnroll] = useState(false);
+  const [enrollForm, setEnrollForm] = useState(EMPTY_ENROLL);
+  const [enrolling, setEnrolling] = useState(false);
 
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(config), [draft, config]);
 
@@ -108,8 +131,8 @@ export default function GitCardsAdmin() {
       setSummary({
         registered: Number(data.registered ?? data.enrolled ?? 0),
         active_cards: Number(data.active_cards ?? 0),
-        pending_purchases: Number(data.pending_purchases ?? 0),
-        available_rewards: Number(data.available_rewards ?? 0),
+        inactive_cards: Number(data.inactive_cards ?? 0),
+        near_complete: Number(data.near_complete ?? 0),
       });
       setSummaryError('');
     } catch (err) {
@@ -198,9 +221,34 @@ export default function GitCardsAdmin() {
     }
   };
 
-  const applyKpiFilter = (nextStatus) => {
-    setStatusFilter(nextStatus);
-    setPage(1);
+  const submitEnroll = async (event) => {
+    event.preventDefault();
+    if (!canValidateRole(user)) {
+      toast.error('No tiene permiso para registrar clientes');
+      return;
+    }
+    setEnrolling(true);
+    try {
+      const result = await api.post('/git-cards/members/enroll', {
+        ...enrollForm,
+        email: normalizeCustomerEmail(enrollForm.email),
+      });
+      if (result.already_enrolled) {
+        toast('Este cliente ya tiene una GIT Card');
+      } else if (result.created_customer) {
+        toast.success('Cliente registrado en GIT Cards');
+      } else {
+        toast.success('Cliente existente vinculado a GIT Cards');
+      }
+      setShowEnroll(false);
+      setEnrollForm(EMPTY_ENROLL);
+      setPage(1);
+      await Promise.all([loadMembers(), loadSummary()]);
+    } catch (err) {
+      toast.error(err.message || 'No se pudo registrar el cliente');
+    } finally {
+      setEnrolling(false);
+    }
   };
 
   const openPreview = async (customerIdToPreview) => {
@@ -230,7 +278,7 @@ export default function GitCardsAdmin() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <button
             type="button"
@@ -262,16 +310,7 @@ export default function GitCardsAdmin() {
       </div>
 
       {view === 'config' && !customerId ? (
-        <ConfigView
-          draft={draft}
-          setDraft={setDraft}
-          styles={styles}
-          dirty={dirty}
-          saving={saving}
-          canSave={canConfigRole(user)}
-          onSave={saveConfig}
-          onCancel={cancelConfig}
-        />
+        <GitCardsPromotions canEdit={canConfigRole(user)} onClose={cancelConfig} />
       ) : customerId ? (
         <ProfileView
           loading={loading}
@@ -296,11 +335,85 @@ export default function GitCardsAdmin() {
           total={total}
           summary={summary}
           summaryError={summaryError}
-          onKpiFilter={applyKpiFilter}
+          canEnroll={canValidateRole(user)}
+          onAddClient={() => { setEnrollForm(EMPTY_ENROLL); setShowEnroll(true); }}
           onPreview={openPreview}
           onOpen={(id) => navigate(`/admin/clientes/git-cards/${id}`)}
         />
       )}
+
+      {showEnroll ? (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-slate-900/40 p-4">
+          <form onSubmit={submitEnroll} className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 shadow-xl" autoComplete="off">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-900">Agregar cliente</h3>
+                <p className="text-xs text-slate-500">Usa el registro de Clientes. No otorga avances ni recompensas.</p>
+              </div>
+              <button type="button" onClick={() => setShowEnroll(false)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Cerrar">
+                <MdClose />
+              </button>
+            </div>
+            <input type="text" name="fake-username" autoComplete="username" className="hidden" tabIndex={-1} aria-hidden="true" />
+            <input type="password" name="fake-password" autoComplete="current-password" className="hidden" tabIndex={-1} aria-hidden="true" />
+            <label className="block text-sm text-slate-700">
+              <span className="mb-1 block font-medium">Nombre completo</span>
+              <input value={enrollForm.name} onChange={(e) => setEnrollForm((prev) => ({ ...prev, name: e.target.value }))} className="input-field" required />
+            </label>
+            <div className="grid grid-cols-[7.5rem_1fr] gap-3">
+              <label className="block text-sm text-slate-700">
+                <span className="mb-1 block font-medium">Documento</span>
+                <select value={enrollForm.doc_type} onChange={(e) => setEnrollForm((prev) => ({ ...prev, doc_type: e.target.value }))} className="input-field">
+                  <option value="1">DNI</option>
+                  <option value="6">RUC</option>
+                  <option value="0">Otro</option>
+                </select>
+              </label>
+              <label className="block text-sm text-slate-700">
+                <span className="mb-1 block font-medium">Número</span>
+                <input
+                  name="git-enroll-doc"
+                  autoComplete="off"
+                  inputMode="numeric"
+                  value={enrollForm.doc_number}
+                  onChange={(e) => setEnrollForm((prev) => ({ ...prev, doc_number: e.target.value.trim() }))}
+                  className="input-field"
+                  placeholder={enrollForm.doc_type === '6' ? '11 dígitos' : enrollForm.doc_type === '1' ? '8 dígitos' : ''}
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm text-slate-700">
+                <span className="mb-1 block font-medium">Teléfono</span>
+                <input name="git-enroll-phone" autoComplete="off" value={enrollForm.phone} onChange={(e) => setEnrollForm((prev) => ({ ...prev, phone: e.target.value }))} className="input-field" />
+              </label>
+              <label className="block text-sm text-slate-700">
+                <span className="mb-1 block font-medium">Email</span>
+                <input
+                  type="text"
+                  name="git-enroll-email"
+                  autoComplete="off"
+                  value={enrollForm.email}
+                  onChange={(e) => setEnrollForm((prev) => ({ ...prev, email: e.target.value }))}
+                  onBlur={(e) => setEnrollForm((prev) => ({ ...prev, email: normalizeCustomerEmail(e.target.value) }))}
+                  className="input-field"
+                  placeholder="@gmail.com"
+                />
+              </label>
+            </div>
+            <label className="block text-sm text-slate-700">
+              <span className="mb-1 block font-medium">Dirección</span>
+              <input name="git-enroll-address" autoComplete="off" value={enrollForm.address} onChange={(e) => setEnrollForm((prev) => ({ ...prev, address: e.target.value }))} className="input-field" />
+            </label>
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => setShowEnroll(false)} className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancelar</button>
+              <button type="submit" disabled={enrolling} className="flex-1 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+                {enrolling ? 'Guardando…' : 'Registrar'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {preview ? (
         <div className="fixed inset-0 z-40 grid place-items-center bg-slate-900/40 p-4">
@@ -369,52 +482,56 @@ export default function GitCardsAdmin() {
   );
 }
 
-const KPI_CARDS = [
-  {
-    key: 'registered',
-    title: 'Clientes registrados',
-    desc: 'Personas vinculadas al programa, sin duplicar.',
-    filter: 'all',
-    Icon: MdPeople,
-    bubble: 'bg-blue-100 text-blue-600',
-    bg: 'from-blue-50/80 to-white',
-  },
-  {
-    key: 'active_cards',
-    title: 'Tarjetas activas',
-    desc: 'Ciclos vigentes en curso.',
-    filter: 'active',
-    Icon: MdStyle,
-    bubble: 'bg-emerald-100 text-emerald-600',
-    bg: 'from-emerald-50/80 to-white',
-  },
-  {
-    key: 'pending_purchases',
-    title: 'Compras pendientes',
-    desc: 'Operaciones aún sin procesar.',
-    filter: 'pending',
-    Icon: MdHourglassEmpty,
-    bubble: 'bg-amber-100 text-amber-700',
-    bg: 'from-amber-50/80 to-white',
-  },
-  {
-    key: 'available_rewards',
-    title: 'Recompensas disponibles',
-    desc: 'Premios listos para canjear.',
-    filter: 'reward_available',
-    Icon: MdCardGiftcard,
-    bubble: 'bg-violet-100 text-violet-600',
-    bg: 'from-violet-50/80 to-white',
-  },
-];
-
 function statusDotClass(status) {
   if (status === 'active') return 'bg-emerald-500';
   if (status === 'pending') return 'bg-amber-500';
   if (status === 'reward_available') return 'bg-violet-500';
-  if (status === 'expired') return 'bg-rose-500';
+  if (status === 'expired' || status === 'inactive') return 'bg-rose-500';
   if (status === 'none') return 'bg-slate-300';
   return 'bg-slate-400';
+}
+
+function SummaryStrip({ summary, summaryError }) {
+  if (summaryError) {
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        No se pudo cargar el resumen: {summaryError}
+      </div>
+    );
+  }
+  const registered = summary ? summary.registered : '—';
+  const active = summary ? summary.active_cards : '—';
+  const inactive = summary ? summary.inactive_cards : '—';
+  const near = summary ? summary.near_complete : '—';
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-sm">
+      <div className="flex items-center gap-2">
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-slate-200/80 text-slate-600">
+          <MdPeople className="text-base" />
+        </span>
+        <span className="text-slate-500">Clientes</span>
+        <span className="text-base font-semibold tabular-nums text-slate-900">{registered}</span>
+      </div>
+      <span className="hidden h-5 w-px bg-slate-200 sm:block" aria-hidden="true" />
+      <div className="flex items-center gap-3">
+        <span className="text-slate-500">Estado</span>
+        <span className="tabular-nums">
+          <span className="text-slate-500">Activas </span>
+          <span className="font-semibold text-emerald-600">{active}</span>
+        </span>
+        <span className="tabular-nums">
+          <span className="text-slate-500">Inactivas </span>
+          <span className="font-semibold text-rose-600">{inactive}</span>
+        </span>
+      </div>
+      <span className="hidden h-5 w-px bg-slate-200 sm:block" aria-hidden="true" />
+      <div className="flex items-center gap-2">
+        <MdAccessTime className="text-slate-500" />
+        <span className="text-slate-500">Próximos a completar</span>
+        <span className="font-semibold tabular-nums text-slate-900">{near}</span>
+      </div>
+    </div>
+  );
 }
 
 function ListView({
@@ -430,59 +547,30 @@ function ListView({
   total,
   summary,
   summaryError,
-  onKpiFilter,
+  canEnroll,
+  onAddClient,
   onPreview,
   onOpen,
 }) {
   return (
-    <div className="space-y-4">
-      {summaryError ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          No se pudieron cargar los indicadores: {summaryError}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {KPI_CARDS.map((k) => {
-            const selected = statusFilter === k.filter;
-            const value = summary ? summary[k.key] : '—';
-            return (
-              <button
-                key={k.key}
-                type="button"
-                onClick={() => onKpiFilter(k.filter)}
-                className={`group flex min-h-0 flex-col gap-2 rounded-2xl border bg-gradient-to-br p-4 text-left shadow-sm transition hover:shadow-md ${k.bg} ${
-                  selected ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <span className={`grid h-10 w-10 place-items-center rounded-full ${k.bubble}`}>
-                  <k.Icon className="text-xl" />
-                </span>
-                <span className="text-3xl font-bold leading-none tabular-nums text-slate-900">
-                  {summary ? value : '—'}
-                </span>
-                <span className="text-sm font-semibold text-slate-800">{k.title}</span>
-                <span className="text-xs leading-snug text-slate-500">{k.desc}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+    <div className="space-y-3">
+      <SummaryStrip summary={summary} summaryError={summaryError} />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[14rem] flex-1">
-            <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base text-slate-400" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nombre, teléfono o DNI"
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              placeholder="Nombre, teléfono o DNI"
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-10 rounded-xl border border-slate-200 px-3 text-sm"
+            className="h-9 rounded-lg border border-slate-200 px-2.5 text-xs text-slate-600"
           >
             <option value="all">Todos los estados</option>
             {Object.entries(STATUS_LABEL).map(([id, label]) => (
@@ -493,27 +581,38 @@ function ListView({
             <button
               type="button"
               onClick={() => setStatusFilter('all')}
-              className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              className="h-9 rounded-lg px-2 text-xs font-medium text-slate-500 hover:bg-slate-100"
             >
               Quitar filtro
             </button>
           ) : null}
         </div>
+        {canEnroll ? (
+          <button
+            type="button"
+            onClick={onAddClient}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            <MdPersonAdd className="text-base" /> Agregar cliente
+          </button>
+        ) : null}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         {loading ? (
           <div className="py-10 text-center text-slate-500">Cargando GIT Cards...</div>
         ) : (
           <>
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[960px] table-fixed text-sm">
+              <table className="w-full min-w-[860px] table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="w-[18%] py-3 pr-3">Cliente</th>
-                    <th className="w-[14%] py-3 pr-3">Contacto</th>
+                    <th className="w-[20%] py-3 pr-3">Cliente</th>
+                    <th className="w-[16%] py-3 pr-3">Contacto</th>
                     <th className="w-[16%] py-3 pr-3">Estado</th>
-                    <th className="w-[10%] py-3 pr-3">Progreso</th>
-                    <th className="w-[9%] py-3 pr-3 text-center">Pendientes</th>
-                    <th className="w-[10%] py-3 pr-3 text-center">Recompensas</th>
-                    <th className="w-[15%] py-3 pr-3">Última actividad</th>
+                    <th className="w-[12%] py-3 pr-3">Progreso</th>
+                    <th className="w-[10%] py-3 pr-3 text-center">Pendientes</th>
+                    <th className="w-[18%] py-3 pr-3">Última actividad</th>
                     <th className="w-[8%] py-3 pr-1 text-right">Acciones</th>
                   </tr>
                 </thead>
@@ -541,11 +640,6 @@ function ListView({
                           {row.pending_count || 0}
                         </span>
                       </td>
-                      <td className="py-3 pr-3 text-center tabular-nums">
-                        <span className={row.rewards_available ? 'font-semibold text-violet-700' : 'text-slate-500'}>
-                          {row.rewards_available || 0}
-                        </span>
-                      </td>
                       <td className="py-3 pr-3 text-slate-600">{row.last_activity ? formatDate(row.last_activity) : '—'}</td>
                       <td className="py-3 pr-1 text-right">
                         <button
@@ -560,7 +654,7 @@ function ListView({
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={8} className="py-10 text-center text-slate-500">No hay clientes para mostrar.</td>
+                      <td colSpan={7} className="py-10 text-center text-slate-500">No hay clientes para mostrar.</td>
                     </tr>
                   )}
                 </tbody>
@@ -593,7 +687,6 @@ function ListView({
                     </span>
                     <span className="text-slate-600">Progreso {row.progress?.confirmed || 0}/{row.progress?.goal || 0}</span>
                     <span className={row.pending_count ? 'font-semibold text-amber-700' : 'text-slate-500'}>Pend. {row.pending_count || 0}</span>
-                    <span className={row.rewards_available ? 'font-semibold text-violet-700' : 'text-slate-500'}>Recomp. {row.rewards_available || 0}</span>
                   </div>
                   <p className="mt-2 text-xs text-slate-500">
                     Última actividad: {row.last_activity ? formatDate(row.last_activity) : '—'}
@@ -615,117 +708,6 @@ function ListView({
         </div>
       </div>
     </div>
-  );
-}
-
-function ConfigView({ draft, setDraft, styles, dirty, saving, canSave, onSave, onCancel }) {
-  const set = (key, value) => setDraft((prev) => ({ ...prev, [key]: value }));
-  return (
-    <div className="space-y-4">
-      <Section title="Identidad visual">
-        <Field label="Nombre del programa">
-          <input value={draft.program_name} onChange={(e) => set('program_name', e.target.value)} className="input" />
-        </Field>
-        <Field label="Nombre comercial">
-          <input value={draft.restaurant_name} onChange={(e) => set('restaurant_name', e.target.value)} className="input" />
-        </Field>
-        <Field label="Logotipo (URL)">
-          <input value={draft.logo_url} onChange={(e) => set('logo_url', e.target.value)} className="input" />
-        </Field>
-        <Field label="Estilo de tarjeta">
-          <div className="flex flex-wrap gap-2">
-            {styles.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setDraft((prev) => ({ ...prev, card_style: s.id, card_bg: s.bg, card_text: s.text, card_accent: s.accent }))}
-                className={`rounded-xl px-3 py-2 text-sm font-semibold ${draft.card_style === s.id ? 'ring-2 ring-blue-400' : ''}`}
-                style={{ background: s.bg, color: s.text }}
-              >
-                {s.id}
-              </button>
-            ))}
-          </div>
-        </Field>
-        <Field label="Texto informativo">
-          <textarea value={draft.info_text} onChange={(e) => set('info_text', e.target.value)} className="input min-h-[4.5rem]" />
-        </Field>
-        <Field label="Descripción de la recompensa">
-          <textarea value={draft.reward_description} onChange={(e) => set('reward_description', e.target.value)} className="input min-h-[4.5rem]" />
-        </Field>
-      </Section>
-      <Section title="Reglas de avance">
-        <Field label="Consumo mínimo por compra">
-          <input type="number" min="0" step="0.01" value={draft.min_spend} onChange={(e) => set('min_spend', Number(e.target.value))} className="input" />
-        </Field>
-        <Field label="Avances para completar">
-          <input type="number" min="1" step="1" value={draft.goal} onChange={(e) => set('goal', Number(e.target.value))} className="input" />
-        </Field>
-        <Field label="Recompensa">
-          <input value={draft.reward_title} onChange={(e) => set('reward_title', e.target.value)} className="input" />
-        </Field>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={!!draft.enabled} onChange={(e) => set('enabled', e.target.checked)} />
-          Programa activo
-        </label>
-      </Section>
-      <Section title="Encuesta, canales y notificaciones">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={!!draft.survey_required} onChange={(e) => set('survey_required', e.target.checked)} />
-          Exigir encuesta para considerar elegible una compra
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={!!draft.notify_push} onChange={(e) => set('notify_push', e.target.checked)} />
-          Notificaciones push (si el dispositivo las admite)
-        </label>
-        <p className="text-sm text-slate-500">Cada cliente tiene un QR y un enlace personal desde su perfil. El DNI no se incluye en esos canales.</p>
-      </Section>
-      <Section title="Vigencia y reinicio">
-        <Field label="Vigencia del programa (opcional)">
-          <input type="date" value={String(draft.program_expires_at || '').slice(0, 10)} onChange={(e) => set('program_expires_at', e.target.value)} className="input" />
-        </Field>
-        <Field label="Días de vigencia de la tarjeta">
-          <input type="number" min="0" value={draft.cycle_valid_days} onChange={(e) => set('cycle_valid_days', Number(e.target.value))} className="input" />
-        </Field>
-        <Field label="Días de vigencia de la recompensa">
-          <input type="number" min="0" value={draft.reward_valid_days} onChange={(e) => set('reward_valid_days', Number(e.target.value))} className="input" />
-        </Field>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={!!draft.auto_reset} onChange={(e) => set('auto_reset', e.target.checked)} />
-          Reiniciar automáticamente el ciclo al completar o vencer
-        </label>
-      </Section>
-      <div className="flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={onCancel} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancelar</button>
-        <button
-          type="button"
-          disabled={!canSave || saving || !dirty}
-          onClick={onSave}
-          className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          Guardar
-        </button>
-      </div>
-      <style>{`.input{width:100%;height:2.5rem;border-radius:0.75rem;border:1px solid #e2e8f0;padding:0 0.75rem;font-size:0.875rem}textarea.input{height:auto;padding:0.75rem}`}</style>
-    </div>
-  );
-}
-
-function Section({ title, children }) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="mb-4 text-base font-semibold text-slate-900">{title}</h2>
-      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
-    </section>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block text-sm text-slate-700">
-      <span className="mb-1 block font-medium">{label}</span>
-      {children}
-    </label>
   );
 }
 

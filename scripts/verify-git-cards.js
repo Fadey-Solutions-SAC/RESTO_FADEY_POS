@@ -423,8 +423,35 @@ async function main() {
          AND (IFNULL(expires_at, '') = '' OR datetime(expires_at) > datetime('now'))`,
       [restaurantId],
     )?.c || 0);
+    const inactive = Number(queryOne(
+      `SELECT COUNT(*) as c FROM (
+         SELECT DISTINCT customer_id FROM git_cards_cycles
+         WHERE IFNULL(restaurant_id, '') IN ('', ?)
+       ) enrolled
+       WHERE enrolled.customer_id NOT IN (
+         SELECT DISTINCT customer_id FROM git_cards_cycles
+         WHERE status = 'active'
+           AND IFNULL(restaurant_id, '') IN ('', ?)
+           AND (IFNULL(expires_at, '') = '' OR datetime(expires_at) > datetime('now'))
+       )`,
+      [restaurantId, restaurantId],
+    )?.c || 0);
+    const near = Number(queryOne(
+      `SELECT COUNT(DISTINCT customer_id) as c FROM git_cards_cycles
+       WHERE status = 'active'
+         AND IFNULL(restaurant_id, '') IN ('', ?)
+         AND goal >= 1
+         AND (IFNULL(expires_at, '') = '' OR datetime(expires_at) > datetime('now'))
+         AND (
+           SELECT COUNT(*) FROM git_cards_advances a
+           WHERE a.cycle_id = git_cards_cycles.id AND a.status = 'approved'
+         ) = (goal - 1)`,
+      [restaurantId],
+    )?.c || 0);
     assert.strictEqual(summary.registered, registered);
     assert.strictEqual(summary.active_cards, active);
+    assert.strictEqual(summary.inactive_cards, inactive);
+    assert.strictEqual(summary.near_complete, near);
     assert.strictEqual(summary.pending_purchases, pending);
     assert.strictEqual(summary.available_rewards, rewards);
     assert.strictEqual(summary.registered, git.summaryCount());
@@ -440,6 +467,80 @@ async function main() {
     const afterPreview = git.getMemberProfile(customerId);
     assert.ok(preview.card);
     assert.strictEqual(afterPreview.card.progress.confirmed, before.card.progress.confirmed);
+  });
+
+  await checkAsync('Admin. próximos a completar usan meta vigente y no cuentan pendientes', () => {
+    git.saveConfig({ min_spend: 10, goal: 3, survey_required: false, reward_title: 'Postre de cortesía' }, { id: 'verify', username: 'verify' });
+    const cid = `git-test-${uuidv4()}`;
+    runSql(
+      `INSERT INTO customers (id, name, email, password_hash, phone, doc_number)
+       VALUES (?, 'Cerca Meta', ?, 'x', '922222222', '55556666')`,
+      [cid, `${cid}@git.test`],
+    );
+    git.getOrCreateActiveCycle(cid);
+    const before = git.adminDashboardSummary().near_complete;
+    const o1 = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 20 });
+    const o2 = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 20 });
+    git.considerPaidOrder(o1, { id: 'caja', username: 'caja' });
+    git.considerPaidOrder(o2, { id: 'caja', username: 'caja' });
+    assert.strictEqual(git.adminDashboardSummary().near_complete, before + 1);
+    const pendingOrder = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 20 });
+    const cycle = queryOne(
+      "SELECT * FROM git_cards_cycles WHERE customer_id = ? AND status = 'active' ORDER BY datetime(started_at) DESC LIMIT 1",
+      [cid],
+    );
+    runSql(
+      `INSERT INTO git_cards_advances
+        (id, cycle_id, customer_id, restaurant_id, order_id, amount, status, survey_ok)
+       VALUES (?, ?, ?, ?, ?, 20, 'pending', 1)`,
+      [uuidv4(), cycle.id, cid, restaurant.id, pendingOrder],
+    );
+    assert.strictEqual(git.adminDashboardSummary().near_complete, before + 1);
+    const o3 = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 20 });
+    git.considerPaidOrder(o3, { id: 'caja', username: 'caja' });
+    assert.strictEqual(git.adminDashboardSummary().near_complete, before);
+  });
+
+  await checkAsync('Admin. agregar cliente reutiliza registro y no duplica tarjeta', () => {
+    const first = git.enrollStaffCustomer({
+      name: 'Nuevo GIT Admin',
+      phone: '933333333',
+      doc_type: '1',
+      doc_number: '77778888',
+    }, { id: 'caja', username: 'caja' });
+    assert.strictEqual(first.created_customer, true);
+    assert.strictEqual(first.already_enrolled, false);
+    const advances = queryAll('SELECT id FROM git_cards_advances WHERE customer_id = ?', [first.customer.id]);
+    assert.strictEqual(advances.length, 0);
+    const again = git.enrollStaffCustomer({
+      name: 'Nuevo GIT Admin',
+      phone: '933333333',
+      doc_type: '1',
+      doc_number: '77778888',
+    }, { id: 'caja', username: 'caja' });
+    assert.strictEqual(again.created_customer, false);
+    assert.strictEqual(again.already_enrolled, true);
+    assert.strictEqual(again.customer.id, first.customer.id);
+    const customers = queryAll("SELECT id FROM customers WHERE doc_number = '77778888'");
+    assert.strictEqual(customers.length, 1);
+    const cycles = queryAll('SELECT id FROM git_cards_cycles WHERE customer_id = ?', [first.customer.id]);
+    assert.strictEqual(cycles.length, 1);
+    const plainId = `git-test-${uuidv4()}`;
+    runSql(
+      `INSERT INTO customers (id, name, email, password_hash, phone, doc_number)
+       VALUES (?, 'Cliente Maestro', ?, 'x', '944444444', '66667777')`,
+      [plainId, `${plainId}@git.test`],
+    );
+    const existing = git.enrollStaffCustomer({
+      name: 'Cliente Maestro',
+      phone: '944444444',
+      doc_type: '1',
+      doc_number: '66667777',
+    }, { id: 'caja', username: 'caja' });
+    assert.strictEqual(existing.created_customer, false);
+    assert.strictEqual(existing.linked, true);
+    assert.strictEqual(existing.customer.id, plainId);
+    assert.ok(queryOne("SELECT id FROM git_cards_cycles WHERE customer_id = ? AND status = 'active'", [plainId]));
   });
 
   await checkAsync('Caja. cobro fallido, cancelado o sin cliente no avanza', () => {
@@ -472,6 +573,317 @@ async function main() {
     const after = git.getMemberProfile(ana.id);
     assert.strictEqual(after.card.progress.confirmed, before.card.progress.confirmed);
     assert.strictEqual(after.rewards.length, before.rewards.length);
+  });
+
+  const productId = `git-prod-${uuidv4()}`;
+  runSql(
+    `INSERT INTO products (id, name, price, stock, is_active, restaurant_id, process_type)
+     VALUES (?, 'Postre GIT Catálogo', 12, 10, 1, ?, 'non_transformed')`,
+    [productId, restaurant.id],
+  );
+
+  let courtesyPromo;
+  let courtesyCustomer;
+  await checkAsync('Promo A. producto de cortesía desde catálogo real', () => {
+    courtesyPromo = git.createPromotion({
+      name: 'Postre de cortesía',
+      description: 'Completa y recibe postre',
+      start_at: '2020-01-01T00:00:00.000Z',
+      min_spend: 20,
+      goal: 2,
+      reward_kind: 'product',
+      product_id: productId,
+      product_qty: 1,
+      card_style: 'blue',
+    }, { id: 'verify', username: 'verify' }, { activate: true });
+    assert.strictEqual(courtesyPromo.status, 'active');
+    assert.strictEqual(courtesyPromo.product_id, productId);
+    assert.strictEqual(courtesyPromo.product_name, 'Postre GIT Catálogo');
+    let rejected = false;
+    try {
+      git.createPromotion({
+        name: 'Inválida',
+        reward_kind: 'product',
+        min_spend: 10,
+        goal: 2,
+        card_style: 'blue',
+      }, { id: 'verify' }, { activate: true });
+    } catch (err) {
+      rejected = err.status === 400;
+    }
+    assert.ok(rejected, 'no se activa sin producto del catálogo');
+  });
+
+  await checkAsync('Promo B-C. emitir recompensa única no descuenta inventario', () => {
+    courtesyCustomer = `git-promo-${uuidv4()}`;
+    runSql(
+      `INSERT INTO customers (id, name, email, password_hash, phone) VALUES (?, 'Cliente Cortesía', ?, 'x', '911111111')`,
+      [courtesyCustomer, `${courtesyCustomer}@git.test`],
+    );
+    git.getOrCreateActiveCycle(courtesyCustomer, git.promotionToConfig(courtesyPromo));
+    const stockBefore = Number(queryOne('SELECT stock FROM products WHERE id = ?', [productId]).stock);
+    const first = insertOrder({ customerId: courtesyCustomer, restaurantId: restaurant.id, total: 25 });
+    const second = insertOrder({ customerId: courtesyCustomer, restaurantId: restaurant.id, total: 25 });
+    assert.strictEqual(git.considerPaidOrder(first, { id: 'caja', username: 'caja' }).approved, true);
+    const last = git.considerPaidOrder(second, { id: 'caja', username: 'caja' });
+    assert.ok(last.completed);
+    assert.ok(last.reward);
+    const rewards = queryAll('SELECT * FROM git_cards_rewards WHERE customer_id = ?', [courtesyCustomer]);
+    assert.strictEqual(rewards.length, 1);
+    assert.strictEqual(rewards[0].reward_kind, 'product');
+    assert.strictEqual(rewards[0].product_id, productId);
+    assert.strictEqual(rewards[0].status, 'available');
+    assert.strictEqual(Number(rewards[0].inventory_applied || 0), 0);
+    const stockAfterIssue = Number(queryOne('SELECT stock FROM products WHERE id = ?', [productId]).stock);
+    assert.strictEqual(stockAfterIssue, stockBefore);
+    git.considerPaidOrder(second, { id: 'caja', username: 'caja' });
+    assert.strictEqual(queryAll('SELECT id FROM git_cards_rewards WHERE customer_id = ?', [courtesyCustomer]).length, 1);
+  });
+
+  await checkAsync('Promo D. canje descuenta inventario una sola vez', () => {
+    const reward = queryOne('SELECT * FROM git_cards_rewards WHERE customer_id = ?', [courtesyCustomer]);
+    const stockBefore = Number(queryOne('SELECT stock FROM products WHERE id = ?', [productId]).stock);
+    const used = git.redeemReward(reward.id, { id: 'caja', username: 'caja' });
+    assert.strictEqual(used.status, 'used');
+    assert.strictEqual(Number(used.inventory_applied), 1);
+    const stockAfter = Number(queryOne('SELECT stock FROM products WHERE id = ?', [productId]).stock);
+    assert.strictEqual(stockAfter, stockBefore - 1);
+    let rejected = false;
+    try {
+      git.redeemReward(reward.id, { id: 'caja', username: 'caja' });
+    } catch (err) {
+      rejected = err.status === 409;
+    }
+    assert.ok(rejected);
+    assert.strictEqual(Number(queryOne('SELECT stock FROM products WHERE id = ?', [productId]).stock), stockAfter);
+  });
+
+  let percentPromo;
+  let percentRewardId;
+  await checkAsync('Promo E. descuento porcentual se aplica en cobro', () => {
+    percentPromo = git.createPromotion({
+      name: '10% GIT',
+      min_spend: 10,
+      goal: 1,
+      reward_kind: 'discount',
+      discount_type: 'percent',
+      discount_value: 10,
+      card_style: 'green',
+    }, { id: 'verify' }, { activate: true });
+    const cid = `git-pct-${uuidv4()}`;
+    runSql(
+      `INSERT INTO customers (id, name, email, password_hash) VALUES (?, 'Cliente %', ?, 'x')`,
+      [cid, `${cid}@git.test`],
+    );
+    git.getOrCreateActiveCycle(cid, git.promotionToConfig(percentPromo));
+    const paid = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 100 });
+    const done = git.considerPaidOrder(paid, { id: 'caja' });
+    assert.ok(done.reward);
+    percentRewardId = done.reward.id;
+    const unpaidId = uuidv4();
+    runSql(
+      `INSERT INTO orders (id, order_number, customer_id, restaurant_id, type, status, total, discount, payment_status)
+       VALUES (?, 8001, ?, ?, 'dine_in', 'pending', 100, 0, 'pending')`,
+      [unpaidId, cid, restaurant.id],
+    );
+    const applied = git.applyDiscountRewardToOrder(percentRewardId, unpaidId, { id: 'caja', username: 'caja' });
+    assert.strictEqual(applied.discount, 10);
+    assert.strictEqual(Number(applied.order.total), 90);
+    assert.strictEqual(applied.reward.status, 'used');
+    let rejected = false;
+    try {
+      git.applyDiscountRewardToOrder(percentRewardId, unpaidId, { id: 'caja' });
+    } catch (err) {
+      rejected = err.status === 409 || err.status === 400;
+    }
+    assert.ok(rejected);
+  });
+
+  await checkAsync('Promo F. descuento fijo respeta tope y base', () => {
+    const promo = git.createPromotion({
+      name: 'S/ 20 tope 15',
+      min_spend: 10,
+      goal: 1,
+      reward_kind: 'discount',
+      discount_type: 'fixed',
+      discount_value: 20,
+      discount_max: 15,
+      discount_min_spend: 50,
+      card_style: 'green',
+    }, { id: 'verify' }, { activate: true });
+    const cid = `git-fix-${uuidv4()}`;
+    runSql(
+      `INSERT INTO customers (id, name, email, password_hash) VALUES (?, 'Cliente fijo', ?, 'x')`,
+      [cid, `${cid}@git.test`],
+    );
+    git.getOrCreateActiveCycle(cid, git.promotionToConfig(promo));
+    const paid = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 80 });
+    const done = git.considerPaidOrder(paid, { id: 'caja' });
+    const lowId = uuidv4();
+    runSql(
+      `INSERT INTO orders (id, order_number, customer_id, restaurant_id, type, status, total, discount, payment_status)
+       VALUES (?, 8002, ?, ?, 'dine_in', 'pending', 40, 0, 'pending')`,
+      [lowId, cid, restaurant.id],
+    );
+    let blocked = false;
+    try {
+      git.applyDiscountRewardToOrder(done.reward.id, lowId, { id: 'caja' });
+    } catch (err) {
+      blocked = /mínimo/i.test(err.message);
+    }
+    assert.ok(blocked);
+    const okId = uuidv4();
+    runSql(
+      `INSERT INTO orders (id, order_number, customer_id, restaurant_id, type, status, total, discount, payment_status)
+       VALUES (?, 8003, ?, ?, 'dine_in', 'pending', 80, 0, 'pending')`,
+      [okId, cid, restaurant.id],
+    );
+    const applied = git.applyDiscountRewardToOrder(done.reward.id, okId, { id: 'caja' });
+    assert.strictEqual(applied.discount, 15);
+  });
+
+  await checkAsync('Promo G. otro beneficio no toca inventario ni cobro', () => {
+    const promo = git.createPromotion({
+      name: 'Cumpleaños',
+      min_spend: 10,
+      goal: 1,
+      reward_kind: 'other',
+      other_name: 'Foto impresa',
+      other_description: 'Se entrega en caja',
+      card_style: 'wine',
+    }, { id: 'verify' }, { activate: true });
+    const cid = `git-other-${uuidv4()}`;
+    runSql(
+      `INSERT INTO customers (id, name, email, password_hash) VALUES (?, 'Cliente otro', ?, 'x')`,
+      [cid, `${cid}@git.test`],
+    );
+    git.getOrCreateActiveCycle(cid, git.promotionToConfig(promo));
+    const stockBefore = Number(queryOne('SELECT stock FROM products WHERE id = ?', [productId]).stock);
+    const paid = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 30 });
+    const done = git.considerPaidOrder(paid, { id: 'caja' });
+    assert.strictEqual(done.reward.reward_kind, 'other');
+    const used = git.redeemReward(done.reward.id, { id: 'caja' });
+    assert.strictEqual(used.status, 'used');
+    assert.strictEqual(Number(used.inventory_applied || 0), 0);
+    assert.strictEqual(Number(queryOne('SELECT stock FROM products WHERE id = ?', [productId]).stock), stockBefore);
+  });
+
+  await checkAsync('Promo H. cada promoción conserva su propio diseño', () => {
+    const blue = git.createPromotion({
+      name: 'Azul',
+      min_spend: 10,
+      goal: 3,
+      reward_kind: 'other',
+      other_name: 'Azul',
+      card_style: 'blue',
+    }, { id: 'verify' }, { activate: true });
+    const forest = git.createPromotion({
+      name: 'Bosque',
+      min_spend: 10,
+      goal: 3,
+      reward_kind: 'other',
+      other_name: 'Bosque',
+      card_style: 'forest',
+    }, { id: 'verify' }, { activate: true });
+    const a = `git-style-a-${uuidv4()}`;
+    const b = `git-style-b-${uuidv4()}`;
+    runSql('INSERT INTO customers (id, name, email, password_hash) VALUES (?, ?, ?, ?), (?, ?, ?, ?)', [
+      a, 'Estilo A', `${a}@git.test`, 'x', b, 'Estilo B', `${b}@git.test`, 'x',
+    ]);
+    git.getOrCreateActiveCycle(a, git.promotionToConfig(blue));
+    git.getOrCreateActiveCycle(b, git.promotionToConfig(forest));
+    git.updatePromotion(blue.id, { ...blue, card_style: 'cream', confirm_affects_active: true }, { id: 'verify' });
+    const cardA = git.publicCardPayload(queryOne('SELECT * FROM customers WHERE id = ?', [a]));
+    const cardB = git.publicCardPayload(queryOne('SELECT * FROM customers WHERE id = ?', [b]));
+    assert.strictEqual(cardA.card_style, 'blue');
+    assert.strictEqual(cardB.card_style, 'forest');
+    assert.notStrictEqual(cardA.colors.bg, cardB.colors.bg);
+  });
+
+  await checkAsync('Promo I-J. pausar, finalizar, vigencia y reinicio', () => {
+    const promo = git.createPromotion({
+      name: 'Pausa',
+      min_spend: 10,
+      goal: 3,
+      reward_kind: 'other',
+      other_name: 'Pausa',
+      card_style: 'cream',
+      auto_reset: true,
+      cycle_valid_days: 30,
+    }, { id: 'verify' }, { activate: true });
+    const cid = `git-pause-${uuidv4()}`;
+    runSql(
+      `INSERT INTO customers (id, name, email, password_hash) VALUES (?, 'Pausa', ?, 'x')`,
+      [cid, `${cid}@git.test`],
+    );
+    git.getOrCreateActiveCycle(cid, git.promotionToConfig(promo));
+    const first = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 20 });
+    assert.strictEqual(git.considerPaidOrder(first, { id: 'caja' }).approved, true);
+    git.setPromotionStatus(promo.id, 'paused', { id: 'verify' });
+    const second = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 20 });
+    assert.strictEqual(git.considerPaidOrder(second, { id: 'caja' }).skipped, 'paused');
+    assert.strictEqual(queryAll('SELECT id FROM git_cards_advances WHERE customer_id = ?', [cid]).length, 1);
+    git.setPromotionStatus(promo.id, 'ended', { id: 'verify' });
+    const history = queryAll('SELECT * FROM git_cards_advances WHERE customer_id = ?', [cid]);
+    assert.strictEqual(history.length, 1);
+    const ended = git.getPromotionDetail(promo.id);
+    assert.strictEqual(ended.status, 'ended');
+    let expiredOk = false;
+    try {
+      git.createPromotion({
+        name: 'Vencida',
+        start_at: '2020-01-01',
+        end_at: '2020-01-02',
+        min_spend: 10,
+        goal: 1,
+        reward_kind: 'other',
+        other_name: 'X',
+        card_style: 'blue',
+      }, { id: 'verify' }, { activate: true });
+    } catch (err) {
+      expiredOk = /periodo/i.test(err.message);
+    }
+    assert.ok(expiredOk);
+  });
+
+  await checkAsync('Promo K. reintentos no duplican avance ni recompensa', () => {
+    const promo = git.createPromotion({
+      name: 'Idempotente',
+      min_spend: 10,
+      goal: 1,
+      reward_kind: 'other',
+      other_name: 'Uno',
+      card_style: 'blue',
+    }, { id: 'verify' }, { activate: true });
+    const cid = `git-idemp-${uuidv4()}`;
+    runSql(
+      `INSERT INTO customers (id, name, email, password_hash) VALUES (?, 'Idem', ?, 'x')`,
+      [cid, `${cid}@git.test`],
+    );
+    git.getOrCreateActiveCycle(cid, git.promotionToConfig(promo));
+    const orderId = insertOrder({ customerId: cid, restaurantId: restaurant.id, total: 15 });
+    const a = git.considerPaidOrder(orderId, { id: 'caja' });
+    const b = git.considerPaidOrder(orderId, { id: 'caja' });
+    assert.strictEqual(a.approved, true);
+    assert.strictEqual(b.skipped, 'already');
+    assert.strictEqual(queryAll('SELECT id FROM git_cards_advances WHERE order_id = ?', [orderId]).length, 1);
+    assert.strictEqual(queryAll('SELECT id FROM git_cards_rewards WHERE customer_id = ?', [cid]).length, 1);
+  });
+
+  await checkAsync('Promo L. listado real y funciones existentes siguen operativas', () => {
+    const listed = git.listPromotions();
+    assert.ok(listed.active_promotions >= 1);
+    assert.ok(listed.available_rewards >= 0);
+    assert.ok(listed.promotions.some((p) => p.id === courtesyPromo.id));
+    const dashboard = git.adminDashboardSummary();
+    assert.strictEqual(listed.available_rewards, dashboard.available_rewards);
+    const catalog = git.searchCatalogProducts('Postre GIT');
+    assert.ok(catalog.some((p) => p.id === productId));
+    const caja = git.listEligibleCajaClients('Cliente Cortesía');
+    assert.ok(caja.program_open);
+    const cfg = git.getConfig();
+    assert.ok(cfg.goal >= 1);
+    assert.ok(queryOne('SELECT id FROM git_cards_cycles WHERE customer_id = ?', [customerId]));
   });
 
   const failed = results.filter((r) => !r.ok);

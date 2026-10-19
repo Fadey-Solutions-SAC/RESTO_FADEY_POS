@@ -741,6 +741,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
     charge_to_customer_account: chargeToAccountRaw,
     customer_id: customerIdRaw,
     git_card_customer_id: gitCardCustomerIdRaw,
+    git_discount_reward_id: gitDiscountRewardIdRaw,
     payment_note: paymentNoteRaw,
     defer_sale_note_print: deferSaleNotePrintRaw,
   } = body;
@@ -753,6 +754,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
   const chargeToCustomerAccount = chargeToAccountRaw === true || chargeToAccountRaw === 1 || chargeToAccountRaw === '1';
   const customerIdForAccount = String(customerIdRaw || '').trim();
   const gitCardCustomerId = String(gitCardCustomerIdRaw || '').trim();
+  const gitDiscountRewardId = String(gitDiscountRewardIdRaw || '').trim();
   const orderItemIds = [
     ...new Set(
       (Array.isArray(orderItemIdsBody) ? orderItemIdsBody : [])
@@ -882,6 +884,16 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
 
       const chargedRows = [];
       const discountsAppliedByOrder = {};
+      let gitDiscountOrderId = '';
+      if (gitDiscountRewardId) {
+        const { quoteDiscountRewardForOrder } = require('../gitCardsService');
+        const targetId = [...new Set(effectiveOrderIds)][0];
+        if (targetId) {
+          const quote = quoteDiscountRewardForOrder(gitDiscountRewardId, targetId, tx);
+          discountsByOrder[targetId] = Number(discountsByOrder[targetId] || 0) + Number(quote.amount || 0);
+          gitDiscountOrderId = targetId;
+        }
+      }
 
       [...new Set(effectiveOrderIds)].forEach((orderId) => {
         const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -1029,6 +1041,11 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
             [docNum, ...chargedOrderIds],
           );
         }
+      }
+
+      if (gitDiscountRewardId && gitDiscountOrderId && chargedOrderIds.includes(gitDiscountOrderId)) {
+        const { consumeDiscountRewardTx } = require('../gitCardsService');
+        consumeDiscountRewardTx(tx, gitDiscountRewardId, gitDiscountOrderId, req.user || {});
       }
 
       return { chargedOrderIds, discountsAppliedByOrder };

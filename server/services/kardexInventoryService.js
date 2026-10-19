@@ -843,6 +843,7 @@ module.exports = {
   yaRevertioVentaEnKardex,
   aplicarSalidasVentaPedido,
   aplicarSalidasVentasEnTransaccion,
+  salidaInsumosPorProducto,
   revertirSalidasVentaPedido,
   registrarCompraInsumos,
   cerrarInventarioFisico,

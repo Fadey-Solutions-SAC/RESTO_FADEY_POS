@@ -2704,6 +2704,8 @@ export default function POSPanel() {
           gitCardByTable[selectedTable?.id]?.id || '',
         ).trim();
         if (gitCustomerId) checkoutBody.git_card_customer_id = gitCustomerId;
+        const gitDiscountRewardId = String(gitCardByTable[selectedTable?.id]?.discount_reward?.id || '').trim();
+        if (gitDiscountRewardId) checkoutBody.git_discount_reward_id = gitDiscountRewardId;
         if (checkoutPaymentBreakdown) {
           checkoutBody.payment_breakdown = checkoutPaymentBreakdown;
         }
@@ -5648,7 +5650,11 @@ export default function POSPanel() {
           if (tableId && customer?.id) {
             setGitCardByTable((prev) => ({
               ...prev,
-              [tableId]: { id: customer.id, name: customer.name },
+              [tableId]: {
+                id: customer.id,
+                name: customer.name,
+                discount_reward: customer.discount_reward || null,
+              },
             }));
           }
           setGitClientesOpen(false);
@@ -6180,6 +6186,11 @@ export default function POSPanel() {
                           <p className="truncate text-sm font-semibold text-amber-950">
                             {gitCardByTable[selectedTable.id].name}
                           </p>
+                          {gitCardByTable[selectedTable.id].discount_reward ? (
+                            <p className="text-[11px] text-amber-800">
+                              Se aplicará {gitCardByTable[selectedTable.id].discount_reward.title || 'el descuento GIT'} al cobro
+                            </p>
+                          ) : null}
                         </div>
                         <div className="flex shrink-0 gap-1">
                           <button

@@ -155,7 +155,7 @@ export default function GitClientesCajaModal({
                     <div className="flex items-center gap-2 px-2.5 py-2">
                       <button
                         type="button"
-                        onClick={() => onSelect({ id: row.id, name: row.name })}
+                        onClick={() => onSelect({ id: row.id, name: row.name, discount_reward: row.discount_reward || null })}
                         className="min-w-0 flex-1 rounded-lg px-1.5 py-1 text-left hover:bg-[var(--ui-sidebar-hover)]"
                       >
                         <p className="truncate font-semibold text-[var(--ui-body-text)]">{row.name}</p>

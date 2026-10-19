@@ -5,10 +5,12 @@ const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('./dat
 
 const SETTINGS_KEY = 'git_cards';
 const CARD_STYLES = {
-  night: { bg: '#111827', text: '#f8fafc', accent: '#f5d76e', muted: '#94a3b8' },
-  cream: { bg: '#f5efe3', text: '#3f2e1f', accent: '#b45309', muted: '#8b7355' },
-  wine: { bg: '#4a1c2a', text: '#fde8e8', accent: '#f5c6aa', muted: '#d4a5a5' },
-  forest: { bg: '#14332a', text: '#ecfdf5', accent: '#86efac', muted: '#6b9b88' },
+  blue: { bg: '#1e4b8e', text: '#f8fafc', accent: '#93c5fd', muted: '#bfdbfe', label: 'Azul' },
+  green: { bg: '#166534', text: '#ecfdf5', accent: '#86efac', muted: '#6ee7b7', label: 'Verde' },
+  wine: { bg: '#4a1c2a', text: '#fde8e8', accent: '#f5c6aa', muted: '#d4a5a5', label: 'Vino' },
+  cream: { bg: '#f5efe3', text: '#3f2e1f', accent: '#b45309', muted: '#8b7355', label: 'Crema' },
+  forest: { bg: '#14332a', text: '#ecfdf5', accent: '#86efac', muted: '#6b9b88', label: 'Bosque' },
+  night: { bg: '#111827', text: '#f8fafc', accent: '#f5d76e', muted: '#94a3b8', label: 'Noche' },
 };
 
 const DEFAULT_CONFIG = {
@@ -16,7 +18,7 @@ const DEFAULT_CONFIG = {
   program_name: 'GIT Cards',
   restaurant_name: '',
   logo_url: '',
-  card_style: 'night',
+  card_style: 'blue',
   card_bg: '',
   card_text: '',
   card_accent: '',
@@ -68,7 +70,7 @@ function isEligibleAmount(amount, minSpend) {
 
 function normalizeConfig(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
-  const styleKey = CARD_STYLES[src.card_style] ? src.card_style : 'night';
+  const styleKey = CARD_STYLES[src.card_style] ? src.card_style : 'blue';
   const style = CARD_STYLES[styleKey];
   const minSpend = Number(src.min_spend);
   const goal = Number(src.goal);
@@ -127,6 +129,7 @@ function validateConfig(config) {
 function ensureGitCardsTables() {
   if (tablesReady) {
     ensureLoyaltyBridgeTables();
+    ensurePromotionsSchema();
     return;
   }
   runSql(`
@@ -218,6 +221,142 @@ function ensureGitCardsTables() {
   runSql('CREATE INDEX IF NOT EXISTS idx_git_cards_surveys_customer ON git_cards_surveys(customer_id, completed_at)');
   tablesReady = true;
   ensureLoyaltyBridgeTables();
+  ensurePromotionsSchema();
+}
+
+function addGitColumn(sql) {
+  try {
+    runSql(sql);
+  } catch (err) {
+    if (!/duplicate column|already exists/i.test(String(err.message || err))) throw err;
+  }
+}
+
+function ensurePromotionsSchema() {
+  runSql(`
+    CREATE TABLE IF NOT EXISTS git_cards_promotions (
+      id TEXT PRIMARY KEY,
+      restaurant_id TEXT DEFAULT '',
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      start_at TEXT DEFAULT '',
+      end_at TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'draft',
+      min_spend REAL NOT NULL DEFAULT 0,
+      goal INTEGER NOT NULL DEFAULT 3,
+      survey_required INTEGER DEFAULT 0,
+      cycle_valid_days INTEGER DEFAULT 90,
+      reward_valid_days INTEGER DEFAULT 30,
+      auto_reset INTEGER DEFAULT 1,
+      reward_kind TEXT NOT NULL DEFAULT 'other',
+      reward_title TEXT DEFAULT '',
+      reward_description TEXT DEFAULT '',
+      product_id TEXT DEFAULT '',
+      product_name TEXT DEFAULT '',
+      product_qty REAL DEFAULT 1,
+      variant_id TEXT DEFAULT '',
+      variant_name TEXT DEFAULT '',
+      discount_type TEXT DEFAULT '',
+      discount_value REAL DEFAULT 0,
+      discount_min_spend REAL DEFAULT 0,
+      discount_max REAL DEFAULT 0,
+      discount_conditions TEXT DEFAULT '',
+      other_name TEXT DEFAULT '',
+      other_description TEXT DEFAULT '',
+      other_conditions TEXT DEFAULT '',
+      other_delivery TEXT DEFAULT '',
+      card_style TEXT DEFAULT 'blue',
+      card_bg TEXT DEFAULT '',
+      card_text TEXT DEFAULT '',
+      card_accent TEXT DEFAULT '',
+      logo_url TEXT DEFAULT '',
+      info_text TEXT DEFAULT '',
+      restaurant_name TEXT DEFAULT '',
+      notify_push INTEGER DEFAULT 0,
+      archived INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  addGitColumn("ALTER TABLE git_cards_cycles ADD COLUMN promotion_id TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_cycles ADD COLUMN card_style TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_cycles ADD COLUMN card_bg TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_cycles ADD COLUMN card_text TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_cycles ADD COLUMN card_accent TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_cycles ADD COLUMN program_name TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_cycles ADD COLUMN info_text TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_cycles ADD COLUMN reward_title TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_rewards ADD COLUMN promotion_id TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_rewards ADD COLUMN reward_kind TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_rewards ADD COLUMN product_id TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_rewards ADD COLUMN product_qty REAL DEFAULT 1");
+  addGitColumn("ALTER TABLE git_cards_rewards ADD COLUMN discount_type TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_rewards ADD COLUMN discount_value REAL DEFAULT 0");
+  addGitColumn("ALTER TABLE git_cards_rewards ADD COLUMN discount_min_spend REAL DEFAULT 0");
+  addGitColumn("ALTER TABLE git_cards_rewards ADD COLUMN discount_max REAL DEFAULT 0");
+  addGitColumn("ALTER TABLE git_cards_rewards ADD COLUMN inventory_applied INTEGER DEFAULT 0");
+  addGitColumn("ALTER TABLE git_cards_rewards ADD COLUMN applied_order_id TEXT DEFAULT ''");
+  addGitColumn("ALTER TABLE git_cards_advances ADD COLUMN promotion_id TEXT DEFAULT ''");
+  migrateLegacyPromotion();
+}
+
+function migrateLegacyPromotion() {
+  const existing = queryOne('SELECT id FROM git_cards_promotions LIMIT 1');
+  if (existing) return;
+  const restaurant = currentRestaurant();
+  const stored = queryOne('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
+  const cfg = normalizeConfig(parseJson(stored?.value, {}));
+  const id = uuidv4();
+  const style = CARD_STYLES[cfg.card_style] || CARD_STYLES.blue;
+  runSql(
+    `INSERT INTO git_cards_promotions (
+      id, restaurant_id, name, description, start_at, end_at, status,
+      min_spend, goal, survey_required, cycle_valid_days, reward_valid_days, auto_reset,
+      reward_kind, reward_title, reward_description, other_name, other_description,
+      card_style, card_bg, card_text, card_accent, logo_url, info_text, restaurant_name, notify_push
+    ) VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, 'other', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      String(restaurant.id || ''),
+      cfg.program_name || 'GIT Cards',
+      cfg.info_text || '',
+      cfg.program_expires_at || '',
+      cfg.enabled === false ? 'paused' : 'active',
+      cfg.min_spend,
+      cfg.goal,
+      cfg.survey_required ? 1 : 0,
+      cfg.cycle_valid_days,
+      cfg.reward_valid_days,
+      cfg.auto_reset ? 1 : 0,
+      cfg.reward_title,
+      cfg.reward_description,
+      cfg.reward_title,
+      cfg.reward_description,
+      cfg.card_style,
+      cfg.card_bg || style.bg,
+      cfg.card_text || style.text,
+      cfg.card_accent || style.accent,
+      cfg.logo_url,
+      cfg.info_text,
+      cfg.restaurant_name || String(restaurant.name || ''),
+      cfg.notify_push ? 1 : 0,
+    ],
+  );
+  runSql("UPDATE git_cards_cycles SET promotion_id = ? WHERE IFNULL(promotion_id, '') = ''", [id]);
+  runSql("UPDATE git_cards_rewards SET promotion_id = ? WHERE IFNULL(promotion_id, '') = ''", [id]);
+  runSql("UPDATE git_cards_advances SET promotion_id = ? WHERE IFNULL(promotion_id, '') = ''", [id]);
+  runSql(
+    `UPDATE git_cards_cycles
+     SET card_style = COALESCE(NULLIF(card_style, ''), ?),
+         card_bg = COALESCE(NULLIF(card_bg, ''), ?),
+         card_text = COALESCE(NULLIF(card_text, ''), ?),
+         card_accent = COALESCE(NULLIF(card_accent, ''), ?),
+         program_name = COALESCE(NULLIF(program_name, ''), ?),
+         info_text = COALESCE(NULLIF(info_text, ''), ?),
+         reward_title = COALESCE(NULLIF(reward_title, ''), ?)
+     WHERE promotion_id = ?`,
+    [cfg.card_style, cfg.card_bg || style.bg, cfg.card_text || style.text, cfg.card_accent || style.accent, cfg.program_name, cfg.info_text, cfg.reward_title, id],
+  );
 }
 
 function ensureLoyaltyBridgeTables() {
@@ -264,8 +403,15 @@ function assertRestaurant(rowRestaurantId) {
 
 function getConfig() {
   ensureGitCardsTables();
-  const row = queryOne('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
   const restaurant = currentRestaurant();
+  const promo = getPrimaryPromotion();
+  if (promo) {
+    const cfg = promotionToConfig(promo);
+    if (!cfg.restaurant_name) cfg.restaurant_name = String(restaurant.name || '').trim();
+    if (!cfg.logo_url) cfg.logo_url = String(restaurant.logo || '').trim();
+    return cfg;
+  }
+  const row = queryOne('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
   const stored = normalizeConfig(parseJson(row?.value, {}));
   if (!stored.restaurant_name) stored.restaurant_name = String(restaurant.name || '').trim();
   if (!stored.logo_url) stored.logo_url = String(restaurant.logo || '').trim();
@@ -296,7 +442,120 @@ function saveConfig(raw, actor = {}) {
     resourceId: SETTINGS_KEY,
     details: { before: parseJson(previous?.value, {}), after: next },
   });
+  syncPrimaryPromotionFromConfig(next);
   return next;
+}
+
+function refreshPromotionStatuses() {
+  const now = Date.now();
+  const rows = queryAll("SELECT * FROM git_cards_promotions WHERE archived = 0") || [];
+  rows.forEach((row) => {
+    const start = row.start_at ? Date.parse(row.start_at) : NaN;
+    const end = row.end_at ? Date.parse(row.end_at) : NaN;
+    if (row.status === 'scheduled' && Number.isFinite(start) && now >= start && (!Number.isFinite(end) || now <= end)) {
+      runSql("UPDATE git_cards_promotions SET status = 'active', updated_at = datetime('now') WHERE id = ? AND status = 'scheduled'", [row.id]);
+    }
+    if (row.status === 'active' && Number.isFinite(end) && now > end) {
+      runSql("UPDATE git_cards_promotions SET status = 'ended', updated_at = datetime('now') WHERE id = ? AND status = 'active'", [row.id]);
+    }
+  });
+}
+
+function getPromotion(id) {
+  if (!id) return null;
+  return queryOne('SELECT * FROM git_cards_promotions WHERE id = ?', [id]);
+}
+
+function getPrimaryPromotion() {
+  ensurePromotionsSchema();
+  refreshPromotionStatuses();
+  const restaurantId = currentRestaurantId();
+  return queryOne(
+    `SELECT * FROM git_cards_promotions
+     WHERE archived = 0 AND (IFNULL(restaurant_id, '') IN ('', ?))
+       AND status = 'active'
+     ORDER BY datetime(created_at) DESC LIMIT 1`,
+    [restaurantId],
+  ) || queryOne(
+    `SELECT * FROM git_cards_promotions
+     WHERE archived = 0 AND (IFNULL(restaurant_id, '') IN ('', ?))
+     ORDER BY datetime(created_at) ASC LIMIT 1`,
+    [restaurantId],
+  );
+}
+
+function promotionToConfig(promo) {
+  if (!promo) return normalizeConfig({});
+  const cfg = normalizeConfig({
+    enabled: promo.status === 'active',
+    program_name: promo.name,
+    restaurant_name: promo.restaurant_name,
+    logo_url: promo.logo_url,
+    card_style: promo.card_style,
+    card_bg: promo.card_bg,
+    card_text: promo.card_text,
+    card_accent: promo.card_accent,
+    reward_title: promo.reward_title || promo.other_name || promo.product_name,
+    reward_description: promo.reward_description || promo.other_description,
+    info_text: promo.info_text || promo.description,
+    min_spend: promo.min_spend,
+    goal: promo.goal,
+    survey_required: promo.survey_required,
+    notify_push: promo.notify_push,
+    program_expires_at: promo.end_at,
+    reward_valid_days: promo.reward_valid_days,
+    cycle_valid_days: promo.cycle_valid_days,
+    auto_reset: promo.auto_reset,
+  });
+  cfg.promotion_id = promo.id;
+  return cfg;
+}
+
+function promotionAcceptsAdvances(promo) {
+  if (!promo || promo.archived) return false;
+  if (promo.status !== 'active') return false;
+  const now = Date.now();
+  if (promo.start_at && Date.parse(promo.start_at) > now) return false;
+  if (promo.end_at && Date.parse(promo.end_at) < now) return false;
+  return true;
+}
+
+function syncPrimaryPromotionFromConfig(config) {
+  const promo = getPrimaryPromotion();
+  if (!promo) return;
+  const style = CARD_STYLES[config.card_style] || CARD_STYLES.blue;
+  runSql(
+    `UPDATE git_cards_promotions SET
+      name = ?, description = ?, end_at = ?, status = CASE WHEN status IN ('draft', 'ended', 'paused') AND ? = 0 THEN status WHEN ? = 0 THEN 'paused' ELSE 'active' END,
+      min_spend = ?, goal = ?, survey_required = ?, cycle_valid_days = ?, reward_valid_days = ?, auto_reset = ?,
+      reward_title = ?, reward_description = ?, card_style = ?, card_bg = ?, card_text = ?, card_accent = ?,
+      logo_url = ?, info_text = ?, restaurant_name = ?, notify_push = ?, updated_at = datetime('now')
+     WHERE id = ?`,
+    [
+      config.program_name,
+      config.info_text,
+      config.program_expires_at || '',
+      config.enabled ? 1 : 0,
+      config.enabled ? 1 : 0,
+      config.min_spend,
+      config.goal,
+      config.survey_required ? 1 : 0,
+      config.cycle_valid_days,
+      config.reward_valid_days,
+      config.auto_reset ? 1 : 0,
+      config.reward_title,
+      config.reward_description,
+      config.card_style,
+      config.card_bg || style.bg,
+      config.card_text || style.text,
+      config.card_accent || style.accent,
+      config.logo_url,
+      config.info_text,
+      config.restaurant_name,
+      config.notify_push ? 1 : 0,
+      promo.id,
+    ],
+  );
 }
 
 function insertEvent(txOrNull, payload) {
@@ -423,10 +682,23 @@ function createCycle(customerId, config = getConfig(), tx = null) {
   const restaurantId = currentRestaurantId();
   const startedAt = nowIso();
   const expiresAt = sqliteNowPlusDays(config.cycle_valid_days);
+  const promo = getPromotion(config.promotion_id) || getPrimaryPromotion();
+  const style = CARD_STYLES[config.card_style] || CARD_STYLES.blue;
   const sql = `INSERT INTO git_cards_cycles
-    (id, customer_id, restaurant_id, goal, min_spend, started_at, expires_at, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`;
-  const params = [id, customerId, restaurantId, config.goal, config.min_spend, startedAt, expiresAt];
+    (id, customer_id, restaurant_id, goal, min_spend, started_at, expires_at, status,
+     promotion_id, card_style, card_bg, card_text, card_accent, program_name, info_text, reward_title)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const params = [
+    id, customerId, restaurantId, config.goal, config.min_spend, startedAt, expiresAt,
+    promo?.id || '',
+    config.card_style || promo?.card_style || 'blue',
+    config.card_bg || style.bg,
+    config.card_text || style.text,
+    config.card_accent || style.accent,
+    config.program_name || '',
+    config.info_text || '',
+    config.reward_title || '',
+  ];
   if (tx) tx.run(sql, params);
   else runSql(sql, params);
   insertEvent(tx, {
@@ -460,8 +732,9 @@ function expireIfNeeded(cycle) {
       kind: 'cycle_expired',
       detail: 'Tarjeta vencida',
     });
-    const config = getConfig();
-    if (config.auto_reset && programIsOpen(config) && !getActiveCycle(cycle.customer_id)) {
+    const promo = getPromotion(cycle.promotion_id) || getPrimaryPromotion();
+    const config = promo ? promotionToConfig(promo) : getConfig();
+    if (config.auto_reset && promotionAcceptsAdvances(promo || { status: config.enabled ? 'active' : 'paused', end_at: config.program_expires_at }) && !getActiveCycle(cycle.customer_id)) {
       createCycle(cycle.customer_id, config, tx);
     }
   });
@@ -491,6 +764,7 @@ function expireRewards() {
 
 function processExpirations() {
   ensureGitCardsTables();
+  refreshPromotionStatuses();
   expireRewards();
   const cycles = queryAll("SELECT * FROM git_cards_cycles WHERE status = 'active' AND IFNULL(expires_at, '') != ''") || [];
   cycles.forEach((cycle) => expireIfNeeded(cycle));
@@ -510,18 +784,29 @@ function issueRewardIfNeeded(tx, cycle, config, actor = {}) {
   if (existing) return existing;
   const id = uuidv4();
   const issuedAt = nowIso();
+  const promo = getPromotion(cycle.promotion_id || config.promotion_id) || getPrimaryPromotion();
+  const title = config.reward_title || promo?.reward_title || promo?.product_name || promo?.other_name || 'Recompensa GIT Cards';
   tx.run(
     `INSERT INTO git_cards_rewards
-      (id, cycle_id, customer_id, restaurant_id, title, status, issued_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, 'available', ?, ?)`,
+      (id, cycle_id, customer_id, restaurant_id, title, status, issued_at, expires_at,
+       promotion_id, reward_kind, product_id, product_qty, discount_type, discount_value, discount_min_spend, discount_max, inventory_applied)
+     VALUES (?, ?, ?, ?, ?, 'available', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
     [
       id,
       cycle.id,
       cycle.customer_id,
       cycle.restaurant_id || currentRestaurantId(),
-      config.reward_title,
+      title,
       issuedAt,
       sqliteNowPlusDays(config.reward_valid_days),
+      promo?.id || cycle.promotion_id || '',
+      promo?.reward_kind || 'other',
+      promo?.product_id || '',
+      Number(promo?.product_qty || 1),
+      promo?.discount_type || '',
+      Number(promo?.discount_value || 0),
+      Number(promo?.discount_min_spend || 0),
+      Number(promo?.discount_max || 0),
     ],
   );
   insertEvent(tx, {
@@ -565,9 +850,10 @@ function completeApprovedCycleIfNeeded(tx, advance, actor = {}) {
     "UPDATE git_cards_cycles SET status = 'completed', completed_at = ? WHERE id = ? AND status = 'active'",
     [nowIso(), cycle.id],
   );
-  const reward = issueRewardIfNeeded(tx, cycle, getConfig(), actor);
-  const config = getConfig();
-  if (config.auto_reset && programIsOpen(config)) {
+  const promo = getPromotion(cycle.promotion_id) || getPrimaryPromotion();
+  const config = promo ? promotionToConfig(promo) : getConfig();
+  const reward = issueRewardIfNeeded(tx, cycle, config, actor);
+  if (config.auto_reset && promotionAcceptsAdvances(promo || { status: config.enabled ? 'active' : 'paused', end_at: config.program_expires_at })) {
     const stillActive = tx.queryOne(
       "SELECT id FROM git_cards_cycles WHERE customer_id = ? AND status = 'active' LIMIT 1",
       [advance.customer_id],
@@ -587,11 +873,14 @@ function considerPaidOrder(orderId, actor = {}) {
   processExpirations();
   const order = queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
   if (!order) return { skipped: 'missing_order' };
-  const config = getConfig();
-  if (!config.enabled) return { skipped: 'disabled' };
-  if (!programIsOpen(config)) return { skipped: 'program_expired' };
   const customerId = String(order.customer_id || '').trim();
   if (!customerId) return { skipped: 'no_customer' };
+  const cycleForRules = getActiveCycle(customerId);
+  const promoForRules = getPromotion(cycleForRules?.promotion_id) || getPrimaryPromotion();
+  const config = promoForRules ? promotionToConfig(promoForRules) : getConfig();
+  if (!config.enabled || !promotionAcceptsAdvances(promoForRules || { status: config.enabled ? 'active' : 'paused', end_at: config.program_expires_at })) {
+    return { skipped: promoForRules?.status === 'paused' ? 'paused' : (config.enabled ? 'program_expired' : 'disabled') };
+  }
   if (String(order.status || '') === 'cancelled') return { skipped: 'cancelled' };
   if (String(order.payment_status || '') !== 'paid') return { skipped: 'unpaid' };
   if (String(order.payment_method || '') === 'cortesia') return { skipped: 'cortesia' };
@@ -680,8 +969,8 @@ function considerPaidOrder(orderId, actor = {}) {
       const decidedAt = nowIso();
       tx.run(
         `INSERT INTO git_cards_advances
-          (id, cycle_id, customer_id, restaurant_id, order_id, amount, status, survey_ok, decided_by, decided_by_name, decided_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'approved', 1, ?, ?, ?)`,
+          (id, cycle_id, customer_id, restaurant_id, order_id, amount, status, survey_ok, decided_by, decided_by_name, decided_at, promotion_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'approved', 1, ?, ?, ?, ?)`,
         [
           id,
           cycle.id,
@@ -692,6 +981,7 @@ function considerPaidOrder(orderId, actor = {}) {
           actor.id || '',
           actor.full_name || actor.username || '',
           decidedAt,
+          cycle.promotion_id || promoForRules?.id || '',
         ],
       );
       insertEvent(tx, {
@@ -862,6 +1152,27 @@ function decideAdvance(advanceId, decision, reason, actor = {}) {
   return result;
 }
 
+function applyRewardInventoryTx(tx, reward, actor = {}) {
+  if (String(reward.reward_kind || '') !== 'product') return { skipped: true, reason: 'no_product' };
+  if (Number(reward.inventory_applied) === 1) return { skipped: true, reason: 'already' };
+  const productId = String(reward.product_id || '').trim();
+  if (!productId) return { skipped: true, reason: 'sin_producto' };
+  const qty = Number(reward.product_qty || 1) || 1;
+  const { salidaInsumosPorProducto } = require('./services/kardexInventoryService');
+  const { deductNonTransformedStockTx } = require('./warehouseStock');
+  salidaInsumosPorProducto(tx, {
+    productId,
+    quantity: qty,
+    referencia: `GIT Cards canje ${reward.title || ''}`.trim(),
+    referenciaId: reward.id,
+    userId: actor.id || '',
+    eventAt: nowIso(),
+  });
+  deductNonTransformedStockTx(tx, productId, qty);
+  tx.run('UPDATE git_cards_rewards SET inventory_applied = 1 WHERE id = ?', [reward.id]);
+  return { skipped: false };
+}
+
 function redeemReward(rewardId, actor = {}) {
   ensureGitCardsTables();
   return withTransaction((tx) => {
@@ -905,6 +1216,7 @@ function redeemReward(rewardId, actor = {}) {
       err.status = 409;
       throw err;
     }
+    applyRewardInventoryTx(tx, updated, actor);
     insertEvent(tx, {
       customer_id: reward.customer_id,
       restaurant_id: reward.restaurant_id,
@@ -914,7 +1226,7 @@ function redeemReward(rewardId, actor = {}) {
       actor_id: actor.id || '',
       actor_name: actor.full_name || actor.username || '',
     });
-    return updated;
+    return tx.queryOne('SELECT * FROM git_cards_rewards WHERE id = ?', [reward.id]);
   });
 }
 
@@ -969,25 +1281,28 @@ function publicCardPayload(customer, extra = {}) {
     `SELECT * FROM git_cards_cycles WHERE customer_id = ? ORDER BY datetime(started_at) DESC LIMIT 1`,
     [customer.id],
   );
+  const promo = getPromotion(cycle?.promotion_id) || getPrimaryPromotion();
+  const styleKey = cycle?.card_style || promo?.card_style || config.card_style;
+  const style = CARD_STYLES[styleKey] || CARD_STYLES.blue;
   const progress = cycleProgress(cycle);
   const rewards = queryAll(
     `SELECT * FROM git_cards_rewards WHERE customer_id = ? ORDER BY datetime(issued_at) DESC`,
     [customer.id],
   ) || [];
   const { status, flags } = deriveStatus({ cycle, progress, rewards });
-  const style = CARD_STYLES[config.card_style] || CARD_STYLES.night;
   const payload = {
-    program_name: config.program_name,
-    restaurant_name: config.restaurant_name,
-    logo_url: config.logo_url,
-    info_text: config.info_text,
-    reward_title: config.reward_title,
-    reward_description: config.reward_description,
-    card_style: config.card_style,
+    program_name: cycle?.program_name || promo?.name || config.program_name,
+    restaurant_name: promo?.restaurant_name || config.restaurant_name,
+    logo_url: promo?.logo_url || config.logo_url,
+    info_text: cycle?.info_text || promo?.info_text || config.info_text,
+    reward_title: cycle?.reward_title || promo?.reward_title || config.reward_title,
+    reward_description: promo?.reward_description || config.reward_description,
+    card_style: styleKey,
+    promotion_id: cycle?.promotion_id || promo?.id || '',
     colors: {
-      bg: config.card_bg || style.bg,
-      text: config.card_text || style.text,
-      accent: config.card_accent || style.accent,
+      bg: cycle?.card_bg || promo?.card_bg || config.card_bg || style.bg,
+      text: cycle?.card_text || promo?.card_text || config.card_text || style.text,
+      accent: cycle?.card_accent || promo?.card_accent || config.card_accent || style.accent,
       muted: style.muted,
     },
     customer: {
@@ -1079,6 +1394,9 @@ function listMembers({ q = '', status = 'all', page = 1, pageSize = 10 } = {}) {
     }
     if (status && status !== 'all') {
       if (status === 'none') return row.status === 'none';
+      if (status === 'inactive') {
+        return row.status !== 'none' && !(row.status_flags || []).includes('active');
+      }
       return row.status === status || row.status_flags.includes(status);
     }
     return true;
@@ -1519,9 +1837,39 @@ function adminDashboardSummary() {
        AND (IFNULL(x.expires_at, '') = '' OR datetime(x.expires_at) > datetime('now'))`,
     [restaurantId],
   );
+  const inactiveRow = queryOne(
+    `SELECT COUNT(*) as c FROM (
+       SELECT DISTINCT customer_id
+       FROM git_cards_cycles x
+       WHERE ${scope}
+     ) enrolled
+     WHERE enrolled.customer_id NOT IN (
+       SELECT DISTINCT customer_id
+       FROM git_cards_cycles x
+       WHERE x.status = 'active'
+         AND ${scope}
+         AND (IFNULL(x.expires_at, '') = '' OR datetime(x.expires_at) > datetime('now'))
+     )`,
+    [restaurantId, restaurantId],
+  );
+  const nearCompleteRow = queryOne(
+    `SELECT COUNT(DISTINCT x.customer_id) as c
+     FROM git_cards_cycles x
+     WHERE x.status = 'active'
+       AND ${scope}
+       AND x.goal >= 1
+       AND (IFNULL(x.expires_at, '') = '' OR datetime(x.expires_at) > datetime('now'))
+       AND (
+         SELECT COUNT(*) FROM git_cards_advances a
+         WHERE a.cycle_id = x.id AND a.status = 'approved'
+       ) = (x.goal - 1)`,
+    [restaurantId],
+  );
   return {
     registered: Number(registeredRow?.c || 0),
     active_cards: Number(activeRow?.c || 0),
+    inactive_cards: Number(inactiveRow?.c || 0),
+    near_complete: Number(nearCompleteRow?.c || 0),
     pending_purchases: Number(pendingRow?.c || 0),
     available_rewards: Number(rewardsRow?.c || 0),
   };
@@ -1543,7 +1891,9 @@ function cycleIsCajaEligible(cycle) {
   } catch (_) {
     return false;
   }
-  return true;
+  const promo = getPromotion(cycle.promotion_id);
+  if (promo) return promotionAcceptsAdvances(promo);
+  return programIsOpen(getConfig());
 }
 
 function matchesCajaClientSearch(row, needle) {
@@ -1578,19 +1928,42 @@ function toCajaClientRow(row) {
       goal: progress.goal,
     },
     expires_at: row.expires_at || '',
+    promotion_id: row.promotion_id || '',
+    discount_reward: sanitizeDiscountReward(availableDiscountReward(row.customer_id)),
   };
+}
+
+function anyPromotionAcceptsAdvances() {
+  const restaurantId = currentRestaurantId();
+  const rows = queryAll(
+    `SELECT * FROM git_cards_promotions
+     WHERE archived = 0 AND (IFNULL(restaurant_id, '') IN ('', ?))`,
+    [restaurantId],
+  ) || [];
+  return rows.some((row) => promotionAcceptsAdvances(row));
+}
+
+function availableDiscountReward(customerId) {
+  return queryOne(
+    `SELECT * FROM git_cards_rewards
+     WHERE customer_id = ?
+       AND status = 'available'
+       AND reward_kind = 'discount'
+       AND (IFNULL(expires_at, '') = '' OR datetime(expires_at) > datetime('now'))
+     ORDER BY datetime(issued_at) DESC LIMIT 1`,
+    [customerId],
+  );
 }
 
 function listEligibleCajaClients(q = '') {
   ensureGitCardsTables();
   processExpirations();
-  const config = getConfig();
-  if (!config.enabled || !programIsOpen(config)) {
+  if (!anyPromotionAcceptsAdvances()) {
     return { rows: [], program_open: false };
   }
   const restaurantId = currentRestaurantId();
   const cycles = queryAll(
-    `SELECT cy.id, cy.customer_id, cy.goal, cy.status, cy.expires_at, cy.restaurant_id,
+    `SELECT cy.id, cy.customer_id, cy.goal, cy.status, cy.expires_at, cy.restaurant_id, cy.promotion_id,
             c.name, c.doc_number
      FROM git_cards_cycles cy
      JOIN customers c ON c.id = cy.customer_id
@@ -1640,8 +2013,130 @@ function previewCajaGitCustomer(customerId) {
       doc_masked: maskDoc(customer.doc_number),
     },
     card,
-    eligible: cycleIsCajaEligible(cycle) && programIsOpen(getConfig()),
+    discount_reward: sanitizeDiscountReward(availableDiscountReward(customer.id)),
+    eligible: cycleIsCajaEligible(cycle),
   };
+}
+
+function enrollStaffCustomer(payload = {}, actor = {}) {
+  ensureGitCardsTables();
+  processExpirations();
+  const name = String(payload.name || '').trim().replace(/\s+/g, ' ');
+  if (name.length < 2) {
+    const err = new Error('El nombre es requerido');
+    err.status = 400;
+    throw err;
+  }
+  const phone = String(payload.phone || '').trim();
+  const address = String(payload.address || '').trim();
+  const emailRaw = String(payload.email || '').trim().toLowerCase();
+  const docTypeRaw = String(payload.doc_type || '1').trim();
+  const docType = docTypeRaw === '6' ? '6' : (docTypeRaw === '0' ? '0' : '1');
+  const doc = String(payload.doc_number || '').replace(/\D/g, '');
+  if (docType === '1' && doc && !/^\d{8}$/.test(doc)) {
+    const err = new Error('DNI inválido, debe tener 8 dígitos');
+    err.status = 400;
+    throw err;
+  }
+  if (docType === '6' && doc && !/^\d{11}$/.test(doc)) {
+    const err = new Error('RUC inválido, debe tener 11 dígitos');
+    err.status = 400;
+    throw err;
+  }
+
+  let customer = findCustomerByIdentity({ phone, doc_number: doc });
+  if (!customer && emailRaw) {
+    customer = queryOne('SELECT * FROM customers WHERE lower(trim(email)) = ? LIMIT 1', [emailRaw]);
+  }
+
+  const publicCustomer = (row) => ({
+    id: row.id,
+    name: row.name,
+    phone: row.phone || '',
+    doc_masked: maskDoc(row.doc_number),
+  });
+
+  if (customer) {
+    if (customerHasGitCard(customer.id)) {
+      return {
+        created_customer: false,
+        already_enrolled: true,
+        linked: false,
+        customer: publicCustomer(customer),
+      };
+    }
+    getOrCreateAccess(customer.id);
+    getOrCreateActiveCycle(customer.id, resolvePromotionConfig(payload));
+    insertEvent(null, {
+      customer_id: customer.id,
+      restaurant_id: currentRestaurantId(),
+      kind: 'staff_enroll',
+      detail: 'Cliente existente vinculado a GIT Cards desde administración',
+      actor_id: actor.id || '',
+      actor_name: actor.full_name || actor.username || '',
+    });
+    return {
+      created_customer: false,
+      already_enrolled: false,
+      linked: true,
+      customer: publicCustomer(customer),
+    };
+  }
+
+  const fallbackEmail = doc
+    ? `cliente.${doc}@local.resto`
+    : `cliente.${Date.now()}@local.resto`;
+  const requestedEmail = emailRaw || fallbackEmail;
+  const emailTaken = queryOne('SELECT id FROM customers WHERE email = ?', [requestedEmail]);
+  const email = emailTaken ? `cliente.${uuidv4().slice(0, 8)}@local.resto` : requestedEmail;
+  const id = uuidv4();
+  const password = String(payload.password || '').trim() || 'cliente123';
+  runSql(
+    'INSERT INTO customers (id, name, email, password_hash, phone, address, doc_type, doc_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, name, email, bcrypt.hashSync(password, 10), phone, address, docType, doc],
+  );
+  logAudit({
+    actorUserId: actor.id || '',
+    actorName: actor.full_name || actor.username || '',
+    action: 'customer.create',
+    resourceType: 'customer',
+    resourceId: id,
+    details: { source: 'git_cards', email, doc_type: docType, doc_number: doc },
+  });
+  const created = queryOne('SELECT * FROM customers WHERE id = ?', [id]);
+  getOrCreateAccess(created.id);
+  getOrCreateActiveCycle(created.id, resolvePromotionConfig(payload));
+  return {
+    created_customer: true,
+    already_enrolled: false,
+    linked: true,
+    customer: publicCustomer(created),
+  };
+}
+
+function sanitizeDiscountReward(reward) {
+  if (!reward) return null;
+  return {
+    id: reward.id,
+    title: reward.title,
+    discount_type: reward.discount_type || '',
+    discount_value: Number(reward.discount_value || 0),
+    discount_min_spend: Number(reward.discount_min_spend || 0),
+    discount_max: Number(reward.discount_max || 0),
+  };
+}
+
+function resolvePromotionConfig(payload = {}) {
+  const requested = getPromotion(payload.promotion_id);
+  if (requested) {
+    if (!promotionAcceptsAdvances(requested)) {
+      const err = new Error('La promoción seleccionada no está activa.');
+      err.status = 400;
+      throw err;
+    }
+    return promotionToConfig(requested);
+  }
+  return getConfig();
 }
 
 function resolveCajaGitCustomer(customerId) {
@@ -1652,6 +2147,532 @@ function resolveCajaGitCustomer(customerId) {
     throw err;
   }
   return { id: preview.customer.id, name: preview.customer.name };
+}
+
+function throwHttp(message, status = 400, extra = {}) {
+  const err = new Error(message);
+  err.status = status;
+  Object.assign(err, extra);
+  throw err;
+}
+
+function promotionRewardLabel(promo) {
+  if (promo.reward_kind === 'product') return 'Producto de cortesía';
+  if (promo.reward_kind === 'discount') {
+    return promo.discount_type === 'percent' ? 'Descuento porcentual' : 'Descuento fijo';
+  }
+  return 'Otro beneficio';
+}
+
+function promotionBenefitLabel(promo) {
+  if (promo.reward_kind === 'product') {
+    const qty = Number(promo.product_qty || 1);
+    const name = [promo.product_name, promo.variant_name].filter(Boolean).join(' · ') || 'Producto';
+    return qty > 1 ? `${name} × ${qty}` : name;
+  }
+  if (promo.reward_kind === 'discount') {
+    if (promo.discount_type === 'percent') return `${Number(promo.discount_value || 0)} %`;
+    return `S/ ${Number(promo.discount_value || 0).toFixed(2)}`;
+  }
+  return promo.other_name || promo.reward_title || 'Beneficio';
+}
+
+function promotionHistoryCounts(id) {
+  const cycles = Number(queryOne('SELECT COUNT(*) as c FROM git_cards_cycles WHERE promotion_id = ?', [id])?.c || 0);
+  const rewards = Number(queryOne('SELECT COUNT(*) as c FROM git_cards_rewards WHERE promotion_id = ?', [id])?.c || 0);
+  const advances = Number(queryOne('SELECT COUNT(*) as c FROM git_cards_advances WHERE promotion_id = ?', [id])?.c || 0);
+  const available = Number(queryOne(
+    `SELECT COUNT(*) as c FROM git_cards_rewards
+     WHERE promotion_id = ? AND status = 'available'
+       AND (IFNULL(expires_at, '') = '' OR datetime(expires_at) > datetime('now'))`,
+    [id],
+  )?.c || 0);
+  return { cycles, rewards, advances, available, total: cycles + rewards + advances };
+}
+
+function activationErrors(promo) {
+  const errors = [];
+  if (!String(promo.name || '').trim()) errors.push('Indique el nombre de la promoción.');
+  if (!Number.isFinite(Number(promo.min_spend)) || Number(promo.min_spend) < 0) {
+    errors.push('El consumo mínimo debe ser un número válido y no negativo.');
+  }
+  if (!Number.isInteger(Number(promo.goal)) || Number(promo.goal) < 1) {
+    errors.push('La meta de avances debe ser un entero positivo.');
+  }
+  if (promo.start_at && !Number.isFinite(Date.parse(promo.start_at))) {
+    errors.push('La fecha de inicio no es válida.');
+  }
+  if (promo.end_at && !Number.isFinite(Date.parse(promo.end_at))) {
+    errors.push('La fecha de finalización no es válida.');
+  }
+  if (promo.start_at && promo.end_at && Date.parse(promo.end_at) < Date.parse(promo.start_at)) {
+    errors.push('La fecha de finalización no puede ser anterior al inicio.');
+  }
+  if (promo.reward_kind === 'product') {
+    if (!String(promo.product_id || '').trim()) errors.push('Seleccione un producto del catálogo.');
+    if (!(Number(promo.product_qty) > 0)) errors.push('La cantidad de cortesía debe ser mayor a cero.');
+  } else if (promo.reward_kind === 'discount') {
+    if (!['percent', 'fixed'].includes(String(promo.discount_type || ''))) {
+      errors.push('Elija descuento porcentual o importe fijo.');
+    }
+    if (!(Number(promo.discount_value) > 0)) errors.push('Indique el valor del descuento.');
+    if (promo.discount_type === 'percent' && Number(promo.discount_value) > 100) {
+      errors.push('El descuento porcentual no puede superar 100 %.');
+    }
+  } else if (!String(promo.other_name || promo.reward_title || '').trim()) {
+    errors.push('Indique el nombre del beneficio.');
+  }
+  if (!CARD_STYLES[promo.card_style]) errors.push('Elija un estilo de tarjeta válido.');
+  return errors;
+}
+
+function resolveActivationStatus(status, startAt, endAt) {
+  const now = Date.now();
+  const start = startAt ? Date.parse(startAt) : NaN;
+  const end = endAt ? Date.parse(endAt) : NaN;
+  if (Number.isFinite(end) && now > end) {
+    throwHttp('No se puede activar una promoción fuera de su periodo de vigencia.');
+  }
+  if (Number.isFinite(start) && now < start) return 'scheduled';
+  return status === 'scheduled' ? 'active' : (status || 'active');
+}
+
+function normalizePromotionInput(raw = {}, previous = {}) {
+  const src = { ...previous, ...raw };
+  const styleKey = CARD_STYLES[src.card_style] ? src.card_style : (previous.card_style || 'blue');
+  const style = CARD_STYLES[styleKey];
+  const restaurant = currentRestaurant();
+  const kind = ['product', 'discount', 'other'].includes(src.reward_kind) ? src.reward_kind : 'other';
+  const minSpend = Number(src.min_spend);
+  const goal = Number(src.goal);
+  const productQty = Number(src.product_qty);
+  const rewardTitle = String(src.reward_title || src.product_name || src.other_name || '').trim();
+  return {
+    name: String(src.name || '').trim(),
+    description: String(src.description || '').trim(),
+    start_at: String(src.start_at || '').trim(),
+    end_at: String(src.end_at || '').trim(),
+    status: ['draft', 'scheduled', 'active', 'paused', 'ended'].includes(src.status) ? src.status : 'draft',
+    min_spend: Number.isFinite(minSpend) ? minSpend : 0,
+    goal: Number.isFinite(goal) ? Math.trunc(goal) : 3,
+    survey_required: src.survey_required === true || src.survey_required === 1 || src.survey_required === '1' ? 1 : 0,
+    cycle_valid_days: Math.max(0, Math.trunc(Number(src.cycle_valid_days) || 90)),
+    reward_valid_days: Math.max(0, Math.trunc(Number(src.reward_valid_days) || 30)),
+    auto_reset: src.auto_reset === false || src.auto_reset === 0 || src.auto_reset === '0' ? 0 : 1,
+    reward_kind: kind,
+    reward_title: rewardTitle,
+    reward_description: String(src.reward_description || src.other_description || '').trim(),
+    product_id: kind === 'product' ? String(src.product_id || '').trim() : '',
+    product_name: kind === 'product' ? String(src.product_name || '').trim() : '',
+    product_qty: kind === 'product' ? (Number.isFinite(productQty) && productQty > 0 ? productQty : 1) : 1,
+    variant_id: kind === 'product' ? String(src.variant_id || '').trim() : '',
+    variant_name: kind === 'product' ? String(src.variant_name || '').trim() : '',
+    discount_type: kind === 'discount' && ['percent', 'fixed'].includes(src.discount_type) ? src.discount_type : (kind === 'discount' ? '' : ''),
+    discount_value: kind === 'discount' ? Number(src.discount_value || 0) : 0,
+    discount_min_spend: kind === 'discount' ? Number(src.discount_min_spend || 0) : 0,
+    discount_max: kind === 'discount' ? Number(src.discount_max || 0) : 0,
+    discount_conditions: kind === 'discount' ? String(src.discount_conditions || '').trim() : '',
+    other_name: kind === 'other' ? String(src.other_name || rewardTitle || '').trim() : '',
+    other_description: kind === 'other' ? String(src.other_description || src.reward_description || '').trim() : '',
+    other_conditions: kind === 'other' ? String(src.other_conditions || '').trim() : '',
+    other_delivery: kind === 'other' ? String(src.other_delivery || '').trim() : '',
+    card_style: styleKey,
+    card_bg: String(src.card_bg || '').trim() || style.bg,
+    card_text: String(src.card_text || '').trim() || style.text,
+    card_accent: String(src.card_accent || '').trim() || style.accent,
+    logo_url: String(src.logo_url || previous.logo_url || restaurant.logo || '').trim(),
+    info_text: String(src.info_text || src.description || '').trim(),
+    restaurant_name: String(src.restaurant_name || previous.restaurant_name || restaurant.name || '').trim(),
+    notify_push: src.notify_push === true || src.notify_push === 1 || src.notify_push === '1' ? 1 : 0,
+  };
+}
+
+function bindProductFromCatalog(promo) {
+  if (promo.reward_kind !== 'product' || !promo.product_id) return promo;
+  const product = queryOne('SELECT id, name, price, is_active FROM products WHERE id = ?', [promo.product_id]);
+  if (!product) throwHttp('El producto seleccionado no existe en el catálogo.');
+  if (Number(product.is_active) === 0) throwHttp('El producto seleccionado no está activo.');
+  let variantName = promo.variant_name;
+  if (promo.variant_id) {
+    const variant = queryOne('SELECT id, name, product_id FROM product_variants WHERE id = ?', [promo.variant_id]);
+    if (!variant || variant.product_id !== product.id) throwHttp('La presentación seleccionada no pertenece al producto.');
+    variantName = variant.name;
+  }
+  return {
+    ...promo,
+    product_name: product.name,
+    variant_name: variantName || '',
+    reward_title: promo.reward_title || product.name,
+  };
+}
+
+function serializePromotion(row) {
+  if (!row) return null;
+  const history = promotionHistoryCounts(row.id);
+  const style = CARD_STYLES[row.card_style] || CARD_STYLES.blue;
+  return {
+    ...row,
+    survey_required: Number(row.survey_required) === 1,
+    auto_reset: Number(row.auto_reset) !== 0,
+    notify_push: Number(row.notify_push) === 1,
+    archived: Number(row.archived) === 1,
+    reward_label: promotionRewardLabel(row),
+    benefit_label: promotionBenefitLabel(row),
+    style: { id: row.card_style, ...style },
+    history,
+    can_delete: history.total === 0,
+    activation_errors: activationErrors(row),
+  };
+}
+
+function insertPromotionRow(id, promo, restaurantId) {
+  runSql(
+    `INSERT INTO git_cards_promotions (
+      id, restaurant_id, name, description, start_at, end_at, status,
+      min_spend, goal, survey_required, cycle_valid_days, reward_valid_days, auto_reset,
+      reward_kind, reward_title, reward_description,
+      product_id, product_name, product_qty, variant_id, variant_name,
+      discount_type, discount_value, discount_min_spend, discount_max, discount_conditions,
+      other_name, other_description, other_conditions, other_delivery,
+      card_style, card_bg, card_text, card_accent, logo_url, info_text, restaurant_name, notify_push
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id, restaurantId, promo.name, promo.description, promo.start_at, promo.end_at, promo.status,
+      promo.min_spend, promo.goal, promo.survey_required, promo.cycle_valid_days, promo.reward_valid_days, promo.auto_reset,
+      promo.reward_kind, promo.reward_title, promo.reward_description,
+      promo.product_id, promo.product_name, promo.product_qty, promo.variant_id, promo.variant_name,
+      promo.discount_type, promo.discount_value, promo.discount_min_spend, promo.discount_max, promo.discount_conditions,
+      promo.other_name, promo.other_description, promo.other_conditions, promo.other_delivery,
+      promo.card_style, promo.card_bg, promo.card_text, promo.card_accent, promo.logo_url, promo.info_text, promo.restaurant_name, promo.notify_push,
+    ],
+  );
+}
+
+function updatePromotionRow(id, promo) {
+  runSql(
+    `UPDATE git_cards_promotions SET
+      name = ?, description = ?, start_at = ?, end_at = ?, status = ?,
+      min_spend = ?, goal = ?, survey_required = ?, cycle_valid_days = ?, reward_valid_days = ?, auto_reset = ?,
+      reward_kind = ?, reward_title = ?, reward_description = ?,
+      product_id = ?, product_name = ?, product_qty = ?, variant_id = ?, variant_name = ?,
+      discount_type = ?, discount_value = ?, discount_min_spend = ?, discount_max = ?, discount_conditions = ?,
+      other_name = ?, other_description = ?, other_conditions = ?, other_delivery = ?,
+      card_style = ?, card_bg = ?, card_text = ?, card_accent = ?, logo_url = ?, info_text = ?, restaurant_name = ?, notify_push = ?,
+      updated_at = datetime('now')
+     WHERE id = ?`,
+    [
+      promo.name, promo.description, promo.start_at, promo.end_at, promo.status,
+      promo.min_spend, promo.goal, promo.survey_required, promo.cycle_valid_days, promo.reward_valid_days, promo.auto_reset,
+      promo.reward_kind, promo.reward_title, promo.reward_description,
+      promo.product_id, promo.product_name, promo.product_qty, promo.variant_id, promo.variant_name,
+      promo.discount_type, promo.discount_value, promo.discount_min_spend, promo.discount_max, promo.discount_conditions,
+      promo.other_name, promo.other_description, promo.other_conditions, promo.other_delivery,
+      promo.card_style, promo.card_bg, promo.card_text, promo.card_accent, promo.logo_url, promo.info_text, promo.restaurant_name, promo.notify_push,
+      id,
+    ],
+  );
+}
+
+function listPromotions() {
+  ensureGitCardsTables();
+  refreshPromotionStatuses();
+  const restaurantId = currentRestaurantId();
+  const rows = queryAll(
+    `SELECT * FROM git_cards_promotions
+     WHERE archived = 0 AND (IFNULL(restaurant_id, '') IN ('', ?))
+     ORDER BY datetime(updated_at) DESC, datetime(created_at) DESC`,
+    [restaurantId],
+  ) || [];
+  const promotions = rows.map(serializePromotion);
+  return {
+    promotions,
+    active_promotions: promotions.filter((p) => p.status === 'active').length,
+    available_rewards: adminDashboardSummary().available_rewards,
+    styles: cardStyles(),
+  };
+}
+
+function getPromotionDetail(id) {
+  ensureGitCardsTables();
+  refreshPromotionStatuses();
+  const row = getPromotion(id);
+  if (!row) throwHttp('Promoción no encontrada', 404);
+  assertRestaurant(row.restaurant_id);
+  return serializePromotion(row);
+}
+
+function createPromotion(raw = {}, actor = {}, { activate = false } = {}) {
+  ensureGitCardsTables();
+  let promo = bindProductFromCatalog(normalizePromotionInput(raw));
+  let status = activate ? 'active' : (promo.status === 'active' ? 'active' : 'draft');
+  if (status === 'active' || status === 'scheduled') {
+    const errors = activationErrors(promo);
+    if (errors.length) throwHttp(errors.join(' '), 400, { errors });
+    status = resolveActivationStatus(status, promo.start_at, promo.end_at);
+  } else {
+    status = 'draft';
+  }
+  promo = { ...promo, status };
+  const id = uuidv4();
+  insertPromotionRow(id, promo, currentRestaurantId());
+  logAudit({
+    actorUserId: actor.id || '',
+    actorName: actor.full_name || actor.username || '',
+    action: 'git_cards.promotion_create',
+    resourceType: 'git_cards_promotion',
+    resourceId: id,
+    details: { name: promo.name, status, reward_kind: promo.reward_kind },
+  });
+  return getPromotionDetail(id);
+}
+
+function updatePromotion(id, raw = {}, actor = {}) {
+  ensureGitCardsTables();
+  const current = getPromotion(id);
+  if (!current) throwHttp('Promoción no encontrada', 404);
+  assertRestaurant(current.restaurant_id);
+  if (current.status === 'ended' || Number(current.archived) === 1) {
+    throwHttp('Una promoción finalizada no se puede editar.');
+  }
+  let promo = bindProductFromCatalog(normalizePromotionInput(raw, current));
+  const history = promotionHistoryCounts(id);
+  const sensitive = ['min_spend', 'goal', 'survey_required', 'reward_kind', 'product_id', 'discount_type', 'discount_value'];
+  const affectsActive = history.total > 0 && sensitive.some((key) => String(promo[key] ?? '') !== String(current[key] ?? ''));
+  if (affectsActive && raw.confirm_affects_active !== true && raw.confirm_affects_active !== 1) {
+    throwHttp(
+      'Esta promoción ya tiene tarjetas o recompensas. Confirme el cambio para aplicarlo solo a compras futuras. El historial no se modifica.',
+      409,
+      { requires_confirm: true, affects_active: true },
+    );
+  }
+  promo = { ...promo, status: current.status };
+  if (current.status === 'active' || current.status === 'scheduled') {
+    const errors = activationErrors(promo);
+    if (errors.length) throwHttp(errors.join(' '), 400, { errors });
+    promo.status = resolveActivationStatus(current.status, promo.start_at, promo.end_at);
+  }
+  updatePromotionRow(id, promo);
+  logAudit({
+    actorUserId: actor.id || '',
+    actorName: actor.full_name || actor.username || '',
+    action: 'git_cards.promotion_update',
+    resourceType: 'git_cards_promotion',
+    resourceId: id,
+    details: { affects_active: !!affectsActive },
+  });
+  return getPromotionDetail(id);
+}
+
+function setPromotionStatus(id, nextStatus, actor = {}) {
+  ensureGitCardsTables();
+  refreshPromotionStatuses();
+  const current = getPromotion(id);
+  if (!current) throwHttp('Promoción no encontrada', 404);
+  assertRestaurant(current.restaurant_id);
+  if (Number(current.archived) === 1) throwHttp('La promoción está archivada.');
+  const allowed = {
+    active: ['draft', 'scheduled', 'paused'],
+    paused: ['active'],
+    ended: ['active', 'paused', 'scheduled', 'draft'],
+  };
+  if (!(allowed[nextStatus] || []).includes(current.status)) {
+    throwHttp(`No se puede pasar de ${current.status} a ${nextStatus}.`);
+  }
+  if (nextStatus === 'active') {
+    const errors = activationErrors(current);
+    if (errors.length) throwHttp(errors.join(' '), 400, { errors });
+    nextStatus = resolveActivationStatus('active', current.start_at, current.end_at);
+  }
+  runSql(
+    'UPDATE git_cards_promotions SET status = ?, updated_at = datetime(\'now\') WHERE id = ?',
+    [nextStatus, id],
+  );
+  logAudit({
+    actorUserId: actor.id || '',
+    actorName: actor.full_name || actor.username || '',
+    action: `git_cards.promotion_${nextStatus}`,
+    resourceType: 'git_cards_promotion',
+    resourceId: id,
+    details: { from: current.status, to: nextStatus },
+  });
+  return getPromotionDetail(id);
+}
+
+function archivePromotion(id, actor = {}) {
+  ensureGitCardsTables();
+  const current = getPromotion(id);
+  if (!current) throwHttp('Promoción no encontrada', 404);
+  assertRestaurant(current.restaurant_id);
+  const history = promotionHistoryCounts(id);
+  if (history.total > 0) {
+    throwHttp('No se puede eliminar una promoción con historial. Finalícela o archívela.', 409);
+  }
+  runSql(
+    "UPDATE git_cards_promotions SET archived = 1, status = CASE WHEN status = 'ended' THEN status ELSE 'ended' END, updated_at = datetime('now') WHERE id = ?",
+    [id],
+  );
+  logAudit({
+    actorUserId: actor.id || '',
+    actorName: actor.full_name || actor.username || '',
+    action: 'git_cards.promotion_archive',
+    resourceType: 'git_cards_promotion',
+    resourceId: id,
+  });
+  return { archived: true, id };
+}
+
+function searchCatalogProducts(q = '') {
+  const needle = String(q || '').trim();
+  const like = `%${needle}%`;
+  const rows = queryAll(
+    `SELECT p.id, p.name, p.price, p.stock, p.process_type, p.is_active, c.name as category_name
+     FROM products p
+     LEFT JOIN categories c ON c.id = p.category_id
+     WHERE IFNULL(p.is_active, 1) = 1
+       AND (? = '' OR lower(p.name) LIKE lower(?))
+     ORDER BY p.name
+     LIMIT 25`,
+    [needle, like],
+  ) || [];
+  return rows.map((p) => {
+    const variants = queryAll(
+      'SELECT id, name, price_modifier FROM product_variants WHERE product_id = ? AND IFNULL(is_active, 1) = 1',
+      [p.id],
+    ) || [];
+    let stock = null;
+    let inventory_controlled = false;
+    if (String(p.process_type || '') === 'non_transformed') {
+      inventory_controlled = true;
+      const sum = queryOne(
+        'SELECT COALESCE(SUM(quantity), 0) as t FROM inventory_warehouse_stocks WHERE product_id = ?',
+        [p.id],
+      );
+      stock = Number(sum?.t ?? p.stock ?? 0);
+    }
+    return {
+      id: p.id,
+      name: p.name,
+      price: Number(p.price || 0),
+      category_name: p.category_name || '',
+      variants,
+      inventory_controlled,
+      stock,
+    };
+  });
+}
+
+function previewPromotionCard(raw = {}) {
+  const restaurant = currentRestaurant();
+  const promo = normalizePromotionInput(raw);
+  const style = CARD_STYLES[promo.card_style] || CARD_STYLES.blue;
+  return {
+    program_name: promo.name || 'GIT Cards',
+    restaurant_name: promo.restaurant_name || restaurant.name || '',
+    logo_url: promo.logo_url || restaurant.logo || '',
+    info_text: promo.info_text,
+    reward_title: promo.reward_title || promotionBenefitLabel(promo),
+    reward_description: promo.reward_description || promo.other_description,
+    card_style: promo.card_style,
+    colors: { bg: promo.card_bg || style.bg, text: promo.card_text || style.text, accent: promo.card_accent || style.accent, muted: style.muted },
+    customer: { id: 'preview', name: 'Cliente de ejemplo', phone: '', doc_masked: '*****321' },
+    cycle: { id: 'preview', status: 'active', started_at: nowIso(), expires_at: '', completed_at: '' },
+    progress: { confirmed: Math.max(0, Math.min(1, promo.goal - 1)), pending: 0, rejected: 0, voided: 0, goal: promo.goal, remaining: Math.max(0, promo.goal - 1) },
+    status: 'active',
+    status_flags: ['active'],
+    current_reward: null,
+    rewards_public: [],
+    next_step: promo.info_text || 'Cada compra que cumpla las condiciones sumará un avance.',
+  };
+}
+
+function loadRewardOrThrow(id, tx = null) {
+  const reward = tx
+    ? tx.queryOne('SELECT * FROM git_cards_rewards WHERE id = ?', [id])
+    : queryOne('SELECT * FROM git_cards_rewards WHERE id = ?', [id]);
+  if (!reward) throwHttp('Recompensa no encontrada', 404);
+  assertRestaurant(reward.restaurant_id);
+  return reward;
+}
+
+function quoteDiscountRewardForOrder(rewardId, orderId, tx = null) {
+  const q = tx || { queryOne, queryAll };
+  const reward = loadRewardOrThrow(rewardId, tx);
+  if (reward.reward_kind !== 'discount') throwHttp('Esta recompensa no es un descuento.');
+  if (reward.status !== 'available') throwHttp(reward.status === 'used' ? 'Esta recompensa ya fue canjeada.' : 'La recompensa no está disponible.', reward.status === 'used' ? 409 : 400);
+  const order = q.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
+  if (!order) throwHttp('Pedido no encontrado', 404);
+  const items = q.queryAll('SELECT quantity, unit_price, subtotal FROM order_items WHERE order_id = ?', [orderId]) || [];
+  const { getOrderChargeBase } = require('./utils/orderChargeBase');
+  const base = getOrderChargeBase(order, items);
+  const minSpend = Number(reward.discount_min_spend || 0);
+  if (minSpend > 0 && base + 1e-9 < minSpend) {
+    throwHttp(`La compra no alcanza el mínimo de S/ ${minSpend.toFixed(2)} para canjear este descuento.`);
+  }
+  let amount = reward.discount_type === 'percent'
+    ? base * (Number(reward.discount_value || 0) / 100)
+    : Number(reward.discount_value || 0);
+  const max = Number(reward.discount_max || 0);
+  if (max > 0) amount = Math.min(amount, max);
+  amount = Math.max(0, Math.min(round2(amount), base));
+  return {
+    reward_id: reward.id,
+    title: reward.title,
+    base: round2(base),
+    amount,
+    new_total: round2(Math.max(0, base - amount)),
+    discount_type: reward.discount_type,
+    discount_value: Number(reward.discount_value || 0),
+  };
+}
+
+function consumeDiscountRewardTx(tx, rewardId, orderId, actor = {}) {
+  const reward = tx.queryOne('SELECT * FROM git_cards_rewards WHERE id = ?', [rewardId]);
+  if (!reward) throwHttp('Recompensa no encontrada', 404);
+  if (reward.status === 'used' && String(reward.applied_order_id || '') === String(orderId)) {
+    return reward;
+  }
+  if (reward.status !== 'available') {
+    throwHttp(reward.status === 'used' ? 'Esta recompensa ya fue canjeada.' : 'La recompensa no está disponible.', reward.status === 'used' ? 409 : 400);
+  }
+  tx.run(
+    `UPDATE git_cards_rewards
+     SET status = 'used', redeemed_at = ?, redeemed_by = ?, redeemed_by_name = ?, applied_order_id = ?
+     WHERE id = ? AND status = 'available'`,
+    [nowIso(), actor.id || '', actor.full_name || actor.username || '', orderId, reward.id],
+  );
+  const updated = tx.queryOne('SELECT * FROM git_cards_rewards WHERE id = ?', [reward.id]);
+  if (!updated || updated.status !== 'used') throwHttp('Esta recompensa ya fue canjeada.', 409);
+  insertEvent(tx, {
+    customer_id: reward.customer_id,
+    restaurant_id: reward.restaurant_id,
+    cycle_id: reward.cycle_id,
+    kind: 'reward_redeemed',
+    detail: `Descuento aplicado al cobro: ${reward.title}`,
+    order_id: orderId,
+    actor_id: actor.id || '',
+    actor_name: actor.full_name || actor.username || '',
+  });
+  return updated;
+}
+
+function applyDiscountRewardToOrder(rewardId, orderId, actor = {}) {
+  ensureGitCardsTables();
+  return withTransaction((tx) => {
+    const reward = loadRewardOrThrow(rewardId, tx);
+    if (reward.reward_kind !== 'discount') throwHttp('Esta recompensa no es un descuento.');
+    const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!order) throwHttp('Pedido no encontrado', 404);
+    if (String(order.status || '') === 'cancelled') throwHttp('No se puede aplicar el descuento a un pedido anulado.');
+    if (String(order.payment_status || '') === 'paid') throwHttp('El descuento debe aplicarse antes de completar el cobro.');
+    const quote = quoteDiscountRewardForOrder(rewardId, orderId, tx);
+    const note = ` [DESCUENTO: GIT Cards ${reward.title}]`;
+    tx.run(
+      "UPDATE orders SET discount = ?, total = ?, notes = COALESCE(notes, '') || ?, updated_at = datetime('now') WHERE id = ?",
+      [quote.amount, quote.new_total, note, orderId],
+    );
+    const used = consumeDiscountRewardTx(tx, rewardId, orderId, actor);
+    return { reward: used, discount: quote.amount, order: tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]) };
+  });
 }
 
 module.exports = {
@@ -1696,4 +2717,19 @@ module.exports = {
   listEligibleCajaClients,
   previewCajaGitCustomer,
   resolveCajaGitCustomer,
+  enrollStaffCustomer,
+  listPromotions,
+  getPromotion,
+  getPromotionDetail,
+  createPromotion,
+  updatePromotion,
+  setPromotionStatus,
+  archivePromotion,
+  searchCatalogProducts,
+  previewPromotionCard,
+  quoteDiscountRewardForOrder,
+  applyDiscountRewardToOrder,
+  consumeDiscountRewardTx,
+  promotionAcceptsAdvances,
+  promotionToConfig,
 };
