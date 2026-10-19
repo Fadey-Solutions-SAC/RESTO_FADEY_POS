@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import {
   MdArrowBack, MdSettings, MdSearch, MdVisibility, MdCheck, MdClose,
   MdContentCopy, MdRedeem, MdChevronLeft, MdChevronRight,
-  MdPeople, MdAccessTime, MdPersonAdd,
+  MdPersonAdd,
 } from 'react-icons/md';
 
 const PAGE_SIZE = 10;
@@ -491,47 +491,13 @@ function statusDotClass(status) {
   return 'bg-slate-400';
 }
 
-function SummaryStrip({ summary, summaryError }) {
-  if (summaryError) {
-    return (
-      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-        No se pudo cargar el resumen: {summaryError}
-      </div>
-    );
-  }
-  const registered = summary ? summary.registered : '—';
-  const active = summary ? summary.active_cards : '—';
-  const inactive = summary ? summary.inactive_cards : '—';
-  const near = summary ? summary.near_complete : '—';
-  return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-sm">
-      <div className="flex items-center gap-2">
-        <span className="grid h-7 w-7 place-items-center rounded-full bg-slate-200/80 text-slate-600">
-          <MdPeople className="text-base" />
-        </span>
-        <span className="text-slate-500">Clientes</span>
-        <span className="text-base font-semibold tabular-nums text-slate-900">{registered}</span>
-      </div>
-      <span className="hidden h-5 w-px bg-slate-200 sm:block" aria-hidden="true" />
-      <div className="flex items-center gap-3">
-        <span className="text-slate-500">Estado</span>
-        <span className="tabular-nums">
-          <span className="text-slate-500">Activas </span>
-          <span className="font-semibold text-emerald-600">{active}</span>
-        </span>
-        <span className="tabular-nums">
-          <span className="text-slate-500">Inactivas </span>
-          <span className="font-semibold text-rose-600">{inactive}</span>
-        </span>
-      </div>
-      <span className="hidden h-5 w-px bg-slate-200 sm:block" aria-hidden="true" />
-      <div className="flex items-center gap-2">
-        <MdAccessTime className="text-slate-500" />
-        <span className="text-slate-500">Próximos a completar</span>
-        <span className="font-semibold tabular-nums text-slate-900">{near}</span>
-      </div>
-    </div>
-  );
+function summaryValues(summary) {
+  return {
+    registered: summary ? summary.registered : '—',
+    active: summary ? summary.active_cards : '—',
+    inactive: summary ? summary.inactive_cards : '—',
+    near: summary ? summary.near_complete : '—',
+  };
 }
 
 function ListView({
@@ -552,9 +518,14 @@ function ListView({
   onPreview,
   onOpen,
 }) {
+  const counts = summaryValues(summary);
   return (
     <div className="space-y-3">
-      <SummaryStrip summary={summary} summaryError={summaryError} />
+      {summaryError ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          No se pudo cargar el resumen: {summaryError}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
@@ -607,13 +578,27 @@ function ListView({
               <table className="w-full min-w-[860px] table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="w-[20%] py-3 pr-3">Cliente</th>
-                    <th className="w-[16%] py-3 pr-3">Contacto</th>
-                    <th className="w-[16%] py-3 pr-3">Estado</th>
-                    <th className="w-[12%] py-3 pr-3">Progreso</th>
-                    <th className="w-[10%] py-3 pr-3 text-center">Pendientes</th>
-                    <th className="w-[18%] py-3 pr-3">Última actividad</th>
-                    <th className="w-[8%] py-3 pr-1 text-right">Acciones</th>
+                    <th className="w-[20%] py-3 pr-3 align-bottom">
+                      <span className="block">Cliente</span>
+                      <span className="mt-1 block text-lg font-bold normal-case tabular-nums tracking-normal text-slate-900">{counts.registered}</span>
+                    </th>
+                    <th className="w-[16%] py-3 pr-3 align-bottom">Contacto</th>
+                    <th className="w-[16%] py-3 pr-3 align-bottom">
+                      <span className="block">Estado</span>
+                      <span className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs font-semibold normal-case tracking-normal">
+                        <span className="text-emerald-600">Activas <span className="tabular-nums">{counts.active}</span></span>
+                        <span className="text-rose-600">Inactivas <span className="tabular-nums">{counts.inactive}</span></span>
+                      </span>
+                    </th>
+                    <th className="w-[12%] py-3 pr-3 align-bottom">
+                      <span className="block">Progreso</span>
+                      <span className="mt-1 block text-xs font-semibold normal-case tracking-normal text-slate-800">
+                        <span className="tabular-nums">{counts.near}</span> próximos
+                      </span>
+                    </th>
+                    <th className="w-[10%] py-3 pr-3 text-center align-bottom">Pendientes</th>
+                    <th className="w-[18%] py-3 pr-3 align-bottom">Última actividad</th>
+                    <th className="w-[8%] py-3 pr-1 text-right align-bottom">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -662,6 +647,23 @@ function ListView({
             </div>
 
             <div className="space-y-3 md:hidden">
+              <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Cliente</p>
+                  <p className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">{counts.registered}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Estado</p>
+                  <p className="mt-0.5 text-xs font-semibold">
+                    <span className="text-emerald-600">Activas {counts.active}</span>
+                    <span className="ml-2 text-rose-600">Inactivas {counts.inactive}</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Progreso</p>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-800">{counts.near} próximos</p>
+                </div>
+              </div>
               {members.length ? members.map((row) => (
                 <article key={row.customer_id} className="rounded-xl border border-slate-200 p-3">
                   <div className="flex items-start justify-between gap-2">
