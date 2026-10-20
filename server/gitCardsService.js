@@ -1317,6 +1317,31 @@ function deriveStatus({ cycle, progress, rewards }) {
   return { status, flags };
 }
 
+function moneyLabel(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return '';
+  return `S/ ${n.toFixed(2)}`;
+}
+
+function cardTerms(source) {
+  const src = source && typeof source === 'object' ? source : {};
+  const lines = [];
+  const push = (label, value) => {
+    const text = String(value || '').trim();
+    if (text) lines.push({ label, value: text });
+  };
+  if (Number(src.min_spend) > 0) push('Consumo mínimo', moneyLabel(src.min_spend));
+  if (Number(src.goal) > 0) push('Avances para completar', String(src.goal));
+  push('Encuesta', src.survey_required ? 'Obligatoria' : 'No exigida');
+  if (Number(src.cycle_valid_days) > 0) push('Vigencia de la tarjeta', `${src.cycle_valid_days} días`);
+  if (Number(src.reward_valid_days) > 0) push('Vigencia de la recompensa', `${src.reward_valid_days} días`);
+  push('Recompensa', src.reward_title || src.product_name || src.other_name || '');
+  push('Detalle', src.reward_description || src.other_description || '');
+  push('Condiciones', src.discount_conditions || src.other_conditions || '');
+  push('Al completar la meta', src.auto_reset === false || src.auto_reset === 0 ? 'El ciclo no se reinicia' : 'El ciclo se reinicia');
+  return lines;
+}
+
 function publicCardPayload(customer, extra = {}) {
   const config = getConfig();
   const cycle = extra.cycle || getActiveCycle(customer.id) || queryOne(
@@ -1339,6 +1364,7 @@ function publicCardPayload(customer, extra = {}) {
     info_text: cycle?.info_text || promo?.info_text || config.info_text,
     reward_title: cycle?.reward_title || promo?.reward_title || config.reward_title,
     reward_description: promo?.reward_description || config.reward_description,
+    terms: cardTerms(promo || config),
     card_style: styleKey,
     promotion_id: cycle?.promotion_id || promo?.id || '',
     colors: {

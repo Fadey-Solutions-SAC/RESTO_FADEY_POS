@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { resolveMediaUrl } from '../utils/api';
 
 const STATUS_LABEL = {
@@ -29,6 +30,7 @@ function cardModel(card) {
     reward: card?.reward_title || '',
     detail: card?.reward_description || '',
     info: card?.info_text || '',
+    terms: Array.isArray(card?.terms) ? card.terms.filter((row) => row?.label && row?.value) : [],
     logo: card?.logo_url ? resolveMediaUrl(card.logo_url) : '',
     status: STATUS_LABEL[card?.status] || card?.status || 'GIT Card',
     goal: Math.max(goal, 1),
@@ -467,49 +469,104 @@ function slotTone(kind, accent) {
   return { background: 'transparent', color: accent, boxShadow: `inset 0 0 0 1.5px ${accent}` };
 }
 
-function BackgroundCard({ theme, model, backgroundOnly, compact }) {
+function CardFront({ theme, model, compact }) {
+  const title = model.program || model.reward;
   return (
     <Frame style={{ background: theme.bg, color: theme.text }}>
       <div className="absolute inset-0" style={theme.art} />
-      {backgroundOnly ? null : (
-        <div className={`relative flex h-full min-h-0 flex-col justify-between gap-2 ${compact ? 'p-3' : 'p-4'} text-[13px] leading-tight`}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              {model.program ? <p className="truncate text-[10px] font-medium uppercase tracking-[0.14em] opacity-70">{model.program}</p> : null}
-              {model.restaurant ? <p className="truncate text-sm font-semibold">{model.restaurant}</p> : null}
-              {model.info ? <p className="mt-1 line-clamp-2 text-xs opacity-80">{model.info}</p> : null}
-              {model.name ? (
-                <p className="mt-1 truncate text-xs font-semibold">
-                  {model.name}{model.doc ? ` · ${model.doc}` : ''}
-                </p>
-              ) : null}
-            </div>
-            {model.logo ? <img src={model.logo} alt="" className="h-8 w-8 shrink-0 rounded-full bg-white object-cover" /> : null}
-          </div>
-          <div className="flex flex-wrap gap-1">
+      <div className={`relative flex h-full min-h-0 flex-col ${compact ? 'p-3' : 'p-4'}`}>
+        <div className="flex items-start justify-between gap-3">
+          <p className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.22em] opacity-80">
+            {model.restaurant || 'GIT Card'}
+          </p>
+          {model.logo ? (
+            <img src={model.logo} alt="" className="h-12 w-12 shrink-0 rounded-full bg-black object-cover shadow-md" />
+          ) : null}
+        </div>
+        <div className="mt-3 min-w-0">
+          {title ? <p className="line-clamp-2 text-2xl font-black uppercase leading-none tracking-wide">{title}</p> : null}
+          {model.info ? <p className="mt-2 line-clamp-2 text-sm opacity-90">{model.info}</p> : null}
+        </div>
+        <div className="mt-auto flex items-end justify-between gap-3 pt-3">
+          <div className="flex min-w-0 flex-wrap gap-1.5">
             {model.slots.map((kind, i) => (
               <span
                 key={`${kind}-${i}`}
-                className="grid h-6 w-6 place-items-center rounded-full text-[10px] font-bold"
+                className="grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold"
                 style={slotTone(kind, theme.text)}
               >
                 {i + 1}
               </span>
             ))}
           </div>
-          <div className="grid grid-cols-2 items-end gap-3">
-            <div className="min-w-0">
-              <p className="text-[10px] opacity-70">Progreso</p>
-              <p className="text-sm font-semibold">{model.confirmed} / {model.goal}</p>
-            </div>
-            <div className="min-w-0 text-right">
-              <p className="text-[10px] opacity-70">Recompensa</p>
-              <p className="line-clamp-2 text-sm font-semibold">{model.reward}</p>
-            </div>
+          <div className="shrink-0 text-right">
+            <p className="text-[10px] font-medium uppercase tracking-[0.16em] opacity-70">Progreso</p>
+            <p className="text-lg font-black leading-none">{model.confirmed} DE {model.goal}</p>
           </div>
         </div>
-      )}
+      </div>
     </Frame>
+  );
+}
+
+function CardBack({ theme, model }) {
+  return (
+    <Frame style={{ background: theme.bg, color: theme.text }}>
+      <div className="absolute inset-0" style={theme.art} />
+      <div className="relative flex h-full min-h-0 flex-col p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em]">Condiciones</p>
+          {model.logo ? <img src={model.logo} alt="" className="h-8 w-8 rounded-full bg-black object-cover" /> : null}
+        </div>
+        <div className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1 text-xs">
+          {model.terms.length ? model.terms.map((row) => (
+            <p key={row.label} className="leading-snug">
+              <span className="opacity-70">{row.label}: </span>
+              <span className="font-semibold">{row.value}</span>
+            </p>
+          )) : (
+            <p className="opacity-80">{model.detail || model.reward || 'Sin condiciones adicionales.'}</p>
+          )}
+          {model.name ? (
+            <p className="pt-1 leading-snug">
+              <span className="opacity-70">Titular: </span>
+              <span className="font-semibold">{model.name}{model.doc ? ` · ${model.doc}` : ''}</span>
+            </p>
+          ) : null}
+        </div>
+        <p className="mt-2 text-[10px] uppercase tracking-[0.14em] opacity-60">Toca para volver</p>
+      </div>
+    </Frame>
+  );
+}
+
+function FlipCard({ front, back }) {
+  const [flipped, setFlipped] = useState(false);
+  return (
+    <div style={{ perspective: '1200px' }}>
+      <button
+        type="button"
+        onClick={() => setFlipped((value) => !value)}
+        className="block w-full text-left"
+        aria-label={flipped ? 'Ver el frente de la GIT Card' : 'Ver las condiciones de la GIT Card'}
+      >
+        <div
+          className="relative w-full transition-transform duration-500"
+          style={{
+            transformStyle: 'preserve-3d',
+            transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+          }}
+        >
+          <div style={{ backfaceVisibility: 'hidden' }}>{front}</div>
+          <div
+            className="absolute inset-0"
+            style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+          >
+            {back}
+          </div>
+        </div>
+      </button>
+    </div>
   );
 }
 
@@ -528,11 +585,22 @@ export default function GitCardVisual({ card, compact = false, backgroundOnly = 
   const styleId = String(card.card_style || '');
   const background = BACKGROUNDS[styleId];
   const Themed = RENDERERS[styleId];
-  return (
-    background
-      ? <BackgroundCard theme={background} model={model} backgroundOnly={backgroundOnly} compact={compact} />
-      : Themed
-        ? <Themed model={model} />
-        : <ClassicCard card={card} compact={compact} model={model} />
-  );
+  if (backgroundOnly && background) {
+    return (
+      <Frame style={{ background: background.bg, color: background.text }}>
+        <div className="absolute inset-0" style={background.art} />
+      </Frame>
+    );
+  }
+  const theme = background || {
+    bg: card.colors?.bg || '#111827',
+    text: card.colors?.text || '#f8fafc',
+    art: { background: card.colors?.bg || '#111827' },
+  };
+  const front = background
+    ? <CardFront theme={theme} model={model} compact={compact} />
+    : Themed
+      ? <Themed model={model} />
+      : <ClassicCard card={card} compact={compact} model={model} />;
+  return <FlipCard front={front} back={<CardBack theme={theme} model={model} />} />;
 }

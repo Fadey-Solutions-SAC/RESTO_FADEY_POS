@@ -143,6 +143,17 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
       colors: { bg: draft.card_bg || style.bg, text: draft.card_text || style.text, accent: draft.card_accent || style.accent, muted: style.muted },
       progress: { confirmed: 0, pending: 0, goal, remaining: goal },
       status: '',
+      terms: [
+        Number(draft.min_spend) > 0 ? { label: 'Consumo mínimo', value: `S/ ${Number(draft.min_spend).toFixed(2)}` } : null,
+        goal > 0 ? { label: 'Avances para completar', value: String(goal) } : null,
+        { label: 'Encuesta', value: draft.survey_required ? 'Obligatoria' : 'No exigida' },
+        Number(draft.cycle_valid_days) > 0 ? { label: 'Vigencia de la tarjeta', value: `${draft.cycle_valid_days} días` } : null,
+        Number(draft.reward_valid_days) > 0 ? { label: 'Vigencia de la recompensa', value: `${draft.reward_valid_days} días` } : null,
+        (draft.reward_title || benefit) ? { label: 'Recompensa', value: draft.reward_title || benefit } : null,
+        (draft.reward_description || draft.other_description) ? { label: 'Detalle', value: draft.reward_description || draft.other_description } : null,
+        (draft.discount_conditions || draft.other_conditions) ? { label: 'Condiciones', value: draft.discount_conditions || draft.other_conditions } : null,
+        { label: 'Al completar la meta', value: draft.auto_reset === false ? 'El ciclo no se reinicia' : 'El ciclo se reinicia' },
+      ].filter(Boolean),
     };
   }, [draft, selectedStyle, data.restaurant_name, data.logo_url]);
 
