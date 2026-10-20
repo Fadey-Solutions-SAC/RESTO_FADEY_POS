@@ -5,13 +5,38 @@ const { queryAll, queryOne, runSql, withTransaction, logAudit } = require('./dat
 
 const SETTINGS_KEY = 'git_cards';
 const CARD_STYLES = {
-  blue: { bg: '#1e4b8e', text: '#f8fafc', accent: '#93c5fd', muted: '#bfdbfe', label: 'Azul' },
-  green: { bg: '#166534', text: '#ecfdf5', accent: '#86efac', muted: '#6ee7b7', label: 'Verde' },
-  wine: { bg: '#4a1c2a', text: '#fde8e8', accent: '#f5c6aa', muted: '#d4a5a5', label: 'Vino' },
-  cream: { bg: '#f5efe3', text: '#3f2e1f', accent: '#b45309', muted: '#8b7355', label: 'Crema' },
-  forest: { bg: '#14332a', text: '#ecfdf5', accent: '#86efac', muted: '#6b9b88', label: 'Bosque' },
-  night: { bg: '#111827', text: '#f8fafc', accent: '#f5d76e', muted: '#94a3b8', label: 'Noche' },
+  vinyl: { bg: '#0c0c0c', text: '#f6ead2', accent: '#f5b942', muted: '#7dd3fc', label: 'Vinilo', family: 'vinyl' },
+  brew: { bg: '#2a1a10', text: '#f3e6c8', accent: '#f5c16c', muted: '#c4a574', label: 'Cervecería', family: 'brew' },
+  ink: { bg: '#f4efe6', text: '#3a2a22', accent: '#1e3a5f', muted: '#6b5344', label: 'Tinta', family: 'ink' },
+  sakura: { bg: '#e7d3a1', text: '#3f2a1c', accent: '#e7a0b4', muted: '#8a6a4a', label: 'Sakura', family: 'sakura' },
+  gauge: { bg: '#14080a', text: '#fecaca', accent: '#ff2d2d', muted: '#7f1d1d', label: 'Motor', family: 'gauge' },
+  copper: { bg: '#1a120c', text: '#f3d2b3', accent: '#c9845a', muted: '#8a6248', label: 'Cobre', family: 'copper' },
+  prestige: { bg: '#d7dde6', text: '#1f2937', accent: '#94a3b8', muted: '#64748b', label: 'Prestigio', family: 'prestige' },
+  neon: { bg: '#070816', text: '#e0f2fe', accent: '#22d3ee', muted: '#f472b6', label: 'Neón', family: 'neon' },
+  pearl: { bg: '#f4f1f6', text: '#4b5563', accent: '#c4b5fd', muted: '#9ca3af', label: 'Nácar', family: 'pearl' },
+  steel: { bg: '#c5c8ce', text: '#1f2937', accent: '#f8fafc', muted: '#64748b', label: 'Acero', family: 'steel' },
+  plata: { bg: '#d5d8de', text: '#111827', accent: '#f8fafc', muted: '#6b7280', label: 'Plata', family: 'plata' },
+  marfil: { bg: '#f7f7f8', text: '#374151', accent: '#ffffff', muted: '#9ca3af', label: 'Marfil', family: 'marfil' },
+  botanica: { bg: '#0f7a4a', text: '#ecfdf5', accent: '#bbf7d0', muted: '#166534', label: 'Botánica', family: 'botanica' },
+  gourmet: { bg: '#0c0c0c', text: '#f8f1e3', accent: '#e4c27a', muted: '#a8a29e', label: 'Gourmet', family: 'gourmet' },
+  oro: { bg: '#f6f1e7', text: '#3f3428', accent: '#d4a24c', muted: '#a89070', label: 'Oro', family: 'oro' },
+  olas: { bg: '#1578d4', text: '#f0f9ff', accent: '#e0f2fe', muted: '#075985', label: 'Olas', family: 'olas' },
+  blue: { bg: '#1e4b8e', text: '#f8fafc', accent: '#93c5fd', muted: '#bfdbfe', label: 'Azul', family: 'classic' },
+  green: { bg: '#166534', text: '#ecfdf5', accent: '#86efac', muted: '#6ee7b7', label: 'Verde', family: 'classic' },
+  wine: { bg: '#4a1c2a', text: '#fde8e8', accent: '#f5c6aa', muted: '#d4a5a5', label: 'Vino', family: 'classic' },
+  cream: { bg: '#f5efe3', text: '#3f2e1f', accent: '#b45309', muted: '#8b7355', label: 'Crema', family: 'classic' },
+  forest: { bg: '#14332a', text: '#ecfdf5', accent: '#86efac', muted: '#6b9b88', label: 'Bosque', family: 'classic' },
+  night: { bg: '#111827', text: '#f8fafc', accent: '#f5d76e', muted: '#94a3b8', label: 'Noche', family: 'classic' },
 };
+
+function designStyleIds() {
+  return Object.keys(CARD_STYLES).filter((id) => CARD_STYLES[id].family !== 'classic');
+}
+
+function randomDesignStyleId() {
+  const ids = designStyleIds();
+  return ids[Math.floor(Math.random() * ids.length)] || 'gourmet';
+}
 
 const DEFAULT_CONFIG = {
   enabled: true,
@@ -2255,7 +2280,9 @@ function resolveActivationStatus(status, startAt, endAt) {
 
 function normalizePromotionInput(raw = {}, previous = {}) {
   const src = { ...previous, ...raw };
-  const styleKey = CARD_STYLES[src.card_style] ? src.card_style : (previous.card_style || 'blue');
+  const styleKey = CARD_STYLES[src.card_style]
+    ? src.card_style
+    : (previous.card_style && CARD_STYLES[previous.card_style] ? previous.card_style : randomDesignStyleId());
   const style = CARD_STYLES[styleKey];
   const restaurant = currentRestaurant();
   const kind = ['product', 'discount', 'other'].includes(src.reward_kind) ? src.reward_kind : 'other';

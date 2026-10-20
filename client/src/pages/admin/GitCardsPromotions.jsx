@@ -180,10 +180,15 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
   const setField = (key, value) => setDraft((prev) => ({ ...prev, [key]: value }));
 
   const openNew = () => {
+    const pool = (data.styles || []).filter((s) => s.family && s.family !== 'classic');
+    const pick = pool[Math.floor(Math.random() * pool.length)] || null;
     setEditingId('');
     setDraft({
       ...EMPTY_PROMO,
-      card_style: 'blue',
+      card_style: pick?.id || 'gourmet',
+      card_bg: pick?.bg || '',
+      card_text: pick?.text || '',
+      card_accent: pick?.accent || '',
       start_at: new Date().toISOString().slice(0, 10),
     });
     setStep(1);
@@ -595,17 +600,30 @@ function Wizard({
       {step === 4 ? (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.9fr)]">
           <Section>
-            <Field label="Color de la tarjeta" wide>
-              <div className="flex flex-wrap gap-2">
-                {styles.filter((s) => ['blue', 'green', 'wine', 'cream', 'forest'].includes(s.id)).map((s) => (
+            <Field label="Diseño de la tarjeta" wide>
+              <p className="mb-2 text-xs text-slate-500">Cada promoción nueva recibe un diseño al azar. Puede elegir otro.</p>
+              <div className="grid max-h-[28rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
+                {styles.filter((s) => s.family !== 'classic' || s.id === draft.card_style).map((s) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => setDraft((prev) => ({ ...prev, card_style: s.id, card_bg: s.bg, card_text: s.text, card_accent: s.accent }))}
-                    className={`rounded-xl px-3 py-2 text-sm font-semibold ${draft.card_style === s.id ? 'ring-2 ring-blue-400' : ''}`}
-                    style={{ background: s.bg, color: s.text }}
+                    className={`rounded-xl p-1 text-left ${draft.card_style === s.id ? 'ring-2 ring-blue-500' : 'ring-1 ring-slate-200'}`}
                   >
-                    {s.label || s.id}
+                    <GitCardVisual
+                      compact
+                      card={{
+                        program_name: 'GIT Cards',
+                        restaurant_name: 'Restaurante',
+                        card_style: s.id,
+                        colors: { bg: s.bg, text: s.text, accent: s.accent, muted: s.muted },
+                        customer: { name: 'Cliente', doc_masked: '***321' },
+                        progress: { confirmed: 2, pending: 1, goal: 6, remaining: 3 },
+                        reward_title: 'Recompensa',
+                        status: 'active',
+                      }}
+                    />
+                    <span className="mt-1 block px-1 text-[11px] font-semibold text-slate-700">{s.label || s.id}</span>
                   </button>
                 ))}
               </div>
