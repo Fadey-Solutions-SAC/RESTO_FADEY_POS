@@ -182,18 +182,22 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
 
   useEffect(() => {
     if (mode !== 'wizard' || draft.reward_kind !== 'product') return undefined;
+    let alive = true;
     const handle = setTimeout(async () => {
       setSearching(true);
       try {
         const res = await api.get(`/git-cards/promotions/products?q=${encodeURIComponent(productQ)}`);
-        setProducts(res.rows || []);
+        if (alive) setProducts(res.rows || []);
       } catch (_) {
-        setProducts([]);
+        if (alive) setProducts([]);
       } finally {
-        setSearching(false);
+        if (alive) setSearching(false);
       }
     }, productQ.trim() ? 180 : 0);
-    return () => clearTimeout(handle);
+    return () => {
+      alive = false;
+      clearTimeout(handle);
+    };
   }, [mode, draft.reward_kind, productQ]);
 
   const setField = (key, value) => setDraft((prev) => ({ ...prev, [key]: value }));
@@ -528,11 +532,23 @@ function Wizard({
               <Field label="Buscar producto del catálogo" wide>
                 <div className="relative">
                   <MdSearch className="pointer-events-none absolute left-3 top-2.5 text-slate-400" />
-                  <input value={productQ} onChange={(e) => setProductQ(e.target.value)} className="input pl-9" placeholder="Nombre del producto" />
+                  <input
+                    value={productQ}
+                    onChange={(e) => setProductQ(e.target.value)}
+                    className="input search-input"
+                    placeholder="Nombre, categoría o presentación"
+                    spellCheck={false}
+                    autoComplete="off"
+                    autoCorrect="off"
+                  />
                 </div>
               </Field>
               <div className="sm:col-span-2 max-h-52 overflow-auto rounded-xl border border-slate-100">
-                {searching ? <p className="p-3 text-sm text-slate-500">Buscando…</p> : products.map((p) => (
+                {searching ? <p className="p-3 text-sm text-slate-500">Buscando…</p> : !products.length ? (
+                  <p className="p-3 text-sm text-slate-500">
+                    {productQ.trim() ? 'Ningún producto coincide con la búsqueda.' : 'No hay productos activos en el catálogo.'}
+                  </p>
+                ) : products.map((p) => (
                   <button
                     key={p.id}
                     type="button"
@@ -710,7 +726,7 @@ function Wizard({
           ) : null}
         </div>
       </div>
-      <style>{`.input{width:100%;height:2.5rem;border-radius:0.75rem;border:1px solid #e2e8f0;padding:0 0.75rem;font-size:0.875rem}textarea.input{height:auto;padding:0.75rem}select.input{background:#fff}`}</style>
+      <style>{`.input{width:100%;height:2.5rem;border-radius:0.75rem;border:1px solid #e2e8f0;padding:0 0.75rem;font-size:0.875rem;background:#fff}textarea.input{height:auto;padding:0.75rem}select.input{background:#fff}.input.search-input{padding-left:2.25rem}`}</style>
     </div>
   );
 }

@@ -2614,24 +2614,42 @@ function archivePromotion(id, actor = {}) {
   return { archived: true, id };
 }
 
+function foldSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
 function searchCatalogProducts(q = '') {
-  const needle = String(q || '').trim();
-  const like = `%${needle}%`;
+  const tokens = foldSearch(q).split(/\s+/).filter(Boolean);
   const rows = queryAll(
     `SELECT p.id, p.name, p.price, p.stock, p.process_type, p.is_active, c.name as category_name
      FROM products p
      LEFT JOIN categories c ON c.id = p.category_id
      WHERE IFNULL(p.is_active, 1) = 1
-       AND (? = '' OR lower(p.name) LIKE lower(?))
-     ORDER BY p.name
-     LIMIT 25`,
-    [needle, like],
+     ORDER BY p.name`,
   ) || [];
-  return rows.map((p) => {
-    const variants = queryAll(
-      'SELECT id, name, price_modifier FROM product_variants WHERE product_id = ? AND IFNULL(is_active, 1) = 1',
-      [p.id],
-    ) || [];
+  const variants = queryAll(
+    'SELECT id, product_id, name, price_modifier FROM product_variants WHERE IFNULL(is_active, 1) = 1',
+  ) || [];
+  const variantsByProduct = new Map();
+  variants.forEach((variant) => {
+    const list = variantsByProduct.get(variant.product_id) || [];
+    list.push(variant);
+    variantsByProduct.set(variant.product_id, list);
+  });
+  const matched = rows.filter((product) => {
+    if (!tokens.length) return true;
+    const haystack = foldSearch([
+      product.name,
+      product.category_name,
+      ...(variantsByProduct.get(product.id) || []).map((variant) => variant.name),
+    ].join(' '));
+    return tokens.every((token) => haystack.includes(token));
+  }).slice(0, 25);
+  return matched.map((p) => {
+    const productVariants = variantsByProduct.get(p.id) || [];
     let stock = null;
     let inventory_controlled = false;
     if (String(p.process_type || '') === 'non_transformed') {
@@ -2647,7 +2665,7 @@ function searchCatalogProducts(q = '') {
       name: p.name,
       price: Number(p.price || 0),
       category_name: p.category_name || '',
-      variants,
+      variants: productVariants,
       inventory_controlled,
       stock,
     };
