@@ -476,11 +476,11 @@ function CardFront({ theme, model, compact }) {
       <div className="absolute inset-0" style={theme.art} />
       <div className={`relative flex h-full min-h-0 flex-col ${compact ? 'p-3' : 'p-4'}`}>
         <div className="flex items-start justify-between gap-3">
-          <p className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.22em] opacity-80">
+          <p className="min-w-0 truncate text-sm font-semibold uppercase tracking-[0.16em] opacity-90">
             {model.restaurant || 'GIT Card'}
           </p>
           {model.logo ? (
-            <img src={model.logo} alt="" className="h-12 w-12 shrink-0 rounded-full bg-black object-cover shadow-md" />
+            <img src={model.logo} alt="" className="h-16 w-16 shrink-0 rounded-full bg-black object-cover shadow-md" />
           ) : null}
         </div>
         <div className="mt-3 min-w-0">
