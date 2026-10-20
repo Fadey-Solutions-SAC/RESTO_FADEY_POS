@@ -468,46 +468,43 @@ function slotTone(kind, accent) {
 }
 
 function BackgroundCard({ theme, model, backgroundOnly, compact }) {
-  const pad = compact ? 'p-3' : 'p-5';
   return (
     <Frame style={{ background: theme.bg, color: theme.text }}>
       <div className="absolute inset-0" style={theme.art} />
       {backgroundOnly ? null : (
-        <div className={`relative flex h-full flex-col ${pad}`}>
-          <div className="flex items-start justify-between gap-3">
+        <div className={`relative flex h-full min-h-0 flex-col justify-between gap-2 ${compact ? 'p-3' : 'p-4'} text-[13px] leading-tight`}>
+          <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              {model.program ? <p className="truncate text-[11px] uppercase tracking-[0.16em] opacity-80">{model.program}</p> : null}
-              {model.restaurant ? <p className="truncate text-base font-semibold">{model.restaurant}</p> : null}
+              {model.program ? <p className="truncate text-[10px] font-medium uppercase tracking-[0.14em] opacity-70">{model.program}</p> : null}
+              {model.restaurant ? <p className="truncate text-sm font-semibold">{model.restaurant}</p> : null}
+              {model.info ? <p className="mt-1 line-clamp-2 text-xs opacity-80">{model.info}</p> : null}
+              {model.name ? (
+                <p className="mt-1 truncate text-xs font-semibold">
+                  {model.name}{model.doc ? ` · ${model.doc}` : ''}
+                </p>
+              ) : null}
             </div>
-            {model.logo ? <img src={model.logo} alt="" className="h-9 w-9 shrink-0 rounded-full bg-white object-cover" /> : null}
+            {model.logo ? <img src={model.logo} alt="" className="h-8 w-8 shrink-0 rounded-full bg-white object-cover" /> : null}
           </div>
-          {model.info ? <p className="mt-2 line-clamp-2 text-xs leading-snug opacity-90">{model.info}</p> : null}
-          {model.name ? (
-            <div className="mt-3">
-              <p className="truncate text-sm font-semibold">{model.name}</p>
-              {model.doc ? <p className="text-[11px] opacity-75">Doc. {model.doc}</p> : null}
-            </div>
-          ) : null}
-          <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
+          <div className="flex flex-wrap gap-1">
             {model.slots.map((kind, i) => (
               <span
                 key={`${kind}-${i}`}
-                className="grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold"
+                className="grid h-6 w-6 place-items-center rounded-full text-[10px] font-bold"
                 style={slotTone(kind, theme.text)}
               >
                 {i + 1}
               </span>
             ))}
           </div>
-          <div className="mt-3 flex items-end justify-between gap-3 text-sm">
-            <div>
-              <p className="text-[11px] opacity-70">Progreso</p>
-              <p className="font-semibold">{model.confirmed} / {model.goal}</p>
+          <div className="grid grid-cols-2 items-end gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] opacity-70">Progreso</p>
+              <p className="text-sm font-semibold">{model.confirmed} / {model.goal}</p>
             </div>
             <div className="min-w-0 text-right">
-              <p className="text-[11px] opacity-70">Recompensa</p>
-              <p className="font-semibold leading-tight">{model.reward}</p>
-              {model.detail ? <p className="line-clamp-2 text-[11px] opacity-80">{model.detail}</p> : null}
+              <p className="text-[10px] opacity-70">Recompensa</p>
+              <p className="line-clamp-2 text-sm font-semibold">{model.reward}</p>
             </div>
           </div>
         </div>
@@ -532,16 +529,10 @@ export default function GitCardVisual({ card, compact = false, backgroundOnly = 
   const background = BACKGROUNDS[styleId];
   const Themed = RENDERERS[styleId];
   return (
-    <div className={compact ? 'text-[12px]' : ''}>
-      <style>{`
-        .git-card { container-type: inline-size; font-size: 3.15cqw; line-height: 1.2; }
-        .git-card .text-lg { font-size: 1.45em; }
-        .git-card .text-base { font-size: 1.2em; }
-        .git-card .text-sm { font-size: 1.05em; }
-        .git-card .text-xs { font-size: 0.92em; }
-        .git-card .text-xl { font-size: 1.7em; }
-      `}</style>
-      {background ? <BackgroundCard theme={background} model={model} backgroundOnly={backgroundOnly} compact={compact} /> : Themed ? <Themed model={model} /> : <ClassicCard card={card} compact={compact} model={model} />}
-    </div>
+    background
+      ? <BackgroundCard theme={background} model={model} backgroundOnly={backgroundOnly} compact={compact} />
+      : Themed
+        ? <Themed model={model} />
+        : <ClassicCard card={card} compact={compact} model={model} />
   );
 }

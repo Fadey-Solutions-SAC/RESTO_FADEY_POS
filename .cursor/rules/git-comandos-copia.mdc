@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Comandos Git para el usuario
 
-**Obligatorio:** al final de **cualquier** respuesta en la que el asistente haya **modificado, creado o borrado** archivos dentro de este repositorio (código, reglas, config, etc.), incluir los pasos para subir todo a GitHub, **aunque el usuario no lo pida en ese mensaje**.
+**Obligatorio:** después de **modificar, crear o borrar** archivos dentro de este repositorio, el asistente debe **hacer el commit y el `git push` en ese mismo turno**, sin esperar a que el usuario lo pida. Luego, al final de la respuesta, incluir igual los pasos para subir todo a GitHub.
 
 También aplicar cuando el usuario pida explícitamente subir cambios, `git push`, actualizar el repo, o similar.
 
