@@ -29,6 +29,7 @@ function cardModel(card) {
     doc: card?.customer?.doc_masked || '',
     reward: card?.reward_title || '',
     detail: card?.reward_description || '',
+    summary: card?.description || '',
     info: card?.info_text || '',
     terms: Array.isArray(card?.terms) ? card.terms.filter((row) => row?.label && row?.value) : [],
     logo: card?.logo_url ? resolveMediaUrl(card.logo_url) : '',
@@ -469,10 +470,17 @@ function slotTone(kind, accent) {
   return { background: 'transparent', color: accent, boxShadow: `inset 0 0 0 1.5px ${accent}` };
 }
 
+function sameText(a, b) {
+  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+}
+
 function CardFront({ theme, model, compact }) {
   const title = model.program || model.reward;
-  const reward = model.reward && model.reward.trim().toLowerCase() !== String(title || '').trim().toLowerCase()
-    ? model.reward
+  const reward = model.reward && !sameText(model.reward, title) ? model.reward : '';
+  const info = model.info || (!sameText(model.summary, title) ? model.summary : '');
+  const summary = model.summary && !sameText(model.summary, info) && !sameText(model.summary, title) ? model.summary : '';
+  const detail = model.detail && !sameText(model.detail, info) && !sameText(model.detail, summary) && !sameText(model.detail, reward)
+    ? model.detail
     : '';
   return (
     <Frame style={{ background: theme.bg, color: theme.text }}>
@@ -488,13 +496,15 @@ function CardFront({ theme, model, compact }) {
         </div>
         <div className="mt-3 min-w-0">
           {title ? <p className="line-clamp-2 text-2xl font-black uppercase leading-none tracking-wide">{title}</p> : null}
-          {model.info ? <p className="mt-2 line-clamp-2 text-sm opacity-90">{model.info}</p> : null}
+          {info ? <p className="mt-2 line-clamp-2 text-sm opacity-90">{info}</p> : null}
+          {summary ? <p className="mt-1 line-clamp-3 text-sm leading-snug opacity-90">{summary}</p> : null}
           {reward ? (
             <div className="mt-3 min-w-0">
               <p className="text-[10px] font-medium uppercase tracking-[0.16em] opacity-70">Recompensa</p>
               <p className="line-clamp-2 text-base font-bold uppercase leading-tight">{reward}</p>
             </div>
           ) : null}
+          {detail ? <p className="mt-1 line-clamp-3 text-xs leading-snug opacity-90">{detail}</p> : null}
         </div>
         <div className="mt-auto flex items-end justify-between gap-3 pt-3">
           <div className="flex min-w-0 flex-wrap gap-1.5">

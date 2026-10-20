@@ -1362,6 +1362,7 @@ function publicCardPayload(customer, extra = {}) {
     restaurant_name: promo?.restaurant_name || config.restaurant_name,
     logo_url: promo?.logo_url || config.logo_url,
     info_text: promo?.info_text || cycle?.info_text || config.info_text,
+    description: promo?.description || '',
     reward_title: (promo?.reward_kind === 'product'
       ? [promo.product_name || promo.reward_title, promo.variant_name].filter(Boolean).join(' · ')
       : '') || promo?.reward_title || cycle?.reward_title || config.reward_title,
