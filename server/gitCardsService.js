@@ -29,8 +29,10 @@ const CARD_STYLES = {
   night: { bg: '#111827', text: '#f8fafc', accent: '#f5d76e', muted: '#94a3b8', label: 'Noche', family: 'classic' },
 };
 
+const RETIRED_STYLE_IDS = new Set(['vinyl', 'brew', 'ink', 'sakura', 'gauge', 'copper']);
+
 function designStyleIds() {
-  return Object.keys(CARD_STYLES).filter((id) => CARD_STYLES[id].family !== 'classic');
+  return Object.keys(CARD_STYLES).filter((id) => CARD_STYLES[id].family !== 'classic' && !RETIRED_STYLE_IDS.has(id));
 }
 
 function randomDesignStyleId() {
@@ -1921,7 +1923,9 @@ function summaryCount() {
 }
 
 function cardStyles() {
-  return Object.entries(CARD_STYLES).map(([id, colors]) => ({ id, ...colors }));
+  return Object.entries(CARD_STYLES)
+    .filter(([id]) => !RETIRED_STYLE_IDS.has(id))
+    .map(([id, colors]) => ({ id, ...colors }));
 }
 
 function cycleIsCajaEligible(cycle) {

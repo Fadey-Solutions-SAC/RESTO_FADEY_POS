@@ -27,6 +27,7 @@ function cardModel(card) {
     name: card?.customer?.name || 'Cliente',
     doc: card?.customer?.doc_masked || '',
     reward: card?.reward_title || 'Recompensa',
+    detail: card?.reward_description || '',
     info: card?.info_text || '',
     logo: card?.logo_url ? resolveMediaUrl(card.logo_url) : '',
     status: STATUS_LABEL[card?.status] || card?.status || 'GIT Card',
@@ -395,204 +396,91 @@ function CopperCard({ model }) {
   );
 }
 
-function PrestigeCard({ model }) {
-  return (
-    <Frame style={{
-      background: 'linear-gradient(120deg, #9aa3b2, #f8fafc 35%, #6b7280 52%, #e5e7eb 70%, #94a3b8)',
-      color: '#1f2937',
-    }}
-    >
-      <div className="absolute inset-0 rounded-[1.15rem]" style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.65), inset 0 0 18px rgba(255,255,255,0.35)' }} />
-      <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: 'linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.85) 48%, transparent 56%)' }} />
-      <div className="relative flex h-full flex-col justify-between p-4">
-        <div className="flex justify-between text-[10px] tracking-[0.22em]">
-          <span>{model.restaurant}</span>
-          <span>PRESTIGIO</span>
-        </div>
-        <div className="flex gap-1">
-          {model.slots.slice(0, 12).map((kind, i) => (
-            <span key={i} className="h-2 w-2 rounded-full" style={{ background: kind === 'empty' ? 'rgba(31,41,55,0.25)' : kind === 'pending' ? '#64748b' : '#111827' }} />
-          ))}
-        </div>
-        <div>
-          <p className="text-sm font-medium uppercase tracking-[0.14em]">{model.name}</p>
-          <p className="text-xs tracking-[0.2em]">{model.doc || `${model.confirmed} / ${model.goal}`}</p>
-          <p className="mt-1 text-[10px]">{model.reward}</p>
-        </div>
-      </div>
-    </Frame>
-  );
-}
-
-function NeonCard({ model }) {
-  return (
-    <Frame className="text-cyan-100" style={{ background: '#070814' }}>
-      <div className="absolute inset-0" style={{ background: 'radial-gradient(circle at 80% 20%, rgba(244,114,182,0.35), transparent 28%), radial-gradient(circle at 10% 80%, rgba(34,211,238,0.28), transparent 32%)' }} />
-      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 320 190" aria-hidden>
-        <path d="M20 120 H120 L160 70 H300" fill="none" stroke="#22d3ee" strokeWidth="2" />
-        <path d="M20 142 H150 L190 92 H300" fill="none" stroke="#f472b6" strokeWidth="2" />
-      </svg>
-      <div className="relative flex h-full flex-col justify-between p-4">
-        <div className="flex items-start justify-between">
-          <p className="text-[10px] tracking-[0.24em] text-pink-300">GIT CARD</p>
-          <p className="text-xs font-semibold">{model.restaurant}</p>
-        </div>
-        <p className="font-mono text-base uppercase tracking-[0.18em]">{model.name}</p>
-        <div className="flex items-end justify-between gap-2">
-          <div className="flex gap-1">
-            {model.slots.slice(0, 10).map((kind, i) => (
-              <span
-                key={i}
-                className="h-2 w-4 rounded-sm"
-                style={{
-                  background: kind === 'confirmed' ? '#22d3ee' : kind === 'pending' ? '#f472b6' : '#1f2937',
-                  boxShadow: kind === 'empty' ? 'none' : '0 0 8px currentColor',
-                }}
-              />
-            ))}
-          </div>
-          <p className="text-[10px] text-pink-200">{model.confirmed}/{model.goal} · {model.reward}</p>
-        </div>
-      </div>
-    </Frame>
-  );
-}
-
-function PearlCard({ model }) {
-  return (
-    <Frame style={{
-      background: 'radial-gradient(circle at 30% 20%, #fff 0, #f3e8ff 28%, #dbeafe 55%, #fce7f3 100%)',
-      color: '#4b5563',
-    }}
-    >
-      <div className="relative flex h-full flex-col justify-between p-4">
-        <div className="flex justify-between text-[10px] tracking-[0.2em]">
-          <span>{model.restaurant}</span>
-          <span>PREMIUM</span>
-        </div>
-        <div className="flex gap-1.5">
-          {model.slots.slice(0, 10).map((kind, i) => (
-            <span
-              key={i}
-              className="h-2.5 w-2.5 rounded-full border border-white/80"
-              style={{ background: kind === 'empty' ? 'transparent' : kind === 'pending' ? '#c4b5fd' : '#f8fafc' }}
-            />
-          ))}
-        </div>
-        <div>
-          <p className="text-sm uppercase tracking-[0.16em]">{model.name}</p>
-          <p className="text-[11px]">{model.confirmed}/{model.goal} · {model.reward}</p>
-        </div>
-      </div>
-    </Frame>
-  );
-}
-
-function TextureCard({ model, theme }) {
-  return (
-    <Frame style={{ background: theme.bg, color: theme.text }}>
-      <div className="absolute inset-0" style={theme.art} />
-      <div className="relative flex h-full flex-col justify-between p-4">
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.22em] opacity-80">GIT Card</p>
-          <p className="truncate text-lg font-semibold leading-tight">{model.restaurant}</p>
-          <p className="truncate text-[11px] opacity-80">{model.program}</p>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {model.slots.slice(0, 12).map((kind, i) => (
-            <span
-              key={i}
-              className="grid h-6 w-6 place-items-center rounded-full text-[10px] font-bold"
-              style={{
-                background: kind === 'confirmed' ? theme.accent : kind === 'pending' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.12)',
-                color: kind === 'confirmed' ? theme.ink || '#111' : theme.text,
-              }}
-            >
-              {i + 1}
-            </span>
-          ))}
-        </div>
-        <div className="flex items-end justify-between gap-2 text-[11px]">
-          <div className="min-w-0">
-            <p className="opacity-70">Titular</p>
-            <p className="truncate font-semibold uppercase">{model.name}</p>
-            {model.doc ? <p className="opacity-75">{model.doc}</p> : null}
-          </div>
-          <div className="max-w-[48%] text-right">
-            <p className="font-semibold">{model.confirmed}/{model.goal}</p>
-            <p className="truncate">{model.reward}</p>
-          </div>
-        </div>
-      </div>
-    </Frame>
-  );
-}
-
-const TEXTURES = {
+const BACKGROUNDS = {
+  prestige: {
+    bg: '#d7dde6',
+    text: '#1f2937',
+    panel: 'rgba(255,255,255,0.78)',
+    art: { background: 'linear-gradient(120deg, #9aa3b2, #f8fafc 35%, #6b7280 52%, #e5e7eb 70%, #94a3b8)' },
+  },
+  neon: {
+    bg: '#070814',
+    text: '#e0f2fe',
+    panel: 'rgba(7,8,20,0.55)',
+    art: { background: 'radial-gradient(circle at 80% 20%, rgba(244,114,182,0.45), transparent 32%), radial-gradient(circle at 12% 84%, rgba(34,211,238,0.4), transparent 34%), linear-gradient(115deg, transparent 30%, rgba(34,211,238,0.35) 48%, transparent 52%), #070814' },
+  },
+  pearl: {
+    bg: '#f4f1f6',
+    text: '#4b5563',
+    panel: 'rgba(255,255,255,0.62)',
+    art: { background: 'radial-gradient(circle at 30% 20%, #fff 0, #f3e8ff 28%, #dbeafe 55%, #fce7f3 100%)' },
+  },
   steel: {
     bg: '#c5c9d1',
     text: '#1f2937',
-    accent: '#f8fafc',
-    ink: '#111827',
-    art: {
-      background: 'linear-gradient(118deg, #4b5563 0 28%, #d1d5db 28.4% 34%, #e5e7eb 34% 100%)',
-    },
+    panel: 'rgba(255,255,255,0.72)',
+    art: { background: 'linear-gradient(118deg, #4b5563 0 28%, #d1d5db 28.4% 34%, #e5e7eb 34% 100%)' },
   },
   plata: {
     bg: '#d5d8de',
     text: '#111827',
-    accent: '#111827',
-    ink: '#f8fafc',
-    art: {
-      background: 'linear-gradient(128deg, #e5e7eb 0 58%, #9ca3af 58% 70%, #4b5563 70% 100%)',
-    },
+    panel: 'rgba(255,255,255,0.7)',
+    art: { background: 'linear-gradient(128deg, #e5e7eb 0 58%, #9ca3af 58% 70%, #4b5563 70% 100%)' },
   },
   marfil: {
     bg: '#f7f7f8',
     text: '#374151',
-    accent: '#e5e7eb',
-    ink: '#111827',
-    art: {
-      background: 'linear-gradient(128deg, #ffffff 0 62%, #f3f4f6 62% 78%, #e5e7eb 78% 100%)',
-    },
+    panel: 'rgba(255,255,255,0.55)',
+    art: { background: 'linear-gradient(128deg, #ffffff 0 62%, #f3f4f6 62% 78%, #e5e7eb 78% 100%)' },
   },
   botanica: {
     bg: '#0f7a4a',
     text: '#ecfdf5',
-    accent: '#bbf7d0',
-    ink: '#064e3b',
-    art: {
-      background: 'radial-gradient(circle at 70% 30%, #34d399 0, transparent 32%), repeating-linear-gradient(160deg, transparent 0 16px, rgba(255,255,255,0.08) 16px 18px)',
-    },
+    panel: 'rgba(6,78,59,0.45)',
+    art: { background: 'radial-gradient(circle at 70% 30%, #34d399 0, transparent 32%), repeating-linear-gradient(160deg, transparent 0 16px, rgba(255,255,255,0.08) 16px 18px), #0f7a4a' },
   },
   gourmet: {
     bg: '#0c0c0c',
     text: '#f8f1e3',
-    accent: '#e4c27a',
-    ink: '#1c1408',
-    art: {
-      background: 'radial-gradient(circle at 0 0, rgba(228,194,122,0.35), transparent 28%), radial-gradient(circle at 100% 100%, rgba(228,194,122,0.25), transparent 30%), linear-gradient(#111, #111)',
-    },
+    panel: 'rgba(0,0,0,0.45)',
+    art: { background: 'radial-gradient(circle at 0 0, rgba(228,194,122,0.35), transparent 28%), radial-gradient(circle at 100% 100%, rgba(228,194,122,0.25), transparent 30%), #111' },
   },
   oro: {
     bg: '#f6f1e7',
     text: '#3f3428',
-    accent: '#d4a24c',
-    ink: '#3f3428',
-    art: {
-      background: 'linear-gradient(128deg, #c4923a 0 30%, #f6f1e7 30.4% 100%)',
-    },
+    panel: 'rgba(255,255,255,0.62)',
+    art: { background: 'linear-gradient(128deg, #c4923a 0 30%, #f6f1e7 30.4% 100%)' },
   },
   olas: {
     bg: '#1578d4',
     text: '#f0f9ff',
-    accent: '#e0f2fe',
-    ink: '#075985',
-    art: {
-      background: 'repeating-linear-gradient(165deg, rgba(255,255,255,0.14) 0 12px, transparent 12px 26px), linear-gradient(160deg, #38bdf8, #0369a1)',
-    },
+    panel: 'rgba(7,89,133,0.4)',
+    art: { background: 'repeating-linear-gradient(165deg, rgba(255,255,255,0.14) 0 12px, transparent 12px 26px), linear-gradient(160deg, #38bdf8, #0369a1)' },
   },
 };
+
+function BackgroundCard({ theme, model, backgroundOnly }) {
+  return (
+    <Frame style={{ background: theme.bg, color: theme.text }}>
+      <div className="absolute inset-0" style={theme.art} />
+      {backgroundOnly ? null : (
+        <div className="relative flex h-full flex-col justify-end p-[4.5%]">
+          <div className="rounded-lg px-[4%] py-[3%]" style={{ background: theme.panel, color: theme.text }}>
+            <p className="truncate font-semibold">{model.program}</p>
+            <p className="truncate opacity-80">{model.restaurant}</p>
+            {model.info ? <p className="mt-[0.35em] line-clamp-2 opacity-90">{model.info}</p> : null}
+            <div className="mt-[0.45em] flex items-end justify-between gap-2">
+              <p className="min-w-0 truncate">{model.name}{model.doc ? ` · ${model.doc}` : ''}</p>
+              <p className="shrink-0 font-semibold">{model.confirmed}/{model.goal}</p>
+            </div>
+            <p className="truncate font-medium">{model.reward}</p>
+            {model.detail ? <p className="truncate opacity-80">{model.detail}</p> : null}
+          </div>
+        </div>
+      )}
+    </Frame>
+  );
+}
 
 const RENDERERS = {
   vinyl: VinylCard,
@@ -601,15 +489,13 @@ const RENDERERS = {
   sakura: SakuraCard,
   gauge: GaugeCard,
   copper: CopperCard,
-  prestige: PrestigeCard,
-  neon: NeonCard,
-  pearl: PearlCard,
 };
 
-export default function GitCardVisual({ card, compact = false }) {
+export default function GitCardVisual({ card, compact = false, backgroundOnly = false }) {
   if (!card) return null;
   const model = cardModel(card);
   const styleId = String(card.card_style || '');
+  const background = BACKGROUNDS[styleId];
   const Themed = RENDERERS[styleId];
   return (
     <div className={compact ? 'text-[12px]' : ''}>
@@ -621,7 +507,7 @@ export default function GitCardVisual({ card, compact = false }) {
         .git-card .text-xs { font-size: 0.92em; }
         .git-card .text-xl { font-size: 1.7em; }
       `}</style>
-      {Themed ? <Themed model={model} /> : TEXTURES[styleId] ? <TextureCard model={model} theme={TEXTURES[styleId]} /> : <ClassicCard card={card} compact={compact} model={model} />}
+      {background ? <BackgroundCard theme={background} model={model} backgroundOnly={backgroundOnly} /> : Themed ? <Themed model={model} /> : <ClassicCard card={card} compact={compact} model={model} />}
     </div>
   );
 }

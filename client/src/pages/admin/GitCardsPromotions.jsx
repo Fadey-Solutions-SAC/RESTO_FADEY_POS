@@ -31,6 +31,8 @@ const STATUS_CLASS = {
   ended: 'bg-rose-50 text-rose-700',
 };
 
+const RETIRED_CARD_STYLES = new Set(['vinyl', 'brew', 'ink', 'sakura', 'gauge', 'copper']);
+
 const EMPTY_PROMO = {
   name: '',
   description: '',
@@ -133,6 +135,7 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
       logo_url: draft.logo_url || '',
       info_text: draft.info_text || draft.description,
       reward_title: draft.reward_title || benefit,
+      reward_description: draft.reward_description || '',
       card_style: draft.card_style,
       colors: { bg: draft.card_bg || style.bg, text: draft.card_text || style.text, accent: draft.card_accent || style.accent, muted: style.muted },
       customer: { name: 'Cliente de ejemplo', doc_masked: '*****321' },
@@ -179,8 +182,19 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
 
   const setField = (key, value) => setDraft((prev) => ({ ...prev, [key]: value }));
 
+  useEffect(() => {
+    if (!RETIRED_CARD_STYLES.has(draft.card_style)) return;
+    const pick = (data.styles || []).find((s) => s.family && s.family !== 'classic' && !RETIRED_CARD_STYLES.has(s.id));
+    if (!pick) return;
+    setDraft((prev) => (
+      RETIRED_CARD_STYLES.has(prev.card_style)
+        ? { ...prev, card_style: pick.id, card_bg: pick.bg, card_text: pick.text, card_accent: pick.accent }
+        : prev
+    ));
+  }, [draft.card_style, data.styles]);
+
   const openNew = () => {
-    const pool = (data.styles || []).filter((s) => s.family && s.family !== 'classic');
+    const pool = (data.styles || []).filter((s) => s.family && s.family !== 'classic' && !RETIRED_CARD_STYLES.has(s.id));
     const pick = pool[Math.floor(Math.random() * pool.length)] || null;
     setEditingId('');
     setDraft({
@@ -601,28 +615,16 @@ function Wizard({
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.9fr)]">
           <Section>
             <Field label="Diseño de la tarjeta" wide>
-              <p className="mb-2 text-xs text-slate-500">Cada promoción nueva recibe un diseño al azar. Puede elegir otro.</p>
+              <p className="mb-2 text-xs text-slate-500">Elija solo el fondo. El nombre, el texto y la recompensa se colocan con los campos de este formato.</p>
               <div className="grid max-h-[28rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
-                {styles.filter((s) => s.family !== 'classic' || s.id === draft.card_style).map((s) => (
+                {styles.filter((s) => !RETIRED_CARD_STYLES.has(s.id) && (s.family !== 'classic' || s.id === draft.card_style)).map((s) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => setDraft((prev) => ({ ...prev, card_style: s.id, card_bg: s.bg, card_text: s.text, card_accent: s.accent }))}
                     className={`rounded-xl p-1 text-left ${draft.card_style === s.id ? 'ring-2 ring-blue-500' : 'ring-1 ring-slate-200'}`}
                   >
-                    <GitCardVisual
-                      compact
-                      card={{
-                        program_name: 'GIT Cards',
-                        restaurant_name: 'Restaurante',
-                        card_style: s.id,
-                        colors: { bg: s.bg, text: s.text, accent: s.accent, muted: s.muted },
-                        customer: { name: 'Cliente', doc_masked: '***321' },
-                        progress: { confirmed: 2, pending: 1, goal: 6, remaining: 3 },
-                        reward_title: 'Recompensa',
-                        status: 'active',
-                      }}
-                    />
+                    <GitCardVisual backgroundOnly compact card={{ card_style: s.id, colors: { bg: s.bg, text: s.text, accent: s.accent } }} />
                     <span className="mt-1 block px-1 text-[11px] font-semibold text-slate-700">{s.label || s.id}</span>
                   </button>
                 ))}
