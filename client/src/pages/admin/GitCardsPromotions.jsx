@@ -697,7 +697,7 @@ function Wizard({
             }
           />
           <ReviewRow label="Estilo" value={styles.find((s) => s.id === draft.card_style)?.label || draft.card_style} />
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 max-w-md">
             <GitCardVisual card={previewCard} compact />
           </div>
         </Section>
