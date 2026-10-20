@@ -398,9 +398,13 @@ async function main() {
     const restaurantId = restaurant.id;
     const registered = Number(queryOne(
       `SELECT COUNT(*) as c FROM (
-         SELECT customer_id FROM git_cards_cycles WHERE IFNULL(restaurant_id, '') IN ('', ?)
+         SELECT customer_id FROM git_cards_cycles x
+         WHERE IFNULL(x.restaurant_id, '') IN ('', ?)
+           AND EXISTS (SELECT 1 FROM customers c WHERE c.id = x.customer_id)
          UNION
-         SELECT customer_id FROM git_cards_access WHERE IFNULL(restaurant_id, '') IN ('', ?)
+         SELECT customer_id FROM git_cards_access x
+         WHERE IFNULL(x.restaurant_id, '') IN ('', ?)
+           AND EXISTS (SELECT 1 FROM customers c WHERE c.id = x.customer_id)
        )`,
       [restaurantId, restaurantId],
     )?.c || 0);

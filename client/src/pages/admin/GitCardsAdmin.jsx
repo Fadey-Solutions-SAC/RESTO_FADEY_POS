@@ -104,6 +104,7 @@ export default function GitCardsAdmin() {
   const [rejectId, setRejectId] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [summary, setSummary] = useState(null);
+  const [listCounts, setListCounts] = useState(null);
   const [summaryError, setSummaryError] = useState('');
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -124,6 +125,7 @@ export default function GitCardsAdmin() {
     const data = await api.get(`/git-cards/members?q=${encodeURIComponent(search)}&status=${encodeURIComponent(statusFilter)}&page=${page}&page_size=${PAGE_SIZE}`);
     setMembers(data.rows || []);
     setTotal(Number(data.total || 0));
+    setListCounts(data.counts || null);
   }, [search, statusFilter, page]);
 
   const loadSummary = useCallback(async () => {
@@ -320,7 +322,7 @@ export default function GitCardsAdmin() {
           pages={pages}
           setPage={setPage}
           total={total}
-          summary={summary}
+          summary={listCounts || summary}
           summaryError={summaryError}
           canEnroll={canValidateRole(user)}
           canConfig={canConfigRole(user)}
@@ -596,7 +598,7 @@ function ListView({
                   style={{ gridTemplateColumns: LIST_COLS }}
                 >
                   <HeaderLabel values={[{ key: 'registered', value: counts.registered, className: 'text-[var(--ui-body-text)]' }]}>
-                    Cliente
+                    Clientes
                   </HeaderLabel>
                   <div className="min-w-0">Contacto</div>
                   <HeaderLabel
@@ -662,7 +664,7 @@ function ListView({
             <div className="space-y-3 md:hidden">
               <div className="grid grid-cols-3 gap-2 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]">
                 <HeaderLabel values={[{ key: 'registered', value: counts.registered, className: 'text-[var(--ui-body-text)]' }]}>
-                  Cliente
+                  Clientes
                 </HeaderLabel>
                 <HeaderLabel
                   values={[
@@ -713,7 +715,7 @@ function ListView({
           </>
         )}
         <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
-          <span>{total} cliente(s)</span>
+          <span>{Number(total) === 1 ? '1 cliente' : `${total} clientes`}</span>
           <div className="flex items-center gap-2">
             <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg p-2 hover:bg-slate-100 disabled:opacity-40"><MdChevronLeft /></button>
             <span>{page} / {pages}</span>

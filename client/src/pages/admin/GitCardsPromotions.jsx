@@ -125,24 +125,26 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
   const previewCard = useMemo(() => {
     const style = selectedStyle || { bg: '#1e4b8e', text: '#f8fafc', accent: '#93c5fd', muted: '#bfdbfe' };
     const benefit = draft.reward_kind === 'product'
-      ? (draft.product_name || 'Producto de cortesía')
+      ? (draft.product_name || '')
       : draft.reward_kind === 'discount'
-        ? (draft.discount_type === 'percent' ? `${draft.discount_value || 0} %` : `S/ ${Number(draft.discount_value || 0).toFixed(2)}`)
-        : (draft.other_name || 'Beneficio');
+        ? (Number(draft.discount_value) > 0
+          ? (draft.discount_type === 'percent' ? `${draft.discount_value} %` : `S/ ${Number(draft.discount_value).toFixed(2)}`)
+          : '')
+        : (draft.other_name || '');
+    const goal = Math.max(0, Number(draft.goal || 0));
     return {
-      program_name: draft.name || 'GIT Cards',
-      restaurant_name: 'Restaurante',
-      logo_url: draft.logo_url || '',
-      info_text: draft.info_text || draft.description,
+      program_name: draft.name || '',
+      restaurant_name: data.restaurant_name || '',
+      logo_url: data.logo_url || draft.logo_url || '',
+      info_text: draft.info_text || draft.description || '',
       reward_title: draft.reward_title || benefit,
-      reward_description: draft.reward_description || '',
+      reward_description: draft.reward_description || draft.other_description || '',
       card_style: draft.card_style,
       colors: { bg: draft.card_bg || style.bg, text: draft.card_text || style.text, accent: draft.card_accent || style.accent, muted: style.muted },
-      customer: { name: 'Cliente de ejemplo', doc_masked: '*****321' },
-      progress: { confirmed: 1, pending: 0, goal: Number(draft.goal || 3), remaining: Math.max(0, Number(draft.goal || 3) - 1) },
-      status: 'active',
+      progress: { confirmed: 0, pending: 0, goal, remaining: goal },
+      status: '',
     };
-  }, [draft, selectedStyle]);
+  }, [draft, selectedStyle, data.restaurant_name, data.logo_url]);
 
   const load = useCallback(async () => {
     const next = await api.get('/git-cards/promotions');

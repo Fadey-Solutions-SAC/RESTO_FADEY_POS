@@ -22,11 +22,11 @@ function cardModel(card) {
   });
   const remaining = Math.max(0, Number(progress.remaining ?? Math.max(0, goal - confirmed - pending)));
   return {
-    restaurant: card?.restaurant_name || 'Restaurante',
-    program: card?.program_name || 'GIT Cards',
-    name: card?.customer?.name || 'Cliente',
+    restaurant: card?.restaurant_name || '',
+    program: card?.program_name || '',
+    name: card?.customer?.name || '',
     doc: card?.customer?.doc_masked || '',
-    reward: card?.reward_title || 'Recompensa',
+    reward: card?.reward_title || '',
     detail: card?.reward_description || '',
     info: card?.info_text || '',
     logo: card?.logo_url ? resolveMediaUrl(card.logo_url) : '',
@@ -93,10 +93,12 @@ function ClassicCard({ card, compact, model }) {
           {model.status}
         </span>
       </div>
-      <div className="mt-4">
-        <p className="text-base font-semibold">{model.name}</p>
-        {model.doc ? <p className="text-xs opacity-70">Doc. {model.doc}</p> : null}
-      </div>
+      {model.name ? (
+        <div className="mt-4">
+          <p className="text-base font-semibold">{model.name}</p>
+          {model.doc ? <p className="text-xs opacity-70">Doc. {model.doc}</p> : null}
+        </div>
+      ) : null}
       <div className={`mt-4 flex flex-wrap ${compact ? 'gap-1.5' : 'gap-2'}`}>
         {model.slots.map((kind, i) => (
           <span
@@ -459,22 +461,54 @@ const BACKGROUNDS = {
   },
 };
 
-function BackgroundCard({ theme, model, backgroundOnly }) {
+function slotTone(kind, accent) {
+  if (kind === 'confirmed') return { background: '#34d399', color: '#064e3b' };
+  if (kind === 'pending') return { background: '#fcd34d', color: '#78350f' };
+  return { background: 'transparent', color: accent, boxShadow: `inset 0 0 0 1.5px ${accent}` };
+}
+
+function BackgroundCard({ theme, model, backgroundOnly, compact }) {
+  const pad = compact ? 'p-3' : 'p-5';
   return (
     <Frame style={{ background: theme.bg, color: theme.text }}>
       <div className="absolute inset-0" style={theme.art} />
       {backgroundOnly ? null : (
-        <div className="relative flex h-full flex-col justify-end p-[4.5%]">
-          <div className="rounded-lg px-[4%] py-[3%]" style={{ background: theme.panel, color: theme.text }}>
-            <p className="truncate font-semibold">{model.program}</p>
-            <p className="truncate opacity-80">{model.restaurant}</p>
-            {model.info ? <p className="mt-[0.35em] line-clamp-2 opacity-90">{model.info}</p> : null}
-            <div className="mt-[0.45em] flex items-end justify-between gap-2">
-              <p className="min-w-0 truncate">{model.name}{model.doc ? ` · ${model.doc}` : ''}</p>
-              <p className="shrink-0 font-semibold">{model.confirmed}/{model.goal}</p>
+        <div className={`relative flex h-full flex-col ${pad}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              {model.program ? <p className="truncate text-[11px] uppercase tracking-[0.16em] opacity-80">{model.program}</p> : null}
+              {model.restaurant ? <p className="truncate text-base font-semibold">{model.restaurant}</p> : null}
             </div>
-            <p className="truncate font-medium">{model.reward}</p>
-            {model.detail ? <p className="truncate opacity-80">{model.detail}</p> : null}
+            {model.logo ? <img src={model.logo} alt="" className="h-9 w-9 shrink-0 rounded-full bg-white object-cover" /> : null}
+          </div>
+          {model.info ? <p className="mt-2 line-clamp-2 text-xs leading-snug opacity-90">{model.info}</p> : null}
+          {model.name ? (
+            <div className="mt-3">
+              <p className="truncate text-sm font-semibold">{model.name}</p>
+              {model.doc ? <p className="text-[11px] opacity-75">Doc. {model.doc}</p> : null}
+            </div>
+          ) : null}
+          <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
+            {model.slots.map((kind, i) => (
+              <span
+                key={`${kind}-${i}`}
+                className="grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold"
+                style={slotTone(kind, theme.text)}
+              >
+                {i + 1}
+              </span>
+            ))}
+          </div>
+          <div className="mt-3 flex items-end justify-between gap-3 text-sm">
+            <div>
+              <p className="text-[11px] opacity-70">Progreso</p>
+              <p className="font-semibold">{model.confirmed} / {model.goal}</p>
+            </div>
+            <div className="min-w-0 text-right">
+              <p className="text-[11px] opacity-70">Recompensa</p>
+              <p className="font-semibold leading-tight">{model.reward}</p>
+              {model.detail ? <p className="line-clamp-2 text-[11px] opacity-80">{model.detail}</p> : null}
+            </div>
           </div>
         </div>
       )}
@@ -507,7 +541,7 @@ export default function GitCardVisual({ card, compact = false, backgroundOnly = 
         .git-card .text-xs { font-size: 0.92em; }
         .git-card .text-xl { font-size: 1.7em; }
       `}</style>
-      {background ? <BackgroundCard theme={background} model={model} backgroundOnly={backgroundOnly} /> : Themed ? <Themed model={model} /> : <ClassicCard card={card} compact={compact} model={model} />}
+      {background ? <BackgroundCard theme={background} model={model} backgroundOnly={backgroundOnly} compact={compact} /> : Themed ? <Themed model={model} /> : <ClassicCard card={card} compact={compact} model={model} />}
     </div>
   );
 }

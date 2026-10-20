@@ -1447,6 +1447,17 @@ function listMembers({ q = '', status = 'all', page = 1, pageSize = 10 } = {}) {
     return safe;
   });
   const total = rows.length;
+  const hasActiveCard = (row) => row.status === 'active' || (row.status_flags || []).includes('active');
+  const counts = {
+    registered: total,
+    active_cards: rows.filter(hasActiveCard).length,
+    inactive_cards: rows.filter((row) => !hasActiveCard(row)).length,
+    near_complete: rows.filter((row) => {
+      const goal = Number(row.progress?.goal || 0);
+      const confirmed = Number(row.progress?.confirmed || 0);
+      return hasActiveCard(row) && goal > 1 && confirmed === goal - 1;
+    }).length,
+  };
   const safePage = Math.max(1, Number(page) || 1);
   const size = Math.max(1, Math.min(50, Number(pageSize) || 10));
   const start = (safePage - 1) * size;
@@ -1456,6 +1467,7 @@ function listMembers({ q = '', status = 'all', page = 1, pageSize = 10 } = {}) {
     page_size: size,
     rows: rows.slice(start, start + size),
     active_count: rows.filter((r) => r.status !== 'none').length,
+    counts,
   };
 }
 
@@ -1850,9 +1862,11 @@ function adminDashboardSummary() {
   const scope = restaurantScopeSql('x');
   const registeredRow = queryOne(
     `SELECT COUNT(*) as c FROM (
-       SELECT customer_id FROM git_cards_cycles x WHERE ${scope}
+       SELECT customer_id FROM git_cards_cycles x
+       WHERE ${scope} AND EXISTS (SELECT 1 FROM customers c WHERE c.id = x.customer_id)
        UNION
-       SELECT customer_id FROM git_cards_access x WHERE ${scope}
+       SELECT customer_id FROM git_cards_access x
+       WHERE ${scope} AND EXISTS (SELECT 1 FROM customers c WHERE c.id = x.customer_id)
      )`,
     [restaurantId, restaurantId],
   );
@@ -2431,11 +2445,14 @@ function listPromotions() {
     [restaurantId],
   ) || [];
   const promotions = rows.map(serializePromotion);
+  const restaurant = currentRestaurant();
   return {
     promotions,
     active_promotions: promotions.filter((p) => p.status === 'active').length,
     available_rewards: adminDashboardSummary().available_rewards,
     styles: cardStyles(),
+    restaurant_name: String(restaurant?.name || '').trim(),
+    logo_url: String(restaurant?.logo || '').trim(),
   };
 }
 
