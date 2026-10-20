@@ -1358,19 +1358,19 @@ function publicCardPayload(customer, extra = {}) {
   ) || [];
   const { status, flags } = deriveStatus({ cycle, progress, rewards });
   const payload = {
-    program_name: cycle?.program_name || promo?.name || config.program_name,
+    program_name: promo?.name || cycle?.program_name || config.program_name,
     restaurant_name: promo?.restaurant_name || config.restaurant_name,
     logo_url: promo?.logo_url || config.logo_url,
-    info_text: cycle?.info_text || promo?.info_text || config.info_text,
-    reward_title: cycle?.reward_title || promo?.reward_title || config.reward_title,
+    info_text: promo?.info_text || cycle?.info_text || config.info_text,
+    reward_title: promo?.reward_title || cycle?.reward_title || config.reward_title,
     reward_description: promo?.reward_description || config.reward_description,
     terms: cardTerms(promo || config),
-    card_style: styleKey,
+    card_style: promo?.card_style || styleKey,
     promotion_id: cycle?.promotion_id || promo?.id || '',
     colors: {
-      bg: cycle?.card_bg || promo?.card_bg || config.card_bg || style.bg,
-      text: cycle?.card_text || promo?.card_text || config.card_text || style.text,
-      accent: cycle?.card_accent || promo?.card_accent || config.card_accent || style.accent,
+      bg: promo?.card_bg || cycle?.card_bg || config.card_bg || style.bg,
+      text: promo?.card_text || cycle?.card_text || config.card_text || style.text,
+      accent: promo?.card_accent || cycle?.card_accent || config.card_accent || style.accent,
       muted: style.muted,
     },
     customer: {

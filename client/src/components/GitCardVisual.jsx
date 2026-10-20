@@ -543,64 +543,53 @@ function CardBack({ theme, model }) {
 function FlipCard({ front, back }) {
   const [flipped, setFlipped] = useState(false);
   return (
-    <div style={{ perspective: '1200px' }}>
-      <button
-        type="button"
-        onClick={() => setFlipped((value) => !value)}
-        className="block w-full text-left"
-        aria-label={flipped ? 'Ver el frente de la GIT Card' : 'Ver las condiciones de la GIT Card'}
-      >
-        <div
-          className="relative w-full transition-transform duration-500"
-          style={{
-            transformStyle: 'preserve-3d',
-            transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-          }}
-        >
-          <div style={{ backfaceVisibility: 'hidden' }}>{front}</div>
-          <div
-            className="absolute inset-0"
-            style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
-          >
-            {back}
-          </div>
-        </div>
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setFlipped((value) => !value);
+      }}
+      className="block w-full cursor-pointer border-0 bg-transparent p-0 text-left"
+      aria-pressed={flipped}
+      aria-label={flipped ? 'Ver el frente de la GIT Card' : 'Ver las condiciones de la GIT Card'}
+    >
+      <div className="relative w-full">
+        <div className={flipped ? 'invisible' : undefined} aria-hidden={flipped}>{front}</div>
+        <div className={`absolute inset-0 ${flipped ? '' : 'invisible'}`} aria-hidden={!flipped}>{back}</div>
+      </div>
+    </button>
   );
 }
 
-const RENDERERS = {
-  vinyl: VinylCard,
-  brew: BrewCard,
-  ink: InkCard,
-  sakura: SakuraCard,
-  gauge: GaugeCard,
-  copper: CopperCard,
-};
+function themeFor(card) {
+  const styleId = String(card?.card_style || '');
+  const background = BACKGROUNDS[styleId];
+  if (background) return background;
+  const bg = card?.colors?.bg || '#111827';
+  const accent = card?.colors?.accent || 'rgba(255,255,255,0.22)';
+  return {
+    bg,
+    text: card?.colors?.text || '#f8fafc',
+    art: { background: `radial-gradient(circle at 82% 18%, ${accent} 0, transparent 34%), ${bg}` },
+  };
+}
 
 export default function GitCardVisual({ card, compact = false, backgroundOnly = false }) {
   if (!card) return null;
   const model = cardModel(card);
-  const styleId = String(card.card_style || '');
-  const background = BACKGROUNDS[styleId];
-  const Themed = RENDERERS[styleId];
-  if (backgroundOnly && background) {
+  const theme = themeFor(card);
+  if (backgroundOnly) {
     return (
-      <Frame style={{ background: background.bg, color: background.text }}>
-        <div className="absolute inset-0" style={background.art} />
+      <Frame style={{ background: theme.bg, color: theme.text }}>
+        <div className="absolute inset-0" style={theme.art} />
       </Frame>
     );
   }
-  const theme = background || {
-    bg: card.colors?.bg || '#111827',
-    text: card.colors?.text || '#f8fafc',
-    art: { background: card.colors?.bg || '#111827' },
-  };
-  const front = background
-    ? <CardFront theme={theme} model={model} compact={compact} />
-    : Themed
-      ? <Themed model={model} />
-      : <ClassicCard card={card} compact={compact} model={model} />;
-  return <FlipCard front={front} back={<CardBack theme={theme} model={model} />} />;
+  return (
+    <FlipCard
+      front={<CardFront theme={theme} model={model} compact={compact} />}
+      back={<CardBack theme={theme} model={model} />}
+    />
+  );
 }
