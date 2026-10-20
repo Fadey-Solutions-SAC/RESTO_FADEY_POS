@@ -125,7 +125,7 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
   const previewCard = useMemo(() => {
     const style = selectedStyle || { bg: '#1e4b8e', text: '#f8fafc', accent: '#93c5fd', muted: '#bfdbfe' };
     const benefit = draft.reward_kind === 'product'
-      ? (draft.product_name || '')
+      ? [draft.product_name, draft.variant_name].filter(Boolean).join(' · ')
       : draft.reward_kind === 'discount'
         ? (Number(draft.discount_value) > 0
           ? (draft.discount_type === 'percent' ? `${draft.discount_value} %` : `S/ ${Number(draft.discount_value).toFixed(2)}`)
@@ -137,7 +137,7 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
       restaurant_name: data.restaurant_name || '',
       logo_url: data.logo_url || draft.logo_url || '',
       info_text: draft.info_text || draft.description || '',
-      reward_title: draft.reward_title || benefit,
+      reward_title: draft.reward_kind === 'product' ? (benefit || draft.reward_title) : (draft.reward_title || benefit),
       reward_description: draft.reward_description || draft.other_description || '',
       card_style: draft.card_style,
       colors: { bg: draft.card_bg || style.bg, text: draft.card_text || style.text, accent: draft.card_accent || style.accent, muted: style.muted },
@@ -149,7 +149,9 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
         { label: 'Encuesta', value: draft.survey_required ? 'Obligatoria' : 'No exigida' },
         Number(draft.cycle_valid_days) > 0 ? { label: 'Vigencia de la tarjeta', value: `${draft.cycle_valid_days} días` } : null,
         Number(draft.reward_valid_days) > 0 ? { label: 'Vigencia de la recompensa', value: `${draft.reward_valid_days} días` } : null,
-        (draft.reward_title || benefit) ? { label: 'Recompensa', value: draft.reward_title || benefit } : null,
+        (draft.reward_kind === 'product' ? (benefit || draft.reward_title) : (draft.reward_title || benefit))
+          ? { label: 'Recompensa', value: draft.reward_kind === 'product' ? (benefit || draft.reward_title) : (draft.reward_title || benefit) }
+          : null,
         (draft.reward_description || draft.other_description) ? { label: 'Detalle', value: draft.reward_description || draft.other_description } : null,
         (draft.discount_conditions || draft.other_conditions) ? { label: 'Condiciones', value: draft.discount_conditions || draft.other_conditions } : null,
         { label: 'Al completar la meta', value: draft.auto_reset === false ? 'El ciclo no se reinicia' : 'El ciclo se reinicia' },

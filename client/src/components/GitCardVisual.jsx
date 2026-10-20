@@ -471,6 +471,9 @@ function slotTone(kind, accent) {
 
 function CardFront({ theme, model, compact }) {
   const title = model.program || model.reward;
+  const reward = model.reward && model.reward.trim().toLowerCase() !== String(title || '').trim().toLowerCase()
+    ? model.reward
+    : '';
   return (
     <Frame style={{ background: theme.bg, color: theme.text }}>
       <div className="absolute inset-0" style={theme.art} />
@@ -486,6 +489,12 @@ function CardFront({ theme, model, compact }) {
         <div className="mt-3 min-w-0">
           {title ? <p className="line-clamp-2 text-2xl font-black uppercase leading-none tracking-wide">{title}</p> : null}
           {model.info ? <p className="mt-2 line-clamp-2 text-sm opacity-90">{model.info}</p> : null}
+          {reward ? (
+            <div className="mt-3 min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-[0.16em] opacity-70">Recompensa</p>
+              <p className="line-clamp-2 text-base font-bold uppercase leading-tight">{reward}</p>
+            </div>
+          ) : null}
         </div>
         <div className="mt-auto flex items-end justify-between gap-3 pt-3">
           <div className="flex min-w-0 flex-wrap gap-1.5">
