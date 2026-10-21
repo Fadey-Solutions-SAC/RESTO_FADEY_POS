@@ -20,7 +20,7 @@ export const SIDEBAR_BRAND_MARKS = {
   light: { src: RY.minimal, fadey: '#38BDF8' },
   dark: { src: RY.minimal, fadey: '#38BDF8' },
   gray: { src: RY.minimal, fadey: '#94A3B8' },
-  gold_premium: { src: RY.gold, fadey: '#E8C547' },
+  gold_premium: { src: RY.gold, fadey: '#D1D5DB' },
   emerald_business: { src: RY.emerald, fadey: '#34D399' },
   green: { src: RY.emerald, fadey: '#34D399' },
   sunset_modern: { src: RY.sunset, fadey: '#FB923C' },

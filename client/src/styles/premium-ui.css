@@ -186,6 +186,12 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
   border-bottom-color: color-mix(in srgb, #064e3b 22%, transparent) !important;
 }
 
+html[data-ui-theme='gold_premium'] .rf-shell-header {
+  background: #E5E7EB !important;
+  border-bottom-color: #D1D5DB !important;
+  color: #111827;
+}
+
 .rf-main-content {
   animation: rf-page-in 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -2684,15 +2690,48 @@ html[data-ui-theme='dark_elegance'] .rf-nav-sublink--active {
 html[data-ui-theme='gold_premium'] .rf-sidebar,
 html[data-ui-theme='gold_premium'] .rf-sidebar__nav,
 html[data-ui-theme='gold_premium'] .rf-sidebar__footer {
-  background: #2A2110 !important;
+  background: #000000 !important;
 }
 html[data-ui-theme='gold_premium'] .rf-sidebar-logo-bar {
-  background: #1A1408 !important;
+  background: #000000 !important;
 }
 html[data-ui-theme='gold_premium'] .rf-nav-link--active,
 html[data-ui-theme='gold_premium'] .rf-nav-sublink--active {
-  background: #C9A227 !important;
+  background: #4B5563 !important;
   color: #ffffff !important;
+}
+html[data-ui-theme='gold_premium'] .rf-main-content {
+  background: #ffffff !important;
+  color: #111827;
+}
+html[data-ui-theme='gold_premium'] .btn-primary,
+html[data-ui-theme='gold_premium'] button[class*='bg-blue-'],
+html[data-ui-theme='gold_premium'] a[class*='bg-blue-'],
+html[data-ui-theme='gold_premium'] button[class*='bg-sky-'],
+html[data-ui-theme='gold_premium'] a[class*='bg-sky-'],
+html[data-ui-theme='gold_premium'] button[class*='bg-gold-'],
+html[data-ui-theme='gold_premium'] a[class*='bg-gold-'] {
+  background-color: #6B7280 !important;
+  background-image: none !important;
+  border-color: #4B5563 !important;
+  color: #ffffff !important;
+}
+html[data-ui-theme='gold_premium'] button[class*='bg-blue-1'],
+html[data-ui-theme='gold_premium'] a[class*='bg-blue-1'],
+html[data-ui-theme='gold_premium'] button[class*='bg-sky-1'],
+html[data-ui-theme='gold_premium'] a[class*='bg-sky-1'],
+html[data-ui-theme='gold_premium'] button[class*='bg-gold-1'],
+html[data-ui-theme='gold_premium'] a[class*='bg-gold-1'] {
+  background-color: #E5E7EB !important;
+  border-color: #D1D5DB !important;
+  color: #111827 !important;
+}
+html[data-ui-theme='gold_premium'] .text-gold-500,
+html[data-ui-theme='gold_premium'] .text-gold-600,
+html[data-ui-theme='gold_premium'] .text-gold-700,
+html[data-ui-theme='gold_premium'] [class*='text-blue-'],
+html[data-ui-theme='gold_premium'] [class*='text-sky-'] {
+  color: #4B5563 !important;
 }
 
 html[data-ui-theme='sunset_modern'] .rf-sidebar,
