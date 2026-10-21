@@ -11,13 +11,14 @@ function addMonthsToIsoDate(dateKey, monthsToAdd) {
   const mo = Number(parts[1]);
   const d = Number(parts[2]);
   if (!y || !mo || !d) return '';
-  const dt = new Date(y, mo - 1, d);
-  if (Number.isNaN(dt.getTime())) return '';
-  dt.setMonth(dt.getMonth() + add);
-  const yy = dt.getFullYear();
-  const mm = String(dt.getMonth() + 1).padStart(2, '0');
-  const dd = String(dt.getDate()).padStart(2, '0');
-  return `${yy}-${mm}-${dd}`;
+  const targetIndex = (mo - 1) + add;
+  const targetYear = y + Math.floor(targetIndex / 12);
+  const targetMonth = ((targetIndex % 12) + 12) % 12;
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const day = Math.min(d, lastDay);
+  const mm = String(targetMonth + 1).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return `${targetYear}-${mm}-${dd}`;
 }
 
 /** periodo: 'mensual' | 'semestral' (cualquier otro se trata como mensual) */

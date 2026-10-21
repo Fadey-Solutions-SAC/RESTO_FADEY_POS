@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import Modal from '../../components/Modal';
 import RestaurantServiceContractForm from '../../components/RestaurantServiceContractForm';
 import { normalizeContratoFromApi } from '../../utils/contratoNormalize';
+import { addDaysToIsoDate, proximaFechaFromControlAnchor } from '../../utils/nextBillingFromAnchor';
 import MasterRestaurantBackupPanel from '../../components/master/MasterRestaurantBackupPanel';
 import {
   MdAdminPanelSettings,
@@ -907,8 +908,23 @@ export default function MasterAdmin() {
           <div className="card">
             <h2 className="font-semibold rf-section-title mb-2">Fecha de facturación y bloqueo automático</h2>
             <p className="text-xs ui-text-muted mb-3">
-              La fecha es la <strong>ancla del ciclo</strong> (p. ej. día de venta o alta). No exige pago ese mismo día: los avisos y el bloqueo automático por mora se calculan contra la <strong>próxima fecha de cobro</strong> (Pago por uso → próxima facturación, según periodo mensual o semestral).
+              La fecha es el día de la contratación. Ese día no se cobra. El aviso y el bloqueo usan el mismo día del mes siguiente (o a los 6 meses, si el periodo es semestral). Si para entonces el pago no está verificado, el sistema se bloquea al terminar la gracia.
             </p>
+            {/^\d{4}-\d{2}-\d{2}$/.test(String(control.billing_date || '')) ? (
+              <p className="text-sm text-[var(--ui-body-text)] mb-3">
+                {(() => {
+                  const nextCharge = proximaFechaFromControlAnchor(control.billing_date, 'mensual');
+                  const notifyDays = Math.max(1, Math.min(30, Number(control.notify_days_before || 3)));
+                  const warnFrom = addDaysToIsoDate(nextCharge, -notifyDays);
+                  const lockOn = addDaysToIsoDate(nextCharge, 4);
+                  const show = (iso) => {
+                    const [y, m, d] = String(iso || '').split('-');
+                    return d && m && y ? `${d}/${m}/${y}` : '—';
+                  };
+                  return `Próximo cobro: ${show(nextCharge)}. Aviso desde el ${show(warnFrom)}. Bloqueo el ${show(lockOn)} si el pago no está verificado.`;
+                })()}
+              </p>
+            ) : null}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Fecha de referencia del ciclo</label>

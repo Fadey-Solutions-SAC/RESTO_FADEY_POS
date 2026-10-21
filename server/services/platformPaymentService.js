@@ -230,6 +230,17 @@ function isLicensePeriodActive(pago) {
   return d != null && d >= 0;
 }
 
+function isCyclePaymentVerified(pago) {
+  if (!isCentralSyncConfigured()) {
+    return Boolean(String(pago?.comprobante_pago_url || '').trim());
+  }
+  const pp = pago?.platform_payment || {};
+  const estado = normalizePaymentEstado(pp.estado);
+  if (estado === PAYMENT_STATUSES.APPROVED) return true;
+  if (isApprovalNoticeActive(pp)) return true;
+  return false;
+}
+
 function isPaymentApprovedForUnlock(pago) {
   if (!isCentralSyncConfigured()) return true;
   const pp = pago?.platform_payment || {};
@@ -1027,6 +1038,7 @@ module.exports = {
   getPublicPlatformPaymentState,
   startPlatformPaymentPoller,
   isPaymentApprovedForUnlock,
+  isCyclePaymentVerified,
   applyPaymentApproved,
   applyPaymentRejected,
   fetchCentralStatus,

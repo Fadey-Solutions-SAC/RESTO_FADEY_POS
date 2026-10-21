@@ -679,9 +679,10 @@ function resolveBillingDueDateKey(control) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor)) return '';
   const pago = readSetting(PAGO_USO_APP_KEY, {});
   const periodo = pago.periodo_facturacion === 'semestral' ? 'semestral' : 'mensual';
+  const firstCharge = proximaFechaFromControlAnchor(anchor, periodo);
   const explicit = String(pago.fecha_proxima_facturacion || '').trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(explicit)) return explicit;
-  return proximaFechaFromControlAnchor(anchor, periodo);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(explicit) && explicit > anchor) return explicit;
+  return firstCharge;
 }
 
 const DEFAULT_MORA_LOCK_REASON = 'Bloqueo por falta de pago';
@@ -744,9 +745,16 @@ function evaluateAutomaticBillingRules() {
     }
 
     const lockDeadline = resolvePaymentLockDeadlineKey(current, pagoBilling);
+    let paymentVerified = false;
+    try {
+      paymentVerified = require('./services/platformPaymentService').isCyclePaymentVerified(pagoBilling);
+    } catch (_) {
+      paymentVerified = Boolean(String(pagoBilling.comprobante_pago_url || '').trim());
+    }
     const shouldAutoBlock =
       Number(current.auto_block_on_overdue || 0) === 1
       && Number(current.global_lock_enabled || 0) !== 1
+      && !paymentVerified
       && isPastPaymentLockDeadline(today, current, pagoBilling);
 
     if (shouldAutoBlock) {
@@ -847,19 +855,25 @@ function evaluatePagoUsoComprobanteWindow() {
   }
 
   const pastComprobanteDeadline = /^\d{4}-\d{2}-\d{2}$/.test(deadline) && diffDays(deadline, today) > 0;
+  let paymentVerified = false;
+  try {
+    paymentVerified = require('./services/platformPaymentService').isCyclePaymentVerified(pago);
+  } catch (_) {
+    paymentVerified = hasUrl;
+  }
 
-  if (!hasUrl && pastComprobanteDeadline) {
+  if (!paymentVerified && pastComprobanteDeadline) {
     if (Number(control.global_lock_enabled || 0) !== 1) {
       control.global_lock_enabled = 1;
       control.global_lock_reason = REASON_PAGO_USO_SIN_COMPROBANTE;
       control.pago_uso_comprobante_lock_auto = 1;
       control.lock_enabled_at = new Date().toISOString();
       control.lock_enabled_by = 'Sistema automático (pago por uso)';
-      notifyAutoSystemLocked(`No se registró comprobante de pago por uso antes del ${deadline}.`);
+      notifyAutoSystemLocked(`No hay un pago verificado antes del ${deadline}.`);
       controlChanged = true;
     }
   } else if (
-    !hasUrl
+    !paymentVerified
     && /^\d{4}-\d{2}-\d{2}$/.test(deadline)
     && !pastComprobanteDeadline
     && Number(control.global_lock_enabled || 0) === 1
