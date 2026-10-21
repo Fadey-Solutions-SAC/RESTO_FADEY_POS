@@ -233,14 +233,14 @@ const DEFAULT_APP_SETTINGS = {
   ],
   cajas: [{
     id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
-    name: 'Caja Principal',
-    description: 'Caja #1 - Recepción',
+    name: 'CAJA PRINCIPAL',
+    description: '',
     active: 1,
   }],
   salones: [{
     id: 'principal',
-    name: 'Salón Principal',
-    description: 'Área principal del restaurante',
+    name: 'SALÓN PRINCIPAL',
+    description: '',
     sort_order: 0,
     caja_station_id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
   }],
@@ -1372,6 +1372,9 @@ export default function Settings() {
       payload.code = String(payload.code || '').toUpperCase();
     }
     if (index === null) payload.active = 1;
+    if (section === 'cajas' && payload.name) {
+      payload.name = formatCatalogNameInput(payload.name);
+    }
     if (section === 'cajas') {
       if (index === null) {
         payload.id = newLocalCajaId();
@@ -2667,7 +2670,12 @@ export default function Settings() {
                       min={field.type === 'number' && field.key === 'port' ? 1 : undefined}
                       max={field.type === 'number' && field.key === 'port' ? 65535 : undefined}
                       value={settingsCrudForm[field.key] ?? ''}
-                      onChange={e => setSettingsCrudForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                      onChange={e => setSettingsCrudForm(prev => ({
+                        ...prev,
+                        [field.key]: settingsCrudModal.section === 'cajas' && field.key === 'name'
+                          ? formatCatalogNameInput(e.target.value)
+                          : e.target.value,
+                      }))}
                       className="input-field"
                       required={!!field.required}
                     />
@@ -3293,7 +3301,7 @@ function SalonMesasSection({ appSettings }) {
     const currentIdx = filteredSalones.findIndex((sal) => sal.id === s.id);
     setEditSalon(s);
     setSalonForm({
-      name: String(s.name || '').toUpperCase(),
+      name: formatCatalogNameInput(s.name || ''),
       description: s.description || '',
       caja_station_id: salonCajaId(s),
     });
@@ -3304,7 +3312,7 @@ function SalonMesasSection({ appSettings }) {
 
   const handleSalonSubmit = async (e) => {
     e.preventDefault();
-    const name = String(salonForm.name || '').trim().toUpperCase();
+    const name = formatCatalogNameInput(String(salonForm.name || '').trim());
     if (!name) return toast.error('Ingresa el nombre del salón');
     const cajaId = String(salonForm.caja_station_id || selectedCajaId || PRIMARY_CAJA_ID).trim() || PRIMARY_CAJA_ID;
     try {
@@ -3549,7 +3557,7 @@ function SalonMesasSection({ appSettings }) {
       {/* SALON MODAL */}
       <Modal isOpen={showSalonModal} onClose={() => { setShowSalonModal(false); setSalonOrderEditing(false); }} title={editSalon ? 'Editar Salón' : 'Nuevo Salón'} size="sm">
         <form onSubmit={handleSalonSubmit} className="space-y-4">
-          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre del Salón</label><input value={salonForm.name} onChange={e => setSalonForm({ ...salonForm, name: e.target.value.toUpperCase() })} className="input-field uppercase" required placeholder="Ej: TERRAZA, SEGUNDO PISO" autoCapitalize="characters" /></div>
+          <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Nombre del Salón</label><input value={salonForm.name} onChange={e => setSalonForm({ ...salonForm, name: formatCatalogNameInput(e.target.value) })} className="input-field uppercase" required placeholder="Ej: TERRAZA, SEGUNDO PISO" autoCapitalize="characters" /></div>
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Descripción</label><textarea value={salonForm.description} onChange={e => setSalonForm({ ...salonForm, description: e.target.value })} className="input-field" rows="2" placeholder="Descripción del salón..." /></div>
           <div>
             <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Caja</label>

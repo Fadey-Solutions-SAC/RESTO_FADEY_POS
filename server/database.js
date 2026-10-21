@@ -753,9 +753,16 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
         almacenes: [{ name: 'Almacén Principal', description: 'Almacén general de insumos', active: 1 }],
         cajas: [{
           id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
-          name: 'Caja Principal',
-          description: 'Caja #1 - Recepción',
+          name: 'CAJA PRINCIPAL',
+          description: '',
           active: 1,
+        }],
+        salones: [{
+          id: 'principal',
+          name: 'SALÓN PRINCIPAL',
+          description: '',
+          sort_order: 0,
+          caja_station_id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
         }],
         comprobantes: [
           { name: 'Boleta de Venta', series: 'B001', active: 1 },
@@ -3073,8 +3080,8 @@ async function initDatabase() {
       almacenes: [{ name: 'Almacén Principal', description: 'Almacén general de insumos', active: 1 }],
       salones: [{
         id: 'principal',
-        name: 'Salón Principal',
-        description: 'Área principal del restaurante',
+        name: 'SALÓN PRINCIPAL',
+        description: '',
         sort_order: 0,
         caja_station_id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
       }],
@@ -3084,8 +3091,8 @@ async function initDatabase() {
       ],
       cajas: [{
         id: 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001',
-        name: 'Caja Principal',
-        description: 'Caja #1 - Recepción',
+        name: 'CAJA PRINCIPAL',
+        description: '',
         active: 1,
       }],
       comprobantes: [
@@ -3181,17 +3188,19 @@ async function initDatabase() {
           ...next,
           cajas: [{
             id: DEFAULT_PRIMARY_CAJA_ID,
-            name: 'Caja Principal',
-            description: 'Caja #1 - Recepción',
+            name: 'CAJA PRINCIPAL',
+            description: '',
             active: 1,
           }],
         };
       }
       const cajasRaw = Array.isArray(next.cajas) ? next.cajas : [];
       const cajasWithIds = cajasRaw.map((c) => {
-        const id = String(c?.id || '').trim();
-        if (id) return c;
-        return { ...c, id: uuidv4() };
+        const id = String(c?.id || '').trim() || uuidv4();
+        const name = String(c?.name || '').trim().toLocaleUpperCase('es-PE');
+        const desc = String(c?.description || '').trim();
+        const description = desc.toLocaleLowerCase('es-PE') === 'caja #1 - recepción' ? '' : desc;
+        return { ...c, id, name, description };
       });
       if (JSON.stringify(cajasWithIds) !== JSON.stringify(cajasRaw)) {
         next = { ...next, cajas: cajasWithIds };
@@ -3216,6 +3225,7 @@ async function initDatabase() {
       if (Array.isArray(next.salones)) {
         const salonesWithCaja = next.salones.map((s) => ({
           ...s,
+          name: String(s?.name || '').trim().toLocaleUpperCase('es-PE'),
           caja_station_id: String(s?.caja_station_id || '').trim() || DEFAULT_PRIMARY_CAJA_ID_MIG,
         }));
         if (JSON.stringify(salonesWithCaja) !== JSON.stringify(next.salones)) {

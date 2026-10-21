@@ -1,10 +1,11 @@
 const { queryOne, runSql } = require('../database');
+const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 
 const DEFAULT_SALONES = [
   {
     id: 'principal',
-    name: 'Salón Principal',
-    description: 'Área principal del restaurante',
+    name: 'SALÓN PRINCIPAL',
+    description: '',
     sort_order: 0,
   },
 ];
@@ -24,7 +25,7 @@ function normalizeSalonesList(list) {
   return list
     .map((s, idx) => ({
       id: String(s?.id || '').trim() || `salon_${idx}`,
-      name: String(s?.name ?? '').trim() || String(s?.id || 'Salón'),
+      name: normalizeCatalogDisplayName(s?.name) || normalizeCatalogDisplayName(s?.id) || 'SALÓN',
       description: String(s?.description || '').trim(),
       sort_order: Number.isFinite(Number(s?.sort_order)) ? Number(s.sort_order) : idx,
       caja_station_id: String(s?.caja_station_id || '').trim() || DEFAULT_PRIMARY_CAJA_ID,
@@ -47,7 +48,7 @@ function inferSalonesFromTables(tables) {
   if (!zoneOrder.length) return [...DEFAULT_SALONES];
   return zoneOrder.map((id, idx) => ({
     id,
-    name: id === 'principal' ? 'Salón Principal' : id,
+    name: id === 'principal' ? 'SALÓN PRINCIPAL' : normalizeCatalogDisplayName(id),
     description: '',
     sort_order: idx,
   }));

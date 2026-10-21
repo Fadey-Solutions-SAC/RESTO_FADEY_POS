@@ -268,22 +268,10 @@ router.post('/reset-operational', authenticateToken, requireRole('master_admin')
     return res.status(403).json({ error: 'Contraseña incorrecta' });
   }
   try {
-    let keepAdminUserId = '';
-    if (req.user?.role === 'admin') {
-      keepAdminUserId = String(req.user.id || '').trim();
-    } else {
-      const buyer = queryOne(
-        `SELECT id FROM users
-         WHERE role = 'admin' AND CAST(COALESCE(is_buyer_admin, 0) AS INTEGER) = 1
-         ORDER BY created_at ASC LIMIT 1`,
-      );
-      keepAdminUserId = String(buyer?.id || '').trim();
-    }
-    resetOperationalData({ keepAdminUserId, preserveContrato: true });
+    resetOperationalData({ keepAdminUserId: '', preserveContrato: true });
     return res.json({
       success: true,
-      message: 'Datos operativos reiniciados para modo de pruebas',
-      kept_user_id: keepAdminUserId || null,
+      message: 'Datos operativos reiniciados. Los usuarios creados quedaron eliminados.',
     });
   } catch (err) {
     return res.status(400).json({ error: err.message || 'No se pudo reiniciar la información operativa' });
