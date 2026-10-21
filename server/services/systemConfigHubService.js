@@ -9,6 +9,7 @@ const { isNonTransformedLowStockSql } = require('../utils/productStockThreshold'
 const { getPaidSalesEventSql, metricsFromPaidOrdersWhere } = require('../utils/salesAccountGrouping');
 const { getBusinessTodayDateKey } = require('../utils/appDateTime');
 const { sqlCoalesceRegisterBusinessDate } = require('../utils/registerBusinessDate');
+const { getValidUiThemeId } = require('../uiThemeCatalog');
 
 const FIN = FINANCIAL_FILTER_SQL;
 const DAY_KEYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
@@ -132,7 +133,7 @@ function buildSectionInsights(settings, restaurant) {
     marcas: { count: (settings.marcas || []).length },
     categoria_anular: { motives: (settings.categoria_anular || []).length },
     formas_pago: { active: (settings.formas_pago || []).filter((f) => Number(f.active)).length },
-    apariencia: { theme: settings.ui_theme || 'blue' },
+    apariencia: { theme: getValidUiThemeId(settings.ui_theme) },
     modulo_empresarial: { configured: Boolean(settings.modulo_empresarial || readSettingsBlob().modulo_empresarial) },
     operacion: {
       sales_today: Number(todayMetrics.sales || 0),

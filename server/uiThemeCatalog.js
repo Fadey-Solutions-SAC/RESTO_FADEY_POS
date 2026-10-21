@@ -6,17 +6,22 @@ const UI_THEME_IDS = new Set([
   'minimal_white',
   'emerald_business',
   'sunset_modern',
-  'blue',
-  'light',
-  'dark',
-  'gray',
-  'purple',
-  'green',
 ]);
+
+/** Temas de desarrollo retirados. Se reescriben al leer o guardar. */
+const LEGACY_UI_THEME_MAP = {
+  blue: 'corporate_blue',
+  light: 'minimal_white',
+  dark: 'dark_elegance',
+  gray: 'gold_premium',
+  purple: 'corporate_blue',
+  green: 'emerald_business',
+};
 
 function getValidUiThemeId(raw) {
   const t = String(raw || '').trim();
-  return UI_THEME_IDS.has(t) ? t : 'corporate_blue';
+  const mapped = LEGACY_UI_THEME_MAP[t] || t;
+  return UI_THEME_IDS.has(mapped) ? mapped : 'corporate_blue';
 }
 
 module.exports = { UI_THEME_IDS, getValidUiThemeId };

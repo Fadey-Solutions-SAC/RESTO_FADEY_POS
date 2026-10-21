@@ -13,16 +13,10 @@ const RY = {
 
 export const SIDEBAR_BRAND_MARKS = {
   corporate_blue: { src: RY.corporate, fadey: '#C084FC' },
-  purple: { src: RY.corporate, fadey: '#C084FC' },
   dark_elegance: { src: RY.minimal, fadey: '#38BDF8' },
   minimal_white: { src: RY.minimal, fadey: '#38BDF8' },
-  blue: { src: RY.minimal, fadey: '#38BDF8' },
-  light: { src: RY.minimal, fadey: '#38BDF8' },
-  dark: { src: RY.minimal, fadey: '#38BDF8' },
-  gray: { src: RY.minimal, fadey: '#94A3B8' },
   gold_premium: { src: RY.gold, fadey: '#D1D5DB' },
   emerald_business: { src: RY.emerald, fadey: '#34D399' },
-  green: { src: RY.emerald, fadey: '#34D399' },
   sunset_modern: { src: RY.sunset, fadey: '#FB923C' },
 };
 

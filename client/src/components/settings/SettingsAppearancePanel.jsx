@@ -90,7 +90,6 @@ export default function SettingsAppearancePanel({
     : restaurantCustom;
 
   const premiumOptions = UI_THEME_OPTIONS.filter((o) => PREMIUM_THEME_IDS.includes(o.id));
-  const legacyOptions = UI_THEME_OPTIONS.filter((o) => !PREMIUM_THEME_IDS.includes(o.id));
 
   const applyRestaurantPatch = (patch, { debounceMs = 0 } = {}) => {
     const next = { ...appSettings, ...patch };
@@ -289,22 +288,6 @@ export default function SettingsAppearancePanel({
           )}
         </div>
       ) : null}
-
-      <details className="card">
-        <summary className="cursor-pointer font-semibold text-[var(--ui-body-text)]">
-          Temas clásicos ({legacyOptions.length})
-        </summary>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-          {legacyOptions.map((opt) => (
-            <ThemePreviewCard
-              key={opt.id}
-              opt={opt}
-              selected={current === opt.id}
-              onSelect={() => selectTheme(opt.id)}
-            />
-          ))}
-        </div>
-      </details>
 
       <p className="text-xs text-[var(--ui-muted)]">
         {personalEnabled ? (

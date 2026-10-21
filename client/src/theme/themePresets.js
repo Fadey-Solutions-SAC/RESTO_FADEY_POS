@@ -1,6 +1,5 @@
 /**
  * Tokens visuales por tema — aplicados en runtime vía CSS variables en <html>.
- * Compatible con temas legacy (blue, light, dark, …).
  */
 
 const LIVE_DEFAULTS = {
@@ -64,26 +63,6 @@ const SIDEBAR_BY_THEME = {
     activeFg: '#ffffff',
     solid: '#EA580C',
   },
-  blue: {
-    bg: '#0f172a',
-    top: '#020617',
-    hover: '#1e293b',
-    fg: '#E5E7EB',
-    activeFg: '#ffffff',
-    solid: CORPORATE_BLUE,
-  },
-  light: { bg: '#DBEAFE', top: '#DBEAFE', hover: '#BFDBFE', fg: '#0f172a', activeFg: '#ffffff', solid: CORPORATE_BLUE },
-  dark: {
-    bg: '#0f172a',
-    top: '#020617',
-    hover: '#1e293b',
-    fg: '#E5E7EB',
-    activeFg: '#ffffff',
-    solid: CORPORATE_BLUE,
-  },
-  gray: { bg: '#18181b', top: '#0f0f12', hover: '#27272a', fg: '#E5E7EB', activeFg: '#ffffff', solid: '#71717A' },
-  purple: { ...SIDEBAR_CHROME_DARK, solid: '#5A4EEF' },
-  green: { bg: '#D1FAE5', top: '#D1FAE5', hover: '#A7F3D0', fg: '#064e3b', activeFg: '#ffffff', solid: '#059669' },
 };
 
 function preset(id, label, description, tags, vars, chartColors, colorScheme = 'dark') {
@@ -315,187 +294,6 @@ export const THEME_PRESETS = {
     ['#fb923c', '#ef4444', '#fbbf24', '#34d399', '#f472b6', '#38bdf8'],
     'dark'
   ),
-
-  /* —— Legacy (misma mecánica runtime) —— */
-  blue: preset(
-    'blue',
-    'Azul clásico',
-    'Tema histórico del sistema',
-    ['legacy'],
-    {
-      '--ui-body-bg': '#0f1419',
-      '--ui-body-text': '#f1f5f9',
-      '--ui-muted': '#94a3b8',
-      '--ui-surface': '#1a2332',
-      '--ui-surface-2': '#243044',
-      '--ui-border': 'rgba(59, 130, 246, 0.28)',
-      '--ui-accent': '#2563eb',
-      '--ui-accent-hover': '#1d4ed8',
-      '--ui-accent-muted': '#3b82f6',
-      '--ui-input-bg': '#1a2332',
-      '--ui-input-border': 'rgba(59, 130, 246, 0.35)',
-      '--ui-focus-ring': '#3b82f6',
-      '--ui-sidebar-active-bg': 'rgba(59, 130, 246, 0.25)',
-      '--ui-sidebar-hover': 'rgba(59, 130, 246, 0.15)',
-      '--ui-sidebar-border': 'rgba(59, 130, 246, 0.3)',
-      '--ui-logo-from': '#3b82f6',
-      '--ui-logo-to': '#2563eb',
-      '--ui-btn-secondary-hover': 'rgba(255, 255, 255, 0.08)',
-      '--ui-glass': 'rgba(26, 35, 50, 0.88)',
-    },
-    ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4'],
-    'dark'
-  ),
-
-  light: preset(
-    'light',
-    'Claro',
-    'Alto contraste claro',
-    ['legacy'],
-    {
-      '--ui-body-bg': '#ffffff',
-      '--ui-body-text': '#0f172a',
-      '--ui-muted': '#475569',
-      '--ui-surface': '#ffffff',
-      '--ui-surface-2': '#f8fafc',
-      '--ui-border': 'rgba(15, 23, 42, 0.12)',
-      '--ui-accent': '#2563eb',
-      '--ui-accent-hover': '#1d4ed8',
-      '--ui-accent-muted': '#2563eb',
-      '--ui-input-bg': '#ffffff',
-      '--ui-input-border': 'rgba(15, 23, 42, 0.15)',
-      '--ui-focus-ring': '#2563eb',
-      '--ui-sidebar-active-bg': 'rgba(37, 99, 235, 0.12)',
-      '--ui-sidebar-hover': 'rgba(0, 0, 0, 0.04)',
-      '--ui-sidebar-border': 'rgba(0, 0, 0, 0.1)',
-      '--ui-logo-from': '#2563eb',
-      '--ui-logo-to': '#1d4ed8',
-      '--ui-btn-secondary-hover': 'rgba(0, 0, 0, 0.05)',
-      '--ui-glass': 'rgba(255, 255, 255, 0.92)',
-    },
-    ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
-    'light'
-  ),
-
-  dark: preset(
-    'dark',
-    'Oscuro',
-    'Negro de alto contraste',
-    ['legacy'],
-    {
-      '--ui-body-bg': '#000000',
-      '--ui-body-text': '#f3f4f6',
-      '--ui-muted': '#9ca3af',
-      '--ui-surface': '#0a0a0a',
-      '--ui-surface-2': '#171717',
-      '--ui-border': 'rgba(75, 85, 99, 0.45)',
-      '--ui-accent': '#3b82f6',
-      '--ui-accent-hover': '#2563eb',
-      '--ui-accent-muted': '#60a5fa',
-      '--ui-input-bg': '#0a0a0a',
-      '--ui-input-border': 'rgba(75, 85, 99, 0.5)',
-      '--ui-focus-ring': '#3b82f6',
-      '--ui-sidebar-active-bg': 'rgba(59, 130, 246, 0.22)',
-      '--ui-sidebar-hover': 'rgba(59, 130, 246, 0.12)',
-      '--ui-sidebar-border': 'rgba(75, 85, 99, 0.45)',
-      '--ui-logo-from': '#3b82f6',
-      '--ui-logo-to': '#1d4ed8',
-      '--ui-btn-secondary-hover': 'rgba(255, 255, 255, 0.06)',
-      '--ui-glass': 'rgba(10, 10, 10, 0.9)',
-    },
-    ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#c084fc', '#22d3ee'],
-    'dark'
-  ),
-
-  gray: preset(
-    'gray',
-    'Gris',
-    'Neutro intermedio',
-    ['legacy'],
-    {
-      '--ui-body-bg': '#27272a',
-      '--ui-body-text': '#fafafa',
-      '--ui-muted': '#a1a1aa',
-      '--ui-surface': '#3f3f46',
-      '--ui-surface-2': '#52525b',
-      '--ui-border': 'rgba(161, 161, 170, 0.35)',
-      '--ui-accent': '#71717a',
-      '--ui-accent-hover': '#52525b',
-      '--ui-accent-muted': '#a1a1aa',
-      '--ui-input-bg': '#3f3f46',
-      '--ui-input-border': 'rgba(161, 161, 170, 0.4)',
-      '--ui-focus-ring': '#a1a1aa',
-      '--ui-sidebar-active-bg': 'rgba(113, 113, 122, 0.35)',
-      '--ui-sidebar-hover': 'rgba(113, 113, 122, 0.22)',
-      '--ui-sidebar-border': 'rgba(161, 161, 170, 0.28)',
-      '--ui-logo-from': '#71717a',
-      '--ui-logo-to': '#52525b',
-      '--ui-btn-secondary-hover': 'rgba(255, 255, 255, 0.08)',
-      '--ui-glass': 'rgba(63, 63, 70, 0.9)',
-    },
-    ['#a1a1aa', '#10b981', '#f59e0b', '#ef4444', '#818cf8', '#22d3ee'],
-    'dark'
-  ),
-
-  purple: preset(
-    'purple',
-    'Morado',
-    'Acentos violeta',
-    ['legacy'],
-    {
-      '--ui-body-bg': '#0F101F',
-      '--ui-body-text': '#FFFFFF',
-      '--ui-muted': '#A0A0A0',
-      '--ui-surface': '#17182A',
-      '--ui-surface-2': '#1E1E36',
-      '--ui-border': 'rgba(90, 78, 239, 0.28)',
-      '--ui-accent': '#5A4EEF',
-      '--ui-accent-hover': '#4C40D9',
-      '--ui-accent-muted': '#7C75F5',
-      '--ui-input-bg': '#17182A',
-      '--ui-input-border': 'rgba(90, 78, 239, 0.4)',
-      '--ui-focus-ring': '#5A4EEF',
-      '--ui-sidebar-active-bg': 'rgba(90, 78, 239, 0.22)',
-      '--ui-sidebar-hover': 'rgba(255, 255, 255, 0.06)',
-      '--ui-sidebar-border': 'rgba(255, 255, 255, 0.08)',
-      '--ui-logo-from': '#5A4EEF',
-      '--ui-logo-to': '#5A4EEF',
-      '--ui-btn-secondary-hover': 'rgba(255, 255, 255, 0.08)',
-      '--ui-glass': 'rgba(23, 24, 42, 0.92)',
-    },
-    ['#5A4EEF', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#38bdf8'],
-    'dark'
-  ),
-
-  green: preset(
-    'green',
-    'Verde esmeralda',
-    'Fondos verdes clásicos',
-    ['legacy'],
-    {
-      '--ui-body-bg': '#022c22',
-      '--ui-body-text': '#ecfdf5',
-      '--ui-muted': '#6ee7b7',
-      '--ui-surface': '#065f46',
-      '--ui-surface-2': '#047857',
-      '--ui-border': 'rgba(52, 211, 153, 0.35)',
-      '--ui-accent': '#10b981',
-      '--ui-accent-hover': '#059669',
-      '--ui-accent-muted': '#34d399',
-      '--ui-input-bg': '#065f46',
-      '--ui-input-border': 'rgba(52, 211, 153, 0.4)',
-      '--ui-focus-ring': '#34d399',
-      '--ui-sidebar-active-bg': 'rgba(16, 185, 129, 0.28)',
-      '--ui-sidebar-hover': 'rgba(16, 185, 129, 0.16)',
-      '--ui-sidebar-border': 'rgba(52, 211, 153, 0.28)',
-      '--ui-logo-from': '#34d399',
-      '--ui-logo-to': '#047857',
-      '--ui-btn-secondary-hover': 'rgba(255, 255, 255, 0.08)',
-      '--ui-glass': 'rgba(6, 95, 70, 0.88)',
-    },
-    ['#34d399', '#3b82f6', '#fbbf24', '#f87171', '#a78bfa', '#22d3ee'],
-    'dark'
-  ),
 };
 
 export const PREMIUM_THEME_IDS = [
@@ -513,17 +311,21 @@ export const LIGHT_THEME_IDS = [
   'minimal_white',
   'emerald_business',
   'gold_premium',
-  'light',
 ];
 
-export const LEGACY_THEME_IDS = ['blue', 'light', 'dark', 'gray', 'purple', 'green'];
+/** IDs de desarrollo ya retirados. Se reescriben a un tema premium al leer o guardar. */
+export const LEGACY_UI_THEME_MAP = {
+  blue: 'corporate_blue',
+  light: 'minimal_white',
+  dark: 'dark_elegance',
+  gray: 'gold_premium',
+  purple: 'corporate_blue',
+  green: 'emerald_business',
+};
 
-export const ALL_THEME_IDS = [...PREMIUM_THEME_IDS, ...LEGACY_THEME_IDS];
+export const ALL_THEME_IDS = [...PREMIUM_THEME_IDS];
 
-export const UI_THEME_PRESET_LIST = [
-  ...PREMIUM_THEME_IDS.map((id) => THEME_PRESETS[id]),
-  ...LEGACY_THEME_IDS.map((id) => THEME_PRESETS[id]),
-];
+export const UI_THEME_PRESET_LIST = PREMIUM_THEME_IDS.map((id) => THEME_PRESETS[id]);
 
 export const CUSTOM_THEME_VAR_KEYS = [
   { key: '--ui-accent', label: 'Color principal' },
@@ -534,8 +336,9 @@ export const CUSTOM_THEME_VAR_KEYS = [
 ];
 
 export function getThemePreset(id) {
-  const t = String(id || '').trim();
-  return THEME_PRESETS[t] || THEME_PRESETS.blue;
+  const raw = String(id || '').trim();
+  const t = LEGACY_UI_THEME_MAP[raw] || raw;
+  return THEME_PRESETS[t] || THEME_PRESETS.corporate_blue;
 }
 
 export function getChartColorsForTheme(id) {

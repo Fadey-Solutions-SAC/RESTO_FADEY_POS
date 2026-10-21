@@ -9,6 +9,7 @@ import {
   THEME_PRESETS,
   CUSTOM_THEME_VAR_KEYS,
   LIGHT_THEME_IDS,
+  LEGACY_UI_THEME_MAP,
 } from './themePresets';
 
 export {
@@ -47,7 +48,8 @@ let autoModeListener = null;
 
 export function getValidUiThemeId(raw) {
   const t = String(raw || '').trim();
-  return UI_THEME_IDS.includes(t) ? t : DEFAULT_UI_THEME;
+  const mapped = LEGACY_UI_THEME_MAP[t] || t;
+  return UI_THEME_IDS.includes(mapped) ? mapped : DEFAULT_UI_THEME;
 }
 
 function userStorageKey(userId) {
@@ -107,7 +109,7 @@ function applyCssVariables(vars) {
 
 function clearInlineThemeVars() {
   if (typeof document === 'undefined') return;
-  const preset = getThemePreset('blue');
+  const preset = getThemePreset(DEFAULT_UI_THEME);
   Object.keys(preset.vars || {}).forEach((key) => {
     document.documentElement.style.removeProperty(key);
   });
@@ -126,7 +128,7 @@ export function applyUiTheme(id, opts = {}) {
   const validMode = UI_THEME_MODE_IDS.includes(mode) ? mode : 'light';
 
   let colorScheme = preset.colorScheme;
-  // Temas claros (azul corporativo, minimal white, emerald, legacy light):
+  // Temas claros (azul corporativo, minimal white, emerald, gold premium):
   // siempre contraste claro — evita texto blanco sobre fondos mint/blancos.
   if (LIGHT_THEME_IDS.includes(themeId) || preset.colorScheme === 'light') {
     teardownAutoListener();
