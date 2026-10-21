@@ -576,7 +576,36 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
       'operational_delay_events',
     ];
 
-    tablesToClear.forEach((tableName) => clearTable(tableName));
+    const preservedTables = new Set([
+      'restaurants',
+      'users',
+      'schema_migrations',
+      'order_sequence',
+      'sale_sequence',
+      'app_settings',
+      'internal_chat_state',
+      'business_config_definitions',
+    ]);
+    if (preserveContrato) {
+      preservedTables.add('contract_signature');
+      preservedTables.add('contract_signature_request');
+    }
+    let existingTables = [];
+    try {
+      existingTables = tx.queryAll(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`,
+      ) || [];
+    } catch (_) {
+      existingTables = [];
+    }
+    const tables = new Set([
+      ...tablesToClear,
+      ...existingTables.map((row) => String(row?.name || '').trim()).filter(Boolean),
+    ]);
+    tables.forEach((tableName) => {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName) || preservedTables.has(tableName)) return;
+      clearTable(tableName);
+    });
 
     if (!preserveContrato) {
       clearTable('contract_signature');
