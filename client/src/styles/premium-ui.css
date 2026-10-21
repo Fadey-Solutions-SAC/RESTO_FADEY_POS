@@ -187,9 +187,38 @@ html[data-ui-theme='emerald_business'] .rf-shell-header {
 }
 
 html[data-ui-theme='gold_premium'] .rf-shell-header {
-  background: #E5E7EB !important;
-  border-bottom-color: #D1D5DB !important;
-  color: #111827;
+  background: #000000 !important;
+  border-bottom-color: #1F1F1F !important;
+  color: #F5F5F5;
+  box-shadow: none;
+}
+
+html[data-ui-theme='gold_premium'] .rf-shell-header .rf-page-title,
+html[data-ui-theme='gold_premium'] .rf-shell-header p,
+html[data-ui-theme='gold_premium'] .rf-shell-header a,
+html[data-ui-theme='gold_premium'] .rf-shell-header button,
+html[data-ui-theme='gold_premium'] .rf-shell-header svg {
+  color: #F5F5F5 !important;
+}
+
+html[data-ui-theme='gold_premium'] .rf-shell-header p.text-xs {
+  color: #D1D5DB !important;
+}
+
+html[data-ui-theme='gold_premium'] .rf-shell-header .rf-shell-control,
+html[data-ui-theme='gold_premium'] .rf-shell-header a {
+  background-color: #1F1F1F !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+html[data-ui-theme='gold_premium'] .rf-shell-header .rf-shell-control:hover,
+html[data-ui-theme='gold_premium'] .rf-shell-header .rf-shell-control--active,
+html[data-ui-theme='gold_premium'] .rf-shell-header a:hover {
+  background-color: #2A2A2A !important;
+}
+
+html[data-ui-theme='gold_premium'] .rf-shell-header .w-px {
+  background-color: rgba(255, 255, 255, 0.22) !important;
 }
 
 .rf-main-content {

@@ -192,7 +192,7 @@ export const THEME_PRESETS = {
       '--ui-brand-fadey': '#D1D5DB',
       '--ui-btn-secondary-hover': 'rgba(17, 24, 39, 0.06)',
       '--ui-glass': 'rgba(255, 255, 255, 0.94)',
-      '--ui-shell-header-bg': '#E5E7EB',
+      '--ui-shell-header-bg': '#000000',
     },
     ['#4B5563', '#6B7280', '#9CA3AF', '#374151', '#111827', '#D1D5DB'],
     'light'
