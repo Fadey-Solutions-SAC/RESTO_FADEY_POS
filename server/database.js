@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { normalizeSqlParams } = require('./utils/sqlBind');
+const { normalizeCatalogDisplayName } = require('./utils/catalogNameFormat');
 const { openOrRecoverSqliteFile } = require('./sqliteRecover');
 const {
   writeFileAtomic,
@@ -497,6 +498,35 @@ async function restoreDbFromBuffer(fileBuffer, { expectedBytes } = {}) {
   console.info('[backup] Restaurado:', restaurant?.name || '(sin nombre)', '→', DB_PATH, `(${source.length} bytes)`);
 }
 
+const DEFAULT_PRODUCT_CATEGORY_NAMES = [
+  'Platos de fondo',
+  'Entradas',
+  'Postres',
+  'Bebidas',
+  'Cervezas',
+  'Snacks',
+];
+
+function seedDefaultProductCategories(exec) {
+  const restaurant = exec.queryOne('SELECT id FROM restaurants LIMIT 1');
+  if (!restaurant?.id) return;
+  const existing = exec.queryOne('SELECT COUNT(*) as c FROM categories');
+  if (Number(existing?.c || 0) > 0) return;
+  DEFAULT_PRODUCT_CATEGORY_NAMES.forEach((label, index) => {
+    exec.run(
+      'INSERT INTO categories (id, name, description, image, restaurant_id, is_active, sort_order) VALUES (?, ?, ?, ?, ?, 1, ?)',
+      [uuidv4(), normalizeCatalogDisplayName(label), '', '', restaurant.id, index + 1],
+    );
+  });
+}
+
+function ensureDefaultProductCategories() {
+  seedDefaultProductCategories({
+    queryOne,
+    run: (sql, params) => runSql(sql, params),
+  });
+}
+
 function resetOperationalData({ keepAdminUserId = '', preserveContrato = false } = {}) {
   const keepId = String(keepAdminUserId || '').trim();
   withTransaction((tx) => {
@@ -807,6 +837,8 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
         );
       }
     }
+
+    seedDefaultProductCategories(tx);
 
     tx.run('PRAGMA foreign_keys = ON');
   });
@@ -3235,6 +3267,7 @@ async function initDatabase() {
     }
 
     seedData();
+    ensureDefaultProductCategories();
     ensureOperationalUsers();
     try {
       const { syncEncargadoUserRoles, enforceSingleEncargadoPerArea } = require('./services/productionAreasService');
