@@ -105,7 +105,7 @@ export const THEME_PRESETS = {
   corporate_blue: preset(
     'corporate_blue',
     'Corporativo',
-    'Elegante, empresarial y moderno (marca morada)',
+    'Elegante, empresarial y moderno',
     ['empresarial', 'restaurante moderno'],
     {
       '--ui-body-bg': '#f0f4fa',
@@ -169,7 +169,7 @@ export const THEME_PRESETS = {
   gold_premium: preset(
     'gold_premium',
     'Dark White',
-    'Menú negro y pantalla de operaciones blanca',
+    'Menú negro y operaciones o',
     ['contraste', 'operación'],
     {
       '--ui-body-bg': '#ffffff',
