@@ -128,7 +128,7 @@ export function applyUiTheme(id, opts = {}) {
   const validMode = UI_THEME_MODE_IDS.includes(mode) ? mode : 'light';
 
   let colorScheme = preset.colorScheme;
-  // Temas claros (azul corporativo, minimal white, emerald, gold premium):
+  // Temas claros (azul corporativo, minimal white, emerald, dark white):
   // siempre contraste claro — evita texto blanco sobre fondos mint/blancos.
   if (LIGHT_THEME_IDS.includes(themeId) || preset.colorScheme === 'light') {
     teardownAutoListener();

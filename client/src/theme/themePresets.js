@@ -168,7 +168,7 @@ export const THEME_PRESETS = {
 
   gold_premium: preset(
     'gold_premium',
-    'Gold Premium',
+    'Dark White',
     'Menú negro y pantalla de operaciones blanca',
     ['contraste', 'operación'],
     {

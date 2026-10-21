@@ -383,7 +383,7 @@ html[data-ui-color-scheme='dark'] #root .text-neutral-500 {
 }
 
 /*
- * Temas oscuros (Gold Premium, etc.): bloques Tailwind con fondo claro mantienen
+ * Temas oscuros (Dark White, etc.): bloques Tailwind con fondo claro mantienen
  * fondo blanco/gris pero el texto del tema es claro â forzar texto oscuro.
  */
 html[data-ui-color-scheme='dark'] #root :is(.bg-slate-50, .bg-slate-50\/60, .bg-slate-50\/80, .bg-slate-100, .bg-gray-50, .bg-gray-100) {
