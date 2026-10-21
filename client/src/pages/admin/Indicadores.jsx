@@ -217,7 +217,7 @@ export default function Indicadores() {
   }
 
   return (
-    <div className="space-y-2 relative -mt-1 sm:-mt-3 min-w-0">
+    <div className="relative -mt-1 flex h-[calc(100dvh-6.5rem)] min-h-0 min-w-0 flex-col gap-2 sm:-mt-3">
       {refreshing ? (
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-gold-500/30 overflow-hidden z-10">
           <div className="h-full w-1/3 bg-gold-500 animate-pulse" />
@@ -341,7 +341,7 @@ export default function Indicadores() {
         ) : null}
       </div>
 
-      <div className={refreshing ? 'opacity-90 transition-opacity' : ''}>{renderPanel()}</div>
+      <div className={`min-h-0 flex-1 overflow-y-auto ${refreshing ? 'opacity-90 transition-opacity' : ''}`}>{renderPanel()}</div>
 
       <IndicatorsExportMenu
         open={exportOpen}

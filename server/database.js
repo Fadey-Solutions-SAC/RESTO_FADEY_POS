@@ -631,7 +631,7 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
     if (restaurant?.id) {
       tx.run(
         `UPDATE restaurants
-         SET name = 'Resto Fadey App',
+         SET name = '',
              address = '',
              phone = '',
              email = '',
@@ -668,7 +668,7 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
     } else {
       tx.run(
         'INSERT INTO restaurants (id, name, schedule) VALUES (?, ?, ?)',
-        [uuidv4(), 'Resto Fadey App', JSON.stringify(getDefaultSchedule())]
+        [uuidv4(), '', JSON.stringify(getDefaultSchedule())]
       );
     }
 
@@ -3671,7 +3671,7 @@ function seedData() {
     'INSERT INTO restaurants (id, name, address, phone, email, schedule) VALUES (?, ?, ?, ?, ?, ?)',
     [
       restaurantId,
-      'Resto Fadey App',
+      '',
       '',
       '',
       '',

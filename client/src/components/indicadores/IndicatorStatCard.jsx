@@ -33,8 +33,8 @@ export default function IndicatorStatCard({
             }
           : undefined
       }
-      className={`stat-card-premium rounded-xl border ${accentRing} bg-[var(--ui-surface)] min-w-0 w-full h-full overflow-hidden ${
-        large ? 'p-5' : 'p-4'
+      className={`stat-card-premium flex h-full min-h-0 w-full min-w-0 flex-col justify-center overflow-hidden rounded-xl border ${accentRing} bg-[var(--ui-surface)] ${
+        large ? 'p-4' : 'p-3'
       } ${
         clickable
           ? 'cursor-pointer transition hover:border-gold-500/45 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/40'
@@ -44,21 +44,19 @@ export default function IndicatorStatCard({
     >
       <div className="flex items-center gap-2 mb-1 min-w-0">
         {Icon ? <Icon className={`${large ? 'text-xl' : 'text-lg'} shrink-0 text-gold-600`} /> : null}
-        <p className={`${large ? 'text-sm' : 'text-xs'} text-[var(--ui-muted)] uppercase tracking-wide leading-tight truncate`}>
+        <p className={`${large ? 'text-xs sm:text-sm' : 'text-[11px] sm:text-xs'} min-w-0 text-[var(--ui-muted)] uppercase tracking-wide leading-tight line-clamp-2`}>
           {label}
         </p>
       </div>
       <p
-        className={`${
-          large ? 'text-lg sm:text-xl' : 'text-base sm:text-lg'
-        } font-bold text-[var(--ui-body-text)] tabular-nums leading-tight break-words`}
+        className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap font-bold tabular-nums leading-none text-[var(--ui-body-text)] text-[clamp(0.95rem,1.5vw,1.65rem)]"
         title={typeof value === 'string' || typeof value === 'number' ? String(value) : undefined}
       >
         {value}
       </p>
-      {sub ? <p className="text-xs text-[var(--ui-muted)] mt-1 truncate">{sub}</p> : null}
+      {sub ? <p className="mt-1 truncate text-[11px] text-[var(--ui-muted)]">{sub}</p> : null}
       {trend != null ? (
-        <p className={`text-xs mt-1 font-medium ${Number(trend) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+        <p className={`mt-1 truncate text-[11px] font-medium ${Number(trend) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
           {Number(trend) >= 0 ? '+' : ''}{trend}% vs mes anterior
         </p>
       ) : null}

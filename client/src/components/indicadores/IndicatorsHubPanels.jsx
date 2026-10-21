@@ -91,15 +91,12 @@ export function IndicatorsGeneralPanel({ data }) {
   const g = data?.general || {};
   const cmp = data?.financial?.comparison_prev_period;
   return (
-    <div className="space-y-3 min-w-0">
-      <div className="grid grid-cols-5 gap-3 w-full min-w-0">
-        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas período" value={formatCurrency(g.period_sales)} sub={`${g.period_orders ?? 0} cuentas`} accent="emerald" />
-        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas hoy" value={formatCurrency(g.sales_today)} sub={`${g.orders_today ?? 0} cuentas`} />
-        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas semana" value={formatCurrency(g.sales_week)} accent="sky" />
-        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Ventas mes" value={formatCurrency(g.sales_month)} trend={g.growth_month_pct} />
-        <IndicatorStatCard size="lg" icon={MdAttachMoney} label="Utilidad neta (aprox.)" value={formatCurrency(g.net_profit_approx)} sub="En estas fechas" accent="emerald" />
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 w-full min-w-0">
+    <div className="grid h-full min-h-0 w-full auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        <IndicatorStatCard icon={MdAttachMoney} label="Ventas período" value={formatCurrency(g.period_sales)} sub={`${g.period_orders ?? 0} cuentas`} accent="emerald" />
+        <IndicatorStatCard icon={MdAttachMoney} label="Ventas hoy" value={formatCurrency(g.sales_today)} sub={`${g.orders_today ?? 0} cuentas`} />
+        <IndicatorStatCard icon={MdAttachMoney} label="Ventas semana" value={formatCurrency(g.sales_week)} accent="sky" />
+        <IndicatorStatCard icon={MdAttachMoney} label="Ventas mes" value={formatCurrency(g.sales_month)} trend={g.growth_month_pct} />
+        <IndicatorStatCard icon={MdAttachMoney} label="Utilidad neta (aprox.)" value={formatCurrency(g.net_profit_approx)} sub="En estas fechas" accent="emerald" />
         <IndicatorStatCard icon={MdShoppingCart} label="Ticket promedio" value={formatCurrency(g.avg_ticket)} sub="En estas fechas" />
         <IndicatorStatCard icon={MdShoppingCart} label="Pedidos activos" value={g.active_orders ?? 0} accent="amber" />
         <IndicatorStatCard icon={MdTableBar} label="Mesas ocupadas" value={g.tables_occupied ?? 0} />
@@ -112,7 +109,6 @@ export function IndicatorsGeneralPanel({ data }) {
         <IndicatorStatCard label="Personal en turno" value={g.staff_on_shift ?? 0} />
         <IndicatorStatCard label="Productividad" value={g.productivity_index ?? 0} />
         <IndicatorStatCard label="Caja" value={g.register_open ? 'Abierta' : 'Cerrada'} accent={g.register_open ? 'emerald' : 'default'} />
-      </div>
     </div>
   );
 }
