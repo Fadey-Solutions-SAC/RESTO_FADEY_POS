@@ -333,9 +333,11 @@ function ensurePromotionsSchema() {
 function migrateLegacyPromotion() {
   const existing = queryOne('SELECT id FROM git_cards_promotions LIMIT 1');
   if (existing) return;
-  const restaurant = currentRestaurant();
   const stored = queryOne('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-  const cfg = normalizeConfig(parseJson(stored?.value, {}));
+  const raw = String(stored?.value || '').trim();
+  if (!raw || raw === '{}' || raw === 'null') return;
+  const restaurant = currentRestaurant();
+  const cfg = normalizeConfig(parseJson(raw, {}));
   const id = uuidv4();
   const style = CARD_STYLES[cfg.card_style] || CARD_STYLES.blue;
   runSql(
