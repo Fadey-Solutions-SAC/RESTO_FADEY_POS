@@ -84,14 +84,61 @@ function selfOrderUrlForTable(number) {
   return `${base}/auto-pedido?mesa=${encodeURIComponent(String(number))}`;
 }
 
-function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onCommit, onUseFrame, placing, logoUrl, logoSlot, logoShape }) {
+const LOGO_SHAPES = [
+  { id: 'ellipse', label: 'Óvalo' },
+  { id: 'circle', label: 'Círculo' },
+  { id: 'roundrect', label: 'Redondeado' },
+  { id: 'rect', label: 'Rectángulo' },
+];
+
+const DEFAULT_LOGO_SLOT = { x: 0.32, y: 0.05, w: 0.36, h: 0.13 };
+
+function logoStateForFormat(formatSrc, saved) {
+  const preset = qrPrintFormatBySrc(formatSrc);
+  const knownShape = LOGO_SHAPES.some((item) => item.id === saved?.shape);
+  return {
+    enabled: saved ? Boolean(saved.enabled) : Boolean(preset),
+    slot: normalizeQrSlot(saved?.slot) || preset?.logo || { ...DEFAULT_LOGO_SLOT },
+    shape: knownShape ? saved.shape : (preset?.logoShape || 'ellipse'),
+  };
+}
+
+function logoClipStyle(shape) {
+  if (shape === 'circle') return { borderRadius: 0, clipPath: 'circle(50% at 50% 50%)' };
+  if (shape === 'ellipse') return { borderRadius: 0, clipPath: 'ellipse(50% 50% at 50% 50%)' };
+  if (shape === 'roundrect') return { borderRadius: '12%', clipPath: 'none' };
+  return { borderRadius: 0, clipPath: 'none' };
+}
+
+function QrSlotEditor({
+  imageUrl,
+  slot,
+  sampleNumber,
+  onDragStart,
+  onChange,
+  onCommit,
+  onUseFrame,
+  placing,
+  logoUrl,
+  logoEnabled,
+  logoSlot,
+  logoShape,
+  onLogoEnabledChange,
+  onLogoChange,
+  onLogoCommit,
+  onLogoShapeChange,
+}) {
   const frameRef = useRef(null);
   const dragRef = useRef(null);
   const onChangeRef = useRef(onChange);
   const onCommitRef = useRef(onCommit);
+  const onLogoChangeRef = useRef(onLogoChange);
+  const onLogoCommitRef = useRef(onLogoCommit);
   const [preview, setPreview] = useState('');
   onChangeRef.current = onChange;
   onCommitRef.current = onCommit;
+  onLogoChangeRef.current = onLogoChange;
+  onLogoCommitRef.current = onLogoCommit;
 
   useEffect(() => {
     let cancel = false;
@@ -118,13 +165,16 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
         : normalizeQrSlot({ ...start, x: start.x + dx, y: start.y + dy });
       if (!next) return;
       drag.current = next;
-      onChangeRef.current(next);
+      if (drag.kind === 'logo') onLogoChangeRef.current(next);
+      else onChangeRef.current(next);
     };
     const up = () => {
       const drag = dragRef.current;
       if (!drag) return;
       dragRef.current = null;
-      onCommitRef.current(drag.current || drag.slot);
+      const done = drag.current || drag.slot;
+      if (drag.kind === 'logo') onLogoCommitRef.current(done);
+      else onCommitRef.current(done);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -134,34 +184,42 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
     };
   }, []);
 
-  const start = (event, mode) => {
-    if (!slot || !frameRef.current) return;
+  const start = (event, mode, kind) => {
+    const current = kind === 'logo' ? logoSlot : slot;
+    if (!current || !frameRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     if (mode === 'move') event.currentTarget.focus();
-    onDragStart?.();
+    onDragStart?.(kind);
     dragRef.current = {
+      kind,
       mode,
       px: event.clientX,
       py: event.clientY,
-      slot: { ...slot },
-      current: { ...slot },
+      slot: { ...current },
+      current: { ...current },
       rect: frameRef.current.getBoundingClientRect(),
     };
   };
 
-  const nudge = (event) => {
-    if (!slot) return;
+  const nudge = (event, kind) => {
+    const current = kind === 'logo' ? logoSlot : slot;
+    if (!current) return;
     const step = event.shiftKey ? 0.02 : 0.004;
     let next = null;
-    if (event.key === 'ArrowLeft') next = normalizeQrSlot({ ...slot, x: slot.x - step });
-    if (event.key === 'ArrowRight') next = normalizeQrSlot({ ...slot, x: slot.x + step });
-    if (event.key === 'ArrowUp') next = normalizeQrSlot({ ...slot, y: slot.y - step });
-    if (event.key === 'ArrowDown') next = normalizeQrSlot({ ...slot, y: slot.y + step });
+    if (event.key === 'ArrowLeft') next = normalizeQrSlot({ ...current, x: current.x - step });
+    if (event.key === 'ArrowRight') next = normalizeQrSlot({ ...current, x: current.x + step });
+    if (event.key === 'ArrowUp') next = normalizeQrSlot({ ...current, y: current.y - step });
+    if (event.key === 'ArrowDown') next = normalizeQrSlot({ ...current, y: current.y + step });
     if (!next) return;
     event.preventDefault();
-    onChange(next);
-    onCommit(next);
+    if (kind === 'logo') {
+      onLogoChange(next);
+      onLogoCommit(next);
+    } else {
+      onChange(next);
+      onCommit(next);
+    }
   };
 
   return (
@@ -172,45 +230,52 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
           className="relative mx-auto w-full max-w-[260px] shrink-0 bg-white rounded-lg border border-slate-200"
         >
           <img src={imageUrl} alt="Formato de impresión" className="block w-full h-auto select-none" draggable={false} />
-          {logoSlot ? (
+          {logoEnabled && logoSlot ? (
             <div
-              className="absolute overflow-hidden pointer-events-none"
+              tabIndex={0}
+              aria-label="Lugar del logo. Arrastre para moverlo."
+              className="absolute z-10 cursor-move touch-none border-2 border-amber-500 outline-none focus:ring-2 focus:ring-amber-400"
               style={{
                 left: `${logoSlot.x * 100}%`,
                 top: `${logoSlot.y * 100}%`,
                 width: `${logoSlot.w * 100}%`,
                 height: `${logoSlot.h * 100}%`,
-                borderRadius: logoShape === 'roundrect' ? '12%' : '0',
-                clipPath: logoShape === 'circle'
-                  ? 'circle(50% at 50% 50%)'
-                  : logoShape === 'ellipse'
-                    ? 'ellipse(50% 50% at 50% 50%)'
-                    : 'none',
-                background: '#f6ead2',
               }}
+              onPointerDown={(e) => start(e, 'move', 'logo')}
+              onKeyDown={(e) => nudge(e, 'logo')}
             >
-              {logoUrl ? (
-                <img
-                  src={logoUrl}
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-cover"
-                />
-              ) : null}
+              <div
+                className="absolute inset-0 overflow-hidden"
+                style={{ ...logoClipStyle(logoShape), background: logoUrl ? '#f6ead2' : 'transparent' }}
+              >
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover pointer-events-none"
+                  />
+                ) : null}
+              </div>
+              <span
+                className="absolute -right-1.5 -bottom-1.5 h-4 w-4 rounded-sm border-2 border-white bg-amber-500 cursor-nwse-resize"
+                onPointerDown={(e) => start(e, 'resize', 'logo')}
+                aria-hidden
+              />
             </div>
           ) : null}
           {slot ? (
             <div
               tabIndex={0}
               aria-label="Lugar del código QR. Arrastre para moverlo."
-              className="absolute border-2 border-violet-600 cursor-move touch-none outline-none focus:ring-2 focus:ring-violet-400"
+              className="absolute z-20 border-2 border-violet-600 cursor-move touch-none outline-none focus:ring-2 focus:ring-violet-400"
               style={{
                 left: `${slot.x * 100}%`,
                 top: `${slot.y * 100}%`,
                 width: `${slot.w * 100}%`,
                 height: `${slot.h * 100}%`,
               }}
-              onPointerDown={(e) => start(e, 'move')}
-              onKeyDown={nudge}
+              onPointerDown={(e) => start(e, 'move', 'qr')}
+              onKeyDown={(e) => nudge(e, 'qr')}
             >
               {preview ? (
                 <img src={preview} alt="" className="absolute inset-0 w-full h-full object-contain bg-white/80 pointer-events-none" />
@@ -223,7 +288,7 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
               </span>
               <span
                 className="absolute -right-1.5 -bottom-1.5 h-4 w-4 rounded-sm border-2 border-white bg-violet-600 cursor-nwse-resize"
-                onPointerDown={(e) => start(e, 'resize')}
+                onPointerDown={(e) => start(e, 'resize', 'qr')}
                 aria-hidden
               />
             </div>
@@ -232,11 +297,45 @@ function QrSlotEditor({ imageUrl, slot, sampleNumber, onDragStart, onChange, onC
         <div className="min-w-0 text-sm">
           <p className="font-medium rf-section-title">Lugar del QR</p>
           <p className="mt-1 text-xs text-[var(--ui-muted)]">
-            Arrastre el recuadro hasta el marco del diseño. La esquina violeta cambia el tamaño. Con el recuadro seleccionado, las flechas lo mueven con más precisión.
-            {logoUrl
-              ? ' El logo de Mi Restaurante se recorta al letrero de arriba.'
-              : ' Configure el logo en Mi Restaurante para colocarlo en el letrero.'}
+            Arrastre el recuadro violeta hasta el marco del diseño. La esquina cambia el tamaño. Con el recuadro seleccionado, las flechas lo mueven con más precisión.
           </p>
+          <label className="mt-3 flex items-start gap-2 text-sm text-[var(--ui-body-text)]">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={Boolean(logoEnabled)}
+              onChange={(e) => onLogoEnabledChange(e.target.checked)}
+            />
+            <span>
+              Logo automático
+              <span className="mt-0.5 block text-xs text-[var(--ui-muted)]">
+                {logoEnabled
+                  ? 'El recuadro ámbar es el logo de Mi Restaurante. Muévalo, cambie su tamaño y elija la forma. Si el diseño ya trae logo, desactive esta opción.'
+                  : 'Desactivado: la hoja solo lleva el QR. El logo del diseño se deja como está.'}
+              </span>
+            </span>
+          </label>
+          {logoEnabled ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {LOGO_SHAPES.map((shape) => (
+                <button
+                  key={shape.id}
+                  type="button"
+                  className={`rounded-full border px-2.5 py-1 text-xs ${
+                    logoShape === shape.id
+                      ? 'border-amber-500 bg-amber-50 text-amber-800'
+                      : 'border-slate-200 text-slate-600'
+                  }`}
+                  onClick={() => onLogoShapeChange(shape.id)}
+                >
+                  {shape.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {logoEnabled && !logoUrl ? (
+            <p className="mt-2 text-xs text-amber-700">Configure el logo en Mi Restaurante para verlo en el recuadro.</p>
+          ) : null}
           <button
             type="button"
             className="btn-secondary mt-3 text-sm"
@@ -283,12 +382,16 @@ export default function AutoPedidoAdmin() {
   const [qrHome, setQrHome] = useState('productos');
   const [qrFormat, setQrFormat] = useState('');
   const [qrSlot, setQrSlot] = useState(null);
+  const [logoAuto, setLogoAuto] = useState(false);
+  const [logoSlot, setLogoSlot] = useState(null);
+  const [logoShape, setLogoShape] = useState('ellipse');
   const [restaurantLogo, setRestaurantLogo] = useState('');
   const [restaurantName, setRestaurantName] = useState('');
   const [qrDataReady, setQrDataReady] = useState(false);
   const [placingQrSlot, setPlacingQrSlot] = useState(false);
   const [uploadingQrFormat, setUploadingQrFormat] = useState(false);
   const draggingSlotRef = useRef(false);
+  const draggingLogoRef = useRef(false);
   const [savingQrHome, setSavingQrHome] = useState(false);
   const cartasDirtyRef = useRef(false);
   const loadSeqRef = useRef(0);
@@ -318,8 +421,15 @@ export default function AutoPedidoAdmin() {
         const home = String(cData?.qr_home || '').trim().toLowerCase();
         setQrHome(home === 'cartas' || home === 'ambos' ? home : 'productos');
         if (Date.now() >= qrEchoUntilRef.current) {
-          setQrFormat(String(cData?.qr_format || '').trim());
+          const formatSrc = String(cData?.qr_format || '').trim();
+          setQrFormat(formatSrc);
           if (!draggingSlotRef.current) setQrSlot(normalizeQrSlot(cData?.qr_slot));
+          if (!draggingLogoRef.current) {
+            const logo = logoStateForFormat(formatSrc, cData?.qr_logo);
+            setLogoAuto(logo.enabled);
+            setLogoSlot(logo.slot);
+            setLogoShape(logo.shape);
+          }
         }
         setTables(Array.isArray(tData) ? tData : []);
         setProducts(Array.isArray(pData) ? pData : []);
@@ -368,8 +478,8 @@ export default function AutoPedidoAdmin() {
 
   useSocket('staff-data-update', (p) => {
     const d = p?.domain;
-    if (['auto_pedido_qr_format', 'auto_pedido_qr_slot'].includes(d) && Date.now() < qrEchoUntilRef.current) return;
-    if (['auto_pedido_cartas', 'auto_pedido_qr_home', 'auto_pedido_qr_format', 'auto_pedido_qr_slot', 'modifiers', 'discounts', 'offers', 'combos', 'catalog'].includes(d)) {
+    if (['auto_pedido_qr_format', 'auto_pedido_qr_slot', 'auto_pedido_qr_logo'].includes(d) && Date.now() < qrEchoUntilRef.current) return;
+    if (['auto_pedido_cartas', 'auto_pedido_qr_home', 'auto_pedido_qr_format', 'auto_pedido_qr_slot', 'auto_pedido_qr_logo', 'modifiers', 'discounts', 'offers', 'combos', 'catalog'].includes(d)) {
       void load({ silent: true });
     }
   });
@@ -711,6 +821,21 @@ export default function AutoPedidoAdmin() {
     return url;
   };
 
+  const saveQrLogo = async (next, { silent } = {}) => {
+    if (!canSave || !next) return;
+    try {
+      const data = await api.put('/admin-modules/auto-pedido/qr-logo', { qr_logo: next });
+      if (!draggingLogoRef.current && data?.qr_logo) {
+        const logo = logoStateForFormat(qrFormat, data.qr_logo);
+        setLogoAuto(logo.enabled);
+        setLogoSlot(logo.slot);
+        setLogoShape(logo.shape);
+      }
+    } catch (err) {
+      if (!silent) toast.error(err.message || 'No se pudo guardar el logo del formato');
+    }
+  };
+
   const saveQrSlot = async (slot, { silent } = {}) => {
     const clean = normalizeQrSlot(slot);
     if (!clean || !canSave) return;
@@ -756,8 +881,15 @@ export default function AutoPedidoAdmin() {
     try {
       const { url } = await api.upload(file);
       const data = await api.put('/admin-modules/auto-pedido/qr-format', { qr_format: url || '' });
-      setQrFormat(String(data?.qr_format || url || '').trim());
+      const formatSrc = String(data?.qr_format || url || '').trim();
+      const logo = logoStateForFormat(formatSrc, null);
+      logo.enabled = false;
+      setQrFormat(formatSrc);
       setQrSlot(normalizeQrSlot(data?.qr_slot));
+      setLogoAuto(false);
+      setLogoSlot(logo.slot);
+      setLogoShape(logo.shape);
+      await saveQrLogo(logo, { silent: true });
       toast.success('Formato de impresión cargado', { id: tid });
     } catch (err) {
       toast.error(err.message || 'No se pudo cargar el formato', { id: tid });
@@ -773,6 +905,8 @@ export default function AutoPedidoAdmin() {
       await api.put('/admin-modules/auto-pedido/qr-format', { qr_format: '' });
       setQrFormat('');
       setQrSlot(null);
+      setLogoAuto(false);
+      setLogoSlot(null);
       toast.success('Formato quitado');
     } catch (err) {
       toast.error(err.message || 'No se pudo quitar el formato');
@@ -782,27 +916,46 @@ export default function AutoPedidoAdmin() {
   };
 
   const logoPlacement = () => {
-    const preset = qrPrintFormatBySrc(qrFormat);
+    if (!logoAuto) return null;
     const url = resolveMediaUrl(restaurantLogo);
     if (!url) return null;
     return {
       url,
       name: restaurantName,
-      slot: preset?.logo || { x: 0.32, y: 0.05, w: 0.36, h: 0.13 },
-      shape: preset?.logoShape || 'ellipse',
+      slot: logoSlot || DEFAULT_LOGO_SLOT,
+      shape: logoShape || 'ellipse',
     };
+  };
+
+  const applyLogoAutomatic = (enabled) => {
+    const next = logoStateForFormat(qrFormat, {
+      enabled,
+      slot: logoSlot,
+      shape: logoShape,
+    });
+    next.enabled = enabled;
+    qrEchoUntilRef.current = Date.now() + 2500;
+    setLogoAuto(next.enabled);
+    setLogoSlot(next.slot);
+    setLogoShape(next.shape);
+    void saveQrLogo(next);
   };
 
   const chooseQrFormat = async (format) => {
     if (!format || uploadingQrFormat) return;
     if (qrPrintFormatBySrc(qrFormat)?.id === format.id) return;
     qrEchoUntilRef.current = Date.now() + 2500;
+    const logo = logoStateForFormat(format.src, null);
     setQrFormat(format.src);
     setQrSlot(format.qr);
+    setLogoAuto(logo.enabled);
+    setLogoSlot(logo.slot);
+    setLogoShape(logo.shape);
     if (!canSave) return;
     try {
       await api.put('/admin-modules/auto-pedido/qr-format', { qr_format: format.src });
       await api.put('/admin-modules/auto-pedido/qr-slot', { qr_slot: format.qr });
+      await saveQrLogo(logo, { silent: true });
     } catch (err) {
       qrEchoUntilRef.current = 0;
       toast.error(err.message || 'No se pudo elegir el formato');
@@ -1313,7 +1466,7 @@ export default function AutoPedidoAdmin() {
           <div className="min-w-0">
             <h2 className="text-lg font-semibold rf-section-title">Enlaces y QR por mesa</h2>
             <p className="text-xs text-[var(--ui-muted)] mt-1 max-w-xl">
-              Elija un formato de la fila. El QR de cada mesa va en el recuadro y el logo de Mi Restaurante en el letrero de arriba. La hoja completa solo sale al descargar o imprimir.
+              Elija un formato de la fila. El QR de cada mesa va en el recuadro violeta. El logo automático se puede mover, cambiar de forma o desactivar si el diseño ya lo trae. La hoja completa solo sale al descargar o imprimir.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -1390,16 +1543,31 @@ export default function AutoPedidoAdmin() {
             imageUrl={resolveMediaUrl(qrFormat)}
             slot={qrSlot}
             logoUrl={resolveMediaUrl(restaurantLogo)}
-            logoSlot={qrPrintFormatBySrc(qrFormat)?.logo}
-            logoShape={qrPrintFormatBySrc(qrFormat)?.logoShape || 'ellipse'}
+            logoEnabled={logoAuto}
+            logoSlot={logoSlot}
+            logoShape={logoShape}
             sampleNumber={tables[0]?.number ?? '1'}
             placing={placingQrSlot}
-            onDragStart={() => { draggingSlotRef.current = true; }}
+            onDragStart={(kind) => {
+              if (kind === 'logo') draggingLogoRef.current = true;
+              else draggingSlotRef.current = true;
+            }}
             onChange={setQrSlot}
             onCommit={(slot) => {
               draggingSlotRef.current = false;
               setQrSlot(slot);
               void saveQrSlot(slot);
+            }}
+            onLogoEnabledChange={applyLogoAutomatic}
+            onLogoChange={setLogoSlot}
+            onLogoCommit={(slot) => {
+              draggingLogoRef.current = false;
+              setLogoSlot(slot);
+              void saveQrLogo({ enabled: true, slot, shape: logoShape });
+            }}
+            onLogoShapeChange={(shape) => {
+              setLogoShape(shape);
+              void saveQrLogo({ enabled: true, slot: logoSlot, shape });
             }}
             onUseFrame={() => void placeQrOnFrame()}
           />

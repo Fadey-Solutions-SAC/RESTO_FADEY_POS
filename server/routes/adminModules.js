@@ -148,6 +148,11 @@ function mergeSettingsBlob(prevParsed, incoming, { catalogEdits = [] } = {}) {
   } else {
     delete merged.auto_pedido_qr_slot;
   }
+  if (Object.prototype.hasOwnProperty.call(prev, 'auto_pedido_qr_logo')) {
+    merged.auto_pedido_qr_logo = prev.auto_pedido_qr_logo;
+  } else {
+    delete merged.auto_pedido_qr_logo;
+  }
   try {
     const { shouldKeepPreviousCatalog } = require('../services/settingsCatalogRecover');
     const confirmed = {
@@ -540,6 +545,40 @@ function readAutoPedidoQrSlotFromDb() {
   return normalizeQrSlot(settingsObj.auto_pedido_qr_slot);
 }
 
+const QR_LOGO_SHAPES = new Set(['ellipse', 'circle', 'roundrect', 'rect']);
+
+function normalizeQrLogo(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const shape = QR_LOGO_SHAPES.has(raw.shape) ? raw.shape : 'ellipse';
+  return {
+    enabled: raw.enabled === true || raw.enabled === 1 || raw.enabled === '1',
+    slot: normalizeQrSlot(raw.slot),
+    shape,
+  };
+}
+
+function readAutoPedidoQrLogoFromDb() {
+  const settingsObj = parseJsonSafe(queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings'])?.value, {});
+  return normalizeQrLogo(settingsObj.auto_pedido_qr_logo);
+}
+
+function persistAutoPedidoQrLogo(raw) {
+  const clean = raw == null || raw === '' ? null : normalizeQrLogo(raw);
+  if (raw != null && raw !== '' && !clean) throw new Error('El logo del formato no es válido');
+  const prevRow = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
+  const settingsObj = parseJsonSafe(prevRow?.value, {});
+  settingsObj.auto_pedido_qr_logo = clean;
+  runSql(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+    ['settings', JSON.stringify(settingsObj)]
+  );
+  const { saveDb } = require('../database');
+  saveDb();
+  return clean;
+}
+
 function persistAutoPedidoQrSlot(raw) {
   const clean = raw == null || raw === '' ? null : normalizeQrSlot(raw);
   if (raw != null && raw !== '' && !clean) throw new Error('El lugar del QR no es válido');
@@ -563,6 +602,7 @@ function persistAutoPedidoQrFormat(url) {
   const settingsObj = parseJsonSafe(prevRow?.value, {});
   if (String(settingsObj.auto_pedido_qr_format || '') !== clean) {
     settingsObj.auto_pedido_qr_slot = null;
+    settingsObj.auto_pedido_qr_logo = null;
   }
   settingsObj.auto_pedido_qr_format = clean;
   runSql(
@@ -662,6 +702,7 @@ router.get('/auto-pedido/cartas', (req, res) => {
     qr_home: normalizeAutoPedidoQrHome(settingsObj.auto_pedido_qr_home),
     qr_format: readAutoPedidoQrFormatFromDb(),
     qr_slot: readAutoPedidoQrSlotFromDb(),
+    qr_logo: readAutoPedidoQrLogoFromDb(),
   });
 });
 
@@ -716,7 +757,11 @@ router.put('/auto-pedido/qr-format', requireRole('admin'), (req, res) => {
       details: { has_format: Boolean(url) },
     });
     broadcastStaffData('auto_pedido_qr_format');
-    res.json({ qr_format: url, qr_slot: readAutoPedidoQrSlotFromDb() });
+    res.json({
+      qr_format: url,
+      qr_slot: readAutoPedidoQrSlotFromDb(),
+      qr_logo: readAutoPedidoQrLogoFromDb(),
+    });
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo guardar el formato' });
   }
@@ -737,6 +782,24 @@ router.put('/auto-pedido/qr-slot', requireRole('admin'), (req, res) => {
     res.json({ qr_slot: slot });
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo guardar el lugar del QR' });
+  }
+});
+
+router.put('/auto-pedido/qr-logo', requireRole('admin'), (req, res) => {
+  try {
+    const logo = persistAutoPedidoQrLogo(req.body?.qr_logo);
+    logAudit({
+      actorUserId: req.user.id,
+      actorName: req.user.full_name || req.user.username || '',
+      action: 'app_settings.auto_pedido_qr_logo',
+      resourceType: 'app_settings',
+      resourceId: 'settings',
+      details: { enabled: Boolean(logo?.enabled) },
+    });
+    broadcastStaffData('auto_pedido_qr_logo');
+    res.json({ qr_logo: logo });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'No se pudo guardar el logo del formato' });
   }
 });
 

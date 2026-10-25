@@ -780,6 +780,10 @@ function traceLogoClip(ctx, area, shape) {
     ctx.arc(cx, cy, Math.min(area.w, area.h) / 2, 0, Math.PI * 2);
     return;
   }
+  if (shape === 'rect') {
+    ctx.rect(area.x, area.y, area.w, area.h);
+    return;
+  }
   ctx.ellipse(cx, cy, area.w / 2, area.h / 2, 0, 0, Math.PI * 2);
 }
 
