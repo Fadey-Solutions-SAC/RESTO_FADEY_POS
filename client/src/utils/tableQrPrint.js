@@ -71,7 +71,7 @@ const A5_HEIGHT_MM = 210;
 const A5_DPI = 220;
 const A5_PX_PER_MM = A5_DPI / 25.4;
 /** Reverso oficial: términos y condiciones del auto pedido QR. */
-export const AUTO_PEDIDO_TERMS_IMAGE = '/qr-formats/terminos-auto-pedido.jpg';
+export const AUTO_PEDIDO_TERMS_IMAGE = '/qr-formats/terminos-auto-pedido.jpg?v=a5';
 const A5_PDF_WIDTH_PT = (A5_WIDTH_MM * 72) / 25.4;
 const A5_PDF_HEIGHT_PT = (A5_HEIGHT_MM * 72) / 25.4;
 
@@ -99,10 +99,13 @@ function loadHtmlImage(src) {
     .catch(() => fromUrl(src, true).catch(() => fromUrl(src, false)));
 }
 
-function containPlacement(img, width, height) {
-  const scale = Math.min(width / img.width, height / img.height);
-  const dw = img.width * scale;
-  const dh = img.height * scale;
+/** Llena todo el A5 (recorta el sobrante). Evita bandas blancas en la hoja. */
+function coverPlacement(img, width, height) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const scale = Math.max(width / iw, height / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
   return {
     x: (width - dw) / 2,
     y: (height - dh) / 2,
@@ -839,7 +842,7 @@ export async function renderTableQrA5({ url, tableNumber, formatImage, slot, log
   }
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, width, height);
-  const fit = containPlacement(formatImage, width, height);
+  const fit = coverPlacement(formatImage, width, height);
   ctx.drawImage(formatImage, fit.x, fit.y, fit.w, fit.h);
   if (logoImage && logoSlot) {
     placeSystemLogo(ctx, formatImage, logoImage, logoSlot, fit, logoShape);
@@ -894,7 +897,7 @@ export async function renderTermsA5(termsImage) {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, width, height);
-  const fit = containPlacement(termsImage, width, height);
+  const fit = coverPlacement(termsImage, width, height);
   ctx.drawImage(termsImage, fit.x, fit.y, fit.w, fit.h);
   return canvas;
 }
@@ -1038,7 +1041,7 @@ function printA5Images(dataUrls) {
   html, body { margin: 0; padding: 0; background: #fff; }
   .sheet { width: 148mm; height: 210mm; page-break-after: always; overflow: hidden; }
   .sheet:last-child { page-break-after: auto; }
-  img { width: 148mm; height: 210mm; display: block; }
+  img { width: 148mm; height: 210mm; display: block; object-fit: cover; }
 </style>
 </head>
 <body>${pages}</body>
