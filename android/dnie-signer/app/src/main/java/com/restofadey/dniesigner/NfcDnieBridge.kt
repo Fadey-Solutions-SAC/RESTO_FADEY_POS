@@ -16,16 +16,10 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Puente NFC → DNIe.
+ * Puente NFC → DNIe (IsoDep + PIN local + APDU oficiales vía [OfficialDnieApdu]).
  *
- * Usa [NfcAdapter.enableReaderMode] con [NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK]
- * para evitar el toast del sistema «No se pudo encontrar una aplicación que admita la etiqueta NFC»
- * (el DNIe no es una etiqueta NDEF de apps; se lee como IsoDep).
- *
- * TODO_REQUIERE_VALIDACION_TECNICA:
- * - No inventar APDU del DNIe peruano.
- * - Sustituir [performOfficialApduSign] cuando exista documentación / SDK oficial.
- * - El PIN solo se usa aquí en memoria y se limpia; nunca se serializa ni se envía.
+ * Reader Mode con [NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK] evita el toast NDEF del sistema.
+ * El PIN solo vive en memoria nativa y se limpia; nunca se serializa ni se envía.
  */
 class NfcDnieBridge(private val activity: Activity) {
 
@@ -50,25 +44,24 @@ class NfcDnieBridge(private val activity: Activity) {
             ?: throw IllegalStateException("PIN cancelado")
 
         return try {
-            performOfficialApduSign(
-                documentHash = documentHash,
-                pinChars = pin,
-                tag = tag,
-            )
+            val iso = IsoDep.get(tag)
+                ?: throw IllegalStateException("El DNIe no expone IsoDep en este teléfono")
+            try {
+                iso.timeout = 15_000
+                iso.connect()
+                OfficialDnieApdu.sign(iso, documentHash, pin)
+            } finally {
+                try {
+                    iso.close()
+                } catch (_: Exception) {
+                    /* noop */
+                }
+            }
         } finally {
             pin.fill('0')
-            try {
-                IsoDep.get(tag)?.close()
-            } catch (_: Exception) {
-                /* noop */
-            }
         }
     }
 
-    /**
-     * Espera el chip IsoDep del DNIe en primer plano.
-     * FLAG_READER_SKIP_NDEF_CHECK evita que Android busque una app NDEF y muestre el toast de error.
-     */
     private fun waitForIsoDepTag(nfc: NfcAdapter, timeoutMs: Long): Tag? {
         val latch = CountDownLatch(1)
         val ref = AtomicReference<Tag?>(null)
@@ -91,7 +84,7 @@ class NfcDnieBridge(private val activity: Activity) {
         activity.runOnUiThread {
             try {
                 nfc.enableReaderMode(activity, callback, flags, Bundle())
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 latch.countDown()
             }
         }
@@ -107,60 +100,6 @@ class NfcDnieBridge(private val activity: Activity) {
         return if (ok) ref.get() else null
     }
 
-    /**
-     * PLACEHOLDER — REQUIERE VALIDACIÓN TÉCNICA.
-     * No envía APDU inventados. Devuelve error explícito hasta integrar SDK/oficial.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    private fun performOfficialApduSign(
-        documentHash: String,
-        pinChars: CharArray,
-        tag: Tag?,
-    ): JSONObject {
-        val iso = tag?.let { IsoDep.get(it) }
-            ?: throw IllegalStateException("El DNIe no expone IsoDep en este teléfono")
-
-        try {
-            iso.timeout = 15_000
-            iso.connect()
-            // Aquí irán los APDU oficiales (select AID, verify PIN, sign hash).
-            // No se inventan comandos: sin documentación / SDK el flujo se detiene con mensaje claro.
-        } catch (e: Exception) {
-            throw IllegalStateException(
-                "Se detectó el DNIe, pero no se pudo comunicar con el chip: ${e.message ?: "error NFC"}",
-            )
-        } finally {
-            try {
-                iso.close()
-            } catch (_: Exception) {
-                /* noop */
-            }
-        }
-
-        // Hasta integrar APDU oficiales: devolver payload de presencia NFC (sin CMS real).
-        // El servidor lo acepta como dnie_nfc_phone / scaffold; PIN ya se usó solo en local.
-        val stamp = System.currentTimeMillis().toString(36)
-        return JSONObject()
-            .put("ok", true)
-            .put("mock", false)
-            .put("method", "dnie_nfc_phone")
-            .put("signature_algorithm", "SHA256withRSA")
-            .put(
-                "signature_value",
-                "NFC_PHONE_${documentHash.take(32)}_${stamp}_" + "x".repeat(40),
-            )
-            .put("certificate_serial", "NFC-$stamp")
-            .put("certificate_subject", "CN=DNIe NFC, SERIALNUMBER=pending")
-            .put("certificate_issuer", "CN=DNIe (teléfono)")
-            .put("document_hash", documentHash)
-            .put("validation_status", "PENDING_TECHNICAL_VALIDATION")
-            .put(
-                "technical_note",
-                "DNIe detectado por IsoDep. APDU oficiales REQUIEREN VALIDACIÓN TÉCNICA.",
-            )
-    }
-
-    /** Diálogo PIN en el hilo UI; el valor no se registra en logs. */
     private fun askPinLocalOnly(): CharArray? {
         val latch = CountDownLatch(1)
         val ref = AtomicReference<CharArray?>(null)

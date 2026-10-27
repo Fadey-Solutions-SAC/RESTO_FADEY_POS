@@ -1,5 +1,6 @@
 /**
  * Firma en el mismo teléfono: NFC → PIN local → payload (sin enviar el PIN).
+ * En modo legal (requires_native_bridge): solo bridge Android IsoDep + CMS real.
  */
 
 import { getApiBase } from './api';
@@ -12,20 +13,28 @@ function abortError() {
 }
 
 /**
- * Espera detección del DNIe por bridge nativo o Web NFC.
- * El DNIe no es NDEF: Web NFC suele disparar onreadingerror al acercarlo → lo tomamos como presencia.
+ * Espera detección del DNIe por bridge nativo o Web NFC (solo desarrollo / no-strict).
  */
-export async function waitForPhoneNfcTag({ timeoutMs = 90_000, signal } = {}) {
+export async function waitForPhoneNfcTag({ timeoutMs = 90_000, signal, requireNative = false } = {}) {
   if (signal?.aborted) throw abortError();
 
   if (hasNativeDnieBridge()) {
     return { source: 'native_bridge' };
   }
 
+  if (requireNative) {
+    const err = new Error(
+      'Firma legal DNIe: abra este contrato en la app Android RESTO FADEY Firma (NFC IsoDep). '
+      + 'El navegador no puede ejecutar los APDU del chip.',
+    );
+    err.code = 'NATIVE_BRIDGE_REQUIRED';
+    throw err;
+  }
+
   const NDEFReaderCtor = typeof window !== 'undefined' ? window.NDEFReader : undefined;
   if (typeof NDEFReaderCtor !== 'function') {
     const err = new Error(
-      'Active NFC y use Chrome en Android. Este navegador no puede leer el chip del DNIe.',
+      'Active NFC y use Chrome en Android, o la app RESTO FADEY Firma.',
     );
     err.code = 'NFC_UNAVAILABLE';
     throw err;
@@ -72,7 +81,6 @@ export async function waitForPhoneNfcTag({ timeoutMs = 90_000, signal } = {}) {
       });
     };
     reader.onreadingerror = () => {
-      // DNIe IsoDep: el navegador no lee NDEF pero el chip sí está presente.
       finish(resolve, { source: 'web_nfc_presence' });
     };
   });
@@ -89,37 +97,9 @@ export function assertLocalPin(pin) {
   return digits;
 }
 
-function buildPhoneSignaturePayload({ session, signerName, documentNumber }) {
-  const hash = String(session?.document_hash || '');
-  const stamp = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-  const raw = `PHONE_NFC|${hash}|${documentNumber}|${stamp}|${'x'.repeat(48)}`;
-  let signatureValue = raw;
-  try {
-    signatureValue = btoa(unescape(encodeURIComponent(raw)));
-  } catch {
-    signatureValue = raw;
-  }
-  if (signatureValue.length < 32) {
-    signatureValue = `${signatureValue}${'0'.repeat(32)}`;
-  }
-  return {
-    signature_value: signatureValue,
-    document_hash: hash,
-    document_number: String(documentNumber || ''),
-    signature_algorithm: 'SHA256withRSA',
-    certificate_serial: `PHONE-NFC-${stamp}`,
-    certificate_subject: `CN=${signerName || 'Firmante'}, SERIALNUMBER=${documentNumber || ''}`,
-    certificate_issuer: 'CN=DNIe (lectura teléfono)',
-    method: 'dnie_nfc_phone',
-    validation_status: 'PENDING_TECHNICAL_VALIDATION',
-    // Solo mock si el servidor lo autorizó explícitamente (mock_allowed).
-    mock: Boolean(session?.mock_allowed),
-  };
-}
-
 /**
- * Tras NFC + PIN local: completa la firma en el mismo teléfono.
- * @param {{ session: object, signerName: string, documentNumber: string, pin: string, completePath: string, mobileTokenPath?: string }} args
+ * Tras NFC + PIN local: completa la firma.
+ * Modo legal: solo bridge nativo → CMS; sin fallback placeholder.
  */
 export async function finishPhoneNfcSignature({
   session,
@@ -130,69 +110,58 @@ export async function finishPhoneNfcSignature({
   apiPost,
 }) {
   assertLocalPin(pin);
-  // Descartar PIN de forma inmediata tras validar longitud (no se envía).
   pin = '';
 
+  const requireNative = Boolean(session?.requires_native_bridge);
+
   if (hasNativeDnieBridge()) {
-    try {
-      const deviceResult = await requestNativeDnieSign(session);
-      if (deviceResult && !deviceResult.error) {
-        const token = session.temporary_token;
-        if (token) {
-          const res = await fetch(`${getApiBase()}/contrato/sign/mobile/${encodeURIComponent(token)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...deviceResult,
-              document_hash: deviceResult.document_hash || session.document_hash,
-              document_number: documentNumber,
-              method: deviceResult.method || 'dnie_nfc',
-            }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data?.error || `Error HTTP ${res.status}`);
-          return data;
-        }
-      }
-    } catch (err) {
-      // Si el bridge aún no firma APDU, caemos al canal teléfono.
-      if (!/VALIDACIÓN TÉCNICA|REQUIERE|APDU|NO_NATIVE/i.test(String(err?.message || ''))) {
-        throw err;
-      }
+    const deviceResult = await requestNativeDnieSign(session);
+    if (deviceResult?.error) {
+      throw new Error(deviceResult.error);
     }
-  }
-
-  const payload = buildPhoneSignaturePayload({ session, signerName, documentNumber });
-  const token = session.temporary_token;
-
-  // En producción el servidor suele denegar MOCK: siempre cerrar por el canal móvil/NFC.
-  // MOCK solo si mock_allowed === true (desarrollo controlado).
-  if (session?.mock_allowed === true && completePath && typeof apiPost === 'function') {
-    try {
-      return await apiPost(completePath, {
-        request_id: session.request_id,
-        temporary_token: session.temporary_token,
-        ack_reviewed: true,
+    const token = session.temporary_token;
+    if (!token) throw new Error('Falta token de sesión de firma.');
+    const res = await fetch(`${getApiBase()}/contrato/sign/mobile/${encodeURIComponent(token)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...deviceResult,
+        document_hash: deviceResult.document_hash || session.document_hash,
         document_number: documentNumber,
-        signer_name: signerName,
-        use_mock: true,
-        phone_nfc: true,
-      });
-    } catch (err) {
-      // Si el servidor rechaza MOCK, continuar por token NFC.
-      if (!/MOCK no permitida/i.test(String(err?.message || ''))) throw err;
-    }
+        method: deviceResult.method || 'dnie_nfc',
+        mock: false,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || `Error HTTP ${res.status}`);
+    return data;
   }
 
-  if (!token) {
-    throw new Error('Falta token de sesión de firma.');
+  if (requireNative) {
+    const err = new Error(
+      'Para firma legal use la app Android RESTO FADEY Firma. '
+      + 'Ahí el PIN desbloquea el chip y se genera el CMS que el servidor verifica con RENIEC.',
+    );
+    err.code = 'NATIVE_BRIDGE_REQUIRED';
+    throw err;
   }
-  const res = await fetch(`${getApiBase()}/contrato/sign/mobile/${encodeURIComponent(token)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, mock: false }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || `Error HTTP ${res.status}`);
-  return data;
+
+  // Desarrollo / mock_allowed: completar por API autenticada
+  if (session?.mock_allowed === true && completePath && typeof apiPost === 'function') {
+    return apiPost(completePath, {
+      request_id: session.request_id,
+      temporary_token: session.temporary_token,
+      ack_reviewed: true,
+      document_number: documentNumber,
+      signer_name: signerName,
+      use_mock: true,
+      phone_nfc: true,
+    });
+  }
+
+  const err = new Error(
+    'No hay canal de firma DNIe disponible. Use la app Android o habilite MOCK solo en desarrollo.',
+  );
+  err.code = 'NO_SIGN_CHANNEL';
+  throw err;
 }

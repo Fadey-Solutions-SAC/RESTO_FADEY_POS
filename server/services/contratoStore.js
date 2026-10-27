@@ -28,6 +28,7 @@ function emptyFirmaSlot() {
     signature_value: '',
     signed_at: '',
     validation_status: '',
+    verification_level: '',
     mock: false,
   };
 }
@@ -69,6 +70,7 @@ function normalizeFirmaSlot(raw) {
     signature_value: String(raw.signature_value || ''),
     signed_at: String(raw.signed_at || ''),
     validation_status: String(raw.validation_status || ''),
+    verification_level: String(raw.verification_level || ''),
     mock: Boolean(raw.mock),
   };
 }

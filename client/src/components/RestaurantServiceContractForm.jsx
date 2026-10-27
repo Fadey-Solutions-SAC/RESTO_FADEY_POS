@@ -7,6 +7,7 @@ import { normalizeContratoFromApi } from '../utils/contratoNormalize';
 import { applySignaturesIntoContractText, CONTRACT_PROVIDER } from '../utils/contractSignatureDisplay';
 import Modal from './Modal';
 import ContractPhoneSignWizard from './contract/ContractPhoneSignWizard';
+import SignatureValidationBadge from './contract/SignatureValidationBadge';
 import toast from 'react-hot-toast';
 
 function partyLabel(party) {
@@ -193,21 +194,25 @@ export default function RestaurantServiceContractForm({
           <h3 className="font-bold text-[var(--ui-body-text)] text-base sm:text-lg leading-tight">
             Contrato digital del servicio
           </h3>
-          {showTechMeta ? (
-            <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
-              <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)]">
-                Estado: <strong>{merged.estado_firma || 'borrador'}</strong>
-              </span>
-              <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)]">
-                Versión: <strong>{merged.version || 1}</strong>
-              </span>
-              {merged.document_hash ? (
-                <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] font-mono truncate max-w-[14rem]" title={merged.document_hash}>
-                  Hash: {merged.document_hash.slice(0, 12)}…
+          <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] items-center">
+            {showTechMeta ? (
+              <>
+                <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)]">
+                  Estado: <strong>{merged.estado_firma || 'borrador'}</strong>
                 </span>
-              ) : null}
-            </div>
-          ) : null}
+                <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)]">
+                  Versión: <strong>{merged.version || 1}</strong>
+                </span>
+                {merged.document_hash ? (
+                  <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] font-mono truncate max-w-[14rem]" title={merged.document_hash}>
+                    Hash: {merged.document_hash.slice(0, 12)}…
+                  </span>
+                ) : null}
+              </>
+            ) : null}
+            <SignatureValidationBadge slot={merged.firma_vendedor} />
+            <SignatureValidationBadge slot={merged.firma_comprador} />
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
           {pdfUrl ? (
@@ -308,7 +313,13 @@ export default function RestaurantServiceContractForm({
             onSigned={(done) => onSignedOk(done)}
             onError={(err) => {
               toast.error(err?.message || 'No se pudo firmar');
-              if (err?.code === 'NFC_UNAVAILABLE' || err?.code === 'NFC_TIMEOUT' || err?.code === 'NFC_PERMISSION') {
+              if (
+                err?.code === 'NFC_UNAVAILABLE'
+                || err?.code === 'NFC_TIMEOUT'
+                || err?.code === 'NFC_PERMISSION'
+                || err?.code === 'NATIVE_BRIDGE_REQUIRED'
+                || err?.code === 'NO_SIGN_CHANNEL'
+              ) {
                 setStep('confirm');
               }
             }}

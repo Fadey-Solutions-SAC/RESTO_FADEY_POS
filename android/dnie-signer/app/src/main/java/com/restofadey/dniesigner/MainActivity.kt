@@ -115,8 +115,10 @@ class MainActivity : AppCompatActivity() {
             return JSONObject()
                 .put("nfc", true)
                 .put("dnie", true)
-                .put("version", "0.3.0-scaffold")
-                .put("technical", "APDU REQUIERE VALIDACION TECNICA")
+                .put("version", "0.4.0-legal-scaffold")
+                .put("apdu_configured", OfficialDnieApdu.CONFIGURED)
+                .put("requires_official_sdk", !OfficialDnieApdu.CONFIGURED)
+                .put("technical", if (OfficialDnieApdu.CONFIGURED) "APDU listos" else "APDU REQUIERE DOCUMENTACION RENIEC")
                 .toString()
         }
 

@@ -17,6 +17,9 @@ const {
   mockAllowed,
   createMockDniSignatureProvider,
   createRealDniSignatureProvider,
+  requiresNativeBridge,
+  apduReadyFromEnv,
+  getReniecVerifyStatus,
 } = require('./dniSignatureProvider');
 const {
   generateContractPdf,
@@ -428,6 +431,8 @@ async function prepareSignature({
     ? `/api/hr/employees/${scope.employeeId}/contract/sign/status/${id}`
     : `/api/contrato/sign/status/${id}`;
 
+  const reniecStatus = getReniecVerifyStatus();
+  const needNative = requiresNativeBridge();
   return {
     request_id: id,
     temporary_token: temporaryToken,
@@ -439,6 +444,9 @@ async function prepareSignature({
     pdf_original_url: pdfInfo.publicUrl,
     provider: providerMode,
     mock_allowed: mockAllowed(),
+    requires_native_bridge: needNative,
+    apdu_ready: apduReadyFromEnv(),
+    reniec_verify: reniecStatus,
     kind: scope.kind,
     employee_id: scope.employeeId || undefined,
     mobile: {
@@ -447,16 +455,27 @@ async function prepareSignature({
     },
     instructions: {
       title: 'Firma digital DNIe',
-      steps: [
-        'Se generó el PDF definitivo y su hash SHA-256.',
-        'En el mismo teléfono: indique nombre y DNI, acerque el DNIe al NFC e ingrese el PIN.',
-        'El PIN nunca se envía a Resto Fadey.',
-        ...(scope.kind === 'employment'
-          ? ['Orden: primero firma el empleador; después el empleado.']
-          : []),
-      ],
+      steps: needNative
+        ? [
+          'Se generó el PDF definitivo y su hash SHA-256.',
+          'Abra esta firma en la app Android RESTO FADEY Firma (bridge NFC IsoDep).',
+          'Acerque el DNIe, ingrese el PIN solo en el teléfono; el servidor verifica el CMS con la PKI RENIEC.',
+          'El PIN nunca se envía a Resto Fadey.',
+          ...(scope.kind === 'employment'
+            ? ['Orden: primero firma el empleador; después el empleado.']
+            : []),
+        ]
+        : [
+          'Se generó el PDF definitivo y su hash SHA-256.',
+          'En el mismo teléfono: indique nombre y DNI, acerque el DNIe al NFC e ingrese el PIN.',
+          'El PIN nunca se envía a Resto Fadey.',
+          ...(scope.kind === 'employment'
+            ? ['Orden: primero firma el empleador; después el empleado.']
+            : []),
+        ],
       pin_never_sent_to_server: true,
-      requires_technical_validation: providerMode === 'real' || providerMode === 'auto',
+      requires_technical_validation: !reniecStatus.ready_for_legal_valid,
+      requires_native_bridge: needNative,
     },
     contrato: publicViewByScope(scope, contrato),
   };
@@ -566,6 +585,8 @@ async function persistSignatureResult({ reqRow, user, signed, documentNumber = '
         method: signed.method,
         technical_note: signed.technical_note || '',
         signer_name: resolvedSignerName,
+        verification_level: signed.verification_level || '',
+        reniec_verify: getReniecVerifyStatus(),
       }),
     ],
   );
@@ -590,6 +611,7 @@ async function persistSignatureResult({ reqRow, user, signed, documentNumber = '
     signature_value: signed.signature_value || '',
     signed_at: signedAt,
     validation_status: validationStatus,
+    verification_level: signed.verification_level || '',
     mock: Boolean(signed.mock),
   };
 
@@ -784,6 +806,9 @@ function getMobileSession(token) {
     expires_at: reqRow.expires_at,
     pin_never_sent_to_server: true,
     mock_allowed: mockAllowed(),
+    requires_native_bridge: requiresNativeBridge(),
+    apdu_ready: apduReadyFromEnv(),
+    reniec_verify: getReniecVerifyStatus(),
     provider: getProviderMode(),
     bridge: {
       global: 'window.RestoFadeyDnie',
@@ -928,8 +953,19 @@ function validateContractSignature() {
     if (slot.document_hash !== contrato.document_hash) {
       return { valid: false, reason: `Hash de firma ${party} no coincide`, contrato: publicContratoView(contrato) };
     }
-    if (!slot.validation_status || slot.validation_status === 'INVALID') {
+    if (!slot.validation_status || slot.validation_status === 'INVALID' || slot.validation_status === 'REJECTED') {
       return { valid: false, reason: `Firma ${party} no válida`, contrato: publicContratoView(contrato) };
+    }
+    if (
+      requiresNativeBridge()
+      && !slot.mock
+      && slot.validation_status !== 'VALID'
+    ) {
+      return {
+        valid: false,
+        reason: `Firma ${party} pendiente de verificación criptográfica RENIEC/PKI (${slot.validation_status || 'sin estado'})`,
+        contrato: publicContratoView(contrato),
+      };
     }
   }
   return { valid: true, reason: 'OK', contrato: publicContratoView(contrato) };
@@ -948,4 +984,6 @@ module.exports = {
   getRequestPollStatus,
   mockAllowed,
   getProviderMode,
+  getReniecVerifyStatus,
+  requiresNativeBridge,
 };

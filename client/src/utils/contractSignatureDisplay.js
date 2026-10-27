@@ -26,7 +26,12 @@ function firmaLine(slot, blank = '________________________') {
   const doc = slot.document_number ? ` · Doc. ${slot.document_number}` : '';
   const when = slot.signed_at ? ` · ${formatPeDateTime(slot.signed_at)}` : '';
   const mock = slot.mock ? ' · MOCK' : '';
-  return `Firma: ${name}${doc}${when}${mock}`;
+  const vs = String(slot.validation_status || '').toUpperCase();
+  const verified = !slot.mock && vs === 'VALID' ? ' · Verificada PKI' : '';
+  const pending = !slot.mock && vs && vs !== 'VALID'
+    ? ` · ${vs === 'PENDING_TECHNICAL_VALIDATION' || vs === 'PENDING_SERVER_PKI' ? 'Pendiente PKI' : vs}`
+    : '';
+  return `Firma: ${name}${doc}${when}${mock}${verified}${pending}`;
 }
 
 function buildAcceptanceFooter({ comprador, vendedor, firmadoEn }) {

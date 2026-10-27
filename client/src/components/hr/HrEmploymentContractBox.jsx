@@ -12,6 +12,7 @@ import { api, resolveMediaUrl } from '../../utils/api';
 import { DEFAULT_EMPLOYMENT_CONTRACT_TEXT } from '../../data/defaultEmploymentContract';
 import Modal from '../Modal';
 import ContractPhoneSignWizard from '../contract/ContractPhoneSignWizard';
+import SignatureValidationBadge from '../contract/SignatureValidationBadge';
 
 function formatLocalDate() {
   try {
@@ -268,13 +269,15 @@ export default function HrEmploymentContractBox({
               <p className="text-xs text-[var(--ui-muted)] py-6 text-center">Cargando contrato…</p>
             ) : (
               <>
-                <div className="flex flex-wrap gap-1.5 text-[11px]">
+                <div className="flex flex-wrap gap-1.5 text-[11px] items-center">
                   <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)]">
                     Empleador: <strong>{employerSigned ? 'Firmado' : 'Pendiente'}</strong>
                   </span>
+                  <SignatureValidationBadge slot={contrato?.firma_vendedor} />
                   <span className="rounded-full px-2 py-0.5 bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)]">
                     Empleado: <strong>{employeeSigned ? 'Firmado' : 'Pendiente'}</strong>
                   </span>
+                  <SignatureValidationBadge slot={contrato?.firma_comprador} />
                 </div>
 
                 {textLocked ? (
@@ -384,7 +387,13 @@ export default function HrEmploymentContractBox({
             onSigned={(done) => onSignedOk(done)}
             onError={(err) => {
               toast.error(err?.message || 'No se pudo firmar');
-              if (err?.code === 'NFC_UNAVAILABLE' || err?.code === 'NFC_TIMEOUT' || err?.code === 'NFC_PERMISSION') {
+              if (
+                err?.code === 'NFC_UNAVAILABLE'
+                || err?.code === 'NFC_TIMEOUT'
+                || err?.code === 'NFC_PERMISSION'
+                || err?.code === 'NATIVE_BRIDGE_REQUIRED'
+                || err?.code === 'NO_SIGN_CHANNEL'
+              ) {
                 setStep('confirm');
               }
             }}

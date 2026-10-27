@@ -1,7 +1,14 @@
 /**
- * Validación estructural del resultado DNIe enviado por el dispositivo.
- * NO implementa APDU ni verifica CMS con CA RENIEC: REQUIERE VALIDACIÓN TÉCNICA.
+ * Validación del resultado DNIe enviado por el dispositivo.
+ * En modo real: exige CMS verificable (reniecCmsVerify). Nunca acepta PIN.
  */
+
+const {
+  verifyCmsWithReniecTrust,
+  isStrictRealMode,
+  isPlaceholderSignature,
+} = require('./reniecCmsVerify');
+
 function rejectPinFields(body) {
   for (const key of Object.keys(body || {})) {
     if (/pin|password|clave|puk/i.test(key) && body[key] != null && String(body[key]).trim() !== '') {
@@ -14,7 +21,7 @@ function rejectPinFields(body) {
 }
 
 /**
- * @returns {{ ok: true, level: string, notes: string[] } | never}
+ * @returns {object} payload normalizado o lanza Error
  */
 function validateDeviceSignaturePayload(payload, { documentHash } = {}) {
   rejectPinFields(payload);
@@ -22,12 +29,7 @@ function validateDeviceSignaturePayload(payload, { documentHash } = {}) {
   const notes = [];
   const signatureValue = String(p.signature_value || p.cms || p.pkcs7 || '').trim();
   if (!signatureValue) {
-    const err = new Error('Falta signature_value (CMS/PKCS#7 o blob de firma del DNIe).');
-    err.status = 400;
-    throw err;
-  }
-  if (signatureValue.length < 32 && !p.mock) {
-    const err = new Error('signature_value demasiado corto para una firma DNIe real.');
+    const err = new Error('Falta signature_value (CMS/PKCS#7 del DNIe).');
     err.status = 400;
     throw err;
   }
@@ -40,34 +42,84 @@ function validateDeviceSignaturePayload(payload, { documentHash } = {}) {
   }
 
   const method = String(p.method || 'dnie_nfc').toLowerCase();
-  if (method.includes('mock')) {
-    notes.push('Payload marcado como mock desde dispositivo');
+  const mock = Boolean(p.mock) || method.includes('mock');
+
+  if (mock && isStrictRealMode()) {
+    const err = new Error(
+      'Firma MOCK no permitida con CONTRACT_DNIE_PROVIDER=real|auto. Use la app Android con APDU oficiales.',
+    );
+    err.status = 403;
+    err.code = 'MOCK_FORBIDDEN';
+    throw err;
   }
 
-  // Heurística suave: CMS en Base64 suele ser largo; no fallar si no lo es (apps pueden enviar hex).
-  if (/^[A-Za-z0-9+/=]+$/.test(signatureValue) && signatureValue.length > 200) {
-    notes.push('Parece CMS/Base64');
-  } else {
-    notes.push('Formato de firma no verificado criptográficamente');
+  if (!mock && isPlaceholderSignature(signatureValue) && isStrictRealMode()) {
+    const err = new Error(
+      'Firma incompleta: falta CMS real del DNIe. Abra la firma en la app Android RESTO FADEY Firma '
+      + '(NFC IsoDep + APDU oficiales). El navegador solo no produce firma legal.',
+    );
+    err.status = 422;
+    err.code = 'DNIE_CMS_REQUIRED';
+    throw err;
   }
 
-  notes.push('REQUIERE VALIDACIÓN TÉCNICA: verificar firma y certificado con biblioteca oficial DNIe Perú');
+  if (mock) {
+    notes.push('Payload MOCK (solo desarrollo)');
+    return {
+      ok: true,
+      level: 'mock',
+      notes,
+      signature_value: signatureValue,
+      method: method || 'mock_dnie',
+      signature_algorithm: String(p.signature_algorithm || p.algorithm || 'MOCK-SHA256-RSA'),
+      certificate_serial: String(p.certificate_serial || ''),
+      certificate_subject: String(p.certificate_subject || ''),
+      certificate_issuer: String(p.certificate_issuer || ''),
+      certificate_valid_from: String(p.certificate_valid_from || ''),
+      certificate_valid_to: String(p.certificate_valid_to || ''),
+      document_number: String(p.document_number || ''),
+      validation_status: 'VALID',
+      mock: true,
+    };
+  }
+
+  const cryptoResult = verifyCmsWithReniecTrust({
+    signatureValue,
+    documentHash: documentHash || claimedHash,
+    method,
+  });
+  notes.push(...(cryptoResult.notes || []));
+
+  if (!cryptoResult.ok && isStrictRealMode() && cryptoResult.validation_status === 'REJECTED') {
+    const err = new Error(notes.join(' ') || 'Firma DNIe rechazada por verificación RENIEC/PKI.');
+    err.status = 422;
+    err.code = 'DNIE_CMS_REJECTED';
+    throw err;
+  }
+
+  const validationStatus = cryptoResult.validation_status
+    || String(p.validation_status || 'PENDING_TECHNICAL_VALIDATION');
+
+  // Nunca promover a VALID sin verificación criptográfica ok
+  const finalStatus = cryptoResult.ok && cryptoResult.level === 'cryptographic'
+    ? 'VALID'
+    : (validationStatus === 'VALID' ? 'PENDING_TECHNICAL_VALIDATION' : validationStatus);
 
   return {
     ok: true,
-    level: 'structural_only',
+    level: cryptoResult.level || 'structural_only',
     notes,
     signature_value: signatureValue,
-    method: String(p.method || 'dnie_nfc'),
+    method: method || 'dnie_nfc',
     signature_algorithm: String(p.signature_algorithm || p.algorithm || 'SHA256withRSA'),
-    certificate_serial: String(p.certificate_serial || ''),
-    certificate_subject: String(p.certificate_subject || ''),
-    certificate_issuer: String(p.certificate_issuer || ''),
+    certificate_serial: String(cryptoResult.certificate_serial || p.certificate_serial || ''),
+    certificate_subject: String(cryptoResult.certificate_subject || p.certificate_subject || ''),
+    certificate_issuer: String(cryptoResult.certificate_issuer || p.certificate_issuer || ''),
     certificate_valid_from: String(p.certificate_valid_from || ''),
     certificate_valid_to: String(p.certificate_valid_to || ''),
     document_number: String(p.document_number || ''),
-    validation_status: String(p.validation_status || 'PENDING_TECHNICAL_VALIDATION'),
-    mock: Boolean(p.mock),
+    validation_status: finalStatus,
+    mock: false,
   };
 }
 

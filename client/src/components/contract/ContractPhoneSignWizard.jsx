@@ -43,7 +43,11 @@ export default function ContractPhoneSignWizard({
     setHint('Acerque su DNI electrónico a la parte trasera del teléfono');
     onBusyChange?.(true);
     try {
-      await waitForPhoneNfcTag({ timeoutMs: 90_000, signal: ac.signal });
+      await waitForPhoneNfcTag({
+        timeoutMs: 90_000,
+        signal: ac.signal,
+        requireNative: Boolean(session?.requires_native_bridge),
+      });
       if (ac.signal.aborted) return;
       setListening(false);
       setPhase('pin');
@@ -149,9 +153,11 @@ export default function ContractPhoneSignWizard({
         <MdNfc className={`text-6xl mx-auto text-[var(--ui-accent)] ${listening ? 'animate-pulse' : ''}`} />
         <p className="font-semibold text-base">{hint}</p>
         <p className="text-xs ui-text-muted">
-          {listening
-            ? 'Mantenga el documento quieto hasta que se lea el chip.'
-            : 'El lector NFC se usa en esta misma pantalla.'}
+          {session?.requires_native_bridge
+            ? 'Firma legal: use la app Android RESTO FADEY Firma (IsoDep + PIN en el chip).'
+            : listening
+              ? 'Mantenga el documento quieto hasta que se lea el chip.'
+              : 'El lector NFC se usa en esta misma pantalla.'}
         </p>
         {needTap || !listening ? (
           <button
@@ -159,7 +165,7 @@ export default function ContractPhoneSignWizard({
             className="btn-primary w-full mt-2"
             onClick={() => void startListen()}
           >
-            Activar lector NFC
+            {session?.requires_native_bridge ? 'Reintentar detección nativa' : 'Activar lector NFC'}
           </button>
         ) : null}
       </div>

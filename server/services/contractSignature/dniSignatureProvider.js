@@ -7,6 +7,7 @@
  */
 
 const { validateDeviceSignaturePayload } = require('./deviceSignatureValidator');
+const { getReniecVerifyStatus, isStrictRealMode } = require('./reniecCmsVerify');
 
 function createMockDniSignatureProvider() {
   return {
@@ -52,6 +53,11 @@ function createRealDniSignatureProvider() {
     },
     acceptDeviceResult(devicePayload, { documentHash } = {}) {
       const checked = validateDeviceSignaturePayload(devicePayload, { documentHash });
+      // VALID solo si el validador criptográfico lo otorgó (o MOCK en desarrollo).
+      let status = checked.validation_status;
+      if (!checked.mock && status === 'VALID' && checked.level !== 'cryptographic') {
+        status = 'PENDING_TECHNICAL_VALIDATION';
+      }
       return {
         ok: true,
         mock: Boolean(checked.mock),
@@ -64,8 +70,9 @@ function createRealDniSignatureProvider() {
         certificate_valid_from: checked.certificate_valid_from,
         certificate_valid_to: checked.certificate_valid_to,
         document_number: checked.document_number,
-        validation_status: checked.mock ? 'VALID' : checked.validation_status,
+        validation_status: checked.mock ? 'VALID' : status,
         technical_note: checked.notes.join(' | '),
+        verification_level: checked.level,
       };
     },
   };
@@ -97,10 +104,21 @@ function getDniSignatureProvider() {
   return createMockDniSignatureProvider();
 }
 
+function requiresNativeBridge() {
+  return isStrictRealMode();
+}
+
+function apduReadyFromEnv() {
+  return String(process.env.DNIE_APDU_READY || '') === '1';
+}
+
 module.exports = {
   createMockDniSignatureProvider,
   createRealDniSignatureProvider,
   getDniSignatureProvider,
   getProviderMode,
   mockAllowed,
+  requiresNativeBridge,
+  apduReadyFromEnv,
+  getReniecVerifyStatus,
 };
