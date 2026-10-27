@@ -206,10 +206,17 @@ function buildMobileLinks(temporaryToken) {
   const sessionUrl = apiOrigin ? `${apiOrigin}${sessionPath}` : sessionPath;
   const webPath = `/firmar-contrato?token=${encodeURIComponent(temporaryToken)}`;
   const webSignUrl = webOrigin ? `${webOrigin}${webPath}` : webPath;
-  const deepLink = `restofadey://contract-sign?token=${encodeURIComponent(temporaryToken)}`;
+  const tokenQ = encodeURIComponent(temporaryToken);
+  const deepLink = `restofadey://contract-sign?token=${tokenQ}`;
+  /** Abre la app Android si está instalada; si no, cae a la página web. */
+  const androidIntentUrl =
+    `intent://contract-sign?token=${tokenQ}`
+    + '#Intent;scheme=restofadey;package=com.restofadey.dniesigner;'
+    + `S.browser_fallback_url=${encodeURIComponent(webSignUrl)};end`;
   return {
     session_url: sessionUrl,
     deep_link: deepLink,
+    android_intent_url: androidIntentUrl,
     session_path: sessionPath,
     web_sign_url: webSignUrl,
     web_sign_path: webPath,

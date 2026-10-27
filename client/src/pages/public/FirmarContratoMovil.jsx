@@ -194,14 +194,20 @@ export default function FirmarContratoMovil() {
             <div className="rounded-xl border border-[#d4b896] bg-[#fff8ef] p-5 text-center space-y-3">
               <MdNfc className={`text-5xl mx-auto text-[#b07a3a] ${step === 'nfc' ? 'animate-pulse' : ''}`} />
               <p className="font-semibold">
-                {step === 'nfc' ? 'Acerque el DNIe e ingrese el PIN…' : 'Acerque su DNI electrónico'}
+                {step === 'nfc'
+                  ? 'Acerque el DNIe a la parte trasera e ingrese el PIN…'
+                  : nativeReady
+                    ? 'Pulse firmar y luego acerque el DNIe'
+                    : 'NFC solo funciona dentro de la app Android'}
               </p>
               <p className="text-xs text-[#6b5340]">
-                Use la app Android RESTO FADEY Firma. El PIN no se envía al servidor.
+                {nativeReady
+                  ? 'El PIN se pide solo en este teléfono; nunca se envía a Resto Fadey.'
+                  : 'Si ve el mensaje «No se pudo encontrar una aplicación que admita la etiqueta NFC», está en el navegador: instale RESTO FADEY Firma, escanee el QR otra vez y no acerque el DNI hasta pulsar «Firmar con DNIe».'}
               </p>
               <div className="flex items-center justify-center gap-2 text-xs text-[#8a6a4a]">
                 <MdPhoneAndroid />
-                {nativeReady ? 'App nativa detectada' : 'Abra esta página dentro de la app Android'}
+                {nativeReady ? 'App nativa detectada' : 'Navegador detectado — sin canal NFC'}
               </div>
               <button
                 type="button"

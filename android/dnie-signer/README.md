@@ -5,10 +5,12 @@ Companion nativo del módulo **Contrato del servicio**. No es un módulo aparte:
 ## Flujo
 
 1. Web prepara PDF + hash (`POST /api/contrato/sign`).
-2. Usuario abre QR → `/firmar-contrato?token=…` (WebView) o deep link `restofadey://contract-sign?token=…`.
-3. App lee DNIe por NFC, pide PIN **solo en el dispositivo**.
+2. Usuario escanea el QR → `intent://…` abre esta app (`com.restofadey.dniesigner`); si no está instalada, cae a `/firmar-contrato` (sin NFC).
+3. En la app: pulsar «Firmar con DNIe» → Reader Mode (`FLAG_READER_SKIP_NDEF_CHECK`) → acercar DNIe → PIN local.
 4. App hace `POST /api/contrato/sign/mobile/:token` con `signature_value` (CMS) — **sin PIN**.
 5. El panel web hace poll y muestra la firma dentro del contrato.
+
+**Importante:** no acerque el DNIe en Chrome/navegador. El toast «No se pudo encontrar una aplicación que admita la etiqueta NFC» aparece cuando el sistema intenta NDEF fuera de Reader Mode.
 
 ## Bridge WebView
 

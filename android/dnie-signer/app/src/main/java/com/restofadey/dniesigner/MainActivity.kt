@@ -37,13 +37,22 @@ class MainActivity : AppCompatActivity() {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
-        webView.webViewClient = WebViewClient()
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                injectBridge()
+            }
+        }
         webView.addJavascriptInterface(DnieJsBridge(), "RestoFadeyDnieAndroid")
 
         val token = extractToken(intent)
         if (token.isNullOrBlank()) {
             webView.loadData(
-                "<html><body style='font-family:sans-serif;padding:24px'>Escanee el QR del contrato o abra el enlace de firma.</body></html>",
+                "<html><body style='font-family:sans-serif;padding:24px'>"
+                    + "<p><b>RESTO FADEY Firma</b></p>"
+                    + "<p>Escanee el QR del contrato desde el panel. "
+                    + "No acerque el DNIe todavía: primero debe abrir una sesión de firma.</p>"
+                    + "</body></html>",
                 "text/html",
                 "UTF-8",
             )
@@ -51,7 +60,6 @@ class MainActivity : AppCompatActivity() {
         }
         val url = "${webBase.trimEnd('/')}/firmar-contrato?token=${Uri.encode(token)}"
         webView.loadUrl(url)
-        injectBridgeWhenReady()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -60,39 +68,36 @@ class MainActivity : AppCompatActivity() {
         val token = extractToken(intent) ?: return
         val url = "${webBase.trimEnd('/')}/firmar-contrato?token=${Uri.encode(token)}"
         webView.loadUrl(url)
-        injectBridgeWhenReady()
     }
 
-    private fun injectBridgeWhenReady() {
-        webView.postDelayed({
-            webView.evaluateJavascript(
-                """
-                (function(){
-                  if (!window.RestoFadeyDnie) {
-                    window.RestoFadeyDnie = {
-                      getCapabilities: function() {
-                        return JSON.parse(window.RestoFadeyDnieAndroid.getCapabilities());
-                      },
-                      signAsync: function(payload) {
-                        return new Promise(function(resolve, reject) {
-                          try {
-                            var raw = window.RestoFadeyDnieAndroid.sign(JSON.stringify(payload || {}));
-                            var obj = JSON.parse(raw);
-                            if (obj && obj.error) reject(new Error(obj.error));
-                            else resolve(obj);
-                          } catch (e) { reject(e); }
-                        });
-                      }
-                    };
+    private fun injectBridge() {
+        webView.evaluateJavascript(
+            """
+            (function(){
+              if (!window.RestoFadeyDnie) {
+                window.RestoFadeyDnie = {
+                  getCapabilities: function() {
+                    return JSON.parse(window.RestoFadeyDnieAndroid.getCapabilities());
+                  },
+                  signAsync: function(payload) {
+                    return new Promise(function(resolve, reject) {
+                      try {
+                        var raw = window.RestoFadeyDnieAndroid.sign(JSON.stringify(payload || {}));
+                        var obj = JSON.parse(raw);
+                        if (obj && obj.error) reject(new Error(obj.error));
+                        else resolve(obj);
+                      } catch (e) { reject(e); }
+                    });
                   }
-                  if (window.RestoFadeyDniePage && window.RestoFadeyDniePage.onNativeReady) {
-                    window.RestoFadeyDniePage.onNativeReady();
-                  }
-                })();
-                """.trimIndent(),
-                null,
-            )
-        }, 600)
+                };
+              }
+              if (window.RestoFadeyDniePage && window.RestoFadeyDniePage.onNativeReady) {
+                window.RestoFadeyDniePage.onNativeReady();
+              }
+            })();
+            """.trimIndent(),
+            null,
+        )
     }
 
     private fun extractToken(intent: Intent?): String? {

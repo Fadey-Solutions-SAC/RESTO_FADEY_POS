@@ -243,12 +243,14 @@ export default function RestaurantServiceContractForm({
 
   const pdfUrl = merged.pdf_firmado_url || merged.pdf_original_url;
   const deepLink = session?.mobile?.deep_link || '';
+  const androidIntentUrl = session?.mobile?.android_intent_url || '';
   const sessionUrl = session?.mobile?.session_url || '';
   const webSignUrl = session?.mobile?.web_sign_url
     || (session?.temporary_token
       ? `${typeof window !== 'undefined' ? window.location.origin : ''}/firmar-contrato?token=${encodeURIComponent(session.temporary_token)}`
       : '');
-  const qrTarget = webSignUrl || deepLink || sessionUrl;
+  /** Preferir app Android: el navegador no puede firmar DNIe por NFC. */
+  const qrTarget = androidIntentUrl || deepLink || webSignUrl || sessionUrl;
 
   const displayText = applySignaturesIntoContractText(text, merged);
   const showTechMeta = isMaster;
@@ -368,9 +370,9 @@ export default function RestaurantServiceContractForm({
           <div className="space-y-4 text-sm text-[var(--ui-body-text)]">
             <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 text-center space-y-2">
               <MdNfc className="text-4xl mx-auto text-[var(--ui-accent)]" />
-              <p className="font-semibold">Acerca tu DNI electrónico a la parte posterior del teléfono</p>
+              <p className="font-semibold">Abra el QR con la app RESTO FADEY Firma</p>
               <p className="text-xs ui-text-muted">
-                Ingresa el PIN solo en el dispositivo. El PIN nunca llega a Resto Fadey.
+                El navegador no firma por NFC. Dentro de la app, pulse «Firmar con DNIe» y recién entonces acerque el DNI e ingrese el PIN (solo en el teléfono).
               </p>
             </div>
 
@@ -401,7 +403,7 @@ export default function RestaurantServiceContractForm({
                   className="rounded border border-[color:var(--ui-border)] bg-white p-1"
                 />
                 <p className="text-[11px] ui-text-muted text-center">
-                  Escanee con el teléfono para abrir la página de firma / app Android.
+                  Escanee con el teléfono para abrir la app Android de firma. Si no está instalada, caerá a la página web (sin NFC).
                 </p>
                 {webSignUrl ? (
                   <a
@@ -410,7 +412,7 @@ export default function RestaurantServiceContractForm({
                     rel="noopener noreferrer"
                     className="text-xs text-[var(--ui-accent)] hover:underline"
                   >
-                    Abrir página de firma
+                    Abrir página web (solo si no tiene la app)
                   </a>
                 ) : null}
                 {deepLink ? (

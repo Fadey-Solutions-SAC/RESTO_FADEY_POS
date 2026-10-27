@@ -292,7 +292,10 @@ export default function HrEmploymentContractBox({
     || (session?.temporary_token
       ? `${typeof window !== 'undefined' ? window.location.origin : ''}/firmar-contrato?token=${encodeURIComponent(session.temporary_token)}`
       : '');
-  const qrTarget = webSignUrl || session?.mobile?.deep_link || session?.mobile?.session_url || '';
+  const androidIntentUrl = session?.mobile?.android_intent_url || '';
+  const deepLink = session?.mobile?.deep_link || '';
+  /** Preferir app Android: el navegador no firma DNIe por NFC. */
+  const qrTarget = androidIntentUrl || deepLink || webSignUrl || session?.mobile?.session_url || '';
 
   return (
     <div className="sm:col-span-2 min-w-0 space-y-1.5">
@@ -441,9 +444,9 @@ export default function HrEmploymentContractBox({
           <div className="space-y-4 text-sm">
             <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 text-center space-y-2">
               <MdNfc className="text-4xl mx-auto text-[var(--ui-accent)]" />
-              <p className="font-semibold">Acerque el DNIe al teléfono</p>
+              <p className="font-semibold">Abra el QR con la app RESTO FADEY Firma</p>
               <p className="text-xs text-[var(--ui-muted)]">
-                El PIN solo se ingresa en el dispositivo. Nunca llega al servidor.
+                El navegador no firma por NFC. Dentro de la app pulse «Firmar con DNIe» y recién entonces acerque el DNI e ingrese el PIN (solo en el teléfono).
               </p>
             </div>
             {qrTarget ? (
@@ -456,18 +459,18 @@ export default function HrEmploymentContractBox({
                   className="rounded border border-[color:var(--ui-border)] bg-white p-1"
                 />
                 <p className="text-[11px] text-[var(--ui-muted)] text-center">
-                  Escanee con el móvil para abrir la página de firma.
+                  Escanee con el móvil para abrir la app Android. Si no está instalada, caerá a la web (sin NFC).
                 </p>
                 {webSignUrl ? (
                   <a href={webSignUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--ui-accent)] hover:underline">
-                    Abrir página de firma
+                    Abrir página web (solo si no tiene la app)
                   </a>
                 ) : null}
-                {session?.mobile?.deep_link ? (
+                {deepLink ? (
                   <button
                     type="button"
                     className="text-xs inline-flex items-center gap-1 text-[var(--ui-muted)]"
-                    onClick={() => void copyText(session.mobile.deep_link, 'Enlace')}
+                    onClick={() => void copyText(deepLink, 'Enlace')}
                   >
                     <MdContentCopy /> Copiar deep link
                   </button>
