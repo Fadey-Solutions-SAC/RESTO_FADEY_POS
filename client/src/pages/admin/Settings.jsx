@@ -42,6 +42,7 @@ import {
 import { applyUiThemeFromAppSettings } from '../../theme/uiTheme';
 import { UI_BADGE } from '../../utils/uiBadges';
 import { formatCatalogNameInput } from '../../utils/catalogNameFormat';
+import { getSystemVersionLabel } from '../../utils/systemVersion';
 import {
   cachePrintingConfig,
   normalizePrintingConfig,
@@ -1517,7 +1518,7 @@ export default function Settings() {
               aria-expanded={settingsNavOpen}
               aria-controls="rf-settings-hub-nav"
             >
-              <h2 className="rf-settings-hub__header-title min-w-0">
+              <h2 className="rf-settings-hub__header-title min-w-0 flex-1">
                 <MdSettings className="text-lg shrink-0" />
                 <span className="truncate">
                   Opciones sistema
@@ -1526,12 +1527,20 @@ export default function Settings() {
                   ) : null}
                 </span>
               </h2>
-              <MdExpandMore
-                className={`md:hidden text-2xl shrink-0 text-[var(--ui-muted)] transition-transform duration-200 ${
-                  settingsNavOpen ? 'rotate-180' : ''
-                }`}
-                aria-hidden
-              />
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span
+                  className="text-[11px] sm:text-xs font-semibold tabular-nums text-[var(--ui-muted)] tracking-wide"
+                  title="Versión del sistema"
+                >
+                  {getSystemVersionLabel()}
+                </span>
+                <MdExpandMore
+                  className={`md:hidden text-2xl text-[var(--ui-muted)] transition-transform duration-200 ${
+                    settingsNavOpen ? 'rotate-180' : ''
+                  }`}
+                  aria-hidden
+                />
+              </div>
             </button>
           </div>
           <nav

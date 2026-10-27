@@ -1,0 +1,37 @@
+---
+description: Subir la versión del sistema (a.b.c.d) en cada commit/push de cambios.
+alwaysApply: true
+---
+
+# Versión del sistema (UI Configuración)
+
+La versión se muestra a la derecha de **Opciones sistema** en Configuración.
+Formato en pantalla: `v 1.1.2.7` (espacio tras la `v`).
+
+## Fuente de verdad
+
+Actualizar **ambos** (mismo valor numérico, sin prefijo `v`):
+
+1. `client/package.json` → campo `"version"`
+2. `package.json` (raíz) → campo `"version"`
+
+Vite inyecta `client/package.json` como `__APP_VERSION__` (`client/src/utils/systemVersion.js`).
+
+## Cuándo subir
+
+En **cada** turno en el que el asistente haga commit y `git push` de cambios del producto (código, UI, servidor, etc.), **antes del commit** incrementar la versión.
+
+No subir versión si el turno solo toca reglas `.cursor/rules`, docs sin release, o no hay push.
+
+## Cómo incrementar
+
+Segmentos `A.B.C.D` (cada uno entero **0–9**):
+
+1. Sumar **1** al segmento de la derecha (`D`).
+2. Si un segmento pasa de **9**: ponerlo en **0** y sumar 1 al de la izquierda.
+3. Ejemplos: `1.1.2.8` → `1.1.2.9` → `1.1.3.0` → … → `1.1.9.9` → `1.2.0.0`.
+4. Si está en `9.9.9.9` y hay que subir: agregar un segmento a la izquierda y reiniciar → `1.0.0.0.0` (y seguir con la misma lógica en 5 dígitos).
+
+## Mensaje de commit
+
+Incluir la versión nueva en el mensaje cuando sea práctico, p.ej. `… (v 1.1.2.8)`.
