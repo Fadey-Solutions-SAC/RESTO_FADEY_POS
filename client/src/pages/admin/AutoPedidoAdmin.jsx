@@ -967,6 +967,7 @@ export default function AutoPedidoAdmin() {
     const formatImageUrl = requireQrFormat();
     if (!formatImageUrl) return;
     const logo = logoPlacement();
+    const tid = toast.loading('Preparando PDF a doble cara…');
     try {
       await downloadTableQrA5({
         url: selfOrderUrlForTable(table.number),
@@ -978,8 +979,9 @@ export default function AutoPedidoAdmin() {
         logoShape: logo?.shape,
         restaurantName: logo?.name || '',
       });
+      toast.success('PDF descargado: frente QR y reverso de términos', { id: tid });
     } catch (err) {
-      toast.error(err.message || 'No se pudo descargar el QR');
+      toast.error(err.message || 'No se pudo descargar el QR', { id: tid });
     }
   };
 
@@ -996,10 +998,15 @@ export default function AutoPedidoAdmin() {
       return;
     }
     setPrintingQrTableId(busyId);
-    const tid = toast.loading(sheets.length > 1 ? 'Preparando hojas A5…' : 'Preparando hoja A5…');
+    const tid = toast.loading(sheets.length > 1 ? 'Preparando PDFs A5 a doble cara…' : 'Preparando PDF A5 a doble cara…');
     try {
       await printTableQrA5Sheets(sheets, formatImageUrl, qrSlot, logoPlacement());
-      toast.success(sheets.length > 1 ? `${sheets.length} hojas A5 listas para imprimir` : 'Hoja A5 lista para imprimir', { id: tid });
+      toast.success(
+        sheets.length > 1
+          ? `${sheets.length} mesas listas: cada una con frente QR y reverso de términos`
+          : 'Listo para imprimir: frente QR y reverso de términos',
+        { id: tid },
+      );
     } catch (err) {
       toast.error(err.message || 'No se pudo imprimir el QR', { id: tid });
     } finally {
@@ -1466,7 +1473,7 @@ export default function AutoPedidoAdmin() {
           <div className="min-w-0">
             <h2 className="text-lg font-semibold rf-section-title">Enlaces y QR por mesa</h2>
             <p className="text-xs text-[var(--ui-muted)] mt-1 max-w-xl">
-              Elija un formato de la fila. El QR de cada mesa va en el recuadro violeta. El logo automático se puede mover, cambiar de forma o desactivar si el diseño ya lo trae. La hoja completa solo sale al descargar o imprimir.
+              Elija un formato de la fila. El QR de cada mesa va en el recuadro violeta. El logo automático se puede mover, cambiar de forma o desactivar si el diseño ya lo trae. Al descargar o imprimir salen las dos caras: frente con el QR y reverso con los términos y condiciones.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">

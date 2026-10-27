@@ -70,6 +70,10 @@ const A5_WIDTH_MM = 148;
 const A5_HEIGHT_MM = 210;
 const A5_DPI = 220;
 const A5_PX_PER_MM = A5_DPI / 25.4;
+/** Reverso oficial: términos y condiciones del auto pedido QR. */
+export const AUTO_PEDIDO_TERMS_IMAGE = '/qr-formats/terminos-auto-pedido.jpg';
+const A5_PDF_WIDTH_PT = (A5_WIDTH_MM * 72) / 25.4;
+const A5_PDF_HEIGHT_PT = (A5_HEIGHT_MM * 72) / 25.4;
 
 function a5Pixels() {
   return {
@@ -880,21 +884,131 @@ export async function renderTableQrA5({ url, tableNumber, formatImage, slot, log
   return canvas;
 }
 
-async function canvasToPngBlob(canvas) {
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+/** Segunda cara A5: términos y condiciones a página completa. */
+export async function renderTermsA5(termsImage) {
+  if (!termsImage) throw new Error('No se encontró la imagen de términos y condiciones');
+  const { width, height } = a5Pixels();
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  const fit = containPlacement(termsImage, width, height);
+  ctx.drawImage(termsImage, fit.x, fit.y, fit.w, fit.h);
+  return canvas;
+}
+
+async function canvasToJpegPage(canvas, quality = 0.92) {
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
   if (!blob) throw new Error('No se pudo generar la hoja A5');
-  return blob;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  return { bytes, width: canvas.width, height: canvas.height };
+}
+
+/** PDF A5 de una o más páginas JPEG (frente QR + reverso términos). */
+function buildA5PdfFromJpegPages(pages) {
+  const list = Array.isArray(pages) ? pages.filter((p) => p?.bytes?.length) : [];
+  if (!list.length) throw new Error('No hay páginas para el PDF');
+  const enc = new TextEncoder();
+  const chunks = [];
+  const offsets = [0];
+  let size = 0;
+  const push = (part) => {
+    const bytes = typeof part === 'string' ? enc.encode(part) : part;
+    chunks.push(bytes);
+    size += bytes.length;
+  };
+  const markObj = () => {
+    offsets.push(size);
+  };
+
+  push('%PDF-1.4\n');
+  markObj();
+  push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+  markObj();
+  const kids = list.map((_, i) => `${3 + i * 3} 0 R`).join(' ');
+  push(`2 0 obj\n<< /Type /Pages /Kids [${kids}] /Count ${list.length} >>\nendobj\n`);
+
+  list.forEach((page, i) => {
+    const pageObj = 3 + i * 3;
+    const contentObj = pageObj + 1;
+    const imageObj = pageObj + 2;
+    const content = `q\n${A5_PDF_WIDTH_PT.toFixed(2)} 0 0 ${A5_PDF_HEIGHT_PT.toFixed(2)} 0 0 cm\n/Im0 Do\nQ\n`;
+    markObj();
+    push(
+      `${pageObj} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A5_PDF_WIDTH_PT.toFixed(2)} ${A5_PDF_HEIGHT_PT.toFixed(2)}] /Contents ${contentObj} 0 R /Resources << /XObject << /Im0 ${imageObj} 0 R >> >> >>\nendobj\n`,
+    );
+    markObj();
+    push(`${contentObj} 0 obj\n<< /Length ${content.length} >>\nstream\n${content}endstream\nendobj\n`);
+    markObj();
+    push(
+      `${imageObj} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${page.bytes.length} >>\nstream\n`,
+    );
+    push(page.bytes);
+    push('\nendstream\nendobj\n');
+  });
+
+  const xrefStart = size;
+  push(`xref\n0 ${offsets.length}\n`);
+  push('0000000000 65535 f \n');
+  for (let i = 1; i < offsets.length; i += 1) {
+    push(`${String(offsets[i]).padStart(10, '0')} 00000 n \n`);
+  }
+  push(`trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`);
+
+  let total = 0;
+  for (const c of chunks) total += c.length;
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
+}
+
+async function loadTermsImage() {
+  return loadHtmlImage(AUTO_PEDIDO_TERMS_IMAGE);
+}
+
+async function buildQrPairPages({ url, tableNumber, formatImage, slot, logoImage, logoSlot, logoShape, termsImage }) {
+  const front = await renderTableQrA5({
+    url,
+    tableNumber,
+    formatImage,
+    slot,
+    logoImage,
+    logoSlot,
+    logoShape,
+  });
+  const back = await renderTermsA5(termsImage);
+  return [
+    await canvasToJpegPage(front),
+    await canvasToJpegPage(back),
+  ];
 }
 
 export async function downloadTableQrA5({ url, tableNumber, formatImageUrl, slot, logoUrl, logoSlot, logoShape, restaurantName }) {
   const formatImage = await loadHtmlImage(formatImageUrl);
   const logoImage = logoUrl ? await loadHtmlImage(logoUrl).catch(() => null) : null;
-  const canvas = await renderTableQrA5({ url, tableNumber, formatImage, slot, logoImage, logoSlot, logoShape, restaurantName });
-  const blob = await canvasToPngBlob(canvas);
+  const termsImage = await loadTermsImage();
+  const pages = await buildQrPairPages({
+    url,
+    tableNumber,
+    formatImage,
+    slot,
+    logoImage,
+    logoSlot,
+    logoShape,
+    termsImage,
+  });
+  const pdfBytes = buildA5PdfFromJpegPages(pages);
+  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
   const href = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = href;
-  a.download = `QR-A5-mesa-${safeFileName(tableNumber)}.png`;
+  a.download = `QR-A5-mesa-${safeFileName(tableNumber)}.pdf`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -947,16 +1061,17 @@ function printA5Images(dataUrls) {
   });
 }
 
-/** Imprime una o varias hojas A5. El formato completo no se muestra en la pantalla del sistema. */
+/** Imprime una o varias hojas A5 a doble cara: frente QR y reverso términos. */
 export async function printTableQrA5Sheets(sheets, formatImageUrl, slot, logo) {
   const list = Array.isArray(sheets) ? sheets.filter((s) => s?.url) : [];
   if (!list.length) throw new Error('No hay mesas para imprimir');
   if (!formatImageUrl) throw new Error('Cargue el formato de imagen antes de imprimir');
   const formatImage = await loadHtmlImage(formatImageUrl);
   const logoImage = logo?.url ? await loadHtmlImage(logo.url).catch(() => null) : null;
+  const termsImage = await loadTermsImage();
   const dataUrls = [];
   for (const sheet of list) {
-    const canvas = await renderTableQrA5({
+    const front = await renderTableQrA5({
       url: sheet.url,
       tableNumber: sheet.tableNumber,
       formatImage,
@@ -966,7 +1081,9 @@ export async function printTableQrA5Sheets(sheets, formatImageUrl, slot, logo) {
       logoShape: logo?.shape,
       restaurantName: logo?.name,
     });
-    dataUrls.push(canvas.toDataURL('image/png'));
+    const back = await renderTermsA5(termsImage);
+    dataUrls.push(front.toDataURL('image/jpeg', 0.92));
+    dataUrls.push(back.toDataURL('image/jpeg', 0.92));
   }
   await printA5Images(dataUrls);
 }
