@@ -4,15 +4,14 @@ import {
   MdExpandLess,
   MdDraw,
   MdCheckCircle,
-  MdNfc,
   MdPictureAsPdf,
-  MdContentCopy,
   MdLock,
 } from 'react-icons/md';
 import toast from 'react-hot-toast';
 import { api, resolveMediaUrl } from '../../utils/api';
 import { DEFAULT_EMPLOYMENT_CONTRACT_TEXT } from '../../data/defaultEmploymentContract';
 import Modal from '../Modal';
+import ContractPhoneSignWizard from '../contract/ContractPhoneSignWizard';
 
 function formatLocalDate() {
   try {
@@ -24,11 +23,6 @@ function formatLocalDate() {
   } catch {
     return new Date().toISOString().slice(0, 10);
   }
-}
-
-function qrImageUrl(data) {
-  const q = encodeURIComponent(String(data || ''));
-  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${q}`;
 }
 
 function applyEmploymentFooter(texto, contrato = {}) {
@@ -198,21 +192,6 @@ export default function HrEmploymentContractBox({
     );
   };
 
-  const startPoll = (requestId) => {
-    stopPoll();
-    pollRef.current = setInterval(async () => {
-      try {
-        const st = await api.get(`/hr/employees/${employeeId}/contract/sign/status/${requestId}`);
-        if (st?.contrato) setContrato(st.contrato);
-        if (st?.completed || st?.party_signed) {
-          onSignedOk({ fully_signed: st.fully_signed, contrato: st.contrato });
-        }
-      } catch (_) {
-        /* retry */
-      }
-    }, 2500);
-  };
-
   const beginSign = async () => {
     if (!ack) {
       toast.error('Confirme que revisó el contrato y desea firmarlo.');
@@ -237,7 +216,6 @@ export default function HrEmploymentContractBox({
       if (prep?.contrato) setContrato(prep.contrato);
       setSession(prep);
       setStep('nfc');
-      if (prep?.request_id) startPoll(prep.request_id);
     } catch (err) {
       setStep('confirm');
       toast.error(err.message || 'No se pudo preparar la firma');
@@ -246,56 +224,11 @@ export default function HrEmploymentContractBox({
     }
   };
 
-  const completeWithMock = async () => {
-    if (!session?.request_id || !session?.temporary_token) return;
-    if (!session.mock_allowed && session.provider !== 'mock') {
-      toast.error('MOCK no permitido en este despliegue.');
-      return;
-    }
-    setBusy(true);
-    try {
-      const done = await api.post(`/hr/employees/${employeeId}/contract/sign/complete`, {
-        request_id: session.request_id,
-        temporary_token: session.temporary_token,
-        ack_reviewed: true,
-        document_number: docNumber.trim(),
-        signer_name: signerName.trim(),
-        use_mock: true,
-      });
-      onSignedOk(done);
-    } catch (err) {
-      if (err.message && /Espere la firma|AWAITING_MOBILE/i.test(err.message)) {
-        toast('Espere la firma desde el teléfono…');
-      } else {
-        toast.error(err.message || 'No se pudo completar con MOCK');
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const copyText = async (value, label) => {
-    try {
-      await navigator.clipboard.writeText(String(value || ''));
-      toast.success(`${label} copiado`);
-    } catch {
-      toast.error('No se pudo copiar');
-    }
-  };
-
   const displayText = applyEmploymentFooter(
     String(contrato?.texto_contrato || '').trim() || DEFAULT_EMPLOYMENT_CONTRACT_TEXT,
     contrato || {},
   );
   const pdfUrl = contrato?.pdf_firmado_url || contrato?.pdf_original_url;
-  const webSignUrl = session?.mobile?.web_sign_url
-    || (session?.temporary_token
-      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/firmar-contrato?token=${encodeURIComponent(session.temporary_token)}`
-      : '');
-  const androidIntentUrl = session?.mobile?.android_intent_url || '';
-  const deepLink = session?.mobile?.deep_link || '';
-  /** Preferir app Android: el navegador no firma DNIe por NFC. */
-  const qrTarget = androidIntentUrl || deepLink || webSignUrl || session?.mobile?.session_url || '';
 
   return (
     <div className="sm:col-span-2 min-w-0 space-y-1.5">
@@ -440,57 +373,22 @@ export default function HrEmploymentContractBox({
           </div>
         ) : step === 'preparing' ? (
           <p className="text-center text-[var(--ui-muted)] py-8 text-sm">Preparando PDF y hash…</p>
-        ) : step === 'nfc' ? (
-          <div className="space-y-4 text-sm">
-            <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 text-center space-y-2">
-              <MdNfc className="text-4xl mx-auto text-[var(--ui-accent)]" />
-              <p className="font-semibold">Abra el QR con la app RESTO FADEY Firma</p>
-              <p className="text-xs text-[var(--ui-muted)]">
-                El navegador no firma por NFC. Dentro de la app pulse «Firmar con DNIe» y recién entonces acerque el DNI e ingrese el PIN (solo en el teléfono).
-              </p>
-            </div>
-            {qrTarget ? (
-              <div className="flex flex-col items-center gap-2">
-                <img
-                  src={qrImageUrl(qrTarget)}
-                  alt="QR firma"
-                  width={160}
-                  height={160}
-                  className="rounded border border-[color:var(--ui-border)] bg-white p-1"
-                />
-                <p className="text-[11px] text-[var(--ui-muted)] text-center">
-                  Escanee con el móvil para abrir la app Android. Si no está instalada, caerá a la web (sin NFC).
-                </p>
-                {webSignUrl ? (
-                  <a href={webSignUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--ui-accent)] hover:underline">
-                    Abrir página web (solo si no tiene la app)
-                  </a>
-                ) : null}
-                {deepLink ? (
-                  <button
-                    type="button"
-                    className="text-xs inline-flex items-center gap-1 text-[var(--ui-muted)]"
-                    onClick={() => void copyText(deepLink, 'Enlace')}
-                  >
-                    <MdContentCopy /> Copiar deep link
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            <p className="text-center text-xs text-[var(--ui-muted)] animate-pulse">
-              Esperando firma desde el teléfono…
-            </p>
-            {(session?.mock_allowed || session?.provider === 'mock') ? (
-              <button
-                type="button"
-                className="btn-secondary w-full disabled:opacity-50"
-                disabled={busy}
-                onClick={() => void completeWithMock()}
-              >
-                Continuar con firma de prueba (MOCK)
-              </button>
-            ) : null}
-          </div>
+        ) : step === 'nfc' && session ? (
+          <ContractPhoneSignWizard
+            session={session}
+            signerName={signerName.trim()}
+            documentNumber={docNumber.trim()}
+            completePath={`/hr/employees/${employeeId}/contract/sign/complete`}
+            apiPost={(path, body) => api.post(path, body)}
+            onBusyChange={setBusy}
+            onSigned={(done) => onSignedOk(done)}
+            onError={(err) => {
+              toast.error(err?.message || 'No se pudo firmar');
+              if (err?.code === 'NFC_UNAVAILABLE' || err?.code === 'NFC_TIMEOUT' || err?.code === 'NFC_PERMISSION') {
+                setStep('confirm');
+              }
+            }}
+          />
         ) : (
           <div className="space-y-4 text-sm">
             <div className="rounded-lg bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] p-3 space-y-3">
@@ -531,8 +429,11 @@ export default function HrEmploymentContractBox({
               disabled={busy || !ack}
               onClick={() => void beginSign()}
             >
-              Continuar con firma
+              Firmar
             </button>
+            <p className="text-[11px] text-[var(--ui-muted)]">
+              Siguiente: acercar el DNI al NFC e ingresar el PIN en este teléfono.
+            </p>
           </div>
         )}
       </Modal>

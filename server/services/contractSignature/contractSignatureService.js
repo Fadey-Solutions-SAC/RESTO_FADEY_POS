@@ -449,8 +449,7 @@ async function prepareSignature({
       title: 'Firma digital DNIe',
       steps: [
         'Se generó el PDF definitivo y su hash SHA-256.',
-        'Abra la app Android de firma o escanee el código / enlace.',
-        'Acerque el DNIe al NFC del teléfono e ingrese el PIN solo en el dispositivo.',
+        'En el mismo teléfono: indique nombre y DNI, acerque el DNIe al NFC e ingrese el PIN.',
         'El PIN nunca se envía a Resto Fadey.',
         ...(scope.kind === 'employment'
           ? ['Orden: primero firma el empleador; después el empleado.']

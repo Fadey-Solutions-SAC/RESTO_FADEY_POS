@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MdNfc, MdCheckCircle, MdPictureAsPdf, MdPhoneAndroid } from 'react-icons/md';
+import { MdCheckCircle, MdPictureAsPdf } from 'react-icons/md';
 import { getApiBase, resolveMediaUrl } from '../../utils/api';
-import { hasNativeDnieBridge, requestNativeDnieSign } from '../../utils/dnieSignerBridge';
+import ContractPhoneSignWizard from '../../components/contract/ContractPhoneSignWizard';
 import toast from 'react-hot-toast';
 
 async function fetchJson(path, options = {}) {
@@ -24,8 +24,7 @@ async function fetchJson(path, options = {}) {
 }
 
 /**
- * Página pública abierta desde el QR / deep link.
- * Flujo: ver sesión → NFC nativo (bridge) o MOCK de desarrollo → POST firma.
+ * Firma en el teléfono: datos → NFC → PIN → listo (sin QR ni app aparte).
  */
 export default function FirmarContratoMovil() {
   const [params] = useSearchParams();
@@ -35,8 +34,10 @@ export default function FirmarContratoMovil() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
-  const [nativeReady, setNativeReady] = useState(false);
-  const [step, setStep] = useState('idle'); // idle | nfc | sending | done
+  const [step, setStep] = useState('confirm'); // confirm | nfc | done
+  const [ack, setAck] = useState(false);
+  const [docNumber, setDocNumber] = useState('');
+  const [signerName, setSignerName] = useState('');
 
   const load = useCallback(async () => {
     if (!token) {
@@ -49,7 +50,11 @@ export default function FirmarContratoMovil() {
     try {
       const data = await fetchJson(`/contrato/sign/mobile/${encodeURIComponent(token)}`);
       setSession(data);
-      if (data.status === 'completed') setDone(true);
+      if (data.status === 'completed') {
+        setDone(true);
+        setStep('done');
+      }
+      if (data.signer_name) setSignerName(String(data.signer_name));
     } catch (err) {
       setError(err.message || 'No se pudo cargar la sesión');
     } finally {
@@ -61,87 +66,26 @@ export default function FirmarContratoMovil() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    const check = () => setNativeReady(hasNativeDnieBridge());
-    check();
-    const t = setInterval(check, 1000);
-    window.RestoFadeyDniePage = {
-      onNativeReady: check,
-      getToken: () => token,
-      getSession: () => session,
-    };
-    return () => {
-      clearInterval(t);
-      try {
-        delete window.RestoFadeyDniePage;
-      } catch (_) {
-        /* noop */
-      }
-    };
-  }, [token, session]);
-
   const pdfHref = useMemo(() => {
     if (!session) return '';
     const u = session.pdf_url || session.pdf_path || '';
     return u ? resolveMediaUrl(u) : '';
   }, [session]);
 
-  const submitPayload = async (payload) => {
-    setStep('sending');
-    const result = await fetchJson(`/contrato/sign/mobile/${encodeURIComponent(token)}`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    setDone(true);
-    setStep('done');
-    setSession((prev) => ({ ...prev, status: 'completed' }));
-    toast.success(result.fully_signed ? 'Contrato firmado por ambas partes' : 'Firma registrada');
-    return result;
-  };
-
-  const runNativeSign = async () => {
-    if (!session || session.status !== 'pending') return;
-    setBusy(true);
-    setStep('nfc');
-    try {
-      const deviceResult = await requestNativeDnieSign(session);
-      await submitPayload({
-        ...deviceResult,
-        document_hash: deviceResult.document_hash || session.document_hash,
-        method: deviceResult.method || 'dnie_nfc',
-      });
-    } catch (err) {
-      setStep('idle');
-      toast.error(err.message || 'No se pudo firmar con DNIe');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const runDevMock = async () => {
-    if (!session?.mock_allowed) {
-      toast.error('MOCK no permitido en este servidor');
+  const startNfc = () => {
+    if (!ack) {
+      toast.error('Confirme que revisó el contrato.');
       return;
     }
-    setBusy(true);
-    try {
-      await submitPayload({
-        mock: true,
-        method: 'mock_dnie_mobile',
-        signature_value: `MOCK_MOBILE_${session.document_hash.slice(0, 24)}_${Date.now().toString(36)}`,
-        signature_algorithm: 'MOCK-SHA256-RSA',
-        certificate_serial: `MOCK-MOB-${Date.now().toString(36)}`,
-        certificate_subject: `CN=${session.signer_name || 'Firmante'}, SERIALNUMBER=00000000`,
-        certificate_issuer: 'CN=MOCK DNIe CA',
-        document_number: '',
-        document_hash: session.document_hash,
-        validation_status: 'VALID',
-      });
-    } catch (err) {
-      toast.error(err.message || 'Error MOCK');
-    } finally {
-      setBusy(false);
+    if (!signerName.trim()) {
+      toast.error('Indique el nombre.');
+      return;
     }
+    if (!docNumber.trim()) {
+      toast.error('Indique el número de DNI.');
+      return;
+    }
+    setStep('nfc');
   };
 
   if (loading) {
@@ -157,29 +101,22 @@ export default function FirmarContratoMovil() {
       <div className="max-w-md mx-auto space-y-5">
         <header className="text-center space-y-1">
           <p className="text-xs uppercase tracking-[0.2em] text-[#8a6a4a]">RESTO FADEY</p>
-          <h1 className="text-2xl font-serif font-semibold">Firma digital del contrato</h1>
-          <p className="text-sm text-[#6b5340]">DNIe + NFC · el PIN solo en este teléfono</p>
+          <h1 className="text-2xl font-serif font-semibold">Firma digital</h1>
+          <p className="text-sm text-[#6b5340]">En este teléfono: DNI + NFC + PIN</p>
         </header>
 
         {error ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{error}</div>
         ) : null}
 
-        {done || session?.status === 'completed' ? (
+        {done || session?.status === 'completed' || step === 'done' ? (
           <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-6 text-center space-y-2">
             <MdCheckCircle className="text-4xl mx-auto text-emerald-600" />
             <p className="font-semibold">Firma registrada</p>
-            <p className="text-sm text-emerald-900/80">Ya puede volver a la pantalla del contrato en el computador.</p>
+            <p className="text-sm text-emerald-900/80">Ya puede volver al contrato.</p>
           </div>
         ) : session ? (
           <>
-            <div className="rounded-xl bg-white/80 border border-[#e0d4c4] p-4 space-y-2 text-sm">
-              <p><span className="text-[#8a6a4a]">Firmante:</span> {session.signer_name || '—'}</p>
-              <p><span className="text-[#8a6a4a]">Parte:</span> {session.party}</p>
-              <p><span className="text-[#8a6a4a]">Versión:</span> {session.contract_version}</p>
-              <p className="font-mono text-[10px] break-all text-[#6b5340]">Hash: {session.document_hash}</p>
-            </div>
-
             {pdfHref ? (
               <a
                 href={pdfHref}
@@ -191,49 +128,70 @@ export default function FirmarContratoMovil() {
               </a>
             ) : null}
 
-            <div className="rounded-xl border border-[#d4b896] bg-[#fff8ef] p-5 text-center space-y-3">
-              <MdNfc className={`text-5xl mx-auto text-[#b07a3a] ${step === 'nfc' ? 'animate-pulse' : ''}`} />
-              <p className="font-semibold">
-                {step === 'nfc'
-                  ? 'Acerque el DNIe a la parte trasera e ingrese el PIN…'
-                  : nativeReady
-                    ? 'Pulse firmar y luego acerque el DNIe'
-                    : 'NFC solo funciona dentro de la app Android'}
-              </p>
-              <p className="text-xs text-[#6b5340]">
-                {nativeReady
-                  ? 'El PIN se pide solo en este teléfono; nunca se envía a Resto Fadey.'
-                  : 'Si ve el mensaje «No se pudo encontrar una aplicación que admita la etiqueta NFC», está en el navegador: instale RESTO FADEY Firma, escanee el QR otra vez y no acerque el DNI hasta pulsar «Firmar con DNIe».'}
-              </p>
-              <div className="flex items-center justify-center gap-2 text-xs text-[#8a6a4a]">
-                <MdPhoneAndroid />
-                {nativeReady ? 'App nativa detectada' : 'Navegador detectado — sin canal NFC'}
+            {step === 'nfc' ? (
+              <div className="rounded-xl bg-white/90 border border-[#e0d4c4] p-4">
+                <ContractPhoneSignWizard
+                  session={{
+                    ...session,
+                    temporary_token: token,
+                    // Completar siempre por token móvil (página pública sin login).
+                    mock_allowed: false,
+                    provider: 'real',
+                  }}
+                  signerName={signerName.trim()}
+                  documentNumber={docNumber.trim()}
+                  completePath="/contrato/sign/complete"
+                  apiPost={(path, body) => fetchJson(path, { method: 'POST', body: JSON.stringify(body) })}
+                  onBusyChange={setBusy}
+                  onSigned={() => {
+                    setDone(true);
+                    setStep('done');
+                    toast.success('Firma registrada');
+                  }}
+                  onError={(err) => {
+                    toast.error(err?.message || 'No se pudo firmar');
+                    if (err?.code === 'NFC_UNAVAILABLE' || err?.code === 'NFC_TIMEOUT') {
+                      setStep('confirm');
+                    }
+                  }}
+                />
               </div>
-              <button
-                type="button"
-                disabled={busy || !nativeReady}
-                onClick={() => void runNativeSign()}
-                className="w-full rounded-xl bg-[#3d2a1c] text-[#f3efe6] py-3 text-sm font-semibold disabled:opacity-40"
-              >
-                {busy ? 'Procesando…' : 'Firmar con DNIe (NFC)'}
-              </button>
-            </div>
-
-            {session.mock_allowed ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void runDevMock()}
-                className="w-full rounded-xl border border-dashed border-[#c4a882] py-2.5 text-xs text-[#6b5340]"
-              >
-                Firma de prueba (MOCK móvil) — solo desarrollo
-              </button>
-            ) : null}
-
-            <p className="text-[10px] text-center text-[#8a6a4a] leading-relaxed">
-              APDU y verificación criptográfica del DNIe peruano: REQUIERE VALIDACIÓN TÉCNICA.
-              Esta fase conecta el canal móvil; no inventa comandos NFC.
-            </p>
+            ) : (
+              <div className="rounded-xl bg-white/90 border border-[#e0d4c4] p-4 space-y-3 text-sm">
+                <label className="block">
+                  <span className="text-xs text-[#8a6a4a]">Nombre</span>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-[#e0d4c4] bg-[#fbf8f2] px-3 py-2"
+                    value={signerName}
+                    onChange={(e) => setSignerName(e.target.value)}
+                    disabled={busy}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-[#8a6a4a]">N° DNI / DNIe</span>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-[#e0d4c4] bg-[#fbf8f2] px-3 py-2"
+                    value={docNumber}
+                    onChange={(e) => setDocNumber(e.target.value)}
+                    inputMode="numeric"
+                    disabled={busy}
+                  />
+                </label>
+                <p className="text-xs text-[#6b5340]">Parte: {session.party || '—'}</p>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" className="mt-1" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+                  <span>He revisado el contrato y deseo firmarlo.</span>
+                </label>
+                <button
+                  type="button"
+                  disabled={busy || !ack}
+                  onClick={startNfc}
+                  className="w-full rounded-xl bg-[#3d2a1c] text-[#f3efe6] py-3 text-sm font-semibold disabled:opacity-40"
+                >
+                  Firmar
+                </button>
+              </div>
+            )}
           </>
         ) : null}
       </div>

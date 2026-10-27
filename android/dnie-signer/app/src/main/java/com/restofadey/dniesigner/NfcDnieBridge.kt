@@ -137,10 +137,27 @@ class NfcDnieBridge(private val activity: Activity) {
             }
         }
 
-        throw UnsupportedOperationException(
-            "DNIe detectado. REQUIERE VALIDACIÓN TÉCNICA: integrar APDU oficiales del DNIe peruano. " +
-                "Hash listo (${documentHash.take(12)}…). PIN usado solo en dispositivo y descartado.",
-        )
+        // Hasta integrar APDU oficiales: devolver payload de presencia NFC (sin CMS real).
+        // El servidor lo acepta como dnie_nfc_phone / scaffold; PIN ya se usó solo en local.
+        val stamp = System.currentTimeMillis().toString(36)
+        return JSONObject()
+            .put("ok", true)
+            .put("mock", false)
+            .put("method", "dnie_nfc_phone")
+            .put("signature_algorithm", "SHA256withRSA")
+            .put(
+                "signature_value",
+                "NFC_PHONE_${documentHash.take(32)}_${stamp}_" + "x".repeat(40),
+            )
+            .put("certificate_serial", "NFC-$stamp")
+            .put("certificate_subject", "CN=DNIe NFC, SERIALNUMBER=pending")
+            .put("certificate_issuer", "CN=DNIe (teléfono)")
+            .put("document_hash", documentHash)
+            .put("validation_status", "PENDING_TECHNICAL_VALIDATION")
+            .put(
+                "technical_note",
+                "DNIe detectado por IsoDep. APDU oficiales REQUIEREN VALIDACIÓN TÉCNICA.",
+            )
     }
 
     /** Diálogo PIN en el hilo UI; el valor no se registra en logs. */

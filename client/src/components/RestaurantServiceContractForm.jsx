@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { MdNfc, MdRestore, MdDraw, MdCheckCircle, MdLock, MdPictureAsPdf, MdContentCopy } from 'react-icons/md';
+import { MdRestore, MdDraw, MdCheckCircle, MdLock, MdPictureAsPdf } from 'react-icons/md';
 import { api, resolveMediaUrl } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { DEFAULT_SERVICE_CONTRACT_TEXT } from '../data/defaultServiceContract';
 import { normalizeContratoFromApi } from '../utils/contratoNormalize';
 import { applySignaturesIntoContractText, CONTRACT_PROVIDER } from '../utils/contractSignatureDisplay';
 import Modal from './Modal';
+import ContractPhoneSignWizard from './contract/ContractPhoneSignWizard';
 import toast from 'react-hot-toast';
 
 function partyLabel(party) {
@@ -34,13 +35,8 @@ function formatDateTime(iso) {
   }
 }
 
-function qrImageUrl(data) {
-  const q = encodeURIComponent(String(data || ''));
-  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${q}`;
-}
-
 /**
- * Contrato: ver + firmar (PDF + canal NFC).
+ * Contrato: ver + firmar en el mismo teléfono (nombre/DNI → NFC → PIN).
  * Admin del negocio: solo ver y firmar una vez (comprador). Luego solo ver.
  * Maestro: editar texto (si no hay firmas) y firmar como vendedor.
  */
@@ -153,24 +149,6 @@ export default function RestaurantServiceContractForm({
     );
   };
 
-  const startPoll = (requestId) => {
-    stopPoll();
-    pollRef.current = setInterval(async () => {
-      try {
-        const st = await api.get(`/contrato/sign/status/${requestId}`);
-        if (st?.contrato) onChange(normalizeContratoFromApi(st.contrato));
-        if (st?.completed || st?.party_signed) {
-          onSignedOk({
-            fully_signed: st.fully_signed,
-            contrato: st.contrato,
-          });
-        }
-      } catch (_) {
-        /* seguir intentando hasta expirar */
-      }
-    }, 2500);
-  };
-
   const beginSign = async () => {
     if (!ack) {
       toast.error('Confirme que revisó el contrato y desea firmarlo.');
@@ -195,7 +173,6 @@ export default function RestaurantServiceContractForm({
       if (prep?.contrato) onChange(normalizeContratoFromApi(prep.contrato));
       setSession(prep);
       setStep('nfc');
-      if (prep?.request_id) startPoll(prep.request_id);
     } catch (err) {
       setStep('confirm');
       toast.error(err.message || 'No se pudo preparar la firma');
@@ -204,53 +181,7 @@ export default function RestaurantServiceContractForm({
     }
   };
 
-  const completeWithMock = async () => {
-    if (!session?.request_id || !session?.temporary_token) return;
-    if (!session.mock_allowed && session.provider !== 'mock') {
-      toast.error('MOCK no permitido en este despliegue.');
-      return;
-    }
-    setBusy(true);
-    try {
-      const done = await api.post('/contrato/sign/complete', {
-        request_id: session.request_id,
-        temporary_token: session.temporary_token,
-        ack_reviewed: true,
-        document_number: docNumber.trim(),
-        signer_name: signerName.trim(),
-        use_mock: true,
-      });
-      onSignedOk(done);
-    } catch (err) {
-      if (err.message && /Espere la firma|AWAITING_MOBILE/i.test(err.message)) {
-        toast('Espere la firma desde el teléfono…');
-      } else {
-        toast.error(err.message || 'No se pudo completar con MOCK');
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const copyText = async (value, label) => {
-    try {
-      await navigator.clipboard.writeText(String(value || ''));
-      toast.success(`${label} copiado`);
-    } catch {
-      toast.error('No se pudo copiar');
-    }
-  };
-
   const pdfUrl = merged.pdf_firmado_url || merged.pdf_original_url;
-  const deepLink = session?.mobile?.deep_link || '';
-  const androidIntentUrl = session?.mobile?.android_intent_url || '';
-  const sessionUrl = session?.mobile?.session_url || '';
-  const webSignUrl = session?.mobile?.web_sign_url
-    || (session?.temporary_token
-      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/firmar-contrato?token=${encodeURIComponent(session.temporary_token)}`
-      : '');
-  /** Preferir app Android: el navegador no puede firmar DNIe por NFC. */
-  const qrTarget = androidIntentUrl || deepLink || webSignUrl || sessionUrl;
 
   const displayText = applySignaturesIntoContractText(text, merged);
   const showTechMeta = isMaster;
@@ -366,91 +297,22 @@ export default function RestaurantServiceContractForm({
           </div>
         ) : step === 'preparing' ? (
           <p className="text-center ui-text-muted py-8 text-sm">Preparando documento PDF y hash…</p>
-        ) : step === 'nfc' ? (
-          <div className="space-y-4 text-sm text-[var(--ui-body-text)]">
-            <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 text-center space-y-2">
-              <MdNfc className="text-4xl mx-auto text-[var(--ui-accent)]" />
-              <p className="font-semibold">Abra el QR con la app RESTO FADEY Firma</p>
-              <p className="text-xs ui-text-muted">
-                El navegador no firma por NFC. Dentro de la app, pulse «Firmar con DNIe» y recién entonces acerque el DNI e ingrese el PIN (solo en el teléfono).
-              </p>
-            </div>
-
-            {session?.document_hash ? (
-              <p className="text-[11px] font-mono break-all ui-text-muted">
-                Hash PDF: {session.document_hash}
-              </p>
-            ) : null}
-
-            {session?.pdf_original_url ? (
-              <a
-                className="btn-secondary w-full inline-flex justify-center items-center gap-1 text-sm"
-                href={resolveMediaUrl(session.pdf_original_url)}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <MdPictureAsPdf /> Abrir PDF definitivo
-              </a>
-            ) : null}
-
-            {(qrTarget) ? (
-              <div className="flex flex-col items-center gap-2">
-                <img
-                  src={qrImageUrl(qrTarget)}
-                  alt="QR firma"
-                  width={160}
-                  height={160}
-                  className="rounded border border-[color:var(--ui-border)] bg-white p-1"
-                />
-                <p className="text-[11px] ui-text-muted text-center">
-                  Escanee con el teléfono para abrir la app Android de firma. Si no está instalada, caerá a la página web (sin NFC).
-                </p>
-                {webSignUrl ? (
-                  <a
-                    href={webSignUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-[var(--ui-accent)] hover:underline"
-                  >
-                    Abrir página web (solo si no tiene la app)
-                  </a>
-                ) : null}
-                {deepLink ? (
-                  <button
-                    type="button"
-                    className="text-xs inline-flex items-center gap-1 ui-text-muted hover:underline"
-                    onClick={() => void copyText(deepLink, 'Enlace profundo')}
-                  >
-                    <MdContentCopy /> Copiar deep link
-                  </button>
-                ) : null}
-                {sessionUrl ? (
-                  <button
-                    type="button"
-                    className="text-xs inline-flex items-center gap-1 ui-text-muted hover:underline"
-                    onClick={() => void copyText(sessionUrl, 'URL de sesión')}
-                  >
-                    <MdContentCopy /> Copiar URL API móvil
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-
-            <p className="text-center text-xs ui-text-muted animate-pulse">
-              Esperando firma desde el teléfono…
-            </p>
-
-            {(session?.mock_allowed || session?.provider === 'mock') ? (
-              <button
-                type="button"
-                className="btn-secondary w-full disabled:opacity-50"
-                disabled={busy}
-                onClick={() => void completeWithMock()}
-              >
-                Continuar con firma de prueba (MOCK)
-              </button>
-            ) : null}
-          </div>
+        ) : step === 'nfc' && session ? (
+          <ContractPhoneSignWizard
+            session={session}
+            signerName={signerName.trim()}
+            documentNumber={docNumber.trim()}
+            completePath="/contrato/sign/complete"
+            apiPost={(path, body) => api.post(path, body)}
+            onBusyChange={setBusy}
+            onSigned={(done) => onSignedOk(done)}
+            onError={(err) => {
+              toast.error(err?.message || 'No se pudo firmar');
+              if (err?.code === 'NFC_UNAVAILABLE' || err?.code === 'NFC_TIMEOUT' || err?.code === 'NFC_PERMISSION') {
+                setStep('confirm');
+              }
+            }}
+          />
         ) : (
           <div className="space-y-4 text-sm text-[var(--ui-body-text)]">
             <div className="rounded-lg bg-[var(--ui-surface-2)] border border-[color:var(--ui-border)] p-3 space-y-3">
@@ -511,10 +373,10 @@ export default function RestaurantServiceContractForm({
               disabled={busy || !ack}
               onClick={() => void beginSign()}
             >
-              Continuar con firma
+              Firmar
             </button>
             <p className="text-[11px] ui-text-muted">
-              Se generará el PDF definitivo. Luego podrá firmar con NFC en el teléfono (PIN solo en el dispositivo).
+              Siguiente: acercar el DNI al NFC e ingresar el PIN en este teléfono.
             </p>
           </div>
         )}
