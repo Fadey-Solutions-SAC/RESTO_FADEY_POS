@@ -112,7 +112,8 @@ function buildPhoneSignaturePayload({ session, signerName, documentNumber }) {
     certificate_issuer: 'CN=DNIe (lectura teléfono)',
     method: 'dnie_nfc_phone',
     validation_status: 'PENDING_TECHNICAL_VALIDATION',
-    mock: Boolean(session?.mock_allowed || session?.provider === 'mock'),
+    // Solo mock si el servidor lo autorizó explícitamente (mock_allowed).
+    mock: Boolean(session?.mock_allowed),
   };
 }
 
@@ -162,27 +163,34 @@ export async function finishPhoneNfcSignature({
   }
 
   const payload = buildPhoneSignaturePayload({ session, signerName, documentNumber });
+  const token = session.temporary_token;
 
-  if (session?.mock_allowed || session?.provider === 'mock') {
-    return apiPost(completePath, {
-      request_id: session.request_id,
-      temporary_token: session.temporary_token,
-      ack_reviewed: true,
-      document_number: documentNumber,
-      signer_name: signerName,
-      use_mock: true,
-      phone_nfc: true,
-    });
+  // En producción el servidor suele denegar MOCK: siempre cerrar por el canal móvil/NFC.
+  // MOCK solo si mock_allowed === true (desarrollo controlado).
+  if (session?.mock_allowed === true && completePath && typeof apiPost === 'function') {
+    try {
+      return await apiPost(completePath, {
+        request_id: session.request_id,
+        temporary_token: session.temporary_token,
+        ack_reviewed: true,
+        document_number: documentNumber,
+        signer_name: signerName,
+        use_mock: true,
+        phone_nfc: true,
+      });
+    } catch (err) {
+      // Si el servidor rechaza MOCK, continuar por token NFC.
+      if (!/MOCK no permitida/i.test(String(err?.message || ''))) throw err;
+    }
   }
 
-  const token = session.temporary_token;
   if (!token) {
     throw new Error('Falta token de sesión de firma.');
   }
   const res = await fetch(`${getApiBase()}/contrato/sign/mobile/${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, mock: false }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || `Error HTTP ${res.status}`);
