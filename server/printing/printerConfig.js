@@ -6,7 +6,9 @@ const CONFIG_PATH = process.env.PRINTING_CONFIG_PATH
   : path.join(__dirname, 'printer-config.json');
 
 const DEFAULT_CONFIG = {
-  caja: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
+  caja: {
+    tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80, confirmPrint: true,
+  },
   cocina: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
   bar: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, anchoPapel: 80 },
 };
@@ -37,7 +39,7 @@ function normalizePuerto(moduleConfig) {
 function normalizeModuleLenient(moduleConfig, moduleName) {
   const src = moduleConfig && typeof moduleConfig === 'object' ? moduleConfig : {};
   const tipo = resolveTipo(src.tipo);
-  return {
+  const out = {
     tipo,
     nombre: String(src.nombre || '').trim(),
     ip: tipo === 'usb' ? '' : String(src.ip || '').trim(),
@@ -46,6 +48,16 @@ function normalizeModuleLenient(moduleConfig, moduleName) {
     anchoPapel: resolveAnchoPapel(src),
     paperWidth: resolveAnchoPapel(src),
   };
+  if (moduleName === 'caja') {
+    // Ausente o true = pedir confirmación; solo false desactiva el aviso (no imprime).
+    out.confirmPrint = !(
+      src.confirmPrint === false
+      || src.confirmPrint === 0
+      || src.confirmPrint === '0'
+      || src.confirmPrint === 'false'
+    );
+  }
+  return out;
 }
 
 /** Guardado: red exige IP/puerto válidos; en USB se permite nombre vacío para guardar ancho/config general. */

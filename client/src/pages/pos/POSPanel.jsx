@@ -257,6 +257,7 @@ import { getPrecuentaSurveyQrAttachment } from '../../utils/surveyQrPrint';
 import {
   DEFAULT_PRINTING_CONFIG,
   fetchPrintingConfig,
+  isCajaSalePrintConfirmEnabled,
   normalizePaperWidthMm,
 } from '../../utils/printingConfig';
 import { printKitchenBarOnComandaSend } from '../../utils/kitchenBarAutoPrint';
@@ -2902,6 +2903,7 @@ export default function POSPanel() {
       if (
         !chargeToAccount
         && (issuedDocs.length === 0 || billingForm.doc_type === 'nota_venta')
+        && isCajaSalePrintConfirmEnabled(printingConfig)
       ) {
         setSalePrintPrompt({
           tableName: selectedTable?.name || '',
@@ -4401,17 +4403,19 @@ export default function POSPanel() {
         : orders;
       await api.put(`/admin-modules/reservations/${entry.reservation.id}`, { status: 'completed' }).catch(() => {});
       toast.success(`Reserva de ${entry.reservation.client_name} cobrada correctamente`);
-      setSalePrintPrompt({
-        tableName: String(paidOrders[0]?.table_number || ''),
-        orders: paidOrders,
-        paymentMethod: paymentMethod || 'efectivo',
-        discountTotal: 0,
-        total: Number(entry?.total || 0),
-        customer: {
-          name: String(entry.reservation.client_name || ''),
-          phone: String(entry.reservation.client_phone || entry.reservation.phone || ''),
-        },
-      });
+      if (isCajaSalePrintConfirmEnabled(printingConfig)) {
+        setSalePrintPrompt({
+          tableName: String(paidOrders[0]?.table_number || ''),
+          orders: paidOrders,
+          paymentMethod: paymentMethod || 'efectivo',
+          discountTotal: 0,
+          total: Number(entry?.total || 0),
+          customer: {
+            name: String(entry.reservation.client_name || ''),
+            phone: String(entry.reservation.client_phone || entry.reservation.phone || ''),
+          },
+        });
+      }
       loadData();
     } catch (err) {
       toast.error(err.message);

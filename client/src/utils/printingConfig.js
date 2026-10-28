@@ -29,7 +29,8 @@ export const DEFAULT_STATION_PRINTING = {
 };
 
 export const DEFAULT_PRINTING_CONFIG = {
-  caja: { ...DEFAULT_STATION_PRINTING, autoPrint: true },
+  /** confirmPrint: aviso «¿Desea imprimir la nota de venta?» tras cobrar. false = como pulsar No. */
+  caja: { ...DEFAULT_STATION_PRINTING, autoPrint: true, confirmPrint: true },
   cocina: { ...DEFAULT_STATION_PRINTING },
   bar: { ...DEFAULT_STATION_PRINTING },
 };
@@ -149,6 +150,16 @@ export function isPrintingModuleEnabled(cfg, moduleKey) {
   }
   const flag = isAutoPrintFlagEnabled(cfg?.[moduleKey]?.autoPrint);
   return flag === null ? false : flag;
+}
+
+/**
+ * Confirmación de impresión en caja tras cobrar.
+ * Por defecto activa. Si está desactivada, no muestra el aviso y no imprime (como «No»).
+ */
+export function isCajaSalePrintConfirmEnabled(cfg) {
+  const v = cfg?.caja?.confirmPrint;
+  if (v === false || v === 0 || v === '0' || v === 'false') return false;
+  return true;
 }
 
 export function isValidPrintingIp(value) {
