@@ -258,7 +258,9 @@ import {
   DEFAULT_PRINTING_CONFIG,
   fetchPrintingConfig,
   isCajaSalePrintConfirmEnabled,
+  loadPrintingConfigFromCache,
   normalizePaperWidthMm,
+  PRINTING_CONFIG_UPDATED_EVENT,
 } from '../../utils/printingConfig';
 import { printKitchenBarOnComandaSend } from '../../utils/kitchenBarAutoPrint';
 import { showStockInOrderingUI } from '../../utils/productStockDisplay';
@@ -1591,6 +1593,22 @@ export default function POSPanel() {
     }
   };
 
+  /** Usa caché fresca (p. ej. tras desactivar en Impresora); no la config vieja en memoria. */
+  const shouldPromptSalePrint = useCallback((stateCfg = printingConfig) => {
+    const cached = loadPrintingConfigFromCache();
+    return isCajaSalePrintConfirmEnabled(cached || stateCfg);
+  }, [printingConfig]);
+
+  useEffect(() => {
+    const onPrintingConfigUpdated = (event) => {
+      if (event?.detail && typeof event.detail === 'object') {
+        setPrintingConfig(event.detail);
+      }
+    };
+    window.addEventListener(PRINTING_CONFIG_UPDATED_EVENT, onPrintingConfigUpdated);
+    return () => window.removeEventListener(PRINTING_CONFIG_UPDATED_EVENT, onPrintingConfigUpdated);
+  }, []);
+
   useEffect(() => {
     selectedTableIdRef.current = selectedTable?.id ?? null;
   }, [selectedTable?.id]);
@@ -2903,7 +2921,7 @@ export default function POSPanel() {
       if (
         !chargeToAccount
         && (issuedDocs.length === 0 || billingForm.doc_type === 'nota_venta')
-        && isCajaSalePrintConfirmEnabled(printingConfig)
+        && shouldPromptSalePrint()
       ) {
         setSalePrintPrompt({
           tableName: selectedTable?.name || '',
@@ -4403,7 +4421,7 @@ export default function POSPanel() {
         : orders;
       await api.put(`/admin-modules/reservations/${entry.reservation.id}`, { status: 'completed' }).catch(() => {});
       toast.success(`Reserva de ${entry.reservation.client_name} cobrada correctamente`);
-      if (isCajaSalePrintConfirmEnabled(printingConfig)) {
+      if (shouldPromptSalePrint()) {
         setSalePrintPrompt({
           tableName: String(paidOrders[0]?.table_number || ''),
           orders: paidOrders,

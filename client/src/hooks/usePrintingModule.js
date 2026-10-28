@@ -9,6 +9,7 @@ import {
   getPrinterStatusForModule,
   isPrintingModuleEnabled,
   isValidPrintingIp,
+  cachePrintingConfig,
   loadPrintingConfigFromCache,
   normalizePrintingConfig,
   normalizePaperWidthMm,
@@ -167,9 +168,19 @@ export function usePrintingModule(moduleKey, { autoLoad = true } = {}) {
     [printingConfig],
   );
 
-  const toggleCajaConfirmPrint = useCallback(async () => {
+  const toggleCajaConfirmPrint = useCallback(async (nextValue) => {
     if (moduleKey !== 'caja') return null;
-    const next = !isCajaSalePrintConfirmEnabled(printingConfig);
+    const next =
+      typeof nextValue === 'boolean'
+        ? nextValue
+        : !isCajaSalePrintConfirmEnabled(printingConfig);
+    const prev = printingConfig;
+    // Actualización inmediata (UI + caché) para que Caja deje de mostrar el aviso al instante.
+    const optimistic = cachePrintingConfig({
+      ...printingConfig,
+      caja: { ...(printingConfig?.caja || {}), confirmPrint: next },
+    });
+    setPrintingConfig(optimistic);
     setBusy(true);
     try {
       const saved = await savePrintingCajaConfirmPrint(printingConfig, next);
@@ -181,6 +192,8 @@ export function usePrintingModule(moduleKey, { autoLoad = true } = {}) {
       );
       return saved;
     } catch (err) {
+      cachePrintingConfig(prev);
+      setPrintingConfig(prev);
       toast.error(err.message || 'No se pudo guardar la confirmación de impresión');
       return null;
     } finally {

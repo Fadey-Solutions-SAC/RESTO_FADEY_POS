@@ -304,15 +304,20 @@ export default function PrinterModulePanel({
           </div>
           <button
             type="button"
-            className={`btn-secondary text-sm shrink-0 ${
-              confirmPrintEnabled
-                ? 'border-rose-200 text-rose-700 hover:bg-rose-50'
-                : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-            }`}
+            role="switch"
+            aria-checked={confirmPrintEnabled}
+            aria-label="Confirmación de impresión"
             disabled={busy}
-            onClick={() => void toggleCajaConfirmPrint()}
+            onClick={() => void toggleCajaConfirmPrint(!confirmPrintEnabled)}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-40 ${
+              confirmPrintEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+            }`}
           >
-            {confirmPrintEnabled ? 'Desactivar' : 'Activar'}
+            <span
+              className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                confirmPrintEnabled ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
           </button>
         </div>
       ) : null}

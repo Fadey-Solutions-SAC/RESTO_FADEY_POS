@@ -326,7 +326,15 @@ export async function savePrintingModuleConfig(fullConfig, moduleKey, moduleCfgO
   const saved = hasElectronPrinting()
     ? await electronPrinting.saveConfig(payload)
     : await api.printing.put('/printing/config', payload);
-  const merged = saved || { ...fullConfig, ...payload };
+  // Prioriza lo enviado (p. ej. confirmPrint:false) por si el bridge omite el campo.
+  const base = saved && typeof saved === 'object' ? saved : { ...fullConfig };
+  const merged = {
+    ...base,
+    [moduleKey]: {
+      ...(base[moduleKey] || {}),
+      ...(payload[moduleKey] || {}),
+    },
+  };
   cachePrintingConfig(merged);
   try {
     let origin = getPersistedPrintingBridgeOrigin();
