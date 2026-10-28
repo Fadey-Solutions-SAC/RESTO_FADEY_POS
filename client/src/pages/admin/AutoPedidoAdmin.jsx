@@ -1995,7 +1995,7 @@ export default function AutoPedidoAdmin() {
               {genPreviewMode !== 'max' ? (
                 <div className="flex min-h-0 min-w-0 flex-col">
                   <label className="mb-0.5 block shrink-0 text-xs font-medium text-[var(--ui-muted)]">Contenido</label>
-                  <div className="flex min-h-[12rem] min-w-0 flex-1 flex-col">
+                  <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                     <MenuCartaSyntaxEditor
                       value={genText}
                       onChange={setGenText}
@@ -2004,30 +2004,13 @@ export default function AutoPedidoAdmin() {
                       sectionColor={normalizeHex(genColors.section, DEFAULT_MENU_CARTA_COLORS.section)}
                     />
                   </div>
-                  <div className="mt-2 flex shrink-0 flex-wrap gap-2">
-                    <button type="button" onClick={closeGenerator} className="btn-secondary text-sm">
-                      Cerrar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void downloadGeneratedCartaPng()}
-                      className="btn-secondary text-sm inline-flex items-center gap-1"
-                      disabled={genExporting}
-                    >
-                      <MdDownload />
-                      {genExporting ? 'Preparando…' : 'Descargar PNG A4'}
-                    </button>
-                    <button type="button" onClick={() => void applyGeneratedCarta()} className="btn-primary text-sm" disabled={!canSave}>
-                      Guardar en carta QR
-                    </button>
-                  </div>
                 </div>
               ) : null}
               <div className="flex min-h-0 min-w-0 flex-col">
                 <label className="mb-0.5 block shrink-0 text-xs font-medium text-[var(--ui-muted)]">Vista previa</label>
                 <div
-                  className={`flex min-w-0 items-start justify-center overflow-auto rounded-xl border border-[color:var(--ui-border)] p-3 ${
-                    genPreviewMode === 'min' ? 'min-h-[10rem] h-40' : 'min-h-[32rem] h-[min(72vh,820px)] flex-1'
+                  className={`flex min-w-0 min-h-0 flex-1 items-start justify-center overflow-auto rounded-xl border border-[color:var(--ui-border)] p-3 ${
+                    genPreviewMode === 'min' ? 'h-40 max-h-40' : ''
                   }`}
                   style={{ backgroundColor: normalizeHex(genColors.bg, DEFAULT_MENU_CARTA_COLORS.bg) }}
                 >
@@ -2047,25 +2030,23 @@ export default function AutoPedidoAdmin() {
                 </div>
               </div>
             </div>
-            {genPreviewMode === 'max' ? (
-              <div className="mt-2 flex shrink-0 flex-wrap gap-2">
-                <button type="button" onClick={closeGenerator} className="btn-secondary text-sm">
-                  Cerrar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void downloadGeneratedCartaPng()}
-                  className="btn-secondary text-sm inline-flex items-center gap-1"
-                  disabled={genExporting}
-                >
-                  <MdDownload />
-                  {genExporting ? 'Preparando…' : 'Descargar PNG A4'}
-                </button>
-                <button type="button" onClick={() => void applyGeneratedCarta()} className="btn-primary text-sm" disabled={!canSave}>
-                  Guardar en carta QR
-                </button>
-              </div>
-            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[color:var(--ui-border)] pt-3">
+            <button type="button" onClick={closeGenerator} className="btn-secondary text-sm">
+              Cerrar
+            </button>
+            <button
+              type="button"
+              onClick={() => void downloadGeneratedCartaPng()}
+              className="btn-secondary text-sm inline-flex items-center gap-1"
+              disabled={genExporting}
+            >
+              <MdDownload />
+              {genExporting ? 'Preparando…' : 'Descargar PNG A4'}
+            </button>
+            <button type="button" onClick={() => void applyGeneratedCarta()} className="btn-primary text-sm" disabled={!canSave}>
+              Guardar en carta QR
+            </button>
           </div>
         </div>
       </Modal>
