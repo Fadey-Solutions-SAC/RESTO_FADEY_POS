@@ -303,6 +303,15 @@ export async function savePrintingModuleAutoPrint(fullConfig, moduleKey, autoPri
   return savePrintingModuleConfig(fullConfig, moduleKey, moduleCfg);
 }
 
+/** Guarda solo confirmPrint de caja (aviso tras cobrar). */
+export async function savePrintingCajaConfirmPrint(fullConfig, confirmPrint) {
+  const moduleCfg = {
+    ...(fullConfig?.caja || {}),
+    confirmPrint: Boolean(confirmPrint),
+  };
+  return savePrintingModuleConfig(fullConfig, 'caja', moduleCfg);
+}
+
 export async function savePrintingModuleConfig(fullConfig, moduleKey, moduleCfgOverride = null) {
   const moduleCfg = moduleCfgOverride || fullConfig?.[moduleKey];
   if (!moduleCfg) throw new Error('Configuración de módulo inválida');

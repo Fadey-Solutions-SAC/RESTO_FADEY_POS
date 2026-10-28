@@ -2122,39 +2122,7 @@ export default function Settings() {
                     Estado de impresora: {printerStatus?.[moduleKey]?.status || 'No disponible'}
                   </p>
 
-                  {moduleKey === 'caja' ? (
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-[var(--ui-body-text)]">Confirmación de impresión</p>
-                        <p className="text-xs text-[var(--ui-muted)] mt-0.5">
-                          Si está desactivada, tras cobrar no aparece el aviso y no se imprime la nota de venta (como pulsar «No»).
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={cfg.confirmPrint !== false}
-                        aria-label="Confirmación de impresión"
-                        disabled={printingBusy}
-                        onClick={() => setPrintingConfig((prev) => ({
-                          ...prev,
-                          caja: {
-                            ...(prev.caja || {}),
-                            confirmPrint: !(prev.caja?.confirmPrint !== false),
-                          },
-                        }))}
-                        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-                          cfg.confirmPrint !== false ? 'bg-emerald-500' : 'bg-slate-300'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
-                            cfg.confirmPrint !== false ? 'left-5' : 'left-0.5'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  ) : (
+                  {moduleKey !== 'caja' && (
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`text-xs px-2 py-1 rounded-full border ${Boolean(cfg.autoPrint) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-[var(--ui-muted)] border-slate-200'}`}>
                         {Boolean(cfg.autoPrint) ? 'Impresora activa' : 'Impresora desactivada'}
@@ -2169,6 +2137,11 @@ export default function Settings() {
                       </button>
                     </div>
                   )}
+                  {moduleKey === 'caja' ? (
+                    <p className="text-xs text-[var(--ui-muted)]">
+                      La opción «Confirmación de impresión» (aviso tras cobrar) se configura en Caja → Impresora.
+                    </p>
+                  ) : null}
                 </div>
               );
             })}

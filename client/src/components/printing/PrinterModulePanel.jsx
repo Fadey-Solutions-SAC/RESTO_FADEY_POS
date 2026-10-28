@@ -47,12 +47,15 @@ export default function PrinterModulePanel({
     updateModuleField,
     saveModule,
     setModuleEnabled,
+    confirmPrintEnabled,
+    toggleCajaConfirmPrint,
     printTest,
     loadConfig,
     moduleEnabled,
     configLoaded,
   } = usePrintingModule(moduleKey);
   const isProductionArea = String(moduleKey || '').trim().toLowerCase() !== 'caja';
+  const isCaja = !isProductionArea;
 
   const [manualPrintingApi, setManualPrintingApi] = useState(() => (
     getPersistedPrintingBridgeOrigin() || 'http://127.0.0.1:3002'
@@ -288,6 +291,31 @@ export default function PrinterModulePanel({
           </>
         )}
       </div>
+
+      {isCaja ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2.5">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--ui-body-text)]">Confirmación de impresión</p>
+            <p className="text-xs text-[var(--ui-muted)] mt-0.5">
+              {confirmPrintEnabled
+                ? 'Activa: tras cobrar pregunta si desea imprimir la nota de venta.'
+                : 'Desactivada: tras cobrar no avisa y no imprime (como pulsar «No»).'}
+            </p>
+          </div>
+          <button
+            type="button"
+            className={`btn-secondary text-sm shrink-0 ${
+              confirmPrintEnabled
+                ? 'border-rose-200 text-rose-700 hover:bg-rose-50'
+                : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+            }`}
+            disabled={busy}
+            onClick={() => void toggleCajaConfirmPrint()}
+          >
+            {confirmPrintEnabled ? 'Desactivar' : 'Activar'}
+          </button>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <button

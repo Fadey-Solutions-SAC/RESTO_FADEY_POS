@@ -16,7 +16,9 @@ import {
   PRINTING_CONFIG_UPDATED_EVENT,
   PRINTING_LINK_STATUS_EVENT,
   savePrintingModuleAutoPrint,
+  savePrintingCajaConfirmPrint,
   savePrintingModuleConfig,
+  isCajaSalePrintConfirmEnabled,
   verifyPrintingLinkStatus,
   printingUnreachableMessage,
 } from '../utils/printingConfig';
@@ -160,6 +162,32 @@ export function usePrintingModule(moduleKey, { autoLoad = true } = {}) {
     }
   }, [printingConfig, moduleKey]);
 
+  const confirmPrintEnabled = useMemo(
+    () => isCajaSalePrintConfirmEnabled(printingConfig),
+    [printingConfig],
+  );
+
+  const toggleCajaConfirmPrint = useCallback(async () => {
+    if (moduleKey !== 'caja') return null;
+    const next = !isCajaSalePrintConfirmEnabled(printingConfig);
+    setBusy(true);
+    try {
+      const saved = await savePrintingCajaConfirmPrint(printingConfig, next);
+      setPrintingConfig(normalizePrintingConfig(saved));
+      toast.success(
+        next
+          ? 'Confirmación de impresión activada'
+          : 'Confirmación de impresión desactivada (no avisará ni imprimirá tras cobrar)',
+      );
+      return saved;
+    } catch (err) {
+      toast.error(err.message || 'No se pudo guardar la confirmación de impresión');
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }, [printingConfig, moduleKey]);
+
   const printTest = useCallback(async () => {
     setBusy(true);
     try {
@@ -251,6 +279,8 @@ export function usePrintingModule(moduleKey, { autoLoad = true } = {}) {
     updateModuleField,
     saveModule,
     setModuleEnabled,
+    confirmPrintEnabled,
+    toggleCajaConfirmPrint,
     printTest,
   };
 }

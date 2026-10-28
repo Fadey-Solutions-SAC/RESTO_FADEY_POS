@@ -124,7 +124,9 @@ function ensureDesktopJwtSecret(userDataDir) {
 
 function defaultConfig() {
   return {
-    caja: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80 },
+    caja: {
+      tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80, confirmPrint: true,
+    },
     cocina: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80 },
     bar: { tipo: 'usb', nombre: '', ip: '', puerto: 9100, autoPrint: true, paperWidth: 80 },
   };
@@ -136,7 +138,7 @@ function normalizeModule(raw = {}, moduleKey) {
   const paper =
     paperRaw === 50 ? 50 : paperRaw === 58 ? 58 : paperRaw === 75 ? 75 : 80;
   const puerto = Number(raw.puerto ?? 9100);
-  return {
+  const out = {
     tipo,
     nombre: String(raw.nombre || '').trim(),
     ip: tipo === 'usb' ? '' : String(raw.ip || '').trim(),
@@ -145,6 +147,16 @@ function normalizeModule(raw = {}, moduleKey) {
     paperWidth: paper,
     anchoPapel: paper,
   };
+  if (moduleKey === 'caja') {
+    // Solo false desactiva; ausente/true = pedir confirmación al cobrar.
+    out.confirmPrint = !(
+      raw.confirmPrint === false
+      || raw.confirmPrint === 0
+      || raw.confirmPrint === '0'
+      || raw.confirmPrint === 'false'
+    );
+  }
+  return out;
 }
 
 function normalizeConfig(input) {
