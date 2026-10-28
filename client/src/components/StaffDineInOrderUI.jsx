@@ -428,7 +428,7 @@ export function StaffDineInOrderCartPanel({
 
 /**
  * UI unificada “Tomar pedido” (Mesas / Caja / Reservas / Delivery / auto-pedido): buscador, categorías, grilla y carrito.
- * `stackedSelfOrder`: columna única — solo la grilla hace scroll; resumen + total + pie fijos (QR cliente).
+ * `stackedSelfOrder`: columna única (QR cliente) — solo catálogo; el carrito va en «Hacer pedido».
  */
 export default function StaffDineInOrderUI({
   search,
@@ -556,8 +556,6 @@ export default function StaffDineInOrderUI({
 
   const fmtMoney = formatCurrency || ((amount) => `S/ ${Number(amount || 0).toFixed(2)}`);
   const { promotions: activePromotions, clock: promotionClock } = useActivePromotions();
-  const stackedCartPricing = useCartPromotionPricing(stackedSelfOrder ? cart : []);
-
   const renderOrderProductRowCompact = (product, promo = null) => {
     const unitAmount = orderingProductUnitPrice(product);
     const unitPrice = promo?.strike ? (
@@ -684,30 +682,11 @@ export default function StaffDineInOrderUI({
         <div {...scrollAreaFlexProps}>
           {productGrid}
         </div>
-        <div className="shrink-0 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3">
-          <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-[var(--ui-body-text)]">
-            <MdShoppingCart /> Tu pedido
-            {cart.length > 0 && (
-              <span className="rounded-full bg-[var(--ui-accent)] px-2 py-0.5 text-xs text-white">{cart.length}</span>
-            )}
-          </h3>
-          <div className="max-h-[min(26vh,200px)] overflow-y-auto overscroll-y-contain scrollbar-thin [-webkit-overflow-scrolling:touch] touch-pan-y pr-0.5" style={{ touchAction: 'pan-y' }} onWheel={(e) => e.stopPropagation()}>
-            <CartLineItems
-              cart={cart}
-              cartLayout={cartLayout}
-              formatCurrency={formatCurrency}
-              noteEditorLineKey={noteEditorLineKey}
-              setNoteEditorLineKey={setNoteEditorLineKey}
-              updateQty={updateQty}
-              removeFromCart={removeFromCart}
-              updateItemNote={updateItemNote}
-              showLineDeleteLabel={showLineDeleteLabel}
-              canDeleteLine={canDeleteLine}
-            />
+        {footer ? (
+          <div className="shrink-0 space-y-2 border-t border-[color:var(--ui-border)] pt-2">
+            {footer}
           </div>
-          <PromotionSummary pricing={stackedCartPricing} formatCurrency={formatCurrency} compact className="mt-2" />
-          {footer ? <div className="mt-3 space-y-2 border-t border-[color:var(--ui-border)] pt-3">{footer}</div> : null}
-        </div>
+        ) : null}
       </div>
     );
   }
