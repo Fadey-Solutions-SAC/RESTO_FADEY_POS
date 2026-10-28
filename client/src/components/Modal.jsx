@@ -1,9 +1,11 @@
+import { createPortal } from 'react-dom';
 import { MdClose } from 'react-icons/md';
 import { useIsUiThemeLight } from '../theme/useUiTheme';
 
 /**
  * Modales centrados por defecto. Con tema global «claro», el panel usa superficie clara aunque variant sea oscuro.
  * Usa variant="light" en rutas de cliente; variant por defecto sigue siendo oscuro en temas blue/dark/gray/purple/green.
+ * Se renderiza en document.body para que fixed/centrado no quede atrapado por transform del sidebar u otros padres.
  */
 export default function Modal({
   isOpen,
@@ -62,9 +64,9 @@ export default function Modal({
     ? `min-h-0 min-w-0 overflow-y-auto overflow-x-auto p-4 sm:p-6 flex-1 bg-[var(--ui-surface)] text-[var(--ui-body-text)] [&_strong]:text-[var(--ui-body-text)] ${bodyClassName}`.trim()
     : `min-h-0 min-w-0 overflow-y-auto overflow-x-auto p-4 sm:p-6 flex-1 bg-[var(--ui-surface)] modal-sheet-body ${bodyClassName}`.trim();
 
-  return (
+  const node = (
     <div
-      className={`fixed inset-0 z-50 flex items-center ${placementClass} p-2 sm:p-4 ${containerClassName}`}
+      className={`fixed inset-0 z-[100] flex items-center ${placementClass} p-2 sm:p-4 ${containerClassName}`}
       role="presentation"
     >
       <button
@@ -104,4 +106,7 @@ export default function Modal({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return node;
+  return createPortal(node, document.body);
 }
