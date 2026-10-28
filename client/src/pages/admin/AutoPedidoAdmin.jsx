@@ -1788,6 +1788,7 @@ export default function AutoPedidoAdmin() {
         bodyClassName="flex flex-col min-h-0 overflow-hidden !p-4 sm:!p-5"
       >
         <div className="flex min-h-0 flex-1 flex-col gap-2 text-[var(--ui-body-text)]">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-y-contain pr-0.5">
           <p className="shrink-0 text-[11px] leading-snug text-[var(--ui-muted)] sm:text-xs">
             Una carta por categoría, máximo {CARTA_MAX_PRODUCTS} productos. Escriba{' '}
             <span className="font-mono text-[var(--ui-accent)]">Nombre | descripción  precio</span>
@@ -1984,7 +1985,7 @@ export default function AutoPedidoAdmin() {
               </div>
             </div>
             <div
-              className={`grid min-h-0 flex-1 gap-2 ${
+              className={`grid min-h-0 gap-2 ${
                 genPreviewMode === 'max'
                   ? 'grid-cols-1'
                   : genPreviewMode === 'min'
@@ -1995,7 +1996,7 @@ export default function AutoPedidoAdmin() {
               {genPreviewMode !== 'max' ? (
                 <div className="flex min-h-0 min-w-0 flex-col">
                   <label className="mb-0.5 block shrink-0 text-xs font-medium text-[var(--ui-muted)]">Contenido</label>
-                  <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                  <div className="flex min-h-[12rem] min-w-0 flex-1 flex-col overflow-hidden sm:min-h-[28rem]">
                     <MenuCartaSyntaxEditor
                       value={genText}
                       onChange={setGenText}
@@ -2009,8 +2010,10 @@ export default function AutoPedidoAdmin() {
               <div className="flex min-h-0 min-w-0 flex-col">
                 <label className="mb-0.5 block shrink-0 text-xs font-medium text-[var(--ui-muted)]">Vista previa</label>
                 <div
-                  className={`flex min-w-0 min-h-0 flex-1 items-start justify-center overflow-auto rounded-xl border border-[color:var(--ui-border)] p-3 ${
-                    genPreviewMode === 'min' ? 'h-40 max-h-40' : ''
+                  className={`flex min-w-0 items-start justify-center overflow-auto rounded-xl border border-[color:var(--ui-border)] p-3 ${
+                    genPreviewMode === 'min'
+                      ? 'h-40 min-h-[10rem] max-h-40'
+                      : 'min-h-[32rem] h-[min(72vh,820px)]'
                   }`}
                   style={{ backgroundColor: normalizeHex(genColors.bg, DEFAULT_MENU_CARTA_COLORS.bg) }}
                 >
@@ -2031,7 +2034,8 @@ export default function AutoPedidoAdmin() {
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[color:var(--ui-border)] pt-3">
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[color:var(--ui-border)] bg-[var(--ui-surface)] pt-3">
             <button type="button" onClick={closeGenerator} className="btn-secondary text-sm">
               Cerrar
             </button>
