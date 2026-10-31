@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { api, formatCurrency, formatDate, parseApiDate, toLocalDateKey } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
@@ -107,6 +108,7 @@ export default function Clientes() {
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [openMenuId, setOpenMenuId] = useState('');
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
   const [viewClientId, setViewClientId] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editClient, setEditClient] = useState(null);
@@ -114,6 +116,7 @@ export default function Clientes() {
   const [gitCardsEnrolled, setGitCardsEnrolled] = useState(0);
   const [gitCardsEnabled, setGitCardsEnabled] = useState(true);
   const searchRef = useRef('');
+  const menuRef = useRef(null);
 
   const load = useCallback(async (term) => {
     const q = term !== undefined && term !== null ? String(term) : searchRef.current;
@@ -152,10 +155,38 @@ export default function Clientes() {
 
   useEffect(() => {
     if (!openMenuId) return undefined;
-    const close = () => setOpenMenuId('');
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
+    const close = (e) => {
+      if (menuRef.current?.contains(e.target)) return;
+      setOpenMenuId('');
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpenMenuId('');
+    };
+    // Diferir: evita cerrar en el mismo clic que abre el menú.
+    const timer = window.setTimeout(() => {
+      document.addEventListener('mousedown', close);
+      document.addEventListener('keydown', onKey);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [openMenuId]);
+
+  const openRowMenu = (e, customerId) => {
+    e.stopPropagation();
+    if (openMenuId === customerId) {
+      setOpenMenuId('');
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuPos({
+      top: Math.min(rect.bottom + 4, window.innerHeight - 8),
+      right: Math.max(8, window.innerWidth - rect.right),
+    });
+    setOpenMenuId(customerId);
+  };
 
   useEffect(() => {
     setPage(1);
@@ -192,11 +223,18 @@ export default function Clientes() {
     const createdDays = daysSince(createdDate);
     const visits = Number(c.visits || 0);
     const debt = getCustomerPendingTotal(c.id);
+    const pendingCount = (pendingOrdersByCustomer[c.id] || []).length;
+    const hasAnyOrder = visits >= 1
+      || pendingCount > 0
+      || Boolean(lastDate)
+      || Number(c.total_spent || 0) > 0;
     const active = lastDays != null ? lastDays <= ACTIVE_DAYS : (createdDays != null && createdDays <= 30);
+    // «Nuevo» solo hasta el primer pedido (pagado o pendiente).
     let type = 'nuevo';
     if (String(c.doc_type) === '6') type = 'empresa';
     else if (visits >= FREQUENT_VISITS) type = 'frecuente';
     else if (visits >= 2) type = 'regular';
+    else if (hasAnyOrder) type = 'regular';
     return {
       ...c,
       _lastDate: lastDate,
@@ -205,7 +243,7 @@ export default function Clientes() {
       _createdDate: createdDate,
       _visits: visits,
       _debt: debt,
-      _pendingCount: (pendingOrdersByCustomer[c.id] || []).length,
+      _pendingCount: pendingCount,
       _active: active,
       _type: type,
       _email: visibleEmail(c.email),
@@ -383,6 +421,7 @@ export default function Clientes() {
   };
 
   const viewClient = viewClientId ? enriched.find((c) => c.id === viewClientId) : null;
+  const menuClient = openMenuId ? enriched.find((c) => c.id === openMenuId) : null;
   const filtersActive = search || statusFilter !== 'all' || dateFrom || dateTo;
 
   const kpiCards = [
@@ -577,12 +616,19 @@ export default function Clientes() {
                         </span>
                       </td>
                       <td className="py-3 pr-3">
-                        <span className={`block font-semibold tabular-nums ${c._debt > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-                          {formatCurrency(c._debt)}
-                        </span>
-                        <span className="block text-xs text-slate-500">
-                          {c._pendingCount ? `${c._pendingCount} pedido(s) pendiente(s)` : `Consumo: ${formatCurrency(c.total_spent || 0)}`}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setViewClientId(c.id)}
+                          className="text-left rounded-lg px-1 py-0.5 -mx-1 hover:bg-slate-100 transition-colors"
+                          title="Ver cuenta completa"
+                        >
+                          <span className={`block font-semibold tabular-nums ${c._debt > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+                            {formatCurrency(c._debt)}
+                          </span>
+                          <span className="block text-xs text-slate-500">
+                            {c._pendingCount ? `${c._pendingCount} pedido(s) pendiente(s)` : `Consumo: ${formatCurrency(c.total_spent || 0)}`}
+                          </span>
+                        </button>
                       </td>
                       <td className="py-3 pr-3">
                         {c._lastDate ? (
@@ -595,39 +641,17 @@ export default function Clientes() {
                         )}
                       </td>
                       <td className="py-3 pr-2">
-                        <div className="relative flex items-center justify-end gap-1">
-                          <button type="button" onClick={() => setViewClientId(c.id)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600" title="Ver detalle">
-                            <MdVisibility />
-                          </button>
-                          <button type="button" onClick={() => openEdit(c)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600" title="Editar">
-                            <MdEdit />
-                          </button>
+                        <div className="flex items-center justify-end">
                           <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); setOpenMenuId((prev) => (prev === c.id ? '' : c.id)); }}
-                            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-                            title="Más opciones"
+                            onClick={(e) => openRowMenu(e, c.id)}
+                            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                            title="Acciones"
+                            aria-haspopup="menu"
+                            aria-expanded={openMenuId === c.id}
                           >
-                            <MdMoreVert />
+                            <MdMoreVert className="text-xl" />
                           </button>
-                          {openMenuId === c.id && (
-                            <div className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-left shadow-lg">
-                              {gitCardsEnabled && (
-                                <button type="button" onClick={() => navigate(`/admin/clientes/git-cards/${c.id}`)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                                  <MdStar className="text-amber-600" /> Perfil GIT Cards
-                                </button>
-                              )}
-                              <button type="button" onClick={() => goToCajaToChargeCustomer(c)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                                <MdAttachMoney className="text-emerald-600" /> Ir a caja a cobrar
-                              </button>
-                              <button type="button" onClick={() => copyClienteSelfOrderLink(c.id)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                                <MdContentCopy className="text-blue-600" /> Copiar enlace auto-pedido
-                              </button>
-                              <button type="button" onClick={() => deleteClient(c.id)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">
-                                <MdDelete /> Eliminar cliente
-                              </button>
-                            </div>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -680,6 +704,69 @@ export default function Clientes() {
           </div>
         </div>
       </div>
+
+      {menuClient && typeof document !== 'undefined'
+        ? createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            className="fixed z-[120] w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-left shadow-lg"
+            style={{ top: menuPos.top, right: menuPos.right }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpenMenuId(''); setViewClientId(menuClient.id); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <MdVisibility className="text-blue-600" /> Ver cuenta / inspeccionar
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpenMenuId(''); openEdit(menuClient); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <MdEdit className="text-slate-600" /> Editar
+            </button>
+            {gitCardsEnabled && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setOpenMenuId(''); navigate(`/admin/clientes/git-cards/${menuClient.id}`); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <MdStar className="text-amber-600" /> Perfil GIT Cards
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpenMenuId(''); goToCajaToChargeCustomer(menuClient); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <MdAttachMoney className="text-emerald-600" /> Ir a caja a cobrar
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpenMenuId(''); copyClienteSelfOrderLink(menuClient.id); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <MdContentCopy className="text-blue-600" /> Copiar enlace auto-pedido
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpenMenuId(''); deleteClient(menuClient.id); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
+            >
+              <MdDelete /> Eliminar cliente
+            </button>
+          </div>,
+          document.body,
+        )
+        : null}
 
       <Modal isOpen={!!viewClient} onClose={() => setViewClientId('')} title="Detalle del cliente" size="lg">
         {viewClient && (
