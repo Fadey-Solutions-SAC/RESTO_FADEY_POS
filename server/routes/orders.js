@@ -551,6 +551,18 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo
     logOrderDebug(req, 'put_lines_ok', { order_id: order.id, order_number: order.order_number });
     res.json({ ...order, new_item_ids: lineResult?.newItemIds || [] });
   } catch (err) {
+    // Reintento offline sobre pedido ya cancelado/cobrado: no modificar nada y no trabar la cola.
+    if (err?.code === 'ORDER_NOT_EDITABLE') {
+      const current = getOrderWithItems(req.params.id);
+      if (current) {
+        logOrderDebug(req, 'put_lines_noop_not_editable', {
+          order_id: req.params.id,
+          status: current.status,
+          payment_status: current.payment_status,
+        });
+        return res.json({ ...current, new_item_ids: [], skipped: true, code: 'ORDER_NOT_EDITABLE' });
+      }
+    }
     logRouteError(req, err, { order_id: req.params.id, item_count: items?.length });
     const status = err.message && !/interno|base de datos/i.test(err.message) ? 400 : 500;
     res.status(status).json({
@@ -560,6 +572,7 @@ router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo
           ? 'No se pudo enviar el pedido a cocina/bar. Intente nuevamente.'
           : 'No se pudo actualizar el pedido',
       ),
+      ...(err?.code ? { code: err.code } : {}),
     });
   }
 });

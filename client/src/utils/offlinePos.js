@@ -768,7 +768,18 @@ export async function flushOfflineQueue(sendFn) {
           && /^\/orders\/[^/]+\/status$/.test(p)
           && status >= 400 && status < 500
           && /Transici[oó]n inv[aá]lida:\s*(\w+)\s*->\s*\1/i.test(msg);
-        if (isIdempotentStatus) {
+        // Editar líneas de un pedido ya cancelado/cobrado: omitir sin tocar datos del servidor.
+        const isStaleOrderEdit =
+          job.method === 'PUT'
+          && /^\/orders\/[^/]+\/lines$/.test(p)
+          && status >= 400 && status < 500
+          && (
+            code === 'ORDER_NOT_EDITABLE'
+            || /Solo se pueden modificar pedidos pendientes/i.test(msg)
+            || /No se puede modificar un pedido ya cobrado/i.test(msg)
+            || /ya no admite productos/i.test(msg)
+          );
+        if (isIdempotentStatus || isStaleOrderEdit) {
           setMutationQueue(rest);
           flushed += 1;
           continue;

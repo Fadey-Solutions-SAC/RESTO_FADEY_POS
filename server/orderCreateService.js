@@ -737,10 +737,14 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
   const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
   if (!order) throw new Error('Pedido no encontrado');
   if (!['pending', 'preparing', 'ready'].includes(String(order.status || ''))) {
-    throw new Error('Solo se pueden modificar pedidos pendientes, en preparación o listos (sin cobrar)');
+    const err = new Error('Solo se pueden modificar pedidos pendientes, en preparación o listos (sin cobrar)');
+    err.code = 'ORDER_NOT_EDITABLE';
+    throw err;
   }
   if (String(order.payment_status || 'pending') !== 'pending') {
-    throw new Error('No se puede modificar un pedido ya cobrado');
+    const err = new Error('No se puede modificar un pedido ya cobrado');
+    err.code = 'ORDER_NOT_EDITABLE';
+    throw err;
   }
 
   const { computeAddedLineIds, attachExistingLineIdentity } = require('./utils/orderLineRemoval');
