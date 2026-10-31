@@ -864,7 +864,11 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     }
   }
   const allowedNext = ORDER_TRANSITIONS[order.status] || [];
+  // Idempotente: reintentos offline / doble clic no deben fallar ni bloquear la cola.
   if (status === 'delivered' && String(order.status || '') === 'delivered') {
+    return res.json(getOrderWithItems(req.params.id));
+  }
+  if (status === 'cancelled' && String(order.status || '') === 'cancelled') {
     return res.json(getOrderWithItems(req.params.id));
   }
   const pickupPaidToDelivered =
@@ -900,10 +904,6 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
     }
   } else if (!pickupPaidToDelivered && !allowedNext.includes(status)) {
     return res.status(400).json({ error: `Transición inválida: ${order.status} -> ${status}` });
-  }
-
-  if (status === 'cancelled' && order.status === 'cancelled') {
-    return res.json(getOrderWithItems(req.params.id));
   }
 
   if (status === 'cancelled' && order.status !== 'cancelled') {

@@ -762,6 +762,17 @@ export async function flushOfflineQueue(sendFn) {
         const isRejectedCashFlow = job.method === 'POST'
           && (p === '/pos/movements' || p === '/pos/notes')
           && status >= 400 && status < 500;
+        // Cancelar/entregar algo ya en ese estado (reintento offline) no debe trabar la cola.
+        const isIdempotentStatus =
+          job.method === 'PUT'
+          && /^\/orders\/[^/]+\/status$/.test(p)
+          && status >= 400 && status < 500
+          && /Transici[oó]n inv[aá]lida:\s*(\w+)\s*->\s*\1/i.test(msg);
+        if (isIdempotentStatus) {
+          setMutationQueue(rest);
+          flushed += 1;
+          continue;
+        }
         if (isRejectedCashFlow) {
           setMutationQueue(rest);
           skipped += 1;
