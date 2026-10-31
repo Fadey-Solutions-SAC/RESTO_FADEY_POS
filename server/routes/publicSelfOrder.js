@@ -4,7 +4,11 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, withTransaction } = require('../database');
 const { assertPaymentMethodAllowed } = require('../businessRules');
-const { createOrMergeTableOrderInTransaction, getOrderWithItems } = require('../orderCreateService');
+const {
+  createOrderInTransaction,
+  createOrMergeTableOrderInTransaction,
+  getOrderWithItems,
+} = require('../orderCreateService');
 const { emitInventoryUpdate } = require('../socketBroadcast');
 const { createRateLimiter } = require('../middleware/rateLimit');
 const { JWT_SECRET } = require('../middleware/auth');
