@@ -155,21 +155,37 @@ function canSendToProvider(restaurant) {
     && (canSendToNubefact(restaurant) || canSendToEfact(restaurant));
 }
 
+/** RUC / razón social del emisor (persona natural = apellidos y nombres). */
+function resolveEmisorIdentity(restaurant) {
+  const ruc = String(restaurant?.company_ruc || '').replace(/\D/g, '').slice(0, 11);
+  const razon = String(
+    restaurant?.legal_name
+    || restaurant?.billing_nombre_comercial
+    || restaurant?.name
+    || '',
+  ).trim();
+  return { ruc, razon };
+}
+
 /** Validación antes de armar el payload (mensajes claros para el panel / POS). */
 function assertRestaurantReadyForBillingIssue(restaurant, useEfact, docType) {
   if (!Number(restaurant.billing_enabled ?? 0)) {
     throw new Error('La facturación electrónica no está habilitada en el restaurante.');
   }
-  const ruc = String(restaurant.company_ruc || '').trim();
-  const razon = String(restaurant.legal_name || '').trim();
+  const { ruc, razon } = resolveEmisorIdentity(restaurant);
+  // Normaliza en memoria para el resto del flujo (efact / PDF).
+  if (restaurant && ruc) restaurant.company_ruc = ruc;
+  if (restaurant && razon && !String(restaurant.legal_name || '').trim()) {
+    restaurant.legal_name = razon;
+  }
   if (!ruc) {
-    throw new Error('Falta el RUC del emisor (Mi Restaurante → Mi empresa o Bot facturación SUNAT).');
+    throw new Error('Falta el RUC del emisor (Mi Restaurante → Facturación electrónica → RUC). Guarde los cambios y reintente.');
   }
   if (!/^\d{11}$/.test(ruc)) {
     throw new Error('El RUC del emisor debe tener 11 dígitos.');
   }
   if (!razon) {
-    throw new Error('Falta la razón social del emisor.');
+    throw new Error('Falta la razón social / apellidos y nombres del emisor.');
   }
   if (useEfact) {
     if (!canSendToEfact(restaurant)) {
@@ -979,13 +995,20 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
 
 router.post('/issue', authenticateToken, requireRole('admin', 'cajero', 'mozo'), async (req, res) => {
   try {
-    const { order_id: orderId, doc_type: docTypeRaw, customer, invoice_lines_mode: invoiceLinesMode } = req.body || {};
+    const {
+      order_id: orderId,
+      doc_type: docTypeRaw,
+      customer,
+      invoice_lines_mode: invoiceLinesMode,
+      replace_existing: replaceExistingRaw,
+    } = req.body || {};
     const docType = String(docTypeRaw || '').trim().toLowerCase();
+    const replaceExisting = Boolean(replaceExistingRaw);
     const created = await issueDocumentForOrder({
       orderId,
       docType,
       customer,
-      replaceExisting: false,
+      replaceExisting,
       invoiceLinesMode,
     });
     emitOrderUpdateForBilling(req.app.get('io'), orderId);

@@ -166,6 +166,11 @@ router.put('/', authenticateToken, requireRole('admin', 'master_admin'), (req, r
     if (profilePatch.phone) phone = profilePatch.phone;
   }
 
+  const normalizedRuc = company_ruc == null
+    ? null
+    : String(company_ruc).replace(/\D/g, '').slice(0, 11);
+  const normalizedLegalName = legal_name == null ? null : String(legal_name).trim();
+
   runSql(`UPDATE restaurants SET 
     name = COALESCE(?, name), address = COALESCE(?, address), phone = COALESCE(?, phone), email = COALESCE(?, email), logo = COALESCE(?, logo),
     tax_rate = COALESCE(?, tax_rate), currency = COALESCE(?, currency), currency_symbol = COALESCE(?, currency_symbol),
@@ -188,7 +193,9 @@ router.put('/', authenticateToken, requireRole('admin', 'master_admin'), (req, r
       name, address, phone, email, logo, tax_rate, currency, currency_symbol,
       delivery_enabled, delivery_fee, delivery_min_order, delivery_radius_km,
       schedule ? JSON.stringify(schedule) : null,
-      company_ruc, legal_name, billing_nombre_comercial, billing_emisor_ubigeo,
+      normalizedRuc === '' ? null : normalizedRuc,
+      normalizedLegalName === '' ? null : normalizedLegalName,
+      billing_nombre_comercial, billing_emisor_ubigeo,
       billing_emisor_direccion, billing_emisor_provincia, billing_emisor_departamento,
       billing_emisor_distrito, billing_series_boleta, billing_series_factura,
       nextBillingPanelJson,

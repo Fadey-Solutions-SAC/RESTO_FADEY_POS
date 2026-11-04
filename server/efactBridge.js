@@ -63,10 +63,16 @@ function buildEfactSaleJson({
   invoiceLinesMode = 'detallado',
 }) {
   const taxRate = toNumber(restaurant.tax_rate, 18);
-  const ruc = String(restaurant.company_ruc || '').trim();
-  const razon = String(restaurant.legal_name || '').trim();
-  if (!ruc) throw new Error('Configure el RUC del emisor en Facturación electrónica');
-  if (!razon) throw new Error('Configure la razón social del emisor en Facturación electrónica');
+  const ruc = String(restaurant.company_ruc || '').replace(/\D/g, '').slice(0, 11);
+  const razon = String(
+    restaurant.legal_name
+    || restaurant.billing_nombre_comercial
+    || restaurant.name
+    || '',
+  ).trim();
+  if (!ruc) throw new Error('Configure el RUC del emisor en Facturación electrónica y guarde los cambios');
+  if (!/^\d{11}$/.test(ruc)) throw new Error('El RUC del emisor debe tener 11 dígitos');
+  if (!razon) throw new Error('Configure la razón social / apellidos y nombres del emisor en Facturación electrónica');
 
   const lineas = invoiceLinesMode === 'consumo'
     ? [

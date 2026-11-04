@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatDateTime, formatDate, parseApiDate, isDateKeyInInclusiveRange, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
+import { billingStatusLabel, billingFileIsOpenable } from '../../utils/billingSunatStatus';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
 import {
@@ -17,6 +18,7 @@ import {
   MdHourglassEmpty,
   MdPointOfSale,
   MdCancel,
+  MdReceipt,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
@@ -537,7 +539,13 @@ export default function Ventas() {
   const [editPaymentMethod, setEditPaymentMethod] = useState('efectivo');
   const [editDocType, setEditDocType] = useState('nota_venta');
   const [editPaymentNote, setEditPaymentNote] = useState('');
+  const [editCustomerDocType, setEditCustomerDocType] = useState('1');
+  const [editCustomerDocNumber, setEditCustomerDocNumber] = useState('');
+  const [editCustomerName, setEditCustomerName] = useState('');
+  const [editCustomerAddress, setEditCustomerAddress] = useState('');
+  const [editCustomerPhone, setEditCustomerPhone] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [issuingDoc, setIssuingDoc] = useState(false);
   const [loading, setLoading] = useState(true);
   const [restaurantName, setRestaurantName] = useState('-');
   const [restaurantInfo, setRestaurantInfo] = useState({ name: '', logo: '' });
@@ -838,8 +846,70 @@ export default function Ventas() {
     setEditPaymentMethod(payableOrders[0]?.payment_method || order.payment_method || 'efectivo');
     setEditDocType(doc.doc_type || 'nota_venta');
     setEditPaymentNote(initialNote);
+    const existingDocType = String(doc.customer_doc_type || '').trim();
+    setEditCustomerDocType(existingDocType === '6' || doc.doc_type === 'factura' ? '6' : '1');
+    setEditCustomerDocNumber(String(doc.customer_doc_number || '').replace(/\D/g, ''));
+    setEditCustomerName(String(doc.customer_name || order.customer_name || '').trim());
+    setEditCustomerAddress(String(doc.customer_address || '').trim());
+    setEditCustomerPhone(String(doc.customer_phone || '').trim());
     setSelected(order);
     setSelectedGroup(group);
+  };
+
+  const issueComprobanteFromEdit = async () => {
+    if (!editing?.id) return;
+    if (!editing.singleComanda) {
+      toast.error('Emita el comprobante desde una venta de una sola comanda');
+      return;
+    }
+    if (editDocType === 'factura') {
+      const ruc = editCustomerDocNumber.replace(/\D/g, '');
+      if (!/^\d{11}$/.test(ruc)) return toast.error('Para factura indique RUC del cliente (11 dígitos)');
+      if (!editCustomerName.trim()) return toast.error('Para factura indique razón social del cliente');
+    }
+    if (editDocType === 'boleta' && editCustomerDocType === '1') {
+      const dni = editCustomerDocNumber.replace(/\D/g, '');
+      if (dni && !/^\d{8}$/.test(dni)) return toast.error('DNI inválido (8 dígitos)');
+    }
+    setIssuingDoc(true);
+    try {
+      for (const orderId of editing.orderIds) {
+        await api.put(`/orders/${orderId}/payment`, {
+          payment_method: editPaymentMethod,
+          ...(editPaymentNote.trim() !== editing.paymentNote ? { payment_note: editPaymentNote.trim() } : {}),
+        });
+      }
+      const doc = await api.post('/billing/issue', {
+        order_id: editing.id,
+        doc_type: editDocType,
+        replace_existing: true,
+        customer: {
+          doc_type: editDocType === 'factura' ? '6' : editCustomerDocType,
+          doc_number: editCustomerDocNumber.replace(/\D/g, ''),
+          name: editCustomerName.trim() || 'CLIENTE VARIOS',
+          address: editCustomerAddress.trim() || 'LIMA',
+          phone: editCustomerPhone.trim(),
+        },
+      });
+      const st = String(doc?.provider_status || '').toLowerCase();
+      const label = billingStatusLabel(st);
+      toast.success(
+        doc?.full_number
+          ? `${doc.full_number} — ${label}`
+          : `Comprobante registrado (${label})`,
+      );
+      if (billingFileIsOpenable(doc?.pdf_url)) {
+        const pdf = resolveMediaUrl(doc.pdf_url);
+        if (pdf) window.open(pdf, '_blank', 'noopener,noreferrer');
+      }
+      setEditing(null);
+      closeDetail();
+      await load();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo emitir el comprobante');
+    } finally {
+      setIssuingDoc(false);
+    }
   };
 
   const saveChanges = async () => {
@@ -1406,11 +1476,80 @@ export default function Ventas() {
                     El método se aplica a las {editing.orderIds.length} comandas de la cuenta; la propina se mantiene y pasa al nuevo método en el cierre de caja.
                   </p>
                 ) : null}
+                {editing.singleComanda && (editDocType === 'boleta' || editDocType === 'factura') ? (
+                  <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-slate-800">Datos del cliente (mismo flujo que Caja)</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {editDocType === 'boleta' ? (
+                        <div>
+                          <label className="block text-xs text-[var(--ui-muted)] mb-1">Doc. cliente</label>
+                          <select
+                            className="input-field text-sm"
+                            value={editCustomerDocType}
+                            onChange={(e) => setEditCustomerDocType(e.target.value)}
+                          >
+                            <option value="1">DNI</option>
+                            <option value="6">RUC</option>
+                            <option value="0">Sin documento</option>
+                          </select>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-xs text-[var(--ui-muted)] mb-1">Doc. cliente</label>
+                          <input className="input-field text-sm" value="RUC" disabled />
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-xs text-[var(--ui-muted)] mb-1">
+                          {editDocType === 'factura' || editCustomerDocType === '6' ? 'RUC' : 'Número'}
+                        </label>
+                        <input
+                          className="input-field text-sm"
+                          value={editCustomerDocNumber}
+                          onChange={(e) => setEditCustomerDocNumber(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                          placeholder={editDocType === 'factura' || editCustomerDocType === '6' ? '11 dígitos' : '8 dígitos'}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs text-[var(--ui-muted)] mb-1">
+                          {editDocType === 'factura' ? 'Razón social' : 'Nombre / Cliente'}
+                        </label>
+                        <input
+                          className="input-field text-sm"
+                          value={editCustomerName}
+                          onChange={(e) => setEditCustomerName(e.target.value)}
+                          placeholder="Cliente varios"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs text-[var(--ui-muted)] mb-1">Dirección</label>
+                        <input
+                          className="input-field text-sm"
+                          value={editCustomerAddress}
+                          onChange={(e) => setEditCustomerAddress(e.target.value)}
+                          placeholder="LIMA"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={saveChanges} disabled={savingEdit} className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
+                  <button onClick={saveChanges} disabled={savingEdit || issuingDoc} className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
                     <MdSave /> {savingEdit ? 'Guardando...' : 'Guardar cambios'}
                   </button>
-                  <button type="button" onClick={() => setEditing(null)} disabled={savingEdit} className="btn-secondary text-sm">
+                  {editing.singleComanda ? (
+                    <button
+                      type="button"
+                      onClick={() => void issueComprobanteFromEdit()}
+                      disabled={savingEdit || issuingDoc}
+                      className="btn-secondary text-sm inline-flex items-center gap-2 disabled:opacity-50 border-sky-300 text-sky-800 bg-sky-50 hover:bg-sky-100"
+                      title="Emite boleta/factura/nota con el mismo servicio que Caja"
+                    >
+                      <MdReceipt />
+                      {issuingDoc ? 'Emitiendo…' : 'Emitir comprobante'}
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={() => setEditing(null)} disabled={savingEdit || issuingDoc} className="btn-secondary text-sm">
                     Cancelar
                   </button>
                 </div>

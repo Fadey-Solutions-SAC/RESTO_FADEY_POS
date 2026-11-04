@@ -573,7 +573,12 @@ export default function MiRestaurant() {
           );
           return;
         }
-        const savedRestaurant = await api.put('/restaurant', { ...restaurant, billing_panel: billingPanel });
+        const savedRestaurant = await api.put('/restaurant', {
+          ...restaurant,
+          company_ruc: String(restaurant?.company_ruc || '').replace(/\D/g, '').slice(0, 11),
+          legal_name: String(restaurant?.legal_name || '').trim(),
+          billing_panel: billingPanel,
+        });
         setRestaurant(savedRestaurant);
         if (savedRestaurant?.billing_panel && typeof savedRestaurant.billing_panel === 'object') {
           setBillingPanel({ ...defaultBillingPanel(), ...savedRestaurant.billing_panel });
