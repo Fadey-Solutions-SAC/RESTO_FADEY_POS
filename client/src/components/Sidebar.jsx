@@ -463,12 +463,13 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                   if (isMobile) onClose();
                   return;
                 }
-                // Módulos con submódulos: solo expandir/colapsar; no navegar hasta elegir un hijo.
+                // Caja: entrar directo (los submódulos casi no se usan).
                 if (link.moduleId === 'caja' || link.to === '/admin/caja') {
-                  e.preventDefault();
-                  setIsCajaExpanded((prev) => !prev);
+                  setIsCajaExpanded(true);
+                  if (isMobile) onClose();
                   return;
                 }
+                // Módulos con submódulos útiles: solo expandir; navegar al elegir el hijo.
                 if (link.to === '/admin/mi-restaurant') {
                   e.preventDefault();
                   setIsMiRestaurantExpanded((prev) => !prev);
