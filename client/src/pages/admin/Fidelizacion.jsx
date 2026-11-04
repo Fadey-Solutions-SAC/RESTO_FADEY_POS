@@ -420,7 +420,7 @@ export default function Fidelizacion() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 overflow-x-auto">
         {VIEWS.map((t) => {
           const Icon = t.icon;
           return (
@@ -428,17 +428,17 @@ export default function Fidelizacion() {
               key={t.id}
               type="button"
               onClick={() => setView(t.id)}
-              className={`rf-tab-btn inline-flex items-center gap-1.5 ${view === t.id ? 'rf-tab-btn--active' : ''}`}
+              className={`rf-tab-btn inline-flex items-center gap-1 sm:gap-1.5 shrink-0 text-sm ${view === t.id ? 'rf-tab-btn--active' : ''}`}
             >
-              <Icon className="text-lg" />
+              <Icon className="text-base sm:text-lg" />
               {t.label}
             </button>
           );
         })}
         {view === 'panel' ? (
-          <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ml-auto sm:ml-0">
-            <MdCalendarToday className="text-slate-500" />
-            {todayLabel}
+          <div className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-medium text-slate-700 shadow-sm shrink-0 ml-auto">
+            <MdCalendarToday className="text-slate-500 text-base" />
+            <span className="tabular-nums whitespace-nowrap">{todayLabel}</span>
           </div>
         ) : null}
       </div>
