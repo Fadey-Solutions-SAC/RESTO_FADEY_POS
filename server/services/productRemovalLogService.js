@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, queryOne, runSql } = require('../database');
+const { queryAll, queryOne, runSql, flushSaveDb } = require('../database');
 const { sqlBusinessTimestamp } = require('../utils/appDateTime');
 
 const REMOVAL_EVENT_DATE_SQL = `DATE(${sqlBusinessTimestamp('created_at', queryOne)})`;
@@ -42,6 +42,10 @@ function insertProductRemovals(removals, order, actor, removalReason) {
       product_id: row.product_id,
       quantity_removed: qty,
     });
+  }
+  // Misma restaurant.db: forzar flush (sql.js) para que no se pierdan al reiniciar.
+  if (inserted.length) {
+    try { flushSaveDb(); } catch { /* ignore */ }
   }
   return inserted;
 }
@@ -103,6 +107,7 @@ function enrichRemovalForReport(row) {
 
 function deleteProductRemoval(id) {
   runSql('DELETE FROM order_product_removals WHERE id = ?', [id]);
+  try { flushSaveDb(); } catch { /* ignore */ }
 }
 
 module.exports = {

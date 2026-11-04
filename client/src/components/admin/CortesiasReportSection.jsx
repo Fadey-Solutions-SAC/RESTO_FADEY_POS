@@ -33,6 +33,10 @@ import {
   MdVisibility,
   MdFilterList,
   MdClose,
+  MdCardGiftcard,
+  MdDiscount,
+  MdForum,
+  MdGroups,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import { adjustmentKindBadge } from '../../utils/uiBadges';
@@ -522,56 +526,106 @@ export default function CortesiasReportSection({
   return (
     <div>
       <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-4">
-        <button type="button" onClick={() => setKindFilter('cortesia')} className={`card border-l-4 border-l-violet-500 text-left min-w-0 ${kindFilter === 'cortesia' ? 'ring-2 ring-violet-400' : ''}`}>
-          <p className="text-xs ui-text-muted truncate">Cortesías</p>
-          <p className="text-xl sm:text-2xl font-bold text-violet-600 tabular-nums">{overviewSummary.courtesy_count}</p>
-          <p className="text-[10px] sm:text-xs text-[var(--ui-muted)] mt-1 line-clamp-2">Registros en el periodo</p>
-        </button>
-        <button type="button" onClick={() => setKindFilter('descuento')} className={`card border-l-4 border-l-amber-500 text-left min-w-0 ${kindFilter === 'descuento' ? 'ring-2 ring-amber-400' : ''}`}>
-          <p className="text-xs ui-text-muted truncate">Descuentos</p>
-          <p className="text-xl sm:text-2xl font-bold text-amber-600 tabular-nums">{overviewSummary.discount_count}</p>
-          <p className="text-[10px] sm:text-xs text-[var(--ui-muted)] mt-1 line-clamp-2">Registros en el periodo</p>
-        </button>
-        <button type="button" onClick={() => setKindFilter('eliminado')} className={`card border-l-4 border-l-red-500 text-left min-w-0 ${kindFilter === 'eliminado' ? 'ring-2 ring-red-400' : ''}`}>
-          <p className="text-xs ui-text-muted truncate">Eliminados</p>
-          <p className="text-xl sm:text-2xl font-bold text-red-600 tabular-nums">{overviewSummary.eliminado_count}</p>
-          <p className="text-[10px] sm:text-xs text-[var(--ui-muted)] mt-1 line-clamp-2">Registros en el periodo</p>
-        </button>
+        {[
+          {
+            key: 'cortesia',
+            title: 'Cortesías',
+            value: overviewSummary.courtesy_count,
+            hint: 'Registros en el periodo',
+            Icon: MdVolunteerActivism,
+            Deco: MdCardGiftcard,
+            wrap: 'from-violet-50 to-white border-violet-200/80',
+            bubble: 'from-violet-400 to-purple-600 shadow-purple-500/30',
+            deco: 'text-violet-300/80',
+            active: kindFilter === 'cortesia',
+            ring: 'ring-2 ring-violet-400',
+          },
+          {
+            key: 'descuento',
+            title: 'Descuentos',
+            value: overviewSummary.discount_count,
+            hint: 'Registros en el periodo',
+            Icon: MdLocalOffer,
+            Deco: MdDiscount,
+            wrap: 'from-amber-50 to-white border-amber-200/80',
+            bubble: 'from-amber-400 to-orange-500 shadow-amber-500/30',
+            deco: 'text-amber-300/80',
+            active: kindFilter === 'descuento',
+            ring: 'ring-2 ring-amber-400',
+          },
+          {
+            key: 'eliminado',
+            title: 'Eliminados',
+            value: overviewSummary.eliminado_count,
+            hint: 'Registros en el periodo',
+            Icon: MdRemoveCircleOutline,
+            Deco: MdDelete,
+            wrap: 'from-rose-50 to-white border-rose-200/80',
+            bubble: 'from-rose-400 to-red-600 shadow-rose-500/30',
+            deco: 'text-rose-300/80',
+            active: kindFilter === 'eliminado',
+            ring: 'ring-2 ring-rose-400',
+          },
+        ].map((k) => (
+          <button
+            key={k.key}
+            type="button"
+            onClick={() => setKindFilter(k.key)}
+            className={`relative overflow-hidden rounded-xl sm:rounded-2xl border bg-gradient-to-br ${k.wrap} p-3 sm:p-5 shadow-sm text-left min-w-0 ${
+              k.active ? k.ring : ''
+            }`}
+          >
+            <k.Deco className={`pointer-events-none absolute right-2 top-2 sm:right-4 sm:top-4 text-3xl sm:text-5xl ${k.deco}`} />
+            <div className="pointer-events-none absolute -bottom-10 -right-6 h-28 w-48 rounded-full bg-white/50" />
+            <div className="relative flex items-start gap-2 sm:gap-4">
+              <span className={`grid h-9 w-9 sm:h-14 sm:w-14 shrink-0 place-items-center rounded-full bg-gradient-to-br text-white shadow-lg ${k.bubble}`}>
+                <k.Icon className="text-lg sm:text-2xl" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] sm:text-sm font-semibold text-slate-800 truncate">{k.title}</p>
+                <p className="mt-0.5 sm:mt-1 text-xl sm:text-4xl font-bold leading-none text-slate-900 tabular-nums">{k.value}</p>
+                <p className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-slate-500 line-clamp-2">{k.hint}</p>
+              </div>
+            </div>
+          </button>
+        ))}
 
-        <div className="card min-w-0 flex flex-col gap-2 !p-2.5 sm:!p-3">
+        <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-sky-200/80 bg-gradient-to-br from-sky-50 to-white p-2.5 sm:p-3 shadow-sm min-w-0 flex flex-col gap-2">
+          <MdForum className="pointer-events-none absolute right-2 top-2 text-3xl text-sky-300/70" />
+          <MdGroups className="pointer-events-none absolute -bottom-1 -right-1 text-4xl text-sky-200/60" />
           <div className="relative w-full">
-            <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-base" />
+            <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cliente, mesa, motivo…"
-              className="input-field pl-8 w-full h-9 text-sm"
+              className="input-field pl-8 w-full h-9 text-sm bg-white/90"
               aria-label="Buscar"
             />
           </div>
-          <div className="flex items-center justify-between gap-2">
+          <div className="relative flex items-center justify-between gap-2">
             <div className="relative" ref={filtersPanelRef}>
               <button
                 type="button"
                 onClick={() => setFiltersOpen((v) => !v)}
                 className={`h-9 px-2.5 rounded-lg text-sm border inline-flex items-center gap-1 ${
                   hasActiveFilters || filtersOpen
-                    ? 'border-[color:var(--ui-accent)] bg-[var(--ui-accent)]/10 text-[var(--ui-body-text)]'
-                    : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                    ? 'border-sky-400 bg-sky-100/80 text-slate-800'
+                    : 'border-slate-200 bg-white/90 text-slate-700 hover:bg-white'
                 }`}
                 aria-expanded={filtersOpen}
               >
                 <MdFilterList className="text-base shrink-0" />
                 Filtros
                 {hasActiveFilters ? (
-                  <span className="ml-0.5 min-w-[1.1rem] h-4 px-1 rounded-full bg-[var(--ui-accent)] text-white text-[10px] leading-4 text-center">
+                  <span className="ml-0.5 min-w-[1.1rem] h-4 px-1 rounded-full bg-sky-500 text-white text-[10px] leading-4 text-center">
                     !
                   </span>
                 ) : null}
               </button>
               {filtersOpen ? (
-                <div className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,18rem)] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg p-3 space-y-2.5">
+                <div className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,18rem)] rounded-xl border border-slate-200 bg-white shadow-lg p-3 space-y-2.5">
                   <InlineDateField
                     label="Desde"
                     value={fromDate}
@@ -598,7 +652,7 @@ export default function CortesiasReportSection({
                         className={`text-xs px-2 py-1.5 rounded-lg border transition-colors ${
                           kindFilter === f.id
                             ? 'bg-[#3B82F6] text-white border-transparent'
-                            : 'border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
+                            : 'border-slate-200 hover:bg-slate-50'
                         }`}
                       >
                         {f.label}
@@ -613,7 +667,7 @@ export default function CortesiasReportSection({
                   >
                     <MdRefresh /> Actualizar
                   </button>
-                  <div className="pt-1 border-t border-[color:var(--ui-border)]">
+                  <div className="pt-1 border-t border-slate-200">
                     <DownloadExcelTxtButtons
                       onExcel={() => downloadReport('excel')}
                       onTxt={() => downloadReport('txt')}
@@ -628,7 +682,7 @@ export default function CortesiasReportSection({
               type="button"
               onClick={clearAllFilters}
               disabled={!hasActiveFilters}
-              className="h-9 px-2.5 rounded-lg text-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none"
+              className="h-9 px-2.5 rounded-lg text-sm border border-slate-200 bg-white/90 text-slate-700 hover:bg-white inline-flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none"
             >
               <MdClose className="text-base shrink-0" />
               Limpiar
