@@ -411,45 +411,36 @@ export default function Fidelizacion() {
   const improveSummary = Array.isArray(data?.improve_summary) ? data.improve_summary : [];
   const responses = Array.isArray(data?.responses) ? data.responses : [];
   const withComment = responses.filter((r) => String(r.comment || '').trim());
-  const todayLabel = new Date().toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' });
+  const todayLabel = (() => {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return `${dd}/${mm}/${d.getFullYear()}`;
+  })();
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-slate-900">
-            {view === 'panel' ? 'Panel' : 'Configuración'}
-          </h1>
-          <p className="text-sm text-slate-500">
-            {view === 'panel'
-              ? 'Encuestas de clientes y resultados del día.'
-              : (gitCardsEnabled
-                ? 'Arme el cuadro de la encuesta, el QR y el módulo GIT Cards.'
-                : 'Arme el cuadro de la encuesta y descargue el QR.')}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {VIEWS.map((t) => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setView(t.id)}
-                className={`rf-tab-btn inline-flex items-center gap-1.5 ${view === t.id ? 'rf-tab-btn--active' : ''}`}
-              >
-                <Icon className="text-lg" />
-                {t.label}
-              </button>
-            );
-          })}
-          {view === 'panel' ? (
-            <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm">
-              <MdCalendarToday className="text-slate-500" />
-              {todayLabel}
-            </div>
-          ) : null}
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {VIEWS.map((t) => {
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setView(t.id)}
+              className={`rf-tab-btn inline-flex items-center gap-1.5 ${view === t.id ? 'rf-tab-btn--active' : ''}`}
+            >
+              <Icon className="text-lg" />
+              {t.label}
+            </button>
+          );
+        })}
+        {view === 'panel' ? (
+          <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ml-auto sm:ml-0">
+            <MdCalendarToday className="text-slate-500" />
+            {todayLabel}
+          </div>
+        ) : null}
       </div>
 
       {view === 'panel' ? (
