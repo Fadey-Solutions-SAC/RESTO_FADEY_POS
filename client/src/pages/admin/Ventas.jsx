@@ -43,271 +43,17 @@ import { formatOrderPaymentLabel, orderPaymentDetail } from '../../utils/payment
 import PaymentSummaryDisplay from '../../components/admin/PaymentSummaryDisplay';
 import { restaurantLocalAddress } from '../../utils/restaurantLocalAddress';
 import { printCajaTicket } from '../../utils/printCajaTicket';
-import { buildBoletaFacturaPlainText, restaurantThermalBrandLine } from '../../utils/ticketPlainText';
+import {
+  buildBoletaFacturaPlainText,
+  buildNotaVentaPlainText,
+  restaurantThermalBrandLine,
+} from '../../utils/ticketPlainText';
 
 function payLabel(method) {
   if (!method) return '';
   const key = `paymentMethods.${method}`;
   const tr = i18n.t(key, { ns: 'sales', defaultValue: '' });
   return tr || method;
-}
-
-function orderReceiptHtml(order, groupedProducts = null) {
-  const doc = getOrderDocument(order);
-  const lines = groupedProducts || (order.items || []).map((i) => ({
-    name: i.product_name,
-    qty: i.quantity,
-    subtotal: i.subtotal,
-  }));
-  const itemsHtml = lines
-    .map((i) => `<tr><td>${i.qty}x ${i.name}</td><td style="text-align:right">${Number(i.subtotal || 0).toFixed(2)}</td></tr>`)
-    .join('');
-  const titleExtra = groupedProducts && groupedProducts.length ? ` · Mesa ${order.table_number || ''}` : '';
-  return `
-    <html>
-      <head>
-        <title>Venta ${order.order_number}</title>
-        <style>
-          body { font-family: Arial, sans-serif; font-size: 12px; padding: 18px; }
-          h2 { margin: 0 0 6px 0; }
-          .muted { color: #64748b; margin: 0 0 8px 0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          td { padding: 4px 0; border-bottom: 1px solid #e2e8f0; }
-          .total { margin-top: 12px; font-size: 16px; font-weight: 700; text-align: right; }
-        </style>
-      </head>
-      <body>
-        <h2>${docLabel(doc.doc_type)} ${doc.full_number}${titleExtra}</h2>
-        <p class="muted">Venta #${order.order_number} · ${new Date(`${order.created_at}Z`).toLocaleString('es-PE')}</p>
-        <p><strong>Cliente:</strong> ${order.customer_name || 'PUBLICO GENERAL'}</p>
-        <p><strong>Pago:</strong> ${formatOrderPaymentLabel(order, payLabel)}</p>
-        <table><tbody>${itemsHtml}</tbody></table>
-        <p class="total">Total: S/ ${Number(order.total || 0).toFixed(2)}</p>
-      </body>
-    </html>
-  `;
-}
-
-function escapeReceiptHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function notaVentaReceiptHtml({
-  restaurant,
-  orders,
-  document,
-  tableName,
-  widthMm,
-}) {
-  const sourceOrders = Array.isArray(orders) ? orders : [];
-  const primary = sourceOrders[0] || {};
-  const groupedRows = groupItemsByProductNameForBill(
-    sourceOrders.flatMap((order) => order.items || []),
-  );
-  const subtotal = groupedRows.reduce((sum, row) => sum + Number(row.subtotal || 0), 0);
-  const total = sourceOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
-  const discount = Math.max(0, subtotal - total);
-  const customerName = String(primary.customer_name || '').trim();
-  const logo = String(restaurant?.logo || '').trim();
-  const businessName = String(
-    restaurant?.billing_nombre_comercial || restaurant?.name || 'RESTAURANTE',
-  ).trim();
-  const legalName = String(restaurant?.legal_name || '').trim();
-  const ruc = String(restaurant?.company_ruc || '').trim();
-  const address = String(
-    restaurant?.billing_emisor_direccion || restaurant?.address || '',
-  ).trim();
-  const phone = String(restaurant?.phone || '').trim();
-  const paidAt = parseApiDate(primary.paid_at || primary.updated_at || primary.created_at) || new Date();
-  const dateText = paidAt.toLocaleDateString('es-PE');
-  const timeText = paidAt.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
-  const waiter = String(primary.created_by_user_name || '').trim();
-  const payment = formatOrderPaymentLabel(primary, payLabel) || '—';
-  const configuredFooter = String(
-    restaurant?.profile?.ticket?.footer_message
-    || restaurant?.profile?.ticket?.custom_footer
-    || '',
-  ).trim();
-  const footer = configuredFooter || '¡GRACIAS POR SU PREFERENCIA!';
-  const itemRows = groupedRows.map((row) => {
-    const qty = Number(row.qty || 0);
-    const unitPrice = row.unitPrice != null
-      ? Number(row.unitPrice)
-      : (qty > 0 ? Number(row.subtotal || 0) / qty : 0);
-    return `
-      <tr>
-        <td class="qty">${escapeReceiptHtml(qty)}</td>
-        <td class="description">${escapeReceiptHtml(row.name || 'Producto')}</td>
-        <td class="money">${escapeReceiptHtml(unitPrice.toFixed(2))}</td>
-        <td class="money">${escapeReceiptHtml(Number(row.subtotal || 0).toFixed(2))}</td>
-      </tr>
-    `;
-  }).join('');
-  const pageHeightMm = widthMm === 58 ? 220 : 260;
-  return `
-    <!doctype html>
-    <html>
-      <head>
-        <meta charset="UTF-8" />
-        <title></title>
-        <style>
-          @page { size: ${widthMm}mm ${pageHeightMm}mm; margin: 0; }
-          * { box-sizing: border-box; }
-          html, body {
-            width: ${widthMm}mm;
-            margin: 0;
-            padding: 0;
-            background: #fff;
-            color: #000;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          body { font-family: "Arial Narrow", Arial, sans-serif; }
-          .ticket {
-            width: ${widthMm}mm;
-            padding: ${widthMm === 58 ? 3 : 4}mm;
-            margin: 0;
-            font-size: ${widthMm === 58 ? 11 : 13}px;
-            line-height: 1.24;
-          }
-          .ticket-logo {
-            display: block;
-            max-width: ${widthMm === 58 ? 40 : 55}mm;
-            max-height: ${widthMm === 58 ? 20 : 26}mm;
-            margin: 0 auto 2mm;
-            object-fit: contain;
-          }
-          .center { text-align: center; }
-          .business { font-size: ${widthMm === 58 ? 16 : 20}px; font-weight: 900; }
-          .company-line { margin-top: 1px; font-weight: 600; }
-          .separator { border-top: 1.5px dashed #000; margin: 2.5mm 0; }
-          .document-title {
-            font-size: ${widthMm === 58 ? 18 : 22}px;
-            font-weight: 900;
-            letter-spacing: .6px;
-          }
-          .document-number {
-            margin-top: 1mm;
-            font-size: ${widthMm === 58 ? 15 : 18}px;
-            font-weight: 800;
-          }
-          .meta {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1mm 3mm;
-            font-weight: 700;
-          }
-          .meta div:nth-child(even) { text-align: right; }
-          .customer { margin-top: 2mm; font-weight: 700; }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-            font-size: inherit;
-          }
-          th {
-            padding: 1.2mm .4mm;
-            border-top: 1.5px dashed #000;
-            border-bottom: 1.5px dashed #000;
-            text-align: left;
-            font-weight: 900;
-          }
-          td { padding: 1mm .4mm; vertical-align: top; font-weight: 600; }
-          .qty { width: 11%; text-align: center; }
-          .description { width: 49%; overflow-wrap: anywhere; }
-          .money { width: 20%; text-align: right; white-space: nowrap; }
-          .totals {
-            width: 72%;
-            margin-left: auto;
-            font-size: ${widthMm === 58 ? 12 : 14}px;
-          }
-          .total-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 2mm;
-            margin: 1mm 0;
-            font-weight: 700;
-          }
-          .grand-total {
-            margin-top: 1.5mm;
-            font-size: ${widthMm === 58 ? 17 : 21}px;
-            font-weight: 900;
-          }
-          .footer {
-            margin-top: 3mm;
-            text-align: center;
-            font-size: ${widthMm === 58 ? 14 : 17}px;
-            font-weight: 900;
-            letter-spacing: .5px;
-          }
-          .return { margin-top: 1mm; text-align: center; font-weight: 800; }
-          @media screen {
-            body { background: #ececec; padding: 10px 0; }
-            .ticket { margin: 0 auto; background: #fff; min-height: 120mm; }
-          }
-          @media print {
-            html, body {
-              overflow: visible;
-            }
-            .ticket {
-              break-inside: avoid;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <main class="ticket">
-          ${logo ? `<img class="ticket-logo" src="${escapeReceiptHtml(logo)}" alt="" />` : ''}
-          <header class="center">
-            <div class="business">${escapeReceiptHtml(businessName.toUpperCase())}</div>
-            ${legalName ? `<div class="company-line">${escapeReceiptHtml(legalName.toUpperCase())}</div>` : ''}
-            ${ruc ? `<div class="company-line">RUC: ${escapeReceiptHtml(ruc)}</div>` : ''}
-            ${address ? `<div class="company-line">${escapeReceiptHtml(address)}</div>` : ''}
-            ${phone ? `<div class="company-line">Telf.: ${escapeReceiptHtml(phone)}</div>` : ''}
-          </header>
-          <div class="separator"></div>
-          <section class="center">
-            <div class="document-title">NOTA DE VENTA</div>
-            <div class="document-number">Nº ${escapeReceiptHtml(document?.full_number || '—')}</div>
-          </section>
-          <div class="separator"></div>
-          <section class="meta">
-            <div>FECHA: ${escapeReceiptHtml(dateText)}</div>
-            <div>HORA: ${escapeReceiptHtml(timeText)}</div>
-            <div>MESA: ${escapeReceiptHtml(tableName || '—')}</div>
-            <div>MOZO: ${escapeReceiptHtml(waiter || '—')}</div>
-          </section>
-          ${customerName ? `<div class="customer">CLIENTE: ${escapeReceiptHtml(customerName)}</div>` : ''}
-          <div class="customer">PAGO: ${escapeReceiptHtml(payment)}</div>
-          <div class="separator"></div>
-          <table>
-            <thead>
-              <tr>
-                <th class="qty">CANT.</th>
-                <th class="description">DESCRIPCIÓN</th>
-                <th class="money">P. UNIT.</th>
-                <th class="money">IMPORTE</th>
-              </tr>
-            </thead>
-            <tbody>${itemRows}</tbody>
-          </table>
-          <div class="separator"></div>
-          <section class="totals">
-            <div class="total-row"><span>SUBTOTAL</span><span>${escapeReceiptHtml(formatCurrency(subtotal))}</span></div>
-            ${discount > 0.001 ? `<div class="total-row"><span>DESCUENTO</span><span>${escapeReceiptHtml(formatCurrency(discount))}</span></div>` : ''}
-            <div class="total-row grand-total"><span>TOTAL</span><span>${escapeReceiptHtml(formatCurrency(total))}</span></div>
-          </section>
-          <div class="separator"></div>
-          <div class="footer">${escapeReceiptHtml(footer.toUpperCase())}</div>
-          <div class="return">VUELVA PRONTO</div>
-        </main>
-      </body>
-    </html>
-  `;
 }
 
 function toExcelHtmlTable(rows) {
@@ -549,6 +295,8 @@ export default function Ventas() {
   const [editCustomerPhone, setEditCustomerPhone] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [issuingDoc, setIssuingDoc] = useState(false);
+  /** Modal de emisión (mismo flujo que Caja) al elegir boleta/factura en Editar. */
+  const [emitModalOpen, setEmitModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [restaurantName, setRestaurantName] = useState('-');
   const [restaurantInfo, setRestaurantInfo] = useState({ name: '', logo: '' });
@@ -828,6 +576,7 @@ export default function Ventas() {
     setSelected(null);
     setSelectedGroup(null);
     setEditing(null);
+    setEmitModalOpen(false);
   };
 
   const startEdit = (group) => {
@@ -950,6 +699,7 @@ export default function Ventas() {
         const pdf = resolveMediaUrl(doc.pdf_url);
         if (pdf) window.open(pdf, '_blank', 'noopener,noreferrer');
       }
+      setEmitModalOpen(false);
       setEditing(null);
       closeDetail();
       await load();
@@ -985,83 +735,108 @@ export default function Ventas() {
     }
   };
 
-  const openReceiptHtml = (html) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc || !iframe.contentWindow) {
-      toast.error('No se pudo preparar la impresion');
-      document.body.removeChild(iframe);
+  /** Impresión directa térmica en impresora de caja (sin diálogo del navegador ni página A4). */
+  const printDirectAccountTicket = async (group, orderFallback = null) => {
+    const primary = group?.primary || orderFallback;
+    if (!primary) {
+      toast.error('No hay venta para imprimir');
       return;
     }
+    const orders = (group?.orders?.length ? group.orders : [primary]).filter(Boolean);
+    const accountDocument = group ? getAccountDocument(group) : getOrderDocument(primary);
+    const billedOrder = orders.find((o) => o?.document) || primary;
+    const fullDoc = billedOrder?.document || {};
+    const docType = String(accountDocument.doc_type || fullDoc.doc_type || 'nota_venta').toLowerCase();
+    const fullNumber = String(accountDocument.full_number || fullDoc.full_number || primary.sale_document_number || '').trim();
+    const widthMm = Number(restaurantInfo?.profile?.ticket?.paper_width_mm) === 58 ? 58 : 80;
+    const grouped = groupItemsByProductNameForBill(orders.flatMap((o) => o.items || []));
+    const subtotal = grouped.reduce((s, g) => s + Number(g.subtotal || 0), 0);
+    const total = Number(group?.total != null ? group.total : primary.total) || 0;
+    const discount = Math.max(0, subtotal - total);
+    const paymentMethod = String(primary.payment_method || orders[0]?.payment_method || 'efectivo');
+    const localAddr = restaurantLocalAddress(restaurantInfo);
+    const customerName = String(
+      fullDoc.customer_name || primary.customer_name || '',
+    ).trim();
+    const customerDoc = String(fullDoc.customer_doc_number || '').replace(/\D/g, '');
+    const customerAddress = String(fullDoc.customer_address || '').trim() || localAddr;
+    const logoUrl = String(restaurantInfo?.logo || '').trim() || undefined;
+    const brand = restaurantThermalBrandLine(restaurantInfo) || undefined;
 
-    doc.open();
-    doc.write(html);
-    doc.close();
+    let plain = '';
+    if (docType === 'boleta' || docType === 'factura') {
+      plain = buildBoletaFacturaPlainText({
+        restaurant: restaurantInfo,
+        doc: {
+          ...fullDoc,
+          doc_type: docType,
+          full_number: fullNumber,
+          customer_name: customerName || fullDoc.customer_name,
+          customer_doc_number: customerDoc || fullDoc.customer_doc_number,
+          customer_address: customerAddress,
+        },
+        groupedRows: grouped,
+        formatCurrencyFn: formatCurrency,
+        subtotal: Number(primary.subtotal != null ? primary.subtotal : subtotal),
+        tax: Number(primary.tax || 0),
+        total,
+        discount,
+        customer: {
+          name: customerName || 'CLIENTE VARIOS',
+          doc_number: customerDoc,
+          address: customerAddress,
+        },
+        widthMm,
+        printedAt: new Date(),
+        paymentMethod,
+      });
+    } else {
+      const customerLines = [
+        customerName && `Nombre: ${customerName}`,
+        customerDoc && `DNI / RUC: ${customerDoc}`,
+        customerAddress && `Dir: ${customerAddress}`,
+      ].filter(Boolean);
+      plain = buildNotaVentaPlainText({
+        restaurant: restaurantInfo,
+        docLine: fullNumber,
+        tableName: group?.mesaLabel || primary.table_number || '',
+        customerLines,
+        groupedRows: grouped,
+        formatCurrencyFn: formatCurrency,
+        subtotal,
+        total,
+        discount,
+        widthMm,
+        printedAt: new Date(),
+        paymentMethod,
+      });
+    }
 
-    setTimeout(() => {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-      setTimeout(() => {
-        if (document.body.contains(iframe)) document.body.removeChild(iframe);
-      }, 700);
-    }, 200);
+    const r = await printCajaTicket({
+      text: plain,
+      preformatted: true,
+      logoUrl,
+      restaurantBrand: brand,
+      paperWidth: widthMm,
+    });
+    if (r.ok) {
+      const kind = docType === 'factura' ? 'Factura' : docType === 'boleta' ? 'Boleta' : 'Nota de venta';
+      toast.success(`${kind} enviada a impresora de caja`);
+    } else {
+      toast.error(r.error || 'No se pudo imprimir en impresora de caja');
+    }
   };
 
   const openGroupReceipt = (group) => {
-    const primary = group.primary;
-    const accountDocument = getAccountDocument(group);
-    if (String(accountDocument.doc_type || 'nota_venta') === 'nota_venta') {
-      const widthMm = Number(restaurantInfo?.profile?.ticket?.paper_width_mm) === 58 ? 58 : 80;
-      openReceiptHtml(notaVentaReceiptHtml({
-        restaurant: restaurantInfo,
-        orders: group.orders || [primary],
-        document: accountDocument,
-        tableName: group.mesaLabel || primary?.table_number || '',
-        widthMm,
-      }));
-      return;
-    }
-    const lines = group.groupedProducts.map((p) => ({
-      name: p.name,
-      qty: p.qty,
-      subtotal: p.subtotal,
-    }));
-    openReceiptHtml(orderReceiptHtml(
-      { ...primary, total: group.total },
-      group.isMesa && group.comprobanteCount > 1 ? lines : null,
-    ));
+    void printDirectAccountTicket(group);
   };
 
   const openReceipt = (order, group = null) => {
-    if (group && String(getAccountDocument(group).doc_type || 'nota_venta') === 'nota_venta') {
-      openGroupReceipt(group);
+    if (group) {
+      void printDirectAccountTicket(group, order);
       return;
     }
-    if (!group && String(getOrderDocument(order).doc_type || 'nota_venta') === 'nota_venta') {
-      const widthMm = Number(restaurantInfo?.profile?.ticket?.paper_width_mm) === 58 ? 58 : 80;
-      openReceiptHtml(notaVentaReceiptHtml({
-        restaurant: restaurantInfo,
-        orders: [order],
-        document: getOrderDocument(order),
-        tableName: order.table_number || '',
-        widthMm,
-      }));
-      return;
-    }
-    if (group?.isMesa && group.comprobanteCount > 1) {
-      openGroupReceipt(group);
-      return;
-    }
-    openReceiptHtml(orderReceiptHtml(order));
+    void printDirectAccountTicket({ primary: order, orders: [order], total: order?.total }, order);
   };
 
   const openVoidModal = (order) => {
@@ -1505,6 +1280,16 @@ export default function Ventas() {
                         if ((next === 'boleta' || next === 'factura') && !String(editCustomerAddress || '').trim()) {
                           setEditCustomerAddress(restaurantLocalAddress(restaurantInfo));
                         }
+                        // Igual que Caja: al elegir boleta/factura abre el modal de emisión.
+                        if (next === 'boleta' || next === 'factura') {
+                          if (!editing.singleComanda) {
+                            toast.error('Emita desde Caja o abra una venta de una sola comanda');
+                            return;
+                          }
+                          setEmitModalOpen(true);
+                        } else {
+                          setEmitModalOpen(false);
+                        }
                       }}
                       disabled={!editing.singleComanda}
                     >
@@ -1531,95 +1316,36 @@ export default function Ventas() {
                     El método se aplica a las {editing.orderIds.length} comandas de la cuenta; la propina se mantiene y pasa al nuevo método en el cierre de caja.
                   </p>
                 ) : null}
-                {(editDocType === 'boleta' || editDocType === 'factura') ? (
-                  <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3 space-y-2">
-                    <p className="text-xs font-semibold text-slate-800">
-                      {editDocType === 'factura' ? '¿A quién va la factura?' : '¿A quién va la boleta?'}
-                    </p>
-                    <p className="text-[11px] text-slate-600 leading-snug">
-                      Complete DNI/nombre del cliente y pulse <strong>Emitir comprobante</strong>.
-                      «Guardar cambios» solo actualiza método de pago y nota; no genera la boleta a nombre de nadie.
-                    </p>
-                    {!editing.singleComanda ? (
-                      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                        Esta cuenta tiene varias comandas: emita el comprobante desde Caja al cobrar, o abra cada venta individual.
-                      </p>
-                    ) : null}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {editDocType === 'boleta' ? (
-                        <div>
-                          <label className="block text-xs text-[var(--ui-muted)] mb-1">Doc. cliente</label>
-                          <select
-                            className="input-field text-sm"
-                            value={editCustomerDocType}
-                            onChange={(e) => setEditCustomerDocType(e.target.value)}
-                            disabled={!editing.singleComanda}
-                          >
-                            <option value="1">DNI</option>
-                            <option value="6">RUC</option>
-                            <option value="0">Sin documento</option>
-                          </select>
-                        </div>
-                      ) : (
-                        <div>
-                          <label className="block text-xs text-[var(--ui-muted)] mb-1">Doc. cliente</label>
-                          <input className="input-field text-sm" value="RUC" disabled />
-                        </div>
-                      )}
-                      <div>
-                        <label className="block text-xs text-[var(--ui-muted)] mb-1">
-                          {editDocType === 'factura' || editCustomerDocType === '6' ? 'RUC' : 'Número'}
-                        </label>
-                        <input
-                          className="input-field text-sm"
-                          value={editCustomerDocNumber}
-                          onChange={(e) => setEditCustomerDocNumber(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                          placeholder={editDocType === 'factura' || editCustomerDocType === '6' ? '11 dígitos' : '8 dígitos'}
-                          disabled={!editing.singleComanda}
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs text-[var(--ui-muted)] mb-1">
-                          {editDocType === 'factura' ? 'Razón social' : 'Nombre / Cliente'}
-                        </label>
-                        <input
-                          className="input-field text-sm"
-                          value={editCustomerName}
-                          onChange={(e) => setEditCustomerName(e.target.value)}
-                          placeholder="Nombre de quien recibe la boleta"
-                          disabled={!editing.singleComanda}
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs text-[var(--ui-muted)] mb-1">Dirección</label>
-                        <input
-                          className="input-field text-sm"
-                          value={editCustomerAddress}
-                          onChange={(e) => setEditCustomerAddress(e.target.value)}
-                          placeholder={restaurantLocalAddress(restaurantInfo) || 'Dirección del local'}
-                          disabled={!editing.singleComanda}
-                        />
-                      </div>
-                    </div>
-                  </div>
+                {(editDocType === 'boleta' || editDocType === 'factura') && editing.singleComanda ? (
+                  <p className="text-[11px] text-sky-800 bg-sky-50 border border-sky-200 rounded px-2 py-1.5">
+                    Se abrió el modal de emisión (igual que en Caja). Si lo cerró, pulse de nuevo «Emitir comprobante».
+                  </p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   <button onClick={saveChanges} disabled={savingEdit || issuingDoc} className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
                     <MdSave /> {savingEdit ? 'Guardando...' : 'Guardar cambios'}
                   </button>
-                  {editing.singleComanda && (editDocType === 'boleta' || editDocType === 'factura' || editDocType === 'nota_venta') ? (
+                  {editing.singleComanda && (editDocType === 'boleta' || editDocType === 'factura') ? (
                     <button
                       type="button"
-                      onClick={() => void issueComprobanteFromEdit()}
+                      onClick={() => setEmitModalOpen(true)}
                       disabled={savingEdit || issuingDoc}
                       className="btn-secondary text-sm inline-flex items-center gap-2 disabled:opacity-50 border-sky-300 text-sky-800 bg-sky-50 hover:bg-sky-100"
-                      title="Emite boleta/factura/nota con el cliente indicado"
+                      title="Abrir modal de emisión (mismo flujo que Caja)"
                     >
                       <MdReceipt />
-                      {issuingDoc ? 'Emitiendo…' : 'Emitir comprobante'}
+                      Emitir comprobante
                     </button>
                   ) : null}
-                  <button type="button" onClick={() => setEditing(null)} disabled={savingEdit || issuingDoc} className="btn-secondary text-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmitModalOpen(false);
+                      setEditing(null);
+                    }}
+                    disabled={savingEdit || issuingDoc}
+                    className="btn-secondary text-sm"
+                  >
                     Cancelar
                   </button>
                 </div>
@@ -1783,6 +1509,90 @@ export default function Ventas() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={emitModalOpen && !!editing}
+        onClose={() => !issuingDoc && setEmitModalOpen(false)}
+        title={editDocType === 'factura' ? 'Emitir factura' : 'Emitir boleta'}
+        size="md"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--ui-muted)]">
+            Mismo flujo que al cobrar en Caja: indique el cliente y pulse Emitir.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {editDocType === 'boleta' ? (
+              <div>
+                <label className="block text-xs text-[var(--ui-muted)] mb-1">Doc. cliente</label>
+                <select
+                  className="input-field text-sm"
+                  value={editCustomerDocType}
+                  onChange={(e) => setEditCustomerDocType(e.target.value)}
+                >
+                  <option value="1">DNI</option>
+                  <option value="6">RUC</option>
+                  <option value="0">Sin documento</option>
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs text-[var(--ui-muted)] mb-1">Doc. cliente</label>
+                <input className="input-field text-sm" value="RUC" disabled />
+              </div>
+            )}
+            <div>
+              <label className="block text-xs text-[var(--ui-muted)] mb-1">
+                {editDocType === 'factura' || editCustomerDocType === '6' ? 'RUC' : 'Número'}
+              </label>
+              <input
+                className="input-field text-sm"
+                value={editCustomerDocNumber}
+                onChange={(e) => setEditCustomerDocNumber(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                placeholder={editDocType === 'factura' || editCustomerDocType === '6' ? '11 dígitos' : '8 dígitos'}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs text-[var(--ui-muted)] mb-1">
+                {editDocType === 'factura' ? 'Razón social' : 'Nombre / Cliente'}
+              </label>
+              <input
+                className="input-field text-sm"
+                value={editCustomerName}
+                onChange={(e) => setEditCustomerName(e.target.value)}
+                placeholder={editDocType === 'factura' ? 'Razón social' : 'Nombre de quien recibe la boleta'}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs text-[var(--ui-muted)] mb-1">Dirección</label>
+              <input
+                className="input-field text-sm"
+                value={editCustomerAddress}
+                onChange={(e) => setEditCustomerAddress(e.target.value)}
+                placeholder={restaurantLocalAddress(restaurantInfo) || 'Dirección del local'}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 pt-1">
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              disabled={issuingDoc}
+              onClick={() => setEmitModalOpen(false)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn-primary text-sm inline-flex items-center gap-2 disabled:opacity-50"
+              disabled={issuingDoc}
+              onClick={() => void issueComprobanteFromEdit()}
+            >
+              <MdReceipt />
+              {issuingDoc ? 'Emitiendo…' : (editDocType === 'factura' ? 'Emitir factura' : 'Emitir boleta')}
+            </button>
+          </div>
+        </div>
       </Modal>
 
     </div>

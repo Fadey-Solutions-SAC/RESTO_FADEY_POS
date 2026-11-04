@@ -32,10 +32,18 @@ function sanitizeDbEfactApiUrl(raw) {
   }
 }
 
+/** Bot local por defecto cuando el proveedor es restaurant_efact y no hay URL. */
+const DEFAULT_LOCAL_EFACT_URL = 'http://127.0.0.1:8765';
+
 function effectiveEfactApiUrl(restaurant) {
   const fromEnv = envEfactApiUrl();
   if (fromEnv) return fromEnv;
-  return sanitizeDbEfactApiUrl(restaurant?.billing_api_url);
+  const fromDb = sanitizeDbEfactApiUrl(restaurant?.billing_api_url);
+  if (fromDb) return fromDb;
+  if (String(restaurant?.billing_provider || '').toLowerCase() === 'restaurant_efact') {
+    return DEFAULT_LOCAL_EFACT_URL;
+  }
+  return '';
 }
 
 /** true si vacío (se usa solo env) o si es URL http(s) válida */

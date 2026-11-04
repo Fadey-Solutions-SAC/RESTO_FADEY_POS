@@ -409,9 +409,16 @@ async function sendToNubefactProvider(restaurant, providerPayload) {
 
 async function sendToEfactProvider(restaurant, saleJson) {
   const initial = pendingLocalResult();
+  const botUrl = String(effectiveEfactApiUrl(restaurant) || '').replace(/\/$/, '');
 
   if (!canSendToEfact(restaurant)) {
-    return initial;
+    return {
+      ...initial,
+      providerStatus: 'error',
+      providerMessage:
+        'Falta la URL del bot e-fact. En Facturación electrónica use http://127.0.0.1:8765 (o EFACT_API_URL) e inicie el bot Python.',
+      providerResponse: { offline: false, missing_url: true },
+    };
   }
 
   try {
@@ -421,19 +428,24 @@ async function sendToEfactProvider(restaurant, saleJson) {
     }
     return providerResult;
   } catch (providerErr) {
+    const detail = String(providerErr.message || 'Sin conexión').trim();
+    const offlineMsg =
+      `Sin conexión con el bot e-fact (${botUrl || 'sin URL'}). `
+      + 'Inicie el servicio: python server/efact/api_server.py (puerto 8765) y pulse Reintentar. '
+      + `Detalle: ${detail}`;
     if (isOfflineModeEnabled(restaurant)) {
       return {
         ...initial,
         providerStatus: 'pending',
-        providerMessage: 'Sin conexión: comprobante guardado en modo offline para sincronizar',
-        providerResponse: { offline: true, error: providerErr.message || 'Sin conexión' },
+        providerMessage: offlineMsg,
+        providerResponse: { offline: true, error: detail, bot_url: botUrl },
       };
     }
     return {
       ...initial,
       providerStatus: 'error',
-      providerMessage: providerErr.message || 'No se pudo conectar con el bot de facturación',
-      providerResponse: { error: providerErr.message || 'No se pudo conectar con el bot de facturación' },
+      providerMessage: offlineMsg,
+      providerResponse: { error: detail, bot_url: botUrl },
     };
   }
 }
@@ -1091,6 +1103,15 @@ router.post('/:id/retry', authenticateToken, requireRole('admin', 'cajero'), asy
     scheduleWhatsappPdfSend(updated, restaurant);
     emitOrderUpdateForBilling(req.app.get('io'), doc.order_id);
     broadcastBillingDocumentRow(updated);
+
+    const st = String(result.providerStatus || updated?.provider_status || '').toLowerCase();
+    const offlineFail = Boolean(result.providerResponse?.offline) || Boolean(result.providerResponse?.missing_url);
+    if (st === 'error' || (st === 'pending' && offlineFail)) {
+      return res.status(503).json({
+        error: String(result.providerMessage || updated?.provider_message || 'No se pudo enviar el comprobante').trim(),
+        document: updated,
+      });
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message || 'No se pudo reintentar el comprobante' });
