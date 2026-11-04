@@ -37,7 +37,7 @@ import {
   MdSecurity, MdDashboard, MdEventSeat, MdDeliveryDining, MdPhotoCamera,
   MdAssessment, MdInsights, MdLocalOffer,
   MdTableBar, MdPeopleAlt, MdRestaurantMenu, MdTouchApp, MdPalette,
-  MdAutoGraph, MdStars,
+  MdAutoGraph, MdStars, MdGavel,
 } from 'react-icons/md';
 import { applyUiThemeFromAppSettings } from '../../theme/uiTheme';
 import { UI_BADGE } from '../../utils/uiBadges';
@@ -62,6 +62,7 @@ import { useConfigHub } from '../../hooks/useConfigHub';
 import SettingsConfigHubBanner from '../../components/settings/SettingsConfigHubBanner';
 import SettingsRegionalPanel from '../../components/settings/SettingsRegionalPanel';
 import SettingsSectionInsights from '../../components/settings/SettingsSectionInsights';
+import SettingsLegalDocumentsPanel from '../../components/settings/SettingsLegalDocumentsPanel';
 
 const ALL_MODULES = [
   { id: 'escritorio', label: 'Escritorio', icon: MdDashboard, defaultRoles: ['admin'] },
@@ -199,6 +200,7 @@ const MENU_ITEMS = [
   { id: 'formas_pago', label: 'Formas de pago', icon: MdPayment },
   { id: 'apariencia', label: 'Apariencia', icon: MdPalette },
   { id: 'modulo_empresarial', label: 'Módulo empresarial', icon: MdAutoGraph },
+  { id: 'legal_documentos', label: 'Legal y documentos', icon: MdGavel },
   { id: 'config_historial', label: 'Historial de configuración', icon: MdHistory },
 ];
 /** Regional se guarda solo con «Guardar regional» (endpoint dedicado), sin autoguardado. */
@@ -2495,6 +2497,10 @@ export default function Settings() {
               <button onClick={saveAppSettings} className="btn-primary flex items-center gap-2"><MdSave /> Guardar</button>
             </div>
           </div>
+        )}
+
+        {activeSection === 'legal_documentos' && (
+          <SettingsLegalDocumentsPanel />
         )}
 
         {activeSection === 'modulo_empresarial' && (

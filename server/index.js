@@ -343,6 +343,7 @@ app.use('/api/pos', require('./routes/pos'));
 app.use('/api/delivery', require('./routes/delivery'));
 app.use('/api/tables', require('./routes/tables'));
 app.use('/api/admin-modules', require('./routes/adminModules'));
+app.use('/api/legal-documents', require('./routes/legalDocuments'));
 app.use('/api/promotions', require('./routes/promotions'));
 app.use('/api/contrato', require('./routes/contractSignature'));
 app.use('/api/business-config', require('./routes/businessConfig'));
