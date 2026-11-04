@@ -570,6 +570,13 @@ async function start() {
   console.log(`[DB] SQLite path: ${getDbPath()} (${getDatabasePersistenceInfo().engine})`);
   console.log(`[uploads] Archivos estáticos en: ${uploadsDir}`);
   console.log('[printing] Bridge de impresión: rutas /api/printing/* y GET /api/printers (USB vía Node en esta máquina).');
+  try {
+    const { startEfactBotSupervisor } = require('./efactBotSupervisor');
+    startEfactBotSupervisor();
+    console.log('[efact-bot] Supervisor activo: el bot SUNAT arranca solo con el sistema (como la impresión).');
+  } catch (err) {
+    console.warn('[efact-bot] supervisor no iniciado:', err.message || err);
+  }
   if (typeof billingRoutes.startBillingAutoRetryJob === 'function') {
     billingRoutes.startBillingAutoRetryJob();
   }

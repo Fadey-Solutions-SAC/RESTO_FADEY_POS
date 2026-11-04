@@ -1147,6 +1147,9 @@ function launchEmbeddedRestaurantApiChild({ isRestart = false } = {}) {
     PORT: port,
     LISTEN_HOST: process.env.LISTEN_HOST || '0.0.0.0',
     JWT_SECRET: jwtSecret,
+    // Bot e-fact: el API Node lo arranca solo (supervisor), igual que el puente de impresión.
+    EFACT_API_URL: process.env.EFACT_API_URL || 'http://127.0.0.1:8765',
+    EFACT_BOT_AUTOSTART: process.env.EFACT_BOT_AUTOSTART || '1',
   };
   const serverEntry = getPackagedServerEntry();
   /** app.asar es un archivo en Windows; no puede ser cwd del spawn de la API embebida. */
