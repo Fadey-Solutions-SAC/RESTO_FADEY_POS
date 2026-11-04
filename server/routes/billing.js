@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, queryOne, runSql } = require('../database');
+const { queryAll, queryOne, runSql, persistCriticalDb } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { buildEfactSaleJson, sendEfactSale } = require('../efactBridge');
 const {
@@ -826,6 +826,7 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
         '{}',
       ]
     );
+    persistCriticalDb();
 
     const finalDoc = await refreshDocWithLocalPdfIfNeeded(docId, restaurant);
     scheduleWhatsappPdfSend(finalDoc, restaurant);
@@ -969,6 +970,7 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
      WHERE id = ?`,
     [docType, fullNumber, normalizedCustomer.customerName, orderId]
   );
+  persistCriticalDb();
 
   const finalDoc = await refreshDocWithLocalPdfIfNeeded(docId, restaurant);
   scheduleWhatsappPdfSend(finalDoc, restaurant);

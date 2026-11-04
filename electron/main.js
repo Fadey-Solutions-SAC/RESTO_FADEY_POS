@@ -1129,10 +1129,7 @@ function startEmbeddedApiWatchdog() {
   }, 45_000);
 }
 
-function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
-  if (!app.isPackaged) return;
-  if (restaurantApiChild && !isRestart) return;
-  if (isRestart) stopEmbeddedRestaurantApi();
+function launchEmbeddedRestaurantApiChild({ isRestart = false } = {}) {
   const port = String(process.env.PORT || EMBEDDED_API_DEFAULT_PORT);
   const portNum = Number(port) || EMBEDDED_API_DEFAULT_PORT;
   embeddedApiListenPort = portNum;
@@ -1215,6 +1212,19 @@ function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
       { oncePerSession: true },
     );
   }
+}
+
+function startEmbeddedRestaurantApi({ isRestart = false } = {}) {
+  if (!app.isPackaged) return;
+  if (restaurantApiChild && !isRestart) return;
+  if (isRestart) {
+    // Cierre ordenado para flush de restaurant.db antes de reiniciar el hijo.
+    stopEmbeddedRestaurantApiGracefully().finally(() => {
+      launchEmbeddedRestaurantApiChild({ isRestart: true });
+    });
+    return;
+  }
+  launchEmbeddedRestaurantApiChild({ isRestart: false });
 }
 
 function showTrayBalloon(title, body, opts = {}) {

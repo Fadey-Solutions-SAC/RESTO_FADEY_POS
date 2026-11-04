@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, queryOne, runSql, withTransaction, logAudit, ensureOrdersPaymentNoteColumn } = require('../database');
+const { queryAll, queryOne, runSql, persistCriticalDb, withTransaction, logAudit, ensureOrdersPaymentNoteColumn } = require('../database');
 const kardexInventory = require('../services/kardexInventoryService');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { assertPaymentMethodAllowed, normalizePaymentMethod, getPaymentMethodOptionsPayload, isPosTerminalEnabled, isCourtesyDiscountReason, COURTESY_PAYMENT_METHOD } = require('../businessRules');
@@ -627,6 +627,7 @@ router.post('/close-register', authenticateToken, requireRole('admin', 'cajero')
   closeOtherShiftsOfStation(register.id, stationId);
   /** Cierre de caja: reinicio de numeración para el próximo turno / apertura. */
   runSql('UPDATE order_sequence SET current_number = 0 WHERE id = 1');
+  persistCriticalDb();
   logAudit({
     actorUserId: req.user.id,
     actorName: req.user.full_name || req.user.username || '',

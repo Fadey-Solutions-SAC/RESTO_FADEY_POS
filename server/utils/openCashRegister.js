@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { queryOne, runSql } = require('../database');
+const { queryOne, runSql, persistCriticalDb } = require('../database');
 
 function getUserCajaStationId(userId) {
   const row = queryOne('SELECT caja_station_id FROM users WHERE id = ?', [userId]);
@@ -76,6 +76,7 @@ function openStationShift({ stationId, openerUserId, openingAmount, restaurantId
     'INSERT INTO cash_registers (id, user_id, restaurant_id, opening_amount, caja_station_id) VALUES (?, ?, ?, ?, ?)',
     [id, responsibleId, restaurantId || null, Number(openingAmount), sid],
   );
+  persistCriticalDb();
   return { register: queryOne('SELECT * FROM cash_registers WHERE id = ?', [id]), already_open: false };
 }
 

@@ -220,10 +220,16 @@ export default function CortesiasReportSection({
     const onKey = (e) => {
       if (e.key === 'Escape') setFiltersOpen(false);
     };
-    document.addEventListener('mousedown', onDown);
+    // Evita que el mismo toque que abre el panel lo cierre al instante (móvil).
+    const timer = window.setTimeout(() => {
+      document.addEventListener('mousedown', onDown);
+      document.addEventListener('touchstart', onDown, { passive: true });
+    }, 0);
     document.addEventListener('keydown', onKey);
     return () => {
+      window.clearTimeout(timer);
       document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
       document.removeEventListener('keydown', onKey);
     };
   }, [filtersOpen]);
@@ -316,17 +322,26 @@ export default function CortesiasReportSection({
     if (kindFilter === 'cortesia') rows = rows.filter((o) => o.adjustment_kind === 'cortesia');
     if (kindFilter === 'descuento') rows = rows.filter((o) => o.adjustment_kind === 'descuento');
     if (kindFilter === 'eliminado') rows = rows.filter((o) => o.adjustment_kind === 'eliminado');
-    const q = search.trim().toLowerCase();
+    const q = search.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     if (!q) return rows;
+    const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     return rows.filter((o) => {
-      const reason = rowReason(o).toLowerCase();
-      const mesa = String(o.table_number || '').toLowerCase();
-      const cliente = clienteOMesaLabel(o).toLowerCase();
-      const mesero = String(o.created_by_user_name || o.customer_name || '').toLowerCase();
+      const tipo = norm(kindLabel(o.adjustment_kind));
+      const motivo = norm(rowReason(o));
+      const productos = (o.items || []).map((it) => norm(it.product_name)).join(' ');
+      const mesa = norm(o.table_number);
+      const cliente = norm(clienteOMesaLabel(o));
+      const mesero = norm(o.created_by_user_name || o.customer_name);
       const num = String(o.order_number || '');
-      const kind = kindLabel(o.adjustment_kind).toLowerCase();
-      const products = (o.items || []).map((it) => `${it.quantity}× ${it.product_name}`.toLowerCase()).join(' ');
-      return reason.includes(q) || mesa.includes(q) || cliente.includes(q) || mesero.includes(q) || num.includes(q) || kind.includes(q) || products.includes(q);
+      return (
+        tipo.includes(q)
+        || productos.includes(q)
+        || motivo.includes(q)
+        || mesa.includes(q)
+        || cliente.includes(q)
+        || mesero.includes(q)
+        || num.includes(q)
+      );
     });
   }, [data.orders, search, kindFilter]);
 
@@ -590,25 +605,29 @@ export default function CortesiasReportSection({
           </button>
         ))}
 
-        <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-sky-200/80 bg-gradient-to-br from-sky-50 to-white p-2.5 sm:p-3 shadow-sm min-w-0 flex flex-col gap-2">
+        <div className="relative rounded-xl sm:rounded-2xl border border-sky-200/80 bg-gradient-to-br from-sky-50 to-white p-2.5 sm:p-3 shadow-sm min-w-0 flex flex-col gap-2 overflow-visible z-20">
           <MdForum className="pointer-events-none absolute right-2 top-2 text-3xl text-sky-300/70" />
           <MdGroups className="pointer-events-none absolute -bottom-1 -right-1 text-4xl text-sky-200/60" />
-          <div className="relative w-full">
+          <div className="relative w-full z-[1]">
             <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cliente, mesa, motivo…"
+              placeholder="Tipo, producto, motivo…"
               className="input-field pl-8 w-full h-9 text-sm bg-white/90"
-              aria-label="Buscar"
+              aria-label="Buscar por tipo, producto o motivo"
             />
           </div>
-          <div className="relative flex items-center justify-between gap-2">
+          <div className="relative flex items-center justify-between gap-2 z-[1]">
             <div className="relative" ref={filtersPanelRef}>
               <button
                 type="button"
-                onClick={() => setFiltersOpen((v) => !v)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setFiltersOpen((v) => !v);
+                }}
                 className={`h-9 px-2.5 rounded-lg text-sm border inline-flex items-center gap-1 ${
                   hasActiveFilters || filtersOpen
                     ? 'border-sky-400 bg-sky-100/80 text-slate-800'
@@ -625,7 +644,7 @@ export default function CortesiasReportSection({
                 ) : null}
               </button>
               {filtersOpen ? (
-                <div className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,18rem)] rounded-xl border border-slate-200 bg-white shadow-lg p-3 space-y-2.5">
+                <div className="absolute right-0 top-full z-[80] mt-1 w-[min(100vw-2rem,18rem)] rounded-xl border border-slate-200 bg-white shadow-lg p-3 space-y-2.5">
                   <InlineDateField
                     label="Desde"
                     value={fromDate}
@@ -692,7 +711,7 @@ export default function CortesiasReportSection({
       </div>
 
       <p className="text-xs text-[var(--ui-muted)] mb-3">
-        En Descuentos, Cortesías y Eliminados, Cliente es la mesa (salón) o el nombre del cliente (delivery/mostrador).
+        Busque por tipo, producto o motivo. En la columna Cliente: mesa (salón) o nombre (delivery/mostrador).
       </p>
 
       {kindFilter === 'descuento' ? (

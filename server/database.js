@@ -3664,6 +3664,25 @@ function runSql(sql, params = []) {
   scheduleSaveDb();
 }
 
+/** Escritura crítica (cobros, anulaciones, facturación, caja): fuerza disco en sql.js. */
+function runSqlCritical(sql, params = []) {
+  runSql(sql, params);
+  try {
+    flushSaveDb();
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Forzar persistencia inmediata (p. ej. tras varias runSql en un mismo handler). */
+function persistCriticalDb() {
+  try {
+    flushSaveDb();
+  } catch {
+    /* ignore */
+  }
+}
+
 function withTransaction(work) {
   db.run('BEGIN IMMEDIATE');
   try {
@@ -3947,6 +3966,8 @@ module.exports = {
   queryAll,
   queryOne,
   runSql,
+  runSqlCritical,
+  persistCriticalDb,
   saveDb,
   flushSaveDb,
   createSafetyBackup,

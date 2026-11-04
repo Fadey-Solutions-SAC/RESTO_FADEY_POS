@@ -706,6 +706,30 @@ async function start() {
       console.warn('[sqlite] flush beforeExit:', err.message || err);
     }
   });
+  process.on('exit', () => {
+    try {
+      flushSaveDb();
+    } catch {
+      /* ignore */
+    }
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[server] uncaughtException:', err?.message || err);
+    try {
+      flushSaveDb();
+    } catch {
+      /* ignore */
+    }
+    process.exit(1);
+  });
+  process.on('unhandledRejection', (reason) => {
+    console.error('[server] unhandledRejection:', reason?.message || reason);
+    try {
+      flushSaveDb();
+    } catch {
+      /* ignore */
+    }
+  });
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {
       console.error(`[server] puerto ocupado: ${LISTEN_HOST}:${PORT}. Cierre la instancia previa o cambie PORT.`);

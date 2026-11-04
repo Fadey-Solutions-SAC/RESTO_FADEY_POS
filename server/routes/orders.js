@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { queryAll, queryOne, runSql, withTransaction, logAudit, ensureOrdersPaymentNoteColumn } = require('../database');
+const { queryAll, queryOne, runSql, runSqlCritical, persistCriticalDb, withTransaction, logAudit, ensureOrdersPaymentNoteColumn } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { assertPaymentMethodAllowed, normalizePaymentMethod, classifySalesAdjustment } = require('../businessRules');
 const { parsePaymentBreakdown, dominantPaymentMethod, round2 } = require('../utils/paymentBreakdown');
@@ -972,7 +972,7 @@ router.put('/:id/status', authenticateToken, requireRole('admin', 'cajero', 'moz
         logRouteError(req, logErr, { order_id: order.id, phase: 'product_removal_cancel' });
       }
     }
-    runSql(
+    runSqlCritical(
       "UPDATE orders SET status = 'cancelled', cancellation_reason = ?, updated_at = datetime('now') WHERE id = ?",
       [reason, req.params.id]
     );
@@ -1338,6 +1338,8 @@ router.put('/:id/payment', authenticateToken, requireRole('admin', 'cajero', 'mo
         assignSaleNumberToOrderIdsTx(tx, [req.params.id]);
         unifyTableSaleNumbersTx(tx, [req.params.id]);
       });
+    } else {
+      persistCriticalDb();
     }
   }
   if (nextPaymentMethod !== null || nextBreakdown !== undefined) {
@@ -1398,7 +1400,7 @@ router.put('/:id/discount', authenticateToken, requireRole('admin', 'cajero', 'm
   const newTotal = Math.max(0, baseTotal - safeDiscount);
   const discountNote = reason ? ` [DESCUENTO: ${reason}]` : '';
 
-  runSql(
+  runSqlCritical(
     "UPDATE orders SET discount = ?, total = ?, notes = COALESCE(notes, '') || ?, updated_at = datetime('now') WHERE id = ?",
     [safeDiscount, newTotal, discountNote, req.params.id]
   );
