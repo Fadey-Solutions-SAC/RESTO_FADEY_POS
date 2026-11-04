@@ -690,6 +690,7 @@ function resetOperationalData({ keepAdminUserId = '', preserveContrato = false }
              billing_emisor_provincia = '',
              billing_emisor_departamento = '',
              billing_emisor_distrito = '',
+             billing_panel_json = '{}',
              schedule = ?,
              updated_at = datetime('now')
          WHERE id = ?`,

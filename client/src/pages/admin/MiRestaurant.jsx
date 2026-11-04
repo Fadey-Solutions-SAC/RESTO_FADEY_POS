@@ -573,18 +573,58 @@ export default function MiRestaurant() {
           );
           return;
         }
+        const rucDigits = String(restaurant?.company_ruc || '').replace(/\D/g, '').slice(0, 11);
+        const legalName = String(restaurant?.legal_name || '').trim();
+        if (!/^\d{11}$/.test(rucDigits)) {
+          toast.error('Ingrese el RUC del emisor (11 dígitos) antes de guardar.');
+          return;
+        }
+        if (!legalName) {
+          toast.error('Ingrese la razón social / apellidos y nombres del emisor antes de guardar.');
+          return;
+        }
+        if (!String(restaurant?.billing_series_boleta || '').trim() || !String(restaurant?.billing_series_factura || '').trim()) {
+          toast.error('Configure las series de boleta y factura antes de guardar.');
+          return;
+        }
+        const panelToSave = {
+          ...billingPanel,
+          // Si el campo está enmascarado vacío, no enviar clave en blanco (el servidor conserva la anterior).
+          sol_usuario: String(billingPanel?.sol_usuario || '').trim(),
+          sol_clave: String(billingPanel?.sol_clave || '').trim(),
+          cert_pfx_password: String(billingPanel?.cert_pfx_password || '').trim(),
+          cert_pfx_path: String(billingPanel?.cert_pfx_path || '').trim(),
+        };
         const savedRestaurant = await api.put('/restaurant', {
           ...restaurant,
-          company_ruc: String(restaurant?.company_ruc || '').replace(/\D/g, '').slice(0, 11),
-          legal_name: String(restaurant?.legal_name || '').trim(),
-          billing_panel: billingPanel,
+          company_ruc: rucDigits,
+          legal_name: legalName,
+          billing_emisor_direccion: String(restaurant?.billing_emisor_direccion || '').trim(),
+          billing_series_boleta: String(restaurant?.billing_series_boleta || '').trim(),
+          billing_series_factura: String(restaurant?.billing_series_factura || '').trim(),
+          billing_panel: panelToSave,
         });
         setRestaurant(savedRestaurant);
         if (savedRestaurant?.billing_panel && typeof savedRestaurant.billing_panel === 'object') {
-          setBillingPanel({ ...defaultBillingPanel(), ...savedRestaurant.billing_panel });
+          setBillingPanel((prev) => ({
+            ...defaultBillingPanel(),
+            ...savedRestaurant.billing_panel,
+            // El GET no devuelve secretos: conservar lo que el usuario acaba de escribir.
+            sol_usuario: panelToSave.sol_usuario || prev.sol_usuario || '',
+            sol_clave: panelToSave.sol_clave || prev.sol_clave || '',
+            cert_pfx_password: panelToSave.cert_pfx_password || prev.cert_pfx_password || '',
+          }));
         }
         if (savedRestaurant?.billing_panel_presence && typeof savedRestaurant.billing_panel_presence === 'object') {
-          setBillingPanelPresence({ ...defaultBillingPanelPresence(), ...savedRestaurant.billing_panel_presence });
+          setBillingPanelPresence({
+            ...defaultBillingPanelPresence(),
+            ...savedRestaurant.billing_panel_presence,
+            sol_usuario: Boolean(savedRestaurant.billing_panel_presence.sol_usuario || panelToSave.sol_usuario),
+            sol_clave: Boolean(savedRestaurant.billing_panel_presence.sol_clave || panelToSave.sol_clave),
+            cert_pfx_password: Boolean(
+              savedRestaurant.billing_panel_presence.cert_pfx_password || panelToSave.cert_pfx_password
+            ),
+          });
         }
         const saved = await api.put('/billing/config', {
           billing_offline_mode: billingConfig.billing_offline_mode,

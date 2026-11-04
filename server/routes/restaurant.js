@@ -90,7 +90,30 @@ function mergeBillingPanelStored(prevJsonStr, incoming) {
   if (!String(inc.sol_usuario || '').trim()) merged.sol_usuario = String(prev.sol_usuario || '');
   if (!String(inc.sol_clave || '').trim()) merged.sol_clave = String(prev.sol_clave || '');
   if (!String(inc.cert_pfx_password || '').trim()) merged.cert_pfx_password = String(prev.cert_pfx_password || '');
+  // Ruta del certificado: no borrar si el cliente manda vacío (p. ej. tras GET sin cambios).
+  if (!String(inc.cert_pfx_path || '').trim()) merged.cert_pfx_path = String(prev.cert_pfx_path || '');
   return merged;
+}
+
+/** COALESCE en SQLite trata '' como valor: no debe pisar datos ya guardados. */
+function keepIfBlank(value) {
+  if (value == null) return null;
+  if (typeof value === 'string' && !value.trim()) return null;
+  return value;
+}
+
+function normalizeStoredBillingPanelJson(raw) {
+  const text = String(raw || '').trim();
+  if (!text || text === '{}') return JSON.stringify(defaultBillingPanel());
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Object.keys(parsed).length) {
+      return JSON.stringify(defaultBillingPanel());
+    }
+    return JSON.stringify({ ...defaultBillingPanel(), ...parsed });
+  } catch {
+    return JSON.stringify(defaultBillingPanel());
+  }
 }
 
 /** Reinicio desde Mi Restaurante (requiere contraseña en el cliente). Puede sobreescribirse con RESET_OPERATIONAL_PASSWORD. */
@@ -125,10 +148,14 @@ router.put('/', authenticateToken, requireRole('admin', 'master_admin'), (req, r
     billing_emisor_distrito, billing_series_boleta, billing_series_factura,
   } = b;
 
-  let nextBillingPanelJson = String(current?.billing_panel_json || '').trim() || JSON.stringify(defaultBillingPanel());
+  // Nunca persistir "{}": COALESCE con '' también borra RUC/razón/series.
+  let nextBillingPanelJson = normalizeStoredBillingPanelJson(current?.billing_panel_json);
+  let touchBillingPanel = false;
   if (adminMayEditBillingBot && b.billing_panel !== undefined && typeof b.billing_panel === 'object') {
-    const prevStr = String(current?.billing_panel_json || '').trim() || '{}';
-    nextBillingPanelJson = JSON.stringify(mergeBillingPanelStored(prevStr, b.billing_panel));
+    nextBillingPanelJson = JSON.stringify(
+      mergeBillingPanelStored(normalizeStoredBillingPanelJson(current?.billing_panel_json), b.billing_panel),
+    );
+    touchBillingPanel = true;
   }
 
   /**
@@ -143,7 +170,10 @@ router.put('/', authenticateToken, requireRole('admin', 'master_admin'), (req, r
     billing_emisor_distrito = null;
     billing_series_boleta = null;
     billing_series_factura = null;
-    nextBillingPanelJson = String(current?.billing_panel_json || '').trim() || nextBillingPanelJson;
+    // Sin permiso de bot: no reescribir el panel (evita dejarlo en "{}").
+    nextBillingPanelJson = normalizeStoredBillingPanelJson(current?.billing_panel_json);
+    touchBillingPanel = String(current?.billing_panel_json || '').trim() === '{}'
+      || !String(current?.billing_panel_json || '').trim();
   }
 
   if (b.profile !== undefined && typeof b.profile === 'object') {
@@ -171,6 +201,12 @@ router.put('/', authenticateToken, requireRole('admin', 'master_admin'), (req, r
     : String(company_ruc).replace(/\D/g, '').slice(0, 11);
   const normalizedLegalName = legal_name == null ? null : String(legal_name).trim();
 
+  // Sembrar panel vacío aunque el PUT no traiga billing_panel (corrige instalaciones con "{}").
+  if (!touchBillingPanel) {
+    const curPanel = String(current?.billing_panel_json || '').trim();
+    touchBillingPanel = !curPanel || curPanel === '{}';
+  }
+
   runSql(`UPDATE restaurants SET 
     name = COALESCE(?, name), address = COALESCE(?, address), phone = COALESCE(?, phone), email = COALESCE(?, email), logo = COALESCE(?, logo),
     tax_rate = COALESCE(?, tax_rate), currency = COALESCE(?, currency), currency_symbol = COALESCE(?, currency_symbol),
@@ -186,18 +222,25 @@ router.put('/', authenticateToken, requireRole('admin', 'master_admin'), (req, r
     billing_emisor_distrito = COALESCE(?, billing_emisor_distrito),
     billing_series_boleta = COALESCE(?, billing_series_boleta),
     billing_series_factura = COALESCE(?, billing_series_factura),
-    billing_panel_json = ?,
+    billing_panel_json = CASE WHEN ? = 1 THEN ? ELSE billing_panel_json END,
     updated_at = datetime('now')
     WHERE id = (SELECT id FROM restaurants LIMIT 1)`,
     [
-      name, address, phone, email, logo, tax_rate, currency, currency_symbol,
+      keepIfBlank(name), keepIfBlank(address), keepIfBlank(phone), keepIfBlank(email), keepIfBlank(logo),
+      tax_rate, currency, currency_symbol,
       delivery_enabled, delivery_fee, delivery_min_order, delivery_radius_km,
       schedule ? JSON.stringify(schedule) : null,
-      normalizedRuc === '' ? null : normalizedRuc,
-      normalizedLegalName === '' ? null : normalizedLegalName,
-      billing_nombre_comercial, billing_emisor_ubigeo,
-      billing_emisor_direccion, billing_emisor_provincia, billing_emisor_departamento,
-      billing_emisor_distrito, billing_series_boleta, billing_series_factura,
+      keepIfBlank(normalizedRuc),
+      keepIfBlank(normalizedLegalName),
+      keepIfBlank(billing_nombre_comercial),
+      keepIfBlank(billing_emisor_ubigeo),
+      keepIfBlank(billing_emisor_direccion),
+      keepIfBlank(billing_emisor_provincia),
+      keepIfBlank(billing_emisor_departamento),
+      keepIfBlank(billing_emisor_distrito),
+      keepIfBlank(billing_series_boleta),
+      keepIfBlank(billing_series_factura),
+      touchBillingPanel ? 1 : 0,
       nextBillingPanelJson,
     ]
   );
