@@ -458,60 +458,40 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
               className={linkHostsAttendanceQr(link) ? parentLinkClass(link) : linkClass}
               title={link.label}
               onClick={(e) => {
-                if (isCollapsed) return;
-                if (link.moduleId === 'caja' || link.to === '/admin/caja') {
-                  const isInCaja = location.pathname.startsWith('/admin/caja');
-                  const cajaView = new URLSearchParams(location.search).get('view') || 'cobrar';
-                  if (isInCaja && cajaView === 'cobrar' && !onAsistenciaPath) {
-                    e.preventDefault();
-                    setIsCajaExpanded((prev) => !prev);
-                    return;
-                  }
-                  setIsCajaExpanded(true);
+                // Menú colapsado: no hay sublista visible → navegar al destino por defecto.
+                if (isCollapsed) {
                   if (isMobile) onClose();
                   return;
                 }
+                // Módulos con submódulos: solo expandir/colapsar; no navegar hasta elegir un hijo.
+                if (link.moduleId === 'caja' || link.to === '/admin/caja') {
+                  e.preventDefault();
+                  setIsCajaExpanded((prev) => !prev);
+                  return;
+                }
                 if (link.to === '/admin/mi-restaurant') {
-                  const isInMiRestaurant = location.pathname.startsWith('/admin/mi-restaurant');
-                  if (isInMiRestaurant) {
-                    e.preventDefault();
-                    setIsMiRestaurantExpanded(prev => !prev);
-                    return;
-                  }
-                  setIsMiRestaurantExpanded(true);
+                  e.preventDefault();
+                  setIsMiRestaurantExpanded((prev) => !prev);
                   return;
                 }
                 if (link.to === '/admin/almacen') {
-                  const isInAlmacen = location.pathname.startsWith('/admin/almacen');
-                  if (isInAlmacen) {
-                    e.preventDefault();
-                    setIsAlmacenExpanded(prev => !prev);
-                    return;
-                  }
-                  setIsAlmacenExpanded(true);
+                  e.preventDefault();
+                  setIsAlmacenExpanded((prev) => !prev);
+                  return;
                 }
-                if (link.to === '/admin/informes') {
-                  const isInInformes = location.pathname.startsWith('/admin/informes');
-                  if (isInInformes) {
-                    e.preventDefault();
-                    setIsInformesExpanded((prev) => !prev);
-                    return;
-                  }
-                  setIsInformesExpanded(true);
+                if (link.to === '/admin/informes' || link.moduleId === 'informes') {
+                  e.preventDefault();
+                  setIsInformesExpanded((prev) => !prev);
+                  return;
                 }
                 if (link.moduleId === 'tiempo_trabajado') {
-                  const isInHr = location.pathname.startsWith('/admin/tiempo-trabajado')
-                    || (roleLc === 'admin' && onAsistenciaPath);
-                  if (isInHr) {
-                    e.preventDefault();
-                    setIsHrExpanded((prev) => !prev);
-                    return;
-                  }
-                  setIsHrExpanded(true);
+                  e.preventDefault();
+                  setIsHrExpanded((prev) => !prev);
+                  return;
                 }
                 if (link.moduleId === 'mesas') {
                   const isInMesas = location.pathname.startsWith('/admin/mesas');
-                  if (isInMesas) {
+                  if (isInMesas && asistenciaQrActiva) {
                     e.preventDefault();
                     setIsMesasExpanded((prev) => !prev);
                     return;
@@ -520,7 +500,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                 }
                 if (link.isProductionArea) {
                   const isInProd = location.pathname.startsWith(link.to);
-                  if (isInProd) {
+                  if (isInProd && asistenciaQrActiva) {
                     e.preventDefault();
                     setIsProdExpanded((prev) => !prev);
                     return;
@@ -564,6 +544,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                       const selected = isActive && new URLSearchParams(location.search).get('view') === option.id;
                       return `rf-nav-sublink ${selected ? 'rf-nav-sublink--active' : ''}`;
                     }}
+                    onClick={() => { if (isMobile) onClose(); }}
                   >
                     {option.label}
                   </NavLink>
@@ -582,6 +563,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                       const selected = isActive && new URLSearchParams(location.search).get('view') === option.id;
                       return `rf-nav-sublink ${selected ? 'rf-nav-sublink--active' : ''}`;
                     }}
+                    onClick={() => { if (isMobile) onClose(); }}
                   >
                     {option.label}
                   </NavLink>
@@ -599,6 +581,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                       const selected = isActive && new URLSearchParams(location.search).get('view') === option.id;
                       return `rf-nav-sublink ${selected ? 'rf-nav-sublink--active' : ''}`;
                     }}
+                    onClick={() => { if (isMobile) onClose(); }}
                   >
                     <span>{option.label}</span>
                     {option.isNew && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500 text-white">NUEVO</span>}
@@ -621,6 +604,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                       const selected = isActive && current === option.id;
                       return `rf-nav-sublink !whitespace-normal leading-snug ${selected ? 'rf-nav-sublink--active' : ''}`;
                     }}
+                    onClick={() => { if (isMobile) onClose(); }}
                   >
                     {option.label}
                   </NavLink>
