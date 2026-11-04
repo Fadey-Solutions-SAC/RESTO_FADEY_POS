@@ -3,7 +3,21 @@ import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatDateTime, formatDate, parseApiDate, isDateKeyInInclusiveRange, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
-import { MdSearch, MdSave, MdFilterList, MdClose } from 'react-icons/md';
+import {
+  MdSearch,
+  MdSave,
+  MdFilterList,
+  MdClose,
+  MdAttachMoney,
+  MdPayments,
+  MdSchedule,
+  MdReceipt,
+  MdTrendingUp,
+  MdAccountBalanceWallet,
+  MdHourglassEmpty,
+  MdPointOfSale,
+  MdCancel,
+} from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
 import { buildVentasDisplayGroups, getObservationRecordIds, groupItemsByProductNameForBill, isCourtesyOrder, orderMatchesMesaSearch, parseProductRemovalNotesFromOrder, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
@@ -1015,70 +1029,126 @@ export default function Ventas() {
   return (
     <div className="-mt-1 sm:-mt-3">
       {!isAiTab ? (
-      <div className="flex flex-wrap items-stretch gap-2 mb-2 min-w-0">
-        {isVoidedTab ? (
-          <>
-            <div className="card !py-2 !px-3 border-l-4 border-l-sky-500 flex-1 min-w-[8rem]">
-              <p className="text-[10px] leading-tight text-sky-600">{t('totals.voidedCount')}</p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] leading-tight">{displayGroups.length}</p>
+      <>
+      <div className={`grid gap-2 sm:gap-4 mb-3 ${isVoidedTab ? 'grid-cols-2 lg:grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
+        {(isVoidedTab
+          ? [
+              {
+                key: 'voided-count',
+                title: t('totals.voidedCount'),
+                value: displayGroups.length,
+                hint: 'ventas anuladas en el filtro',
+                Icon: MdCancel,
+                Deco: MdReceipt,
+                wrap: 'from-sky-50 to-white border-sky-200/80',
+                bubble: 'from-sky-400 to-blue-600 shadow-blue-500/30',
+                deco: 'text-sky-300/80',
+              },
+              {
+                key: 'voided-total',
+                title: t('totals.voidedReferenceTotal'),
+                value: formatCurrency(totals.total),
+                hint: 'monto de referencia',
+                Icon: MdAttachMoney,
+                Deco: MdTrendingUp,
+                wrap: 'from-slate-50 to-white border-slate-200/80',
+                bubble: 'from-slate-400 to-slate-600 shadow-slate-500/30',
+                deco: 'text-slate-300/80',
+              },
+            ]
+          : [
+              {
+                key: 'total',
+                title: 'Total Ventas',
+                value: formatCurrency(totals.total),
+                hint: 'suma del filtro actual',
+                Icon: MdAttachMoney,
+                Deco: MdTrendingUp,
+                wrap: 'from-emerald-50 to-white border-emerald-200/80',
+                bubble: 'from-emerald-400 to-emerald-600 shadow-emerald-500/30',
+                deco: 'text-emerald-400/70',
+              },
+              {
+                key: 'paid',
+                title: 'Cobrado',
+                value: formatCurrency(totals.paid),
+                hint: 'pagos confirmados',
+                Icon: MdPayments,
+                Deco: MdAccountBalanceWallet,
+                wrap: 'from-sky-50 to-white border-sky-200/80',
+                bubble: 'from-sky-400 to-blue-600 shadow-blue-500/30',
+                deco: 'text-sky-300/80',
+              },
+              {
+                key: 'pending',
+                title: 'Pendiente',
+                value: formatCurrency(totals.pending),
+                hint: 'por cobrar',
+                Icon: MdSchedule,
+                Deco: MdHourglassEmpty,
+                wrap: 'from-amber-50 to-white border-amber-200/80',
+                bubble: 'from-amber-400 to-orange-500 shadow-amber-500/30',
+                deco: 'text-amber-300/80',
+              },
+              {
+                key: 'count',
+                title: 'Cuentas cobradas',
+                value: totals.count,
+                hint: lifetimeSales > 0 ? `Interno ${formatSaleNumero(lifetimeSales)}` : 'cuentas pagadas',
+                Icon: MdReceipt,
+                Deco: MdPointOfSale,
+                wrap: 'from-violet-50 to-white border-violet-200/80',
+                bubble: 'from-violet-400 to-purple-600 shadow-purple-500/30',
+                deco: 'text-violet-300/80',
+              },
+            ]
+        ).map((k) => (
+          <div
+            key={k.key}
+            className={`relative overflow-hidden rounded-xl sm:rounded-2xl border bg-gradient-to-br ${k.wrap} p-3 sm:p-5 shadow-sm`}
+          >
+            <k.Deco className={`pointer-events-none absolute right-2 top-2 sm:right-4 sm:top-4 text-3xl sm:text-5xl ${k.deco}`} />
+            <div className="pointer-events-none absolute -bottom-10 -right-6 h-28 w-48 rounded-full bg-white/50" />
+            <div className="relative flex items-start gap-2 sm:gap-4">
+              <span className={`grid h-9 w-9 sm:h-14 sm:w-14 shrink-0 place-items-center rounded-full bg-gradient-to-br text-white shadow-lg ${k.bubble}`}>
+                <k.Icon className="text-lg sm:text-2xl" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] sm:text-sm font-semibold text-slate-800 truncate" title={k.title}>{k.title}</p>
+                <p className="mt-0.5 sm:mt-1 text-xl sm:text-4xl font-bold leading-none text-slate-900 tabular-nums truncate" title={String(k.value)}>{k.value}</p>
+                <p className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-slate-500 line-clamp-2">{k.hint}</p>
+              </div>
             </div>
-            <div className="card !py-2 !px-3 border-l-4 border-l-slate-400 flex-1 min-w-[8rem]">
-              <p className="text-[10px] leading-tight ui-text-muted">{t('totals.voidedReferenceTotal')}</p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] leading-tight">{formatCurrency(totals.total)}</p>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="card !py-2 !px-3 border-l-4 border-l-slate-400 flex-1 min-w-[8rem]">
-              <p className="text-[10px] leading-tight ui-text-muted">Total Ventas</p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] leading-tight">{formatCurrency(totals.total)}</p>
-            </div>
-            <div className="card !py-2 !px-3 border-l-4 border-l-emerald-500 flex-1 min-w-[8rem]">
-              <p className="text-[10px] leading-tight text-emerald-600">Cobrado</p>
-              <p className="text-lg font-bold text-emerald-400 leading-tight">{formatCurrency(totals.paid)}</p>
-            </div>
-            <div className="card !py-2 !px-3 border-l-4 border-l-amber-500 flex-1 min-w-[8rem]">
-              <p className="text-[10px] leading-tight text-amber-600">Pendiente</p>
-              <p className="text-lg font-bold text-amber-300 leading-tight">{formatCurrency(totals.pending)}</p>
-            </div>
-            <div className="card !py-2 !px-3 border-l-4 border-l-sky-500 flex-1 min-w-[8rem]">
-              <p className="text-[10px] leading-tight text-sky-600">Cuentas cobradas</p>
-              <p className="text-lg font-bold text-[var(--ui-body-text)] leading-tight">{totals.count}</p>
-              {lifetimeSales > 0 ? (
-                <p className="text-[10px] text-[var(--ui-muted)] leading-tight">Interno {formatSaleNumero(lifetimeSales)}</p>
-              ) : null}
-            </div>
-          </>
-        )}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {[
-            { id: 'activas', label: t('tabs.active') },
-            { id: 'anuladas', label: t('tabs.voided') },
-            { id: 'ia', label: t('tabs.ai'), icon: true },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleSaleTabChange(tab.id)}
-              className={`h-full min-h-[2.5rem] px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors border inline-flex items-center gap-1.5 ${
-                saleTab === tab.id
-                  ? 'bg-[var(--ui-accent)] text-white border-[color:var(--ui-accent)] shadow-md'
-                  : 'bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
-              }`}
-            >
-              {tab.icon ? (
-                <img
-                  src={getFadeyAiAvatarSrc('saludo')}
-                  alt=""
-                  className="w-5 h-5 rounded-full object-cover object-top shrink-0"
-                  draggable={false}
-                />
-              ) : null}
-              {tab.label}
-            </button>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
+      <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 mb-3">
+        {[
+          { id: 'activas', label: t('tabs.active') },
+          { id: 'anuladas', label: t('tabs.voided') },
+          { id: 'ia', label: t('tabs.ai'), icon: true },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => handleSaleTabChange(tab.id)}
+            className={`rf-tab-btn inline-flex items-center gap-1 sm:gap-1.5 shrink-0 text-sm ${
+              saleTab === tab.id ? 'rf-tab-btn--active' : ''
+            }`}
+          >
+            {tab.icon ? (
+              <img
+                src={getFadeyAiAvatarSrc('saludo')}
+                alt=""
+                className="w-5 h-5 rounded-full object-cover object-top shrink-0"
+                draggable={false}
+              />
+            ) : null}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      </>
       ) : (
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
         <p className="text-sm font-semibold text-[var(--ui-body-text)] inline-flex items-center gap-2">
