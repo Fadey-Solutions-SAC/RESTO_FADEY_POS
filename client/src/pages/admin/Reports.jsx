@@ -20,6 +20,9 @@ import {
   MdPayments,
   MdWarning,
   MdInventory2,
+  MdFilterList,
+  MdClose,
+  MdSearch,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
@@ -751,6 +754,8 @@ export default function Reports() {
   const [billingStatusFilter, setBillingStatusFilter] = useState('all');
   const [billingTypeFilter, setBillingTypeFilter] = useState('all');
   const [billingSearch, setBillingSearch] = useState('');
+  const [billingFiltersOpen, setBillingFiltersOpen] = useState(false);
+  const billingFiltersRef = useRef(null);
   const [retryingDocId, setRetryingDocId] = useState('');
   const [retryingFailed, setRetryingFailed] = useState(false);
   const [billingPdfPreview, setBillingPdfPreview] = useState(null);
@@ -1131,9 +1136,30 @@ export default function Reports() {
     };
   }, [reportSection, financeFrom, financeTo, lossCategoryFilter]);
   useEffect(() => {
-    if (reportSection !== 'facturacion') return;
-    loadBillingDocuments().catch(() => setBillingDocuments([]));
-  }, [reportSection, billingStatusFilter, billingTypeFilter]);
+    if (reportSection !== 'facturacion') return undefined;
+    const delay = billingSearch.trim() ? 400 : 0;
+    const handle = window.setTimeout(() => {
+      loadBillingDocumentsRef.current().catch(() => setBillingDocuments([]));
+    }, delay);
+    return () => window.clearTimeout(handle);
+  }, [reportSection, billingStatusFilter, billingTypeFilter, billingSearch]);
+
+  useEffect(() => {
+    if (!billingFiltersOpen) return undefined;
+    const onDown = (e) => {
+      if (billingFiltersRef.current?.contains(e.target)) return;
+      setBillingFiltersOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setBillingFiltersOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [billingFiltersOpen]);
 
   const retryDocument = async (docId) => {
     try {
@@ -2832,74 +2858,107 @@ export default function Reports() {
       {reportSection === 'facturacion' && (
         <div className="card">
           <h3 className="font-bold rf-section-title mb-4">Facturación electrónica</h3>
-          <p className="text-[var(--ui-muted)] mb-4">
-            Comprobantes emitidos: se guarda cliente, serie, correlativo, XML, CDR y PDF. El estado indica si se envió a SUNAT, si respondió, si está correcto o si hubo error.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-xs text-[var(--ui-muted)]">Cuentas cobradas hoy</p>
-              <p className="text-xl font-bold text-[var(--ui-body-text)]">
+          <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-4">
+            <div className="bg-slate-50 rounded-lg p-3 min-w-0 border border-slate-100">
+              <p className="text-xs text-[var(--ui-muted)] truncate">Cuentas cobradas hoy</p>
+              <p className="text-xl font-bold text-[var(--ui-body-text)] tabular-nums">
                 {summarizePaidSalesAccounts((dailyData?.orders || []).filter((o) => o.payment_status === 'paid' && o.status !== 'cancelled')).length}
               </p>
             </div>
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-xs text-[var(--ui-muted)]">Monto facturable hoy</p>
-              <p className="text-xl font-bold text-[var(--ui-body-text)]">
+            <div className="bg-slate-50 rounded-lg p-3 min-w-0 border border-slate-100">
+              <p className="text-xs text-[var(--ui-muted)] truncate">Monto facturable hoy</p>
+              <p className="text-xl font-bold text-[var(--ui-body-text)] tabular-nums">
                 {formatCurrency((dailyData?.orders || [])
                   .filter(o => o.payment_status === 'paid' && o.status !== 'cancelled')
                   .reduce((sum, o) => sum + Number(o.total || 0), 0))}
               </p>
             </div>
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-xs text-[var(--ui-muted)]">Comprobantes emitidos</p>
-              <p className="text-xl font-bold text-[var(--ui-body-text)]">{billingDocuments.length}</p>
+            <div className="bg-slate-50 rounded-lg p-3 min-w-0 border border-slate-100">
+              <p className="text-xs text-[var(--ui-muted)] truncate">Comprobantes emitidos</p>
+              <p className="text-xl font-bold text-[var(--ui-body-text)] tabular-nums">{billingDocuments.length}</p>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2 mb-4">
-            <select
-              className="input-field w-auto"
-              value={billingStatusFilter}
-              onChange={e => setBillingStatusFilter(e.target.value)}
-            >
-              <option value="all">Todos los estados</option>
-              <option value="local">Notas locales</option>
-              <option value="accepted">SUNAT aceptó (correcto)</option>
-              <option value="sent">Enviados a SUNAT</option>
-              <option value="pending">Pendientes de envío</option>
-              <option value="error">Error / SUNAT rechazó</option>
-            </select>
-            <select
-              className="input-field w-auto"
-              value={billingTypeFilter}
-              onChange={e => setBillingTypeFilter(e.target.value)}
-            >
-              <option value="all">Todos (boletas, facturas y notas)</option>
-              <option value="nota_venta">Notas de venta</option>
-              <option value="boleta">Boletas</option>
-              <option value="factura">Facturas</option>
-            </select>
-            <input
-              className="input-field flex-1 min-w-[220px]"
-              placeholder="Buscar por comprobante, cliente o documento"
-              value={billingSearch}
-              onChange={e => setBillingSearch(e.target.value)}
-            />
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => loadBillingDocuments()}
-            >
-              Buscar
-            </button>
-            <button
-              type="button"
-              onClick={retryFailedDocuments}
-              disabled={retryingFailed}
-              className="px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 inline-flex items-center gap-2"
-            >
-              <MdRefresh />
-              {retryingFailed ? 'Reintentando...' : 'Reintentar fallidos'}
-            </button>
+            <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-2.5 sm:p-3 min-w-0 flex flex-col gap-2">
+              <div className="relative w-full">
+                <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ui-muted)]" />
+                <input
+                  className="input-field pl-8 w-full h-9 text-sm"
+                  placeholder="Comprobante, cliente o doc."
+                  value={billingSearch}
+                  onChange={(e) => setBillingSearch(e.target.value)}
+                  aria-label="Buscar comprobantes"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="relative" ref={billingFiltersRef}>
+                  <button
+                    type="button"
+                    onClick={() => setBillingFiltersOpen((v) => !v)}
+                    className={`h-9 px-2.5 rounded-lg text-sm border inline-flex items-center gap-1 ${
+                      billingStatusFilter !== 'all' || billingTypeFilter !== 'all' || billingFiltersOpen
+                        ? 'border-[color:var(--ui-accent)] bg-[var(--ui-accent)]/10 text-[var(--ui-body-text)]'
+                        : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                    }`}
+                    aria-expanded={billingFiltersOpen}
+                  >
+                    <MdFilterList className="text-base shrink-0" />
+                    Filtros
+                    {billingStatusFilter !== 'all' || billingTypeFilter !== 'all' ? (
+                      <span className="ml-0.5 min-w-[1.1rem] h-4 px-1 rounded-full bg-[var(--ui-accent)] text-white text-[10px] leading-4 text-center">
+                        !
+                      </span>
+                    ) : null}
+                  </button>
+                  {billingFiltersOpen ? (
+                    <div className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,18rem)] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg p-3 space-y-2.5">
+                      <select
+                        className="input-field w-full cursor-pointer"
+                        value={billingStatusFilter}
+                        onChange={(e) => setBillingStatusFilter(e.target.value)}
+                      >
+                        <option value="all">Todos los estados</option>
+                        <option value="local">Notas locales</option>
+                        <option value="accepted">SUNAT aceptó (correcto)</option>
+                        <option value="sent">Enviados a SUNAT</option>
+                        <option value="pending">Pendientes de envío</option>
+                        <option value="error">Error / SUNAT rechazó</option>
+                      </select>
+                      <select
+                        className="input-field w-full cursor-pointer"
+                        value={billingTypeFilter}
+                        onChange={(e) => setBillingTypeFilter(e.target.value)}
+                      >
+                        <option value="all">Todos (boletas, facturas y notas)</option>
+                        <option value="nota_venta">Notas de venta</option>
+                        <option value="boleta">Boletas</option>
+                        <option value="factura">Facturas</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => { void retryFailedDocuments(); setBillingFiltersOpen(false); }}
+                        disabled={retryingFailed}
+                        className="w-full px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 inline-flex items-center justify-center gap-2 text-sm"
+                      >
+                        <MdRefresh />
+                        {retryingFailed ? 'Reintentando...' : 'Reintentar fallidos'}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBillingStatusFilter('all');
+                    setBillingTypeFilter('all');
+                    setBillingSearch('');
+                  }}
+                  disabled={billingStatusFilter === 'all' && billingTypeFilter === 'all' && !billingSearch.trim()}
+                  className="h-9 px-2.5 rounded-lg text-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <MdClose className="text-base shrink-0" />
+                  Limpiar
+                </button>
+              </div>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
