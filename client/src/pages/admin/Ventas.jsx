@@ -830,20 +830,23 @@ export default function Ventas() {
   const startEdit = (group) => {
     const order = group.primary;
     const doc = getAccountDocument(group);
-    const payableOrders = (group.orders || []).filter(
+    const groupOrders = (group.orders?.length ? group.orders : [order]).filter(Boolean);
+    const payableOrders = groupOrders.filter(
       (o) => o.status !== 'cancelled' && String(o.payment_method || '') !== 'cortesia',
     );
+    const editTargets = payableOrders.length ? payableOrders : (order ? [order] : []);
     const initialNote = String(
-      payableOrders.find((o) => String(o.payment_note || '').trim())?.payment_note || '',
+      editTargets.find((o) => String(o.payment_note || '').trim())?.payment_note || '',
     ).trim();
     setEditing({
       id: order.id,
-      orderIds: payableOrders.map((o) => o.id),
+      orderIds: editTargets.map((o) => o.id),
       docType: doc.doc_type || 'nota_venta',
       paymentNote: initialNote,
-      singleComanda: (group.orders || []).length === 1,
+      // Una sola comanda (o cuenta sin lista de órdenes) → permite emitir boleta/factura con cliente.
+      singleComanda: groupOrders.length <= 1,
     });
-    setEditPaymentMethod(payableOrders[0]?.payment_method || order.payment_method || 'efectivo');
+    setEditPaymentMethod(editTargets[0]?.payment_method || order.payment_method || 'efectivo');
     setEditDocType(doc.doc_type || 'nota_venta');
     setEditPaymentNote(initialNote);
     const existingDocType = String(doc.customer_doc_type || '').trim();
@@ -1476,9 +1479,20 @@ export default function Ventas() {
                     El método se aplica a las {editing.orderIds.length} comandas de la cuenta; la propina se mantiene y pasa al nuevo método en el cierre de caja.
                   </p>
                 ) : null}
-                {editing.singleComanda && (editDocType === 'boleta' || editDocType === 'factura') ? (
+                {(editDocType === 'boleta' || editDocType === 'factura') ? (
                   <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3 space-y-2">
-                    <p className="text-xs font-semibold text-slate-800">Datos del cliente (mismo flujo que Caja)</p>
+                    <p className="text-xs font-semibold text-slate-800">
+                      {editDocType === 'factura' ? '¿A quién va la factura?' : '¿A quién va la boleta?'}
+                    </p>
+                    <p className="text-[11px] text-slate-600 leading-snug">
+                      Complete DNI/nombre del cliente y pulse <strong>Emitir comprobante</strong>.
+                      «Guardar cambios» solo actualiza método de pago y nota; no genera la boleta a nombre de nadie.
+                    </p>
+                    {!editing.singleComanda ? (
+                      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                        Esta cuenta tiene varias comandas: emita el comprobante desde Caja al cobrar, o abra cada venta individual.
+                      </p>
+                    ) : null}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {editDocType === 'boleta' ? (
                         <div>
@@ -1487,6 +1501,7 @@ export default function Ventas() {
                             className="input-field text-sm"
                             value={editCustomerDocType}
                             onChange={(e) => setEditCustomerDocType(e.target.value)}
+                            disabled={!editing.singleComanda}
                           >
                             <option value="1">DNI</option>
                             <option value="6">RUC</option>
@@ -1508,6 +1523,7 @@ export default function Ventas() {
                           value={editCustomerDocNumber}
                           onChange={(e) => setEditCustomerDocNumber(e.target.value.replace(/\D/g, '').slice(0, 11))}
                           placeholder={editDocType === 'factura' || editCustomerDocType === '6' ? '11 dígitos' : '8 dígitos'}
+                          disabled={!editing.singleComanda}
                         />
                       </div>
                       <div className="sm:col-span-2">
@@ -1518,7 +1534,8 @@ export default function Ventas() {
                           className="input-field text-sm"
                           value={editCustomerName}
                           onChange={(e) => setEditCustomerName(e.target.value)}
-                          placeholder="Cliente varios"
+                          placeholder="Nombre de quien recibe la boleta"
+                          disabled={!editing.singleComanda}
                         />
                       </div>
                       <div className="sm:col-span-2">
@@ -1528,6 +1545,7 @@ export default function Ventas() {
                           value={editCustomerAddress}
                           onChange={(e) => setEditCustomerAddress(e.target.value)}
                           placeholder="LIMA"
+                          disabled={!editing.singleComanda}
                         />
                       </div>
                     </div>
@@ -1537,13 +1555,13 @@ export default function Ventas() {
                   <button onClick={saveChanges} disabled={savingEdit || issuingDoc} className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
                     <MdSave /> {savingEdit ? 'Guardando...' : 'Guardar cambios'}
                   </button>
-                  {editing.singleComanda ? (
+                  {editing.singleComanda && (editDocType === 'boleta' || editDocType === 'factura' || editDocType === 'nota_venta') ? (
                     <button
                       type="button"
                       onClick={() => void issueComprobanteFromEdit()}
                       disabled={savingEdit || issuingDoc}
                       className="btn-secondary text-sm inline-flex items-center gap-2 disabled:opacity-50 border-sky-300 text-sky-800 bg-sky-50 hover:bg-sky-100"
-                      title="Emite boleta/factura/nota con el mismo servicio que Caja"
+                      title="Emite boleta/factura/nota con el cliente indicado"
                     >
                       <MdReceipt />
                       {issuingDoc ? 'Emitiendo…' : 'Emitir comprobante'}
