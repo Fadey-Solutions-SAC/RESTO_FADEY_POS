@@ -18,7 +18,6 @@ import {
   MdHourglassEmpty,
   MdPointOfSale,
   MdCancel,
-  MdReceipt,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
