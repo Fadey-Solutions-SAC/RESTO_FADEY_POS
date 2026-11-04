@@ -41,6 +41,9 @@ import {
 import { downloadBlobFile, downloadExcelFile } from '../../utils/inventoryCuadreExport';
 import { formatOrderPaymentLabel, orderPaymentDetail } from '../../utils/paymentBreakdownDisplay';
 import PaymentSummaryDisplay from '../../components/admin/PaymentSummaryDisplay';
+import { restaurantLocalAddress } from '../../utils/restaurantLocalAddress';
+import { printCajaTicket } from '../../utils/printCajaTicket';
+import { buildBoletaFacturaPlainText, restaurantThermalBrandLine } from '../../utils/ticketPlainText';
 
 function payLabel(method) {
   if (!method) return '';
@@ -850,10 +853,14 @@ export default function Ventas() {
     setEditDocType(doc.doc_type || 'nota_venta');
     setEditPaymentNote(initialNote);
     const existingDocType = String(doc.customer_doc_type || '').trim();
-    setEditCustomerDocType(existingDocType === '6' || doc.doc_type === 'factura' ? '6' : '1');
+    setEditCustomerDocType(
+      existingDocType === '6' || doc.doc_type === 'factura' ? '6' : (existingDocType === '0' ? '0' : '1'),
+    );
     setEditCustomerDocNumber(String(doc.customer_doc_number || '').replace(/\D/g, ''));
-    setEditCustomerName(String(doc.customer_name || order.customer_name || '').trim());
-    setEditCustomerAddress(String(doc.customer_address || '').trim());
+    setEditCustomerName(String(doc.customer_name || '').trim());
+    setEditCustomerAddress(
+      String(doc.customer_address || '').trim() || restaurantLocalAddress(restaurantInfo),
+    );
     setEditCustomerPhone(String(doc.customer_phone || '').trim());
     setSelected(order);
     setSelectedGroup(group);
@@ -874,6 +881,8 @@ export default function Ventas() {
       const dni = editCustomerDocNumber.replace(/\D/g, '');
       if (dni && !/^\d{8}$/.test(dni)) return toast.error('DNI inválido (8 dígitos)');
     }
+    const localAddr = restaurantLocalAddress(restaurantInfo);
+    const customerAddress = editCustomerAddress.trim() || localAddr;
     setIssuingDoc(true);
     try {
       for (const orderId of editing.orderIds) {
@@ -890,17 +899,53 @@ export default function Ventas() {
           doc_type: editDocType === 'factura' ? '6' : editCustomerDocType,
           doc_number: editCustomerDocNumber.replace(/\D/g, ''),
           name: editCustomerName.trim() || 'CLIENTE VARIOS',
-          address: editCustomerAddress.trim() || 'LIMA',
+          address: customerAddress,
           phone: editCustomerPhone.trim(),
         },
       });
       const st = String(doc?.provider_status || '').toLowerCase();
       const label = billingStatusLabel(st);
+      const xmlOk = billingFileIsOpenable(doc?.xml_url) || Boolean(String(doc?.xml_url || '').trim());
       toast.success(
         doc?.full_number
-          ? `${doc.full_number} — ${label}`
+          ? `${doc.full_number} — ${label}${xmlOk ? ' · XML guardado' : ''}`
           : `Comprobante registrado (${label})`,
       );
+
+      if (editDocType === 'boleta' || editDocType === 'factura') {
+        const order = selected || selectedGroup?.primary;
+        const items = (selectedGroup?.orders || [order]).flatMap((o) => o?.items || []);
+        const grouped = groupItemsByProductNameForBill(items);
+        const pw = Number(restaurantInfo?.profile?.ticket?.paper_width_mm) === 58 ? 58 : 80;
+        const plain = buildBoletaFacturaPlainText({
+          restaurant: restaurantInfo,
+          doc,
+          groupedRows: grouped,
+          formatCurrencyFn: formatCurrency,
+          subtotal: Number(order?.subtotal || selectedGroup?.total || 0),
+          tax: Number(order?.tax || 0),
+          total: Number(selectedGroup?.total || order?.total || 0),
+          discount: 0,
+          customer: {
+            name: editCustomerName.trim() || doc.customer_name || 'CLIENTE VARIOS',
+            doc_number: editCustomerDocNumber.replace(/\D/g, '') || doc.customer_doc_number || '',
+            address: customerAddress || doc.customer_address || localAddr,
+          },
+          widthMm: pw,
+          printedAt: new Date(),
+          paymentMethod: editPaymentMethod,
+        });
+        const printRes = await printCajaTicket({
+          text: plain,
+          preformatted: true,
+          logoUrl: String(restaurantInfo?.logo || '').trim() || undefined,
+          restaurantBrand: restaurantThermalBrandLine(restaurantInfo) || undefined,
+          paperWidth: pw,
+        });
+        if (!printRes.ok) toast.error(printRes.error || 'No se pudo imprimir en impresora de caja');
+        else toast.success('Comprobante enviado a impresora de caja');
+      }
+
       if (billingFileIsOpenable(doc?.pdf_url)) {
         const pdf = resolveMediaUrl(doc.pdf_url);
         if (pdf) window.open(pdf, '_blank', 'noopener,noreferrer');
@@ -1453,7 +1498,14 @@ export default function Ventas() {
                     <select
                       className="input-field text-sm disabled:opacity-60"
                       value={editDocType}
-                      onChange={e => setEditDocType(e.target.value)}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setEditDocType(next);
+                        if (next === 'factura') setEditCustomerDocType('6');
+                        if ((next === 'boleta' || next === 'factura') && !String(editCustomerAddress || '').trim()) {
+                          setEditCustomerAddress(restaurantLocalAddress(restaurantInfo));
+                        }
+                      }}
                       disabled={!editing.singleComanda}
                     >
                       {DOC_TYPE_KEYS.map((value) => (
@@ -1544,7 +1596,7 @@ export default function Ventas() {
                           className="input-field text-sm"
                           value={editCustomerAddress}
                           onChange={(e) => setEditCustomerAddress(e.target.value)}
-                          placeholder="LIMA"
+                          placeholder={restaurantLocalAddress(restaurantInfo) || 'Dirección del local'}
                           disabled={!editing.singleComanda}
                         />
                       </div>

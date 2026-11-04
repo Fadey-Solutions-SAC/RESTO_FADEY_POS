@@ -698,14 +698,18 @@ export function buildBoletaFacturaPlainText({
   if (String(doc?.hash_code || '').trim()) {
     lines.push(centerThermalLine(`Hash: ${String(doc.hash_code).slice(0, inner)}`, w));
   }
-  const cName = String(customer?.name || '').trim();
-  const cDoc = String(customer?.doc_number || '').trim();
-  if (cName || cDoc) {
+  const cName = String(customer?.name || doc?.customer_name || '').trim();
+  const cDoc = String(customer?.doc_number || doc?.customer_doc_number || '').trim();
+  const cAddr = String(customer?.address || doc?.customer_address || '').trim();
+  if (cName || cDoc || cAddr) {
     lines.push(centerThermalLine('DATOS DEL CLIENTE', w));
     if (cName) {
       for (const seg of wrapThermalLine(`Nombre: ${cName}`, inner)) lines.push(centerThermalLine(seg, w));
     }
     if (cDoc) lines.push(centerThermalLine(`Doc: ${cDoc}`, w));
+    if (cAddr) {
+      for (const seg of wrapThermalLine(`Dir: ${cAddr}`, inner)) lines.push(centerThermalLine(seg, w));
+    }
   }
   /** ASCII: muchas térmicas en raw no interpretan UTF-8 (p. ej. 'Método' → 'Mtdo'). */
   lines.push(padLeftRight('Metodo de pago:', paymentMethodDisplayLabel(paymentMethod), w));

@@ -138,7 +138,10 @@ function buildEfactSaleJson({
       tipo_doc: tipoDoc,
       numero_doc: docNum || (tipoDoc === '6' ? '' : '00000000'),
       razon_social: customer.customerName,
-      direccion: customer.customerAddress || 'LIMA',
+      direccion: customer.customerAddress
+        || String(restaurant.billing_emisor_direccion || '').trim()
+        || String(restaurant.address || '').trim()
+        || 'SIN DIRECCION',
     },
     lineas,
   };

@@ -2556,6 +2556,9 @@ export default function POSPanel() {
   };
 
   const issueElectronicDocument = async (orderId) => {
+    const localAddr = String(
+      printRestaurantInfo?.billing_emisor_direccion || printRestaurantInfo?.address || '',
+    ).trim();
     const doc = await api.post('/billing/issue', {
       order_id: orderId,
       doc_type: billingForm.doc_type,
@@ -2564,7 +2567,7 @@ export default function POSPanel() {
         doc_type: billingForm.customer_doc_type,
         doc_number: billingForm.customer_doc_number,
         name: billingForm.customer_name,
-        address: billingForm.customer_address,
+        address: String(billingForm.customer_address || '').trim() || localAddr,
         phone: billingForm.customer_phone,
       },
     });
@@ -2885,6 +2888,9 @@ export default function POSPanel() {
             if (!doc || !ord) continue;
             const grouped = groupItemsByProductNameForBill(ord.items || []);
             const ordDisc = Number(printDiscountsByOrder[ord.id] || 0);
+            const localAddr = String(
+              printRestaurantInfo?.billing_emisor_direccion || printRestaurantInfo?.address || '',
+            ).trim();
             const plain = buildBoletaFacturaPlainText({
               restaurant: printRestaurantInfo,
               doc,
@@ -2895,8 +2901,11 @@ export default function POSPanel() {
               total: getOrderChargeTotal(ord),
               discount: ordDisc,
               customer: {
-                name: billingForm.customer_name,
-                doc_number: billingForm.customer_doc_number,
+                name: billingForm.customer_name || doc.customer_name,
+                doc_number: billingForm.customer_doc_number || doc.customer_doc_number,
+                address: String(billingForm.customer_address || '').trim()
+                  || doc.customer_address
+                  || localAddr,
               },
               widthMm: pw,
               printedAt: new Date(),
@@ -6130,7 +6139,10 @@ export default function POSPanel() {
                             </div>
                             <input
                               className="input-field text-sm sm:col-span-2"
-                              placeholder="Dirección (opcional)"
+                              placeholder={
+                                String(printRestaurantInfo?.billing_emisor_direccion || printRestaurantInfo?.address || '').trim()
+                                || 'Dirección del local'
+                              }
                               value={billingForm.customer_address}
                               onChange={(e) => setBillingForm((prev) => ({ ...prev, customer_address: e.target.value }))}
                             />

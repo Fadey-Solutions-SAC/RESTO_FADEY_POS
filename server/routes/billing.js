@@ -82,7 +82,23 @@ function formatIssueDate(date = new Date()) {
   return `${dd}-${mm}-${yyyy}`;
 }
 
-function normalizeCustomerForDoc(docType, customer = {}) {
+/** Dirección fiscal/local del emisor (nunca inventar «LIMA»). */
+function restaurantLocalAddress(restaurant) {
+  const fiscal = String(restaurant?.billing_emisor_direccion || '').trim();
+  if (fiscal) return fiscal;
+  const local = String(restaurant?.address || '').trim();
+  if (local) return local;
+  const geo = [
+    restaurant?.billing_emisor_distrito,
+    restaurant?.billing_emisor_provincia,
+    restaurant?.billing_emisor_departamento,
+  ]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
+  return geo.length ? geo.join(' - ') : '';
+}
+
+function normalizeCustomerForDoc(docType, customer = {}, restaurant = null) {
   const rawDocType = String(customer.doc_type || '').trim();
   const rawDocNumber = String(customer.doc_number || '').trim();
   const rawName = String(customer.name || '').trim();
@@ -91,7 +107,7 @@ function normalizeCustomerForDoc(docType, customer = {}) {
   const customerDocType = rawDocType || (docType === 'factura' ? '6' : '1');
   const customerDocNumber = rawDocNumber;
   const customerName = rawName || 'CLIENTE VARIOS';
-  const customerAddress = rawAddress || 'LIMA';
+  const customerAddress = rawAddress || restaurantLocalAddress(restaurant) || 'SIN DIRECCION';
 
   if (docType === 'factura') {
     if (customerDocType !== '6') {
@@ -494,7 +510,9 @@ function buildNubefactPayload({ restaurant, order, items, customer, docType, ser
     cliente_tipo_de_documento: customer.customerDocType || '0',
     cliente_numero_de_documento: customer.customerDocNumber || '',
     cliente_denominacion: customer.customerName,
-    cliente_direccion: customer.customerAddress || 'LIMA',
+    cliente_direccion: customer.customerAddress
+      || String(restaurant?.billing_emisor_direccion || restaurant?.address || '').trim()
+      || 'SIN DIRECCION',
     fecha_de_emision: formatIssueDate(),
     moneda: (restaurant.currency || 'PEN') === 'USD' ? '2' : '1',
     porcentaje_de_igv: taxRate,
@@ -773,10 +791,10 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
       doc_type: customer?.doc_type || existingDoc?.customer_doc_type || '',
       doc_number: customer?.doc_number || existingDoc?.customer_doc_number || '',
       name: customer?.name || existingDoc?.customer_name || order.customer_name || 'CLIENTE VARIOS',
-      address: customer?.address || existingDoc?.customer_address || 'LIMA',
+      address: customer?.address || existingDoc?.customer_address || restaurantLocalAddress(restaurant) || '',
     };
     const customerPhone = String(customer?.phone ?? existingDoc?.customer_phone ?? '').trim();
-    const normalizedCustomer = normalizeCustomerForDoc('boleta', sourceCustomer);
+    const normalizedCustomer = normalizeCustomerForDoc('boleta', sourceCustomer, restaurant);
 
     runSql(
       `UPDATE orders SET
@@ -862,10 +880,10 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
     doc_type: customer?.doc_type || existingDoc?.customer_doc_type || '',
     doc_number: customer?.doc_number || existingDoc?.customer_doc_number || '',
     name: customer?.name || existingDoc?.customer_name || order.customer_name || 'CLIENTE VARIOS',
-    address: customer?.address || existingDoc?.customer_address || 'LIMA',
+    address: customer?.address || existingDoc?.customer_address || restaurantLocalAddress(restaurant) || '',
   };
   const customerPhone = String(customer?.phone ?? existingDoc?.customer_phone ?? '').trim();
-  const normalizedCustomer = normalizeCustomerForDoc(docType, sourceCustomer);
+  const normalizedCustomer = normalizeCustomerForDoc(docType, sourceCustomer, restaurant);
   const series = normalizeSeries(
     docType === 'factura' ? restaurant.billing_series_factura : restaurant.billing_series_boleta,
     DOCS[docType].fallbackSeries
@@ -906,6 +924,12 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
     providerResponse,
   } = await sendToProvider(restaurant, providerPayload);
   const pdfFromPaths = String(providerResponse?.paths?.pdf || '').trim();
+  const xmlFromPaths = String(
+    providerResponse?.paths?.xml_firmado
+    || providerResponse?.paths?.xml_sin_firma
+    || '',
+  ).trim();
+  const cdrFromPaths = String(providerResponse?.paths?.cdr || '').trim();
 
   if (replaceExisting && existingDoc) {
     runSql('DELETE FROM electronic_documents WHERE order_id = ?', [orderId]);
@@ -913,10 +937,12 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
 
   const docId = uuidv4();
   const rawPdfInsert = String(pdfUrl || '').trim() || pdfFromPaths;
+  const rawXmlInsert = String(xmlUrl || '').trim() || xmlFromPaths;
+  const rawCdrInsert = String(cdrUrl || '').trim() || cdrFromPaths;
   const { pdfStored, xmlStored, cdrStored } = persistBillingArtifacts(docId, {
     pdfUrl: rawPdfInsert,
-    xmlUrl,
-    cdrUrl,
+    xmlUrl: rawXmlInsert,
+    cdrUrl: rawCdrInsert,
   });
   let pdfFinal = pdfStored;
   if (!pdfFinal) {
@@ -969,8 +995,8 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
       String(providerMessage || ''),
       String(hashCode || ''),
       String(sunatDescription || ''),
-      String(xmlStored || xmlUrl || ''),
-      String(cdrStored || cdrUrl || ''),
+      String(xmlStored || rawXmlInsert || ''),
+      String(cdrStored || rawCdrInsert || ''),
       String(pdfFinal || ''),
       JSON.stringify(providerPayload),
       JSON.stringify(providerResponse || {}),
