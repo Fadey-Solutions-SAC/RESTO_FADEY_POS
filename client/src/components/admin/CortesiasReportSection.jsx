@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { api, formatCurrency, formatDate, formatDateKey, formatDateTime } from '../../utils/api';
 import { downloadBlobFile, downloadExcelFile } from '../../utils/inventoryCuadreExport';
 import DownloadExcelTxtButtons from './DownloadExcelTxtButtons';
@@ -23,7 +23,17 @@ import {
   buildEliminadosTxt,
   mapEliminadosInformeRows,
 } from '../../utils/salesAdjustmentsExport';
-import { MdVolunteerActivism, MdSearch, MdRefresh, MdLocalOffer, MdDelete, MdRemoveCircleOutline, MdVisibility } from 'react-icons/md';
+import {
+  MdVolunteerActivism,
+  MdSearch,
+  MdRefresh,
+  MdLocalOffer,
+  MdDelete,
+  MdRemoveCircleOutline,
+  MdVisibility,
+  MdFilterList,
+  MdClose,
+} from 'react-icons/md';
 import Modal from '../../components/Modal';
 import { adjustmentKindBadge } from '../../utils/uiBadges';
 import toast from 'react-hot-toast';
@@ -173,6 +183,8 @@ export default function CortesiasReportSection({
   const [toDate, setToDate] = useState(() => toInputDate(new Date()));
   const [search, setSearch] = useState('');
   const [kindFilter, setKindFilter] = useState('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersPanelRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({ summary: {}, orders: [] });
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -183,6 +195,34 @@ export default function CortesiasReportSection({
   const highlightTimerRef = useRef(null);
 
   const datesValid = Boolean(fromDate && toDate && fromDate <= toDate);
+  const defaultFrom = localMonthStartYmd();
+  const defaultTo = toInputDate(new Date());
+  const hasActiveFilters = useMemo(
+    () => kindFilter !== 'all' || fromDate !== defaultFrom || toDate !== defaultTo,
+    [kindFilter, fromDate, toDate, defaultFrom, defaultTo],
+  );
+  const clearAllFilters = useCallback(() => {
+    setKindFilter('all');
+    setFromDate(localMonthStartYmd());
+    setToDate(toInputDate(new Date()));
+  }, []);
+
+  useEffect(() => {
+    if (!filtersOpen) return undefined;
+    const onDown = (e) => {
+      if (filtersPanelRef.current?.contains(e.target)) return;
+      setFiltersOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setFiltersOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [filtersOpen]);
 
   useEffect(() => {
     if (highlightFrom) setFromDate(highlightFrom);
@@ -470,95 +510,136 @@ export default function CortesiasReportSection({
     );
   }
 
+  const downloadDisabled =
+    kindFilter === 'descuento'
+      ? !discountInformeRows.length
+      : kindFilter === 'cortesia'
+        ? !courtesyInformeRows.length
+        : kindFilter === 'eliminado'
+          ? !eliminadoInformeRows.length
+          : !groupedProducts.length;
+
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <button type="button" onClick={() => setKindFilter('cortesia')} className={`card border-l-4 border-l-violet-500 text-left ${kindFilter === 'cortesia' ? 'ring-2 ring-violet-400' : ''}`}>
-          <p className="text-xs ui-text-muted">Cortesías</p>
-          <p className="text-2xl font-bold text-violet-600">{overviewSummary.courtesy_count}</p>
-          <p className="text-xs text-[var(--ui-muted)] mt-1">Registros en el periodo</p>
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-4">
+        <button type="button" onClick={() => setKindFilter('cortesia')} className={`card border-l-4 border-l-violet-500 text-left min-w-0 ${kindFilter === 'cortesia' ? 'ring-2 ring-violet-400' : ''}`}>
+          <p className="text-xs ui-text-muted truncate">Cortesías</p>
+          <p className="text-xl sm:text-2xl font-bold text-violet-600 tabular-nums">{overviewSummary.courtesy_count}</p>
+          <p className="text-[10px] sm:text-xs text-[var(--ui-muted)] mt-1 line-clamp-2">Registros en el periodo</p>
         </button>
-        <button type="button" onClick={() => setKindFilter('descuento')} className={`card border-l-4 border-l-amber-500 text-left ${kindFilter === 'descuento' ? 'ring-2 ring-amber-400' : ''}`}>
-          <p className="text-xs ui-text-muted">Descuentos</p>
-          <p className="text-2xl font-bold text-amber-600">{overviewSummary.discount_count}</p>
-          <p className="text-xs text-[var(--ui-muted)] mt-1">Registros en el periodo</p>
+        <button type="button" onClick={() => setKindFilter('descuento')} className={`card border-l-4 border-l-amber-500 text-left min-w-0 ${kindFilter === 'descuento' ? 'ring-2 ring-amber-400' : ''}`}>
+          <p className="text-xs ui-text-muted truncate">Descuentos</p>
+          <p className="text-xl sm:text-2xl font-bold text-amber-600 tabular-nums">{overviewSummary.discount_count}</p>
+          <p className="text-[10px] sm:text-xs text-[var(--ui-muted)] mt-1 line-clamp-2">Registros en el periodo</p>
         </button>
-        <button type="button" onClick={() => setKindFilter('eliminado')} className={`card border-l-4 border-l-red-500 text-left ${kindFilter === 'eliminado' ? 'ring-2 ring-red-400' : ''}`}>
-          <p className="text-xs ui-text-muted">Eliminados</p>
-          <p className="text-2xl font-bold text-red-600">{overviewSummary.eliminado_count}</p>
-          <p className="text-xs text-[var(--ui-muted)] mt-1">Registros en el periodo</p>
+        <button type="button" onClick={() => setKindFilter('eliminado')} className={`card border-l-4 border-l-red-500 text-left min-w-0 ${kindFilter === 'eliminado' ? 'ring-2 ring-red-400' : ''}`}>
+          <p className="text-xs ui-text-muted truncate">Eliminados</p>
+          <p className="text-xl sm:text-2xl font-bold text-red-600 tabular-nums">{overviewSummary.eliminado_count}</p>
+          <p className="text-[10px] sm:text-xs text-[var(--ui-muted)] mt-1 line-clamp-2">Registros en el periodo</p>
         </button>
+
+        <div className="card min-w-0 flex flex-col gap-2 !p-2.5 sm:!p-3">
+          <div className="relative w-full">
+            <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ui-muted)] text-base" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cliente, mesa, motivo…"
+              className="input-field pl-8 w-full h-9 text-sm"
+              aria-label="Buscar"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="relative" ref={filtersPanelRef}>
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((v) => !v)}
+                className={`h-9 px-2.5 rounded-lg text-sm border inline-flex items-center gap-1 ${
+                  hasActiveFilters || filtersOpen
+                    ? 'border-[color:var(--ui-accent)] bg-[var(--ui-accent)]/10 text-[var(--ui-body-text)]'
+                    : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                }`}
+                aria-expanded={filtersOpen}
+              >
+                <MdFilterList className="text-base shrink-0" />
+                Filtros
+                {hasActiveFilters ? (
+                  <span className="ml-0.5 min-w-[1.1rem] h-4 px-1 rounded-full bg-[var(--ui-accent)] text-white text-[10px] leading-4 text-center">
+                    !
+                  </span>
+                ) : null}
+              </button>
+              {filtersOpen ? (
+                <div className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,18rem)] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg p-3 space-y-2.5">
+                  <InlineDateField
+                    label="Desde"
+                    value={fromDate}
+                    onChange={setFromDate}
+                    roundedNone={false}
+                    className="!rounded-lg w-full"
+                  />
+                  <InlineDateField
+                    label="Hasta"
+                    value={toDate}
+                    onChange={setToDate}
+                    roundedNone={false}
+                    className="!rounded-lg w-full"
+                  />
+                  {!datesValid ? (
+                    <p className="text-xs text-red-600">«Desde» no puede ser posterior a «Hasta».</p>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {KIND_FILTERS.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setKindFilter(f.id)}
+                        className={`text-xs px-2 py-1.5 rounded-lg border transition-colors ${
+                          kindFilter === f.id
+                            ? 'bg-[#3B82F6] text-white border-transparent'
+                            : 'border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { void load(); setFiltersOpen(false); }}
+                    className="btn-secondary flex items-center justify-center gap-2 h-9 w-full text-sm"
+                    disabled={!datesValid}
+                  >
+                    <MdRefresh /> Actualizar
+                  </button>
+                  <div className="pt-1 border-t border-[color:var(--ui-border)]">
+                    <DownloadExcelTxtButtons
+                      onExcel={() => downloadReport('excel')}
+                      onTxt={() => downloadReport('txt')}
+                      disabled={downloadDisabled}
+                      className="!grid grid-cols-2 w-full [&>button]:justify-center"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              disabled={!hasActiveFilters}
+              className="h-9 px-2.5 rounded-lg text-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <MdClose className="text-base shrink-0" />
+              Limpiar
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="card mb-4">
-        <div className="flex flex-wrap gap-2 items-center">
-          <InlineDateField
-            label="Desde"
-            value={fromDate}
-            onChange={setFromDate}
-            roundedNone={false}
-            className="!rounded-lg"
-          />
-          <InlineDateField
-            label="Hasta"
-            value={toDate}
-            onChange={setToDate}
-            roundedNone={false}
-            className="!rounded-lg"
-          />
-          <div className="flex-1 min-w-[200px]">
-            <div className="relative">
-              <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)]" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cliente, mesa, motivo, N° venta, usuario…"
-                className="input-field pl-9 w-full h-9"
-                aria-label="Buscar"
-              />
-            </div>
-          </div>
-          <button type="button" onClick={load} className="btn-secondary flex items-center gap-2 h-9" disabled={!datesValid}>
-            <MdRefresh /> Actualizar
-          </button>
-          <DownloadExcelTxtButtons
-            onExcel={() => downloadReport('excel')}
-            onTxt={() => downloadReport('txt')}
-            disabled={
-              kindFilter === 'descuento'
-                ? !discountInformeRows.length
-                : kindFilter === 'cortesia'
-                  ? !courtesyInformeRows.length
-                  : kindFilter === 'eliminado'
-                    ? !eliminadoInformeRows.length
-                    : !groupedProducts.length
-            }
-          />
-        </div>
-        {!datesValid && (
-          <p className="text-xs text-red-600 mt-2">La fecha «Desde» no puede ser posterior a «Hasta».</p>
-        )}
-        <div className="flex flex-wrap gap-2 mt-4">
-          {KIND_FILTERS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setKindFilter(f.id)}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                kindFilter === f.id
-                  ? 'bg-[#3B82F6] text-white border-transparent'
-                  : 'border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)]'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-[var(--ui-muted)] mt-3">
-          En Descuentos, Cortesías y Eliminados, Cliente es la mesa (salón) o el nombre del cliente (delivery/mostrador).
-        </p>
-      </div>
+      <p className="text-xs text-[var(--ui-muted)] mb-3">
+        En Descuentos, Cortesías y Eliminados, Cliente es la mesa (salón) o el nombre del cliente (delivery/mostrador).
+      </p>
 
       {kindFilter === 'descuento' ? (
         <div className="card overflow-x-auto p-0">

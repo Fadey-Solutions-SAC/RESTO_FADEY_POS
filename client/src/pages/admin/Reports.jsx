@@ -1709,14 +1709,14 @@ export default function Reports() {
           tabIndex={-1}
           aria-hidden
         />
-        <div className={`grid grid-cols-[1fr_1fr_1fr_auto] gap-2 min-w-0 ${tab === 'ranking' ? 'w-1/2' : 'flex-1'}`}>
+        <div className={`grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 min-w-0 ${tab === 'ranking' ? 'w-full sm:w-1/2' : 'flex-1'}`}>
         <button
           type="button"
           onClick={() => {
             setTab('daily');
             openNativeDatePicker(dailyDateInputRef.current);
           }}
-          className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${tab === 'daily' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
+          className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border min-w-0 ${tab === 'daily' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
         >
           <MdCalendarToday className="shrink-0" />
           <span className="truncate">Informe del Día</span>
@@ -1727,7 +1727,7 @@ export default function Reports() {
             setTab('monthly');
             openNativeDatePicker(monthInputRef.current);
           }}
-          className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${tab === 'monthly' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
+          className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border min-w-0 ${tab === 'monthly' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
         >
           <MdCalendarMonth className="shrink-0" />
           <span className="truncate">Informe del Mes</span>
@@ -1735,7 +1735,7 @@ export default function Reports() {
         <button
           type="button"
           onClick={() => setTab('ranking')}
-          className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${tab === 'ranking' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
+          className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border min-w-0 ${tab === 'ranking' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
         >
           <MdEmojiEvents className="shrink-0" />
           <span className="truncate">Ranking Productos</span>
@@ -1743,7 +1743,7 @@ export default function Reports() {
         <button
           type="button"
           onClick={() => setTab('ia')}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${tab === 'ia' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
+          className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border min-w-0 ${tab === 'ia' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
           title="IA de informes"
         >
           <img
@@ -1861,18 +1861,19 @@ export default function Reports() {
           </div>
 
           <div className="card">
-            <h3 className="font-bold rf-section-title mb-4">
-              Cuentas del día ({dailySalesAccounts.length})
-            </h3>
-            <p className="text-xs text-[var(--ui-muted)] mb-3 uppercase tracking-wide font-medium">
-              DETALLES
-            </p>
-            <div className="flex justify-end mb-3">
+            <div className="mb-3 space-y-2">
+              <h3 className="font-bold rf-section-title min-w-0 break-words">
+                Cuentas del día ({dailySalesAccounts.length})
+              </h3>
+              <p className="text-xs text-[var(--ui-muted)] uppercase tracking-wide font-medium">
+                DETALLES
+              </p>
               <DownloadExcelTxtButtons
                 onExcel={() => downloadSalesPeriodReport('excel')}
                 onTxt={() => downloadSalesPeriodReport('txt')}
                 excelTitle={`Descargar ventas del ${formatDate(dailyData.date || salesDailyDate)}`}
                 txtTitle={`Descargar ventas del ${formatDate(dailyData.date || salesDailyDate)}`}
+                className="!grid grid-cols-2 w-full sm:!flex sm:w-auto sm:justify-start [&>button]:justify-center"
               />
             </div>
             <VentasCuentasTable
@@ -1937,13 +1938,16 @@ export default function Reports() {
           </div>
 
           <div className="card mb-6">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <h3 className="font-bold rf-section-title">Cuentas del mes ({monthlySalesAccounts.length})</h3>
+            <div className="mb-3 space-y-2">
+              <h3 className="font-bold rf-section-title min-w-0 break-words">
+                Cuentas del mes ({monthlySalesAccounts.length})
+              </h3>
               <DownloadExcelTxtButtons
                 onExcel={() => downloadSalesPeriodReport('excel')}
                 onTxt={() => downloadSalesPeriodReport('txt')}
                 excelTitle={`Descargar ventas de ${formatMonthLabel(monthlyData.month || salesMonth)}`}
                 txtTitle={`Descargar ventas de ${formatMonthLabel(monthlyData.month || salesMonth)}`}
+                className="!grid grid-cols-2 w-full sm:!flex sm:w-auto sm:justify-start [&>button]:justify-center"
               />
             </div>
             <VentasCuentasTable
