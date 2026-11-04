@@ -70,3 +70,7 @@ whatsapp-bridge/.env
 
 # Python e-fact venv (Render build)
 .venv-efact/
+
+# Runtime Python embebido para el instalador (se genera con npm run prepare:efact-runtime)
+build/efact-runtime/
+build/efact-runtime-tmp/

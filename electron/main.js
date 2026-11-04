@@ -1138,6 +1138,8 @@ function launchEmbeddedRestaurantApiChild({ isRestart = false } = {}) {
   const uploadsDir = path.join(userData, 'uploads');
   const jwtSecret = String(process.env.JWT_SECRET || '').trim() || ensureDesktopJwtSecret(userData);
   const printerConfigPath = path.join(userData, 'printer-config.json');
+  const efactDir = path.join(process.resourcesPath, 'efact');
+  const efactPython = path.join(process.resourcesPath, 'efact-runtime', 'python.exe');
   const env = {
     ...process.env,
     ELECTRON_RUN_AS_NODE: '1',
@@ -1147,9 +1149,12 @@ function launchEmbeddedRestaurantApiChild({ isRestart = false } = {}) {
     PORT: port,
     LISTEN_HOST: process.env.LISTEN_HOST || '0.0.0.0',
     JWT_SECRET: jwtSecret,
-    // Bot e-fact: el API Node lo arranca solo (supervisor), igual que el puente de impresión.
+    // Bot e-fact embebido en el mismo instalador del asistente de impresión.
     EFACT_API_URL: process.env.EFACT_API_URL || 'http://127.0.0.1:8765',
     EFACT_BOT_AUTOSTART: process.env.EFACT_BOT_AUTOSTART || '1',
+    EFACT_RESOURCES_DIR: process.resourcesPath,
+    EFACT_DIR: efactDir,
+    EFACT_PYTHON: efactPython,
   };
   const serverEntry = getPackagedServerEntry();
   /** app.asar es un archivo en Windows; no puede ser cwd del spawn de la API embebida. */

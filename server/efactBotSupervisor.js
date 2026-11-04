@@ -1,18 +1,17 @@
 /**
- * Arranca el bot Python e-fact (api_server.py) junto con el API Node,
- * igual que el puente de impresión: sin pasos manuales al abrir Caja/Admin.
+ * Arranca el bot Python e-fact (api_server.py) junto con el API Node.
+ * En el asistente empaquetado usa Python embebido (resources/efact-runtime)
+ * y el código del bot (resources/efact) — misma instalación que impresión.
  *
  * EFACT_BOT_AUTOSTART=0  — desactiva
  * EFACT_API_URL / EFACT_HTTP_PORT — URL/puerto (default http://127.0.0.1:8765)
+ * EFACT_PYTHON / EFACT_DIR / EFACT_RESOURCES_DIR — rutas empaquetadas
  */
 
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-
-const EFACT_DIR = path.join(__dirname, 'efact');
-const API_SCRIPT = path.join(EFACT_DIR, 'api_server.py');
 
 let child = null;
 let starting = false;
@@ -24,6 +23,42 @@ let lastSpawnErrorLogAt = 0;
 function autostartEnabled() {
   const raw = String(process.env.EFACT_BOT_AUTOSTART || '1').trim().toLowerCase();
   return raw !== '0' && raw !== 'false' && raw !== 'off' && raw !== 'no';
+}
+
+function resolveResourcesRoot() {
+  if (process.env.EFACT_RESOURCES_DIR) return String(process.env.EFACT_RESOURCES_DIR).trim();
+  if (process.resourcesPath) return process.resourcesPath;
+  return '';
+}
+
+function resolveEfactDir() {
+  const fromEnv = String(process.env.EFACT_DIR || '').trim();
+  if (fromEnv && fs.existsSync(path.join(fromEnv, 'api_server.py'))) return fromEnv;
+
+  const res = resolveResourcesRoot();
+  if (res) {
+    const bundled = path.join(res, 'efact');
+    if (fs.existsSync(path.join(bundled, 'api_server.py'))) return bundled;
+  }
+
+  const local = path.join(__dirname, 'efact');
+  if (fs.existsSync(path.join(local, 'api_server.py'))) return local;
+  return local;
+}
+
+function resolveBundledPythonExe() {
+  const fromEnv = String(process.env.EFACT_PYTHON || '').trim();
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+
+  const res = resolveResourcesRoot();
+  if (res) {
+    const p = path.join(res, 'efact-runtime', 'python.exe');
+    if (fs.existsSync(p)) return p;
+  }
+
+  const dev = path.join(__dirname, '..', 'build', 'efact-runtime', 'python.exe');
+  if (fs.existsSync(dev)) return dev;
+  return '';
 }
 
 function resolveBotBaseUrl() {
@@ -61,7 +96,9 @@ function probeHealth(baseUrl, timeoutMs = 1500) {
 
 function findPythonCandidates() {
   const list = [];
-  if (process.env.EFACT_PYTHON) list.push(process.env.EFACT_PYTHON);
+  const bundled = resolveBundledPythonExe();
+  if (bundled) list.push(bundled);
+  if (process.env.EFACT_PYTHON) list.push(String(process.env.EFACT_PYTHON).trim());
   if (process.platform === 'win32') {
     list.push('py');
     list.push('python');
@@ -73,7 +110,7 @@ function findPythonCandidates() {
   return [...new Set(list.filter(Boolean))];
 }
 
-function trySpawnWith(cmd, args, env) {
+function trySpawnWith(cmd, args, env, cwd) {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (ok, proc, err) => {
@@ -84,7 +121,7 @@ function trySpawnWith(cmd, args, env) {
     let proc;
     try {
       proc = spawn(cmd, args, {
-        cwd: EFACT_DIR,
+        cwd,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
@@ -96,7 +133,6 @@ function trySpawnWith(cmd, args, env) {
     }
     const earlyFail = (err) => finish(false, null, err);
     proc.once('error', earlyFail);
-    // Si el proceso sigue vivo unos ms, asumimos que el ejecutable existe.
     setTimeout(() => {
       proc.removeListener('error', earlyFail);
       if (proc.exitCode != null || proc.killed) {
@@ -109,8 +145,10 @@ function trySpawnWith(cmd, args, env) {
 }
 
 async function spawnBotProcess(baseUrl) {
-  if (!fs.existsSync(API_SCRIPT)) {
-    console.warn('[efact-bot] No se encontró api_server.py en', API_SCRIPT);
+  const efactDir = resolveEfactDir();
+  const apiScript = path.join(efactDir, 'api_server.py');
+  if (!fs.existsSync(apiScript)) {
+    console.warn('[efact-bot] No se encontró api_server.py en', apiScript);
     return false;
   }
 
@@ -127,12 +165,15 @@ async function spawnBotProcess(baseUrl) {
     EFACT_HTTP_HOST: host,
     EFACT_HTTP_PORT: String(port),
     EFACT_API_URL: baseUrl,
+    EFACT_DIR: efactDir,
+    PYTHONUTF8: '1',
   };
 
   const candidates = findPythonCandidates();
   for (const cmd of candidates) {
-    const args = cmd === 'py' ? ['-3', API_SCRIPT] : [API_SCRIPT];
-    const { ok, proc, err } = await trySpawnWith(cmd, args, env);
+    const isPath = /[\\/]/.test(cmd) || /\.exe$/i.test(cmd);
+    const args = !isPath && cmd === 'py' ? ['-3', apiScript] : [apiScript];
+    const { ok, proc, err } = await trySpawnWith(cmd, args, env, efactDir);
     if (!ok || !proc) {
       const now = Date.now();
       if (now - lastSpawnErrorLogAt > 60_000) {
@@ -161,12 +202,12 @@ async function spawnBotProcess(baseUrl) {
         }, 4000);
       }
     });
-    console.info(`[efact-bot] iniciado con «${cmd}» → ${baseUrl}`);
+    console.info(`[efact-bot] iniciado con «${cmd}» → ${baseUrl} (cwd=${efactDir})`);
     return true;
   }
 
   console.warn(
-    '[efact-bot] No se encontró Python usable. Instale Python 3 y dependencias: py -m pip install -r server/efact/requirements.txt',
+    '[efact-bot] No hay Python embebido ni del sistema. Genere el runtime con: npm run prepare:efact-runtime',
   );
   return false;
 }
@@ -181,7 +222,6 @@ async function ensureEfactBotRunning() {
   }
 
   if (child && child.exitCode == null && !child.killed) {
-    // Proceso vivo pero aún sin health: esperar un poco.
     await new Promise((r) => setTimeout(r, 800));
     if (await probeHealth(baseUrl)) return { ok: true, already: true, url: baseUrl };
   }
@@ -211,10 +251,15 @@ function startEfactBotSupervisor() {
     console.info('[efact-bot] autostart desactivado (EFACT_BOT_AUTOSTART=0)');
     return;
   }
-  if (!fs.existsSync(API_SCRIPT)) {
-    console.warn('[efact-bot] supervisor omitido: falta', API_SCRIPT);
+  const apiScript = path.join(resolveEfactDir(), 'api_server.py');
+  if (!fs.existsSync(apiScript)) {
+    console.warn('[efact-bot] supervisor omitido: falta', apiScript);
     return;
   }
+
+  const bundled = resolveBundledPythonExe();
+  if (bundled) console.info('[efact-bot] Python embebido del asistente:', bundled);
+  else console.info('[efact-bot] sin runtime embebido; se intentará Python del sistema');
 
   void ensureEfactBotRunning();
 
@@ -249,5 +294,7 @@ module.exports = {
   ensureEfactBotRunning,
   stopEfactBot,
   resolveBotBaseUrl,
+  resolveEfactDir,
+  resolveBundledPythonExe,
   probeHealth,
 };
