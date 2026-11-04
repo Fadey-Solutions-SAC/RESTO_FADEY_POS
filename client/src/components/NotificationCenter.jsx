@@ -32,6 +32,64 @@ import { syncPushSubscription } from '../utils/webPush';
 const DISMISSED_AVISOS_STORAGE_KEY = 'admin_avisos_descartados_v1';
 const STAFF_CHAT_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
 const MESSAGE_TOAST_MS = 5000;
+const SWIPE_DISMISS_PX = 88;
+
+/** Deslizar horizontalmente para quitar (avisos y toasts del sistema). */
+function SwipeToDismiss({ children, onDismiss, className = '', disabled = false }) {
+  const startX = useRef(null);
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+
+  const reset = () => {
+    startX.current = null;
+    setDx(0);
+    setDragging(false);
+  };
+
+  const onPointerDown = (e) => {
+    if (disabled) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    startX.current = e.clientX;
+    setDragging(true);
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
+  };
+
+  const onPointerMove = (e) => {
+    if (startX.current == null || disabled) return;
+    setDx(e.clientX - startX.current);
+  };
+
+  const onPointerUp = () => {
+    if (startX.current == null) return;
+    const delta = dx;
+    reset();
+    if (Math.abs(delta) >= SWIPE_DISMISS_PX) onDismiss?.();
+  };
+
+  return (
+    <div className={`relative overflow-hidden ${className}`}>
+      <div
+        className="absolute inset-0 flex items-center justify-end px-4 bg-red-600/90 text-white text-xs font-semibold pointer-events-none"
+        aria-hidden
+      >
+        Quitar
+      </div>
+      <div
+        className="relative touch-pan-y"
+        style={{
+          transform: `translateX(${dx}px)`,
+          transition: dragging ? 'none' : 'transform 0.18s ease-out',
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={reset}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
 
 function loadDismissedAvisoIds() {
   try {
@@ -63,19 +121,21 @@ function showIncomingMessageToast(msg) {
   const name = String(msg.sender_name || (msg.recipient_id ? 'Mensaje privado' : 'Equipo')).trim() || 'Mensaje';
   const body = String(msg.body || '').trim() || '(sin texto)';
   toast.custom(
-    () => (
-      <div
-        className="max-w-sm w-[min(100vw-2rem,22rem)] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg px-4 py-3 text-[var(--ui-body-text)]"
-        role="status"
-      >
-        <p className="text-sm font-semibold flex items-center gap-1.5">
-          <MdChat className="text-[var(--ui-accent)] shrink-0" />
-          {name}
-        </p>
-        <p className="text-xs mt-1.5 text-[var(--ui-body-text)] whitespace-pre-wrap break-words line-clamp-4">
-          {body}
-        </p>
-      </div>
+    (tt) => (
+      <SwipeToDismiss onDismiss={() => toast.dismiss(tt.id)} className="max-w-sm w-[min(100vw-2rem,22rem)] rounded-xl">
+        <div
+          className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg px-4 py-3 text-[var(--ui-body-text)]"
+          role="status"
+        >
+          <p className="text-sm font-semibold flex items-center gap-1.5">
+            <MdChat className="text-[var(--ui-accent)] shrink-0" />
+            {name}
+          </p>
+          <p className="text-xs mt-1.5 text-[var(--ui-body-text)] whitespace-pre-wrap break-words line-clamp-4">
+            {body}
+          </p>
+        </div>
+      </SwipeToDismiss>
     ),
     { duration: MESSAGE_TOAST_MS, id: `staff-chat-${msg.id || Date.now()}` },
   );
@@ -91,28 +151,30 @@ function showOrderReadyToast(evt) {
     : `Aún falta: ${(evt.pending_areas || []).join(', ') || 'otra área'}.`;
   toast.custom(
     (tt) => (
-      <div
-        className="max-w-sm w-[min(100vw-2rem,22rem)] rounded-xl border-2 border-emerald-500 bg-[var(--ui-surface)] shadow-xl px-4 py-3 text-[var(--ui-body-text)]"
-        role="alert"
-      >
-        <div className="flex items-start gap-3">
-          <MdRestaurant className="text-2xl text-emerald-500 shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold">{title}</p>
-            <p className="text-xs mt-1 text-[var(--ui-muted)]">
-              {evt.order_number ? `#${evt.order_number} · ` : ''}{detail}
-            </p>
+      <SwipeToDismiss onDismiss={() => toast.dismiss(tt.id)} className="max-w-sm w-[min(100vw-2rem,22rem)] rounded-xl">
+        <div
+          className="rounded-xl border-2 border-emerald-500 bg-[var(--ui-surface)] shadow-xl px-4 py-3 text-[var(--ui-body-text)]"
+          role="alert"
+        >
+          <div className="flex items-start gap-3">
+            <MdRestaurant className="text-2xl text-emerald-500 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold">{title}</p>
+              <p className="text-xs mt-1 text-[var(--ui-muted)]">
+                {evt.order_number ? `#${evt.order_number} · ` : ''}{detail}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => toast.dismiss(tt.id)}
+              className="p-1 rounded-lg hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-muted)]"
+              aria-label="Cerrar"
+            >
+              <MdClose />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => toast.dismiss(tt.id)}
-            className="p-1 rounded-lg hover:bg-[var(--ui-sidebar-hover)] text-[var(--ui-muted)]"
-            aria-label="Cerrar"
-          >
-            <MdClose />
-          </button>
         </div>
-      </div>
+      </SwipeToDismiss>
     ),
     { duration: ORDER_READY_TOAST_MS, id, position: 'top-center' },
   );
@@ -386,10 +448,10 @@ export default function NotificationCenter({ className = '' }) {
     };
   }, [open, avisoToDismiss]);
 
-  const confirmDismissAviso = async () => {
-    if (!avisoToDismiss?.id || dismissBusy) return;
-    const id = String(avisoToDismiss.id);
-    if (avisoToDismiss.source === 'reservation_caja' || String(id).startsWith('reserva_caja_')) {
+  const dismissAvisoNow = async (aviso) => {
+    if (!aviso?.id || dismissBusy) return;
+    const id = String(aviso.id);
+    if (aviso.source === 'reservation_caja' || String(id).startsWith('reserva_caja_')) {
       removeSessionReservationCajaAviso(id);
       setAvisoToDismiss(null);
       return;
@@ -406,6 +468,11 @@ export default function NotificationCenter({ className = '' }) {
     } finally {
       setDismissBusy(false);
     }
+  };
+
+  const confirmDismissAviso = async () => {
+    if (!avisoToDismiss) return;
+    await dismissAvisoNow(avisoToDismiss);
   };
 
   const openWithTab = (nextTab) => {
@@ -506,56 +573,65 @@ export default function NotificationCenter({ className = '' }) {
                       </div>
                     ) : (
                       visibleAdminNotifications.slice(0, 15).map((n) => (
-                        <div key={n.id} className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 overflow-hidden">
-                          <div className="flex items-start gap-2.5">
-                            <img
-                              src={getFadeyAiAvatarSrc('notif')}
-                              alt=""
-                              className="w-9 h-9 rounded-full object-cover border border-[color:var(--ui-border)] shrink-0 mt-0.5"
-                              draggable={false}
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-sm font-semibold text-[var(--ui-body-text)] pr-2 flex-1 min-w-0 select-none cursor-default">
-                                  {n.title}
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() => setAvisoToDismiss(n)}
-                                  className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-red-950/60 hover:bg-red-900/70 text-red-200 border border-red-800/50"
-                                  aria-label="Quitar aviso de la lista"
-                                >
-                                  <MdDelete className="text-sm" />
-                                  Quitar
-                                </button>
-                              </div>
-                              <p className="text-[10px] text-[var(--ui-muted)] mt-1">{formatDateTime(n.created_at)}</p>
-                              {n.image_url ? (
-                                <div className="mt-2 -mx-0.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] overflow-hidden">
-                                  <img
-                                    src={resolveMediaUrl(n.image_url)}
-                                    alt=""
-                                    className="w-full h-auto max-h-[min(42vh,320px)] object-contain object-center block"
-                                  />
+                        <SwipeToDismiss
+                          key={n.id}
+                          disabled={dismissBusy}
+                          onDismiss={() => void dismissAvisoNow(n)}
+                          className="rounded-xl"
+                        >
+                          <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3">
+                            <div className="flex items-start gap-2.5">
+                              <img
+                                src={getFadeyAiAvatarSrc('notif')}
+                                alt=""
+                                className="w-9 h-9 rounded-full object-cover border border-[color:var(--ui-border)] shrink-0 mt-0.5"
+                                draggable={false}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="text-sm font-semibold text-[var(--ui-body-text)] pr-2 flex-1 min-w-0 select-none cursor-default">
+                                    {n.title}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAvisoToDismiss(n)}
+                                    className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-red-950/60 hover:bg-red-900/70 text-red-200 border border-red-800/50"
+                                    aria-label="Quitar aviso de la lista"
+                                  >
+                                    <MdDelete className="text-sm" />
+                                    Quitar
+                                  </button>
                                 </div>
-                              ) : null}
-                              <p className="text-xs text-[var(--ui-body-text)] mt-2 whitespace-pre-wrap select-text">{n.message}</p>
-                              {seesPagoUsoAviso && isPagoPlanAvisoTitle(n.title) ? (
-                                <button
-                                  type="button"
-                                  className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--ui-accent)] px-3 py-2.5 text-sm font-semibold text-[#fff] hover:opacity-95"
-                                  onClick={() => {
-                                    setOpen(false);
-                                    navigate(PAGO_PLAN_MODULE_PATH);
-                                  }}
-                                >
-                                  <MdUpload className="text-lg" />
-                                  Cargar Comprobante
-                                </button>
-                              ) : null}
+                                <p className="text-[10px] text-[var(--ui-muted)] mt-1">
+                                  Desliza para quitar · {formatDateTime(n.created_at)}
+                                </p>
+                                {n.image_url ? (
+                                  <div className="mt-2 -mx-0.5 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-body-bg)] overflow-hidden">
+                                    <img
+                                      src={resolveMediaUrl(n.image_url)}
+                                      alt=""
+                                      className="w-full h-auto max-h-[min(42vh,320px)] object-contain object-center block"
+                                    />
+                                  </div>
+                                ) : null}
+                                <p className="text-xs text-[var(--ui-body-text)] mt-2 whitespace-pre-wrap select-text">{n.message}</p>
+                                {seesPagoUsoAviso && isPagoPlanAvisoTitle(n.title) ? (
+                                  <button
+                                    type="button"
+                                    className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--ui-accent)] px-3 py-2.5 text-sm font-semibold text-[#fff] hover:opacity-95"
+                                    onClick={() => {
+                                      setOpen(false);
+                                      navigate(PAGO_PLAN_MODULE_PATH);
+                                    }}
+                                  >
+                                    <MdUpload className="text-lg" />
+                                    Cargar Comprobante
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        </SwipeToDismiss>
                       ))
                     )}
                   </div>

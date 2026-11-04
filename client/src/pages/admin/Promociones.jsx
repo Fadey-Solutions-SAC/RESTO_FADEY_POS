@@ -237,25 +237,25 @@ function Thumb({ product, size = 'h-8 w-8' }) {
 function KpiCard({ title, value, Icon, bubble, bg, trend, trendLabel = 'vs mes anterior', note }) {
   const up = trend >= 0;
   return (
-    <div className={`flex min-w-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-gradient-to-br p-5 shadow-sm ${bg}`}>
-      <span className="block truncate whitespace-nowrap text-sm font-semibold text-slate-800" title={title}>
+    <div className={`flex min-w-0 flex-col gap-1.5 sm:gap-3 rounded-xl sm:rounded-2xl border border-slate-200 bg-gradient-to-br p-3 sm:p-5 shadow-sm ${bg}`}>
+      <span className="block truncate whitespace-nowrap text-[11px] sm:text-sm font-semibold text-slate-800" title={title}>
         {title}
       </span>
-      <span className="flex items-center gap-3">
-        <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${bubble}`}>
-          <Icon className="text-2xl" />
+      <span className="flex items-center gap-2 sm:gap-3">
+        <span className={`grid h-9 w-9 sm:h-12 sm:w-12 shrink-0 place-items-center rounded-full ${bubble}`}>
+          <Icon className="text-lg sm:text-2xl" />
         </span>
-        <span className="min-w-0 flex-1 truncate whitespace-nowrap text-3xl font-bold leading-none text-slate-900 tabular-nums">
+        <span className="min-w-0 flex-1 truncate whitespace-nowrap text-xl sm:text-3xl font-bold leading-none text-slate-900 tabular-nums">
           {value}
         </span>
       </span>
       {trend == null ? (
-        <span className="text-xs text-slate-500">{note}</span>
+        <span className="text-[10px] sm:text-xs text-slate-500 line-clamp-2">{note}</span>
       ) : (
-        <span className={`inline-flex items-center gap-1 text-xs font-semibold ${up ? 'text-emerald-600' : 'text-red-500'}`}>
+        <span className={`inline-flex items-center gap-1 text-[10px] sm:text-xs font-semibold ${up ? 'text-emerald-600' : 'text-red-500'}`}>
           {up ? <MdTrendingUp /> : <MdTrendingDown />}
           {up ? '+' : ''}
-          {trend}% <span className="font-normal text-slate-500">{trendLabel}</span>
+          {trend}% <span className="font-normal text-slate-500 hidden sm:inline">{trendLabel}</span>
         </span>
       )}
     </div>
@@ -556,16 +556,18 @@ export default function Promociones() {
 
   return (
     <div>
-      <div className="mb-5 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
-        {kpis.map((k) => (
-          <KpiCard key={k.title} {...k} />
-        ))}
+      <div className="mb-5 space-y-3">
+        <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
+          {kpis.map((k) => (
+            <KpiCard key={k.title} {...k} />
+          ))}
+        </div>
         <button
           type="button"
           onClick={openNew}
-          className="flex h-full min-h-[6.5rem] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 text-base font-semibold text-white shadow-md shadow-blue-600/30 transition hover:bg-blue-700 sm:col-span-2 lg:col-span-1"
+          className="flex w-full min-h-[3rem] sm:min-h-[3.5rem] items-center justify-center gap-2 rounded-xl sm:rounded-2xl bg-blue-600 px-6 text-sm sm:text-base font-semibold text-white shadow-md shadow-blue-600/30 transition hover:bg-blue-700"
         >
-          <MdAdd className="text-2xl" /> Nueva promoción
+          <MdAdd className="text-xl sm:text-2xl" /> Nueva promoción
         </button>
       </div>
 

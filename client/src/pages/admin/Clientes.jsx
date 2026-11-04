@@ -465,34 +465,36 @@ export default function Clientes() {
 
   return (
     <div>
-      <div className={`mb-5 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 ${gitCardsEnabled ? 'lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]' : 'lg:grid-cols-4'}`}>
-        {kpiCards.map((k) => (
-          <button
-            key={k.key}
-            type="button"
-            onClick={() => (k.href ? navigate(k.href) : setStatusFilter(k.filter))}
-            className={`group flex h-full min-w-0 flex-col justify-center gap-3 rounded-2xl border bg-gradient-to-br p-5 text-left shadow-sm transition hover:shadow-md ${k.bg} ${
-              !k.href && statusFilter === k.filter && k.filter !== 'all' ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
-            }`}
-          >
-            <span className="block truncate whitespace-nowrap text-sm font-semibold text-slate-800" title={k.title}>{k.title}</span>
-            <span className="flex w-full items-center gap-3">
-              <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${k.bubble}`}>
-                <k.Icon className="text-2xl" />
+      <div className="mb-5 space-y-3">
+        <div className={`grid grid-cols-2 gap-2 sm:gap-4 ${gitCardsEnabled ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+          {kpiCards.map((k) => (
+            <button
+              key={k.key}
+              type="button"
+              onClick={() => (k.href ? navigate(k.href) : setStatusFilter(k.filter))}
+              className={`group flex h-full min-w-0 flex-col justify-center gap-1.5 sm:gap-3 rounded-xl sm:rounded-2xl border bg-gradient-to-br p-3 sm:p-5 text-left shadow-sm transition hover:shadow-md ${k.bg} ${
+                !k.href && statusFilter === k.filter && k.filter !== 'all' ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <span className="block truncate whitespace-nowrap text-[11px] sm:text-sm font-semibold text-slate-800" title={k.title}>{k.title}</span>
+              <span className="flex w-full items-center gap-2 sm:gap-3">
+                <span className={`grid h-9 w-9 sm:h-12 sm:w-12 shrink-0 place-items-center rounded-full ${k.bubble}`}>
+                  <k.Icon className="text-lg sm:text-2xl" />
+                </span>
+                <span className="min-w-0 flex-1 truncate whitespace-nowrap text-xl sm:text-3xl font-bold leading-none text-slate-900 tabular-nums" title={String(k.value)}>
+                  {k.value}
+                </span>
+                <MdChevronRight className="shrink-0 text-lg sm:text-2xl text-slate-300 transition group-hover:text-slate-500" />
               </span>
-              <span className="min-w-0 flex-1 truncate whitespace-nowrap text-3xl font-bold leading-none text-slate-900 tabular-nums" title={String(k.value)}>
-                {k.value}
-              </span>
-              <MdChevronRight className="shrink-0 text-2xl text-slate-300 transition group-hover:text-slate-500" />
-            </span>
-          </button>
-        ))}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={openNew}
-          className="flex h-full min-h-[6.5rem] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 text-base font-semibold text-white shadow-md shadow-blue-600/30 transition hover:bg-blue-700 sm:col-span-2 lg:col-span-1"
+          className="flex w-full min-h-[3rem] sm:min-h-[3.5rem] items-center justify-center gap-2 rounded-xl sm:rounded-2xl bg-blue-600 px-6 text-sm sm:text-base font-semibold text-white shadow-md shadow-blue-600/30 transition hover:bg-blue-700"
         >
-          <MdAdd className="text-2xl" /> Nuevo Cliente
+          <MdAdd className="text-xl sm:text-2xl" /> Nuevo Cliente
         </button>
       </div>
 

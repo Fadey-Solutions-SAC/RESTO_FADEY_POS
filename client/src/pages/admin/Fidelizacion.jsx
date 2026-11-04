@@ -418,28 +418,17 @@ export default function Fidelizacion() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-slate-900">
-            {view === 'panel' ? 'Resumen de fidelización' : 'Configuración de la encuesta'}
+            {view === 'panel' ? 'Panel' : 'Configuración'}
           </h1>
           <p className="text-sm text-slate-500">
             {view === 'panel'
-              ? (gitCardsEnabled
-                ? 'Encuestas de clientes. Tras el envío, el cliente puede activar o consultar su GIT Cards.'
-                : 'Encuestas de clientes. GIT Cards está desactivado en este restaurante.')
+              ? 'Encuestas de clientes y resultados del día.'
               : (gitCardsEnabled
-                ? 'Arme el cuadro de la encuesta y descargue el QR. El mismo código puede llevar a GIT Cards.'
-                : 'Arme el cuadro de la encuesta y descargue el QR. Solo encuesta: GIT Cards está desactivado.')}
+                ? 'Arme el cuadro de la encuesta, el QR y el módulo GIT Cards.'
+                : 'Arme el cuadro de la encuesta y descargue el QR.')}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {gitCardsEnabled ? (
-            <button
-              type="button"
-              onClick={() => navigate('/admin/clientes/git-cards')}
-              className="rf-tab-btn inline-flex items-center gap-1.5"
-            >
-              <MdStars className="text-lg" /> GIT Cards
-            </button>
-          ) : null}
           {VIEWS.map((t) => {
             const Icon = t.icon;
             return (
@@ -466,7 +455,7 @@ export default function Fidelizacion() {
       {view === 'panel' ? (
         <>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
             {[
               {
                 key: 'avg',
@@ -501,21 +490,32 @@ export default function Fidelizacion() {
                 bubble: 'from-violet-400 to-purple-600 shadow-purple-500/30',
                 deco: 'text-violet-300/80',
               },
+              {
+                key: 'waiters',
+                title: 'Mozos valorados',
+                value: loading ? '—' : waiterRatings.length,
+                hint: 'con calificación',
+                Icon: MdPerson,
+                Deco: MdGroups,
+                wrap: 'from-amber-50 to-white border-amber-200/80',
+                bubble: 'from-amber-400 to-orange-500 shadow-amber-500/30',
+                deco: 'text-amber-300/80',
+              },
             ].map((k) => (
               <div
                 key={k.key}
-                className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br ${k.wrap} p-5 shadow-sm`}
+                className={`relative overflow-hidden rounded-xl sm:rounded-2xl border bg-gradient-to-br ${k.wrap} p-3 sm:p-5 shadow-sm`}
               >
-                <k.Deco className={`pointer-events-none absolute right-4 top-4 text-5xl ${k.deco}`} />
+                <k.Deco className={`pointer-events-none absolute right-2 top-2 sm:right-4 sm:top-4 text-3xl sm:text-5xl ${k.deco}`} />
                 <div className="pointer-events-none absolute -bottom-10 -right-6 h-28 w-48 rounded-full bg-white/50" />
-                <div className="relative flex items-start gap-4">
-                  <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-full bg-gradient-to-br text-white shadow-lg ${k.bubble}`}>
-                    <k.Icon className="text-2xl" />
+                <div className="relative flex items-start gap-2 sm:gap-4">
+                  <span className={`grid h-9 w-9 sm:h-14 sm:w-14 shrink-0 place-items-center rounded-full bg-gradient-to-br text-white shadow-lg ${k.bubble}`}>
+                    <k.Icon className="text-lg sm:text-2xl" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-800">{k.title}</p>
-                    <p className="mt-1 text-4xl font-bold leading-none text-slate-900 tabular-nums">{k.value}</p>
-                    <p className="mt-2 text-xs text-slate-500">{k.hint}</p>
+                    <p className="text-[11px] sm:text-sm font-semibold text-slate-800">{k.title}</p>
+                    <p className="mt-0.5 sm:mt-1 text-xl sm:text-4xl font-bold leading-none text-slate-900 tabular-nums">{k.value}</p>
+                    <p className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-slate-500 line-clamp-2">{k.hint}</p>
                   </div>
                 </div>
               </div>
@@ -1140,6 +1140,16 @@ export default function Fidelizacion() {
                   className="relative shrink-0 w-11 h-6 rounded-full bg-gray-300 transition-colors peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"
                 />
               </label>
+              {gitCardsEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => navigate('/admin/clientes/git-cards')}
+                  className="mt-3 w-full btn-secondary inline-flex items-center justify-center gap-2 text-sm"
+                >
+                  <MdStars className="text-lg text-amber-500" />
+                  Abrir GIT Cards
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
