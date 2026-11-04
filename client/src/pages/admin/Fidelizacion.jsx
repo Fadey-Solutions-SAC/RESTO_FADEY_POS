@@ -24,7 +24,6 @@ import {
   MdVisibility,
   MdAutoAwesome,
   MdBarChart,
-  MdCalendarToday,
   MdChevronRight,
   MdFavorite,
   MdForum,
@@ -420,7 +419,7 @@ export default function Fidelizacion() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 overflow-x-auto">
+      <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2">
         {VIEWS.map((t) => {
           const Icon = t.icon;
           return (
@@ -436,8 +435,7 @@ export default function Fidelizacion() {
           );
         })}
         {view === 'panel' ? (
-          <div className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-medium text-slate-700 shadow-sm shrink-0 ml-auto">
-            <MdCalendarToday className="text-slate-500 text-base" />
+          <div className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-medium text-slate-700 shadow-sm shrink-0 ml-auto">
             <span className="tabular-nums whitespace-nowrap">{todayLabel}</span>
           </div>
         ) : null}

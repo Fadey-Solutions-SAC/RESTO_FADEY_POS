@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { api, formatCurrency, formatDateTime, formatDate, parseApiDate, isDateKeyInInclusiveRange, resolveMediaUrl, toLocalDateKey } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useSocket } from '../../hooks/useSocket';
-import { MdSearch, MdSave } from 'react-icons/md';
+import { MdSearch, MdSave, MdFilterList, MdClose } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import i18n from '../../i18n';
 import { buildVentasDisplayGroups, getObservationRecordIds, groupItemsByProductNameForBill, isCourtesyOrder, orderMatchesMesaSearch, parseProductRemovalNotesFromOrder, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
@@ -510,6 +510,8 @@ export default function Ventas() {
   const [waiterFilter, setWaiterFilter] = useState('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersPanelRef = useRef(null);
   /** activas | anuladas | ia */
   const [saleTab, setSaleTab] = useState('activas');
   const [voidModalOrder, setVoidModalOrder] = useState(null);
@@ -698,6 +700,41 @@ export default function Ventas() {
   const waiterOptions = Array.from(
     new Set(orders.map(o => (o.created_by_user_name || o.customer_name || '-')).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, 'es'));
+
+  const hasActiveFilters = useMemo(
+    () =>
+      (!isVoidedTab && statusFilter !== 'all')
+      || typeFilter !== 'all'
+      || waiterFilter !== 'all'
+      || Boolean(fromDate)
+      || Boolean(toDate),
+    [isVoidedTab, statusFilter, typeFilter, waiterFilter, fromDate, toDate],
+  );
+
+  const clearAllFilters = useCallback(() => {
+    setStatusFilter('all');
+    setTypeFilter('all');
+    setWaiterFilter('all');
+    setFromDate('');
+    setToDate('');
+  }, []);
+
+  useEffect(() => {
+    if (!filtersOpen) return undefined;
+    const onDown = (e) => {
+      if (filtersPanelRef.current?.contains(e.target)) return;
+      setFiltersOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setFiltersOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [filtersOpen]);
 
   const totals = {
     total: filtered.filter((o) => !isCourtesyOrder(o)).reduce((s, o) => s + (o.total || 0), 0),
@@ -1095,56 +1132,86 @@ export default function Ventas() {
         />
       ) : (
       <div className="rounded-xl shadow-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-3">
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <div className="relative flex-1 min-w-[220px]">
+        <div className="mb-3 space-y-2">
+          <div className="relative w-full">
             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-muted)]" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por producto, #, mesa (ej. 20 o M20) o cliente..." className="input-field pl-9" />
           </div>
-          {!isVoidedTab ? (
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-field w-auto min-w-[160px] cursor-pointer">
-            <option value="all">Todos los pagos</option><option value="paid">Pagado</option><option value="pending">Pendiente</option><option value="refunded">Reembolsado</option>
-          </select>
-          ) : null}
-          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="input-field w-auto min-w-[140px] cursor-pointer">
-            <option value="all">Todos los tipos</option><option value="dine_in">Mesa</option>{showDeliveryUi ? <option value="delivery">Delivery</option> : null}<option value="pickup">Para llevar</option>
-          </select>
-          <select value={waiterFilter} onChange={e => setWaiterFilter(e.target.value)} className="input-field w-auto min-w-[160px] cursor-pointer">
-            <option value="all">Todos los meseros</option>
-            {waiterOptions.map(name => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          {!isVoidedTab ? (
-            <DownloadExcelTxtButtons
-              onExcel={() => downloadDetalleVentas('excel')}
-              onTxt={() => downloadDetalleVentas('txt')}
-              excelTitle="Descargar detalle de ventas (Excel)"
-              txtTitle="Descargar detalle de ventas (TXT)"
-              disabled={!filtered.length}
-              className="shrink-0"
-            />
-          ) : null}
-          <InlineDateField
-            label="Desde"
-            value={fromDate}
-            onChange={setFromDate}
-            roundedNone={false}
-            className="!rounded-lg"
-          />
-          <InlineDateField
-            label="Hasta"
-            value={toDate}
-            onChange={setToDate}
-            roundedNone={false}
-            className="!rounded-lg"
-          />
-          <button
-            type="button"
-            onClick={() => { setFromDate(''); setToDate(''); }}
-            className="h-9 px-3 rounded-lg text-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center"
-          >
-            Limpiar fechas
-          </button>
+          <div className="flex items-center justify-between gap-2">
+            <div className="relative" ref={filtersPanelRef}>
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((v) => !v)}
+                className={`h-9 px-3 rounded-lg text-sm border inline-flex items-center gap-1.5 ${
+                  hasActiveFilters || filtersOpen
+                    ? 'border-[color:var(--ui-accent)] bg-[var(--ui-accent)]/10 text-[var(--ui-body-text)]'
+                    : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                }`}
+                aria-expanded={filtersOpen}
+              >
+                <MdFilterList className="text-base shrink-0" />
+                Filtros
+                {hasActiveFilters ? (
+                  <span className="ml-0.5 min-w-[1.1rem] h-4 px-1 rounded-full bg-[var(--ui-accent)] text-white text-[10px] leading-4 text-center">
+                    !
+                  </span>
+                ) : null}
+              </button>
+              {filtersOpen ? (
+                <div className="absolute left-0 top-full z-30 mt-1 w-[min(100vw-2rem,20rem)] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg p-3 space-y-2.5">
+                  {!isVoidedTab ? (
+                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-field w-full cursor-pointer">
+                      <option value="all">Todos los pagos</option><option value="paid">Pagado</option><option value="pending">Pendiente</option><option value="refunded">Reembolsado</option>
+                    </select>
+                  ) : null}
+                  <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="input-field w-full cursor-pointer">
+                    <option value="all">Todos los tipos</option><option value="dine_in">Mesa</option>{showDeliveryUi ? <option value="delivery">Delivery</option> : null}<option value="pickup">Para llevar</option>
+                  </select>
+                  <select value={waiterFilter} onChange={e => setWaiterFilter(e.target.value)} className="input-field w-full cursor-pointer">
+                    <option value="all">Todos los meseros</option>
+                    {waiterOptions.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  <InlineDateField
+                    label="Desde"
+                    value={fromDate}
+                    onChange={setFromDate}
+                    roundedNone={false}
+                    className="!rounded-lg w-full"
+                  />
+                  <InlineDateField
+                    label="Hasta"
+                    value={toDate}
+                    onChange={setToDate}
+                    roundedNone={false}
+                    className="!rounded-lg w-full"
+                  />
+                  {!isVoidedTab ? (
+                    <div className="pt-1 border-t border-[color:var(--ui-border)]">
+                      <DownloadExcelTxtButtons
+                        onExcel={() => downloadDetalleVentas('excel')}
+                        onTxt={() => downloadDetalleVentas('txt')}
+                        excelTitle="Descargar detalle de ventas (Excel)"
+                        txtTitle="Descargar detalle de ventas (TXT)"
+                        disabled={!filtered.length}
+                        className="w-full justify-stretch sm:justify-start"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              disabled={!hasActiveFilters}
+              className="h-9 px-3 rounded-lg text-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <MdClose className="text-base shrink-0" />
+              Limpiar filtro
+            </button>
+          </div>
         </div>
 
         <VentasCuentasTable
