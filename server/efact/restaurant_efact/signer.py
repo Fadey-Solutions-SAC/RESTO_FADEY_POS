@@ -43,15 +43,13 @@ def _cargar_clave_y_certificado(cfg: CertificadoConfig):
 
 def firmar_xml_ubl(xml_bytes: bytes, cert_cfg: CertificadoConfig) -> bytes:
     """
-    Firma el documento Invoice en memoria (firma enveloped en el raíz).
-
-    - Asigna `Id` al elemento raíz si falta (referencia del digest).
+    Firma el Invoice sin ponerle atributo Id: el XSD de SUNAT no lo permite.
+    La referencia de la firma es el documento completo (URI vacío).
     """
     parser = etree.XMLParser(remove_blank_text=False, resolve_entities=False)
     root = etree.fromstring(xml_bytes, parser)
-
-    if root.get("Id") is None:
-        root.set("Id", "SignSUNAT")
+    if root.get("Id") is not None:
+        del root.attrib["Id"]
 
     key, cert_x509, chain = _cargar_clave_y_certificado(cert_cfg)
     # signxml 4 exige una lista. Un Certificate suelto no es iterable.
@@ -67,7 +65,7 @@ def firmar_xml_ubl(xml_bytes: bytes, cert_cfg: CertificadoConfig) -> bytes:
         c14n_algorithm="http://www.w3.org/2001/10/xml-exc-c14n#",
     )
 
-    signed_root = signer.sign(root, key=key, cert=certs, reference_uri="#" + root.get("Id"))
+    signed_root = signer.sign(root, key=key, cert=certs)
 
     ns_ds = "http://www.w3.org/2000/09/xmldsig#"
     ns_ext = "urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
@@ -84,7 +82,7 @@ def firmar_xml_ubl(xml_bytes: bytes, cert_cfg: CertificadoConfig) -> bytes:
         signed_root,
         xml_declaration=True,
         encoding="UTF-8",
-        pretty_print=True,
+        pretty_print=False,
     )
     logger.info("XML firmado correctamente (RSA-SHA256).")
     return out
