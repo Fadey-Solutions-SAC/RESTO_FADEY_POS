@@ -47,6 +47,7 @@ from restaurant_efact.models import (
     LineaVenta,
     TipoComprobante,
     VentaInput,
+    normalizar_serie_sunat,
 )
 from restaurant_efact.pdf_generator import generar_pdf_comprobante
 from restaurant_efact.signer import firmar_xml_ubl
@@ -143,9 +144,12 @@ def venta_desde_dict(data: dict) -> VentaInput:
         for ln in data["lineas"]
     ]
     tipo = TipoComprobante(data["tipo"])
+    serie = normalizar_serie_sunat(data.get("serie"), tipo)
+    if serie != str(data.get("serie") or "").strip().upper():
+        logger.info("Serie ajustada para SUNAT: %s → %s (tipo %s)", data.get("serie"), serie, tipo.value)
     return VentaInput(
         tipo=tipo,
-        serie=data["serie"],
+        serie=serie,
         correlativo=int(data["correlativo"]),
         fecha_emision=data["fecha_emision"],
         hora_emision=data["hora_emision"],

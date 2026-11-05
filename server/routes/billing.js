@@ -73,9 +73,15 @@ function normalizeInvoiceLinesMode(raw) {
   return 'detallado';
 }
 
-function normalizeSeries(value, fallback) {
-  const clean = String(value || '').trim().toUpperCase();
-  return clean || fallback;
+function normalizeSeries(value, fallback, docType) {
+  const fromType = docType === 'factura' ? 'F' : docType === 'boleta' ? 'B' : '';
+  const fb = String(fallback || '').trim().toUpperCase();
+  const prefix = fromType || (fb.startsWith('F') ? 'F' : 'B');
+  const raw = String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (raw.length === 4 && raw.startsWith(prefix)) return raw;
+  if (!raw && fb.length === 4 && fb.startsWith(prefix)) return fb;
+  const digits = (raw.replace(/\D/g, '') || '001').slice(-3).padStart(3, '0');
+  return `${prefix}${digits}`;
 }
 
 function formatIssueDate(date = new Date()) {
@@ -929,7 +935,8 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
   const normalizedCustomer = normalizeCustomerForDoc(docType, sourceCustomer, restaurant);
   const series = normalizeSeries(
     docType === 'factura' ? restaurant.billing_series_factura : restaurant.billing_series_boleta,
-    DOCS[docType].fallbackSeries
+    DOCS[docType].fallbackSeries,
+    docType,
   );
   const correlative = getNextCorrelative(docType, series, restaurant);
   const fullNumber = `${series}-${String(correlative).padStart(8, '0')}`;
@@ -1149,6 +1156,25 @@ router.post('/:id/retry', authenticateToken, requireRole('admin', 'cajero'), asy
     const payload = parseProviderPayload(doc.provider_payload);
     if (!payload || Object.keys(payload).length === 0) {
       return res.status(400).json({ error: 'No hay payload para reintentar este comprobante' });
+    }
+    const serieSunat = normalizeSeries(
+      payload.serie || doc.series,
+      String(payload.tipo) === '01' ? 'F001' : 'B001',
+      String(payload.tipo) === '01' ? 'factura' : 'boleta',
+    );
+    if (serieSunat && payload.serie !== serieSunat) payload.serie = serieSunat;
+    if (serieSunat && doc.series !== serieSunat) {
+      const full = `${serieSunat}-${String(doc.correlative).padStart(8, '0')}`;
+      runSql(
+        `UPDATE electronic_documents
+         SET series = ?, full_number = ?, provider_payload = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+        [serieSunat, full, JSON.stringify(payload), doc.id],
+      );
+      runSql(
+        `UPDATE orders SET sale_document_number = ?, updated_at = datetime('now') WHERE id = ?`,
+        [full, doc.order_id],
+      );
     }
 
     const result = await sendToProvider(restaurant, payload);

@@ -17,6 +17,20 @@ class TipoComprobante(str, Enum):
     BOLETA = "03"
 
 
+def normalizar_serie_sunat(serie: str, tipo: str) -> str:
+    """SUNAT exige serie de 4 caracteres: boleta B###, factura F###.
+
+    FC001 (5 caracteres) en una boleta se convierte en B001.
+    """
+    tipo_s = str(getattr(tipo, "value", tipo) or "")
+    prefix = "F" if tipo_s in ("01", "1") else "B"
+    raw = "".join(ch for ch in str(serie or "").upper() if ch.isalnum())
+    if len(raw) == 4 and raw.startswith(prefix):
+        return raw
+    digits = "".join(ch for ch in raw if ch.isdigit()) or "001"
+    return prefix + digits[-3:].zfill(3)
+
+
 @dataclass
 class ClienteInput:
     """Cliente receptor del comprobante."""
