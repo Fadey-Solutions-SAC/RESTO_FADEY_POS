@@ -168,6 +168,17 @@ def _ajustar_lugar_emisor(em: dict) -> dict:
     return out
 
 
+def _codigo_afectacion_linea(ln: dict) -> str:
+    """El tipo del producto manda: exonerado e inafecto no llevan IGV."""
+    kind = str(ln.get("tax_type") or "").strip().lower()
+    if "exoner" in kind:
+        return "20"
+    if "inafect" in kind:
+        return "30"
+    code = str(ln.get("codigo_afectacion_igv") or "10").strip()
+    return code if code in ("10", "20", "30") else "10"
+
+
 def venta_desde_dict(data: dict) -> VentaInput:
     """Construye VentaInput desde un dict (mismo esquema que el JSON de archivo)."""
     em = _ajustar_lugar_emisor(data["emisor"])
@@ -198,7 +209,7 @@ def venta_desde_dict(data: dict) -> VentaInput:
             descripcion=ln["descripcion"],
             cantidad=Decimal(str(ln["cantidad"])),
             precio_unitario_sin_igv=Decimal(str(ln["precio_unitario_sin_igv"])),
-            codigo_afectacion_igv=str(ln.get("codigo_afectacion_igv", "10")),
+            codigo_afectacion_igv=_codigo_afectacion_linea(ln),
         )
         for ln in data["lineas"]
     ]

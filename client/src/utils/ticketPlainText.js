@@ -668,6 +668,19 @@ export function buildNotaVentaPlainText({
 /**
  * Representación impresa boleta/factura SUNAT (térmica; el PDF legal sigue en el servidor).
  */
+export function taxKindFromItems(items) {
+  const kinds = (items || [])
+    .map((item) => String(item?.product_tax_type || item?.tax_type || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase())
+    .filter(Boolean);
+  if (!kinds.length) return '';
+  if (kinds.every((kind) => kind.includes('exoner'))) return 'exonerado';
+  if (kinds.every((kind) => kind.includes('inafect'))) return 'inafecto';
+  return 'gravado';
+}
+
 export function buildBoletaFacturaPlainText({
   restaurant = {},
   doc = {},
@@ -677,6 +690,7 @@ export function buildBoletaFacturaPlainText({
   tax = 0,
   total = 0,
   discount = 0,
+  taxKind = '',
   customer = {},
   widthMm = 80,
   printedAt = new Date(),
@@ -720,8 +734,15 @@ export function buildBoletaFacturaPlainText({
   const igv = Number(tax) || 0;
   const to = Number(total) || 0;
   const disc = Number(discount) || 0;
-  lines.push(padLeftRight('Op. gravadas:', formatCurrencyFn(st), w));
-  if (igv > 0.001) lines.push(padLeftRight('IGV:', formatCurrencyFn(igv), w));
+  const kind = String(taxKind || '').toLowerCase();
+  if (kind === 'exonerado') {
+    lines.push(padLeftRight('Op. exoneradas:', formatCurrencyFn(st), w));
+  } else if (kind === 'inafecto') {
+    lines.push(padLeftRight('Op. inafectas:', formatCurrencyFn(st), w));
+  } else {
+    lines.push(padLeftRight('Op. gravadas:', formatCurrencyFn(st), w));
+    if (igv > 0.001) lines.push(padLeftRight('IGV:', formatCurrencyFn(igv), w));
+  }
   if (disc > 0.001) lines.push(padLeftRight('Descuento:', formatCurrencyFn(disc), w));
   lines.push(padLeftRight('IMPORTE TOTAL:', formatCurrencyFn(to), w));
   if (sunatLine) {

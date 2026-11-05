@@ -955,7 +955,7 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
     ? buildEfactSaleJson({
       restaurant,
       order,
-      items,
+      items: items.map((item) => ({ ...item, tax_type: resolveItemTaxType(item) })),
       customer: normalizedCustomer,
       docType,
       series,
@@ -1195,6 +1195,67 @@ router.get('/:id', authenticateToken, requireRole('admin', 'cajero', 'mozo'), as
   res.json(fresh || doc);
 });
 
+function codeFromTaxType(taxType) {
+  const kind = String(taxType || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (kind.includes('exoner')) return '20';
+  if (kind.includes('inafect')) return '30';
+  return '10';
+}
+
+function resolveItemTaxType(item) {
+  const direct = String(item?.tax_type || '').trim();
+  const kind = direct.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (kind.includes('exoner') || kind.includes('inafect')) return direct;
+  const name = String(item?.product_name || '').trim();
+  if (!name) return direct || 'igv';
+  const byName = queryOne(
+    `SELECT tax_type FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`,
+    [name],
+  );
+  return String(byName?.tax_type || direct || 'igv');
+}
+
+/** Reescribe las líneas guardadas con el impuesto actual del producto (exonerado no lleva IGV). */
+function refreshPayloadTax(doc, payload) {
+  if (!payload || !Array.isArray(payload.lineas) || !doc?.order_id) return payload;
+  const items = queryAll(
+    `SELECT oi.product_name, oi.unit_price, COALESCE(p.tax_type, 'igv') AS tax_type
+     FROM order_items oi
+     LEFT JOIN products p ON p.id = oi.product_id
+     WHERE oi.order_id = ?`,
+    [doc.order_id],
+  );
+  if (!items.length) return payload;
+  const next = { ...payload, lineas: payload.lineas.map((ln) => ({ ...ln })) };
+  const consumo = next.lineas.length === 1 && /consumo/i.test(String(next.lineas[0].descripcion || ''));
+  if (consumo) {
+    const codes = [...new Set(items.map((item) => codeFromTaxType(resolveItemTaxType(item))))];
+    if (codes.length === 1) {
+      next.lineas[0].codigo_afectacion_igv = codes[0];
+      next.lineas[0].tax_type = codes[0] === '20' ? 'exonerado' : codes[0] === '30' ? 'inafecto' : 'igv';
+    }
+    return next;
+  }
+  next.lineas = next.lineas.map((ln, idx) => {
+    const byName = items.find((item) => String(item.product_name || '') === String(ln.descripcion || ''));
+    const item = byName || items[idx];
+    if (!item) return ln;
+    const taxType = resolveItemTaxType(item);
+    const code = codeFromTaxType(taxType);
+    const price = Number(item.unit_price);
+    return {
+      ...ln,
+      codigo_afectacion_igv: code,
+      tax_type: taxType,
+      ...(Number.isFinite(price) ? { precio_unitario_sin_igv: price.toFixed(2) } : {}),
+    };
+  });
+  return next;
+}
+
 router.post('/:id/claim-local', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
   const doc = queryOne('SELECT * FROM electronic_documents WHERE id = ?', [req.params.id]);
   if (!doc) return res.status(404).json({ error: 'Comprobante no encontrado' });
@@ -1214,7 +1275,7 @@ router.post('/:id/claim-local', authenticateToken, requireRole('admin', 'cajero'
     [JSON.stringify(response), doc.id],
   );
   persistCriticalDb();
-  const payload = parseProviderPayload(doc.provider_payload);
+  const payload = refreshPayloadTax(doc, parseProviderPayload(doc.provider_payload));
   let sale = payload;
   try {
     sale = prepareRelaySale(payload);
@@ -1254,7 +1315,7 @@ router.post('/:id/retry', authenticateToken, requireRole('admin', 'cajero'), asy
     const restaurant = queryOne('SELECT * FROM restaurants LIMIT 1');
     if (!restaurant) return res.status(400).json({ error: 'No hay restaurante configurado' });
 
-    const payload = parseProviderPayload(doc.provider_payload);
+    const payload = refreshPayloadTax(doc, parseProviderPayload(doc.provider_payload));
     if (!payload || Object.keys(payload).length === 0) {
       return res.status(400).json({ error: 'No hay payload para reintentar este comprobante' });
     }
@@ -1322,7 +1383,7 @@ async function retryFailedDocumentsBatch({ limit = 20 } = {}) {
   let success = 0;
   const touchedOrderIds = [];
   for (const row of rows) {
-    const payload = parseProviderPayload(row.provider_payload);
+    const payload = refreshPayloadTax(row, parseProviderPayload(row.provider_payload));
     if (!payload || Object.keys(payload).length === 0) continue;
     const result = await sendToProvider(restaurant, payload);
     applyProviderResultToDocument(row.id, result);

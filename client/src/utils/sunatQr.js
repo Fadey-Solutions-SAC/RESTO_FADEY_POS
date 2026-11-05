@@ -40,18 +40,19 @@ export function buildSunatQrText({ restaurant = {}, doc = {}, tax = 0, total = 0
   ].join('|');
 }
 
-export async function sunatQrDataUrl(text) {
-  const value = String(text || '').trim();
-  if (!value) return '';
-  try {
-    return await QRCode.toDataURL(value, { margin: 1, width: 240, errorCorrectionLevel: 'M' });
-  } catch (_) {
-    return '';
-  }
-}
-
 export async function withSunatQr(payload, ctx) {
-  const footerImageUrl = await sunatQrDataUrl(buildSunatQrText(ctx));
-  if (!footerImageUrl) return payload;
-  return { ...payload, footerImageUrl, footerImageMaxDots: 220 };
+  const value = String(buildSunatQrText(ctx) || '').trim();
+  if (!value) return payload;
+  const margin = 4;
+  const scale = 6;
+  let dots = 0;
+  try {
+    const qr = QRCode.create(value, { errorCorrectionLevel: 'M' });
+    dots = (qr.modules.size + margin * 2) * scale;
+    const footerImageUrl = await QRCode.toDataURL(value, { margin, scale, errorCorrectionLevel: 'M' });
+    if (!footerImageUrl || dots <= 0) return payload;
+    return { ...payload, footerImageUrl, footerImageMaxDots: dots };
+  } catch (_) {
+    return payload;
+  }
 }

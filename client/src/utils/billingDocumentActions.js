@@ -1,6 +1,6 @@
 import { api, formatCurrency, resolveMediaUrl } from './api';
 import { groupItemsByProductNameForBill } from './mesaOrderLines';
-import { buildBoletaFacturaPlainText } from './ticketPlainText';
+import { buildBoletaFacturaPlainText, taxKindFromItems } from './ticketPlainText';
 import { printCajaTicket } from './printCajaTicket';
 import { withSunatQr } from './sunatQr';
 
@@ -62,6 +62,7 @@ export async function printBillingOnThermal(doc) {
       address: full?.customer_address,
     },
     widthMm: SUNAT_TICKET_WIDTH_MM,
+    taxKind: taxKindFromItems(items),
     paymentMethod: full?.payment_method || 'efectivo',
   });
   const logoUrl = resolveMediaUrl(restaurant?.logo || '') || undefined;

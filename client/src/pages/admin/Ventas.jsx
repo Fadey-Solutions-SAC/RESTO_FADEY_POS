@@ -46,6 +46,7 @@ import { withSunatQr } from '../../utils/sunatQr';
 import { SUNAT_TICKET_WIDTH_MM } from '../../utils/billingDocumentActions';
 import {
   buildBoletaFacturaPlainText,
+  taxKindFromItems,
   buildNotaVentaPlainText,
   restaurantThermalBrandLine,
 } from '../../utils/ticketPlainText';
@@ -682,6 +683,7 @@ export default function Ventas() {
             address: customerAddress || doc.customer_address || localAddr,
           },
           widthMm: pw,
+          taxKind: taxKindFromItems(items),
           printedAt: new Date(),
           paymentMethod: editPaymentMethod,
         });
@@ -789,6 +791,7 @@ export default function Ventas() {
           address: customerAddress,
         },
         widthMm,
+        taxKind: taxKindFromItems(orders.flatMap((o) => o.items || [])),
         printedAt: new Date(),
         paymentMethod,
       });

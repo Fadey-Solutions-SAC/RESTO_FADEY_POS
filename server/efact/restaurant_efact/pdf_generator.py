@@ -21,19 +21,41 @@ from .ubl_generator import calcular_totales_venta, formato_monto
 logger = logging.getLogger(__name__)
 
 
-def _qr_drawing(payload: str, size: float):
-    from reportlab.graphics.barcode import qr as qrbarcode
-    from reportlab.graphics.shapes import Drawing
+def _qr_image(payload: str):
+    """PNG con módulos de tamaño entero. Un escalado fraccionario se ve como QR y la cámara no lo lee."""
+    from io import BytesIO
 
-    widget = qrbarcode.QrCodeWidget(payload)
-    bounds = widget.getBounds()
-    width = bounds[2] - bounds[0]
-    height = bounds[3] - bounds[1]
-    if width <= 0 or height <= 0:
-        return None
-    drawing = Drawing(size, size, transform=[size / width, 0, 0, size / height, 0, 0])
-    drawing.add(widget)
-    return drawing
+    from PIL import Image as PilImage
+    from reportlab.graphics.barcode.qr import QrCodeWidget
+    from reportlab.platypus import Image
+
+    qr = QrCodeWidget(payload).qr
+    qr.make()
+    count = int(qr.getModuleCount())
+    quiet = 4
+    module = 4
+    side = (count + quiet * 2) * module
+    if side > 190:
+        module = 3
+        side = (count + quiet * 2) * module
+    img = PilImage.new("RGB", (side, side), "white")
+    pixels = img.load()
+    origin = quiet * module
+    for row in range(count):
+        for col in range(count):
+            if not qr.isDark(row, col):
+                continue
+            x0 = origin + col * module
+            y0 = origin + row * module
+            for dy in range(module):
+                for dx in range(module):
+                    pixels[x0 + dx, y0 + dy] = (0, 0, 0)
+    raw = BytesIO()
+    img.save(raw, format="PNG")
+    raw.seek(0)
+    flow = Image(raw, width=side, height=side)
+    flow.hAlign = "CENTER"
+    return flow
 
 
 def generar_pdf_comprobante(venta: VentaInput, ruta_salida: Path, codigo_qr: str = "") -> Path:
@@ -45,7 +67,7 @@ def generar_pdf_comprobante(venta: VentaInput, ruta_salida: Path, codigo_qr: str
 
     # Ticket de 80 mm: el PDF que se descarga y el que sale en la térmica usan el mismo ancho.
     page_w = 80 * mm
-    page_h = (150 + max(0, len(venta.lineas) - 1) * 7) * mm
+    page_h = (200 + max(0, len(venta.lineas) - 1) * 7) * mm
     margin = 3.5 * mm
     doc = SimpleDocTemplate(
         str(ruta_salida),
@@ -147,19 +169,12 @@ def generar_pdf_comprobante(venta: VentaInput, ruta_salida: Path, codigo_qr: str
     qr_text = str(codigo_qr or "").strip()
     if qr_text:
         try:
-            drawing = _qr_drawing(qr_text, 28 * mm)
+            qr_image = _qr_image(qr_text)
         except Exception:
             logger.warning("No se pudo dibujar el QR del comprobante", exc_info=True)
-            drawing = None
-        if drawing is not None:
-            qr_table = Table([[drawing]], colWidths=[usable])
-            qr_table.setStyle(TableStyle([
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ]))
-            story.append(qr_table)
+            qr_image = None
+        if qr_image is not None:
+            story.append(qr_image)
             story.append(Spacer(1, 1.5 * mm))
             story.append(Paragraph("Código QR de consulta de validez SUNAT", center))
             story.append(Spacer(1, 1.5 * mm))

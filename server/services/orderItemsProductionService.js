@@ -34,7 +34,8 @@ function getOrderItemsWithProductionArea(orderId) {
   const items = queryAll(
     `SELECT oi.*,
             COALESCE(NULLIF(TRIM(p.production_area), ''), 'cocina') AS production_area,
-            LOWER(COALESCE(c.name, '')) AS category_name_lc
+            LOWER(COALESCE(c.name, '')) AS category_name_lc,
+            LOWER(COALESCE(p.tax_type, 'igv')) AS product_tax_type
      FROM order_items oi
      LEFT JOIN products p ON p.id = oi.product_id
      LEFT JOIN categories c ON c.id = p.category_id

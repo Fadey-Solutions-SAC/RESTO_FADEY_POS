@@ -123,14 +123,17 @@ function resolveEmisorGeo(restaurant, direccionFiscal) {
 
 /** Catálogo 07: 10 gravado, 20 exonerado, 30 inafecto. */
 function afectacionFromTaxType(taxType) {
-  const kind = String(taxType || 'igv').toLowerCase();
-  if (kind === 'exonerado') return '20';
-  if (kind === 'inafecto') return '30';
+  const kind = String(taxType || 'igv')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (kind.includes('exoner')) return '20';
+  if (kind.includes('inafect')) return '30';
   return '10';
 }
 
 function afectacionConsumo(items) {
-  const codes = (items || []).map((item) => afectacionFromTaxType(item.tax_type));
+  const codes = (items || []).map((item) => afectacionFromTaxType(item.tax_type || item.product_tax_type));
   if (codes.length && codes.every((code) => code === '20')) return '20';
   if (codes.length && codes.every((code) => code === '30')) return '30';
   return '10';
@@ -170,11 +173,13 @@ function buildEfactSaleJson({
     : items.map((item) => {
       const quantity = toNumber(item.quantity, 0);
       const precioSin = round2(item.unit_price);
+      const taxType = item.tax_type || item.product_tax_type;
       return {
         descripcion: item.product_name || 'Producto',
         cantidad: String(quantity),
         precio_unitario_sin_igv: precioSin.toFixed(2),
-        codigo_afectacion_igv: afectacionFromTaxType(item.tax_type),
+        codigo_afectacion_igv: afectacionFromTaxType(taxType),
+        tax_type: taxType || 'igv',
       };
     });
 

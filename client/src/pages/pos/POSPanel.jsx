@@ -249,6 +249,7 @@ import {
   buildPrecuentaPlainText,
   buildNotaVentaPlainText,
   buildBoletaFacturaPlainText,
+  taxKindFromItems,
   getThermalPrintRevision,
   restaurantThermalBrandLine,
 } from '../../utils/ticketPlainText';
@@ -2905,6 +2906,7 @@ export default function POSPanel() {
                   || localAddr,
               },
               widthMm: pw,
+              taxKind: taxKindFromItems(ord.items || []),
               printedAt: new Date(),
               paymentMethod: checkoutPaymentMethod,
             });
