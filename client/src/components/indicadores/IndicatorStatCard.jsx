@@ -44,12 +44,12 @@ export default function IndicatorStatCard({
     >
       <div className="flex items-center gap-2 mb-1 min-w-0">
         {Icon ? <Icon className={`${large ? 'text-xl' : 'text-lg'} shrink-0 text-gold-600`} /> : null}
-        <p className={`${large ? 'text-xs sm:text-sm' : 'text-[11px] sm:text-xs'} min-w-0 text-[var(--ui-muted)] uppercase tracking-wide leading-tight line-clamp-2`}>
+        <p className={`${large ? 'text-[10px] sm:text-[11px]' : 'text-[10px]'} min-w-0 text-[var(--ui-muted)] uppercase tracking-wide leading-tight line-clamp-2`}>
           {label}
         </p>
       </div>
       <p
-        className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap font-bold tabular-nums leading-none text-[var(--ui-body-text)] text-[clamp(0.95rem,1.5vw,1.65rem)]"
+        className="max-w-full break-words font-bold tabular-nums leading-tight text-[var(--ui-body-text)] text-[clamp(0.8rem,2.4vw,1.05rem)]"
         title={typeof value === 'string' || typeof value === 'number' ? String(value) : undefined}
       >
         {value}

@@ -20,6 +20,7 @@ import {
   orderPendingForProductionStation,
 } from '../../utils/productionArea';
 import { isCourtesyOrder, isDiscountOrder, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
+import { getProductionAreaIcon } from '../../utils/productionAreaUi';
 
 const PAYMENT_METHOD_COLORS = {
   efectivo: '#10b981',
@@ -1183,8 +1184,7 @@ export default function Escritorio() {
                   : (liveDash?.operationalSummary?.productionQueueByArea?.[areaId] ?? productionQueuesByArea[areaId] ?? 0)
               );
               const level = getQueueLevel(queue);
-              const tone = productionAreaTone(areaId);
-              const Icon = tone.icon;
+              const Icon = getProductionAreaIcon(area);
               const areaSkin = areaId === 'bar'
                 ? { card: 'border-violet-100 bg-violet-50', icon: 'bg-white text-violet-600', title: 'text-violet-900', value: 'text-violet-950', sub: 'text-violet-800/80', btn: 'bg-violet-600 hover:bg-violet-700' }
                 : areaId === 'cocina'

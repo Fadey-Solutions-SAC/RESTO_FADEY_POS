@@ -463,8 +463,15 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                   if (isMobile) onClose();
                   return;
                 }
-                // Caja: entrar directo (los submódulos casi no se usan).
+                // Caja: si ya estás ahí, el clic pliega o despliega los submódulos.
+                // Desde otro módulo, el clic entra a Caja.
                 if (link.moduleId === 'caja' || link.to === '/admin/caja') {
+                  const onCaja = location.pathname.startsWith('/admin/caja');
+                  if (onCaja) {
+                    e.preventDefault();
+                    setIsCajaExpanded((prev) => !prev);
+                    return;
+                  }
                   setIsCajaExpanded(true);
                   if (isMobile) onClose();
                   return;
