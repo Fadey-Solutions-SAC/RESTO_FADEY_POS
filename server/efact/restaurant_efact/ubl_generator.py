@@ -156,16 +156,15 @@ def _tax_total(root, igv: Decimal, op_gravadas: Decimal, pct: Decimal, moneda: s
 
 def _legal_monetary_total(root, op_gravadas: Decimal, igv: Decimal, total: Decimal, moneda: str) -> None:
     lmt = etree.SubElement(root, _q(NS_CAC, "LegalMonetaryTotal"))
+    # Orden UBL: LineExtension, TaxExclusive, TaxInclusive, Payable al final.
     for tag, val in (
         ("LineExtensionAmount", op_gravadas),
+        ("TaxExclusiveAmount", op_gravadas),
         ("TaxInclusiveAmount", total),
         ("PayableAmount", total),
     ):
         el = etree.SubElement(lmt, _q(NS_CBC, tag), currencyID=moneda)
         el.text = _money(val)
-    # Allowance sin descuentos: TaxExclusiveAmount = op_gravadas
-    tea = etree.SubElement(lmt, _q(NS_CBC, "TaxExclusiveAmount"), currencyID=moneda)
-    tea.text = _money(op_gravadas)
 
 
 def _invoice_line(root, idx: int, ln: LineaVenta, moneda: str, pct_igv: Decimal) -> None:
