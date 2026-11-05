@@ -80,11 +80,18 @@ def _party_legal_entity(parent_cac, reg_name: str, address: str) -> None:
     rn.text = reg_name
     if address:
         addr = etree.SubElement(ple, _q(NS_CAC, "RegistrationAddress"))
-        lid = etree.SubElement(addr, _q(NS_CBC, "ID"), schemeName="Ubigeos", schemeAgencyName="PE:INEI")
-        lid.text = "000000"
-        line = etree.SubElement(addr, _q(NS_CBC, "AddressLine"))
-        ln = etree.SubElement(line, _q(NS_CBC, "Line"))
+        al = etree.SubElement(addr, _q(NS_CAC, "AddressLine"))
+        ln = etree.SubElement(al, _q(NS_CBC, "Line"))
         ln.text = address
+        country = etree.SubElement(addr, _q(NS_CAC, "Country"))
+        cid = etree.SubElement(
+            country,
+            _q(NS_CBC, "IdentificationCode"),
+            listID="ISO 3166-1",
+            listAgencyName="United Nations Economic Commission for Europe",
+            listName="Country",
+        )
+        cid.text = "PE"
 
 
 def _supplier_party(root, venta: VentaInput) -> None:
