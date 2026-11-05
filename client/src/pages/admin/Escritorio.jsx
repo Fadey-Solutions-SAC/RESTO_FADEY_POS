@@ -951,35 +951,6 @@ export default function Escritorio() {
     if (value >= 5) return { label: 'Alto', pill: 'bg-amber-100 text-amber-700', card: 'border-amber-300 bg-amber-50' };
     return { label: 'Normal', pill: 'bg-emerald-100 text-emerald-700', card: 'border-emerald-200 bg-emerald-50' };
   };
-  const productionAreaTone = (areaId) => {
-    const id = String(areaId || '').trim();
-    if (id === 'bar') {
-      return {
-        icon: MdLocalBar,
-        title: 'text-indigo-700',
-        value: 'text-indigo-800',
-        sub: 'text-indigo-700',
-        link: 'text-indigo-700',
-      };
-    }
-    if (id === 'cocina') {
-      return {
-        icon: MdKitchen,
-        title: 'text-amber-700',
-        value: 'text-amber-800',
-        sub: 'text-amber-700',
-        link: 'ui-live-link-amber',
-      };
-    }
-    return {
-      icon: MdKitchen,
-      title: 'text-teal-700',
-      value: 'text-teal-800',
-      sub: 'text-teal-700',
-      link: 'text-teal-700',
-    };
-  };
-
   const dateRangeLabel = datePreset === 'total'
     ? 'Total · todos los cierres de caja'
     : `Inicio ${formatDateForLabel(startDate)} · Fin ${formatDateForLabel(endDate)}`;
