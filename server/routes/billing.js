@@ -1118,7 +1118,8 @@ router.post('/:id/local-result', authenticateToken, requireRole('admin', 'cajero
     if (!restaurant) return res.status(400).json({ error: 'No hay restaurante configurado' });
 
     const parsed = hydrateRelayFiles(req.body?.bot || req.body || {});
-    const httpOk = parsed?.ok !== false && !parsed?.error;
+    const structured = Boolean(parsed?.paths || parsed?.sunat || parsed?.mensaje || parsed?.nombre_base);
+    const httpOk = structured || parsed?.ok !== false;
     const result = mapEfactResponseToProviderResult(parsed, httpOk);
     applyProviderResultToDocument(doc.id, result);
     const updated = await refreshDocWithLocalPdfIfNeeded(doc.id, restaurant);

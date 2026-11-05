@@ -191,6 +191,22 @@ function prepareRelaySale(saleJson) {
   return sale;
 }
 
+function describeBotMessage(parsed) {
+  const bits = [];
+  const push = (value) => {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (text && !bits.includes(text)) bits.push(text);
+  };
+  push(parsed?.sunat?.mensaje);
+  push(parsed?.mensaje);
+  push(parsed?.detail);
+  if (typeof parsed?.error === 'string') push(parsed.error);
+  else if (parsed?.error && typeof parsed.error === 'object') {
+    push(parsed.error.message || parsed.error.detail);
+  }
+  return bits.filter((text) => text !== 'Procesado').join(' — ');
+}
+
 function mapEfactResponseToProviderResult(parsed, responseOk) {
   const initial = {
     providerStatus: 'pending',
@@ -204,9 +220,7 @@ function mapEfactResponseToProviderResult(parsed, responseOk) {
   };
 
   if (!responseOk) {
-    const msg = typeof parsed?.error === 'string'
-      ? parsed.error
-      : (parsed?.detail || `Error HTTP en API del bot`);
+    const msg = describeBotMessage(parsed) || 'Error HTTP en API del bot';
     const pathsErr = parsed?.paths && typeof parsed.paths === 'object' ? parsed.paths : {};
     return {
       ...initial,

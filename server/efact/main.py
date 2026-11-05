@@ -259,6 +259,8 @@ def procesar_venta(
         else:
             logger.error("Envío SUNAT fallido: %s", res.mensaje)
             result["ok"] = bool(res.ok)
+            if res.mensaje:
+                result["mensaje"] = res.mensaje
             if res.raw_response:
                 logger.debug("Fragmento respuesta: %s", res.raw_response[:2000])
     elif enviar_sunat:
