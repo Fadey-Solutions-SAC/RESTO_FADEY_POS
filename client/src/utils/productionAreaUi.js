@@ -21,10 +21,20 @@ import {
 } from 'react-icons/md';
 
 /** Horno de pizza de cúpula (el set Material no trae este símbolo). */
-export function PizzaDomeOvenIcon({ className = '', ...props }) {
+export function PizzaDomeOvenIcon({ className = '', size, ...props }) {
+  const dim = size || '1em';
   return createElement(
     'svg',
-    { viewBox: '0 0 24 24', className, fill: 'currentColor', 'aria-hidden': 'true', ...props },
+    {
+      viewBox: '0 0 24 24',
+      width: dim,
+      height: dim,
+      className,
+      fill: 'currentColor',
+      'aria-hidden': 'true',
+      focusable: 'false',
+      ...props,
+    },
     createElement('path', { d: 'M3.2 15.2C3.6 9.6 7.4 6 12 6s8.4 3.6 8.8 9.2H3.2z' }),
     createElement('path', { d: 'M2.4 16.1h19.2v1.15c0 1.15-.9 2.05-2.05 2.05H4.45c-1.15 0-2.05-.9-2.05-2.05V16.1z' }),
     createElement('path', { d: 'M9.1 15.15h5.8V18.4H9.1z', opacity: '0.35' }),
