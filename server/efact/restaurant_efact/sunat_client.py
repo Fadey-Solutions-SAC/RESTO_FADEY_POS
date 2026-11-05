@@ -184,9 +184,18 @@ def enviar_comprobante(zip_bytes: bytes, nombre_zip: str, cfg: SunatConfig, time
     text = r.text or ""
     if r.status_code >= 400:
         logger.error("HTTP %s desde SUNAT", r.status_code)
+        fault = ""
+        if text.strip():
+            parsed = _parse_send_bill_response(text)
+            fault = str(parsed.mensaje or "").strip()
+            if "No se encontró applicationResponse" in fault or fault.startswith("XML inválido"):
+                fault = ""
+        mensaje = f"HTTP {r.status_code}"
+        if fault:
+            mensaje = f"{mensaje}: {fault}"
         return RespuestaSunat(
             ok=False,
-            mensaje=f"HTTP {r.status_code}",
+            mensaje=mensaje,
             raw_response=text[:8000],
         )
 
