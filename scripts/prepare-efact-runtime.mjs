@@ -4,10 +4,10 @@
  *
  * Salida: build/efact-runtime/  (extraResources → resources/efact-runtime)
  */
-import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import https from 'https';
 import http from 'http';
 
@@ -20,26 +20,73 @@ const PY_ZIP = `python-${PY_VER}-embed-amd64.zip`;
 const PY_URL = `https://www.python.org/ftp/python/${PY_VER}/${PY_ZIP}`;
 const GET_PIP_URL = 'https://bootstrap.pypa.io/get-pip.py';
 const REQUIREMENTS = join(ROOT, 'server', 'efact', 'requirements.txt');
+const MIN_PY_ZIP_BYTES = 8_000_000;
 
-function download(url, dest) {
+function download(url, dest, { idleMs = 25000, maxMs = 180000 } = {}) {
   return new Promise((resolve, reject) => {
     const file = createWriteStream(dest);
     const lib = url.startsWith('https') ? https : http;
+    let bytes = 0;
+    let idleTimer = null;
+    let maxTimer = null;
+    const fail = (err) => {
+      clearTimeout(idleTimer);
+      clearTimeout(maxTimer);
+      file.destroy();
+      try { rmSync(dest, { force: true }); } catch (_) { /* ignore */ }
+      reject(err);
+    };
+    const bumpIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        req.destroy(new Error(`sin datos por ${idleMs / 1000}s`));
+      }, idleMs);
+    };
     const req = lib.get(url, { headers: { 'User-Agent': 'resto-fadey-prepare-efact' } }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        clearTimeout(idleTimer);
+        clearTimeout(maxTimer);
         file.close();
-        download(res.headers.location, dest).then(resolve, reject);
+        try { rmSync(dest, { force: true }); } catch (_) { /* ignore */ }
+        download(res.headers.location, dest, { idleMs, maxMs }).then(resolve, reject);
         return;
       }
       if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode} al descargar ${url}`));
+        fail(new Error(`HTTP ${res.statusCode} al descargar ${url}`));
+        res.resume();
         return;
       }
+      const total = Number(res.headers['content-length'] || 0);
+      bumpIdle();
+      res.on('data', (chunk) => {
+        bytes += chunk.length;
+        bumpIdle();
+        if (total > 0 && bytes % (1024 * 1024) < chunk.length) {
+          console.log(`[efact-runtime] ${Math.round((bytes / total) * 100)}% (${Math.round(bytes / 1024)} KB)`);
+        }
+      });
       res.pipe(file);
-      file.on('finish', () => file.close(() => resolve()));
+      file.on('finish', () => {
+        clearTimeout(idleTimer);
+        clearTimeout(maxTimer);
+        file.close(() => resolve());
+      });
+      res.on('error', fail);
     });
-    req.on('error', reject);
+    maxTimer = setTimeout(() => req.destroy(new Error(`tiempo máximo ${maxMs / 1000}s`)), maxMs);
+    req.on('error', fail);
+    bumpIdle();
   });
+}
+
+function downloadWithCurl(url, dest) {
+  const curl = process.platform === 'win32' ? 'curl.exe' : 'curl';
+  const r = spawnSync(
+    curl,
+    ['-L', '--fail', '--retry', '2', '--connect-timeout', '20', '--max-time', '180', '-o', dest, url],
+    { stdio: 'inherit' },
+  );
+  if (r.status !== 0) throw new Error(`curl no pudo descargar ${url}`);
 }
 
 function unzipWindows(zipPath, destDir) {
@@ -92,10 +139,29 @@ async function main() {
   const zipPath = join(TMP, PY_ZIP);
   const getPipPath = join(TMP, 'get-pip.py');
 
-  console.log('[efact-runtime] descargando Python embed', PY_VER);
-  await download(PY_URL, zipPath);
+  const zipOk = existsSync(zipPath) && statSync(zipPath).size >= MIN_PY_ZIP_BYTES;
+  if (zipOk) {
+    console.log('[efact-runtime] ZIP de Python ya descargado, se reutiliza');
+  } else {
+    if (existsSync(zipPath)) rmSync(zipPath, { force: true });
+    console.log('[efact-runtime] descargando Python embed', PY_VER);
+    try {
+      downloadWithCurl(PY_URL, zipPath);
+    } catch (curlErr) {
+      console.warn('[efact-runtime] curl falló, reintento con Node:', curlErr.message || curlErr);
+      await download(PY_URL, zipPath);
+    }
+    if (!existsSync(zipPath) || statSync(zipPath).size < MIN_PY_ZIP_BYTES) {
+      throw new Error('La descarga de Python quedó incompleta. Revise la conexión y vuelva a ejecutar.');
+    }
+  }
   console.log('[efact-runtime] descargando get-pip.py');
-  await download(GET_PIP_URL, getPipPath);
+  try {
+    downloadWithCurl(GET_PIP_URL, getPipPath);
+  } catch (curlErr) {
+    console.warn('[efact-runtime] curl falló en get-pip, reintento con Node:', curlErr.message || curlErr);
+    await download(GET_PIP_URL, getPipPath);
+  }
 
   if (existsSync(OUT)) rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
