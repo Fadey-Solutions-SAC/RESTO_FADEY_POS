@@ -112,11 +112,15 @@ function normalizeCustomerForDoc(docType, customer = {}, restaurant = null) {
   const rawDocNumber = String(customer.doc_number || '').trim();
   const rawName = String(customer.name || '').trim();
   const rawAddress = String(customer.address || '').trim();
+  const addressFold = rawAddress.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+  const addressIsPlaceholder = !addressFold || addressFold === 'LIMA';
 
   const customerDocType = rawDocType || (docType === 'factura' ? '6' : '1');
   const customerDocNumber = rawDocNumber;
   const customerName = rawName || 'CLIENTE VARIOS';
-  const customerAddress = rawAddress || restaurantLocalAddress(restaurant) || 'SIN DIRECCION';
+  const customerAddress = !addressIsPlaceholder
+    ? rawAddress
+    : (restaurantLocalAddress(restaurant) || rawAddress || 'SIN DIRECCION');
 
   if (docType === 'factura') {
     if (customerDocType !== '6') {
@@ -915,7 +919,13 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
     scheduleWhatsappPdfSend(finalDoc, restaurant);
     return finalDoc;
   }
-  const items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
+  const items = queryAll(
+    `SELECT oi.*, COALESCE(p.tax_type, 'igv') AS tax_type
+     FROM order_items oi
+     LEFT JOIN products p ON p.id = oi.product_id
+     WHERE oi.order_id = ?`,
+    [orderId],
+  );
   if (items.length === 0) throw new Error('El pedido no tiene items');
   const invoiceLinesMode = normalizeInvoiceLinesMode(invoiceLinesModeRaw);
 

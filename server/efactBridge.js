@@ -53,6 +53,89 @@ function formatIssueTime(date = new Date()) {
   return `${h}:${m}:${s}`;
 }
 
+function foldPlace(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** «LIMA» a secas es el valor por defecto viejo, no la dirección del local. */
+function isPlaceholderLima(value) {
+  const folded = foldPlace(value);
+  return !folded || folded === 'LIMA' || folded === 'LIMA LIMA' || folded === 'LIMA LIMA LIMA';
+}
+
+/** Distrito|departamento → ubigeo INEI. Moyobamba es distrito y provincia. */
+const UBIGEO_POR_LUGAR = {
+  'MOYOBAMBA|SAN MARTIN': '220101',
+  'TARAPOTO|SAN MARTIN': '220901',
+  'RIOJA|SAN MARTIN': '220801',
+  'JUANJUI|SAN MARTIN': '220601',
+  'LAMAS|SAN MARTIN': '220501',
+  'LIMA|LIMA': '150101',
+};
+
+function parseFiscalPlace(address) {
+  const parts = String(address || '')
+    .split(/\s*[-–—,/]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return { distrito: '', provincia: '', departamento: '' };
+  return {
+    distrito: parts[0],
+    provincia: parts.length >= 3 ? parts[1] : parts[0],
+    departamento: parts[parts.length - 1],
+  };
+}
+
+function resolveEmisorGeo(restaurant, direccionFiscal) {
+  const parsed = parseFiscalPlace(direccionFiscal);
+  const stored = {
+    distrito: String(restaurant.billing_emisor_distrito || '').trim(),
+    provincia: String(restaurant.billing_emisor_provincia || '').trim(),
+    departamento: String(restaurant.billing_emisor_departamento || '').trim(),
+    ubigeo: String(restaurant.billing_emisor_ubigeo || '').trim(),
+  };
+  const distrito = isPlaceholderLima(stored.distrito) && parsed.distrito
+    ? parsed.distrito
+    : (stored.distrito || parsed.distrito || '');
+  const provincia = isPlaceholderLima(stored.provincia) && parsed.provincia
+    ? parsed.provincia
+    : (stored.provincia || parsed.provincia || '');
+  const departamento = isPlaceholderLima(stored.departamento) && parsed.departamento
+    ? parsed.departamento
+    : (stored.departamento || parsed.departamento || '');
+  const known = UBIGEO_POR_LUGAR[`${foldPlace(distrito)}|${foldPlace(departamento)}`] || '';
+  const departmentIsLima = foldPlace(departamento) === 'LIMA';
+  let ubigeo = stored.ubigeo;
+  if ((!ubigeo || ubigeo === '150101') && known && !departmentIsLima) ubigeo = known;
+  if (!ubigeo) ubigeo = known || (departmentIsLima ? '150101' : '');
+  return {
+    distrito: distrito || 'LIMA',
+    provincia: provincia || 'LIMA',
+    departamento: departamento || 'LIMA',
+    ubigeo: ubigeo || '150101',
+  };
+}
+
+/** Catálogo 07: 10 gravado, 20 exonerado, 30 inafecto. */
+function afectacionFromTaxType(taxType) {
+  const kind = String(taxType || 'igv').toLowerCase();
+  if (kind === 'exonerado') return '20';
+  if (kind === 'inafecto') return '30';
+  return '10';
+}
+
+function afectacionConsumo(items) {
+  const codes = (items || []).map((item) => afectacionFromTaxType(item.tax_type));
+  if (codes.length && codes.every((code) => code === '20')) return '20';
+  if (codes.length && codes.every((code) => code === '30')) return '30';
+  return '10';
+}
+
 function buildEfactSaleJson({
   restaurant,
   order,
@@ -81,7 +164,7 @@ function buildEfactSaleJson({
         descripcion: 'VENTA POR CONSUMO',
         cantidad: '1',
         precio_unitario_sin_igv: round2(order.subtotal).toFixed(2),
-        codigo_afectacion_igv: '10',
+        codigo_afectacion_igv: afectacionConsumo(items),
       },
     ]
     : items.map((item) => {
@@ -91,7 +174,7 @@ function buildEfactSaleJson({
         descripcion: item.product_name || 'Producto',
         cantidad: String(quantity),
         precio_unitario_sin_igv: precioSin.toFixed(2),
-        codigo_afectacion_igv: '10',
+        codigo_afectacion_igv: afectacionFromTaxType(item.tax_type),
       };
     });
 
@@ -102,10 +185,14 @@ function buildEfactSaleJson({
   const docNum = String(customer.customerDocNumber || '').trim();
   const tipoDoc = String(customer.customerDocType || '1').trim();
 
-  const ubigeo = String(restaurant.billing_emisor_ubigeo || '').trim() || '150101';
-  const provincia = String(restaurant.billing_emisor_provincia || '').trim() || 'LIMA';
-  const departamento = String(restaurant.billing_emisor_departamento || '').trim() || 'LIMA';
-  const distrito = String(restaurant.billing_emisor_distrito || '').trim() || 'LIMA';
+  const geo = resolveEmisorGeo(restaurant, direccionFiscal);
+  const ubigeo = geo.ubigeo;
+  const provincia = geo.provincia;
+  const departamento = geo.departamento;
+  const distrito = geo.distrito;
+  const direccionCliente = isPlaceholderLima(customer.customerAddress)
+    ? (isPlaceholderLima(direccionFiscal) ? (customer.customerAddress || 'SIN DIRECCION') : direccionFiscal)
+    : customer.customerAddress;
 
   const panel = parseBillingPanelJson(restaurant);
   const usuarioSol = String(panel.sol_usuario || '').trim();
@@ -139,10 +226,7 @@ function buildEfactSaleJson({
       tipo_doc: tipoDoc,
       numero_doc: docNum || (tipoDoc === '6' ? '' : '00000000'),
       razon_social: customer.customerName,
-      direccion: customer.customerAddress
-        || String(restaurant.billing_emisor_direccion || '').trim()
-        || String(restaurant.address || '').trim()
-        || 'SIN DIRECCION',
+      direccion: direccionCliente,
     },
     lineas,
   };

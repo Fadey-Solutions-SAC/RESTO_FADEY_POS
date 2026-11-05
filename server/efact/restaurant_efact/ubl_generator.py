@@ -46,26 +46,47 @@ def formato_monto(d: Decimal) -> str:
     return _money(d)
 
 
-def calcular_totales_venta(venta: VentaInput) -> Tuple[Decimal, Decimal, Decimal]:
-    """Op. gravadas, IGV, importe total (solo líneas gravadas cat. 10)."""
+def calcular_totales_venta(venta: VentaInput):
+    """Op. gravadas, IGV, total, op. exoneradas, op. inafectas."""
     return _calc_lineas(venta.lineas, venta.porcentaje_igv)
 
 
-def _calc_lineas(lineas: list, pct_igv: Decimal) -> Tuple[Decimal, Decimal, Decimal]:
-    """Retorna (op_gravadas, igv, total). Solo ítems gravados (10) suman base IGV."""
+def _line_extension(ln: LineaVenta) -> Decimal:
+    return (ln.cantidad * ln.precio_unitario_sin_igv).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _igv_categoria(code: str) -> str:
+    """Catálogo 05: S gravado, E exonerado, O inafecto."""
+    if code == "10":
+        return "S"
+    if code == "30":
+        return "O"
+    return "E"
+
+
+def _calc_lineas(lineas: list, pct_igv: Decimal):
+    """
+    Retorna (op_gravadas, igv, total, op_exoneradas, op_inafectas).
+    Solo el código 10 suma IGV. Exonerado (20) e inafecto (30) entran al total sin impuesto.
+    """
     op_gravadas = Decimal("0")
+    op_exoneradas = Decimal("0")
+    op_inafectas = Decimal("0")
     igv_total = Decimal("0")
     rate = pct_igv / Decimal("100")
     for ln in lineas:
-        if ln.codigo_afectacion_igv == "10":
-            line_ext = (ln.cantidad * ln.precio_unitario_sin_igv).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
+        line_ext = _line_extension(ln)
+        code = str(ln.codigo_afectacion_igv or "10")
+        if code == "10":
             op_gravadas += line_ext
             igv_total += (line_ext * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        # Exonerados/inafectos: ampliar según catálogo SUNAT si lo necesita su negocio
-    total = (op_gravadas + igv_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return op_gravadas, igv_total, total
+        elif code == "30":
+            op_inafectas += line_ext
+        else:
+            op_exoneradas += line_ext
+    valor = op_gravadas + op_exoneradas + op_inafectas
+    total = (valor + igv_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return op_gravadas, igv_total, total, op_exoneradas, op_inafectas
 
 
 def _party_identification(parent_cac, doc_type: str, doc_num: str) -> None:
@@ -129,22 +150,19 @@ def _customer_party(root, venta: VentaInput) -> None:
     _party_legal_entity(party, c.razon_social, c.direccion)
 
 
-def _tax_total(root, igv: Decimal, op_gravadas: Decimal, pct: Decimal, moneda: str) -> None:
-    tt = etree.SubElement(root, _q(NS_CAC, "TaxTotal"))
-    taa = etree.SubElement(tt, _q(NS_CBC, "TaxAmount"), currencyID=moneda)
-    taa.text = _money(igv)
-    ts = etree.SubElement(tt, _q(NS_CAC, "TaxSubtotal"))
+def _tax_subtotal(parent, taxable: Decimal, tax: Decimal, pct: Decimal, code: str, moneda: str) -> None:
+    ts = etree.SubElement(parent, _q(NS_CAC, "TaxSubtotal"))
     tbi = etree.SubElement(ts, _q(NS_CBC, "TaxableAmount"), currencyID=moneda)
-    tbi.text = _money(op_gravadas)
+    tbi.text = _money(taxable)
     ta2 = etree.SubElement(ts, _q(NS_CBC, "TaxAmount"), currencyID=moneda)
-    ta2.text = _money(igv)
+    ta2.text = _money(tax)
     cat = etree.SubElement(ts, _q(NS_CAC, "TaxCategory"))
     tid = etree.SubElement(cat, _q(NS_CBC, "ID"), schemeID="UN/ECE 5305", schemeName="Tax Category Identifier", schemeAgencyName="United Nations Economic Commission for Europe")
-    tid.text = "S"
+    tid.text = _igv_categoria(code)
     pct_el = etree.SubElement(cat, _q(NS_CBC, "Percent"))
-    pct_el.text = _money(pct)
+    pct_el.text = _money(pct if code == "10" else Decimal("0"))
     te = etree.SubElement(cat, _q(NS_CBC, "TaxExemptionReasonCode"), listAgencyName="PE:SUNAT", listName="Afectacion del IGV", listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo07")
-    te.text = "10"
+    te.text = code
     tsch = etree.SubElement(cat, _q(NS_CAC, "TaxScheme"))
     sid = etree.SubElement(tsch, _q(NS_CBC, "ID"), schemeID="UN/ECE 5153", schemeName="Tax Scheme Identifier", schemeAgencyName="United Nations Economic Commission for Europe")
     sid.text = "1000"
@@ -154,12 +172,34 @@ def _tax_total(root, igv: Decimal, op_gravadas: Decimal, pct: Decimal, moneda: s
     st.text = "VAT"
 
 
-def _legal_monetary_total(root, op_gravadas: Decimal, igv: Decimal, total: Decimal, moneda: str) -> None:
+def _tax_total(root, lineas: list, pct: Decimal, moneda: str) -> None:
+    groups = {}
+    rate = pct / Decimal("100")
+    for ln in lineas:
+        code = str(ln.codigo_afectacion_igv or "10")
+        if code not in ("10", "20", "30"):
+            code = "20"
+        ext = _line_extension(ln)
+        tax = (ext * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if code == "10" else Decimal("0")
+        base, igv = groups.get(code, (Decimal("0"), Decimal("0")))
+        groups[code] = (base + ext, igv + tax)
+    igv_total = sum((pair[1] for pair in groups.values()), Decimal("0"))
+    tt = etree.SubElement(root, _q(NS_CAC, "TaxTotal"))
+    taa = etree.SubElement(tt, _q(NS_CBC, "TaxAmount"), currencyID=moneda)
+    taa.text = _money(igv_total)
+    for code in ("10", "20", "30"):
+        if code not in groups:
+            continue
+        base, tax = groups[code]
+        _tax_subtotal(tt, base, tax, pct, code, moneda)
+
+
+def _legal_monetary_total(root, valor_venta: Decimal, total: Decimal, moneda: str) -> None:
     lmt = etree.SubElement(root, _q(NS_CAC, "LegalMonetaryTotal"))
     # Orden UBL: LineExtension, TaxExclusive, TaxInclusive, Payable al final.
     for tag, val in (
-        ("LineExtensionAmount", op_gravadas),
-        ("TaxExclusiveAmount", op_gravadas),
+        ("LineExtensionAmount", valor_venta),
+        ("TaxExclusiveAmount", valor_venta),
         ("TaxInclusiveAmount", total),
         ("PayableAmount", total),
     ):
@@ -176,40 +216,27 @@ def _invoice_line(root, idx: int, ln: LineaVenta, moneda: str, pct_igv: Decimal)
     lea = etree.SubElement(line, _q(NS_CBC, "LineExtensionAmount"), currencyID=moneda)
     line_ext = (ln.cantidad * ln.precio_unitario_sin_igv).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     lea.text = _money(line_ext)
+    code = str(ln.codigo_afectacion_igv or "10")
+    gravado = code == "10"
     pp = etree.SubElement(line, _q(NS_CAC, "PricingReference"))
     alt = etree.SubElement(pp, _q(NS_CAC, "AlternativeConditionPrice"))
     pamount = etree.SubElement(alt, _q(NS_CBC, "PriceAmount"), currencyID=moneda)
-    # Precio con IGV (referencia)
-    pu_igv = (ln.precio_unitario_sin_igv * (Decimal("1") + pct_igv / Decimal("100"))).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    pamount.text = _money(pu_igv)
+    # Precio de venta: con IGV solo si la línea es gravada.
+    if gravado:
+        pu_ref = (ln.precio_unitario_sin_igv * (Decimal("1") + pct_igv / Decimal("100"))).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    else:
+        pu_ref = ln.precio_unitario_sin_igv.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    pamount.text = _money(pu_ref)
     pcode = etree.SubElement(alt, _q(NS_CBC, "PriceTypeCode"), listName="Tipo de Precio", listAgencyName="PE:SUNAT", listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo16")
     pcode.text = "01"
     # Impuestos por línea, luego ítem y precio (orden UBL / SUNAT).
     tt = etree.SubElement(line, _q(NS_CAC, "TaxTotal"))
-    tax_amt = (line_ext * pct_igv / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if ln.codigo_afectacion_igv == "10" else Decimal("0")
+    tax_amt = (line_ext * pct_igv / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if gravado else Decimal("0")
     t_el = etree.SubElement(tt, _q(NS_CBC, "TaxAmount"), currencyID=moneda)
     t_el.text = _money(tax_amt)
-    ts = etree.SubElement(tt, _q(NS_CAC, "TaxSubtotal"))
-    tb = etree.SubElement(ts, _q(NS_CBC, "TaxableAmount"), currencyID=moneda)
-    tb.text = _money(line_ext) if ln.codigo_afectacion_igv == "10" else _money(Decimal("0"))
-    ta2 = etree.SubElement(ts, _q(NS_CBC, "TaxAmount"), currencyID=moneda)
-    ta2.text = _money(tax_amt)
-    cat = etree.SubElement(ts, _q(NS_CAC, "TaxCategory"))
-    cid = etree.SubElement(cat, _q(NS_CBC, "ID"), schemeID="UN/ECE 5305", schemeName="Tax Category Identifier", schemeAgencyName="United Nations Economic Commission for Europe")
-    cid.text = "S"
-    p_el = etree.SubElement(cat, _q(NS_CBC, "Percent"))
-    p_el.text = _money(pct_igv)
-    ter = etree.SubElement(cat, _q(NS_CBC, "TaxExemptionReasonCode"), listAgencyName="PE:SUNAT", listName="Afectacion del IGV", listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo07")
-    ter.text = ln.codigo_afectacion_igv
-    tsch = etree.SubElement(cat, _q(NS_CAC, "TaxScheme"))
-    sid = etree.SubElement(tsch, _q(NS_CBC, "ID"), schemeID="UN/ECE 5153")
-    sid.text = ln.codigo_tributo
-    sname = etree.SubElement(tsch, _q(NS_CBC, "Name"))
-    sname.text = "IGV"
-    stc = etree.SubElement(tsch, _q(NS_CBC, "TaxTypeCode"))
-    stc.text = "VAT"
+    _tax_subtotal(tt, line_ext, tax_amt, pct_igv, code if code in ("10", "20", "30") else "20", moneda)
     item = etree.SubElement(line, _q(NS_CAC, "Item"))
     desc = etree.SubElement(item, _q(NS_CBC, "Description"))
     desc.text = ln.descripcion
@@ -226,7 +253,8 @@ def generar_xml_ubl(venta: VentaInput) -> Tuple[bytes, str]:
     if not venta.lineas:
         raise ValueError("La venta debe tener al menos una línea de detalle.")
 
-    op_gravadas, igv, total = _calc_lineas(venta.lineas, venta.porcentaje_igv)
+    op_gravadas, igv, total, op_exoneradas, op_inafectas = _calc_lineas(venta.lineas, venta.porcentaje_igv)
+    valor_venta = op_gravadas + op_exoneradas + op_inafectas
     moneda = venta.moneda
     ruc = venta.emisor.ruc
     tipo = venta.tipo.value
@@ -276,8 +304,8 @@ def generar_xml_ubl(venta: VentaInput) -> Tuple[bytes, str]:
     _supplier_party(root, venta)
     _customer_party(root, venta)
 
-    _tax_total(root, igv, op_gravadas, venta.porcentaje_igv, moneda)
-    _legal_monetary_total(root, op_gravadas, igv, total, moneda)
+    _tax_total(root, venta.lineas, venta.porcentaje_igv, moneda)
+    _legal_monetary_total(root, valor_venta, total, moneda)
 
     for i, ln in enumerate(venta.lineas, start=1):
         _invoice_line(root, i, ln, moneda, venta.porcentaje_igv)

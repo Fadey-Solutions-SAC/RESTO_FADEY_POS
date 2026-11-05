@@ -52,7 +52,9 @@ def generar_pdf_comprobante(venta: VentaInput, ruta_salida: Path) -> Path:
     emisor_parts.append(f"<b>{rs}</b>")
     emisor_parts.append(f"RUC: {e.ruc}")
     emisor_parts.append(f"{e.direccion}")
-    emisor_parts.append(f"{e.distrito} — {e.provincia} — {e.departamento}")
+    geo = " — ".join(part for part in (e.distrito, e.provincia, e.departamento) if str(part or "").strip())
+    if geo:
+        emisor_parts.append(geo)
     tel = (getattr(e, "telefono", None) or "").strip()
     mail = (getattr(e, "correo", None) or "").strip()
     if tel:
@@ -100,12 +102,20 @@ def generar_pdf_comprobante(venta: VentaInput, ruta_salida: Path) -> Path:
     story.append(t)
     story.append(Spacer(1, 0.5 * cm))
 
-    op_gravadas, igv, total = calcular_totales_venta(venta)
-    tot_txt = f"""
-    <b>Op. gravadas:</b> {venta.moneda} {formato_monto(op_gravadas)}<br/>
-    <b>IGV ({formato_monto(venta.porcentaje_igv)}%):</b> {venta.moneda} {formato_monto(igv)}<br/>
-    <b>Total:</b> {venta.moneda} {formato_monto(total)}
-    """
+    op_gravadas, igv, total, op_exoneradas, op_inafectas = calcular_totales_venta(venta)
+    lineas_tot = []
+    if op_gravadas:
+        lineas_tot.append(f"<b>Op. gravadas:</b> {venta.moneda} {formato_monto(op_gravadas)}")
+    if op_exoneradas:
+        lineas_tot.append(f"<b>Op. exoneradas:</b> {venta.moneda} {formato_monto(op_exoneradas)}")
+    if op_inafectas:
+        lineas_tot.append(f"<b>Op. inafectas:</b> {venta.moneda} {formato_monto(op_inafectas)}")
+    if igv:
+        lineas_tot.append(
+            f"<b>IGV ({formato_monto(venta.porcentaje_igv)}%):</b> {venta.moneda} {formato_monto(igv)}"
+        )
+    lineas_tot.append(f"<b>Total:</b> {venta.moneda} {formato_monto(total)}")
+    tot_txt = "<br/>".join(lineas_tot)
     story.append(Paragraph(tot_txt, styles["Normal"]))
     story.append(Spacer(1, 0.3 * cm))
     story.append(

@@ -15,7 +15,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
+import unicodedata
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -112,10 +114,67 @@ def venta_demo() -> VentaInput:
     )
 
 
+_UBIGEO_POR_LUGAR = {
+    ("MOYOBAMBA", "SAN MARTIN"): "220101",
+    ("TARAPOTO", "SAN MARTIN"): "220901",
+    ("RIOJA", "SAN MARTIN"): "220801",
+    ("JUANJUI", "SAN MARTIN"): "220601",
+    ("LAMAS", "SAN MARTIN"): "220501",
+    ("LIMA", "LIMA"): "150101",
+}
+
+
+def _fold_place(value: str) -> str:
+    text = unicodedata.normalize("NFD", str(value or ""))
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    return re.sub(r"\s+", " ", text).upper().strip()
+
+
+def _placeholder_lima(value: str) -> bool:
+    return _fold_place(value) in ("", "LIMA", "LIMA LIMA", "LIMA LIMA LIMA")
+
+
+def _parse_place(address: str):
+    parts = [part.strip() for part in re.split(r"\s*[-–—,/]\s*", str(address or "")) if part.strip()]
+    if len(parts) < 2:
+        return "", "", ""
+    distrito = parts[0]
+    provincia = parts[1] if len(parts) >= 3 else parts[0]
+    departamento = parts[-1]
+    return distrito, provincia, departamento
+
+
+def _ajustar_lugar_emisor(em: dict) -> dict:
+    """Si el JSON trae Lima por defecto pero la calle dice Moyobamba, usa el lugar real."""
+    out = dict(em)
+    parsed_d, parsed_p, parsed_dep = _parse_place(str(em.get("direccion") or ""))
+    distrito = str(em.get("distrito") or "")
+    provincia = str(em.get("provincia") or "")
+    departamento = str(em.get("departamento") or "")
+    ubigeo = str(em.get("ubigeo") or "").strip()
+    if _placeholder_lima(distrito) and parsed_d:
+        distrito = parsed_d
+    if _placeholder_lima(provincia) and parsed_p:
+        provincia = parsed_p
+    if _placeholder_lima(departamento) and parsed_dep:
+        departamento = parsed_dep
+    known = _UBIGEO_POR_LUGAR.get((_fold_place(distrito), _fold_place(departamento)), "")
+    if (not ubigeo or ubigeo == "150101") and known and _fold_place(departamento) != "LIMA":
+        ubigeo = known
+    out["distrito"] = distrito
+    out["provincia"] = provincia
+    out["departamento"] = departamento
+    out["ubigeo"] = ubigeo or known or str(em.get("ubigeo") or "")
+    return out
+
+
 def venta_desde_dict(data: dict) -> VentaInput:
     """Construye VentaInput desde un dict (mismo esquema que el JSON de archivo)."""
-    em = data["emisor"]
+    em = _ajustar_lugar_emisor(data["emisor"])
     cl = data["cliente"]
+    direccion_cliente = str(cl.get("direccion", "") or "")
+    if _placeholder_lima(direccion_cliente):
+        direccion_cliente = str(em.get("direccion") or direccion_cliente or "SIN DIRECCION")
     emisor = EmisorConfig(
         ruc=str(em["ruc"]),
         razon_social=em["razon_social"],
@@ -132,7 +191,7 @@ def venta_desde_dict(data: dict) -> VentaInput:
         tipo_doc=str(cl["tipo_doc"]),
         numero_doc=str(cl["numero_doc"]),
         razon_social=cl["razon_social"],
-        direccion=cl.get("direccion", ""),
+        direccion=direccion_cliente,
     )
     lineas = [
         LineaVenta(
