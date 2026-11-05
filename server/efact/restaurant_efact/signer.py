@@ -53,7 +53,12 @@ def firmar_xml_ubl(xml_bytes: bytes, cert_cfg: CertificadoConfig) -> bytes:
     if root.get("Id") is None:
         root.set("Id", "SignSUNAT")
 
-    key, cert_x509, _chain = _cargar_clave_y_certificado(cert_cfg)
+    key, cert_x509, chain = _cargar_clave_y_certificado(cert_cfg)
+    # signxml 4 exige una lista. Un Certificate suelto no es iterable.
+    certs = [cert_x509]
+    for extra in chain or ():
+        if extra is not None:
+            certs.append(extra)
 
     signer = XMLSigner(
         method=methods.enveloped,
@@ -62,7 +67,7 @@ def firmar_xml_ubl(xml_bytes: bytes, cert_cfg: CertificadoConfig) -> bytes:
         c14n_algorithm="http://www.w3.org/2001/10/xml-exc-c14n#",
     )
 
-    signed_root = signer.sign(root, key=key, cert=cert_x509, reference_uri="#" + root.get("Id"))
+    signed_root = signer.sign(root, key=key, cert=certs, reference_uri="#" + root.get("Id"))
 
     ns_ds = "http://www.w3.org/2000/09/xmldsig#"
     ns_ext = "urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
