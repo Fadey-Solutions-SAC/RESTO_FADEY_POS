@@ -227,7 +227,6 @@ def generar_xml_ubl(venta: VentaInput) -> Tuple[bytes, str]:
     nombre_base = f"{ruc}-{tipo}-{venta.serie}-{venta.correlativo_str()}"
 
     root = etree.Element(_q(NS_INVOICE, "Invoice"), nsmap=NSMAP)
-    root.set("{%s}lang" % "http://www.w3.org/XML/1998/namespace", "es")
 
     # UBLExtensions vacío o placeholder — la firma se inserta con signer (ext + ds:Signature)
     ublext = etree.SubElement(root, _q(NS_EXT, "UBLExtensions"))
