@@ -15,6 +15,7 @@ Ejecutar desde la raíz del repo:
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -70,6 +71,18 @@ def _merge_cert_from_payload(data: dict, env_cert: CertificadoConfig | None) -> 
     pc = data.get("panel_certificado") or {}
     ruta = str(pc.get("ruta_pfx") or "").strip()
     pwd = str(pc.get("password") or "").strip()
+    b64 = str(pc.get("pfx_base64") or "").strip()
+    if b64 and pwd:
+        try:
+            raw = base64.b64decode(b64)
+        except Exception:
+            raw = b""
+        if raw:
+            dest_dir = ROOT / "certs"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / "_relay_emisor.pfx"
+            dest.write_bytes(raw)
+            return CertificadoConfig(ruta_pfx=dest, password_pfx=pwd)
     if ruta and pwd:
         pth = Path(ruta)
         if not pth.is_absolute():
@@ -82,17 +95,51 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
 
+def _attach_file_bytes(result: dict) -> None:
+    """El navegador reenvía estos bytes al API de internet; las rutas locales no existen allá."""
+    paths = result.get("paths") if isinstance(result.get("paths"), dict) else {}
+    files: dict[str, str] = {}
+    for key in ("pdf", "xml_firmado", "xml_sin_firma", "cdr_xml", "cdr_zip"):
+        raw_path = str(paths.get(key) or "").strip()
+        if not raw_path:
+            continue
+        try:
+            blob = Path(raw_path).read_bytes()
+        except Exception:
+            continue
+        if not blob or len(blob) > 4_000_000:
+            continue
+        files[key] = base64.b64encode(blob).decode("ascii")
+    if files:
+        result["files_base64"] = files
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:
         logger.info("%s - %s", self.address_string(), fmt % args)
+
+    def _cors_headers(self) -> None:
+        origin = self.headers.get("Origin") or "*"
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-EFACT-SECRET")
 
     def _send_json(self, code: int, body: dict) -> None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
+        self._cors_headers()
         self.end_headers()
         self.wfile.write(data)
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self._cors_headers()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
@@ -165,6 +212,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(500, {"ok": False, "error": str(e)})
             return
 
+        if isinstance(result, dict):
+            _attach_file_bytes(result)
         self._send_json(200, result)
 
 

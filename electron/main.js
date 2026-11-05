@@ -842,7 +842,7 @@ function buildAssistantExpressApp() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Access-Control-Request-Private-Network'],
   }));
-  assistant.use(express.json({ limit: '2mb' }));
+  assistant.use(express.json({ limit: '8mb' }));
 
   const assistantHealthPayload = () => ({
     status: 'ok',
@@ -855,6 +855,21 @@ function buildAssistantExpressApp() {
 
   assistant.get('/health', (_req, res) => res.json(assistantHealthPayload()));
   assistant.get('/api/health', (_req, res) => res.json(assistantHealthPayload()));
+  assistant.post('/api/efact/emitir', async (req, res) => {
+    try {
+      const r = await fetch('http://127.0.0.1:8765/emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body || {}),
+      });
+      const text = await r.text();
+      res.status(r.status);
+      res.type('application/json');
+      res.send(text || '{}');
+    } catch (err) {
+      res.status(503).json({ ok: false, error: err?.message || 'El bot e-fact no responde en el puerto 8765' });
+    }
+  });
   assistant.get('/api/printing/bridge', (_req, res) => res.json(assistantHealthPayload()));
   assistant.get('/api/printers', async (_req, res) => {
     try {

@@ -2,6 +2,7 @@
  * Construye el JSON esperado por el bot Python (server/efact) y llama a su API HTTP.
  */
 
+const fs = require('fs');
 const path = require('path');
 const { effectiveEfactApiUrl, effectiveEfactHttpSecret } = require('./efactConnection');
 const { getUploadsRoot } = require('./uploadsPath');
@@ -162,6 +163,34 @@ function buildEfactSaleJson({
   return payload;
 }
 
+/**
+ * Copia del JSON para que el navegador de esta PC lo mande al bot local.
+ * El .pfx del servidor viaja en base64: el bot de la PC no ve el disco del servidor.
+ */
+function prepareRelaySale(saleJson) {
+  let sale;
+  try {
+    sale = JSON.parse(JSON.stringify(saleJson || {}));
+  } catch (_) {
+    return saleJson || {};
+  }
+  const cert = sale.panel_certificado;
+  if (!cert || typeof cert !== 'object') return sale;
+  const abs = resolveCertPathForBot(cert.ruta_pfx);
+  if (abs && fs.existsSync(abs)) {
+    try {
+      const buf = fs.readFileSync(abs);
+      if (buf.length > 0 && buf.length < 2_000_000) {
+        cert.pfx_base64 = buf.toString('base64');
+        delete cert.ruta_pfx;
+      }
+    } catch (_) {
+      /* el bot avisará si no puede firmar */
+    }
+  }
+  return sale;
+}
+
 function mapEfactResponseToProviderResult(parsed, responseOk) {
   const initial = {
     providerStatus: 'pending',
@@ -266,6 +295,7 @@ async function sendEfactSale(restaurant, saleJson) {
 
 module.exports = {
   buildEfactSaleJson,
+  prepareRelaySale,
   sendEfactSale,
   mapEfactResponseToProviderResult,
 };

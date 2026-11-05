@@ -1,8 +1,11 @@
 const express = require('express');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql, persistCriticalDb } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { buildEfactSaleJson, sendEfactSale } = require('../efactBridge');
+const { buildEfactSaleJson, sendEfactSale, prepareRelaySale, mapEfactResponseToProviderResult } = require('../efactBridge');
 const {
   effectiveEfactApiUrl,
   effectiveEfactHttpSecret,
@@ -294,6 +297,34 @@ function persistBillingArtifacts(docId, { pdfUrl, xmlUrl, cdrUrl }) {
   return { pdfStored, xmlStored, cdrStored };
 }
 
+function hydrateRelayFiles(parsed) {
+  const files = parsed?.files_base64;
+  if (!files || typeof files !== 'object') return parsed || {};
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'efact-relay-'));
+  const pathsOut = { ...(parsed.paths || {}) };
+  const kinds = [
+    ['pdf', '.pdf'],
+    ['xml_firmado', '.xml'],
+    ['xml_sin_firma', '.xml'],
+    ['cdr_xml', '.xml'],
+    ['cdr_zip', '.zip'],
+  ];
+  for (const [key, ext] of kinds) {
+    const b64 = String(files[key] || '').trim();
+    if (!b64) continue;
+    try {
+      const dest = path.join(dir, `${key}${ext}`);
+      fs.writeFileSync(dest, Buffer.from(b64, 'base64'));
+      pathsOut[key] = dest;
+    } catch (_) {
+      /* sigue con la ruta original si el archivo no cabe */
+    }
+  }
+  const next = { ...parsed, paths: pathsOut };
+  delete next.files_base64;
+  return next;
+}
+
 function applyProviderResultToDocument(docId, result) {
   const pr = result.providerResponse;
   const fromPaths = pr && typeof pr === 'object' ? String(pr.paths?.pdf || '').trim() : '';
@@ -433,20 +464,20 @@ async function sendToEfactProvider(restaurant, saleJson) {
       `Sin conexión con el bot e-fact (${botUrl || 'sin URL'}). `
       + 'Inicie el servicio: python server/efact/api_server.py (puerto 8765) y pulse Reintentar. '
       + `Detalle: ${detail}`;
-    if (isOfflineModeEnabled(restaurant)) {
-      return {
-        ...initial,
-        providerStatus: 'pending',
-        providerMessage: offlineMsg,
-        providerResponse: { offline: true, error: detail, bot_url: botUrl },
-      };
+    let relaySale = null;
+    try {
+      relaySale = prepareRelaySale(saleJson);
+    } catch (_) {
+      relaySale = saleJson;
     }
-    return {
+    const relayResult = {
       ...initial,
-      providerStatus: 'error',
+      providerStatus: isOfflineModeEnabled(restaurant) ? 'pending' : 'error',
       providerMessage: offlineMsg,
-      providerResponse: { error: detail, bot_url: botUrl },
+      providerResponse: { offline: true, error: detail, bot_url: botUrl, local_relay: true },
+      relaySale,
     };
+    return relayResult;
   }
 }
 
@@ -934,6 +965,7 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
     cdrUrl,
     pdfUrl,
     providerResponse,
+    relaySale,
   } = await sendToProvider(restaurant, providerPayload);
   const pdfFromPaths = String(providerResponse?.paths?.pdf || '').trim();
   const xmlFromPaths = String(
@@ -1028,6 +1060,7 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
 
   const finalDoc = await refreshDocWithLocalPdfIfNeeded(docId, restaurant);
   scheduleWhatsappPdfSend(finalDoc, restaurant);
+  if (relaySale && finalDoc) finalDoc.local_relay = { sale: relaySale };
   return finalDoc;
 }
 
@@ -1077,6 +1110,27 @@ router.put('/order/:orderId/document', authenticateToken, requireRole('admin', '
   }
 });
 
+router.post('/:id/local-result', authenticateToken, requireRole('admin', 'cajero', 'mozo'), async (req, res) => {
+  try {
+    const doc = queryOne('SELECT * FROM electronic_documents WHERE id = ?', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Comprobante no encontrado' });
+    const restaurant = queryOne('SELECT * FROM restaurants LIMIT 1');
+    if (!restaurant) return res.status(400).json({ error: 'No hay restaurante configurado' });
+
+    const parsed = hydrateRelayFiles(req.body?.bot || req.body || {});
+    const httpOk = parsed?.ok !== false && !parsed?.error;
+    const result = mapEfactResponseToProviderResult(parsed, httpOk);
+    applyProviderResultToDocument(doc.id, result);
+    const updated = await refreshDocWithLocalPdfIfNeeded(doc.id, restaurant);
+    scheduleWhatsappPdfSend(updated, restaurant);
+    emitOrderUpdateForBilling(req.app.get('io'), doc.order_id);
+    broadcastBillingDocumentRow(updated);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo guardar la respuesta del bot local' });
+  }
+});
+
 router.post('/:id/retry', authenticateToken, requireRole('admin', 'cajero'), async (req, res) => {
   try {
     const doc = queryOne('SELECT * FROM electronic_documents WHERE id = ?', [req.params.id]);
@@ -1110,6 +1164,7 @@ router.post('/:id/retry', authenticateToken, requireRole('admin', 'cajero'), asy
       return res.status(503).json({
         error: String(result.providerMessage || updated?.provider_message || 'No se pudo enviar el comprobante').trim(),
         document: updated,
+        ...(result.relaySale ? { local_relay: { sale: result.relaySale } } : {}),
       });
     }
     res.json(updated);

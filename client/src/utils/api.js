@@ -11,6 +11,7 @@
  * - Las llamadas bajo `api.printing.*` usan esa base; el resto del sistema sigue usando API_BASE.
  */
 import { translateApiErrorMessage } from '../i18n/translateApiError';
+import { postSaleToLocalBot } from './efactLocalRelay';
 import toast from 'react-hot-toast';
 import { scaleInsumoDisplayQty } from './insumoUnidadMedida';
 import {
@@ -466,6 +467,21 @@ async function request(endpoint, options = {}, attempt = 0) {
     data = text ? JSON.parse(text) : null;
   } catch (_) {
     data = null;
+  }
+
+  if (data?.local_relay?.sale && (data.document?.id || data.id)) {
+    hideApiReconnecting();
+    try {
+      const bot = await postSaleToLocalBot(data.local_relay.sale);
+      const docId = data.document?.id || data.id;
+      return request(`/billing/${encodeURIComponent(docId)}/local-result`, {
+        method: 'POST',
+        body: JSON.stringify({ bot }),
+        skipOffline: true,
+      });
+    } catch (relayErr) {
+      throw new Error(relayErr?.message || 'No se pudo enviar el comprobante al bot de esta PC');
+    }
   }
 
   if (!res.ok) {

@@ -29,7 +29,7 @@ Segmentos `A.B.C.D` (cada uno entero **0–9**):
 
 1. Sumar **1** al segmento de la derecha (`D`).
 2. Si un segmento pasa de **9**: ponerlo en **0** y sumar 1 al de la izquierda.
-3. Ejemplos: `1.1.2.8` → `1.1.2.9` → `1.1.3.0` → … → `1.1.9.9` → `1.2.0.0`.
+3. Ejemplos: `1.1.2.8` → `1.1.2.9` → `1.1.3.0` → … → `1.1.9.9` → `1.2.0.0`→ `1.2.0.1`.
 4. Si está en `9.9.9.9` y hay que subir: agregar un segmento a la izquierda y reiniciar → `1.0.0.0.0` (y seguir con la misma lógica en 5 dígitos).
 
 ## Mensaje de commit
