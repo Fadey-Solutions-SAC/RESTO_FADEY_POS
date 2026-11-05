@@ -176,9 +176,6 @@ def _invoice_line(root, idx: int, ln: LineaVenta, moneda: str, pct_igv: Decimal)
     lea = etree.SubElement(line, _q(NS_CBC, "LineExtensionAmount"), currencyID=moneda)
     line_ext = (ln.cantidad * ln.precio_unitario_sin_igv).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     lea.text = _money(line_ext)
-    item = etree.SubElement(line, _q(NS_CAC, "Item"))
-    desc = etree.SubElement(item, _q(NS_CBC, "Description"))
-    desc.text = ln.descripcion
     pp = etree.SubElement(line, _q(NS_CAC, "PricingReference"))
     alt = etree.SubElement(pp, _q(NS_CAC, "AlternativeConditionPrice"))
     pamount = etree.SubElement(alt, _q(NS_CBC, "PriceAmount"), currencyID=moneda)
@@ -189,10 +186,7 @@ def _invoice_line(root, idx: int, ln: LineaVenta, moneda: str, pct_igv: Decimal)
     pamount.text = _money(pu_igv)
     pcode = etree.SubElement(alt, _q(NS_CBC, "PriceTypeCode"), listName="Tipo de Precio", listAgencyName="PE:SUNAT", listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo16")
     pcode.text = "01"
-    pr = etree.SubElement(line, _q(NS_CAC, "Price"))
-    pa = etree.SubElement(pr, _q(NS_CBC, "PriceAmount"), currencyID=moneda)
-    pa.text = _money(ln.precio_unitario_sin_igv)
-    # Impuestos por línea
+    # Impuestos por línea, luego ítem y precio (orden UBL / SUNAT).
     tt = etree.SubElement(line, _q(NS_CAC, "TaxTotal"))
     tax_amt = (line_ext * pct_igv / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if ln.codigo_afectacion_igv == "10" else Decimal("0")
     t_el = etree.SubElement(tt, _q(NS_CBC, "TaxAmount"), currencyID=moneda)
@@ -216,6 +210,12 @@ def _invoice_line(root, idx: int, ln: LineaVenta, moneda: str, pct_igv: Decimal)
     sname.text = "IGV"
     stc = etree.SubElement(tsch, _q(NS_CBC, "TaxTypeCode"))
     stc.text = "VAT"
+    item = etree.SubElement(line, _q(NS_CAC, "Item"))
+    desc = etree.SubElement(item, _q(NS_CBC, "Description"))
+    desc.text = ln.descripcion
+    pr = etree.SubElement(line, _q(NS_CAC, "Price"))
+    pa = etree.SubElement(pr, _q(NS_CBC, "PriceAmount"), currencyID=moneda)
+    pa.text = _money(ln.precio_unitario_sin_igv)
 
 
 def generar_xml_ubl(venta: VentaInput) -> Tuple[bytes, str]:
