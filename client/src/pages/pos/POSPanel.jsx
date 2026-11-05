@@ -255,6 +255,7 @@ import {
 import PrinterModulePanel from '../../components/printing/PrinterModulePanel';
 import { getPrecuentaSurveyQrAttachment } from '../../utils/surveyQrPrint';
 import { withSunatQr } from '../../utils/sunatQr';
+import { downloadBillingPdf, printBillingOnThermal, SUNAT_TICKET_WIDTH_MM } from '../../utils/billingDocumentActions';
 import {
   DEFAULT_PRINTING_CONFIG,
   fetchPrintingConfig,
@@ -1528,12 +1529,16 @@ export default function POSPanel() {
   const openAcceptedSunatPdf = useCallback((doc) => {
     if (!doc?.id) return;
     if (String(doc.provider_status || '').toLowerCase() !== 'accepted') return;
-    const pdf = String(doc.pdf_url || '').trim();
-    if (!pdf) return;
+    const kind = String(doc.doc_type || '').toLowerCase();
+    if (kind !== 'boleta' && kind !== 'factura') return;
     if (printedSunatPdfRef.current.has(doc.id)) return;
     printedSunatPdfRef.current.add(doc.id);
-    window.open(resolveMediaUrl(pdf), '_blank', 'noopener,noreferrer');
-    toast.success(`SUNAT aceptó ${doc.full_number || 'el comprobante'}. Se abrió el PDF para imprimir.`);
+    printBillingOnThermal(doc)
+      .then(() => toast.success(`${doc.full_number || 'Comprobante'} impreso en la térmica de 80 mm`))
+      .catch((err) => {
+        printedSunatPdfRef.current.delete(doc.id);
+        toast.error(err.message || 'No se pudo imprimir en la térmica');
+      });
   }, []);
 
   const syncReservationAlertToasts = useCallback(async () => {
@@ -2871,17 +2876,8 @@ export default function POSPanel() {
       if (issuedDocs.length > 0) {
         const detail = issuedDocs.map(billingSuccessSummary).join(' · ');
         toast.success(`${chargedCount} pedido(s) cobrados. ${detail}`);
-        const pdfDoc = issuedDocs.find((d) => d?.pdf_url && String(d.provider_status || '').toLowerCase() === 'accepted')
-          || issuedDocs.find((d) => d?.pdf_url && String(d.provider_status || '').toLowerCase() !== 'error');
-        const pdf = pdfDoc?.pdf_url;
-        if (pdf && billingForm.doc_type !== 'nota_venta') {
-          if (pdfDoc?.id && String(pdfDoc.provider_status || '').toLowerCase() === 'accepted') {
-            printedSunatPdfRef.current.add(pdfDoc.id);
-          }
-          window.open(resolveMediaUrl(pdf), '_blank', 'noopener,noreferrer');
-        }
         const logoUrl = String(printRestaurantInfo.logo || '').trim() || undefined;
-        const pw = cajaPaperWidthMm;
+        const pw = SUNAT_TICKET_WIDTH_MM;
         if (billingForm.doc_type === 'boleta' || billingForm.doc_type === 'factura') {
           for (let i = 0; i < issuedDocs.length; i += 1) {
             const doc = issuedDocs[i];
@@ -2925,6 +2921,7 @@ export default function POSPanel() {
               total: getOrderChargeTotal(ord),
             }));
             if (!r.ok) toast.error(r.error || 'No se pudo imprimir comprobante SUNAT');
+            else if (doc.id) printedSunatPdfRef.current.add(doc.id);
           }
         }
       } else if (chargeToAccount) {
@@ -6530,13 +6527,22 @@ export default function POSPanel() {
                           {billingResult.full_number} · {billingStatusLabel(billingResult.provider_status)}
                         </span>
                         {billingResult.pdf_url && (
-                          <button
-                            type="button"
-                            className="px-2 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"
-                            onClick={() => window.open(resolveMediaUrl(billingResult.pdf_url), '_blank', 'noopener,noreferrer')}
-                          >
-                            Ver PDF
-                          </button>
+                          <span className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              className="px-2 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"
+                              onClick={() => window.open(resolveMediaUrl(billingResult.pdf_url), '_blank', 'noopener,noreferrer')}
+                            >
+                              Ver PDF
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 rounded-lg border border-emerald-400 text-emerald-100 hover:bg-emerald-900"
+                              onClick={() => downloadBillingPdf(billingResult).catch((err) => toast.error(err.message))}
+                            >
+                              Descargar PDF
+                            </button>
+                          </span>
                         )}
                       </div>
                     )}

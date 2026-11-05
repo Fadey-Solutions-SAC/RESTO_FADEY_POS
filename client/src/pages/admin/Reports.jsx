@@ -23,6 +23,7 @@ import {
   MdFilterList,
   MdClose,
   MdSearch,
+  MdDownload,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
@@ -38,6 +39,7 @@ import { useAuth } from '../../context/AuthContext';
 import { INFORME_EXCEL_NAVY, INFORME_EXCEL_LABEL, INFORME_EXCEL_TOTAL } from '../../utils/informeExcelHtml';
 import { resolveInformesSection } from '../../utils/shellModuleTitle';
 import { billingStatusLabel, billingStatusClass, billingFileIsOpenable } from '../../utils/billingSunatStatus';
+import { downloadBillingPdf, printBillingOnThermal } from '../../utils/billingDocumentActions';
 import { buildPaidSalesAccountDisplayGroups, summarizePaidSalesAccounts, getObservationRecordIds } from '../../utils/mesaOrderLines';
 import {
   downloadBlobFile,
@@ -757,6 +759,7 @@ export default function Reports() {
   const [billingFiltersOpen, setBillingFiltersOpen] = useState(false);
   const billingFiltersRef = useRef(null);
   const [retryingDocId, setRetryingDocId] = useState('');
+  const [printingBillingId, setPrintingBillingId] = useState('');
   const [retryingFailed, setRetryingFailed] = useState(false);
   const [billingPdfPreview, setBillingPdfPreview] = useState(null);
   const [selectedClosedRegister, setSelectedClosedRegister] = useState(null);
@@ -1184,6 +1187,27 @@ export default function Reports() {
       toast.error(err.message);
     } finally {
       setRetryingFailed(false);
+    }
+  };
+
+  const printBillingThermal = async (doc) => {
+    try {
+      setPrintingBillingId(doc.id);
+      await printBillingOnThermal(doc);
+      toast.success(`${doc.full_number || 'Comprobante'} enviado a la térmica de 80 mm`);
+    } catch (err) {
+      toast.error(err.message || 'No se pudo imprimir');
+    } finally {
+      setPrintingBillingId('');
+    }
+  };
+
+  const saveBillingPdf = async (doc) => {
+    try {
+      await downloadBillingPdf(doc);
+      toast.success('PDF descargado. Puede enviarlo por WhatsApp.');
+    } catch (err) {
+      toast.error(err.message || 'No se pudo descargar el PDF');
     }
   };
   const closeProductoInformeModal = () => {
@@ -3014,22 +3038,40 @@ export default function Reports() {
                                 setBillingPdfPreview({
                                   url: doc.pdf_url,
                                   title: doc.full_number ? `PDF — ${doc.full_number}` : 'Vista previa del comprobante',
+                                  doc,
                                 })
                               }
                               className="text-xs text-[#3B82F6] hover:underline whitespace-nowrap"
                             >
                               Ver PDF
                             </button>
-                            <a
-                              href={resolveMediaUrl(doc.pdf_url)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-[#3B82F6] hover:underline whitespace-nowrap"
-                              title="Abrir e imprimir PDF"
+                            <button
+                              type="button"
+                              onClick={() => printBillingThermal(doc)}
+                              disabled={printingBillingId === doc.id}
+                              className="text-xs text-[#3B82F6] hover:underline whitespace-nowrap disabled:opacity-60 inline-flex items-center gap-0.5"
+                              title="Imprimir en la térmica de caja, 80 mm"
                             >
-                              Imprimir
-                            </a>
+                              <MdPrint className="text-sm" /> {printingBillingId === doc.id ? 'Imprimiendo…' : 'Imprimir'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => saveBillingPdf(doc)}
+                              className="text-xs text-[#3B82F6] hover:underline whitespace-nowrap inline-flex items-center gap-0.5"
+                              title="Descargar el PDF para enviarlo por WhatsApp"
+                            >
+                              <MdDownload className="text-sm" /> PDF
+                            </button>
                           </>
+                        ) : (doc.doc_type === 'boleta' || doc.doc_type === 'factura') ? (
+                          <button
+                            type="button"
+                            onClick={() => printBillingThermal(doc)}
+                            disabled={printingBillingId === doc.id}
+                            className="text-xs text-[#3B82F6] hover:underline whitespace-nowrap disabled:opacity-60"
+                          >
+                            {printingBillingId === doc.id ? 'Imprimiendo…' : 'Imprimir'}
+                          </button>
                         ) : null}
                         {billingFileIsOpenable(doc.xml_url) ? (
                           <a
@@ -3052,7 +3094,7 @@ export default function Reports() {
                             CDR
                           </a>
                         ) : null}
-                        {!billingFileIsOpenable(doc.pdf_url) && !billingFileIsOpenable(doc.xml_url) && !billingFileIsOpenable(doc.cdr_url) ? (
+                        {!billingFileIsOpenable(doc.pdf_url) && !billingFileIsOpenable(doc.xml_url) && !billingFileIsOpenable(doc.cdr_url) && doc.doc_type !== 'boleta' && doc.doc_type !== 'factura' ? (
                           <span className="text-xs text-[var(--ui-muted)]">—</span>
                         ) : null}
                       </div>
@@ -3272,15 +3314,23 @@ export default function Reports() {
       >
         {billingPdfPreview?.url && (
           <div className="space-y-2">
-            <div className="flex justify-end">
-              <a
-                href={resolveMediaUrl(billingPdfPreview.url)}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm text-[#3B82F6] hover:underline"
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => billingPdfPreview?.doc && printBillingThermal(billingPdfPreview.doc)}
+                disabled={!billingPdfPreview?.doc || printingBillingId === billingPdfPreview?.doc?.id}
+                className="text-sm text-[#3B82F6] hover:underline disabled:opacity-60 inline-flex items-center gap-1"
               >
-                Abrir en nueva pestaña / imprimir
-              </a>
+                <MdPrint /> Imprimir en térmica 80 mm
+              </button>
+              <button
+                type="button"
+                onClick={() => billingPdfPreview?.doc && saveBillingPdf(billingPdfPreview.doc)}
+                disabled={!billingPdfPreview?.doc}
+                className="text-sm text-[#3B82F6] hover:underline disabled:opacity-60 inline-flex items-center gap-1"
+              >
+                <MdDownload /> Descargar PDF
+              </button>
             </div>
             <iframe
               title="PDF del comprobante"

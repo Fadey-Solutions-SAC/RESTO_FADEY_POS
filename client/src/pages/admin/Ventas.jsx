@@ -43,6 +43,7 @@ import PaymentSummaryDisplay from '../../components/admin/PaymentSummaryDisplay'
 import { restaurantLocalAddress } from '../../utils/restaurantLocalAddress';
 import { printCajaTicket } from '../../utils/printCajaTicket';
 import { withSunatQr } from '../../utils/sunatQr';
+import { SUNAT_TICKET_WIDTH_MM } from '../../utils/billingDocumentActions';
 import {
   buildBoletaFacturaPlainText,
   buildNotaVentaPlainText,
@@ -665,7 +666,7 @@ export default function Ventas() {
         const order = selected || selectedGroup?.primary;
         const items = (selectedGroup?.orders || [order]).flatMap((o) => o?.items || []);
         const grouped = groupItemsByProductNameForBill(items);
-        const pw = Number(restaurantInfo?.profile?.ticket?.paper_width_mm) === 58 ? 58 : 80;
+        const pw = SUNAT_TICKET_WIDTH_MM;
         const plain = buildBoletaFacturaPlainText({
           restaurant: restaurantInfo,
           doc,
@@ -696,14 +697,10 @@ export default function Ventas() {
           tax: Number(order?.tax || 0),
           total: Number(selectedGroup?.total || order?.total || 0),
         }));
-        if (!printRes.ok) toast.error(printRes.error || 'No se pudo imprimir en impresora de caja');
-        else toast.success('Comprobante enviado a impresora de caja');
+        if (!printRes.ok) toast.error(printRes.error || 'No se pudo imprimir en la térmica de 80 mm');
+        else toast.success('Comprobante enviado a la térmica de 80 mm');
       }
 
-      if (billingFileIsOpenable(doc?.pdf_url)) {
-        const pdf = resolveMediaUrl(doc.pdf_url);
-        if (pdf) window.open(pdf, '_blank', 'noopener,noreferrer');
-      }
       setEmitModalOpen(false);
       setEditing(null);
       closeDetail();
