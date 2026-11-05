@@ -21,7 +21,22 @@ from .ubl_generator import calcular_totales_venta, formato_monto
 logger = logging.getLogger(__name__)
 
 
-def generar_pdf_comprobante(venta: VentaInput, ruta_salida: Path) -> Path:
+def _qr_drawing(payload: str, size: float):
+    from reportlab.graphics.barcode import qr as qrbarcode
+    from reportlab.graphics.shapes import Drawing
+
+    widget = qrbarcode.QrCodeWidget(payload)
+    bounds = widget.getBounds()
+    width = bounds[2] - bounds[0]
+    height = bounds[3] - bounds[1]
+    if width <= 0 or height <= 0:
+        return None
+    drawing = Drawing(size, size, transform=[size / width, 0, 0, size / height, 0, 0])
+    drawing.add(widget)
+    return drawing
+
+
+def generar_pdf_comprobante(venta: VentaInput, ruta_salida: Path, codigo_qr: str = "") -> Path:
     """
     Genera un PDF simple con datos del emisor, cliente, líneas y totales.
     """
@@ -118,6 +133,18 @@ def generar_pdf_comprobante(venta: VentaInput, ruta_salida: Path) -> Path:
     tot_txt = "<br/>".join(lineas_tot)
     story.append(Paragraph(tot_txt, styles["Normal"]))
     story.append(Spacer(1, 0.3 * cm))
+    qr_text = str(codigo_qr or "").strip()
+    if qr_text:
+        try:
+            drawing = _qr_drawing(qr_text, 3.4 * cm)
+        except Exception:
+            logger.warning("No se pudo dibujar el QR del comprobante", exc_info=True)
+            drawing = None
+        if drawing is not None:
+            story.append(drawing)
+            story.append(Spacer(1, 0.2 * cm))
+            story.append(Paragraph("Código QR de consulta de validez SUNAT", styles["Normal"]))
+            story.append(Spacer(1, 0.2 * cm))
     story.append(
         Paragraph(
             "<i>Representación impresa. Consulte validez en SUNAT con el XML y CDR.</i>",

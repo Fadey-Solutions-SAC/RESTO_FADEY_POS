@@ -42,6 +42,7 @@ import { formatOrderPaymentLabel, orderPaymentDetail } from '../../utils/payment
 import PaymentSummaryDisplay from '../../components/admin/PaymentSummaryDisplay';
 import { restaurantLocalAddress } from '../../utils/restaurantLocalAddress';
 import { printCajaTicket } from '../../utils/printCajaTicket';
+import { withSunatQr } from '../../utils/sunatQr';
 import {
   buildBoletaFacturaPlainText,
   buildNotaVentaPlainText,
@@ -683,13 +684,18 @@ export default function Ventas() {
           printedAt: new Date(),
           paymentMethod: editPaymentMethod,
         });
-        const printRes = await printCajaTicket({
+        const printRes = await printCajaTicket(await withSunatQr({
           text: plain,
           preformatted: true,
           logoUrl: String(restaurantInfo?.logo || '').trim() || undefined,
           restaurantBrand: restaurantThermalBrandLine(restaurantInfo) || undefined,
           paperWidth: pw,
-        });
+        }, {
+          restaurant: restaurantInfo,
+          doc,
+          tax: Number(order?.tax || 0),
+          total: Number(selectedGroup?.total || order?.total || 0),
+        }));
         if (!printRes.ok) toast.error(printRes.error || 'No se pudo imprimir en impresora de caja');
         else toast.success('Comprobante enviado a impresora de caja');
       }

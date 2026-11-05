@@ -254,6 +254,7 @@ import {
 } from '../../utils/ticketPlainText';
 import PrinterModulePanel from '../../components/printing/PrinterModulePanel';
 import { getPrecuentaSurveyQrAttachment } from '../../utils/surveyQrPrint';
+import { withSunatQr } from '../../utils/sunatQr';
 import {
   DEFAULT_PRINTING_CONFIG,
   fetchPrintingConfig,
@@ -2911,13 +2912,18 @@ export default function POSPanel() {
               printedAt: new Date(),
               paymentMethod: checkoutPaymentMethod,
             });
-            const r = await printCajaTicket({
+            const r = await printCajaTicket(await withSunatQr({
               text: plain,
               preformatted: true,
               logoUrl,
               restaurantBrand: restaurantThermalBrandLine(printRestaurantInfo) || undefined,
               paperWidth: pw,
-            });
+            }, {
+              restaurant: printRestaurantInfo,
+              doc,
+              tax: Number(ord.tax || 0),
+              total: getOrderChargeTotal(ord),
+            }));
             if (!r.ok) toast.error(r.error || 'No se pudo imprimir comprobante SUNAT');
           }
         }

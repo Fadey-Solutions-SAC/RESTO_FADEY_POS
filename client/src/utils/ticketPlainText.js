@@ -730,6 +730,7 @@ export function buildBoletaFacturaPlainText({
     lines.push(centerThermalLine('Estado: aceptada (ver PDF/XML en sistema)', w));
   }
   lines.push(sep);
+  lines.push(centerThermalLine('Consulta de validez SUNAT', w));
   lines.push(centerThermalLine('Representacion impresa. Conserve su comprobante.', w));
   appendConfiguredTicketFooter(lines, restaurant, widthMm, { includePromo: false });
   lines.push('');

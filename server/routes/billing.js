@@ -1149,6 +1149,97 @@ router.post('/:id/local-result', authenticateToken, requireRole('admin', 'cajero
   }
 });
 
+function parseStoredJson(raw) {
+  try {
+    const value = JSON.parse(raw || '{}');
+    return value && typeof value === 'object' ? value : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function awaitingLocalRelay(doc) {
+  const response = parseStoredJson(doc?.provider_response);
+  return Boolean(response.local_relay);
+}
+
+function claimIsFresh(response) {
+  const at = Date.parse(response?.local_claim || '');
+  return Number.isFinite(at) && Date.now() - at < 90000;
+}
+
+router.get('/pending-local', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  const rows = queryAll(
+    `SELECT id, provider_status, provider_response, updated_at
+     FROM electronic_documents
+     WHERE provider_status IN ('error', 'pending', 'sending')
+     ORDER BY updated_at ASC
+     LIMIT 15`,
+  );
+  const documents = rows
+    .filter((row) => awaitingLocalRelay(row))
+    .filter((row) => {
+      const response = parseStoredJson(row.provider_response);
+      if (String(row.provider_status) === 'sending' && claimIsFresh(response)) return false;
+      return true;
+    })
+    .map((row) => ({ id: row.id }));
+  res.json({ documents });
+});
+
+router.get('/:id', authenticateToken, requireRole('admin', 'cajero', 'mozo'), async (req, res) => {
+  const doc = queryOne('SELECT * FROM electronic_documents WHERE id = ?', [req.params.id]);
+  if (!doc) return res.status(404).json({ error: 'Comprobante no encontrado' });
+  const restaurant = queryOne('SELECT * FROM restaurants LIMIT 1');
+  const fresh = await refreshDocWithLocalPdfIfNeeded(doc.id, restaurant);
+  res.json(fresh || doc);
+});
+
+router.post('/:id/claim-local', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  const doc = queryOne('SELECT * FROM electronic_documents WHERE id = ?', [req.params.id]);
+  if (!doc) return res.status(404).json({ error: 'Comprobante no encontrado' });
+  if (!awaitingLocalRelay(doc)) {
+    return res.status(409).json({ error: 'Este comprobante ya no espera a la PC de caja' });
+  }
+  const response = parseStoredJson(doc.provider_response);
+  const status = String(doc.provider_status || '').toLowerCase();
+  if (status === 'sending' && claimIsFresh(response)) {
+    return res.status(409).json({ error: 'Otro equipo ya está enviando este comprobante' });
+  }
+  response.local_claim = new Date().toISOString();
+  runSql(
+    `UPDATE electronic_documents
+     SET provider_status = 'sending', provider_response = ?, updated_at = datetime('now')
+     WHERE id = ?`,
+    [JSON.stringify(response), doc.id],
+  );
+  persistCriticalDb();
+  const payload = parseProviderPayload(doc.provider_payload);
+  let sale = payload;
+  try {
+    sale = prepareRelaySale(payload);
+  } catch (_) {
+    sale = payload;
+  }
+  res.json({ id: doc.id, sale });
+});
+
+router.post('/:id/release-local', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  const doc = queryOne('SELECT * FROM electronic_documents WHERE id = ?', [req.params.id]);
+  if (!doc) return res.status(404).json({ error: 'Comprobante no encontrado' });
+  if (!awaitingLocalRelay(doc)) return res.json({ ok: true, skipped: true });
+  const response = parseStoredJson(doc.provider_response);
+  delete response.local_claim;
+  runSql(
+    `UPDATE electronic_documents
+     SET provider_status = 'pending', provider_response = ?, updated_at = datetime('now')
+     WHERE id = ?`,
+    [JSON.stringify(response), doc.id],
+  );
+  persistCriticalDb();
+  res.json({ ok: true });
+});
+
 router.post('/:id/retry', authenticateToken, requireRole('admin', 'cajero'), async (req, res) => {
   try {
     const doc = queryOne('SELECT * FROM electronic_documents WHERE id = ?', [req.params.id]);

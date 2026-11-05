@@ -16,6 +16,7 @@ import { getShellModuleTitle } from '../utils/shellModuleTitle';
 import { useShellTitleOverride } from '../utils/shellTitleOverride';
 import { getOfflinePosStatus, subscribeOfflinePos } from '../utils/offlinePos';
 import OfflineCajaBanner from './OfflineCajaBanner';
+import { useEfactPcRelay } from '../utils/efactPcRelay';
 import { clearMasterViewAsOwner } from '../utils/masterViewMode';
 
 export default function Layout() {
@@ -27,6 +28,7 @@ export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, refreshStaffProfile } = useAuth();
   useStaffSessionHeartbeat(user);
+  useEfactPcRelay(user);
   const location = useLocation();
   const [cajaOpen, setCajaOpen] = useState(null);
   const [checkingCaja, setCheckingCaja] = useState(true);

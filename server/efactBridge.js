@@ -337,12 +337,14 @@ function mapEfactResponseToProviderResult(parsed, responseOk) {
     'Falta certificado digital (.pfx/.p12) o su contraseña. Súbalo en Facturación electrónica y guarde.';
 
   const sunatMsg = String(sunat?.mensaje || parsed?.mensaje || '');
+  const digest = String(parsed?.hash || '').trim();
+  const hashCode = digest.length >= 20 ? digest : '';
   return {
     providerStatus,
     providerMessage: noSunatFlow
       ? noCertMsg
       : (sunatMsg || (parsed?.ok ? 'Procesado por bot local' : 'Revisar respuesta del bot')),
-    hashCode: String(sunat?.codigo || ''),
+    hashCode,
     sunatDescription: sunatMsg,
     xmlUrl: String(paths.xml_firmado || paths.xml_sin_firma || ''),
     cdrUrl: String(paths.cdr_xml || paths.cdr_zip || ''),

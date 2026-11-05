@@ -58,7 +58,7 @@ from restaurant_efact.sunat_client import (
     enviar_comprobante,
     extraer_xml_cdr_desde_zip,
 )
-from restaurant_efact.ubl_generator import generar_xml_ubl
+from restaurant_efact.ubl_generator import calcular_totales_venta, generar_xml_ubl
 
 logging.basicConfig(
     level=logging.INFO,
@@ -243,6 +243,54 @@ def _finalize_abs_paths(result: dict) -> None:
             pass
 
 
+def extraer_valor_resumen(signed_bytes: bytes) -> str:
+    """DigestValue de la firma: es el valor resumen que va en el QR de SUNAT."""
+    try:
+        from lxml import etree
+    except ImportError:
+        return ""
+    root = etree.fromstring(signed_bytes)
+    ns = {"ds": "http://www.w3.org/2000/09/xmldsig#"}
+    for ref in root.findall(".//ds:Reference", ns):
+        uri = ref.get("URI") or ""
+        if uri not in ("", "#"):
+            continue
+        node = ref.find("ds:DigestValue", ns)
+        if node is not None and (node.text or "").strip():
+            return node.text.strip()
+    node = root.find(".//ds:DigestValue", ns)
+    return (node.text or "").strip() if node is not None else ""
+
+
+def codigo_qr_sunat(venta: VentaInput, digest: str = "") -> str:
+    """RUC|tipo|serie|número|IGV|total|fecha|tipo doc cliente|número cliente|hash."""
+    _grav, igv, total, _exo, _ina = calcular_totales_venta(venta)
+    numero = str(int(venta.correlativo))
+    return "|".join(
+        [
+            str(venta.emisor.ruc),
+            str(venta.tipo.value),
+            str(venta.serie),
+            numero,
+            f"{igv:.2f}",
+            f"{total:.2f}",
+            str(venta.fecha_emision),
+            str(venta.cliente.tipo_doc),
+            str(venta.cliente.numero_doc),
+            str(digest or "").strip(),
+        ]
+    )
+
+
+def _guardar_pdf(venta: VentaInput, rutas: RutasAlmacenamiento, nombre_base: str, result: dict, digest: str = "") -> None:
+    codigo = codigo_qr_sunat(venta, digest)
+    result["hash"] = str(digest or "").strip()
+    result["codigo_qr"] = codigo
+    path_pdf = rutas.pdf / f"{nombre_base}.pdf"
+    generar_pdf_comprobante(venta, path_pdf, codigo)
+    result["paths"]["pdf"] = str(path_pdf)
+
+
 def procesar_venta(
     venta: VentaInput,
     *,
@@ -274,14 +322,13 @@ def procesar_venta(
             logger.info("No se firma ni se envía a SUNAT (%s).", motivo_sin_firma)
         else:
             logger.warning("Sin certificado configurado: no se firma ni se envía a SUNAT.")
-        path_pdf = rutas.pdf / f"{nombre_base}.pdf"
-        generar_pdf_comprobante(venta, path_pdf)
-        result["paths"]["pdf"] = str(path_pdf)
+        _guardar_pdf(venta, rutas, nombre_base, result)
         result["mensaje"] = motivo_sin_firma or "XML y PDF sin firma SUNAT"
         _finalize_abs_paths(result)
         return result
 
     signed_bytes = firmar_xml_ubl(xml_bytes, cert_cfg)
+    digest = extraer_valor_resumen(signed_bytes)
     path_signed = rutas.xml_firmado / f"{nombre_base}.xml"
     path_signed.write_bytes(signed_bytes)
     result["paths"]["xml_firmado"] = str(path_signed)
@@ -296,9 +343,7 @@ def procesar_venta(
             logger.error("Faltan SUNAT_RUC, SUNAT_USUARIO_SOL o SUNAT_CLAVE_SOL.")
             result["ok"] = False
             result["mensaje"] = "Faltan credenciales SOL en .env"
-            path_pdf = rutas.pdf / f"{nombre_base}.pdf"
-            generar_pdf_comprobante(venta, path_pdf)
-            result["paths"]["pdf"] = str(path_pdf)
+            _guardar_pdf(venta, rutas, nombre_base, result, digest)
             _finalize_abs_paths(result)
             return result
         res = enviar_comprobante(zip_bytes, nombre_zip, sunat_cfg)
@@ -329,9 +374,7 @@ def procesar_venta(
     elif enviar_sunat:
         logger.warning("No hay configuración SUNAT; omitiendo envío.")
 
-    path_pdf = rutas.pdf / f"{nombre_base}.pdf"
-    generar_pdf_comprobante(venta, path_pdf)
-    result["paths"]["pdf"] = str(path_pdf)
+    _guardar_pdf(venta, rutas, nombre_base, result, digest)
     if not result.get("mensaje"):
         result["mensaje"] = "Procesado"
     _finalize_abs_paths(result)

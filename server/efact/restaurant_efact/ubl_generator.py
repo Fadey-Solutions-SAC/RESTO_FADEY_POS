@@ -142,6 +142,15 @@ def _supplier_party(root, venta: VentaInput) -> None:
     cid.text = "PE"
 
 
+def _payment_terms(root) -> None:
+    """SUNAT exige el tipo de transacción (catálogo forma de pago) en la factura."""
+    pt = etree.SubElement(root, _q(NS_CAC, "PaymentTerms"))
+    pid = etree.SubElement(pt, _q(NS_CBC, "ID"))
+    pid.text = "FormaPago"
+    means = etree.SubElement(pt, _q(NS_CBC, "PaymentMeansID"))
+    means.text = "Contado"
+
+
 def _customer_party(root, venta: VentaInput) -> None:
     c = venta.cliente
     cust = etree.SubElement(root, _q(NS_CAC, "AccountingCustomerParty"))
@@ -303,6 +312,7 @@ def generar_xml_ubl(venta: VentaInput) -> Tuple[bytes, str]:
 
     _supplier_party(root, venta)
     _customer_party(root, venta)
+    _payment_terms(root)
 
     _tax_total(root, venta.lineas, venta.porcentaje_igv, moneda)
     _legal_monetary_total(root, valor_venta, total, moneda)

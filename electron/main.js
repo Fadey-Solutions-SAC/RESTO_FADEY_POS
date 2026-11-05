@@ -62,6 +62,8 @@ const LOCAL_ASSISTANT_BASE_PORT = Number(
 const ASSISTANT_PORT_TRY_COUNT = 25;
 /** Puerto donde quedó escuchando el asistente (3001… o siguiente libre). */
 let assistantListenPort = null;
+let efactCloudLink = null;
+let efactCloudPollTimer = null;
 /** Puerto de la API restaurant (solo empaquetado). */
 let embeddedApiListenPort = null;
 let restaurantApiChild = null;
@@ -790,6 +792,66 @@ async function primeDesktopOsPermissions() {
   }
 }
 
+function startEfactCloudPoll() {
+  if (efactCloudPollTimer) return;
+  efactCloudPollTimer = setInterval(() => {
+    void pollEfactFromCloud();
+  }, 5000);
+}
+
+async function pollEfactFromCloud() {
+  const link = efactCloudLink;
+  if (!link?.apiBase || !link?.token) return;
+  const headers = {
+    Authorization: `Bearer ${link.token}`,
+    'Content-Type': 'application/json',
+  };
+  let list;
+  try {
+    const res = await fetch(`${link.apiBase}/billing/pending-local`, { headers });
+    if (!res.ok) return;
+    list = await res.json();
+  } catch (_) {
+    return;
+  }
+  const docs = Array.isArray(list?.documents) ? list.documents : [];
+  for (const row of docs) {
+    if (!row?.id) continue;
+    let sent = false;
+    try {
+      const claimRes = await fetch(`${link.apiBase}/billing/${encodeURIComponent(row.id)}/claim-local`, {
+        method: 'POST',
+        headers,
+        body: '{}',
+      });
+      if (!claimRes.ok) continue;
+      const claimed = await claimRes.json();
+      const botRes = await fetch('http://127.0.0.1:8765/emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(claimed.sale || {}),
+      });
+      const botText = await botRes.text();
+      let bot = {};
+      try { bot = botText ? JSON.parse(botText) : {}; } catch (_) { bot = { ok: false, error: botText.slice(0, 300) }; }
+      sent = true;
+      await fetch(`${link.apiBase}/billing/${encodeURIComponent(row.id)}/local-result`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ bot }),
+      });
+    } catch (_) {
+      if (!sent) {
+        await fetch(`${link.apiBase}/billing/${encodeURIComponent(row.id)}/release-local`, {
+          method: 'POST',
+          headers,
+          body: '{}',
+        }).catch(() => {});
+      }
+    }
+  }
+}
+
 function createWindow() {
   if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
   const preloadPath = path.join(__dirname, 'preload.js');
@@ -855,6 +917,15 @@ function buildAssistantExpressApp() {
 
   assistant.get('/health', (_req, res) => res.json(assistantHealthPayload()));
   assistant.get('/api/health', (_req, res) => res.json(assistantHealthPayload()));
+
+  assistant.post('/api/efact/cloud-link', (req, res) => {
+    const apiBase = String(req.body?.apiBase || '').trim().replace(/\/$/, '');
+    const token = String(req.body?.token || '').trim();
+    if (!apiBase || !token) return res.status(400).json({ ok: false });
+    efactCloudLink = { apiBase, token };
+    res.json({ ok: true });
+  });
+
   assistant.post('/api/efact/emitir', async (req, res) => {
     try {
       const r = await fetch('http://127.0.0.1:8765/emitir', {
@@ -1299,6 +1370,7 @@ async function startPrintingAssistantServer() {
       saveBridgePort(port);
       console.log(`[electron] asistente de impresión activo en http://127.0.0.1:${port}`);
       updateTrayMenu();
+      startEfactCloudPoll();
       return port;
     } catch (err) {
       lastErr = err;

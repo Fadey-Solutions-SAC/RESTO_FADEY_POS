@@ -65,3 +65,20 @@ export async function postSaleToLocalBot(sale) {
     `${lastMessage} Deje abierto Resto FADEY junto al reloj en esta computadora y pulse Reintentar.`,
   );
 }
+
+export async function localEfactReachable() {
+  const checks = ['http://127.0.0.1:8765/health', 'http://127.0.0.1:3002/api/health'];
+  for (const url of checks) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 800);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (res.ok) return true;
+    } catch (_) {
+      /* esta PC no tiene el bot */
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return false;
+}

@@ -11,7 +11,7 @@
  * - Las llamadas bajo `api.printing.*` usan esa base; el resto del sistema sigue usando API_BASE.
  */
 import { translateApiErrorMessage } from '../i18n/translateApiError';
-import { postSaleToLocalBot } from './efactLocalRelay';
+import { localEfactReachable, postSaleToLocalBot } from './efactLocalRelay';
 import toast from 'react-hot-toast';
 import { scaleInsumoDisplayQty } from './insumoUnidadMedida';
 import {
@@ -471,17 +471,40 @@ async function request(endpoint, options = {}, attempt = 0) {
 
   if (data?.local_relay?.sale && (data.document?.id || data.id)) {
     hideApiReconnecting();
-    try {
-      const bot = await postSaleToLocalBot(data.local_relay.sale);
-      const docId = data.document?.id || data.id;
-      return request(`/billing/${encodeURIComponent(docId)}/local-result`, {
-        method: 'POST',
-        body: JSON.stringify({ bot }),
-        skipOffline: true,
-      });
-    } catch (relayErr) {
-      throw new Error(relayErr?.message || 'No se pudo enviar el comprobante al bot de esta PC');
+    const docId = data.document?.id || data.id;
+    const reachable = await localEfactReachable();
+    if (reachable) {
+      let claimedHere = false;
+      let sentToBot = false;
+      try {
+        const claimed = await request(`/billing/${encodeURIComponent(docId)}/claim-local`, {
+          method: 'POST',
+          body: '{}',
+          skipOffline: true,
+        });
+        claimedHere = true;
+        const bot = await postSaleToLocalBot(claimed?.sale || data.local_relay.sale);
+        sentToBot = true;
+        return request(`/billing/${encodeURIComponent(docId)}/local-result`, {
+          method: 'POST',
+          body: JSON.stringify({ bot }),
+          skipOffline: true,
+        });
+      } catch (relayErr) {
+        if (claimedHere && !sentToBot && relayErr?.status !== 409) {
+          await request(`/billing/${encodeURIComponent(docId)}/release-local`, {
+            method: 'POST',
+            body: '{}',
+            skipOffline: true,
+          }).catch(() => {});
+        }
+      }
     }
+    const done = await waitForCajaPc(docId);
+    if (done) return done;
+    throw new Error(
+      'La PC de caja no terminó la factura. Deje abierta la caja en esa computadora, con Resto FADEY junto al reloj, y vuelva a emitir.',
+    );
   }
 
   if (!res.ok) {
@@ -537,6 +560,37 @@ async function request(endpoint, options = {}, attempt = 0) {
   }
 
   return data;
+}
+
+function billingStillWaitingOnPc(doc) {
+  const status = String(doc?.provider_status || '').toLowerCase();
+  if (status === 'accepted' || status === 'sent' || status === 'local') return false;
+  let response = doc?.provider_response;
+  if (typeof response === 'string') {
+    try {
+      response = JSON.parse(response);
+    } catch (_) {
+      response = {};
+    }
+  }
+  return Boolean(response?.local_relay) && (status === 'error' || status === 'pending' || status === 'sending');
+}
+
+async function waitForCajaPc(docId) {
+  const started = Date.now();
+  while (Date.now() - started < 60000) {
+    await sleep(2000);
+    try {
+      const doc = await request(`/billing/${encodeURIComponent(docId)}`, {
+        method: 'GET',
+        skipOffline: true,
+      });
+      if (doc && !billingStillWaitingOnPc(doc)) return doc;
+    } catch (_) {
+      /* la PC de caja sigue enviando */
+    }
+  }
+  return null;
 }
 
 function printingUnreachableMessage() {
