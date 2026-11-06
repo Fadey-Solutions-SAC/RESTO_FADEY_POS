@@ -1062,10 +1062,77 @@ function runTool(name, args, user) {
   }
 }
 
+function toolBillingDocuments() {
+  const today = getBusinessTodayDateKey(queryOne);
+  const month = getBusinessMonthKey(queryOne);
+  const from = `${month}-01`;
+  let rows = [];
+  try {
+    rows = queryAll(
+      `SELECT doc_type,
+              LOWER(COALESCE(provider_status, '')) AS status,
+              substr(COALESCE(created_at, ''), 1, 10) AS day,
+              COUNT(*) AS n,
+              COALESCE(SUM(total), 0) AS total
+       FROM electronic_documents
+       WHERE substr(COALESCE(created_at, ''), 1, 10) >= ?
+       GROUP BY doc_type, status, day`,
+      [from],
+    ) || [];
+  } catch (err) {
+    return { ok: false, error: err.message || 'No pude leer los comprobantes.' };
+  }
+
+  const empty = () => ({ n: 0, total: 0, accepted: 0, pending: 0, error: 0 });
+  const fold = (list) => {
+    const out = { boleta: empty(), factura: empty(), nota: empty() };
+    for (const row of list) {
+      const kind = row.doc_type === 'factura' ? 'factura' : row.doc_type === 'boleta' ? 'boleta' : 'nota';
+      const bucket = out[kind];
+      const n = Number(row.n) || 0;
+      const total = Number(row.total) || 0;
+      bucket.n += n;
+      bucket.total += total;
+      const status = String(row.status || '');
+      if (status === 'accepted' || status === 'sent') bucket.accepted += n;
+      else if (status === 'error') bucket.error += n;
+      else if (status !== 'local') bucket.pending += n;
+    }
+    return out;
+  };
+  const monthStats = fold(rows);
+  const todayStats = fold(rows.filter((row) => row.day === today));
+  const money = (n) => `S/ ${Number(n || 0).toFixed(2)}`;
+  const line = (label, bucket) => {
+    if (!bucket.n) return `${label}: ninguna.`;
+    const bits = [`${bucket.n} · ${money(bucket.total)}`];
+    if (bucket.accepted) bits.push(`${bucket.accepted} aceptada(s)`);
+    if (bucket.pending) bits.push(`${bucket.pending} pendiente(s)`);
+    if (bucket.error) bits.push(`${bucket.error} rechazada(s)`);
+    return `${label}: ${bits.join(' · ')}.`;
+  };
+  const block = (title, stats) => [
+    title,
+    line('Boletas', stats.boleta),
+    line('Facturas', stats.factura),
+    stats.nota.n ? line('Notas de venta', stats.nota) : null,
+  ].filter(Boolean).join('\n');
+
+  const text = [
+    '**Boletas y facturas**',
+    '',
+    block(`Hoy (${formatDisplayDateKey(today)})`, todayStats),
+    '',
+    block(`Este mes (${month})`, monthStats),
+  ].join('\n');
+  return { ok: true, text, today: todayStats, month: monthStats };
+}
+
 module.exports = {
   toolsForUser,
   runTool,
   canSeeFinancials,
   resolveSalesPeriod,
+  toolBillingDocuments,
   TOOL_DEFS,
 };

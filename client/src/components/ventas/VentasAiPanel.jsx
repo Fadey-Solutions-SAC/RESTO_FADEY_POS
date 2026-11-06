@@ -49,6 +49,7 @@ const SALES_CHAT_SUGGESTED = [
   '¿Qué mesero vendió más?',
   '¿Cómo se repartieron los pagos?',
   'Genera un resumen de ventas',
+  'Análisis de boletas y facturas',
   '¿Hay stock bajo?',
 ];
 

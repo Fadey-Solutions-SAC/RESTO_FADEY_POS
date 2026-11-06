@@ -7,10 +7,11 @@ import { getOrderChargeTotal } from '../../utils/mesaOrderLines';
 import {
   MdAdd, MdEdit, MdDelete, MdSearch, MdPhone, MdEmail, MdAttachMoney, MdContentCopy,
   MdPeople, MdPersonAdd, MdCreditCard, MdStar, MdChevronRight, MdChevronLeft, MdVisibility,
-  MdMoreVert, MdFileDownload, MdCalendarToday, MdBusiness, MdRepeat, MdFiberNew, MdClose,
+  MdMoreVert, MdFileDownload, MdBusiness, MdRepeat, MdFiberNew, MdClose,
   MdCheckCircle, MdLocationOn,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
+import ToolbarFilterMenu from '../../components/admin/ToolbarFilterMenu';
 import toast from 'react-hot-toast';
 
 const PAGE_SIZE = 10;
@@ -498,66 +499,69 @@ export default function Clientes() {
         </button>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[14rem] flex-1">
-            <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" />
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
+        <div className="mb-4 flex flex-nowrap items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base text-slate-400 sm:left-3 sm:text-lg" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nombre, teléfono, DNI o correo..."
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              placeholder="Buscar cliente..."
+              className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-2 text-xs text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 sm:h-10 sm:pl-10 sm:pr-3 sm:text-sm"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            className="h-9 w-[7.4rem] shrink-0 rounded-xl border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-400 sm:h-10 sm:w-auto sm:px-3 sm:text-sm"
           >
-            <option value="all">Todos los estados</option>
+            <option value="all">Estados</option>
             <option value="active">Activos</option>
             <option value="inactive">Inactivos</option>
-            <option value="debt">Con crédito / deuda</option>
+            <option value="debt">Con crédito</option>
             <option value="frequent">Frecuentes</option>
-            <option value="empresa">Empresas (RUC)</option>
+            <option value="empresa">Empresas</option>
           </select>
-          <div className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700" title="Rango de última compra">
-            <MdCalendarToday className="text-slate-400" />
-            <input
-              type="date"
-              value={dateFrom}
-              max={dateTo || undefined}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="bg-transparent text-sm outline-none"
-              aria-label="Desde"
-            />
-            <span className="text-slate-400">-</span>
-            <input
-              type="date"
-              value={dateTo}
-              min={dateFrom || undefined}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="bg-transparent text-sm outline-none"
-              aria-label="Hasta"
-            />
-          </div>
-          {filtersActive && (
+          <ToolbarFilterMenu label="Opciones" active={Boolean(dateFrom || dateTo)}>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Última compra</p>
+            <label className="mb-2 block text-xs text-slate-500">
+              Desde
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-800"
+              />
+            </label>
+            <label className="mb-3 block text-xs text-slate-500">
+              Hasta
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-800"
+              />
+            </label>
             <button
               type="button"
-              onClick={() => { setSearch(''); setStatusFilter('all'); setDateFrom(''); setDateTo(''); }}
-              className="inline-flex h-10 items-center gap-1 rounded-xl px-3 text-sm font-medium text-slate-500 hover:bg-slate-100"
+              onClick={exportCsv}
+              className="flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800"
             >
-              <MdClose /> Limpiar
+              <MdFileDownload />
+              Exportar{selectedIds.size ? ` (${selectedIds.size})` : ''}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={exportCsv}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            <MdFileDownload className="text-lg" />
-            Exportar{selectedIds.size ? ` (${selectedIds.size})` : ''}
-          </button>
+            {filtersActive ? (
+              <button
+                type="button"
+                onClick={() => { setSearch(''); setStatusFilter('all'); setDateFrom(''); setDateTo(''); }}
+                className="mt-2 flex h-9 w-full items-center justify-center gap-1 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100"
+              >
+                <MdClose /> Limpiar filtros
+              </button>
+            ) : null}
+          </ToolbarFilterMenu>
         </div>
 
         {loading && !clientes.length ? (

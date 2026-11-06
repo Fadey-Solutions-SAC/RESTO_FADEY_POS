@@ -1003,18 +1003,18 @@ export default function Productos() {
                 })}
             </p>
 
-            <div className="bg-[var(--ui-surface)] rounded-xl border border-[color:var(--ui-border)] overflow-x-auto">
-              <table className="w-full text-sm min-w-[36rem] lg:min-w-0">
+            <div className="overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] lg:overflow-x-auto">
+              <table className="w-full table-fixed text-sm lg:table-auto">
                 <thead>
                   <tr className="border-b border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]">
-                    <th className="text-left p-3 font-semibold text-[var(--ui-body-text)]">{t('table.product')}</th>
-                    <th className="text-left p-3 font-semibold text-[var(--ui-body-text)] w-20 hidden md:table-cell">{t('table.code')}</th>
-                    <th className="text-left p-3 font-semibold text-[var(--ui-body-text)] w-28 hidden sm:table-cell">{t('table.category')}</th>
-                    <th className="text-right p-3 font-semibold text-[var(--ui-body-text)] w-24">{t('table.salePrice')}</th>
-                    <th className="text-right p-3 font-semibold text-[var(--ui-body-text)] w-24 hidden lg:table-cell">{t('table.purchasePrice')}</th>
-                    <th className="text-center p-3 font-semibold text-[var(--ui-body-text)] w-20">{t('table.stock')}</th>
-                    <th className="text-center p-3 font-semibold text-[var(--ui-body-text)] w-24 hidden md:table-cell">{t('table.active')}</th>
-                    <th className="text-center p-3 font-semibold text-[var(--ui-body-text)] w-20"></th>
+                    <th className="p-2 text-left font-semibold text-[var(--ui-body-text)] lg:p-3">{t('table.product')}</th>
+                    <th className="hidden w-20 p-3 text-left font-semibold text-[var(--ui-body-text)] md:table-cell">{t('table.code')}</th>
+                    <th className="hidden w-28 p-3 text-left font-semibold text-[var(--ui-body-text)] lg:table-cell">{t('table.category')}</th>
+                    <th className="w-14 p-1.5 text-right font-semibold text-[var(--ui-body-text)] lg:w-24 lg:p-3">{t('table.salePrice')}</th>
+                    <th className="hidden w-24 p-3 text-right font-semibold text-[var(--ui-body-text)] lg:table-cell">{t('table.purchasePrice')}</th>
+                    <th className="w-10 p-1 text-center font-semibold text-[var(--ui-body-text)] lg:w-20 lg:p-3">{t('table.stock')}</th>
+                    <th className="hidden w-24 p-3 text-center font-semibold text-[var(--ui-body-text)] md:table-cell">{t('table.active')}</th>
+                    <th className="w-[4.25rem] p-1 text-center font-semibold text-[var(--ui-body-text)] lg:w-20 lg:p-3"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1030,8 +1030,8 @@ export default function Productos() {
                           : '';
                     return (
                     <tr key={p.id} className={`border-b border-[color:var(--ui-border)] hover:bg-[var(--ui-sidebar-hover)] transition-colors ${!p.is_active ? 'opacity-50' : ''} ${alertRow ? rowTone : ''}`}>
-                      <td className="p-3">
-                        <p className="font-medium text-[var(--ui-body-text)] hover:text-gold-600 cursor-pointer flex items-center gap-2" onClick={() => openEditProduct(p)}>
+                      <td className="max-w-0 p-2 lg:max-w-none lg:p-3">
+                        <p className="flex min-w-0 cursor-pointer items-center gap-2 font-medium text-[var(--ui-body-text)] hover:text-gold-600" onClick={() => openEditProduct(p)}>
                           {slowMovingProductIds.has(String(p.id)) ? (
                             <span
                               className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-red-600"
@@ -1045,7 +1045,7 @@ export default function Productos() {
                           {alertRow && stockStatus === 'low' ? (
                             <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500 text-white shrink-0">Stock bajo</span>
                           ) : null}
-                          <span>{p.name}</span>
+                          <span className="min-w-0 truncate">{p.name}</span>
                         </p>
                         {Number(p.schedule_enabled) === 1 && (() => {
                           const st = evaluateProductSchedule(p);
@@ -1063,15 +1063,15 @@ export default function Productos() {
                         })()}
                         {p.description && <p className="text-xs text-[var(--ui-muted)] mt-0.5 line-clamp-1">{p.description}</p>}
                       </td>
-                      <td className="p-3 text-[var(--ui-muted)] hidden md:table-cell">#{String(idx + 1).padStart(2, '0')}</td>
-                      <td className="p-3 hidden sm:table-cell"><span className="text-xs px-2 py-0.5 bg-[var(--ui-surface-2)] rounded-full text-[var(--ui-body-text)] border border-[color:var(--ui-border)]">{getCatName(p.category_id)}</span></td>
-                      <td className="p-3 text-right font-bold text-[var(--ui-body-text)] whitespace-nowrap">{formatCurrency(p.price)}</td>
+                      <td className="hidden p-3 text-[var(--ui-muted)] md:table-cell">#{String(idx + 1).padStart(2, '0')}</td>
+                      <td className="hidden p-3 lg:table-cell"><span className="rounded-full border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-2 py-0.5 text-xs text-[var(--ui-body-text)]">{getCatName(p.category_id)}</span></td>
+                      <td className="whitespace-nowrap p-2 text-right text-xs font-bold text-[var(--ui-body-text)] lg:p-3 lg:text-sm">{formatCurrency(p.price)}</td>
                       <td className="p-3 text-right text-[var(--ui-muted)] hidden lg:table-cell">
                         {p.purchase_price != null && Number(p.purchase_price) > 0
                           ? formatCurrency(p.purchase_price)
                           : '—'}
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="p-1 text-center lg:p-3">
                         {(showStockInOrderingUI(p) || stockAlertActive) ? (() => {
                           const status = stockStatus;
                           const cls = status === 'normal'
@@ -1105,21 +1105,21 @@ export default function Productos() {
                           )}
                         </button>
                       </td>
-                      <td className="p-3">
-                        <div className="flex items-center justify-center gap-1 sm:gap-2">
+                      <td className="p-1 lg:p-3">
+                        <div className="flex items-center justify-center gap-0.5 lg:gap-2">
                           <button
                             onClick={() => openEditProduct(p)}
-                            className="p-2 sm:px-2.5 sm:py-1.5 text-xs rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center gap-1"
+                            className="flex items-center gap-1 rounded-lg bg-slate-100 p-1.5 text-xs text-slate-700 hover:bg-slate-200 lg:px-2.5 lg:py-1.5"
                             title={t('table.edit')}
                           >
-                            <MdEdit className="text-sm" /> <span className="hidden sm:inline">{t('table.edit')}</span>
+                            <MdEdit className="text-sm" /> <span className="hidden lg:inline">{t('table.edit')}</span>
                           </button>
                           <button
                             onClick={() => deleteProduct(p)}
-                            className="p-2 sm:px-2.5 sm:py-1.5 text-xs rounded-lg bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-1"
+                            className="flex items-center gap-1 rounded-lg bg-red-50 p-1.5 text-xs text-red-600 hover:bg-red-100 lg:px-2.5 lg:py-1.5"
                             title={t('table.delete')}
                           >
-                            <MdDelete className="text-sm" /> <span className="hidden sm:inline">{t('table.delete')}</span>
+                            <MdDelete className="text-sm" /> <span className="hidden lg:inline">{t('table.delete')}</span>
                           </button>
                         </div>
                       </td>

@@ -3,6 +3,7 @@ import { api, formatCurrency, formatDate, toLocalDateKey } from '../../utils/api
 import { useSocket } from '../../hooks/useSocket';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
+import ToolbarFilterMenu from '../../components/admin/ToolbarFilterMenu';
 import CompactSelect from '../../components/CompactSelect';
 import StaffDineInOrderUI from '../../components/StaffDineInOrderUI';
 import StaffModifierPromptModal from '../../components/StaffModifierPromptModal';
@@ -36,7 +37,6 @@ import {
   MdSoupKitchen,
   MdCheckCircle,
   MdClose,
-  MdFilterList,
 } from 'react-icons/md';
 
 function splitReservationNotes(notes) {
@@ -336,7 +336,7 @@ export default function Reservas() {
 
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto] gap-4 mb-5 items-stretch">
+      <div className="mb-5 grid grid-cols-2 items-stretch gap-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto] lg:gap-4">
         {[
           {
             key: 'hoy',
@@ -370,17 +370,20 @@ export default function Reservas() {
             key={k.key}
             type="button"
             onClick={k.onClick}
-            className="group flex h-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md"
+            className="group flex h-full min-w-0 flex-col justify-center gap-1 rounded-xl border border-slate-200 bg-white p-2.5 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md lg:flex-row lg:items-center lg:gap-4 lg:rounded-2xl lg:p-5"
           >
-            <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-full ${k.bubble}`}>
-              <k.Icon className="text-2xl" />
+            <span className="block truncate text-[11px] font-semibold leading-tight text-slate-800 lg:hidden">{k.title}</span>
+            <span className="flex w-full min-w-0 items-center gap-2 lg:contents">
+              <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full lg:h-14 lg:w-14 ${k.bubble}`}>
+                <k.Icon className="text-base lg:text-2xl" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="hidden truncate text-sm font-semibold text-slate-800 lg:block">{k.title}</span>
+                <span className="block text-xl font-bold leading-none text-slate-900 tabular-nums lg:mt-1 lg:text-3xl">{k.value}</span>
+                <span className="mt-1 hidden text-xs text-slate-500 lg:block">{k.hint}</span>
+              </span>
+              <MdChevronRight className="shrink-0 text-lg text-slate-300 transition group-hover:text-slate-500 lg:text-2xl" />
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-slate-800">{k.title}</span>
-              <span className="mt-1 block text-3xl font-bold leading-none text-slate-900 tabular-nums">{k.value}</span>
-              <span className="mt-1.5 block text-xs text-slate-500">{k.hint}</span>
-            </span>
-            <MdChevronRight className="shrink-0 text-2xl text-slate-300 transition group-hover:text-slate-500" />
           </button>
         ))}
         <button
@@ -389,56 +392,49 @@ export default function Reservas() {
             resetForm();
             setShowModal(true);
           }}
-          className="flex h-full min-h-[6.5rem] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 text-base font-semibold text-white shadow-md shadow-blue-600/30 transition hover:bg-blue-700 sm:col-span-2 lg:col-span-1"
+          className="flex h-full min-h-[4.25rem] items-center justify-center gap-1 rounded-xl bg-blue-600 px-2 text-center text-xs font-semibold leading-tight text-white shadow-md shadow-blue-600/30 transition hover:bg-blue-700 lg:min-h-[6.5rem] lg:gap-2 lg:rounded-2xl lg:px-6 lg:text-base"
         >
-          <MdAdd className="text-2xl" /> Nueva Reserva
+          <MdAdd className="shrink-0 text-xl lg:text-2xl" /> Nueva Reserva
         </button>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <h2 className="flex items-center gap-2.5 text-xl font-bold text-slate-900">
-            <MdCalendarToday className="text-2xl text-blue-600" />
-            Reservas
+        <div className="mb-4 flex flex-nowrap items-center gap-2 border-b border-slate-100 pb-4">
+          <h2 className="flex min-w-0 flex-1 items-center gap-2 text-lg font-bold text-slate-900 sm:text-xl">
+            <MdCalendarToday className="shrink-0 text-xl text-blue-600 sm:text-2xl" />
+            <span className="truncate">Reservas</span>
           </h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-              <MdCalendarToday className="text-slate-500" />
+          <select
+            className="h-9 w-[7.2rem] shrink-0 rounded-xl border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none sm:h-10 sm:w-auto sm:px-3 sm:text-sm"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            aria-label="Filtrar por estado"
+          >
+            <option value="all">Estados</option>
+            <option value="confirmed">Confirmadas</option>
+            <option value="pending">Pendientes</option>
+            <option value="completed">Completadas</option>
+          </select>
+          <ToolbarFilterMenu label="Fecha" active={Boolean(dateFilter)}>
+            <label className="block text-xs text-slate-500">
+              Día de la reserva
               <input
                 type="date"
-                className="bg-transparent text-sm outline-none"
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-800"
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
-                aria-label="Filtrar por fecha"
               />
-              {dateFilter ? (
-                <button
-                  type="button"
-                  className="text-slate-400 hover:text-slate-600"
-                  onClick={() => setDateFilter('')}
-                  aria-label="Ver todas las fechas"
-                >
-                  <MdClose />
-                </button>
-              ) : (
-                <span className="text-xs text-slate-400">Todas</span>
-              )}
             </label>
-            <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-              <MdFilterList className="text-slate-500" />
-              <select
-                className="bg-transparent text-sm outline-none"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                aria-label="Filtrar por estado"
+            {dateFilter ? (
+              <button
+                type="button"
+                className="mt-2 h-9 w-full rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100"
+                onClick={() => setDateFilter('')}
               >
-                <option value="all">Todos los estados</option>
-                <option value="confirmed">Confirmadas</option>
-                <option value="pending">Pendientes</option>
-                <option value="completed">Completadas</option>
-              </select>
-            </label>
-          </div>
+                Ver todas las fechas
+              </button>
+            ) : null}
+          </ToolbarFilterMenu>
         </div>
 
         {listedReservas.length === 0 ? (

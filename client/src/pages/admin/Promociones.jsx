@@ -23,6 +23,7 @@ import toast from 'react-hot-toast';
 import { api, formatCurrency, resolveMediaUrl } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import Modal from '../../components/Modal';
+import ToolbarFilterMenu from '../../components/admin/ToolbarFilterMenu';
 import {
   PROMOTION_TYPES,
   PROMOTION_TYPE_LABELS,
@@ -45,14 +46,6 @@ const DAY_OPTIONS = [
   { value: 5, short: 'V', label: 'Viernes' },
   { value: 6, short: 'S', label: 'Sábado' },
   { value: 0, short: 'D', label: 'Domingo' },
-];
-
-const STATUS_TABS = [
-  { key: 'all', label: 'Todas' },
-  { key: 'active', label: 'Activas' },
-  { key: 'scheduled', label: 'Programadas' },
-  { key: 'paused', label: 'Pausadas' },
-  { key: 'finished', label: 'Finalizadas' },
 ];
 
 const TYPE_PILL = {
@@ -358,14 +351,6 @@ export default function Promociones() {
     [products, productsById],
   );
 
-  const counts = useMemo(() => {
-    const c = { all: data.promotions.length, active: 0, scheduled: 0, paused: 0, finished: 0 };
-    data.promotions.forEach((p) => {
-      c[p.computed_status] = (c[p.computed_status] || 0) + 1;
-    });
-    return c;
-  }, [data.promotions]);
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return data.promotions.filter((p) => {
@@ -571,38 +556,23 @@ export default function Promociones() {
         </button>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex flex-wrap gap-2">
-          {STATUS_TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setStatusFilter(t.key)}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                statusFilter === t.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {t.label} <span className="ml-1 opacity-75">{counts[t.key] || 0}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[14rem] flex-1">
-            <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" />
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
+        <div className="mb-4 flex flex-nowrap items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base text-slate-400 sm:left-3 sm:text-lg" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar promoción..."
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              placeholder="Buscar..."
+              className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-2 text-xs text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 sm:h-10 sm:pl-10 sm:pr-3 sm:text-sm"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-400"
+            className="h-9 w-[6.6rem] shrink-0 rounded-xl border border-slate-200 bg-white px-1.5 text-xs text-slate-700 outline-none focus:border-blue-400 sm:h-10 sm:w-auto sm:px-3 sm:text-sm"
           >
-            <option value="all">Todos los estados</option>
+            <option value="all">Estados</option>
             {Object.entries(PROMOTION_STATUS_LABELS).map(([k, v]) => (
               <option key={k} value={k}>
                 {v}
@@ -612,33 +582,45 @@ export default function Promociones() {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-400"
+            className="h-9 w-[6.2rem] shrink-0 rounded-xl border border-slate-200 bg-white px-1.5 text-xs text-slate-700 outline-none focus:border-blue-400 sm:h-10 sm:w-auto sm:px-3 sm:text-sm"
           >
-            <option value="all">Todos los tipos</option>
+            <option value="all">Tipos</option>
             {PROMOTION_TYPES.map((t) => (
               <option key={t} value={t}>
                 {PROMOTION_TYPE_LABELS[t]}
               </option>
             ))}
           </select>
-          <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-2">
-            <MdEvent className="text-slate-400" />
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="h-9 bg-transparent text-sm text-slate-700 outline-none"
-              aria-label="Desde"
-            />
-            <span className="text-slate-400">-</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="h-9 bg-transparent text-sm text-slate-700 outline-none"
-              aria-label="Hasta"
-            />
-          </div>
+          <ToolbarFilterMenu label="Fechas" active={Boolean(dateFrom || dateTo)}>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Vigencia</p>
+            <label className="mb-2 block text-xs text-slate-500">
+              Desde
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-800"
+              />
+            </label>
+            <label className="block text-xs text-slate-500">
+              Hasta
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-800"
+              />
+            </label>
+            {(dateFrom || dateTo) ? (
+              <button
+                type="button"
+                onClick={() => { setDateFrom(''); setDateTo(''); }}
+                className="mt-2 h-9 w-full rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100"
+              >
+                Quitar fechas
+              </button>
+            ) : null}
+          </ToolbarFilterMenu>
         </div>
 
         {selected.length > 0 ? (

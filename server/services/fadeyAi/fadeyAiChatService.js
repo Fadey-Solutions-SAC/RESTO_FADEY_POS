@@ -15,7 +15,7 @@ const {
   learnUserPhrase,
   resolveLearnedIntent,
 } = require('./fadeyAiKnowledgeService');
-const { runTool, resolveSalesPeriod } = require('./fadeyAiTools');
+const { runTool, resolveSalesPeriod, toolBillingDocuments } = require('./fadeyAiTools');
 const { buildSupportAnswer } = require('./fadeyAiSupport');
 const { buildReportAnswer, isReportRequest } = require('./fadeyAiReports');
 const { buildPurchaseAnswer } = require('./fadeyAiPurchase');
@@ -215,19 +215,26 @@ function guidesOnlyReply(message, user) {
     user,
     searchMemory(message, { kinds: ['guide', 'config', 'catalog', 'snapshot'], limit: 6 }),
   ).slice(0, 2);
-  if (!hits.length) {
-    const raw = searchMemory(message, { kinds: ['guide'], limit: 1 });
-    if (raw[0] && !guideAllowedForUser(user, raw[0].id)) {
+    if (!hits.length) {
+      const raw = searchMemory(message, { kinds: ['guide'], limit: 1 });
+      if (raw[0] && !guideAllowedForUser(user, raw[0].id)) {
+        return {
+          reply: deniedGuideMessage(user, raw[0].id),
+          sources: [{ kind: 'tool', title: 'permission_denied' }],
+        };
+      }
+      const asksData = /analiz|boleta|factura|venta|resumen|cu[aá]nto|cobro|mesero|stock/.test(String(message || '').toLowerCase());
+      if (asksData) {
+        return {
+          reply: 'Puedo responder con los datos del local. Prueba «¿cuánto vendí hoy?», «análisis de boletas y facturas» o «¿qué mesero vendió más?».',
+          sources: [{ kind: 'tool', title: 'sales_summary' }],
+        };
+      }
       return {
-        reply: deniedGuideMessage(user, raw[0].id),
-        sources: [{ kind: 'tool', title: 'permission_denied' }],
+        reply: 'No encontré una guía exacta dentro de tus módulos. Prueba preguntar con más detalle o escribe «¿qué puedo hacer?».\n\nSi es un error del sistema, descríbelo (por ejemplo «error al imprimir») o escribe «soporte» y te preparo el mensaje para el equipo técnico.',
+        sources: [],
       };
     }
-    return {
-      reply: 'No encontré una guía exacta dentro de tus módulos. Prueba preguntar con más detalle o escribe «¿qué puedo hacer?».\n\nSi es un error del sistema, descríbelo (por ejemplo «error al imprimir») o escribe «soporte» y te preparo el mensaje para el equipo técnico.',
-      sources: [],
-    };
-  }
   const best = hits[0];
   const body = String(best.body || '').replace(/\n*\(Palabras clave:[\s\S]*$/, '').trim();
   return {
@@ -627,6 +634,22 @@ function tryDirectDataAnswer(message, user) {
   const m = String(message || '').toLowerCase();
   if (isExplicitHowToMessage(m)) return null;
 
+  if (/(boleta|factura|comprobante)/.test(m) && /(analiz|resumen|cu[aá]nt|emitid|acept|rechaz|sunat|estado)/.test(m)) {
+    const billing = toolBillingDocuments();
+    if (billing?.ok && billing.text) {
+      return {
+        chunks: [billing.text],
+        sources: [{ kind: 'tool', title: 'billing_documents' }],
+      };
+    }
+    if (billing?.error) {
+      return {
+        chunks: [billing.error],
+        sources: [{ kind: 'tool', title: 'billing_documents' }],
+      };
+    }
+  }
+
   if (/encuesta/.test(m) && !isReportRequest(message) && !/c[oó]mo\s+(configurar|crear|armar|hacer|usar)|configurar la encuesta|descargar el qr|formato de la encuesta/.test(m)) {
     if (!isPlanModuleEnabled('fidelizacion')) {
       return {
@@ -1006,6 +1029,21 @@ function heuristicToolPrefetch(message, user) {
       sources.push({ kind: 'tool', title: 'business_insights' });
       return { chunks, sources };
     }
+    const period = resolveSalesPeriod(message);
+    const sales = runTool('sales_summary', {
+      scope: period.scope,
+      from: period.from,
+      to: period.to,
+      label: period.label,
+    }, user);
+    if (sales?.ok) {
+      chunks.push(formatSalesReply(sales, user));
+      sources.push({ kind: 'tool', title: 'sales_summary' });
+      return { chunks, sources };
+    }
+    chunks.push('No pude armar el análisis con los datos de este momento. Prueba «¿cuánto vendí hoy?» o «análisis de boletas y facturas».');
+    sources.push({ kind: 'tool', title: 'sales_summary' });
+    return { chunks, sources };
   }
 
   if (/plato|producto.*m[aá]s|m[aá]s vend|top/.test(m) && !/c[oó]mo/.test(m) && !wantsHrData) {

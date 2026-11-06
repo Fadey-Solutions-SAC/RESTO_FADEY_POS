@@ -297,6 +297,7 @@ export default function Ventas() {
   const [editCustomerPhone, setEditCustomerPhone] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [issuingDoc, setIssuingDoc] = useState(false);
+  const [consultaPadronLoading, setConsultaPadronLoading] = useState(false);
   /** Modal de emisión (mismo flujo que Caja) al elegir boleta/factura en Editar. */
   const [emitModalOpen, setEmitModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -615,6 +616,45 @@ export default function Ventas() {
     setEditCustomerPhone(String(doc.customer_phone || '').trim());
     setSelected(order);
     setSelectedGroup(group);
+  };
+
+  const consultarPadronEdit = async () => {
+    const docType = editDocType === 'factura' ? '6' : editCustomerDocType;
+    if (docType !== '1' && docType !== '6') {
+      toast.error('Seleccione DNI o RUC');
+      return;
+    }
+    const num = String(editCustomerDocNumber || '').replace(/\D/g, '');
+    const okLen = docType === '6' ? num.length === 11 : num.length === 8;
+    if (!okLen) {
+      toast.error(docType === '6' ? 'Ingrese un RUC de 11 dígitos' : 'Ingrese un DNI de 8 dígitos');
+      return;
+    }
+    const limit = Number(user?.padron_quota?.limit);
+    const used = Number(user?.padron_quota?.used) || 0;
+    if (Number.isFinite(limit) && limit > 0 && used >= limit) {
+      toast.error(`Límite mensual de consultas DNI/RUC alcanzado (${limit}).`);
+      return;
+    }
+    try {
+      setConsultaPadronLoading(true);
+      const data = await api.get(
+        `/admin-modules/consulta-padron?doc_type=${encodeURIComponent(docType)}&numero=${encodeURIComponent(num)}`,
+      );
+      const nombre = String(data?.nombre || '').trim();
+      if (!nombre) {
+        toast.error('No se recibió el nombre del padrón');
+        return;
+      }
+      setEditCustomerName(nombre);
+      const direccion = String(data?.direccion || '').trim();
+      if (direccion) setEditCustomerAddress(direccion);
+      toast.success(docType === '6' ? 'Razón social obtenida del padrón' : 'Nombre obtenido del padrón');
+    } catch (err) {
+      toast.error(err?.message || 'No se pudo consultar el padrón');
+    } finally {
+      setConsultaPadronLoading(false);
+    }
   };
 
   const issueComprobanteFromEdit = async () => {
@@ -1550,12 +1590,26 @@ export default function Ventas() {
               <label className="block text-xs text-[var(--ui-muted)] mb-1">
                 {editDocType === 'factura' || editCustomerDocType === '6' ? 'RUC' : 'Número'}
               </label>
-              <input
-                className="input-field text-sm"
-                value={editCustomerDocNumber}
-                onChange={(e) => setEditCustomerDocNumber(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                placeholder={editDocType === 'factura' || editCustomerDocType === '6' ? '11 dígitos' : '8 dígitos'}
-              />
+              <div className="flex gap-2">
+                <input
+                  className="input-field text-sm min-w-0 flex-1"
+                  value={editCustomerDocNumber}
+                  onChange={(e) => setEditCustomerDocNumber(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                  placeholder={editDocType === 'factura' || editCustomerDocType === '6' ? '11 dígitos' : '8 dígitos'}
+                />
+                {(editDocType === 'factura' || editCustomerDocType === '1' || editCustomerDocType === '6') && (
+                  <button
+                    type="button"
+                    title="Consultar nombre o razón social en el padrón"
+                    onClick={() => void consultarPadronEdit()}
+                    disabled={consultaPadronLoading}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[color:var(--ui-accent)] px-2.5 text-xs font-medium text-[var(--ui-accent-muted)] hover:bg-[#2563EB]/10 disabled:opacity-50"
+                  >
+                    <MdSearch className="text-lg" />
+                    Padrón
+                  </button>
+                )}
+              </div>
             </div>
             <div className="sm:col-span-2">
               <label className="block text-xs text-[var(--ui-muted)] mb-1">
