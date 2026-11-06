@@ -415,7 +415,7 @@ export default function Reservas() {
             <option value="pending">Pendientes</option>
             <option value="completed">Completadas</option>
           </select>
-          <ToolbarFilterMenu label="Fecha" active={Boolean(dateFilter)}>
+          <ToolbarFilterMenu label="Fecha" iconOnly active={Boolean(dateFilter)}>
             <label className="block text-xs text-slate-500">
               Día de la reserva
               <input
@@ -431,7 +431,7 @@ export default function Reservas() {
                 className="mt-2 h-9 w-full rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100"
                 onClick={() => setDateFilter('')}
               >
-                Ver todas las fechas
+                Por defecto
               </button>
             ) : null}
           </ToolbarFilterMenu>

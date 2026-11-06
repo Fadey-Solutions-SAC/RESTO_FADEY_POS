@@ -7,7 +7,7 @@ import { getOrderChargeTotal } from '../../utils/mesaOrderLines';
 import {
   MdAdd, MdEdit, MdDelete, MdSearch, MdPhone, MdEmail, MdAttachMoney, MdContentCopy,
   MdPeople, MdPersonAdd, MdCreditCard, MdStar, MdChevronRight, MdChevronLeft, MdVisibility,
-  MdMoreVert, MdFileDownload, MdBusiness, MdRepeat, MdFiberNew, MdClose,
+  MdMoreVert, MdFileDownload, MdBusiness, MdRepeat, MdFiberNew,
   MdCheckCircle, MdLocationOn,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
@@ -423,7 +423,6 @@ export default function Clientes() {
 
   const viewClient = viewClientId ? enriched.find((c) => c.id === viewClientId) : null;
   const menuClient = openMenuId ? enriched.find((c) => c.id === openMenuId) : null;
-  const filtersActive = search || statusFilter !== 'all' || dateFrom || dateTo;
 
   const kpiCards = [
     {
@@ -522,7 +521,7 @@ export default function Clientes() {
             <option value="frequent">Frecuentes</option>
             <option value="empresa">Empresas</option>
           </select>
-          <ToolbarFilterMenu label="Opciones" active={Boolean(dateFrom || dateTo)}>
+          <ToolbarFilterMenu label="Fechas" iconOnly active={Boolean(dateFrom || dateTo)}>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Última compra</p>
             <label className="mb-2 block text-xs text-slate-500">
               Desde
@@ -544,6 +543,15 @@ export default function Clientes() {
                 className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-800"
               />
             </label>
+            {(dateFrom || dateTo) ? (
+              <button
+                type="button"
+                onClick={() => { setDateFrom(''); setDateTo(''); }}
+                className="mb-3 flex h-9 w-full items-center justify-center gap-1 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Por defecto
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={exportCsv}
@@ -552,15 +560,6 @@ export default function Clientes() {
               <MdFileDownload />
               Exportar{selectedIds.size ? ` (${selectedIds.size})` : ''}
             </button>
-            {filtersActive ? (
-              <button
-                type="button"
-                onClick={() => { setSearch(''); setStatusFilter('all'); setDateFrom(''); setDateTo(''); }}
-                className="mt-2 flex h-9 w-full items-center justify-center gap-1 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100"
-              >
-                <MdClose /> Limpiar filtros
-              </button>
-            ) : null}
           </ToolbarFilterMenu>
         </div>
 

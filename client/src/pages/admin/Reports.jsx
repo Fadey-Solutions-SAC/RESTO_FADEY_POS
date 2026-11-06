@@ -1736,9 +1736,7 @@ export default function Reports() {
           type="date"
           value={salesDailyDate}
           onChange={(e) => {
-            const next = e.target.value;
-            if (!next) return;
-            setSalesDailyDate(next);
+            setSalesDailyDate(e.target.value || localTodayYmd());
             setTab('daily');
           }}
           className="sr-only"
@@ -1750,9 +1748,7 @@ export default function Reports() {
           type="month"
           value={salesMonth}
           onChange={(e) => {
-            const next = e.target.value;
-            if (!next) return;
-            setSalesMonth(next);
+            setSalesMonth(e.target.value || localMonthYm());
             setTab('monthly');
           }}
           className="sr-only"
@@ -1760,28 +1756,54 @@ export default function Reports() {
           aria-hidden
         />
         <div className={`grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 min-w-0 ${tab === 'ranking' ? 'w-full sm:w-1/2' : 'flex-1'}`}>
-        <button
-          type="button"
-          onClick={() => {
-            setTab('daily');
-            openNativeDatePicker(dailyDateInputRef.current);
-          }}
-          className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border min-w-0 ${tab === 'daily' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
-        >
-          <MdCalendarToday className="shrink-0" />
-          <span className="truncate">Informe del Día</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setTab('monthly');
-            openNativeDatePicker(monthInputRef.current);
-          }}
-          className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border min-w-0 ${tab === 'monthly' ? 'bg-gold-600 text-white border-gold-600' : 'bg-[var(--ui-surface)] text-[var(--ui-body-text)] border-[color:var(--ui-border)] hover:bg-[var(--ui-surface-2)]'}`}
-        >
-          <MdCalendarMonth className="shrink-0" />
-          <span className="truncate">Informe del Mes</span>
-        </button>
+        <div className={`flex min-w-0 items-stretch overflow-hidden rounded-lg border ${tab === 'daily' ? 'border-gold-600 bg-gold-600 text-white' : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)]'}`}>
+          <button
+            type="button"
+            onClick={() => {
+              setTab('daily');
+              openNativeDatePicker(dailyDateInputRef.current);
+            }}
+            className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-2.5 py-2.5 text-sm font-medium"
+          >
+            <MdCalendarToday className="shrink-0" />
+            <span className="truncate">{salesDailyDate === localTodayYmd() ? 'Informe del Día' : formatDate(salesDailyDate)}</span>
+          </button>
+          {salesDailyDate !== localTodayYmd() ? (
+            <button
+              type="button"
+              onClick={() => { setSalesDailyDate(localTodayYmd()); setTab('daily'); }}
+              className="px-2 text-sm"
+              title="Volver a hoy"
+              aria-label="Volver al día de hoy"
+            >
+              <MdClose />
+            </button>
+          ) : null}
+        </div>
+        <div className={`flex min-w-0 items-stretch overflow-hidden rounded-lg border ${tab === 'monthly' ? 'border-gold-600 bg-gold-600 text-white' : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)]'}`}>
+          <button
+            type="button"
+            onClick={() => {
+              setTab('monthly');
+              openNativeDatePicker(monthInputRef.current);
+            }}
+            className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-2.5 py-2.5 text-sm font-medium"
+          >
+            <MdCalendarMonth className="shrink-0" />
+            <span className="truncate">{salesMonth === localMonthYm() ? 'Informe del Mes' : formatMonthKey(salesMonth)}</span>
+          </button>
+          {salesMonth !== localMonthYm() ? (
+            <button
+              type="button"
+              onClick={() => { setSalesMonth(localMonthYm()); setTab('monthly'); }}
+              className="px-2 text-sm"
+              title="Volver a este mes"
+              aria-label="Volver al mes actual"
+            >
+              <MdClose />
+            </button>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={() => setTab('ranking')}

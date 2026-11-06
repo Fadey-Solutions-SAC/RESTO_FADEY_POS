@@ -591,7 +591,7 @@ export default function Promociones() {
               </option>
             ))}
           </select>
-          <ToolbarFilterMenu label="Fechas" active={Boolean(dateFrom || dateTo)}>
+          <ToolbarFilterMenu label="Fechas" iconOnly active={Boolean(dateFrom || dateTo)}>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Vigencia</p>
             <label className="mb-2 block text-xs text-slate-500">
               Desde
@@ -617,7 +617,7 @@ export default function Promociones() {
                 onClick={() => { setDateFrom(''); setDateTo(''); }}
                 className="mt-2 h-9 w-full rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100"
               >
-                Quitar fechas
+                Por defecto
               </button>
             ) : null}
           </ToolbarFilterMenu>
