@@ -377,6 +377,7 @@ app.get(
 );
 app.use('/api/printing', require('./routes/printing'));
 app.use('/api/print-jobs', require('./routes/printJobs'));
+app.use('/api/assistant', require('./routes/assistant'));
 app.use('/api/master-admin', require('./routes/masterAdmin'));
 if (!process.env.ELECTRON_RUN_AS_NODE) {
   app.use('/api/central-sync', require('./routes/centralSync'));

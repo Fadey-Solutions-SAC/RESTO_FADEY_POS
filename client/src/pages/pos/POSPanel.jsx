@@ -266,6 +266,7 @@ import {
   PRINTING_CONFIG_UPDATED_EVENT,
 } from '../../utils/printingConfig';
 import { printKitchenBarOnComandaSend } from '../../utils/kitchenBarAutoPrint';
+import { startAssistantPosHeartbeat, stopAssistantPosHeartbeat } from '../../utils/assistantPosHeartbeat';
 import { showStockInOrderingUI } from '../../utils/productStockDisplay';
 import {
   mergeOrderingCatalog,
@@ -1927,6 +1928,12 @@ export default function POSPanel() {
   };
 
   useEffect(() => { loadCajaExtras(); }, [register?.id, appendPosRegisterId]);
+
+  /** Avisa al servidor que el sistema está en operación → el APK Android se reactiva solo. */
+  useEffect(() => {
+    startAssistantPosHeartbeat(Boolean(posRegisterReady));
+    return () => stopAssistantPosHeartbeat();
+  }, [posRegisterReady]);
 
   const loadBillingStatus = async () => {
     try {
