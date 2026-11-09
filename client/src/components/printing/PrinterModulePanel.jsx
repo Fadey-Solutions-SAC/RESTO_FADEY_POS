@@ -91,7 +91,16 @@ export default function PrinterModulePanel({
   const linkPrintingAssistantManually = async () => {
     const raw = String(manualPrintingApi || '').trim();
     if (!raw) {
-      toast.error('Ingrese una URL local (ej. http://127.0.0.1:3002)');
+      toast.error('Ingrese una URL (ej. http://192.168.1.20:3002)');
+      return;
+    }
+    const pageIsHttps = typeof window !== 'undefined' && window.location?.protocol === 'https:';
+    const pointsToLoopback = /127\.0\.0\.1|localhost|\[::1\]/i.test(raw);
+    if (pageIsHttps && pointsToLoopback) {
+      toast.error(
+        'Con el POS en HTTPS no se puede usar 127.0.0.1. En el celular (APK → Configuración) pegue la API del restaurante + token JWT, o use la IP LAN Wi‑Fi del teléfono (http://192.168.x.x:3002) desde una PC en la misma red.',
+        { duration: 8000 },
+      );
       return;
     }
     setLinking(true);
@@ -103,7 +112,10 @@ export default function PrinterModulePanel({
         markPrintingLinkConfigured(raw);
         toast.success('Asistente de impresión vinculado');
       } else {
-        toast.error('No se pudo vincular el asistente');
+        toast.error(
+          'No se pudo vincular. Android en datos móviles: use vínculo nube en el APK (API + JWT). Misma Wi‑Fi: URL http://IP_DEL_CELULAR:3002',
+          { duration: 7000 },
+        );
       }
     } catch (_) {
       toast.error('No se pudo guardar la URL local');
@@ -147,7 +159,7 @@ export default function PrinterModulePanel({
               className="input-field flex-1 min-w-[220px]"
               value={manualPrintingApi}
               onChange={(e) => setManualPrintingApi(e.target.value)}
-              placeholder="http://127.0.0.1:3002 o http://IP_ANDROID:3002"
+              placeholder="Windows: http://127.0.0.1:3002 · Android Wi‑Fi: http://IP_CELULAR:3002"
               disabled={busy || linking}
             />
             <button
@@ -160,7 +172,7 @@ export default function PrinterModulePanel({
             </button>
           </div>
           <p className="text-xs ui-text-muted">
-            Windows: instalador de escritorio. Android: APK + URL LAN del teléfono, o cola en nube si el móvil está vinculado al restaurante.
+            Windows: instalador y 127.0.0.1:3002. Android: el servicio del APK ya puede estar activo; con POS en HTTPS/datos móviles no use 127.0.0.1 — en el APK abra Configuración, pegue la URL API (…/api) y el token JWT del cajero (cola en nube). En la misma Wi‑Fi, desde una PC use la IP que muestra el APK en Inicio.
           </p>
 
           {printerStatus.status ? (
