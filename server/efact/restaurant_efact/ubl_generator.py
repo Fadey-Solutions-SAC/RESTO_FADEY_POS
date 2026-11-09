@@ -159,6 +159,15 @@ def _customer_party(root, venta: VentaInput) -> None:
     _party_legal_entity(party, c.razon_social, c.direccion)
 
 
+def _tax_scheme_for(code: str) -> Tuple[str, str, str]:
+    """Catálogo 05: 1000 IGV (gravado), 9997 EXO, 9998 INA. Tributo 1000 no admite TaxAmount 0.00."""
+    if code == "30":
+        return "9998", "INA", "FRE"
+    if code == "20":
+        return "9997", "EXO", "VAT"
+    return "1000", "IGV", "VAT"
+
+
 def _tax_subtotal(parent, taxable: Decimal, tax: Decimal, pct: Decimal, code: str, moneda: str) -> None:
     ts = etree.SubElement(parent, _q(NS_CAC, "TaxSubtotal"))
     tbi = etree.SubElement(ts, _q(NS_CBC, "TaxableAmount"), currencyID=moneda)
@@ -172,13 +181,14 @@ def _tax_subtotal(parent, taxable: Decimal, tax: Decimal, pct: Decimal, code: st
     pct_el.text = _money(pct if code == "10" else Decimal("0"))
     te = etree.SubElement(cat, _q(NS_CBC, "TaxExemptionReasonCode"), listAgencyName="PE:SUNAT", listName="Afectacion del IGV", listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo07")
     te.text = code
+    scheme_id, scheme_name, tax_type = _tax_scheme_for(code)
     tsch = etree.SubElement(cat, _q(NS_CAC, "TaxScheme"))
     sid = etree.SubElement(tsch, _q(NS_CBC, "ID"), schemeID="UN/ECE 5153", schemeName="Tax Scheme Identifier", schemeAgencyName="United Nations Economic Commission for Europe")
-    sid.text = "1000"
+    sid.text = scheme_id
     sn = etree.SubElement(tsch, _q(NS_CBC, "Name"))
-    sn.text = "IGV"
+    sn.text = scheme_name
     st = etree.SubElement(tsch, _q(NS_CBC, "TaxTypeCode"))
-    st.text = "VAT"
+    st.text = tax_type
 
 
 def _tax_total(root, lineas: list, pct: Decimal, moneda: str) -> None:
