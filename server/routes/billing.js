@@ -5,7 +5,13 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { queryAll, queryOne, runSql, persistCriticalDb } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { buildEfactSaleJson, sendEfactSale, prepareRelaySale, mapEfactResponseToProviderResult } = require('../efactBridge');
+const {
+  buildEfactSaleJson,
+  sendEfactSale,
+  prepareRelaySale,
+  attachPanelCertFromRestaurant,
+  mapEfactResponseToProviderResult,
+} = require('../efactBridge');
 const {
   effectiveEfactApiUrl,
   effectiveEfactHttpSecret,
@@ -476,9 +482,13 @@ async function sendToEfactProvider(restaurant, saleJson) {
       + `Detalle: ${detail}`;
     let relaySale = null;
     try {
-      relaySale = prepareRelaySale(saleJson);
+      relaySale = attachPanelCertFromRestaurant(saleJson, restaurant);
     } catch (_) {
-      relaySale = saleJson;
+      try {
+        relaySale = prepareRelaySale(saleJson);
+      } catch (__) {
+        relaySale = saleJson;
+      }
     }
     const relayResult = {
       ...initial,
@@ -1276,11 +1286,16 @@ router.post('/:id/claim-local', authenticateToken, requireRole('admin', 'cajero'
   );
   persistCriticalDb();
   const payload = refreshPayloadTax(doc, parseProviderPayload(doc.provider_payload));
+  const restaurant = queryOne('SELECT * FROM restaurants LIMIT 1');
   let sale = payload;
   try {
-    sale = prepareRelaySale(payload);
+    sale = attachPanelCertFromRestaurant(payload, restaurant);
   } catch (_) {
-    sale = payload;
+    try {
+      sale = prepareRelaySale(payload);
+    } catch (__) {
+      sale = payload;
+    }
   }
   res.json({ id: doc.id, sale });
 });

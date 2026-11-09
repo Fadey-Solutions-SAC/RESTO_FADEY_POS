@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { MdPrint, MdSave, MdVolumeUp, MdVolumeOff } from 'react-icons/md';
 import {
+  getApiBase,
   getPersistedPrintingBridgeOrigin,
   hasElectronPrinting,
   markPrintingLinkConfigured,
@@ -88,6 +89,36 @@ export default function PrinterModulePanel({
     await refreshLink();
   };
 
+  const absoluteApiBaseForAndroid = () => {
+    const base = String(getApiBase() || '').trim().replace(/\/$/, '');
+    if (/^https?:\/\//i.test(base)) return base;
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      const path = base.startsWith('/') ? base : `/${base || 'api'}`;
+      return `${window.location.origin}${path}`.replace(/\/$/, '');
+    }
+    return base || '';
+  };
+
+  const copyAndroidCloudLink = async () => {
+    const apiBase = absoluteApiBaseForAndroid();
+    const token = typeof window !== 'undefined' ? String(window.localStorage?.getItem('token') || '').trim() : '';
+    if (!apiBase) {
+      toast.error('No hay URL del API del restaurante');
+      return;
+    }
+    if (!token) {
+      toast.error('Inicie sesión como cajero o admin para copiar el token');
+      return;
+    }
+    const text = `API:\n${apiBase}\n\nTOKEN:\n${token}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Vínculo Android copiado · péguelo en el APK → Configuración', { duration: 5000 });
+    } catch (_) {
+      toast.error('No se pudo copiar. API: ' + apiBase);
+    }
+  };
+
   const linkPrintingAssistantManually = async () => {
     const raw = String(manualPrintingApi || '').trim();
     if (!raw) {
@@ -150,6 +181,14 @@ export default function PrinterModulePanel({
               <button type="button" className="btn-secondary text-sm" onClick={() => void handleRefresh()} disabled={busy || linkStatus.checking || linking}>
                 Verificar vínculo
               </button>
+              <button
+                type="button"
+                className="btn-primary text-sm"
+                onClick={() => void copyAndroidCloudLink()}
+                disabled={busy || linking}
+              >
+                Copiar vínculo Android
+              </button>
               <PrintingAssistantDownloadButton disabled={busy || linking} />
             </div>
           </div>
@@ -168,11 +207,11 @@ export default function PrinterModulePanel({
               onClick={() => void linkPrintingAssistantManually()}
               disabled={busy || linking || linkStatus.checking}
             >
-              Vincular manual
+              Vincular manual (LAN / PC)
             </button>
           </div>
           <p className="text-xs ui-text-muted">
-            Windows: instalador y 127.0.0.1:3002. Android: el servicio del APK ya puede estar activo; con POS en HTTPS/datos móviles no use 127.0.0.1 — en el APK abra Configuración, pegue la URL API (…/api) y el token JWT del cajero (cola en nube). En la misma Wi‑Fi, desde una PC use la IP que muestra el APK en Inicio.
+            Windows: 127.0.0.1:3002. Android en HTTPS/datos: use «Copiar vínculo Android» y péguelo en el APK → Configuración (API + JWT); el certificado SUNAT ya está en el sistema y viaja con cada comprobante (igual que el PC). Misma Wi‑Fi opcional: IP del celular:3002.
           </p>
 
           {printerStatus.status ? (

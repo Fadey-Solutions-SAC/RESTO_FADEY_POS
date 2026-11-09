@@ -252,9 +252,29 @@ function buildEfactSaleJson({
   return payload;
 }
 
+function readPfxBase64FromDisk(certPath) {
+  const candidates = [];
+  const resolved = resolveCertPathForBot(certPath);
+  if (resolved) candidates.push(resolved);
+  const raw = String(certPath || '').trim();
+  if (raw && !candidates.includes(raw)) candidates.push(raw);
+  for (const p of candidates) {
+    try {
+      if (!p || !fs.existsSync(p)) continue;
+      const buf = fs.readFileSync(p);
+      if (buf.length > 0 && buf.length < 2_000_000) {
+        return buf.toString('base64');
+      }
+    } catch (err) {
+      console.warn('[efact] no se pudo leer .pfx:', p, err?.message || err);
+    }
+  }
+  return '';
+}
+
 /**
- * Copia del JSON para que el navegador de esta PC lo mande al bot local.
- * El .pfx del servidor viaja en base64: el bot de la PC no ve el disco del servidor.
+ * Embebe el .pfx del servidor en base64 (asistente PC y Android).
+ * Misma fuente: panel de facturación / disco del host Node.
  */
 function prepareRelaySale(saleJson) {
   let sale;
@@ -265,17 +285,38 @@ function prepareRelaySale(saleJson) {
   }
   const cert = sale.panel_certificado;
   if (!cert || typeof cert !== 'object') return sale;
-  const abs = resolveCertPathForBot(cert.ruta_pfx);
-  if (abs && fs.existsSync(abs)) {
-    try {
-      const buf = fs.readFileSync(abs);
-      if (buf.length > 0 && buf.length < 2_000_000) {
-        cert.pfx_base64 = buf.toString('base64');
-        delete cert.ruta_pfx;
-      }
-    } catch (_) {
-      /* el bot avisará si no puede firmar */
-    }
+  if (String(cert.pfx_base64 || '').trim()) {
+    delete cert.ruta_pfx;
+    return sale;
+  }
+  const b64 = readPfxBase64FromDisk(cert.ruta_pfx);
+  if (b64) {
+    cert.pfx_base64 = b64;
+    delete cert.ruta_pfx;
+  } else if (cert.ruta_pfx) {
+    console.warn('[efact] prepareRelaySale: .pfx no encontrado en disco', cert.ruta_pfx);
+  }
+  return sale;
+}
+
+/** Si el payload viejo no trae cert o falló la ruta, reinyecta desde el panel del restaurante. */
+function attachPanelCertFromRestaurant(saleJson, restaurant) {
+  let sale = prepareRelaySale(saleJson);
+  if (sale?.panel_certificado?.pfx_base64) return sale;
+  const panel = parseBillingPanelJson(restaurant);
+  const certPath = String(panel.cert_pfx_path || '').trim();
+  const certPwd = String(panel.cert_pfx_password || '').trim();
+  if (!certPath || !certPwd) return sale;
+  const b64 = readPfxBase64FromDisk(certPath);
+  if (!b64) {
+    console.warn('[efact] attachPanelCertFromRestaurant: sin archivo .pfx', certPath);
+    return sale;
+  }
+  try {
+    sale = sale && typeof sale === 'object' ? sale : {};
+    sale.panel_certificado = { password: certPwd, pfx_base64: b64 };
+  } catch (_) {
+    /* ignore */
   }
   return sale;
 }
@@ -401,6 +442,7 @@ async function sendEfactSale(restaurant, saleJson) {
 module.exports = {
   buildEfactSaleJson,
   prepareRelaySale,
+  attachPanelCertFromRestaurant,
   sendEfactSale,
   mapEfactResponseToProviderResult,
 };
