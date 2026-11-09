@@ -204,8 +204,12 @@ export function usePrintingModule(moduleKey, { autoLoad = true } = {}) {
   const printTest = useCallback(async () => {
     setBusy(true);
     try {
-      await printTestForModule(moduleKey);
-      toast.success('Prueba enviada a la impresora');
+      const result = await printTestForModule(moduleKey);
+      if (result?.queued) {
+        toast.success('Prueba encolada para el asistente Android');
+      } else {
+        toast.success('Prueba enviada a la impresora');
+      }
       await refreshPrinterStatus();
     } catch (err) {
       toast.error(err.message || 'No se pudo imprimir prueba');

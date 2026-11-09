@@ -90,11 +90,19 @@ export default function Layout() {
   const isHrPage = location.pathname === '/admin/tiempo-trabajado' || location.pathname.startsWith('/admin/tiempo-trabajado/');
   /** Caja/config/RRHH: scroll interno del módulo. Almacén: scroll en <main> para que la franja superior no se desplace. */
   const isShellLockedScroll = isCajaPage || isSettingsPage || isAlmacenPage || isHrPage;
-  const mainScrollsInternally = isAlmacenPage;
-  const isCajaMapView = isCajaPage && (() => {
-    const view = new URLSearchParams(location.search).get('view') || 'cobrar';
-    return view === 'cobrar';
+  const cajaViewParam = (() => {
+    try {
+      return new URLSearchParams(location.search).get('view') || 'cobrar';
+    } catch (_) {
+      return 'cobrar';
+    }
   })();
+  const isCajaMapView = isCajaPage && cajaViewParam === 'cobrar';
+  /**
+   * Mapa Cobrar: scroll dentro de POSPanel (overflow-hidden en main).
+   * Impresora / ingresos / egresos / etc.: el main debe poder subir y bajar.
+   */
+  const mainScrollsInternally = isAlmacenPage || (isCajaPage && !isCajaMapView);
   const [internetOnline, setInternetOnline] = useState(() => getOfflinePosStatus().online);
 
   useEffect(() => {

@@ -5422,7 +5422,7 @@ export default function POSPanel() {
       )}
 
       {activeCajaOption === 'impresora' && (
-        <div className="card max-w-3xl">
+        <div className="card max-w-3xl mb-8 pb-4">
           <h3 className="font-bold rf-section-title mb-4 flex items-center gap-2"><MdPrint /> Configuración de Impresora (Caja)</h3>
           <PrinterModulePanel
             moduleKey="caja"

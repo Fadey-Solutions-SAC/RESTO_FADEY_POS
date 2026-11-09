@@ -286,10 +286,14 @@ export default function PrinterModulePanel({
       ) : null}
 
       {!hasElectronPrinting() && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1.5">
           <p className="text-sm text-amber-800">
-            La detección USB y la impresión térmica requieren la aplicación de escritorio Resto FADEY abierta en esta PC.
-            Use el botón «Descargar asistente de impresión» arriba para instalarla en esta máquina.
+            {String(linkStatus.source || '').includes('Android')
+              ? 'Modo Android (nube): la detección USB de esta PC no aplica. Configure Bluetooth/Wi‑Fi en el APK → Impresoras. «Imprimir prueba» encola el ticket al celular.'
+              : 'La detección USB en esta pantalla necesita el asistente Windows, o use el APK Android (cola en nube) con Bluetooth/Wi‑Fi.'}
+          </p>
+          <p className="text-xs text-amber-800/90">
+            Boleta y factura usan la misma cola/impresora de caja (80 mm). Sin térmica física el sistema deja el trabajo listo; al emparejar la impresora empezará a salir.
           </p>
         </div>
       )}

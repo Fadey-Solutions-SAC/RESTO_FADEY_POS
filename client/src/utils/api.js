@@ -1034,12 +1034,26 @@ export async function fetchCloudAndroidLinkStatus() {
 
 /** Si no hay bridge local/LAN, encola impresión en la API del restaurante para el asistente Android. */
 function isCloudPrintEnqueuePath(endpoint) {
-  return /^\/printing\/print\//i.test(String(endpoint || ''));
+  return /^\/printing\/(print|test)\//i.test(String(endpoint || ''));
 }
 
 function moduleFromPrintEndpoint(endpoint) {
-  const m = String(endpoint || '').match(/^\/printing\/print\/([^/?#]+)/i);
+  const m = String(endpoint || '').match(/^\/printing\/(?:print|test)\/([^/?#]+)/i);
   return (m && m[1] ? m[1] : 'caja').toLowerCase();
+}
+
+function cloudPayloadForPrintEndpoint(endpoint, body) {
+  const isTest = /^\/printing\/test\//i.test(String(endpoint || ''));
+  if (isTest) {
+    const moduleKey = moduleFromPrintEndpoint(endpoint);
+    return {
+      text: `*** PRUEBA ${String(moduleKey || 'caja').toUpperCase()} FADEY ***\nCola Android OK\n${new Date().toLocaleString('es-PE')}\n`,
+      preformatted: true,
+      paperWidth: 80,
+      ...(body && typeof body === 'object' ? body : {}),
+    };
+  }
+  return body && typeof body === 'object' ? body : {};
 }
 
 function printingBaseLooksLikeCloudApi(base) {
@@ -1096,7 +1110,10 @@ async function printingRequest(endpoint, options = {}) {
     } catch (_) {
       body = {};
     }
-    return enqueueCloudPrintJob(moduleFromPrintEndpoint(endpoint), body);
+    return enqueueCloudPrintJob(
+      moduleFromPrintEndpoint(endpoint),
+      cloudPayloadForPrintEndpoint(endpoint, body),
+    );
   }
 
   let res;
@@ -1111,7 +1128,10 @@ async function printingRequest(endpoint, options = {}) {
       } catch (_) {
         body = {};
       }
-      return enqueueCloudPrintJob(moduleFromPrintEndpoint(endpoint), body);
+      return enqueueCloudPrintJob(
+        moduleFromPrintEndpoint(endpoint),
+        cloudPayloadForPrintEndpoint(endpoint, body),
+      );
     }
     printingServiceBaseCache = { at: 0, base: '' };
     const retryBase = await getPrintingServiceApiBase();
