@@ -2724,6 +2724,29 @@ async function initDatabase() {
       db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', ['2026-05-business-config-v1']);
     }
 
+    const migPrintJobsCloud = queryOne(
+      'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
+      ['2026-11-print-jobs-cloud-v1']
+    );
+    if (!migPrintJobsCloud?.ok) {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS print_jobs (
+          id TEXT PRIMARY KEY,
+          module TEXT NOT NULL DEFAULT 'caja',
+          status TEXT NOT NULL DEFAULT 'pending',
+          payload_json TEXT NOT NULL DEFAULT '{}',
+          result_json TEXT NOT NULL DEFAULT '',
+          claimed_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      db.run('CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status, created_at)');
+      db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', [
+        '2026-11-print-jobs-cloud-v1',
+      ]);
+    }
+
     const migPagosYapePlin = queryOne(
       'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
       ['2026-05-pagos-yape-plin-default-v1']

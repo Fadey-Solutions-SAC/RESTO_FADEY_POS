@@ -980,6 +980,51 @@ export async function checkPrintingHealth() {
   throw new Error(printingUnreachableMessage());
 }
 
+/** Si no hay bridge local/LAN, encola impresión en la API del restaurante para el asistente Android. */
+function isCloudPrintEnqueuePath(endpoint) {
+  return /^\/printing\/print\//i.test(String(endpoint || ''));
+}
+
+function moduleFromPrintEndpoint(endpoint) {
+  const m = String(endpoint || '').match(/^\/printing\/print\/([^/?#]+)/i);
+  return (m && m[1] ? m[1] : 'caja').toLowerCase();
+}
+
+function printingBaseLooksLikeCloudApi(base) {
+  const b = String(base || '').toLowerCase();
+  if (!b) return true;
+  if (/127\.0\.0\.1|localhost|\[::1\]/i.test(b)) return false;
+  if (/^https?:\/\/(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/i.test(b)) return false;
+  try {
+    const main = String(getApiBase() || '').replace(/\/$/, '').toLowerCase();
+    return b.replace(/\/$/, '') === main || b.includes('onrender.com');
+  } catch (_) {
+    return /onrender\.com/i.test(b);
+  }
+}
+
+async function enqueueCloudPrintJob(moduleKey, payload) {
+  const token = localStorage.getItem('token');
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${String(getApiBase()).replace(/\/$/, '')}/print-jobs`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ module: moduleKey, payload: payload || {} }),
+  });
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (_) {
+    data = null;
+  }
+  if (!res.ok) {
+    throw new Error(data?.error || data?.message || `No se pudo encolar impresión (${res.status})`);
+  }
+  return { ok: true, queued: true, ...(data || {}) };
+}
+
 async function printingRequest(endpoint, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (!isLocalPrintingBridge()) {
@@ -987,12 +1032,35 @@ async function printingRequest(endpoint, options = {}) {
     if (token) headers['Authorization'] = `Bearer ${token}`;
   }
   let base = await getPrintingServiceApiBase();
+
+  if (
+    isCloudPrintEnqueuePath(endpoint)
+    && String(options.method || 'GET').toUpperCase() === 'POST'
+    && printingBaseLooksLikeCloudApi(base)
+  ) {
+    let body = {};
+    try {
+      body = options.body ? JSON.parse(options.body) : {};
+    } catch (_) {
+      body = {};
+    }
+    return enqueueCloudPrintJob(moduleFromPrintEndpoint(endpoint), body);
+  }
+
   let res;
   try {
     res = await fetch(`${base}${endpoint}`, { ...options, headers });
   } catch (err) {
     console.warn('[printing] fetch falló hacia', base, err?.message || err);
-    /** El asistente pudo reiniciarse en otro puerto: redescubrir y reintentar una vez. */
+    if (isCloudPrintEnqueuePath(endpoint) && String(options.method || 'GET').toUpperCase() === 'POST') {
+      let body = {};
+      try {
+        body = options.body ? JSON.parse(options.body) : {};
+      } catch (_) {
+        body = {};
+      }
+      return enqueueCloudPrintJob(moduleFromPrintEndpoint(endpoint), body);
+    }
     printingServiceBaseCache = { at: 0, base: '' };
     const retryBase = await getPrintingServiceApiBase();
     if (retryBase === base) throw new Error(printingUnreachableMessage());

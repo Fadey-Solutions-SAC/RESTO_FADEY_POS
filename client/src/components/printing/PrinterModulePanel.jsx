@@ -147,7 +147,7 @@ export default function PrinterModulePanel({
               className="input-field flex-1 min-w-[220px]"
               value={manualPrintingApi}
               onChange={(e) => setManualPrintingApi(e.target.value)}
-              placeholder="http://127.0.0.1:3002"
+              placeholder="http://127.0.0.1:3002 o http://IP_ANDROID:3002"
               disabled={busy || linking}
             />
             <button
@@ -159,6 +159,9 @@ export default function PrinterModulePanel({
               Vincular manual
             </button>
           </div>
+          <p className="text-xs ui-text-muted">
+            Windows: instalador de escritorio. Android: APK + URL LAN del teléfono, o cola en nube si el móvil está vinculado al restaurante.
+          </p>
 
           {printerStatus.status ? (
             <p className={`text-xs ${printerStatus.connected ? 'text-emerald-600' : 'text-[var(--ui-muted)]'}`}>
