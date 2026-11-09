@@ -4,6 +4,7 @@ import {
   checkPrintingHealth,
   electronPrinting,
   ensureLocalPrintingAssistantDiscovered,
+  fetchCloudAndroidLinkStatus,
   fetchUsbPrintersFromBridge,
   getApiOrigin,
   getPersistedPrintingBridgeOrigin,
@@ -280,13 +281,31 @@ export async function verifyPrintingLinkStatus() {
       };
     }
   } catch (err) {
-    if (isPrintingLinkConfigured()) {
+    // Sin bridge local (típico en HTTPS/Render): el APK se vincula por cola nube.
+    const cloud = await fetchCloudAndroidLinkStatus();
+    if (cloud.connected) {
+      status = {
+        connected: true,
+        mode: cloud.mode || 'android-cloud',
+        source: cloud.source,
+        detail: cloud.detail || '',
+      };
+    } else if (cloud.ok && cloud.mode === 'android-cloud-waiting') {
+      status = {
+        connected: false,
+        mode: cloud.mode,
+        source: cloud.source,
+        detail: cloud.detail || '',
+      };
+    } else if (isPrintingLinkConfigured()) {
       status = buildConfiguredPrintingLinkStatus(err?.message || 'Reconectando servicio local…');
     } else {
       status = {
         connected: false,
         source: 'Sin vínculo',
-        detail: err?.message || printingUnreachableMessage(),
+        detail:
+          `${err?.message || printingUnreachableMessage()} · `
+          + 'Android: vincule el APK (API + JWT) y pulse Verificar vínculo; no use 127.0.0.1 en HTTPS.',
       };
     }
   }

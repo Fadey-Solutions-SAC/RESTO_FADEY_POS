@@ -980,6 +980,58 @@ export async function checkPrintingHealth() {
   throw new Error(printingUnreachableMessage());
 }
 
+/**
+ * Estado del asistente Android vía cola en la nube (no usa 127.0.0.1).
+ * El APK marca presencia al hacer poll de print-jobs / billing.
+ */
+export async function fetchCloudAndroidLinkStatus() {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  if (!token) {
+    return { ok: false, connected: false, source: 'Sin sesión', detail: 'Inicie sesión para ver el vínculo Android' };
+  }
+  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+  const url = `${String(getApiBase()).replace(/\/$/, '')}/print-jobs/link-status`;
+  try {
+    const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        ok: false,
+        connected: false,
+        source: 'Cola Android',
+        detail: data?.error || `HTTP ${res.status}`,
+      };
+    }
+    if (data?.agentOnline) {
+      const seen = data.agentSeenAt ? ` · visto ${data.agentSeenAt}` : '';
+      return {
+        ok: true,
+        connected: true,
+        mode: 'android-cloud',
+        source: 'Asistente Android (nube)',
+        detail: `Cola activa${seen}`,
+        agentSeenAt: data.agentSeenAt || null,
+      };
+    }
+    return {
+      ok: true,
+      connected: false,
+      mode: 'android-cloud-waiting',
+      source: 'Cola Android lista',
+      detail:
+        'El APK aún no hace poll. En el celular: Configuración → Guardar vínculo y deje el servicio activo.',
+      agentSeenAt: data.agentSeenAt || null,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      connected: false,
+      source: 'Cola Android',
+      detail: err?.message || 'No se pudo consultar la cola',
+    };
+  }
+}
+
 /** Si no hay bridge local/LAN, encola impresión en la API del restaurante para el asistente Android. */
 function isCloudPrintEnqueuePath(endpoint) {
   return /^\/printing\/print\//i.test(String(endpoint || ''));

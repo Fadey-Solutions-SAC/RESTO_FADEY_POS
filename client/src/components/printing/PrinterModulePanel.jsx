@@ -170,8 +170,24 @@ export default function PrinterModulePanel({
         <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className={`text-sm font-semibold ${linkStatus.connected ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {linkStatus.checking ? 'Verificando vínculo…' : linkStatus.connected ? 'Vinculación activa' : 'Sin vinculación'}
+              <p
+                className={`text-sm font-semibold ${
+                  linkStatus.connected
+                    ? 'text-emerald-700'
+                    : linkStatus.mode === 'android-cloud-waiting'
+                      ? 'text-amber-700'
+                      : 'text-rose-700'
+                }`}
+              >
+                {linkStatus.checking
+                  ? 'Verificando vínculo…'
+                  : linkStatus.connected
+                    ? (String(linkStatus.source || '').includes('Android')
+                      ? 'Vinculación activa (Android)'
+                      : 'Vinculación activa')
+                    : linkStatus.mode === 'android-cloud-waiting'
+                      ? 'Esperando asistente Android'
+                      : 'Sin vinculación local'}
               </p>
               <p className="text-xs ui-text-muted mt-0.5">
                 {linkStatus.source}{linkStatus.detail ? ` · ${linkStatus.detail}` : ''}
@@ -211,7 +227,7 @@ export default function PrinterModulePanel({
             </button>
           </div>
           <p className="text-xs ui-text-muted">
-            Windows: 127.0.0.1:3002. Android en HTTPS/datos: use «Copiar vínculo Android» y péguelo en el APK → Configuración (API + JWT); el certificado SUNAT ya está en el sistema y viaja con cada comprobante (igual que el PC). Misma Wi‑Fi opcional: IP del celular:3002.
+            El APK «Sistema vinculado» es el vínculo a la nube (correcto). Este panel también mira el programa Windows en 127.0.0.1:3002; en HTTPS no aplica. Con el APK abierto y vinculado, pulse «Verificar vínculo» para ver «Vinculación activa (Android)». Certificado SUNAT: del sistema, no hace falta en el teléfono.
           </p>
 
           {printerStatus.status ? (

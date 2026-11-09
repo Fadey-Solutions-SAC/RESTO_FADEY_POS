@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { queryAll, queryOne, runSql, persistCriticalDb } = require('../database');
+const { touchPrintAgent, getPrintAgentPresence } = require('../printAgentPresence');
 
 const CLAIM_MS = 90000;
 
@@ -36,8 +37,14 @@ router.post('/', (req, res) => {
   res.status(201).json({ ok: true, id, module: moduleKey, status: 'pending', createdAt: now });
 });
 
+/** Estado de cola nube / asistente Android (para el panel del POS). */
+router.get('/link-status', (req, res) => {
+  res.json({ ok: true, ...getPrintAgentPresence() });
+});
+
 /** Listado corto para el poll del móvil. */
 router.get('/pending', (req, res) => {
+  touchPrintAgent(req, 'print-jobs/pending');
   const rows = queryAll(
     `SELECT id, module, status, claimed_at, updated_at
      FROM print_jobs
@@ -51,7 +58,7 @@ router.get('/pending', (req, res) => {
       return true;
     })
     .map((row) => ({ id: row.id, module: row.module }));
-  res.json({ jobs });
+  res.json({ jobs, agent: getPrintAgentPresence() });
 });
 
 router.post('/:id/claim', (req, res) => {

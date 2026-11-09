@@ -25,6 +25,7 @@ const { exportBillingPdfToUploads, exportBillingFileToUploads, isHttpUrl: isHttp
 const { saveLocalFallbackReceiptPdf, ensureLocalFallbackPdfForDocumentRow } = require('../billingLocalReceiptPdf');
 const { getOrderWithItems } = require('../orderCreateService');
 const { getSocketIo, emitBillingDocumentUpdate } = require('../socketBroadcast');
+const { touchPrintAgent } = require('../printAgentPresence');
 
 const router = express.Router();
 
@@ -1179,6 +1180,7 @@ function claimIsFresh(response) {
 }
 
 router.get('/pending-local', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  touchPrintAgent(req, 'billing/pending-local');
   const rows = queryAll(
     `SELECT id, provider_status, provider_response, updated_at
      FROM electronic_documents
