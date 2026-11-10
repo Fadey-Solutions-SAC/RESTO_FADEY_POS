@@ -24,6 +24,12 @@ import {
   MdClose,
   MdSearch,
   MdDownload,
+  MdDescription,
+  MdCheckCircle,
+  MdErrorOutline,
+  MdPerson,
+  MdCode,
+  MdVerified,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
@@ -2904,37 +2910,79 @@ export default function Reports() {
       {reportSection === 'facturacion' && (
         <div className="card">
           <h3 className="font-bold rf-section-title mb-4">Facturación electrónica</h3>
-          <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-4">
-            <div className="bg-slate-50 rounded-lg p-3 min-w-0 border border-slate-100">
-              <p className="text-xs text-[var(--ui-muted)] truncate">Cuentas cobradas hoy</p>
-              <p className="text-xl font-bold text-[var(--ui-body-text)] tabular-nums">
-                {summarizePaidSalesAccounts((dailyData?.orders || []).filter((o) => o.payment_status === 'paid' && o.status !== 'cancelled')).length}
-              </p>
-            </div>
-            <div className="bg-slate-50 rounded-lg p-3 min-w-0 border border-slate-100">
-              <p className="text-xs text-[var(--ui-muted)] truncate">Monto facturable hoy</p>
-              <p className="text-xl font-bold text-[var(--ui-body-text)] tabular-nums">
-                {formatCurrency((dailyData?.orders || [])
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4 mb-4">
+            {[
+              {
+                key: 'paid-today',
+                title: 'Cuentas cobradas hoy',
+                value: summarizePaidSalesAccounts((dailyData?.orders || []).filter((o) => o.payment_status === 'paid' && o.status !== 'cancelled')).length,
+                hint: 'cuentas pagadas',
+                Icon: MdPointOfSale,
+                Deco: MdReceipt,
+                wrap: 'from-violet-50 to-white border-violet-200/80',
+                bubble: 'from-violet-400 to-purple-600 shadow-purple-500/30',
+                deco: 'text-violet-300/80',
+                span: '',
+              },
+              {
+                key: 'amount-today',
+                title: 'Monto facturable hoy',
+                value: formatCurrency((dailyData?.orders || [])
                   .filter(o => o.payment_status === 'paid' && o.status !== 'cancelled')
-                  .reduce((sum, o) => sum + Number(o.total || 0), 0))}
-              </p>
-            </div>
-            <div className="bg-slate-50 rounded-lg p-3 min-w-0 border border-slate-100">
-              <p className="text-xs text-[var(--ui-muted)] truncate">Comprobantes emitidos</p>
-              <p className="text-xl font-bold text-[var(--ui-body-text)] tabular-nums">{billingDocuments.length}</p>
-            </div>
-            <div className="rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-2.5 sm:p-3 min-w-0 flex flex-col gap-2">
-              <div className="relative w-full">
+                  .reduce((sum, o) => sum + Number(o.total || 0), 0)),
+                hint: 'ventas cobradas',
+                Icon: MdAttachMoney,
+                Deco: MdTrendingUp,
+                wrap: 'from-emerald-50 to-white border-emerald-200/80',
+                bubble: 'from-emerald-400 to-emerald-600 shadow-emerald-500/30',
+                deco: 'text-emerald-400/70',
+                span: '',
+              },
+              {
+                key: 'issued',
+                title: 'Comprobantes emitidos',
+                value: billingDocuments.length,
+                hint: `${billingDocuments.filter((d) => String(d.provider_status) === 'accepted').length} aceptados por SUNAT`,
+                Icon: MdDescription,
+                Deco: MdVerified,
+                wrap: 'from-sky-50 to-white border-sky-200/80',
+                bubble: 'from-sky-400 to-blue-600 shadow-blue-500/30',
+                deco: 'text-sky-300/80',
+                span: 'col-span-2 lg:col-span-1',
+              },
+            ].map((k) => (
+              <div
+                key={k.key}
+                className={`relative overflow-hidden rounded-xl sm:rounded-2xl border bg-gradient-to-br ${k.wrap} p-3 sm:p-5 shadow-sm ${k.span}`}
+              >
+                <k.Deco className={`pointer-events-none absolute right-2 top-2 sm:right-4 sm:top-4 text-3xl sm:text-5xl ${k.deco}`} />
+                <div className="pointer-events-none absolute -bottom-10 -right-6 h-28 w-48 rounded-full bg-white/50" />
+                <div className="relative flex items-start gap-2 sm:gap-4">
+                  <span className={`grid h-9 w-9 sm:h-14 sm:w-14 shrink-0 place-items-center rounded-full bg-gradient-to-br text-white shadow-lg ${k.bubble}`}>
+                    <k.Icon className="text-lg sm:text-2xl" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[11px] sm:text-sm font-semibold text-slate-800 truncate" title={k.title}>{k.title}</p>
+                    <p className="mt-0.5 sm:mt-1 text-xl sm:text-3xl font-bold leading-none text-slate-900 tabular-nums truncate" title={String(k.value)}>{k.value}</p>
+                    <p className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-slate-500 line-clamp-2">{k.hint}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="relative w-full sm:flex-1">
                 <MdSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ui-muted)]" />
                 <input
-                  className="input-field pl-8 w-full h-9 text-sm"
-                  placeholder="Comprobante, cliente o doc."
+                  className="input-field pl-8 w-full h-10 text-sm"
+                  placeholder="Buscar comprobante, cliente o documento"
                   value={billingSearch}
                   onChange={(e) => setBillingSearch(e.target.value)}
                   aria-label="Buscar comprobantes"
                 />
               </div>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <div className="relative" ref={billingFiltersRef}>
                   <button
                     type="button"
@@ -2955,7 +3003,7 @@ export default function Reports() {
                     ) : null}
                   </button>
                   {billingFiltersOpen ? (
-                    <div className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,18rem)] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg p-3 space-y-2.5">
+                    <div className="absolute left-0 sm:left-auto sm:right-0 top-full z-30 mt-1 w-[min(100vw-2rem,18rem)] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] shadow-lg p-3 space-y-2.5">
                       <select
                         className="input-field w-full cursor-pointer"
                         value={billingStatusFilter}
@@ -3006,10 +3054,114 @@ export default function Reports() {
               </div>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="md:hidden space-y-3">
+            {billingDocuments.map((doc) => {
+              const st = String(doc.provider_status || '').toLowerCase();
+              const kind = String(doc.doc_type || '').toLowerCase();
+              const kindLabel = kind === 'factura' ? 'Factura' : kind === 'boleta' ? 'Boleta' : 'Nota de venta';
+              const accent = st === 'accepted'
+                ? 'border-l-emerald-500'
+                : st === 'error'
+                  ? 'border-l-red-500'
+                  : st === 'local'
+                    ? 'border-l-slate-400'
+                    : 'border-l-amber-500';
+              const StatusIcon = st === 'accepted' ? MdCheckCircle : st === 'error' ? MdErrorOutline : MdDescription;
+              const message = doc.sunat_description || doc.provider_message;
+              const canPrint = kind === 'boleta' || kind === 'factura';
+              const hasPdf = billingFileIsOpenable(doc.pdf_url);
+              const actionBtn = 'inline-flex items-center justify-center gap-1 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-xs font-medium text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] disabled:opacity-60';
+              return (
+                <div
+                  key={doc.id}
+                  className={`rounded-xl border border-[color:var(--ui-border)] border-l-4 ${accent} bg-[var(--ui-surface)] p-3 shadow-sm`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]">{kindLabel}</p>
+                      <p className="text-base font-bold text-[var(--ui-body-text)] tabular-nums break-all">{doc.full_number || '—'}</p>
+                    </div>
+                    <p className="shrink-0 text-lg font-bold text-[var(--ui-body-text)] tabular-nums">{formatCurrency(doc.total)}</p>
+                  </div>
+                  <div className="mt-2 flex items-start gap-2 text-sm text-[var(--ui-body-text)]">
+                    <MdPerson className="mt-0.5 shrink-0 text-[var(--ui-muted)]" />
+                    <div className="min-w-0">
+                      <p className="break-words">{doc.customer_name || 'CLIENTE VARIOS'}</p>
+                      {doc.customer_doc_number ? (
+                        <p className="text-xs text-[var(--ui-muted)] tabular-nums">Doc. {doc.customer_doc_number}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="mt-2 rounded-lg bg-[var(--ui-surface-2)] p-2">
+                    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${billingStatusClass(doc.provider_status)}`}>
+                      <StatusIcon className="text-sm" />
+                      {billingStatusLabel(doc.provider_status)}
+                    </span>
+                    {message ? (
+                      <p className="mt-1.5 text-xs leading-snug text-[var(--ui-muted)] break-words">{message}</p>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {['error', 'pending', 'sent'].includes(st) ? (
+                      <button
+                        type="button"
+                        onClick={() => retryDocument(doc.id)}
+                        disabled={retryingDocId === doc.id}
+                        className="inline-flex items-center justify-center gap-1 rounded-lg bg-red-100 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-200 disabled:opacity-60"
+                      >
+                        <MdRefresh /> {retryingDocId === doc.id ? 'Enviando…' : 'Reintentar'}
+                      </button>
+                    ) : null}
+                    {hasPdf ? (
+                      <button
+                        type="button"
+                        onClick={() => setBillingPdfPreview({
+                          url: doc.pdf_url,
+                          title: doc.full_number ? `PDF — ${doc.full_number}` : 'Vista previa del comprobante',
+                          doc,
+                        })}
+                        className={actionBtn}
+                      >
+                        <MdVisibility /> Ver PDF
+                      </button>
+                    ) : null}
+                    {canPrint ? (
+                      <button
+                        type="button"
+                        onClick={() => printBillingThermal(doc)}
+                        disabled={printingBillingId === doc.id}
+                        className={actionBtn}
+                      >
+                        <MdPrint /> {printingBillingId === doc.id ? 'Imprimiendo…' : 'Imprimir'}
+                      </button>
+                    ) : null}
+                    {hasPdf ? (
+                      <button type="button" onClick={() => saveBillingPdf(doc)} className={actionBtn}>
+                        <MdDownload /> PDF
+                      </button>
+                    ) : null}
+                    {billingFileIsOpenable(doc.xml_url) ? (
+                      <a href={resolveMediaUrl(doc.xml_url)} target="_blank" rel="noreferrer" className={actionBtn}>
+                        <MdCode /> XML
+                      </a>
+                    ) : null}
+                    {billingFileIsOpenable(doc.cdr_url) ? (
+                      <a href={resolveMediaUrl(doc.cdr_url)} target="_blank" rel="noreferrer" className={actionBtn} title="Constancia de recepción SUNAT">
+                        <MdVerified /> CDR
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+            {billingDocuments.length === 0 ? (
+              <p className="py-6 text-center text-sm text-[var(--ui-muted)]">Sin comprobantes emitidos todavía.</p>
+            ) : null}
+          </div>
+          <div className="hidden md:block overflow-x-auto rounded-xl border border-[color:var(--ui-border)]">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100">
+              <thead className="bg-[var(--ui-surface-2)]">
+                <tr className="border-b border-[color:var(--ui-border)]">
                   <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Comprobante</th>
                   <th className="text-left py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Cliente</th>
                   <th className="text-right py-2 px-3 text-xs text-[var(--ui-muted)] uppercase">Total</th>
@@ -3020,16 +3172,21 @@ export default function Reports() {
               </thead>
               <tbody>
                 {billingDocuments.map(doc => (
-                  <tr key={doc.id} className="border-b border-slate-50">
-                    <td className="py-2 px-3 font-medium">{doc.full_number}</td>
-                    <td className="py-2 px-3">{doc.customer_name || 'CLIENTE VARIOS'}</td>
-                    <td className="py-2 px-3 text-right font-semibold">{formatCurrency(doc.total)}</td>
-                    <td className="py-2 px-3">
-                      <span className={`text-xs px-2 py-1 rounded-full ${billingStatusClass(doc.provider_status)}`}>
+                  <tr key={doc.id} className="border-b border-[color:var(--ui-border)] align-top hover:bg-[var(--ui-sidebar-hover)]/40">
+                    <td className="py-2.5 px-3 font-medium whitespace-nowrap tabular-nums">{doc.full_number}</td>
+                    <td className="py-2.5 px-3 min-w-[10rem]">
+                      <p>{doc.customer_name || 'CLIENTE VARIOS'}</p>
+                      {doc.customer_doc_number ? (
+                        <p className="text-xs text-[var(--ui-muted)] tabular-nums">Doc. {doc.customer_doc_number}</p>
+                      ) : null}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-semibold whitespace-nowrap tabular-nums">{formatCurrency(doc.total)}</td>
+                    <td className="py-2.5 px-3 min-w-[14rem]">
+                      <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${billingStatusClass(doc.provider_status)}`}>
                         {billingStatusLabel(doc.provider_status)}
                       </span>
                       {doc.sunat_description || doc.provider_message ? (
-                        <p className="text-[10px] text-[var(--ui-muted)] mt-1 max-w-[16rem] leading-snug">
+                        <p className="text-xs text-[var(--ui-muted)] mt-1 max-w-[24rem] leading-snug break-words">
                           {doc.sunat_description || doc.provider_message}
                         </p>
                       ) : null}
