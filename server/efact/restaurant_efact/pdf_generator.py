@@ -95,10 +95,8 @@ def generar_pdf_comprobante(venta: VentaInput, ruta_salida: Path, codigo_qr: str
         emisor_parts.append(f"<b>{nc}</b>")
     emisor_parts.append(f"<b>{rs}</b>")
     emisor_parts.append(f"RUC: {e.ruc}")
-    emisor_parts.append(f"{e.direccion}")
-    geo = " — ".join(part for part in (e.distrito, e.provincia, e.departamento) if str(part or "").strip())
-    if geo:
-        emisor_parts.append(geo)
+    if str(e.direccion or "").strip():
+        emisor_parts.append(str(e.direccion).strip())
     tel = (getattr(e, "telefono", None) or "").strip()
     mail = (getattr(e, "correo", None) or "").strip()
     if tel:
@@ -116,7 +114,9 @@ def generar_pdf_comprobante(venta: VentaInput, ruta_salida: Path, codigo_qr: str
 
     c = venta.cliente
     story.append(Paragraph("<b>Cliente</b>", left))
-    cli = f"{c.razon_social}<br/>Doc: ({c.tipo_doc}) {c.numero_doc}<br/>{c.direccion or ''}"
+    cli = f"{c.razon_social}<br/>Doc: ({c.tipo_doc}) {c.numero_doc}"
+    if str(c.direccion or "").strip():
+        cli += f"<br/>{c.direccion.strip()}"
     story.append(Paragraph(cli, left))
     story.append(Spacer(1, 2 * mm))
 

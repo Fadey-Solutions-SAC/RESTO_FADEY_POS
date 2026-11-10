@@ -143,9 +143,7 @@ async function buildFormalReceiptPdfBuffer(sale, { digest = '' } = {}) {
     if (nc && nc.toUpperCase() !== rs.toUpperCase()) center(nc, { bold: true });
     if (rs) center(rs, { bold: true });
     if (e.ruc) center(`RUC: ${e.ruc}`);
-    if (e.direccion) center(String(e.direccion));
-    const geo = [e.distrito, e.provincia, e.departamento].map((p) => String(p || '').trim()).filter(Boolean).join(' — ');
-    if (geo) center(geo);
+    if (String(e.direccion || '').trim()) center(String(e.direccion).trim());
     if (String(e.telefono || '').trim()) center(`Tel: ${String(e.telefono).trim()}`);
     if (String(e.correo || '').trim()) center(`Correo: ${String(e.correo).trim()}`);
     gap();

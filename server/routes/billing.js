@@ -100,36 +100,15 @@ function formatIssueDate(date = new Date()) {
   return `${dd}-${mm}-${yyyy}`;
 }
 
-/** Dirección fiscal/local del emisor (nunca inventar «LIMA»). */
-function restaurantLocalAddress(restaurant) {
-  const fiscal = String(restaurant?.billing_emisor_direccion || '').trim();
-  if (fiscal) return fiscal;
-  const local = String(restaurant?.address || '').trim();
-  if (local) return local;
-  const geo = [
-    restaurant?.billing_emisor_distrito,
-    restaurant?.billing_emisor_provincia,
-    restaurant?.billing_emisor_departamento,
-  ]
-    .map((s) => String(s || '').trim())
-    .filter(Boolean);
-  return geo.length ? geo.join(' - ') : '';
-}
-
 function normalizeCustomerForDoc(docType, customer = {}, restaurant = null) {
   const rawDocType = String(customer.doc_type || '').trim();
   const rawDocNumber = String(customer.doc_number || '').trim();
   const rawName = String(customer.name || '').trim();
-  const rawAddress = String(customer.address || '').trim();
-  const addressFold = rawAddress.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
-  const addressIsPlaceholder = !addressFold || addressFold === 'LIMA';
+  const customerAddress = String(customer.address || '').trim();
 
   const customerDocType = rawDocType || (docType === 'factura' ? '6' : '1');
   const customerDocNumber = rawDocNumber;
   const customerName = rawName || 'CLIENTE VARIOS';
-  const customerAddress = !addressIsPlaceholder
-    ? rawAddress
-    : (restaurantLocalAddress(restaurant) || rawAddress || 'SIN DIRECCION');
 
   if (docType === 'factura') {
     if (customerDocType !== '6') {
@@ -916,7 +895,7 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
       doc_type: customer?.doc_type || existingDoc?.customer_doc_type || '',
       doc_number: customer?.doc_number || existingDoc?.customer_doc_number || '',
       name: customer?.name || existingDoc?.customer_name || order.customer_name || 'CLIENTE VARIOS',
-      address: customer?.address || existingDoc?.customer_address || restaurantLocalAddress(restaurant) || '',
+      address: customer?.address ?? existingDoc?.customer_address ?? '',
     };
     const customerPhone = String(customer?.phone ?? existingDoc?.customer_phone ?? '').trim();
     const normalizedCustomer = normalizeCustomerForDoc('boleta', sourceCustomer, restaurant);
@@ -1011,7 +990,7 @@ async function issueDocumentForOrder({ orderId, docType, customer = {}, replaceE
     doc_type: customer?.doc_type || existingDoc?.customer_doc_type || '',
     doc_number: customer?.doc_number || existingDoc?.customer_doc_number || '',
     name: customer?.name || existingDoc?.customer_name || order.customer_name || 'CLIENTE VARIOS',
-    address: customer?.address || existingDoc?.customer_address || restaurantLocalAddress(restaurant) || '',
+    address: customer?.address ?? existingDoc?.customer_address ?? '',
   };
   const customerPhone = String(customer?.phone ?? existingDoc?.customer_phone ?? '').trim();
   const normalizedCustomer = normalizeCustomerForDoc(docType, sourceCustomer, restaurant);

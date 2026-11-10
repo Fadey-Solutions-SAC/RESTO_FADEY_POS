@@ -6,6 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const { effectiveEfactApiUrl, effectiveEfactHttpSecret } = require('./efactConnection');
 const { getUploadsRoot } = require('./uploadsPath');
+const { queryOne } = require('./database');
+const { partsFromDate, resolveRegionalTimezone } = require('./utils/appDateTime');
 
 /** Rutas subidas por el panel (/uploads/...) → ruta absoluta en el mismo host que Node. */
 function resolveCertPathForBot(certPath) {
@@ -39,18 +41,19 @@ function round2(value) {
   return Math.round(toNumber(value) * 100) / 100;
 }
 
+/** El servidor en la nube corre en UTC: la emisión usa la zona regional del restaurante. */
+function issueDateParts(date = new Date()) {
+  return partsFromDate(date, resolveRegionalTimezone(queryOne));
+}
+
 function formatIssueDateIso(date = new Date()) {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+  const p = issueDateParts(date);
+  return `${p.year}-${p.month}-${p.day}`;
 }
 
 function formatIssueTime(date = new Date()) {
-  const h = String(date.getHours()).padStart(2, '0');
-  const m = String(date.getMinutes()).padStart(2, '0');
-  const s = String(date.getSeconds()).padStart(2, '0');
-  return `${h}:${m}:${s}`;
+  const p = issueDateParts(date);
+  return `${p.hour}:${p.minute}:${p.second}`;
 }
 
 function foldPlace(value) {
@@ -195,9 +198,7 @@ function buildEfactSaleJson({
   const provincia = geo.provincia;
   const departamento = geo.departamento;
   const distrito = geo.distrito;
-  const direccionCliente = isPlaceholderLima(customer.customerAddress)
-    ? (isPlaceholderLima(direccionFiscal) ? (customer.customerAddress || 'SIN DIRECCION') : direccionFiscal)
-    : customer.customerAddress;
+  const direccionCliente = String(customer.customerAddress || '').trim();
 
   const panel = parseBillingPanelJson(restaurant);
   const usuarioSol = String(panel.sol_usuario || '').trim();

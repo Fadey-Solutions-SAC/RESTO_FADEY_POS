@@ -183,9 +183,7 @@ def venta_desde_dict(data: dict) -> VentaInput:
     """Construye VentaInput desde un dict (mismo esquema que el JSON de archivo)."""
     em = _ajustar_lugar_emisor(data["emisor"])
     cl = data["cliente"]
-    direccion_cliente = str(cl.get("direccion", "") or "")
-    if _placeholder_lima(direccion_cliente):
-        direccion_cliente = str(em.get("direccion") or direccion_cliente or "SIN DIRECCION")
+    direccion_cliente = str(cl.get("direccion", "") or "").strip()
     emisor = EmisorConfig(
         ruc=str(em["ruc"]),
         razon_social=em["razon_social"],
