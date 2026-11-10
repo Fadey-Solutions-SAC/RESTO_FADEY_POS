@@ -99,23 +99,37 @@ export default function PrinterModulePanel({
     return base || '';
   };
 
-  const copyAndroidCloudLink = async () => {
+  const androidLinkParts = () => {
     const apiBase = absoluteApiBaseForAndroid();
     const token = typeof window !== 'undefined' ? String(window.localStorage?.getItem('token') || '').trim() : '';
+    return { apiBase, token };
+  };
+
+  const copyAndroidUrl = async () => {
+    const { apiBase } = androidLinkParts();
     if (!apiBase) {
       toast.error('No hay URL del API del restaurante');
       return;
     }
+    try {
+      await navigator.clipboard.writeText(apiBase);
+      toast.success('URL copiada. Pégala en el APK → Configuración → API');
+    } catch (_) {
+      toast.error('No se pudo copiar la URL');
+    }
+  };
+
+  const copyAndroidToken = async () => {
+    const { token } = androidLinkParts();
     if (!token) {
       toast.error('Inicie sesión como cajero o admin para copiar el token');
       return;
     }
-    const text = `API:\n${apiBase}\n\nTOKEN:\n${token}`;
     try {
-      await navigator.clipboard.writeText(text);
-      toast.success('Vínculo Android copiado · péguelo en el APK → Configuración', { duration: 5000 });
+      await navigator.clipboard.writeText(token);
+      toast.success('Token copiado. Pégalo en el APK → Configuración → Token');
     } catch (_) {
-      toast.error('No se pudo copiar. API: ' + apiBase);
+      toast.error('No se pudo copiar el token');
     }
   };
 
@@ -200,10 +214,18 @@ export default function PrinterModulePanel({
               <button
                 type="button"
                 className="btn-primary text-sm"
-                onClick={() => void copyAndroidCloudLink()}
+                onClick={() => void copyAndroidUrl()}
                 disabled={busy || linking}
               >
-                Copiar vínculo Android
+                Copiar URL
+              </button>
+              <button
+                type="button"
+                className="btn-secondary text-sm"
+                onClick={() => void copyAndroidToken()}
+                disabled={busy || linking}
+              >
+                Copiar token
               </button>
               <PrintingAssistantDownloadButton disabled={busy || linking} />
             </div>

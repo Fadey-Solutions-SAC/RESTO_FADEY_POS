@@ -256,7 +256,7 @@ import {
 import PrinterModulePanel from '../../components/printing/PrinterModulePanel';
 import { getPrecuentaSurveyQrAttachment } from '../../utils/surveyQrPrint';
 import { withSunatQr } from '../../utils/sunatQr';
-import { downloadBillingPdf, printBillingOnThermal, SUNAT_TICKET_WIDTH_MM } from '../../utils/billingDocumentActions';
+import { downloadBillingPdf, printBillingOnThermal, sendComprobanteViaWhatsapp, SUNAT_TICKET_WIDTH_MM, whatsappPhonePe } from '../../utils/billingDocumentActions';
 import {
   DEFAULT_PRINTING_CONFIG,
   fetchPrintingConfig,
@@ -1005,6 +1005,7 @@ export default function POSPanel() {
   const [amountReceived, setAmountReceived] = useState('');
   const [billingForm, setBillingForm] = useState(DEFAULT_BILLING_FORM);
   const [billingResult, setBillingResult] = useState(null);
+  const [whatsappSending, setWhatsappSending] = useState(false);
   const {
     cart,
     noteEditorLineKey,
@@ -2570,9 +2571,6 @@ export default function POSPanel() {
   };
 
   const issueElectronicDocument = async (orderId) => {
-    const localAddr = String(
-      printRestaurantInfo?.billing_emisor_direccion || printRestaurantInfo?.address || '',
-    ).trim();
     const doc = await api.post('/billing/issue', {
       order_id: orderId,
       doc_type: billingForm.doc_type,
@@ -2581,12 +2579,37 @@ export default function POSPanel() {
         doc_type: billingForm.customer_doc_type,
         doc_number: billingForm.customer_doc_number,
         name: billingForm.customer_name,
-        address: String(billingForm.customer_address || '').trim() || localAddr,
+        address: String(billingForm.customer_address || '').trim(),
         phone: billingForm.customer_phone,
       },
     });
     setBillingResult(doc);
     return doc;
+  };
+
+  const sendBillingWhatsapp = async () => {
+    const phone = whatsappPhonePe(billingForm.customer_phone || billingResult?.customer_phone);
+    if (!phone) {
+      toast.error('Ingrese un celular de 9 dígitos para WhatsApp');
+      return;
+    }
+    if (!billingResult) return;
+    setWhatsappSending(true);
+    try {
+      const result = await sendComprobanteViaWhatsapp(billingResult, phone);
+      if (result.mode === 'clipboard') {
+        toast.success('WhatsApp abierto con el número. En el chat presione Ctrl+V: el PDF ya está copiado.', { duration: 7000 });
+      } else if (result.mode === 'share') {
+        toast.success('PDF listo para WhatsApp y chat del cliente abierto.', { duration: 6000 });
+      } else {
+        toast.success('WhatsApp abierto con el número. Adjunte el PDF que se descargó.', { duration: 7000 });
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      toast.error(err.message || 'No se pudo abrir WhatsApp');
+    } finally {
+      setWhatsappSending(false);
+    }
   };
 
   const openCustomerModal = () => {
@@ -2893,9 +2916,6 @@ export default function POSPanel() {
             if (!doc || !ord) continue;
             const grouped = groupItemsByProductNameForBill(ord.items || []);
             const ordDisc = Number(printDiscountsByOrder[ord.id] || 0);
-            const localAddr = String(
-              printRestaurantInfo?.billing_emisor_direccion || printRestaurantInfo?.address || '',
-            ).trim();
             const plain = buildBoletaFacturaPlainText({
               restaurant: printRestaurantInfo,
               doc,
@@ -2908,9 +2928,7 @@ export default function POSPanel() {
               customer: {
                 name: billingForm.customer_name || doc.customer_name,
                 doc_number: billingForm.customer_doc_number || doc.customer_doc_number,
-                address: String(billingForm.customer_address || '').trim()
-                  || doc.customer_address
-                  || localAddr,
+                address: String(billingForm.customer_address || '').trim() || doc.customer_address,
               },
               widthMm: pw,
               taxKind: taxKindFromItems(ord.items || []),
@@ -6151,10 +6169,7 @@ export default function POSPanel() {
                             </div>
                             <input
                               className="input-field text-sm sm:col-span-2"
-                              placeholder={
-                                String(printRestaurantInfo?.billing_emisor_direccion || printRestaurantInfo?.address || '').trim()
-                                || 'Dirección del local'
-                              }
+                              placeholder="Dirección del cliente (opcional)"
                               value={billingForm.customer_address}
                               onChange={(e) => setBillingForm((prev) => ({ ...prev, customer_address: e.target.value }))}
                             />
@@ -6535,24 +6550,37 @@ export default function POSPanel() {
                         <span>
                           {billingResult.full_number} · {billingStatusLabel(billingResult.provider_status)}
                         </span>
-                        {billingResult.pdf_url && (
-                          <span className="flex items-center gap-1">
+                        <span className="flex flex-wrap items-center gap-1">
+                          {billingResult.pdf_url && (
+                            <>
+                              <button
+                                type="button"
+                                className="px-2 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"
+                                onClick={() => window.open(resolveMediaUrl(billingResult.pdf_url), '_blank', 'noopener,noreferrer')}
+                              >
+                                Ver PDF
+                              </button>
+                              <button
+                                type="button"
+                                className="px-2 py-1 rounded-lg border border-emerald-400 text-emerald-100 hover:bg-emerald-900"
+                                onClick={() => downloadBillingPdf(billingResult).catch((err) => toast.error(err.message))}
+                              >
+                                Descargar PDF
+                              </button>
+                            </>
+                          )}
+                          {(billingResult.doc_type === 'boleta' || billingResult.doc_type === 'factura')
+                            && whatsappPhonePe(billingForm.customer_phone || billingResult.customer_phone) && (
                             <button
                               type="button"
-                              className="px-2 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"
-                              onClick={() => window.open(resolveMediaUrl(billingResult.pdf_url), '_blank', 'noopener,noreferrer')}
+                              className="px-2 py-1 rounded-lg bg-[#25D366] text-white hover:bg-[#1ebe5d] disabled:opacity-60"
+                              disabled={whatsappSending}
+                              onClick={() => void sendBillingWhatsapp()}
                             >
-                              Ver PDF
+                              {whatsappSending ? 'Abriendo WhatsApp…' : 'Enviar por WhatsApp'}
                             </button>
-                            <button
-                              type="button"
-                              className="px-2 py-1 rounded-lg border border-emerald-400 text-emerald-100 hover:bg-emerald-900"
-                              onClick={() => downloadBillingPdf(billingResult).catch((err) => toast.error(err.message))}
-                            >
-                              Descargar PDF
-                            </button>
-                          </span>
-                        )}
+                          )}
+                        </span>
                       </div>
                     )}
 
