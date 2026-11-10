@@ -20,7 +20,7 @@ import {
   orderPendingForProductionStation,
 } from '../../utils/productionArea';
 import { isCourtesyOrder, isDiscountOrder, summarizePaidSalesAccounts } from '../../utils/mesaOrderLines';
-import { getProductionAreaIcon } from '../../utils/productionAreaUi';
+import { getProductionAreaIcon, getProductionAreaSkin } from '../../utils/productionAreaUi';
 
 const PAYMENT_METHOD_COLORS = {
   efectivo: '#10b981',
@@ -419,6 +419,7 @@ export default function Escritorio() {
             .map((a) => ({
               id: String(a?.id || '').trim(),
               name: String(a?.name || a?.id || '').trim() || 'Área',
+              color: String(a?.color || '').trim(),
             }))
             .filter((a) => a.id);
           setActiveProductionAreas(areas);
@@ -1156,11 +1157,7 @@ export default function Escritorio() {
               );
               const level = getQueueLevel(queue);
               const Icon = getProductionAreaIcon(area);
-              const areaSkin = areaId === 'bar'
-                ? { card: 'border-violet-100 bg-violet-50', icon: 'bg-white text-violet-600', title: 'text-violet-900', value: 'text-violet-950', sub: 'text-violet-800/80', btn: 'bg-violet-600 hover:bg-violet-700' }
-                : areaId === 'cocina'
-                  ? { card: 'border-orange-100 bg-orange-50', icon: 'bg-white text-orange-500', title: 'text-orange-950', value: 'text-orange-950', sub: 'text-orange-900/80', btn: 'bg-orange-500 hover:bg-orange-600' }
-                  : { card: 'border-teal-100 bg-teal-50', icon: 'bg-white text-teal-600', title: 'text-teal-950', value: 'text-teal-950', sub: 'text-teal-800/80', btn: 'bg-teal-600 hover:bg-teal-700' };
+              const areaSkin = getProductionAreaSkin(area);
               return (
                 <div
                   key={areaId}

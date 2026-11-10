@@ -2,11 +2,18 @@ const { v4: uuidv4 } = require('uuid');
 const { queryOne, queryAll, runSql } = require('../database');
 const { DEFAULT_PRIMARY_CAJA_ID } = require('../cajaSettings');
 
+/** Debe coincidir con `PRODUCTION_AREA_SKINS` en client/src/utils/productionAreaUi.js. */
+const PRODUCTION_AREA_COLORS = [
+  'orange', 'violet', 'rose', 'amber', 'indigo', 'fuchsia',
+  'lime', 'pink', 'red', 'purple', 'yellow', 'teal',
+];
+
 const DEFAULT_PRODUCTION_AREAS = [
   {
     id: 'cocina',
     name: 'Cocina',
     active: 1,
+    color: 'orange',
     encargado_user_ids: [],
     mozo_user_ids: [],
   },
@@ -14,10 +21,38 @@ const DEFAULT_PRODUCTION_AREAS = [
     id: 'bar',
     name: 'Bar',
     active: 1,
+    color: 'violet',
     encargado_user_ids: [],
     mozo_user_ids: [],
   },
 ];
+
+function normalizeAreaColor(raw) {
+  const c = String(raw || '').trim().toLowerCase();
+  return PRODUCTION_AREA_COLORS.includes(c) ? c : '';
+}
+
+function pickRandomAreaColor(usedColors = []) {
+  const used = new Set(usedColors.map(normalizeAreaColor).filter(Boolean));
+  const free = PRODUCTION_AREA_COLORS.filter((c) => !used.has(c));
+  const pool = free.length ? free : PRODUCTION_AREA_COLORS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** Asigna color a las áreas que no lo tienen, sin repetir mientras haya libres. */
+function assignMissingAreaColors(areas) {
+  const used = areas.map((a) => a.color).filter(Boolean);
+  let changed = false;
+  const out = areas.map((a) => {
+    if (a.color) return a;
+    const preferred = a.id === 'cocina' ? 'orange' : a.id === 'bar' ? 'violet' : '';
+    const color = preferred && !used.includes(preferred) ? preferred : pickRandomAreaColor(used);
+    used.push(color);
+    changed = true;
+    return { ...a, color };
+  });
+  return { areas: out, changed };
+}
 
 function parseSettingsBlob() {
   const row = queryOne('SELECT value FROM app_settings WHERE key = ?', ['settings']);
@@ -64,6 +99,7 @@ function normalizeProductionAreaRow(raw, idx = 0) {
     id,
     name: titled || id,
     active: Number(raw?.active) === 0 ? 0 : 1,
+    color: normalizeAreaColor(raw?.color),
     encargado_user_ids: normalizeUserIdList(raw?.encargado_user_ids),
     mozo_user_ids: [],
   };
@@ -84,12 +120,17 @@ function normalizeProductionAreasList(list) {
 
 function readProductionAreas() {
   const settings = parseSettingsBlob();
-  return normalizeProductionAreasList(settings.production_areas);
+  const normalized = normalizeProductionAreasList(settings.production_areas);
+  const { areas, changed } = assignMissingAreaColors(normalized);
+  if (changed && Array.isArray(settings.production_areas) && settings.production_areas.length) {
+    saveSettingsBlob({ ...settings, production_areas: areas });
+  }
+  return areas;
 }
 
 function saveProductionAreas(areas) {
   const settings = parseSettingsBlob();
-  const normalized = normalizeProductionAreasList(areas);
+  const normalized = assignMissingAreaColors(normalizeProductionAreasList(areas)).areas;
   saveSettingsBlob({ ...settings, production_areas: normalized });
   return normalized;
 }
@@ -210,6 +251,7 @@ function createProductionArea({ name, encargado_user_ids } = {}) {
     id,
     name: name || 'Nueva área',
     active: 1,
+    color: pickRandomAreaColor(areas.map((a) => a.color)),
     encargado_user_ids: ids,
   });
   areas.push(row);
@@ -429,6 +471,7 @@ function ensureSalonesHaveCajaId() {
 
 module.exports = {
   DEFAULT_PRODUCTION_AREAS,
+  PRODUCTION_AREA_COLORS,
   DEFAULT_PRIMARY_CAJA_ID,
   readProductionAreas,
   saveProductionAreas,

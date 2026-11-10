@@ -23,6 +23,8 @@ const { getControlConfig } = require('../masterAdminService');
 const { scheduleWhatsappPdfSend } = require('../whatsappLaptopNotify');
 const { exportBillingPdfToUploads, exportBillingFileToUploads, isHttpUrl: isHttpPdfUrl } = require('../billingPdfStorage');
 const { saveLocalFallbackReceiptPdf, ensureLocalFallbackPdfForDocumentRow } = require('../billingLocalReceiptPdf');
+const { writeFormalReceiptPdfTemp, digestFromSignedXml, codigoQrSunat } = require('../billingFormalReceiptPdf');
+const { getUploadsRoot } = require('../uploadsPath');
 const { getOrderWithItems } = require('../orderCreateService');
 const { getSocketIo, emitBillingDocumentUpdate } = require('../socketBroadcast');
 const { touchPrintAgent } = require('../printAgentPresence');
@@ -293,9 +295,68 @@ function parseProviderPayload(rawPayload) {
   }
 }
 
+/** El asistente Android no genera PDF: se arma la representación impresa desde el XML firmado. */
+async function attachFormalPdfIfMissing(doc, parsed) {
+  const paths = parsed?.paths || {};
+  if (String(paths.pdf || '').trim() || !String(paths.xml_firmado || '').trim()) return parsed;
+  try {
+    const digest = digestFromSignedXml(fs.readFileSync(paths.xml_firmado));
+    const sale = refreshPayloadTax(doc, parseProviderPayload(doc.provider_payload));
+    const pdfPath = await writeFormalReceiptPdfTemp(sale, digest, path.dirname(paths.xml_firmado));
+    if (!pdfPath) return parsed;
+    return {
+      ...parsed,
+      hash: String(parsed.hash || '').trim() || digest,
+      codigo_qr: parsed.codigo_qr || codigoQrSunat(sale, digest),
+      paths: { ...paths, pdf: pdfPath },
+    };
+  } catch (e) {
+    console.warn('[billing] PDF formal:', e.message || e);
+    return parsed;
+  }
+}
+
+function uploadsFsPath(publicUrl) {
+  const rel = String(publicUrl || '').trim().replace(/^\/+/, '').replace(/^uploads\//, '');
+  if (!rel || /^https?:/i.test(rel)) return '';
+  const full = path.join(getUploadsRoot(), rel);
+  return fs.existsSync(full) ? full : '';
+}
+
+/** Comprobantes ya emitidos por Android quedaron con el PDF provisional (`-local.pdf`). */
+async function upgradeProvisionalPdfToFormal(row) {
+  if (!['boleta', 'factura'].includes(String(row?.doc_type || ''))) return false;
+  if (!/-local\.pdf$/i.test(String(row?.pdf_url || ''))) return false;
+  const xmlPath = uploadsFsPath(row.xml_url);
+  if (!xmlPath) return false;
+  const digest = digestFromSignedXml(fs.readFileSync(xmlPath));
+  if (!digest) return false;
+  const sale = refreshPayloadTax(row, parseProviderPayload(row.provider_payload));
+  if (!Array.isArray(sale?.lineas) || !sale.lineas.length) return false;
+  const pdfPath = await writeFormalReceiptPdfTemp(sale, digest, path.dirname(xmlPath));
+  if (!pdfPath) return false;
+  const stored = exportBillingPdfToUploads(row.id, pdfPath);
+  try { fs.unlinkSync(pdfPath); } catch (_) { /* ignore */ }
+  if (!stored) return false;
+  runSql(
+    `UPDATE electronic_documents
+     SET pdf_url = ?, hash_code = CASE WHEN trim(coalesce(hash_code, '')) = '' THEN ? ELSE hash_code END
+     WHERE id = ?`,
+    [stored, digest, row.id],
+  );
+  return true;
+}
+
 async function refreshDocWithLocalPdfIfNeeded(docId, restaurant) {
   let row = queryOne('SELECT * FROM electronic_documents WHERE id = ?', [docId]);
   if (!row) return null;
+  try {
+    if (await upgradeProvisionalPdfToFormal(row)) {
+      row = queryOne('SELECT * FROM electronic_documents WHERE id = ?', [docId]);
+    }
+  } catch (e) {
+    console.warn('[billing] PDF formal (regenerar):', e.message || e);
+  }
   const local = await ensureLocalFallbackPdfForDocumentRow(row, restaurant);
   if (local && !String(row.pdf_url || '').trim()) {
     runSql('UPDATE electronic_documents SET pdf_url = ? WHERE id = ?', [local, docId]);
@@ -1145,7 +1206,7 @@ router.post('/:id/local-result', authenticateToken, requireRole('admin', 'cajero
     const restaurant = queryOne('SELECT * FROM restaurants LIMIT 1');
     if (!restaurant) return res.status(400).json({ error: 'No hay restaurante configurado' });
 
-    const parsed = hydrateRelayFiles(req.body?.bot || req.body || {});
+    const parsed = await attachFormalPdfIfMissing(doc, hydrateRelayFiles(req.body?.bot || req.body || {}));
     const structured = Boolean(parsed?.paths || parsed?.sunat || parsed?.mensaje || parsed?.nombre_base);
     const httpOk = structured || parsed?.ok !== false;
     const result = mapEfactResponseToProviderResult(parsed, httpOk);
