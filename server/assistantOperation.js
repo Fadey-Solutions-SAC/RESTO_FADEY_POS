@@ -1,7 +1,10 @@
 const { queryOne } = require('./database');
+const { businessNowSqlLiteral } = require('./lib/workSessionSql');
 
 /** Heartbeat del POS en navegador (caja / panel abierto). */
 const HEARTBEAT_FRESH_MS = 120_000;
+/** El personal avisa cada 2 min con la pestaña visible. 6 min cubre un aviso perdido. */
+const ACTIVE_USER_MINUTES = 6;
 
 let lastPosHeartbeatAt = null;
 let lastPosUserId = null;
@@ -24,24 +27,47 @@ function countOpenRegisters() {
   }
 }
 
+/** Jornadas abiertas con actividad reciente (pestaña del sistema en uso). */
+function countActiveUsers() {
+  try {
+    const nowLit = businessNowSqlLiteral();
+    const row = queryOne(
+      `SELECT COUNT(*) AS c
+       FROM user_work_sessions
+       WHERE logout_at IS NULL
+         AND CAST((julianday(${nowLit}) - julianday(
+           COALESCE(NULLIF(trim(last_activity_at), ''), login_at)
+         )) * 24 * 60 AS INTEGER) <= ?`,
+      [ACTIVE_USER_MINUTES],
+    );
+    return Number(row?.c || 0);
+  } catch (_) {
+    return 0;
+  }
+}
+
 /**
- * Sistema en operación = hay caja abierta y/o el POS mandó heartbeat reciente.
- * El APK Android usa esto para arrancar/parar el servicio en segundo plano.
+ * Hay usuario activo si alguien tiene la sesión abierta y reciente,
+ * o el POS mandó heartbeat en los últimos 2 minutos.
+ * Una caja abierta sin nadie no mantiene el asistente encendido.
  */
 function getOperationStatus() {
   const openRegisters = countOpenRegisters();
+  const activeUsers = countActiveUsers();
   const hbMs = lastPosHeartbeatAt ? Date.parse(lastPosHeartbeatAt) : NaN;
   const heartbeatFresh = Number.isFinite(hbMs) && Date.now() - hbMs < HEARTBEAT_FRESH_MS;
-  const operating = openRegisters > 0 || heartbeatFresh;
+  const operating = activeUsers > 0 || heartbeatFresh;
   return {
     ok: true,
     operating,
+    activeUsers,
     openRegisters,
     posHeartbeatAt: lastPosHeartbeatAt,
     heartbeatFresh,
     posUserId: lastPosUserId,
     posRole: lastPosRole,
     heartbeatWindowMs: HEARTBEAT_FRESH_MS,
+    activeUserWindowMinutes: ACTIVE_USER_MINUTES,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -50,4 +76,5 @@ module.exports = {
   touchPosHeartbeat,
   getOperationStatus,
   HEARTBEAT_FRESH_MS,
+  ACTIVE_USER_MINUTES,
 };
