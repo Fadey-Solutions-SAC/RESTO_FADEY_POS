@@ -2185,23 +2185,39 @@ html[data-ui-theme='gold_premium'] .rf-shell-header .w-px {
     letter-spacing: var(--survey-title-letter-spacing, 0);
   }
 
-  .rf-login-brand {
+  .rf-login-kicker {
     flex-shrink: 0;
-    margin-bottom: clamp(0.5rem, 2vh, 1.25rem);
+    margin: 0 0 0.85rem;
+    text-align: center;
+    color: rgba(248, 250, 252, 0.94);
+    font-size: clamp(0.95rem, 2.4vh, 1.12rem);
+    font-weight: 500;
+    letter-spacing: -0.01em;
   }
 
-  .rf-login-brand-logo {
-    display: block;
-    width: clamp(3.5rem, 12vh, 7rem);
-    height: clamp(3.5rem, 12vh, 7rem);
-    margin-bottom: clamp(0.35rem, 1.2vh, 1rem);
-    object-fit: cover;
-    object-position: center;
-    border-radius: 50%;
-    overflow: hidden;
+  .rf-login-card {
+    position: relative;
+    padding: 2.35rem 1.25rem 1.25rem;
+    color: #f8fafc;
     background: transparent;
-    border: none;
+    border: 0;
     box-shadow: none;
+  }
+
+  .rf-login-version {
+    position: absolute;
+    top: 0.72rem;
+    right: 0.85rem;
+    z-index: 1;
+    padding: 0.18rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid rgba(232, 196, 110, 0.85);
+    background: rgba(8, 12, 22, 0.72);
+    color: #f8fafc;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.35;
   }
 
   .rf-login-form {
@@ -2210,19 +2226,20 @@ html[data-ui-theme='gold_premium'] .rf-shell-header .w-px {
     border: none !important;
     box-shadow: none !important;
     border-radius: 0 !important;
-    color: #e8f4fc;
+    color: #f8fafc;
     flex-shrink: 1;
     min-height: 0;
   }
 
   .rf-login-title {
-    font-family: 'Segoe Script', 'Lucida Handwriting', 'Apple Chancery', cursive;
-    font-size: clamp(1.65rem, 5.5vh, 2.65rem);
-    font-weight: 600;
+    font-family: var(--ui-font-display);
+    font-size: clamp(1.65rem, 4.6vh, 2.05rem);
+    font-weight: 700;
     line-height: 1.15;
-    color: #7ee8f0;
-    text-shadow: 0 0 22px rgba(0, 174, 239, 0.45);
-    margin: 0 0 0.15rem;
+    color: #ffffff;
+    text-align: center;
+    text-shadow: none;
+    margin: 0.15rem 0 0.2rem;
   }
 
   .rf-login-page .rf-login-form h2,
@@ -2231,9 +2248,10 @@ html[data-ui-theme='gold_premium'] .rf-shell-header .w-px {
   }
 
   .rf-login-subtitle {
-    color: rgba(248, 250, 252, 0.88);
-    font-size: 0.875rem;
-    margin: 0 0 clamp(0.65rem, 2vh, 1.35rem);
+    color: rgba(226, 232, 240, 0.78);
+    font-size: 0.92rem;
+    text-align: center;
+    margin: 0 0 clamp(0.85rem, 2.2vh, 1.35rem);
   }
 
   .rf-login-fields {
@@ -2242,14 +2260,138 @@ html[data-ui-theme='gold_premium'] .rf-shell-header .w-px {
     gap: clamp(0.65rem, 1.8vh, 1.25rem);
   }
 
+  .rf-login-field {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    min-height: 3.55rem;
+    padding: 0.4rem 0.7rem 0.4rem 0.45rem;
+    border-radius: 1.05rem;
+    background: rgba(20, 30, 48, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .rf-login-field:focus-within {
+    border-color: rgba(232, 196, 110, 0.65);
+    box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.16);
+  }
+
+  .rf-login-field-badge {
+    width: 2.35rem;
+    height: 2.35rem;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 0.7rem;
+    color: #f8fafc;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .rf-login-field-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.05rem;
+  }
+
+  .rf-login-page .rf-login-form .rf-login-field-caption {
+    color: rgba(226, 232, 240, 0.62);
+    font-size: 0.72rem;
+    font-weight: 500;
+    line-height: 1.1;
+  }
+
   .rf-login-field-icon,
   .rf-login-field-toggle {
-    color: #475569;
+    color: rgba(226, 232, 240, 0.78);
     z-index: 1;
+    background: transparent;
+    border: 0;
+    padding: 0.25rem;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    cursor: pointer;
   }
 
   .rf-login-field-toggle:hover {
-    color: #0f172a;
+    color: #ffffff;
+  }
+
+  .rf-login-extras {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.75rem;
+  }
+
+  .rf-login-remember {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: #f8fafc;
+    font-size: 0.92rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .rf-login-remember input {
+    position: absolute;
+    opacity: 0;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0;
+    cursor: pointer;
+  }
+
+  .rf-login-remember__box {
+    width: 1.15rem;
+    height: 1.15rem;
+    flex-shrink: 0;
+    border-radius: 0.28rem;
+    border: 1.5px solid #e4b84a;
+    background: transparent;
+    display: grid;
+    place-items: center;
+  }
+
+  .rf-login-remember input:checked + .rf-login-remember__box {
+    background: #f5c542;
+    border-color: #f5c542;
+  }
+
+  .rf-login-remember input:checked + .rf-login-remember__box::after {
+    content: '';
+    width: 0.28rem;
+    height: 0.5rem;
+    border: solid #1a1408;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(-1px, -1px);
+  }
+
+  .rf-login-remember input:focus-visible + .rf-login-remember__box {
+    box-shadow: 0 0 0 2px rgba(245, 197, 66, 0.35);
+  }
+
+  .rf-login-forgot {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #e8c46e;
+    font-size: 0.9rem;
+    cursor: pointer;
+    text-align: right;
+  }
+
+  .rf-login-forgot:hover {
+    color: #f6dc8a;
   }
 
   .rf-login-back {
@@ -2273,39 +2415,60 @@ html[data-ui-theme='gold_premium'] .rf-shell-header .w-px {
   .rf-login-input {
     display: block;
     width: 100%;
-    height: clamp(2.5rem, 6.5vh, 3rem);
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-    background: rgba(236, 240, 245, 0.82);
-    border: 1px solid rgba(126, 232, 240, 0.45);
-    border-radius: 9999px;
-    color: #0f172a;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1rem;
+    line-height: 1.25;
     outline: none;
-    box-shadow: 0 0 0 1px rgba(0, 174, 239, 0.12), 0 8px 24px rgba(0, 0, 0, 0.18);
+    box-shadow: none;
   }
 
   .rf-login-input::placeholder {
-    color: #64748b;
+    color: rgba(226, 232, 240, 0.42);
+    font-weight: 500;
   }
 
   .rf-login-input:focus {
-    border-color: #7ee8f0;
-    box-shadow: 0 0 0 3px rgba(0, 174, 239, 0.28);
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .rf-login-input:-webkit-autofill {
+    -webkit-text-fill-color: #ffffff;
+    caret-color: #ffffff;
+    transition: background-color 9999s ease-out;
+    box-shadow: 0 0 0 1000px rgba(20, 30, 48, 0.94) inset;
   }
 
   .rf-login-submit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
     border: none;
-    border-radius: 0.85rem;
-    background: linear-gradient(180deg, #1e4b6b 0%, #163a58 100%);
-    color: #fff;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #ffe08a 0%, #f0b429 46%, #d89a12 100%);
+    color: #1a1408;
     box-shadow:
-      0 0 0 1px rgba(126, 232, 240, 0.35),
-      0 0 28px rgba(0, 174, 239, 0.55),
-      0 10px 24px rgba(0, 0, 0, 0.35);
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 8px 18px rgba(0, 0, 0, 0.28);
+  }
+
+  .rf-login-submit__label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
   }
 
   .rf-login-submit:hover:not(:disabled) {
-    background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+    background: linear-gradient(180deg, #ffe7a3 0%, #f6c03a 48%, #e0a516 100%);
   }
 
   .rf-login-footer {

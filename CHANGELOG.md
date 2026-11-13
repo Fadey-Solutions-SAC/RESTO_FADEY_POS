@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.0.2 — 2026-11-13
+
+- Login sin logo ni nombre: campos con icono, «Recordarme» (solo el usuario, en este equipo) y aviso para pedir el restablecimiento al administrador. Encima: «Sistema de gestión gastronómica» y la versión real. Sin marco alrededor del formulario.
+
 ## 1.2.0.1 — 2026-11-13
 
 - Consulta de usuarios con el sistema ya cerrado: cada 2 horas hasta las 5:00 (Lima), en `electron/operationWatchSchedule.js`. De 5:00 a 7:00 sigue cada 30 minutos.

@@ -5,13 +5,14 @@ import { useAuth } from '../context/AuthContext';
 import { api, resolveMediaUrl } from '../utils/api';
 import { useSocket } from '../hooks/useSocket';
 import toast from 'react-hot-toast';
-import { MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt } from 'react-icons/md';
+import { MdPerson, MdLock, MdVisibility, MdVisibilityOff, MdArrowBack, MdCameraAlt, MdLogin } from 'react-icons/md';
 import AttendancePhotoCapture from '../components/AttendancePhotoCapture';
 import { getStoredAppLocale, setAppLocale } from '../i18n';
 import { getDefaultStaffPath } from '../utils/staffModuleAccess';
+import { getSystemVersionLabel } from '../utils/systemVersion';
 
-/** Si en Mi empresa no hay nombre guardado, se muestra este texto en el login. */
-const FALLBACK_RESTAURANT_NAME = 'Resto Fadey App';
+/** Usuario recordado en este equipo. No guarda la contraseña. */
+const REMEMBER_USER_KEY = 'resto-login-remember-user';
 
 /** Si el pago fue aprobado en la central mientras el usuario está en login. */
 const PAYMENT_APPROVED_LOGIN_MSG = 'Su pago fue aprobado. Puede iniciar sesión.';
@@ -21,18 +22,29 @@ const POLICY_SUSPENSION_RE =
 
 export default function Login() {
   const { t } = useTranslation('auth');
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(() => {
+    try {
+      return localStorage.getItem(REMEMBER_USER_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(() => {
+    try {
+      return !!localStorage.getItem(REMEMBER_USER_KEY);
+    } catch {
+      return false;
+    }
+  });
   const [loading, setLoading] = useState(false);
   const [photoLogin, setPhotoLogin] = useState(null);
   const [attendancePolicy, setAttendancePolicy] = useState({ loading: true, loginRequired: false });
   const [step, setStep] = useState(1);
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [brandLogo, setBrandLogo] = useState('');
   const [coverImage, setCoverImage] = useState('');
-  const [restaurantName, setRestaurantName] = useState(FALLBACK_RESTAURANT_NAME);
   const [systemLocked, setSystemLocked] = useState(false);
   const [lockReason, setLockReason] = useState('');
   const [paymentApprovedNotice, setPaymentApprovedNotice] = useState(false);
@@ -105,9 +117,6 @@ export default function Login() {
     api
       .get('/restaurant')
       .then((r) => {
-        const n = String(r?.name || '').trim();
-        setRestaurantName(n || FALLBACK_RESTAURANT_NAME);
-        setBrandLogo(String(r?.logo || '').trim());
         const cover = String(
           r?.profile_effective?.branding?.favicon ||
             r?.profile?.branding?.favicon ||
@@ -185,6 +194,11 @@ export default function Login() {
       toast.error(t('login.credentialsRequired'));
       return;
     }
+    try {
+      const remembered = String(username || '').trim();
+      if (remember && remembered) localStorage.setItem(REMEMBER_USER_KEY, remembered);
+      else if (!remember) localStorage.removeItem(REMEMBER_USER_KEY);
+    } catch { /* ignore */ }
     // Acceso maestro: solo contraseña (usuario vacío). Personal: usuario + contraseña.
     if (!String(username || '').trim()) {
       void submitLogin();
@@ -208,19 +222,9 @@ export default function Login() {
       </div>
       <div className="rf-login-page__content rf-login-page__content--visible">
         <div className="rf-login-center w-full max-w-md relative z-10 px-4">
-          <div className="rf-login-brand text-center">
-            {brandLogo ? (
-              <img
-                src={resolveMediaUrl(brandLogo)}
-                alt=""
-                className="rf-login-brand-logo mx-auto rounded-full"
-              />
-            ) : null}
-            <h1 className="rf-font-display text-3xl font-bold text-[#e8f4fc] tracking-tight px-1">
-              {restaurantName}
-            </h1>
-          </div>
-
+          <p className="rf-login-kicker">{t('login.kicker')}</p>
+          <div className="rf-login-card">
+            <span className="rf-login-version">{getSystemVersionLabel()}</span>
           <div className="rf-login-form">
             {step === 1 && (
               <>
@@ -269,42 +273,66 @@ export default function Login() {
                 ) : null}
 
                 <form onSubmit={handleContinue} className="rf-login-fields" noValidate>
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5">{t('login.username')}</label>
-                    <div className="relative">
-                      <MdPerson className="rf-login-field-icon absolute left-3 top-1/2 -translate-y-1/2 text-xl pointer-events-none" />
+                  <div className="rf-login-field">
+                    <span className="rf-login-field-badge" aria-hidden="true">
+                      <MdPerson className="text-xl" />
+                    </span>
+                    <label className="rf-login-field-body">
+                      <span className="rf-login-field-caption">{t('login.username')}</span>
                       <input
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         placeholder={t('login.usernamePlaceholder')}
-                        className="rf-login-input pl-10"
+                        className="rf-login-input"
                         autoComplete="username"
                       />
-                    </div>
+                    </label>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5">{t('login.password')}</label>
-                    <div className="relative">
-                      <MdLock className="rf-login-field-icon absolute left-3 top-1/2 -translate-y-1/2 text-xl pointer-events-none" />
+                  <div className="rf-login-field">
+                    <span className="rf-login-field-badge" aria-hidden="true">
+                      <MdLock className="text-xl" />
+                    </span>
+                    <label className="rf-login-field-body">
+                      <span className="rf-login-field-caption">{t('login.password')}</span>
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder={t('login.passwordPlaceholder')}
-                        className="rf-login-input pl-10 pr-10"
+                        className="rf-login-input"
                         required
                         autoComplete="current-password"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="rf-login-field-toggle absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
-                      >
-                        {showPassword ? <MdVisibilityOff className="text-xl" /> : <MdVisibility className="text-xl" />}
-                      </button>
-                    </div>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="rf-login-field-toggle"
+                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      {showPassword ? <MdVisibilityOff className="text-xl" /> : <MdVisibility className="text-xl" />}
+                    </button>
+                  </div>
+
+                  <div className="rf-login-extras">
+                    <label className="rf-login-remember">
+                      <input
+                        type="checkbox"
+                        checked={remember}
+                        onChange={(e) => setRemember(e.target.checked)}
+                      />
+                      <span className="rf-login-remember__box" aria-hidden="true" />
+                      <span>{t('login.remember')}</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="rf-login-forgot"
+                      onClick={() => toast(t('login.forgotHint'))}
+                    >
+                      {t('login.forgot')}
+                    </button>
                   </div>
 
                   <button
@@ -314,18 +342,19 @@ export default function Login() {
                   >
                     {!policyReady ? (
                       <span className="flex items-center justify-center gap-2">
-                        <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                        <div className="animate-spin w-5 h-5 border-2 border-current border-t-transparent rounded-full" />
                         {t('login.loadingPolicy')}
                       </span>
                     ) : loading && !photosRequired ? (
                       <span className="flex items-center justify-center gap-2">
-                        <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                        <div className="animate-spin w-5 h-5 border-2 border-current border-t-transparent rounded-full" />
                         {t('login.entering')}
                       </span>
-                    ) : photosRequired ? (
-                      t('login.continue')
                     ) : (
-                      t('login.enter')
+                      <span className="rf-login-submit__label">
+                        <MdLogin className="text-[1.35rem]" aria-hidden="true" />
+                        {photosRequired ? t('login.continue') : t('login.enter')}
+                      </span>
                     )}
                   </button>
 
@@ -372,7 +401,7 @@ export default function Login() {
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">
-                      <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                      <div className="animate-spin w-5 h-5 border-2 border-current border-t-transparent rounded-full" />
                       {t('login.entering')}
                     </span>
                   ) : (
@@ -382,11 +411,9 @@ export default function Login() {
               </>
             )}
           </div>
+          </div>
         </div>
       </div>
-      <p className="rf-login-footer text-center text-xs select-none" aria-hidden="true">
-        {t('login.footer')}
-      </p>
     </div>
   );
 }
