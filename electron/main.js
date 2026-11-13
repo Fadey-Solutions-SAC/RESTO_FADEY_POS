@@ -1494,17 +1494,11 @@ function getAutoUpdater() {
     });
     autoUpdaterRef.on('update-downloaded', (info) => {
       console.log('[electron-updater] descargada:', info?.version);
+      // No cerrar al abrir: el cliente necesita imprimir. Se instala al elegir «Salir».
       showTrayBalloon(
         'Resto FADEY',
-        'Actualización lista. El sistema se reiniciará para aplicarla.',
+        `Actualización ${info?.version || ''} lista. El asistente sigue activo. Se instalará cuando elija Salir en el ícono junto al reloj.`,
       );
-      setTimeout(() => {
-        try {
-          autoUpdaterRef.quitAndInstall(false, true);
-        } catch (err) {
-          console.warn('[electron-updater] install:', err?.message || err);
-        }
-      }, 2500);
     });
   } catch (err) {
     console.warn('[electron] electron-updater no disponible:', err?.message || err);
