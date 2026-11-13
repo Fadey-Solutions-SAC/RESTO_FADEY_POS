@@ -10,7 +10,7 @@ import StaffModifierPromptModal from '../../components/StaffModifierPromptModal'
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
-import { MdAdd, MdClose, MdDelete, MdLock, MdReceipt, MdRemove, MdRestaurantMenu, MdShoppingCart } from 'react-icons/md';
+import { MdAdd, MdClose, MdDelete, MdLock, MdReceipt, MdRemove, MdRestaurantMenu } from 'react-icons/md';
 import PromotionSummary from '../../components/promotions/PromotionSummary';
 import { filterOrderingProducts } from '../../utils/orderingCatalog';
 import SelfOrderLoading, { isRetryableLoadError, MAX_LOAD_RETRIES } from '../../components/SelfOrderLoading';
@@ -372,15 +372,9 @@ export default function SelfOrderCliente() {
           <button
             type="button"
             onClick={openOrderPanel}
-            className="relative flex h-11 w-11 items-center justify-center rounded-full border border-[#e5e7eb] bg-white text-[#111827] shadow-sm"
-            aria-label={`Hacer pedido (${cart.length})`}
+            className="shrink-0 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#1D4ED8]/30"
           >
-            <MdShoppingCart className="text-2xl" />
-            {cart.length > 0 ? (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#f97316] px-1 text-[11px] font-bold text-white">
-                {cart.length}
-              </span>
-            ) : null}
+            Hacer pedido ({cart.length})
           </button>
         </div>
       </header>
