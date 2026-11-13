@@ -44,6 +44,7 @@ export default function Login() {
   const [step, setStep] = useState(1);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [brandLogo, setBrandLogo] = useState('');
   const [coverImage, setCoverImage] = useState('');
   const [systemLocked, setSystemLocked] = useState(false);
   const [lockReason, setLockReason] = useState('');
@@ -117,6 +118,13 @@ export default function Login() {
     api
       .get('/restaurant')
       .then((r) => {
+        const logo = String(
+          r?.logo ||
+            r?.profile_effective?.logo ||
+            r?.profile_effective?.branding?.logo_main ||
+            ''
+        ).trim();
+        setBrandLogo(logo);
         const cover = String(
           r?.profile_effective?.branding?.favicon ||
             r?.profile?.branding?.favicon ||
@@ -222,7 +230,13 @@ export default function Login() {
       </div>
       <div className="rf-login-page__content rf-login-page__content--visible">
         <div className="rf-login-center w-full max-w-md relative z-10 px-4">
-          <p className="rf-login-kicker">{t('login.kicker')}</p>
+          {brandLogo ? (
+            <img
+              src={resolveMediaUrl(brandLogo)}
+              alt=""
+              className="rf-login-brand-logo"
+            />
+          ) : null}
           <div className="rf-login-card">
             <span className="rf-login-version">{getSystemVersionLabel()}</span>
           <div className="rf-login-form">
@@ -414,6 +428,7 @@ export default function Login() {
           </div>
         </div>
       </div>
+      <p className="rf-login-kicker rf-login-kicker--footer">{t('login.kicker')}</p>
     </div>
   );
 }

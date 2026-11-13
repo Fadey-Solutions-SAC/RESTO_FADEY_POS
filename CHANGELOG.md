@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.0.3 — 2026-11-13
+
+- El login vuelve a mostrar el logo principal de cada negocio (Mi empresa → Identidad visual). «Sistema de gestión gastronómica» queda abajo, al centro.
+
 ## 1.2.0.2 — 2026-11-13
 
 - Login sin logo ni nombre: campos con icono, «Recordarme» (solo el usuario, en este equipo) y aviso para pedir el restablecimiento al administrador. Encima: «Sistema de gestión gastronómica» y la versión real. Sin marco alrededor del formulario.

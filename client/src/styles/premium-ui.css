@@ -2185,14 +2185,34 @@ html[data-ui-theme='gold_premium'] .rf-shell-header .w-px {
     letter-spacing: var(--survey-title-letter-spacing, 0);
   }
 
+  .rf-login-brand-logo {
+    display: block;
+    width: clamp(4rem, 12vh, 6.25rem);
+    height: clamp(4rem, 12vh, 6.25rem);
+    margin: 0 auto 0.85rem;
+    object-fit: cover;
+    object-position: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
   .rf-login-kicker {
     flex-shrink: 0;
-    margin: 0 0 0.85rem;
+    margin: 0;
     text-align: center;
     color: rgba(248, 250, 252, 0.94);
     font-size: clamp(0.95rem, 2.4vh, 1.12rem);
     font-weight: 500;
     letter-spacing: -0.01em;
+  }
+
+  .rf-login-kicker--footer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: max(0.85rem, env(safe-area-inset-bottom));
+    z-index: 2;
+    pointer-events: none;
   }
 
   .rf-login-card {
