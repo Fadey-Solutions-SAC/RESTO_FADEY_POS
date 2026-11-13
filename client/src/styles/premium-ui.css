@@ -2187,8 +2187,8 @@ html[data-ui-theme='gold_premium'] .rf-shell-header .w-px {
 
   .rf-login-brand-logo {
     display: block;
-    width: clamp(4rem, 12vh, 6.25rem);
-    height: clamp(4rem, 12vh, 6.25rem);
+    width: clamp(6rem, 18vh, 9.375rem);
+    height: clamp(6rem, 18vh, 9.375rem);
     margin: 0 auto 0.85rem;
     object-fit: cover;
     object-position: center;
