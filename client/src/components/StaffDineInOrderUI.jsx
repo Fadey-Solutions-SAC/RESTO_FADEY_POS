@@ -428,7 +428,7 @@ export function StaffDineInOrderCartPanel({
 
 /**
  * UI unificada “Tomar pedido” (Mesas / Caja / Reservas / Delivery / auto-pedido): buscador, categorías, grilla y carrito.
- * `stackedSelfOrder`: columna única — grilla con scroll; resumen «Tu pedido» fijo abajo (QR cliente).
+ * `stackedSelfOrder`: menú público QR — buscador, pastillas, grilla de 2 columnas. El carrito de líneas solo aparece si ya hay productos.
  */
 export default function StaffDineInOrderUI({
   search,
@@ -482,16 +482,28 @@ export default function StaffDineInOrderUI({
         ? 'min-h-0 flex-1'
         : `${minHeightClass} h-full min-h-0`;
 
-  const catBtnBase = 'shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium';
+  const catBtnBase = stackedSelfOrder
+    ? 'shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium'
+    : 'shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium';
+  const catOnClass = stackedSelfOrder
+    ? 'bg-[#f6c7a8] text-[#1c1917]'
+    : 'border border-[color:var(--ui-accent)] bg-[var(--ui-accent)] text-white';
+  const catOffClass = stackedSelfOrder
+    ? 'bg-white text-[#6b7280]'
+    : 'border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]';
 
   const searchBlock = (
     <div className="relative shrink-0">
-      <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ui-accent)]" />
+      <MdSearch className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${stackedSelfOrder ? 'text-[#9ca3af]' : 'text-[var(--ui-accent)]'}`} />
       <input
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         placeholder="Buscar producto..."
-        className={`input-field pl-10 pr-3 placeholder:text-[var(--ui-muted)] ${fillParentHeight ? 'py-2' : 'py-2.5'}`}
+        className={
+          stackedSelfOrder
+            ? 'w-full rounded-full border border-[#ececec] bg-white py-3 pl-11 pr-4 text-sm text-[#111827] shadow-sm placeholder:text-[#9ca3af] focus:border-[#f97316] focus:outline-none focus:ring-2 focus:ring-[#f97316]/20'
+            : `input-field pl-10 pr-3 placeholder:text-[var(--ui-muted)] ${fillParentHeight ? 'py-2' : 'py-2.5'}`
+        }
       />
     </div>
   );
@@ -523,11 +535,7 @@ export default function StaffDineInOrderUI({
         <button
           type="button"
           onClick={() => onSelectedCatChange('all')}
-          className={`${catBtnBase} ${
-            selectedCat === 'all'
-              ? 'border border-[color:var(--ui-accent)] bg-[var(--ui-accent)] text-white'
-              : 'border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-          }`}
+          className={`${catBtnBase} ${selectedCat === 'all' ? catOnClass : catOffClass}`}
         >
           Todos
         </button>
@@ -536,11 +544,7 @@ export default function StaffDineInOrderUI({
             type="button"
             key={c.id}
             onClick={() => onSelectedCatChange(c.id)}
-            className={`${catBtnBase} ${
-              selectedCat === c.id
-                ? 'border border-[color:var(--ui-accent)] bg-[var(--ui-accent)] text-white'
-                : 'border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
-            }`}
+            className={`${catBtnBase} ${selectedCat === c.id ? catOnClass : catOffClass}`}
           >
             {c.name}
           </button>
@@ -549,7 +553,7 @@ export default function StaffDineInOrderUI({
     </div>
   );
 
-  const gridGapClass = singleColumnProductList ? 'gap-3' : 'gap-2';
+  const gridGapClass = stackedSelfOrder ? 'gap-3' : 'gap-2';
   const gridColsClass = stackedSelfOrder
     ? (singleColumnProductList ? 'grid-cols-1' : 'grid-cols-2')
     : 'grid-cols-1';
@@ -557,39 +561,6 @@ export default function StaffDineInOrderUI({
   const fmtMoney = formatCurrency || ((amount) => `S/ ${Number(amount || 0).toFixed(2)}`);
   const { promotions: activePromotions, clock: promotionClock } = useActivePromotions();
   const stackedCartPricing = useCartPromotionPricing(stackedSelfOrder ? cart : []);
-  const renderOrderProductRowCompact = (product, promo = null) => {
-    const unitAmount = orderingProductUnitPrice(product);
-    const unitPrice = promo?.strike ? (
-      <PromotionPrice original={unitAmount} final={promo.final_price} formatCurrency={fmtMoney} />
-    ) : (
-      fmtMoney(unitAmount)
-    );
-    return (
-      <button
-        type="button"
-        onClick={() => onProductPick(product)}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) 3.25rem 5rem',
-          columnGap: '0.35rem',
-          alignItems: 'center',
-          width: '100%',
-          padding: '0.5rem 0.75rem',
-          border: '1px solid var(--ui-border)',
-          borderRadius: 6,
-          background: '#fff',
-          cursor: 'pointer',
-          textAlign: 'left',
-        }}
-      >
-        <span className="min-w-0 truncate text-sm font-medium text-[var(--ui-body-text)]">{product.name}</span>
-        <span className="text-right text-xs tabular-nums text-[var(--ui-muted)]">—</span>
-        <span className="text-right text-sm font-bold tabular-nums" style={{ color: '#2563eb' }}>
-          {unitPrice}
-        </span>
-      </button>
-    );
-  };
 
   const productGrid = (
     <>
@@ -613,37 +584,41 @@ export default function StaffDineInOrderUI({
             filteredProducts.map((p) => {
               const imgUrl = String(resolveMediaUrl(p.image || '') || '').trim();
               const promo = getProductPromotion(p, activePromotions, promotionClock);
+              const unitAmount = orderingProductUnitPrice(p);
+              const unitPrice = promo?.strike ? (
+                <PromotionPrice original={unitAmount} final={promo.final_price} formatCurrency={fmtMoney} />
+              ) : (
+                fmtMoney(unitAmount)
+              );
               return (
-                <div
+                <article
                   key={p.id}
-                  className="relative flex flex-col overflow-hidden rounded-md bg-white text-left transition-shadow hover:shadow-md"
-                  style={{ border: promo ? '1px solid #fdba74' : '1px solid var(--ui-border)' }}
+                  className="flex flex-col overflow-hidden rounded-2xl bg-white p-2 text-left shadow-[0_8px_24px_rgba(15,23,42,0.06)]"
                 >
-                  {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} seed={promo.promotion.id} /> : null}
-                  <div className="aspect-[4/3] w-full shrink-0 overflow-hidden border-b border-[color:var(--ui-accent)] bg-white">
+                  <div className="relative aspect-square w-full shrink-0 overflow-hidden rounded-xl bg-[#f4f4f5]">
+                    {promo ? <PromotionBadge label={promo.badge} type={promo.promotion.type} seed={promo.promotion.id} /> : null}
                     {imgUrl ? (
                       <img src={imgUrl} alt="" className="h-full w-full object-cover" />
                     ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-[var(--ui-muted)]">
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-[#9ca3af]">
                         <MdRestaurantMenu className="text-4xl opacity-40" aria-hidden />
                         <span className="text-xs">Sin imagen</span>
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col gap-2 bg-white p-2">
-                    {renderOrderProductRowCompact(p, promo)}
-                    {productActionLabel ? (
-                      <button
-                        type="button"
-                        onClick={() => onProductPick(p)}
-                        className="w-full rounded-md border border-[color:var(--ui-accent)] bg-white px-3 py-2.5 text-sm font-semibold text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]"
-                        style={{ borderWidth: 1 }}
-                      >
-                        {productActionLabel}
-                      </button>
-                    ) : null}
+                  <div className="flex flex-1 flex-col gap-1 px-1 pb-1 pt-2">
+                    <p className="line-clamp-2 min-h-[2.5rem] text-[13px] font-bold leading-snug text-[#111827]">{p.name}</p>
+                    <p className="text-sm font-semibold tabular-nums text-[#111827]">{unitPrice}</p>
+                    <button
+                      type="button"
+                      onClick={() => onProductPick(p)}
+                      className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#f97316] px-2 py-2.5 text-[11px] font-bold uppercase tracking-wide text-white active:bg-[#ea580c]"
+                    >
+                      <MdShoppingCart className="text-base" aria-hidden />
+                      {productActionLabel || 'Agregar'}
+                    </button>
                   </div>
-                </div>
+                </article>
               );
             })
           )}
@@ -683,30 +658,30 @@ export default function StaffDineInOrderUI({
         <div {...scrollAreaFlexProps}>
           {productGrid}
         </div>
-        <div className="shrink-0 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3">
-          <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-[var(--ui-body-text)]">
-            <MdShoppingCart /> Tu pedido
-            {cart.length > 0 && (
-              <span className="rounded-full bg-[var(--ui-accent)] px-2 py-0.5 text-xs text-white">{cart.length}</span>
-            )}
-          </h3>
-          <div className="max-h-[min(26vh,200px)] overflow-y-auto overscroll-y-contain scrollbar-thin [-webkit-overflow-scrolling:touch] touch-pan-y pr-0.5" style={{ touchAction: 'pan-y' }} onWheel={(e) => e.stopPropagation()}>
-            <CartLineItems
-              cart={cart}
-              cartLayout={cartLayout}
-              formatCurrency={formatCurrency}
-              noteEditorLineKey={noteEditorLineKey}
-              setNoteEditorLineKey={setNoteEditorLineKey}
-              updateQty={updateQty}
-              removeFromCart={removeFromCart}
-              updateItemNote={updateItemNote}
-              showLineDeleteLabel={showLineDeleteLabel}
-              canDeleteLine={canDeleteLine}
-            />
+        {cart.length > 0 || noteEditorLineKey ? (
+          <div className="shrink-0 rounded-2xl bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+            <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#111827]">
+              <MdShoppingCart className="text-[#f97316]" /> Tu pedido
+              <span className="rounded-full bg-[#f97316] px-2 py-0.5 text-xs text-white">{cart.length}</span>
+            </h3>
+            <div className="max-h-[min(26vh,200px)] overflow-y-auto overscroll-y-contain scrollbar-thin [-webkit-overflow-scrolling:touch] touch-pan-y pr-0.5" style={{ touchAction: 'pan-y' }} onWheel={(e) => e.stopPropagation()}>
+              <CartLineItems
+                cart={cart}
+                cartLayout={cartLayout}
+                formatCurrency={formatCurrency}
+                noteEditorLineKey={noteEditorLineKey}
+                setNoteEditorLineKey={setNoteEditorLineKey}
+                updateQty={updateQty}
+                removeFromCart={removeFromCart}
+                updateItemNote={updateItemNote}
+                showLineDeleteLabel={showLineDeleteLabel}
+                canDeleteLine={canDeleteLine}
+              />
+            </div>
+            <PromotionSummary pricing={stackedCartPricing} formatCurrency={formatCurrency} compact className="mt-2" />
+            {footer ? <div className="mt-3 space-y-2 border-t border-[#ececec] pt-3">{footer}</div> : null}
           </div>
-          <PromotionSummary pricing={stackedCartPricing} formatCurrency={formatCurrency} compact className="mt-2" />
-          {footer ? <div className="mt-3 space-y-2 border-t border-[color:var(--ui-border)] pt-3">{footer}</div> : null}
-        </div>
+        ) : null}
       </div>
     );
   }

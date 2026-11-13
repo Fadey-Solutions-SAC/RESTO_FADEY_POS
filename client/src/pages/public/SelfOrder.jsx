@@ -10,7 +10,8 @@ import StaffModifierPromptModal from '../../components/StaffModifierPromptModal'
 import CartasHorizontalCarousel from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
-import { MdAdd, MdClose, MdDelete, MdReceipt, MdRemove, MdRestaurantMenu } from 'react-icons/md';
+import { MdAdd, MdClose, MdDelete, MdReceipt, MdRemove, MdRestaurantMenu, MdShoppingCart } from 'react-icons/md';
+import PromotionSummary from '../../components/promotions/PromotionSummary';
 import { filterOrderingProducts } from '../../utils/orderingCatalog';
 import { getTableDisplayLabel } from '../../utils/mesaMapTableVisual';
 import SelfOrderLoading, { isRetryableLoadError, MAX_LOAD_RETRIES } from '../../components/SelfOrderLoading';
@@ -46,6 +47,7 @@ export default function SelfOrder() {
     removeFromCart,
     updateItemNote,
     cartTotal,
+    cartPricing,
     resetCart,
   } = useStaffOrderCart(modifiers);
 
@@ -213,18 +215,18 @@ export default function SelfOrder() {
   }
 
   return (
-    <div className="fixed inset-0 z-0 flex flex-col overflow-hidden bg-[var(--ui-body-bg)] text-[var(--ui-body-text)]">
-      <header className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--ui-border)] bg-[var(--ui-surface)]/95 px-4 py-3">
-        <div className="min-w-0">
-          <h1 className="text-lg font-bold text-[var(--ui-body-text)] truncate">Auto pedido</h1>
-          <p className="text-xs text-[var(--ui-accent)] truncate">{table ? getTableDisplayLabel(table) : ''}</p>
+    <div className="fixed inset-0 z-0 flex flex-col overflow-hidden bg-[#f3f4f6] text-[#111827]">
+      <header className="z-20 flex shrink-0 items-center gap-3 bg-white px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-xl font-bold tracking-tight text-[#111827]">Menú</h1>
+          <p className="truncate text-xs text-[#6b7280]">{table ? getTableDisplayLabel(table) : ''}</p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {qrHome === 'cartas' && effectiveHome === 'cartas' ? (
             <button
               type="button"
               onClick={() => setClientView('productos')}
-              className="px-3 py-2.5 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] text-sm font-semibold hover:bg-[var(--ui-sidebar-hover)]"
+              className="rounded-full border border-[#e5e7eb] bg-white px-3 py-2 text-xs font-semibold text-[#374151]"
             >
               Ver productos
             </button>
@@ -233,7 +235,7 @@ export default function SelfOrder() {
             <button
               type="button"
               onClick={() => setClientView('cartas')}
-              className="px-3 py-2.5 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] text-sm font-semibold hover:bg-[var(--ui-sidebar-hover)]"
+              className="rounded-full border border-[#e5e7eb] bg-white px-3 py-2 text-xs font-semibold text-[#374151]"
             >
               Ver carta
             </button>
@@ -242,7 +244,7 @@ export default function SelfOrder() {
             <button
               type="button"
               onClick={() => setShowCartaModal(true)}
-              className="px-3 py-2.5 rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] text-sm font-semibold hover:bg-[var(--ui-sidebar-hover)]"
+              className="rounded-full border border-[#e5e7eb] bg-white px-3 py-2 text-xs font-semibold text-[#374151]"
             >
               Ver carta
             </button>
@@ -250,14 +252,20 @@ export default function SelfOrder() {
           <button
             type="button"
             onClick={openOrderPanel}
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white text-sm font-semibold shadow-lg shadow-[#1D4ED8]/30"
+            className="relative flex h-11 w-11 items-center justify-center rounded-full border border-[#e5e7eb] bg-white text-[#111827] shadow-sm"
+            aria-label={`Hacer pedido (${cart.length})`}
           >
-            Hacer pedido ({cart.length})
+            <MdShoppingCart className="text-2xl" />
+            {cart.length > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#f97316] px-1 text-[11px] font-bold text-white">
+                {cart.length}
+              </span>
+            ) : null}
           </button>
         </div>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ui-surface-2)]">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f3f4f6]">
         {showCartasMain ? (
           <div
             className={`min-h-0 overflow-hidden p-3 ${
@@ -288,8 +296,7 @@ export default function SelfOrder() {
               formatCurrency={formatCurrency}
               minHeightClass="min-h-0 flex-1"
               className="min-h-0 min-w-0 flex-1"
-              productActionLabel="Agregar pedido"
-              singleColumnProductList
+              productActionLabel="Agregar"
               showProductThumbnail
               hideProductStock
             />
@@ -381,16 +388,17 @@ export default function SelfOrder() {
                   ))
                 )}
               </div>
-              <div className="mt-3 border-t border-[color:var(--ui-border)] pt-3 space-y-2">
+              <div className="mt-3 space-y-2 border-t border-[color:var(--ui-border)] pt-3">
+                <PromotionSummary pricing={cartPricing} formatCurrency={formatCurrency} />
                 <div className="flex justify-between text-lg font-bold text-[var(--ui-body-text)]">
                   <span>Total</span>
-                  <span className="text-[var(--ui-accent)]">{formatCurrency(cartTotal)}</span>
+                  <span className="text-[#f97316]">{formatCurrency(cartTotal)}</span>
                 </div>
                 <button
                   type="button"
                   onClick={submitOrder}
                   disabled={cart.length === 0}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] py-3 text-base font-semibold text-white shadow-lg shadow-[#1D4ED8]/30 transition-all hover:from-[#1D4ED8] hover:to-[#1E40AF] disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#f97316] py-3 text-base font-semibold text-white shadow-lg shadow-orange-500/30 transition-all hover:bg-[#ea580c] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <MdReceipt /> Enviar
                 </button>

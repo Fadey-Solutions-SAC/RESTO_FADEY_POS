@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.0.5 — 2026-11-13
+
+- El menú público de auto pedido (mesa y cliente) pasa a grilla de dos columnas: pastillas, ficha con foto y botón naranja, carrito en la cabecera. El recuadro «Tu pedido» solo aparece cuando ya hay productos.
+
 ## 1.2.0.4 — 2026-11-13
 
 - El logo del login queda 1.5 veces más grande.
