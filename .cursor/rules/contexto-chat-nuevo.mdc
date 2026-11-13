@@ -1,0 +1,18 @@
+---
+description: Al empezar, leer el contexto del proyecto antes de modificar nada
+alwaysApply: true
+---
+
+# Contexto en un chat nuevo
+
+Este chat no trae el historial de conversaciones anteriores.
+
+Antes de investigar a ciegas o de editar, leer en este orden:
+
+1. `PROJECT_CONTEXT.md` — mapa del sistema, rutas y decisiones.
+2. `AGENTS.md` — cómo trabajar y cómo cerrar la tarea.
+3. `CHANGELOG.md` — solo las entradas de arriba.
+
+Luego hacer el trabajo pedido. No renombrar rutas de `client/src/App.jsx` ni prefijos de `server/index.js` si la persona no lo pidió en este chat.
+
+Al terminar una tarea de producto, actualizar `CHANGELOG.md` y, si cambió una ruta o una decisión, la sección afectada de `PROJECT_CONTEXT.md`.
