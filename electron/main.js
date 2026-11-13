@@ -7,6 +7,7 @@ const { execFile, spawn } = require('child_process');
 const express = require('express');
 const cors = require('cors');
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, shell, dialog, session, systemPreferences } = require('electron');
+const { nextOperationDelayMs } = require('./operationWatchSchedule');
 
 /** Audio de cocina/bar sin gesto manual; permisos de cámara/mic se conceden al arrancar. */
 try {
@@ -64,6 +65,11 @@ const ASSISTANT_PORT_TRY_COUNT = 25;
 let assistantListenPort = null;
 let efactCloudLink = null;
 let efactCloudPollTimer = null;
+let operationWatchTimer = null;
+let operationSyncInFlight = false;
+/** Impresión y facturación local apagadas porque no hay usuarios. El proceso sigue para la consulta de la mañana. */
+let assistantAsleep = false;
+let pendingUpdateReady = false;
 /** Puerto de la API restaurant (solo empaquetado). */
 let embeddedApiListenPort = null;
 let restaurantApiChild = null;
@@ -799,6 +805,69 @@ function startEfactCloudPoll() {
   }, 5000);
 }
 
+function stopEfactCloudPoll() {
+  if (!efactCloudPollTimer) return;
+  clearInterval(efactCloudPollTimer);
+  efactCloudPollTimer = null;
+}
+
+function cloudLinkFilePath() {
+  return path.join(app.getPath('userData'), 'efact-cloud-link.json');
+}
+
+function loadCloudLink() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(cloudLinkFilePath(), 'utf8'));
+    const apiBase = String(raw.apiBase || '').trim().replace(/\/$/, '');
+    const token = String(raw.token || '').trim();
+    if (apiBase && token) efactCloudLink = { apiBase, token };
+  } catch (_) {
+    /* aún no hay vínculo guardado */
+  }
+}
+
+function saveCloudLink() {
+  if (!efactCloudLink?.apiBase || !efactCloudLink?.token) return;
+  try {
+    fs.writeFileSync(cloudLinkFilePath(), JSON.stringify({
+      apiBase: efactCloudLink.apiBase,
+      token: efactCloudLink.token,
+      updatedAt: new Date().toISOString(),
+    }), 'utf8');
+  } catch (err) {
+    console.warn('[electron] no se guardó el vínculo:', err?.message || err);
+  }
+}
+
+function rememberCloudLink(apiBase, token) {
+  efactCloudLink = { apiBase, token };
+  saveCloudLink();
+  if (!operationWatchTimer && !operationSyncInFlight) scheduleOperationWatch();
+}
+
+function cloudLinkIsLocal() {
+  try {
+    const host = new URL(efactCloudLink.apiBase).hostname;
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  } catch (_) {
+    return false;
+  }
+}
+
+/** El POS local tiene que seguir arriba para que alguien pueda entrar. El de la nube no. */
+function shouldKeepEmbeddedApi() {
+  return !efactCloudLink?.token || cloudLinkIsLocal();
+}
+
+function captureRefreshedToken(res) {
+  const refreshed = res?.headers?.get?.('x-refreshed-token');
+  if (!refreshed || !efactCloudLink) return;
+  const next = String(refreshed).trim();
+  if (!next || next === efactCloudLink.token) return;
+  efactCloudLink.token = next;
+  saveCloudLink();
+}
+
 async function pollEfactFromCloud() {
   const link = efactCloudLink;
   if (!link?.apiBase || !link?.token) return;
@@ -810,6 +879,7 @@ async function pollEfactFromCloud() {
   try {
     const res = await fetch(`${link.apiBase}/billing/pending-local`, { headers });
     if (!res.ok) return;
+    captureRefreshedToken(res);
     list = await res.json();
   } catch (_) {
     return;
@@ -922,7 +992,7 @@ function buildAssistantExpressApp() {
     const apiBase = String(req.body?.apiBase || '').trim().replace(/\/$/, '');
     const token = String(req.body?.token || '').trim();
     if (!apiBase || !token) return res.status(400).json({ ok: false });
-    efactCloudLink = { apiBase, token };
+    rememberCloudLink(apiBase, token);
     res.json({ ok: true });
   });
 
@@ -1168,7 +1238,7 @@ function monitorEmbeddedApiHealth(portNum, { isRestart = false } = {}) {
           { cooldownMs: 10 * 60 * 1000 },
         );
         setTimeout(() => {
-          if (gen === embeddedApiHealthGeneration && !app.isQuitting) {
+          if (gen === embeddedApiHealthGeneration && !app.isQuitting && !(assistantAsleep && !shouldKeepEmbeddedApi())) {
             startEmbeddedRestaurantApi({ isRestart: true });
           }
         }, API_RESTART_COOLDOWN_MS);
@@ -1202,6 +1272,7 @@ function startEmbeddedApiWatchdog() {
   if (!app.isPackaged || embeddedApiWatchdogTimer) return;
   embeddedApiWatchdogTimer = setInterval(() => {
     if (app.isQuitting) return;
+    if (assistantAsleep && !shouldKeepEmbeddedApi()) return;
     const port = embeddedApiListenPort || EMBEDDED_API_DEFAULT_PORT;
     waitForEmbeddedApiHealthz(port, 4000, (ok) => {
       if (ok) return;
@@ -1286,7 +1357,7 @@ function launchEmbeddedRestaurantApiChild({ isRestart = false } = {}) {
       updateTrayMenu();
       const intentional = embeddedApiStopIntentional;
       embeddedApiStopIntentional = false;
-      if (!app.isQuitting && app.isPackaged && !intentional) {
+      if (!app.isQuitting && app.isPackaged && !intentional && !(assistantAsleep && !shouldKeepEmbeddedApi())) {
         showTrayBalloon(
           'Resto FADEY',
           'El servicio local se detuvo (p. ej. antivirus). Reiniciando automáticamente…',
@@ -1400,12 +1471,170 @@ async function startPrintingAssistantServer() {
   return null;
 }
 
+function servicesAreRunning() {
+  return Boolean(assistantListenPort) && !assistantAsleep;
+}
+
+async function queryOperationStatus() {
+  const link = efactCloudLink;
+  if (!link?.apiBase || !link?.token) return { ok: false, operating: false, users: 0 };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const res = await fetch(`${link.apiBase}/assistant/operation-status`, {
+      headers: {
+        Authorization: `Bearer ${link.token}`,
+        Accept: 'application/json',
+      },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      console.warn('[electron] operation-status HTTP', res.status);
+      return { ok: false, operating: false, users: 0 };
+    }
+    captureRefreshedToken(res);
+    const json = await res.json();
+    return {
+      ok: true,
+      operating: Boolean(json?.operating),
+      users: Number(json?.activeUsers) || 0,
+    };
+  } catch (err) {
+    console.warn('[electron] operation-status:', err?.message || err);
+    return { ok: false, operating: false, users: 0 };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function ensureLocalApiIfNeeded() {
+  if (!cloudLinkIsLocal() || !app.isPackaged) return;
+  if (restaurantApiChild) return;
+  assistantAsleep = false;
+  startEmbeddedRestaurantApi();
+  const port = embeddedApiListenPort || EMBEDDED_API_DEFAULT_PORT;
+  await new Promise((resolve) => waitForEmbeddedApiHealthz(port, 20000, resolve));
+}
+
+async function activateAssistantServices() {
+  const wasOff = assistantAsleep || !assistantListenPort;
+  assistantAsleep = false;
+  if (app.isPackaged) startEmbeddedRestaurantApi();
+  await startPrintingAssistantServer();
+  try {
+    tray?.setToolTip('Resto FADEY — Impresión (mantenga abierto para cobrar con ticket)');
+  } catch (_) {
+    /* noop */
+  }
+  if (wasOff && assistantListenPort) {
+    showTrayBalloon(
+      'Resto FADEY',
+      'Asistente activo: hay usuarios en el sistema.',
+      { cooldownMs: 60 * 60 * 1000 },
+    );
+  }
+}
+
+async function deactivateAssistantServices() {
+  const wasOn = Boolean(assistantListenPort) || (Boolean(restaurantApiChild) && !shouldKeepEmbeddedApi());
+  assistantAsleep = true;
+  stopEfactCloudPoll();
+  await stopAssistantServer();
+  assistantListenPort = null;
+  if (app.isPackaged && !shouldKeepEmbeddedApi()) {
+    await stopEmbeddedRestaurantApiGracefully();
+  }
+  updateTrayMenu();
+  try {
+    tray?.setToolTip('Resto FADEY — en espera (sin usuarios en el sistema)');
+  } catch (_) {
+    /* noop */
+  }
+  if (wasOn) {
+    showTrayBalloon(
+      'Resto FADEY',
+      pendingUpdateReady
+        ? 'Sin usuarios. El asistente queda en espera y se instala la actualización.'
+        : 'Sin usuarios. El asistente queda en espera y vuelve a consultar en el horario de la mañana.',
+      { cooldownMs: 30 * 60 * 1000 },
+    );
+  }
+}
+
+function installPendingUpdate() {
+  const updater = getAutoUpdater();
+  if (!updater || !pendingUpdateReady || app.isQuitting) return;
+  pendingUpdateReady = false;
+  app.isQuitting = true;
+  console.log('[electron] instalando actualización (sin usuarios en el sistema)');
+  try {
+    updater.quitAndInstall(true, true);
+  } catch (err) {
+    app.isQuitting = false;
+    pendingUpdateReady = true;
+    console.warn('[electron] no se pudo instalar:', err?.message || err);
+  }
+}
+
+function scheduleOperationWatch() {
+  if (operationWatchTimer) {
+    clearTimeout(operationWatchTimer);
+    operationWatchTimer = null;
+  }
+  if (!efactCloudLink?.apiBase || !efactCloudLink?.token) return;
+  const delay = nextOperationDelayMs(new Date(), servicesAreRunning());
+  console.log('[electron] próxima consulta de usuarios en', Math.round(delay / 60000), 'min');
+  operationWatchTimer = setTimeout(() => {
+    operationWatchTimer = null;
+    void syncAssistantToUsers();
+  }, delay);
+}
+
+async function syncAssistantToUsers() {
+  if (operationSyncInFlight) return;
+  if (!efactCloudLink?.apiBase || !efactCloudLink?.token) return;
+  operationSyncInFlight = true;
+  try {
+    await ensureLocalApiIfNeeded();
+    let status = await queryOperationStatus();
+    if (!status.ok) {
+      console.log('[electron] consulta de usuarios falló; no se apaga');
+      return;
+    }
+    if (!status.operating && (servicesAreRunning() || pendingUpdateReady)) {
+      const confirm = await queryOperationStatus();
+      if (!confirm.ok || confirm.operating) {
+        if (confirm.operating) await activateAssistantServices();
+        console.log('[electron] no se apaga: no se confirmó el cierre');
+        return;
+      }
+      status = confirm;
+    }
+    if (status.operating) {
+      console.log('[electron] usuarios activos:', status.users);
+      await activateAssistantServices();
+    } else {
+      console.log('[electron] sin usuarios; asistente en espera');
+      await deactivateAssistantServices();
+      if (pendingUpdateReady) installPendingUpdate();
+    }
+  } finally {
+    operationSyncInFlight = false;
+    if (!app.isQuitting) scheduleOperationWatch();
+  }
+}
+
 function updateTrayMenu() {
   if (!tray) return;
-  const statusLabel = assistantListenPort
-    ? `Servicio listo · puerto ${assistantListenPort}`
-    : 'Servicio detenido — pulse «Reintentar»';
+  const statusLabel = assistantAsleep
+    ? 'En espera · sin usuarios en el sistema'
+    : assistantListenPort
+      ? `Servicio listo · puerto ${assistantListenPort}`
+      : 'Servicio detenido — pulse «Reintentar»';
   const template = [{ label: statusLabel, enabled: false }];
+  if (pendingUpdateReady) {
+    template.push({ label: 'Actualización lista · se instala sin usuarios', enabled: false });
+  }
   if (app.isPackaged) {
     const apiPort = embeddedApiListenPort || EMBEDDED_API_DEFAULT_PORT;
     template.push({
@@ -1425,10 +1654,12 @@ function updateTrayMenu() {
     {
       label: 'Reintentar servicio de impresión',
       click: () => {
-        void startPrintingAssistantServer();
-        if (app.isPackaged) {
-          startEmbeddedRestaurantApi({ isRestart: true });
-        }
+        assistantAsleep = false;
+        void (async () => {
+          await startPrintingAssistantServer();
+          if (app.isPackaged) startEmbeddedRestaurantApi({ isRestart: true });
+          scheduleOperationWatch();
+        })();
       },
     },
     { type: 'separator' },
@@ -1489,15 +1720,24 @@ function getAutoUpdater() {
       console.log('[electron-updater] disponible:', info?.version);
       showTrayBalloon(
         'Resto FADEY',
-        `Hay una actualización (${info?.version || ''}). Se descargará e instalará sola.`,
+        `Hay una actualización (${info?.version || ''}). Se descargará y se instalará cuando no haya usuarios.`,
       );
     });
     autoUpdaterRef.on('update-downloaded', (info) => {
+      pendingUpdateReady = true;
       console.log('[electron-updater] descargada:', info?.version);
-      // No cerrar al abrir: el cliente necesita imprimir. Se instala al elegir «Salir».
+      updateTrayMenu();
+      if (assistantAsleep && efactCloudLink?.token) {
+        showTrayBalloon(
+          'Resto FADEY',
+          `Actualización ${info?.version || ''} lista. Se instala si se confirma que no hay usuarios.`,
+        );
+        void syncAssistantToUsers();
+        return;
+      }
       showTrayBalloon(
         'Resto FADEY',
-        `Actualización ${info?.version || ''} lista. El asistente sigue activo. Se instalará cuando elija Salir en el ícono junto al reloj.`,
+        `Actualización ${info?.version || ''} lista. El asistente sigue activo y se instalará cuando no haya usuarios en el sistema.`,
       );
     });
   } catch (err) {
@@ -1592,10 +1832,13 @@ function extractProtocolUrl(argv = process.argv) {
 }
 
 function wakePrintingServicesFromProtocol() {
-  /** Solo el arranque principal gestiona la API embebida (3001). El wake del navegador no debe reiniciarla. */
-  if (!assistantListenPort) {
-    void startPrintingAssistantServer();
-  }
+  /** Alguien abrió el sistema en esta PC: encender ya. El horario lo apaga si luego no hay usuarios. */
+  assistantAsleep = false;
+  void (async () => {
+    if (!assistantListenPort) await startPrintingAssistantServer();
+    if (app.isPackaged && !restaurantApiChild) startEmbeddedRestaurantApi();
+    scheduleOperationWatch();
+  })();
 }
 
 function handleProtocolWake(url = '') {
@@ -1672,6 +1915,10 @@ if (!acquiredSingleInstance) {
       clearInterval(embeddedApiWatchdogTimer);
       embeddedApiWatchdogTimer = null;
     }
+    if (operationWatchTimer) {
+      clearTimeout(operationWatchTimer);
+      operationWatchTimer = null;
+    }
     if (restaurantApiChild && !embeddedApiGracefulStopDone) {
       event.preventDefault();
       stopEmbeddedRestaurantApiGracefully().finally(() => {
@@ -1688,17 +1935,22 @@ if (!acquiredSingleInstance) {
     if (app.isPackaged) {
       console.log('[electron] ejecutable:', process.execPath);
     }
+    loadCloudLink();
     configureDesktopSessionPermissions();
     if (pendingProtocolWake) {
-      handleProtocolWake(pendingProtocolWake);
+      console.log('[electron] arranque por protocolo');
       pendingProtocolWake = '';
     }
-    startEmbeddedRestaurantApi();
     startEmbeddedApiWatchdog();
     configureAutoStart();
     createWindow();
     createTray();
-    void startPrintingAssistantServer();
+    if (efactCloudLink?.apiBase && efactCloudLink?.token) {
+      void syncAssistantToUsers();
+    } else {
+      startEmbeddedRestaurantApi();
+      void startPrintingAssistantServer();
+    }
     registerPrintingIpc();
     void primeDesktopOsPermissions();
     startDesktopAutoUpdater();
