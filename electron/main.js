@@ -1555,7 +1555,7 @@ async function deactivateAssistantServices() {
       'Resto FADEY',
       pendingUpdateReady
         ? 'Sin usuarios. El asistente queda en espera y se instala la actualización.'
-        : 'Sin usuarios. El asistente queda en espera y vuelve a consultar en el horario de la mañana.',
+        : 'Sin usuarios. El asistente queda en espera y consulta cada 2 horas hasta las 5:00.',
       { cooldownMs: 30 * 60 * 1000 },
     );
   }
