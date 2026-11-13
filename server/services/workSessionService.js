@@ -453,11 +453,59 @@ function ensureOpenWorkSession(user) {
     'SELECT id FROM user_work_sessions WHERE user_id = ? AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1',
     [user.id]
   );
-  if (!sid && existing?.id) return null;
+  // Una jornada abierta basta. No abrir otra por cada poll del asistente
+  // cuando el token trae un session_id que ya no coincide.
+  if (existing?.id) return null;
 
   const { sessionTokenId } = startWorkSession(user, null);
   touchStaffSessionNow(user.id, sessionTokenId);
   return sessionTokenId;
+}
+
+/**
+ * El asistente consultaba con un token viejo y cada request abría una jornada.
+ * Si un usuario tiene más de dos abiertas, se queda la más antigua y se cierran las demás.
+ * La actividad más reciente se conserva en la que queda.
+ */
+function closeExcessOpenSessions() {
+  let rows = [];
+  try {
+    rows = queryAll(
+      `SELECT id, user_id, session_token_id, login_at, last_activity_at
+       FROM user_work_sessions
+       WHERE logout_at IS NULL
+       ORDER BY login_at ASC`,
+    ) || [];
+  } catch (_) {
+    return 0;
+  }
+  const byUser = new Map();
+  for (const row of rows) {
+    const key = String(row.user_id || '');
+    if (!key) continue;
+    const list = byUser.get(key) || [];
+    list.push(row);
+    byUser.set(key, list);
+  }
+  let closed = 0;
+  for (const list of byUser.values()) {
+    if (list.length <= 2) continue;
+    const keep = list[0];
+    let newestTouch = String(keep.last_activity_at || keep.login_at || '');
+    for (const extra of list.slice(1)) {
+      const touch = String(extra.last_activity_at || extra.login_at || '');
+      if (touch > newestTouch) newestTouch = touch;
+      const result = closeWorkSession(extra.user_id, extra.session_token_id, 'ghost_parallel', null);
+      if (result.closed) closed += 1;
+    }
+    if (newestTouch && newestTouch !== String(keep.last_activity_at || '')) {
+      runSql(
+        'UPDATE user_work_sessions SET last_activity_at = ?, updated_at = ? WHERE id = ? AND logout_at IS NULL',
+        [newestTouch, newestTouch, keep.id],
+      );
+    }
+  }
+  return closed;
 }
 
 /** Repara jornadas abiertas sin last_activity_at (usuarios bloqueados tras migración). */
@@ -484,6 +532,7 @@ module.exports = {
   getStaffSessionIdleMinutes,
   enforceStaffIdleLogout,
   ensureOpenWorkSession,
+  closeExcessOpenSessions,
   backfillOpenSessionActivity,
   queryAggregatedJornadas,
   queryDeviceSessions,

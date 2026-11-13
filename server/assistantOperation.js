@@ -1,5 +1,6 @@
 const { queryOne } = require('./database');
 const { businessNowSqlLiteral } = require('./lib/workSessionSql');
+const { closeExcessOpenSessions } = require('./services/workSessionService');
 
 /** Heartbeat del POS en navegador (caja / panel abierto). */
 const HEARTBEAT_FRESH_MS = 120_000;
@@ -27,12 +28,17 @@ function countOpenRegisters() {
   }
 }
 
-/** Jornadas abiertas con actividad reciente (pestaña del sistema en uso). */
+/** Personas con la pestaña del sistema en uso. Varias jornadas del mismo usuario cuentan como una. */
 function countActiveUsers() {
+  try {
+    closeExcessOpenSessions();
+  } catch (_) {
+    /* la cuenta sigue aunque no se puedan cerrar duplicados */
+  }
   try {
     const nowLit = businessNowSqlLiteral();
     const row = queryOne(
-      `SELECT COUNT(*) AS c
+      `SELECT COUNT(DISTINCT user_id) AS c
        FROM user_work_sessions
        WHERE logout_at IS NULL
          AND CAST((julianday(${nowLit}) - julianday(

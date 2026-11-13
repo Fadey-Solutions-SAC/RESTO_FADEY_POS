@@ -13,6 +13,16 @@ const {
 } = require('../utils/staffJwt');
 const { JWT_SECRET } = require('../utils/jwtSecret');
 
+/** El asistente pregunta y recoge colas solo. Eso no es una persona usando el sistema. */
+function isAssistantMachinePoll(req) {
+  const path = String(req.originalUrl || req.url || '').split('?')[0];
+  return /\/assistant\/operation-status$/i.test(path)
+    || /\/billing\/pending-local$/i.test(path)
+    || /\/billing\/[^/]+\/(?:claim-local|local-result|release-local)$/i.test(path)
+    || /\/print-jobs\/pending$/i.test(path)
+    || /\/print-jobs\/[^/]+\/(?:claim|result|release)$/i.test(path);
+}
+
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -54,20 +64,23 @@ function authenticateToken(req, res, next) {
       full_name: user.full_name,
     };
 
+    const machinePoll = isAssistantMachinePoll(req);
     let newSessionId = null;
-    try {
-      newSessionId = ensureUserWorkSession(req.user);
-    } catch (_) {
-      /* noop */
-    }
-    if (newSessionId) {
-      req.user.session_id = newSessionId;
-      const reboundToken = buildStaffToken(user, newSessionId);
-      if (reboundToken) res.setHeader('X-Refreshed-Token', reboundToken);
-    }
+    if (!machinePoll) {
+      try {
+        newSessionId = ensureUserWorkSession(req.user);
+      } catch (_) {
+        /* noop */
+      }
+      if (newSessionId) {
+        req.user.session_id = newSessionId;
+        const reboundToken = buildStaffToken(user, newSessionId);
+        if (reboundToken) res.setHeader('X-Refreshed-Token', reboundToken);
+      }
 
-    touchStaffSessionNow(req.user.id, req.user.session_id);
-    touchWorkSessionActivity(req.user, { module: 'api', path: req.path }, { force: false });
+      touchStaffSessionNow(req.user.id, req.user.session_id);
+      touchWorkSessionActivity(req.user, { module: 'api', path: req.path }, { force: false });
+    }
 
     if (!newSessionId && shouldRefreshStaffToken(decoded)) {
       const refreshed = buildRefreshedStaffToken(req.user, user);
