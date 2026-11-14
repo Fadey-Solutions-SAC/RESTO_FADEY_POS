@@ -17,6 +17,7 @@ import WorkTimeReportTab from '../../components/workTime/WorkTimeReportTab';
 import WorkTimeAnalyticsPanel from '../../components/workTime/WorkTimeAnalyticsPanel';
 import { InlineDateField } from '../../components/DateFilterControls';
 import { getFadeyAiAvatarSrc } from '../../constants/fadeyAiBranding';
+import { INDICADORES_CTRL } from '../../components/indicadores/IndicatorsDateFilters';
 
 const MAIN_TABS = [
   { id: 'panel', label: 'Panel', icon: MdDashboard },
@@ -44,6 +45,7 @@ export default function WorkTime() {
   const [moduleOpen, setModuleOpen] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   const moduleRef = useRef(null);
+  const desktopModuleRef = useRef(null);
   const menuListRef = useRef(null);
 
   const openSessionPhotos = async (sessionId) => {
@@ -175,7 +177,11 @@ export default function WorkTime() {
   });
 
   const updateMenuPos = useCallback(() => {
-    const el = moduleRef.current;
+    const el = [moduleRef.current, desktopModuleRef.current].find((node) => {
+      if (!node) return false;
+      const box = node.getBoundingClientRect();
+      return box.width > 0 && box.height > 0;
+    });
     if (!el) return;
     const r = el.getBoundingClientRect();
     setMenuPos({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 220) });
@@ -185,6 +191,7 @@ export default function WorkTime() {
     if (!moduleOpen) return undefined;
     const onDoc = (e) => {
       if (moduleRef.current?.contains(e.target)) return;
+      if (desktopModuleRef.current?.contains(e.target)) return;
       if (menuListRef.current?.contains(e.target)) return;
       setModuleOpen(false);
     };
@@ -324,7 +331,34 @@ export default function WorkTime() {
   if (mainTab === 'ia') {
     return (
       <div className="space-y-2 relative flex-1 min-h-0 min-w-0 flex flex-col">
-        {moduleButton}
+        <div className="sm:hidden">{moduleButton}</div>
+        <div className="hidden sm:flex items-center gap-1 min-w-0 shrink-0">
+          <div className="relative shrink-0 min-w-[7.5rem] w-[10.5rem] z-30" ref={desktopModuleRef}>
+            <button
+              type="button"
+              className={`${INDICADORES_CTRL} w-full justify-between bg-[var(--ui-surface)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]`}
+              onClick={() => {
+                if (moduleOpen) {
+                  setModuleOpen(false);
+                  return;
+                }
+                updateMenuPos();
+                setModuleOpen(true);
+              }}
+              aria-haspopup="listbox"
+              aria-expanded={moduleOpen}
+            >
+              <img
+                src={getFadeyAiAvatarSrc('saludo')}
+                alt=""
+                className="w-5 h-5 rounded-full object-cover shrink-0 border border-[color:var(--ui-border)]"
+                draggable={false}
+              />
+              <span className="flex-1 text-left truncate">{activeModule.label}</span>
+              <MdKeyboardArrowDown className={`shrink-0 text-[var(--ui-muted)] transition ${moduleOpen ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+        </div>
         {moduleMenu}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin pr-0.5">
           {panelBody}
@@ -334,8 +368,42 @@ export default function WorkTime() {
   }
 
   return (
-    <div className="flex flex-col gap-4 items-stretch flex-1 min-h-0 h-full">
-      {moduleButton}
+    <div className="flex flex-col sm:flex-row gap-4 items-stretch flex-1 min-h-0 h-full">
+      <div className="sm:hidden">
+        {moduleButton}
+      </div>
+      <nav
+        className="hidden sm:flex w-44 shrink-0 flex-col gap-2"
+        aria-label="Secciones de productividad"
+      >
+        {MAIN_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setMainTab(t.id)}
+            className={`rf-tab-btn flex w-full items-center gap-2 px-3 py-2.5 text-left ${
+              mainTab === t.id ? 'rf-tab-btn--active' : ''
+            }`}
+          >
+            {t.pix ? (
+              <img
+                src={getFadeyAiAvatarSrc(mainTab === t.id ? 'asesorando' : 'saludo')}
+                alt=""
+                className="w-5 h-5 rounded-full object-cover shrink-0 border border-white/30"
+                draggable={false}
+              />
+            ) : (
+              <t.icon className="text-lg shrink-0" />
+            )}
+            <span className="flex-1 min-w-0 truncate">{t.label}</span>
+            {t.id === 'alertas' && alertCount > 0 ? (
+              <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] leading-none">
+                {alertCount}
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </nav>
       {moduleMenu}
 
       <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-4 w-full">
