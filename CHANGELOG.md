@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.1.7 — 2026-11-14
+
+- El login vuelve a mostrar el nombre comercial del local (Mi restaurante), debajo del logo.
+
 ## 1.2.1.6 — 2026-11-14
 
 - Permisos POS muestra las áreas de producción reales del local, no solo Cocina y Bar. El acceso queda por área.

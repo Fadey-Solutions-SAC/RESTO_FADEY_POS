@@ -2196,6 +2196,18 @@ html[data-ui-theme='gold_premium'] .rf-shell-header .w-px {
     flex-shrink: 0;
   }
 
+  .rf-login-local-name {
+    margin: 0 0 0.85rem;
+    text-align: center;
+    color: #ffffff;
+    font-weight: 800;
+    font-size: clamp(1.45rem, 4.2vh, 2rem);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1.15;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+  }
+
   .rf-login-kicker {
     flex-shrink: 0;
     margin: 0;
