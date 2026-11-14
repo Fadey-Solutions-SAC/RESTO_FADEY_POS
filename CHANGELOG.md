@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.0.9 — 2026-11-13
+
+- Por área, en Productividad POS, muestra Caja, Cocina, Delivery y Mesas con la misma ficha de color que Ventas.
+
 ## 1.2.0.8 — 2026-11-13
 
 - Las cifras de Recursos humanos (panel y Productividad POS) usan la misma ficha de color que Ventas: degradado, círculo e icono.

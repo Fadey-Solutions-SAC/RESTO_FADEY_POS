@@ -14,6 +14,9 @@ import {
   MdHistory,
   MdAccessTime,
   MdPayments,
+  MdPointOfSale,
+  MdDeliveryDining,
+  MdTableBar,
 } from 'react-icons/md';
 import { Cell, Pie, PieChart, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Link } from 'react-router-dom';
@@ -41,22 +44,6 @@ function formatShortDate(key) {
   const [y, m, d] = String(key).split('-');
   if (!d) return key;
   return `${d}/${m}/${y}`;
-}
-
-function AreaBlock({ title, metrics }) {
-  return (
-    <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-4">
-      <h4 className="font-semibold text-[var(--ui-body-text)] mb-3">{title}</h4>
-      <dl className="grid grid-cols-2 gap-2 text-sm">
-        {metrics.map(([k, v]) => (
-          <div key={k}>
-            <dt className="text-[var(--ui-muted)] text-xs">{k}</dt>
-            <dd className="font-medium text-[var(--ui-body-text)]">{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
 }
 
 function WaiterRatingsBlock({ waiterRatings = [] }) {
@@ -237,26 +224,46 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
   if (subTab === 'areas') {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <AreaBlock title="Caja" metrics={[
-          ['Ventas', formatMoney(areas?.caja?.sales_total)],
-          ['Cuentas cobradas', areas?.caja?.tickets_paid],
-          ['Velocidad cobro', `${areas?.caja?.avg_checkout_minutes ?? 0} min`],
-        ]} />
-        <AreaBlock title="Cocina" metrics={[
-          ['Pedidos', areas?.cocina?.orders_tracked],
-          ['Tiempo promedio', `${areas?.cocina?.avg_kitchen_minutes ?? 0} min`],
-          ['Retrasos ahora', areas?.cocina?.delayed_now],
-        ]} />
-        <AreaBlock title="Delivery" metrics={[
-          ['Entregas', areas?.delivery?.delivered],
-          ['Tiempo promedio', `${areas?.delivery?.avg_delivery_minutes ?? 0} min`],
-          ['Demorados', areas?.delivery?.delayed_active],
-        ]} />
-        <AreaBlock title="Mesas" metrics={[
-          ['Pedidos mesa', areas?.mesas?.table_orders],
-          ['Mesas atendidas', areas?.mesas?.tables_touched],
-          ['Tiempo entrega mesa', `${areas?.mesas?.avg_table_minutes ?? 0} min`],
-        ]} />
+        <ModuleKpiCard
+          icon={MdPointOfSale}
+          title="Caja"
+          tone="emerald"
+          lines={[
+            ['Ventas', formatMoney(areas?.caja?.sales_total)],
+            ['Cuentas cobradas', areas?.caja?.tickets_paid ?? 0],
+            ['Velocidad cobro', `${areas?.caja?.avg_checkout_minutes ?? 0} min`],
+          ]}
+        />
+        <ModuleKpiCard
+          icon={MdRestaurant}
+          title="Cocina"
+          tone="sky"
+          lines={[
+            ['Pedidos', areas?.cocina?.orders_tracked ?? 0],
+            ['Tiempo promedio', `${areas?.cocina?.avg_kitchen_minutes ?? 0} min`],
+            ['Retrasos ahora', areas?.cocina?.delayed_now ?? 0],
+          ]}
+        />
+        <ModuleKpiCard
+          icon={MdDeliveryDining}
+          title="Delivery"
+          tone="amber"
+          lines={[
+            ['Entregas', areas?.delivery?.delivered ?? 0],
+            ['Tiempo promedio', `${areas?.delivery?.avg_delivery_minutes ?? 0} min`],
+            ['Demorados', areas?.delivery?.delayed_active ?? 0],
+          ]}
+        />
+        <ModuleKpiCard
+          icon={MdTableBar}
+          title="Mesas"
+          tone="violet"
+          lines={[
+            ['Pedidos mesa', areas?.mesas?.table_orders ?? 0],
+            ['Mesas atendidas', areas?.mesas?.tables_touched ?? 0],
+            ['Tiempo entrega mesa', `${areas?.mesas?.avg_table_minutes ?? 0} min`],
+          ]}
+        />
       </div>
     );
   }
