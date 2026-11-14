@@ -136,6 +136,7 @@ export async function printKitchenBarOrder(orderOrId, { newItemIds = null, fromL
         orderNumber: fullOrder?.order_number,
         takeout,
         waiterName: waiter,
+        guestName: String(fullOrder?.ticket_guest_name || '').trim(),
         items: toTicketItems(areaItems),
         widthMm: paper,
         printedAt: new Date(),

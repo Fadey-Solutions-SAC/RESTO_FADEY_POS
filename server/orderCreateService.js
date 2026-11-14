@@ -305,7 +305,25 @@ function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew =
  * Agrega productos a una comanda existente (misma mesa, ventana 40 min).
  * Si la comanda ya no admite fusión, createOrMergeTableOrderInTransaction crea una nueva.
  */
-function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes } = {}) {
+function normalizeTicketGuestName(raw) {
+  return String(raw || '')
+    .replace(/[\u0000-\u001F]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+}
+
+function mergeTicketGuestNames(current, incoming) {
+  const next = normalizeTicketGuestName(incoming);
+  if (!next) return String(current || '').trim();
+  const prev = String(current || '').trim();
+  if (!prev) return next;
+  const parts = prev.split(' · ').map((p) => p.trim()).filter(Boolean);
+  if (parts.some((p) => p.toLowerCase() === next.toLowerCase())) return prev;
+  return `${prev} · ${next}`.slice(0, 120);
+}
+
+function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes, ticketGuestName } = {}) {
   const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
   if (!order) throw new Error('Pedido no encontrado');
   if (order.type !== 'dine_in') throw new Error('Solo se pueden fusionar pedidos de mesa');
@@ -364,6 +382,11 @@ function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes } = 
     );
   }
 
+  const mergedGuest = mergeTicketGuestNames(order.ticket_guest_name, ticketGuestName);
+  if (mergedGuest && mergedGuest !== String(order.ticket_guest_name || '').trim()) {
+    tx.run('UPDATE orders SET ticket_guest_name = ? WHERE id = ?', [mergedGuest, orderId]);
+  }
+
   reopenProductionStationsForNewLines(tx, orderId, newItemIds);
 
   if (newItemIds.length) {
@@ -406,7 +429,10 @@ function tryAppendToMergeableOrderTx(tx, targetOrder, body, actor, tableId) {
   if (isMergeBlockedByDispatchedStation(tx, targetOrder, body?.items)) return null;
   try {
     syncOrderTableIdTx(tx, targetOrder.id, tableId);
-    return appendItemsToOrderInTransaction(tx, targetOrder.id, body.items, actor, { notes: body.notes });
+    return appendItemsToOrderInTransaction(tx, targetOrder.id, body.items, actor, {
+      notes: body.notes,
+      ticketGuestName: body.ticket_guest_name,
+    });
   } catch (err) {
     const msg = String(err.message || '').toLowerCase();
     if (
@@ -472,6 +498,7 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     payment_method,
     delivery_payment_modality,
     customer_name,
+    ticket_guest_name,
     discount,
     customer_id,
     hold_kitchen_for_reservation,
@@ -654,8 +681,8 @@ function createOrderInTransaction(tx, orderId, body, actor) {
   tx.run(
     `INSERT INTO orders (
       id, order_number, customer_id, customer_name, restaurant_id, type, subtotal, tax, discount, delivery_fee, total,
-      payment_method, table_number, table_id, delivery_address, delivery_payment_modality, notes, sale_document_type, sale_document_number, created_by_user_id, created_by_user_name, kitchen_release_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      payment_method, table_number, table_id, delivery_address, delivery_payment_modality, notes, ticket_guest_name, sale_document_type, sale_document_number, created_by_user_id, created_by_user_name, kitchen_release_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       orderId,
       orderNumber,
@@ -674,6 +701,7 @@ function createOrderInTransaction(tx, orderId, body, actor) {
       delivery_address || '',
       deliveryModality,
       notes || '',
+      normalizeTicketGuestName(ticket_guest_name),
       'nota_venta',
       saleDocumentNumber,
       createdByUserId,

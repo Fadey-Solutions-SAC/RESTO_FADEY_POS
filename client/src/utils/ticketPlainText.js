@@ -785,6 +785,7 @@ export function buildPedidoMesaTicketPlainText({
   orderNumber = '',
   takeout = false,
   waiterName = '',
+  guestName = '',
   items = [],
   widthMm = 75,
   printedAt = new Date(),
@@ -810,6 +811,12 @@ export function buildPedidoMesaTicketPlainText({
   }
 
   lines.push(centerThermalLine(title, w));
+  const guest = String(guestName || '').trim();
+  if (guest) {
+    for (const seg of wrapThermalLine(`Nombre: ${guest}`, inner)) {
+      lines.push(centerThermalLine(seg, w));
+    }
+  }
   pushThermalFechaHoraPair(lines, printedAt, widthMm);
   lines.push(sep);
   lines.push(padLeftRight('PEDIDO', takeout ? 'PARA LLEVAR' : '', w));

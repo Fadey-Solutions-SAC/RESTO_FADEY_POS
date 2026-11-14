@@ -4223,6 +4223,19 @@ export default function POSPanel() {
     const first = Math.min(...timestamps);
     return Math.max(0, Math.round((Date.now() - first) / (1000 * 60 * 60)));
   })();
+  const qrGuestNameLines = (orders) => {
+    const names = [];
+    for (const o of orders || []) {
+      const raw = String(o?.ticket_guest_name || '').trim();
+      if (!raw) continue;
+      for (const part of raw.split(' · ')) {
+        const name = part.trim();
+        if (name && !names.some((x) => x.toLowerCase() === name.toLowerCase())) names.push(name);
+      }
+    }
+    return names.length ? [`Nombre: ${names.join(', ')}`] : [];
+  };
+
   const printPrecuenta = async (tableOverride = null) => {
     const table = tableOverride || selectedTable;
     if (!table) return;
@@ -4254,6 +4267,7 @@ export default function POSPanel() {
       || String(user?.full_name || '').trim()
       || '—';
     const customerLines = [
+      ...qrGuestNameLines(payableOrders),
       billingForm.customer_name && `Cliente: ${billingForm.customer_name}`,
       billingForm.customer_doc_number && `Doc: ${billingForm.customer_doc_number}`,
       billingForm.customer_phone && `Tel: ${billingForm.customer_phone}`,
@@ -4416,6 +4430,7 @@ export default function POSPanel() {
       || String(user?.full_name || '').trim()
       || '—';
     const customerLines = [
+      ...qrGuestNameLines(table.orders),
       billingForm.customer_name && `Cliente: ${billingForm.customer_name}`,
       billingForm.customer_doc_number && `Doc: ${billingForm.customer_doc_number}`,
       billingForm.customer_phone && `Tel: ${billingForm.customer_phone}`,

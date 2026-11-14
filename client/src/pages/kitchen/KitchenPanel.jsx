@@ -403,6 +403,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
         orderNumber: payloadOrder?.order_number,
         takeout,
         waiterName: waiter,
+        guestName: String(payloadOrder?.ticket_guest_name || '').trim(),
         items: ticketItems,
         widthMm: paper,
         printedAt: new Date(),

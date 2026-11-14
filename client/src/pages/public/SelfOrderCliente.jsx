@@ -14,6 +14,7 @@ import { MdAdd, MdClose, MdDelete, MdLock, MdReceipt, MdRemove, MdRestaurantMenu
 import PromotionSummary from '../../components/promotions/PromotionSummary';
 import { filterOrderingProducts } from '../../utils/orderingCatalog';
 import SelfOrderLoading, { isRetryableLoadError, MAX_LOAD_RETRIES } from '../../components/SelfOrderLoading';
+import SelfOrderNameGate from '../../components/SelfOrderNameGate';
 
 function storageKeyForCliente(id) {
   return `selfOrderCliente:${id}`;
@@ -39,6 +40,7 @@ export default function SelfOrderCliente() {
   const [clientView, setClientView] = useState(null);
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState('all');
+  const [guestName, setGuestName] = useState('');
 
   const {
     cart,
@@ -64,6 +66,15 @@ export default function SelfOrderCliente() {
       if (saved) setSessionToken(saved);
     } catch {
       /* private mode */
+    }
+  }, [clienteId]);
+
+  useEffect(() => {
+    if (!clienteId) return;
+    try {
+      setGuestName(String(sessionStorage.getItem(`selfOrderGuestCliente:${clienteId}`) || '').trim());
+    } catch {
+      setGuestName('');
     }
   }, [clienteId]);
 
@@ -198,6 +209,7 @@ export default function SelfOrderCliente() {
         })),
         payment_method: 'efectivo',
         customer_name: table.name,
+        guest_name: guestName,
       });
       toast.success('Pedido enviado. Aparecerá en cocina / bar y quedará en tu cuenta para cobrar.', { id: tid });
       closeOrderPanel();
@@ -324,6 +336,22 @@ export default function SelfOrderCliente() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (!guestName) {
+    return (
+      <SelfOrderNameGate
+        subtitle={table?.name || 'Cliente'}
+        onContinue={(name) => {
+          try {
+            sessionStorage.setItem(`selfOrderGuestCliente:${clienteId}`, name);
+          } catch {
+            /* private mode */
+          }
+          setGuestName(name);
+        }}
+      />
     );
   }
 

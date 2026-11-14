@@ -15,6 +15,7 @@ import PromotionSummary from '../../components/promotions/PromotionSummary';
 import { filterOrderingProducts } from '../../utils/orderingCatalog';
 import { getTableDisplayLabel } from '../../utils/mesaMapTableVisual';
 import SelfOrderLoading, { isRetryableLoadError, MAX_LOAD_RETRIES } from '../../components/SelfOrderLoading';
+import SelfOrderNameGate from '../../components/SelfOrderNameGate';
 
 export default function SelfOrder() {
   const [searchParams] = useSearchParams();
@@ -33,6 +34,7 @@ export default function SelfOrder() {
   const [clientView, setClientView] = useState(null);
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState('all');
+  const [guestName, setGuestName] = useState('');
 
   const {
     cart,
@@ -54,6 +56,15 @@ export default function SelfOrder() {
   const [slowLoad, setSlowLoad] = useState(false);
   const hasBootstrapRef = useRef(false);
   const retryTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (!mesaParam) return;
+    try {
+      setGuestName(String(sessionStorage.getItem(`selfOrderGuest:${mesaParam}`) || '').trim());
+    } catch {
+      setGuestName('');
+    }
+  }, [mesaParam]);
 
   useEffect(() => () => clearTimeout(retryTimerRef.current), []);
 
@@ -165,6 +176,7 @@ export default function SelfOrder() {
         })),
         payment_method: 'efectivo',
         customer_name: getTableDisplayLabel(table),
+        guest_name: guestName,
       });
       toast.success(`Pedido enviado — ${getTableDisplayLabel(table)}`, { id: tid });
       resetCart();
@@ -211,6 +223,22 @@ export default function SelfOrder() {
           </button>
         </div>
       </div>
+    );
+  }
+
+  if (!guestName) {
+    return (
+      <SelfOrderNameGate
+        subtitle={getTableDisplayLabel(table)}
+        onContinue={(name) => {
+          try {
+            sessionStorage.setItem(`selfOrderGuest:${mesaParam}`, name);
+          } catch {
+            /* private mode */
+          }
+          setGuestName(name);
+        }}
+      />
     );
   }
 

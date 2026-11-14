@@ -268,7 +268,15 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
   const bodyTableId = String(req.body?.table_id || '').trim();
   const cliente = String(req.body?.cliente || '').trim();
   const clientToken = String(req.body?.token || '').trim();
-  const { items, payment_method, notes, customer_name } = req.body || {};
+  const { items, payment_method, notes, customer_name, guest_name } = req.body || {};
+  const guestName = String(guest_name || '')
+    .replace(/[\u0000-\u001F]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+  if (!guestName) {
+    return res.status(400).json({ error: 'Escribe tu nombre para hacer el pedido' });
+  }
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'El pedido debe tener al menos un producto' });
@@ -312,6 +320,7 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
       notes: notes || '',
       payment_method: payment_method || 'efectivo',
       customer_name: String(customer_name || '').trim() || customer.name,
+      ticket_guest_name: guestName,
       discount: 0,
       customer_id: null,
     };
@@ -356,6 +365,7 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
     notes: notes || '',
     payment_method: payment_method || 'efectivo',
     customer_name: String(customer_name || '').trim() || getTableDisplayLabel(table),
+    ticket_guest_name: guestName,
     discount: 0,
     customer_id: null,
   };

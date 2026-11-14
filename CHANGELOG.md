@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.1.1 — 2026-11-13
+
+- El auto-pedido por QR pide un nombre antes de la carta. Ese nombre sale en la comanda y en la cuenta del pedido.
+
 ## 1.2.1.0 — 2026-11-13
 
 - El asistente de PC encendido ya no consulta usuarios cada 15 minutos. Cada 2 horas intenta apagarse: si queda alguien, sigue; si ya cerraron todos, se apaga.

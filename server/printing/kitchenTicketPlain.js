@@ -119,6 +119,12 @@ function buildPedidoMesaTicketPlainTextServer(order, items, widthMm = 75) {
   }
 
   lines.push(centerThermalLine(title, w));
+  const guest = String(order?.ticket_guest_name || '').trim();
+  if (guest) {
+    for (const seg of wrapThermalLine(`Nombre: ${guest}`, inner)) {
+      lines.push(centerThermalLine(seg, w));
+    }
+  }
   const { date, time } = peParts(printedAt);
   lines.push(padLeftRight(`Fecha: ${date}`, `Hora: ${time}`, w));
   lines.push(sep);

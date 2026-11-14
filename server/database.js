@@ -1247,6 +1247,7 @@ async function initDatabase() {
         delivery_lat REAL,
         delivery_lng REAL,
         notes TEXT DEFAULT '',
+        ticket_guest_name TEXT DEFAULT '',
         sale_document_type TEXT DEFAULT 'nota_venta' CHECK(sale_document_type IN ('nota_venta','boleta','factura')),
         sale_document_number TEXT DEFAULT '',
         created_by_user_id TEXT DEFAULT '',
@@ -1970,6 +1971,7 @@ async function initDatabase() {
     addOrderColIfMissing('station_bar_preparing_at', 'ALTER TABLE orders ADD COLUMN station_bar_preparing_at TEXT');
     addOrderColIfMissing('kitchen_last_send_at', 'ALTER TABLE orders ADD COLUMN kitchen_last_send_at TEXT');
     addOrderColIfMissing('table_id', "ALTER TABLE orders ADD COLUMN table_id TEXT DEFAULT ''");
+    addOrderColIfMissing('ticket_guest_name', "ALTER TABLE orders ADD COLUMN ticket_guest_name TEXT DEFAULT ''");
     addOrderColIfMissing('sale_number', 'ALTER TABLE orders ADD COLUMN sale_number INTEGER');
     try {
       db.run(`
