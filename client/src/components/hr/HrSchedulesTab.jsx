@@ -135,10 +135,10 @@ export default function HrSchedulesTab({ schedules, employees, onReload }) {
                     key={d.v}
                     type="button"
                     onClick={() => toggleDay(d.v)}
-                    className={`px-2.5 py-1 rounded-lg text-xs border ${
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${
                       (form.work_days || []).includes(d.v)
-                        ? 'bg-gold-600 text-white border-gold-600'
-                        : 'border-[color:var(--ui-border)]'
+                        ? 'border-[color:var(--ui-accent)] bg-[var(--ui-accent)] text-white'
+                        : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)]'
                     }`}
                   >
                     {d.label}

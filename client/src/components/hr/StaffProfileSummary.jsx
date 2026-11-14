@@ -44,21 +44,21 @@ function shortDay(key) {
   return d && m ? `${d}/${m}` : key;
 }
 
-function StatCard({ icon: Icon, label, value, tone = 'blue' }) {
-  const tones = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-emerald-50 text-emerald-600',
-    violet: 'bg-violet-50 text-violet-600',
-    amber: 'bg-amber-50 text-amber-600',
-  };
+function StatCard({ icon: Icon, label, value }) {
   return (
-    <div className="flex-auto rounded-2xl border border-slate-100 bg-white px-3 py-3 shadow-sm flex items-center gap-2.5">
-      <span className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${tones[tone] || tones.blue}`}>
+    <div className="flex flex-auto items-center gap-2.5 rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-3 shadow-sm">
+      <span
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+        style={{
+          background: 'color-mix(in srgb, var(--ui-accent) 14%, var(--ui-surface))',
+          color: 'var(--ui-accent)',
+        }}
+      >
         <Icon className="text-xl" />
       </span>
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 leading-tight whitespace-nowrap">{label}</p>
-        <p className="text-lg font-bold mt-1 whitespace-nowrap tabular-nums leading-none text-slate-900">{value}</p>
+        <p className="whitespace-nowrap text-[11px] font-semibold uppercase leading-tight tracking-wide text-[var(--ui-muted)]">{label}</p>
+        <p className="mt-1 whitespace-nowrap text-lg font-bold tabular-nums leading-none text-[var(--ui-body-text)]">{value}</p>
       </div>
     </div>
   );
@@ -67,32 +67,32 @@ function StatCard({ icon: Icon, label, value, tone = 'blue' }) {
 function chartConfig(kind) {
   if (kind === 'mozo' || kind === 'general') {
     return {
-      bars: [{ key: 'cuentas', name: 'Cuentas / mesas abiertas', color: '#2563eb' }],
-      line: { key: 'horas', name: 'Horas trabajadas', color: '#10b981' },
+      bars: [{ key: 'cuentas', name: 'Cuentas / mesas abiertas', color: 'var(--ui-chart-1)' }],
+      line: { key: 'horas', name: 'Horas trabajadas', color: 'var(--ui-chart-2)' },
     };
   }
   if (kind === 'caja') {
     return {
       bars: [
-        { key: 'cuentas', name: 'Cuentas abiertas', color: '#93c5fd' },
-        { key: 'cobradas', name: 'Cuentas cobradas', color: '#2563eb' },
+        { key: 'cuentas', name: 'Cuentas abiertas', color: 'var(--ui-chart-3)' },
+        { key: 'cobradas', name: 'Cuentas cobradas', color: 'var(--ui-chart-1)' },
       ],
-      line: { key: 'horas', name: 'Horas trabajadas', color: '#10b981' },
+      line: { key: 'horas', name: 'Horas trabajadas', color: 'var(--ui-chart-2)' },
     };
   }
   if (kind === 'produccion') {
     return {
-      bars: [{ key: 'despachadas', name: 'Comandas despachadas', color: '#2563eb' }],
-      line: { key: 'minutos_promedio', name: 'Minutos promedio de salida', color: '#f59e0b' },
+      bars: [{ key: 'despachadas', name: 'Comandas despachadas', color: 'var(--ui-chart-1)' }],
+      line: { key: 'minutos_promedio', name: 'Minutos promedio de salida', color: 'var(--ui-chart-2)' },
     };
   }
   return {
     bars: [
-      { key: 'cuentas', name: 'Cuentas abiertas', color: '#93c5fd' },
-      { key: 'cobradas', name: 'Cuentas cobradas', color: '#2563eb' },
-      { key: 'despachadas', name: 'Comandas despachadas', color: '#8b5cf6' },
+      { key: 'cuentas', name: 'Cuentas abiertas', color: 'var(--ui-chart-3)' },
+      { key: 'cobradas', name: 'Cuentas cobradas', color: 'var(--ui-chart-1)' },
+      { key: 'despachadas', name: 'Comandas despachadas', color: 'var(--ui-chart-2)' },
     ],
-    line: { key: 'horas', name: 'Horas trabajadas', color: '#10b981' },
+    line: { key: 'horas', name: 'Horas trabajadas', color: 'var(--ui-chart-4)' },
   };
 }
 
@@ -139,9 +139,9 @@ export function StaffHoursCards({ hours, period }) {
   return (
     <div className="flex flex-wrap gap-3">
       <StatCard icon={MdSchedule} label="Esta semana" value={formatMinutes(hours.weekly_minutes)} />
-      <StatCard icon={MdCalendarMonth} label="Este mes" value={formatMinutes(hours.monthly_minutes)} tone="green" />
-      <StatCard icon={MdDateRange} label={`Últimos ${period?.days || 30} días`} value={formatMinutes(hours.period_minutes)} tone="violet" />
-      <StatCard icon={MdHistory} label="Horas acumuladas" value={hours.total_minutes != null ? formatMinutes(hours.total_minutes) : '—'} tone="amber" />
+      <StatCard icon={MdCalendarMonth} label="Este mes" value={formatMinutes(hours.monthly_minutes)} />
+      <StatCard icon={MdDateRange} label={`Últimos ${period?.days || 30} días`} value={formatMinutes(hours.period_minutes)} />
+      <StatCard icon={MdHistory} label="Horas acumuladas" value={hours.total_minutes != null ? formatMinutes(hours.total_minutes) : '—'} />
     </div>
   );
 }
@@ -149,16 +149,16 @@ export function StaffHoursCards({ hours, period }) {
 export function StaffContractCard({ contract, title = 'Contrato de trabajo' }) {
   const [showContract, setShowContract] = useState(false);
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <p className="font-semibold text-slate-800 flex items-center gap-2"><MdDescription className="text-violet-600" /> {title}</p>
+          <p className="flex items-center gap-2 font-semibold text-[var(--ui-body-text)]"><MdDescription style={{ color: 'var(--ui-accent)' }} /> {title}</p>
           {contract?.available ? (
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="mt-1 text-sm text-[var(--ui-muted)]">
               {[contract.position, contract.contract_type, contract.hire_date ? `ingreso ${contract.hire_date}` : ''].filter(Boolean).join(' · ') || 'Contrato registrado'}
             </p>
           ) : (
-            <p className="text-sm text-slate-500 mt-1">{contract?.reason || 'Sin contrato registrado.'}</p>
+            <p className="mt-1 text-sm text-[var(--ui-muted)]">{contract?.reason || 'Sin contrato registrado.'}</p>
           )}
         </div>
         {contract?.available && (
@@ -170,19 +170,19 @@ export function StaffContractCard({ contract, title = 'Contrato de trabajo' }) {
       {contract?.available && (
         <div className="flex flex-wrap gap-2">
           {contract.text && (
-            <button type="button" onClick={() => setShowContract((v) => !v)} className="text-sm font-medium px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700">
+            <button type="button" onClick={() => setShowContract((v) => !v)} className="btn-secondary px-3 py-2 text-sm">
               {showContract ? 'Ocultar contrato' : 'Ver contrato'}
             </button>
           )}
           {contract.pdf_url && (
-            <a href={contract.pdf_url} target="_blank" rel="noreferrer" className="text-sm font-medium px-3 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 inline-flex items-center gap-1.5">
+            <a href={contract.pdf_url} target="_blank" rel="noreferrer" className="btn-primary inline-flex items-center gap-1.5 px-3 py-2 text-sm">
               <MdDownload /> Descargar PDF
             </a>
           )}
         </div>
       )}
       {showContract && contract?.text && (
-        <pre className="mt-3 max-h-80 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-700 bg-slate-50 rounded-xl p-4 border border-slate-100 font-sans">
+        <pre className="mt-3 max-h-80 overflow-y-auto whitespace-pre-wrap rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-4 font-sans text-xs leading-relaxed text-[var(--ui-body-text)]">
           {contract.text}
         </pre>
       )}
@@ -199,18 +199,18 @@ export function StaffProductivityCard({
   const hasActivity = series.some((r) => cfg.bars.some((b) => Number(r[b.key] || 0) > 0));
   const chips = summaryChips(kind, productivity.summary, selfView);
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-5 shadow-sm">
       <div className="mb-4">
-        <p className="font-semibold text-slate-800 flex items-center gap-2"><MdTrendingUp className="text-blue-600" /> {title} (últimos {period?.days || 30} días)</p>
-        <p className="text-sm text-slate-500 mt-1">
+        <p className="flex items-center gap-2 font-semibold text-[var(--ui-body-text)]"><MdTrendingUp style={{ color: 'var(--ui-accent)' }} /> {title} (últimos {period?.days || 30} días)</p>
+        <p className="mt-1 text-sm text-[var(--ui-muted)]">
           {selfView ? (KIND_TEXT_SELF[kind] || KIND_TEXT_SELF.general) : (KIND_TEXT[kind] || KIND_TEXT.general)}
         </p>
       </div>
       <div className="flex flex-wrap gap-2 mb-4">
         {chips.map(([label, value]) => (
-          <div key={label} className="flex-auto rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">{label}</p>
-            <p className="text-base font-bold text-slate-900 tabular-nums">{value}</p>
+          <div key={label} className="flex-auto rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2">
+            <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-[var(--ui-muted)]">{label}</p>
+            <p className="text-base font-bold tabular-nums text-[var(--ui-body-text)]">{value}</p>
           </div>
         ))}
       </div>
@@ -218,10 +218,10 @@ export function StaffProductivityCard({
         <div className={chartHeightClass}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={series} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-              <YAxis yAxisId="left" allowDecimals={false} tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--ui-border)" strokeOpacity={0.55} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} interval="preserveStartEnd" axisLine={false} tickLine={false} />
+              <YAxis yAxisId="left" allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} axisLine={false} tickLine={false} />
               <Tooltip />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               {cfg.bars.map((b) => (
@@ -232,7 +232,7 @@ export function StaffProductivityCard({
           </ResponsiveContainer>
         </div>
       ) : (
-        <p className="text-sm text-slate-500 py-10 text-center">
+        <p className="py-10 text-center text-sm text-[var(--ui-muted)]">
           Aún no hay actividad registrada en este período.
           {kind === 'produccion'
             ? (selfView

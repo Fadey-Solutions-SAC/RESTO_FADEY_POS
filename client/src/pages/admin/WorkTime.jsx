@@ -333,10 +333,8 @@ export default function WorkTime() {
             key={t.id}
             type="button"
             onClick={() => setMainTab(t.id)}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition text-left ${
-              mainTab === t.id
-                ? 'bg-gold-600 text-white border-gold-600'
-                : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+            className={`rf-tab-btn flex w-full items-center gap-2 px-3 py-2.5 text-left ${
+              mainTab === t.id ? 'rf-tab-btn--active' : ''
             }`}
           >
             {t.pix ? (

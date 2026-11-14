@@ -25,7 +25,7 @@ export default function HrMyDayTab() {
   if (loading) {
     return (
       <div className="flex justify-center py-16">
-        <div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[color:var(--ui-accent)] border-t-transparent" />
       </div>
     );
   }

@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.0.7 — 2026-11-13
+
+- Recursos humanos usa las mismas pestañas, tarjetas redondeadas y colores del tema que el resto del sistema. El donut de áreas ya no fuerza azul, verde y naranja.
+
 ## 1.2.0.6 — 2026-11-13
 
 - El auto pedido vuelve a mostrar el botón **Hacer pedido** en la cabecera, con la cantidad del carrito.

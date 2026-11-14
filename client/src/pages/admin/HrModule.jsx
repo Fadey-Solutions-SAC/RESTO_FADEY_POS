@@ -119,10 +119,8 @@ export default function HrModule() {
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition whitespace-nowrap ${
-              tab === t.id
-                ? 'bg-gold-600 text-white border-gold-600'
-                : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+            className={`rf-tab-btn inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap ${
+              tab === t.id ? 'rf-tab-btn--active' : ''
             }`}
           >
             <t.icon />
@@ -139,10 +137,8 @@ export default function HrModule() {
         <button
           type="button"
           onClick={() => { setAdminPassword(''); setPwdOpen(true); }}
-          className={`shrink-0 whitespace-nowrap text-sm inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border font-medium transition ${
-            qrActiva
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-[var(--ui-surface)] border-[color:var(--ui-border)] text-[var(--ui-body-text)]'
+          className={`rf-tab-btn inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap ${
+            qrActiva ? 'rf-tab-btn--active' : ''
           }`}
           title={qrActiva
             ? 'QR activo: la jornada se marca con código QR'

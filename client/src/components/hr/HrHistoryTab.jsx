@@ -142,7 +142,7 @@ export default function HrHistoryTab({ employees, branches }) {
 
       <div className="card overflow-x-auto">
         {loading ? (
-          <div className="py-12 flex justify-center"><div className="animate-spin w-8 h-8 border-4 border-gold-500 border-t-transparent rounded-full" /></div>
+          <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-[color:var(--ui-accent)] border-t-transparent" /></div>
         ) : (
           <table className="w-full text-sm">
             <thead>

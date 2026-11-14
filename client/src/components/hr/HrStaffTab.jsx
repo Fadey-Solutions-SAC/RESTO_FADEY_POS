@@ -296,7 +296,13 @@ export default function HrStaffTab({ employees, schedules = [], branches, onRelo
                   className="w-16 h-16 rounded-full object-cover border border-[color:var(--ui-border)] shrink-0"
                 />
               ) : (
-                <span className="w-16 h-16 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-2xl font-bold shrink-0">
+                <span
+                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-2xl font-bold"
+                  style={{
+                    background: 'color-mix(in srgb, var(--ui-accent) 14%, var(--ui-surface))',
+                    color: 'var(--ui-accent)',
+                  }}
+                >
                   {(inspect.full_name || inspect.username || 'U').trim()[0]?.toUpperCase() || 'U'}
                 </span>
               )}
