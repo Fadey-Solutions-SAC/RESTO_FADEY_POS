@@ -9,8 +9,10 @@ import {
   MdSchedule,
   MdWork,
 } from 'react-icons/md';
-import { useChartTheme } from '../../theme/useChartTheme';
+import ModuleKpiCard, { KPI_TONE_CYCLE } from '../ModuleKpiCard';
 import { formatMinutes } from './hrFormat';
+
+const CHART_COLORS = ['#10b981', '#2563eb', '#f59e0b', '#8b5cf6', '#0ea5e9', '#f97316'];
 
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -33,29 +35,7 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-function KpiTile({ icon: Icon, label, value }) {
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-[color:var(--ui-card-border,var(--ui-border))] bg-[var(--ui-surface)] p-4 shadow-sm">
-      <div className="flex items-center gap-3">
-        <span
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
-          style={{
-            background: 'color-mix(in srgb, var(--ui-accent) 14%, var(--ui-surface))',
-            color: 'var(--ui-accent)',
-          }}
-        >
-          <Icon className="text-2xl" />
-        </span>
-        <p className="text-sm font-semibold leading-tight text-[var(--ui-body-text)]">{label}</p>
-      </div>
-      <p className="mt-3 text-2xl font-bold tabular-nums leading-none text-[var(--ui-body-text)]">{value}</p>
-    </div>
-  );
-}
-
 export default function HrDashboardTab({ data, loading }) {
-  const chartColors = useChartTheme();
-  const series = Array.isArray(chartColors) && chartColors.length ? chartColors : ['var(--ui-accent)'];
   if (loading && !data) {
     return (
       <div className="flex justify-center py-16">
@@ -86,8 +66,14 @@ export default function HrDashboardTab({ data, loading }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {tiles.map((t) => (
-          <KpiTile key={t.label} icon={t.icon} label={t.label} value={t.value} />
+        {tiles.map((t, index) => (
+          <ModuleKpiCard
+            key={t.label}
+            icon={t.icon}
+            title={t.label}
+            value={t.value}
+            tone={KPI_TONE_CYCLE[index % KPI_TONE_CYCLE.length]}
+          />
         ))}
       </div>
 
@@ -102,8 +88,8 @@ export default function HrDashboardTab({ data, loading }) {
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: 'var(--ui-muted)' }} axisLine={false} tickLine={false} width={32} />
                   <Tooltip content={<ChartTooltip />} cursor={{ fill: 'color-mix(in srgb, var(--ui-accent) 8%, transparent)' }} />
-                  <Bar dataKey="attendance" name="Asistencias" fill={series[0]} radius={[3, 3, 0, 0]} maxBarSize={28} />
-                  <Bar dataKey="late" name="Tardanzas" fill={series[1] || series[0]} radius={[3, 3, 0, 0]} maxBarSize={28} />
+                  <Bar dataKey="attendance" name="Asistencias" fill={CHART_COLORS[0]} radius={[3, 3, 0, 0]} maxBarSize={28} />
+                  <Bar dataKey="late" name="Tardanzas" fill={CHART_COLORS[2]} radius={[3, 3, 0, 0]} maxBarSize={28} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -123,7 +109,7 @@ export default function HrDashboardTab({ data, loading }) {
                 <PieChart>
                   <Pie data={byArea} dataKey="c" nameKey="area" innerRadius={48} outerRadius={78} paddingAngle={2} stroke="var(--ui-surface)">
                     {byArea.map((_, i) => (
-                      <Cell key={i} fill={series[i % series.length]} />
+                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip content={<ChartTooltip />} />

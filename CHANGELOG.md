@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.0.8 — 2026-11-13
+
+- Las cifras de Recursos humanos (panel y Productividad POS) usan la misma ficha de color que Ventas: degradado, círculo e icono.
+
 ## 1.2.0.7 — 2026-11-13
 
 - Recursos humanos usa las mismas pestañas, tarjetas redondeadas y colores del tema que el resto del sistema. El donut de áreas ya no fuerza azul, verde y naranja.

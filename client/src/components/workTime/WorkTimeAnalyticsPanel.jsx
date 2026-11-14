@@ -12,15 +12,18 @@ import {
   MdTrendingUp,
   MdEmojiEvents,
   MdHistory,
+  MdAccessTime,
+  MdPayments,
 } from 'react-icons/md';
 import { Cell, Pie, PieChart, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Link } from 'react-router-dom';
+import ModuleKpiCard from '../ModuleKpiCard';
 import { formatMinutes, formatMoney, formatRankingValue, severityBadge, ROLE_LABEL } from './workTimeUtils';
 import { getFadeyAiAvatarSrc } from '../../constants/fadeyAiBranding';
 import FadeyAiChatPanel from '../FadeyAiChatPanel';
 import '../indicadores/FadeyAiHomePanel.css';
 
-const PIE_COLORS = ['#2563eb', '#38bdf8', '#93c5fd', '#1d4ed8', '#7dd3fc', '#64748b'];
+const PIE_COLORS = ['#10b981', '#2563eb', '#f59e0b', '#8b5cf6', '#0ea5e9', '#f97316'];
 
 const HR_QUICK_ACTIONS = [
   { id: 'jornada', label: 'Quién en jornada', icon: MdPeople, prompt: '¿Quién está en jornada ahora?' },
@@ -38,17 +41,6 @@ function formatShortDate(key) {
   const [y, m, d] = String(key).split('-');
   if (!d) return key;
   return `${d}/${m}/${y}`;
-}
-
-function StatCard({ label, value, sub, accent = 'gold' }) {
-  const ring = accent === 'emerald' ? 'border-emerald-500/30' : accent === 'amber' ? 'border-amber-500/30' : 'border-gold-500/30';
-  return (
-    <div className={`rounded-xl border ${ring} bg-[var(--ui-surface)] p-4 transition hover:shadow-md`}>
-      <p className="text-xs text-[var(--ui-muted)] uppercase tracking-wide">{label}</p>
-      <p className="text-2xl font-bold text-[var(--ui-body-text)] mt-1">{value}</p>
-      {sub ? <p className="text-xs text-[var(--ui-muted)] mt-1">{sub}</p> : null}
-    </div>
-  );
 }
 
 function AreaBlock({ title, metrics }) {
@@ -127,14 +119,16 @@ export default function WorkTimeAnalyticsPanel({ data, subTab, waiterRatings = [
     return (
       <div className="space-y-4 animate-in fade-in duration-300">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard label="Personal en turno" value={dashboard?.operations?.staff_online ?? 0} sub="Jornadas abiertas" />
-          <StatCard label="Ventas hoy" value={formatMoney(dashboard?.today?.sales_total)} sub={`${dashboard?.today?.orders_paid ?? 0} cuentas`} accent="emerald" />
-          <StatCard
-            label="Horas hoy"
+          <ModuleKpiCard icon={MdPeople} title="Personal en turno" value={dashboard?.operations?.staff_online ?? 0} hint="Jornadas abiertas" tone="emerald" />
+          <ModuleKpiCard icon={MdPayments} title="Ventas hoy" value={formatMoney(dashboard?.today?.sales_total)} hint={`${dashboard?.today?.orders_paid ?? 0} cuentas`} tone="sky" />
+          <ModuleKpiCard
+            icon={MdAccessTime}
+            title="Horas hoy"
             value={formatMinutes(dashboard?.today?.worked_minutes)}
-            sub={`${dashboard?.today?.sessions ?? 0} ${dashboard?.jornada_source === 'qr' || data?.jornada_source === 'qr' ? 'marcaciones QR' : 'sesiones'}`}
+            hint={`${dashboard?.today?.sessions ?? 0} ${dashboard?.jornada_source === 'qr' || data?.jornada_source === 'qr' ? 'marcaciones QR' : 'sesiones'}`}
+            tone="amber"
           />
-          <StatCard label="Cocina / Delivery" value={`${dashboard?.operations?.kitchen_preparing ?? 0} / ${dashboard?.operations?.delivery_active ?? 0}`} sub="Activos ahora" accent="amber" />
+          <ModuleKpiCard icon={MdRestaurant} title="Cocina / Delivery" value={`${dashboard?.operations?.kitchen_preparing ?? 0} / ${dashboard?.operations?.delivery_active ?? 0}`} hint="Activos ahora" tone="violet" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
