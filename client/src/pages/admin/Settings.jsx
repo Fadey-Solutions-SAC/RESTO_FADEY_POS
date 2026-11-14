@@ -53,6 +53,8 @@ import {
 } from '../../utils/printingConfig';
 import { syncLocaleFromRegional, setAppLocale } from '../../i18n';
 import { normalizeConfigFromApi, mergeSavedAppSettings } from '../../utils/appSettingsNormalize';
+import { getProductionAreaIcon } from '../../utils/productionAreaUi';
+import { productionAreaPermKey } from '../../utils/staffModuleAccess';
 import { salonSlugFromName, reorderSalonList, tablesForSalon } from '../../utils/salonesUtils';
 import { getTableDisplayLabel, normalizeTableDisplayLabel } from '../../utils/mesaMapTableVisual';
 import SettingsAppearancePanel from '../../components/settings/SettingsAppearancePanel';
@@ -109,32 +111,66 @@ function isProductionStaffRole(role) {
   return ['produccion', 'cocina', 'bar'].includes(String(role || '').toLowerCase());
 }
 
-/** Permisos de estación según el área vinculada (nunca forzar Cocina si el área es otra). */
-function defaultProductionAreaPermissions(user) {
-  const role = String(user?.role || '').toLowerCase();
-  const area = String(user?.production_area_id || '').trim().toLowerCase();
-  const out = { cocina: false, bar: false, produccion: false };
-  if (role === 'bar' || area === 'bar') {
-    out.bar = true;
-  } else if (role === 'cocina' || area === 'cocina') {
-    out.cocina = true;
-  } else if (area) {
-    // Área personalizada (ej. Parrilla): acceso por área, no por Cocina/Bar.
-    out.produccion = true;
-  } else if (role === 'produccion') {
-    // Sin área aún: no asignar Cocina por defecto.
-  } else {
-    out.cocina = true;
+function activeProductionAreas(areas) {
+  const list = (Array.isArray(areas) ? areas : [])
+    .filter((area) => Number(area?.active ?? 1) !== 0 && String(area?.id || '').trim())
+    .map((area) => ({
+      id: String(area.id).trim(),
+      name: String(area.name || area.id).trim() || String(area.id).trim(),
+    }));
+  if (list.length) return list;
+  return [
+    { id: 'cocina', name: 'Cocina' },
+    { id: 'bar', name: 'Bar' },
+  ];
+}
+
+function areaPermStateFromSaved(data, areas, user) {
+  const saved = data && typeof data === 'object' ? data : {};
+  const explicit = Object.keys(saved).some((key) => key.startsWith('prodarea:'));
+  const out = {};
+  for (const area of areas) {
+    const key = productionAreaPermKey(area.id);
+    const idLc = area.id.toLowerCase();
+    if (explicit) out[key] = saved[key] === true;
+    else if (idLc === 'cocina') out[key] = saved.cocina === true;
+    else if (idLc === 'bar') out[key] = saved.bar === true;
+    else out[key] = saved.produccion === true;
+  }
+  if (isProductionStaffRole(user?.role)) {
+    const own = String(user?.production_area_id || '').trim();
+    const role = String(user?.role || '').toLowerCase();
+    const ownId = own || (role === 'cocina' ? 'cocina' : role === 'bar' ? 'bar' : '');
+    if (ownId) out[productionAreaPermKey(ownId)] = true;
   }
   return out;
 }
 
+function mirrorStationFlags(perms, areas) {
+  const next = { ...perms, cocina: false, bar: false, produccion: false };
+  delete next._production_area;
+  for (const area of areas) {
+    const key = productionAreaPermKey(area.id);
+    const on = Boolean(next[key]);
+    const idLc = area.id.toLowerCase();
+    if (idLc === 'cocina') next.cocina = on;
+    else if (idLc === 'bar') next.bar = on;
+    else if (on) next.produccion = true;
+  }
+  return next;
+}
+
 function isModuleDefaultForUser(mod, user) {
   if (!mod || !user) return false;
-  if (isProductionStaffRole(user.role)) {
-    if (mod.isProductionAreaLink) return true;
-    if (mod.id === 'cocina' || mod.id === 'bar') {
-      return Boolean(defaultProductionAreaPermissions(user)[mod.id]);
+  if (mod.isProductionArea) {
+    const role = String(user.role || '').toLowerCase();
+    if (role === 'admin') return true;
+    const id = String(mod.productionAreaId || '').trim().toLowerCase();
+    if (role === 'cocina') return id === 'cocina';
+    if (role === 'bar') return id === 'bar';
+    if (role === 'produccion') {
+      const own = String(user.production_area_id || '').trim().toLowerCase();
+      return Boolean(own) && own === id;
     }
     return false;
   }
@@ -142,30 +178,19 @@ function isModuleDefaultForUser(mod, user) {
   return (mod.defaultRoles || []).includes(role) || (mod.defaultRoles || []).includes(uiStaffRole(role));
 }
 
-function buildPermModulesForUser(user, areaNameById) {
-  if (!isProductionStaffRole(user?.role)) return ALL_MODULES;
-  const areaId = String(user?.production_area_id || '').trim();
-  const areaLc = areaId.toLowerCase();
-  const areaName = (areaNameById && areaNameById.get(areaId)) || areaId || 'Área de producción';
+function buildPermModulesForUser(_user, areas) {
+  const list = activeProductionAreas(areas);
   const withoutStations = ALL_MODULES.filter((m) => m.id !== 'cocina' && m.id !== 'bar');
   const insertAt = Math.max(0, withoutStations.findIndex((m) => m.id === 'mesas') + 1);
-  const areaRow = {
-    id: '_production_area',
-    label: areaName,
-    icon: MdKitchen,
-    defaultRoles: ['produccion'],
-    isProductionAreaLink: true,
-    productionAreaId: areaId,
-    hint: areaId
-      ? 'Área vinculada en Áreas de producción'
-      : 'Vincula un área en Configuración → Áreas de producción',
-  };
-  // Si el área es cocina/bar legado, mostrar con ese nombre; si es custom, solo el área.
-  if (areaLc === 'cocina' || areaLc === 'bar') {
-    areaRow.label = areaLc === 'bar' ? 'Bar' : 'Cocina';
-  }
+  const areaRows = list.map((area) => ({
+    id: productionAreaPermKey(area.id),
+    label: area.name,
+    icon: getProductionAreaIcon(area),
+    isProductionArea: true,
+    productionAreaId: area.id,
+  }));
   const next = [...withoutStations];
-  next.splice(insertAt, 0, areaRow);
+  next.splice(insertAt, 0, ...areaRows);
   return next;
 }
 
@@ -2795,6 +2820,7 @@ function UsersSection({
     setPermsUser(userForPerms);
     setPermsLoading(true);
     setShowPermsModal(true);
+    const areas = activeProductionAreas(appSettings?.production_areas);
     try {
       const data = await api.get(`/users/${u.id}/permissions`);
       const defaults = {};
@@ -2804,46 +2830,20 @@ function UsersSection({
       CAJA_EXTRA_PERMISSIONS.forEach((p) => {
         defaults[p.key] = data[p.key] === true;
       });
-      if (isProductionStaffRole(userForPerms.role)) {
-        const areaDefaults = defaultProductionAreaPermissions(userForPerms);
-        defaults.cocina = areaDefaults.cocina;
-        defaults.bar = areaDefaults.bar;
-        defaults.produccion = areaDefaults.produccion;
-        defaults._production_area = Boolean(
-          areaDefaults.cocina || areaDefaults.bar || areaDefaults.produccion || String(userForPerms.production_area_id || '').trim()
-        );
-      }
+      Object.assign(defaults, areaPermStateFromSaved(data, areas, userForPerms));
       setPerms(defaults);
     } catch {
       const defaults = {};
       ALL_MODULES.forEach((m) => { defaults[m.id] = false; });
-      if (isProductionStaffRole(userForPerms.role)) {
-        const areaDefaults = defaultProductionAreaPermissions(userForPerms);
-        Object.assign(defaults, areaDefaults);
-        defaults._production_area = Boolean(
-          areaDefaults.cocina || areaDefaults.bar || areaDefaults.produccion || String(userForPerms.production_area_id || '').trim()
-        );
-      }
+      Object.assign(defaults, areaPermStateFromSaved({}, areas, userForPerms));
       setPerms(defaults);
     } finally { setPermsLoading(false); }
   };
 
   const savePermissions = async () => {
     try {
-      const payload = { ...perms };
-      delete payload._production_area;
-      if (isProductionStaffRole(permsUser?.role)) {
-        const areaDefaults = defaultProductionAreaPermissions(permsUser);
-        const areaOn = perms._production_area !== false;
-        payload.cocina = false;
-        payload.bar = false;
-        payload.produccion = false;
-        if (areaOn) {
-          payload.cocina = areaDefaults.cocina;
-          payload.bar = areaDefaults.bar;
-          payload.produccion = areaDefaults.produccion;
-        }
-      }
+      const areas = activeProductionAreas(appSettings?.production_areas);
+      const payload = mirrorStationFlags(perms, areas);
       await api.put(`/users/${permsUser.id}/permissions`, { permissions: payload });
       toast.success(`Permisos actualizados para ${permsUser.full_name}. Si ya está conectado, que cierre sesión y vuelva a entrar (o cambie de pestaña).`);
       setShowPermsModal(false);
@@ -2856,19 +2856,13 @@ function UsersSection({
 
   const resetToDefaults = () => {
     if (!permsUser) return;
+    const areas = activeProductionAreas(appSettings?.production_areas);
+    const modules = buildPermModulesForUser(permsUser, appSettings?.production_areas);
     const defaults = {};
-    ALL_MODULES.forEach((m) => {
+    modules.forEach((m) => {
       defaults[m.id] = isModuleDefaultForUser(m, permsUser);
     });
-    if (isProductionStaffRole(permsUser.role)) {
-      const areaDefaults = defaultProductionAreaPermissions(permsUser);
-      defaults.cocina = areaDefaults.cocina;
-      defaults.bar = areaDefaults.bar;
-      defaults.produccion = areaDefaults.produccion;
-      defaults._production_area = Boolean(
-        areaDefaults.cocina || areaDefaults.bar || areaDefaults.produccion || String(permsUser.production_area_id || '').trim()
-      );
-    }
+    Object.assign(defaults, mirrorStationFlags(defaults, areas));
     CAJA_EXTRA_PERMISSIONS.forEach((p) => {
       defaults[p.key] = false;
     });
@@ -3148,7 +3142,7 @@ function UsersSection({
             </div>
 
             <div className="space-y-1 max-h-96 overflow-y-auto">
-              {buildPermModulesForUser(permsUser, areaNameById).map((mod) => {
+              {buildPermModulesForUser(permsUser, appSettings?.production_areas).map((mod) => {
                 const Icon = mod.icon;
                 const isDefault = isModuleDefaultForUser(mod, permsUser);
                 const isEnabled = Boolean(perms[mod.id]);
@@ -3166,11 +3160,10 @@ function UsersSection({
                       </div>
                       <div>
                         <p className={`text-sm font-medium ${isEnabled ? 'text-emerald-800' : 'ui-text-muted'}`}>{mod.label}</p>
-                        {mod.isProductionAreaLink ? (
-                          <p className="text-[10px] text-[var(--ui-muted)]">
-                            {mod.hint || 'Área de producción vinculada'}
-                          </p>
-                        ) : isDefault ? (
+                        {mod.isProductionArea ? (
+                          <p className="text-[10px] text-[var(--ui-muted)]">Área de producción</p>
+                        ) : null}
+                        {isDefault ? (
                           <p className="text-[10px] text-[var(--ui-muted)]">Incluido por defecto en rol {ROLES[uiStaffRole(permsUser?.role)]?.label}</p>
                         ) : null}
                       </div>

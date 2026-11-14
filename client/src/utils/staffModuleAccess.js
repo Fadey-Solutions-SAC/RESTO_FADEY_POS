@@ -41,6 +41,39 @@ export function isPermissionExplicitlyDenied(value) {
 
 const PRODUCTION_ROLES = ['produccion', 'cocina', 'bar'];
 
+export const PROD_AREA_PERM_PREFIX = 'prodarea:';
+
+export function productionAreaPermKey(areaId) {
+  return `${PROD_AREA_PERM_PREFIX}${String(areaId || '').trim()}`;
+}
+
+export function hasExplicitProductionAreaPerms(permissions) {
+  if (!permissions || typeof permissions !== 'object') return false;
+  return Object.keys(permissions).some((key) => key.startsWith(PROD_AREA_PERM_PREFIX));
+}
+
+/**
+ * Acceso a un área concreta. Con permisos `prodarea:` manda esa lista.
+ * Sin ellos, Cocina y Bar siguen sus banderas; el resto solo `produccion`.
+ */
+export function canAccessProductionArea(user, areaId) {
+  if (!user) return false;
+  const role = String(user.role || '').toLowerCase();
+  if (role === 'admin' || role === 'master_admin') return true;
+  const id = String(areaId || '').trim();
+  const idLc = id.toLowerCase();
+  const own = getOwnProductionAreaId(user).toLowerCase();
+  if (own && own === idLc) return true;
+  const perms = user.permissions && typeof user.permissions === 'object' ? user.permissions : {};
+  if (hasExplicitProductionAreaPerms(perms)) {
+    return isPermissionEnabled(perms[productionAreaPermKey(id)])
+      || isPermissionEnabled(perms[productionAreaPermKey(idLc)]);
+  }
+  if (idLc === 'cocina') return hasModulePermission(user, 'cocina');
+  if (idLc === 'bar') return hasModulePermission(user, 'bar');
+  return isPermissionEnabled(perms.produccion);
+}
+
 /** Área propia del personal de producción; mismas reglas que `userCanAccessKitchenStation` del API. */
 export function getOwnProductionAreaId(user) {
   const role = String(user?.role || '').toLowerCase();

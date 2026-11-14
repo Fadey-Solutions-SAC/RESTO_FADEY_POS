@@ -47,7 +47,7 @@ import MasterAdmin from './pages/master/MasterAdmin';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import BackgroundKitchenAutoPrinter from './components/BackgroundKitchenAutoPrinter';
 import PrintingAssistantAutoDiscover from './components/PrintingAssistantAutoDiscover';
-import { ADMIN_MODULE_PATHS, hasModulePermission, canAccessStaffModule, getDefaultStaffPath } from './utils/staffModuleAccess';
+import { ADMIN_MODULE_PATHS, hasModulePermission, canAccessStaffModule, canAccessProductionArea, getDefaultStaffPath, getOwnProductionAreaId } from './utils/staffModuleAccess';
 import { isMasterViewingAsOwner } from './utils/masterViewMode';
 import { useDeliverySettings } from './hooks/useDeliveryEnabled';
 import { api } from './utils/api';
@@ -105,15 +105,10 @@ function KitchenAreaRoute() {
   const { areaId } = useParams();
   const { user } = useAuth();
   const id = String(areaId || '').trim() || 'cocina';
-  const role = String(user?.role || '').toLowerCase();
-  const own = String(user?.production_area_id || '').trim();
-  if (['produccion', 'cocina', 'bar'].includes(role)) {
-    let allowed = own;
-    if (!allowed && role === 'cocina') allowed = 'cocina';
-    if (!allowed && role === 'bar') allowed = 'bar';
-    if (allowed && id !== allowed) {
-      return <Navigate to={`/admin/produccion/${allowed}`} replace />;
-    }
+  if (!canAccessProductionArea(user, id)) {
+    const own = getOwnProductionAreaId(user);
+    if (own && own !== id) return <Navigate to={`/admin/produccion/${own}`} replace />;
+    return <Navigate to="/admin" replace />;
   }
   return <KitchenPanel areaId={id} />;
 }

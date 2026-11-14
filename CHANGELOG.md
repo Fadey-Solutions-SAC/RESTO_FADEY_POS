@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.1.6 — 2026-11-14
+
+- Permisos POS muestra las áreas de producción reales del local, no solo Cocina y Bar. El acceso queda por área.
+
 ## 1.2.1.5 — 2026-11-14
 
 - El botón que abre las secciones de Productividad POS queda solo en el celular. En la PC vuelve la lista al costado.

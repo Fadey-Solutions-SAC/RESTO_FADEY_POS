@@ -48,6 +48,7 @@ function withPublicEmail(user) {
   if (!user || typeof user !== 'object') return user;
   return { ...user, email: publicEmail(user.email) };
 }
+const { readAreaPermissions, applyLegacyStationFlags, isAreaPermKey } = require('../utils/productionAreaPermissions');
 const MODULE_IDS = [
   'escritorio', 'ventas', 'caja', 'mesas', 'reservas', 'auto_pedido', 'creditos', 'clientes',
   'productos', 'ofertas', 'descuentos', 'almacen', 'delivery', 'informes',
@@ -691,18 +692,7 @@ router.get('/:id/permissions', authenticateToken, requireRole('admin'), (req, re
   for (const subId of CAJA_USER_OPT_IN_SUBS) {
     permissions[cajaSubPermissionKey(subId)] = isPermissionEnabled(parsed[cajaSubPermissionKey(subId)]);
   }
-  const userRow = queryOne('SELECT role, production_area_id FROM users WHERE id = ?', [req.params.id]);
-  const roleLc = String(userRow?.role || '').toLowerCase();
-  if (['produccion', 'cocina', 'bar'].includes(roleLc)) {
-    const area = String(userRow?.production_area_id || '').trim().toLowerCase();
-    // Siempre alinear a su área vinculada (Parrilla ≠ Cocina).
-    permissions.produccion = false;
-    permissions.cocina = false;
-    permissions.bar = false;
-    if (roleLc === 'bar' || area === 'bar') permissions.bar = true;
-    else if (roleLc === 'cocina' || area === 'cocina') permissions.cocina = true;
-    else if (area) permissions.produccion = true;
-  }
+  Object.assign(permissions, readAreaPermissions(parsed));
   res.json(permissions);
 });
 
@@ -716,23 +706,13 @@ router.put('/:id/permissions', authenticateToken, requireRole('admin'), (req, re
   for (const subId of CAJA_USER_OPT_IN_SUBS) {
     normalized[cajaSubPermissionKey(subId)] = isPermissionEnabled(permissions[cajaSubPermissionKey(subId)]);
   }
-  const userRow = queryOne('SELECT role, production_area_id FROM users WHERE id = ?', [req.params.id]);
-  const roleLc = String(userRow?.role || '').toLowerCase();
-  if (['produccion', 'cocina', 'bar'].includes(roleLc)) {
-    const area = String(userRow?.production_area_id || '').trim().toLowerCase();
-    const areaOn = isPermissionEnabled(permissions.cocina)
-      || isPermissionEnabled(permissions.bar)
-      || isPermissionEnabled(permissions.produccion)
-      || isPermissionEnabled(permissions._production_area);
-    normalized.produccion = false;
-    normalized.cocina = false;
-    normalized.bar = false;
-    if (areaOn) {
-      if (roleLc === 'bar' || area === 'bar') normalized.bar = true;
-      else if (roleLc === 'cocina' || area === 'cocina') normalized.cocina = true;
-      else if (area) normalized.produccion = true;
-    }
+  const areaPerms = {};
+  for (const [key, value] of Object.entries(permissions)) {
+    if (!isAreaPermKey(key)) continue;
+    areaPerms[key] = isPermissionEnabled(value);
   }
+  Object.assign(normalized, areaPerms);
+  applyLegacyStationFlags(normalized, areaPerms);
   const existing = queryOne('SELECT id FROM user_permissions WHERE user_id = ?', [req.params.id]);
   const json = JSON.stringify(normalized);
   if (existing) {

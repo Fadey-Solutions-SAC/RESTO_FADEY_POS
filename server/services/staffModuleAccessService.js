@@ -13,6 +13,8 @@ const {
   parseProductionAreaIdsJson,
   getProductionAreaById,
 } = require('./productionAreasService');
+const { getRawUserPermissionsJson } = require('../lib/cajaPermissions');
+const { readAreaPermissions } = require('../utils/productionAreaPermissions');
 
 function isPermissionEnabled(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
@@ -83,6 +85,8 @@ function userCanAccessKitchenApi(user) {
   const role = String(user?.role || '').toLowerCase();
   if (['admin', 'cocina', 'bar', 'produccion', 'master_admin'].includes(role)) return true;
   if (['cajero', 'mozo'].includes(role)) {
+    const explicit = readAreaPermissions(getRawUserPermissionsJson(user?.id));
+    if (Object.keys(explicit).length) return Object.values(explicit).some(Boolean);
     return userHasModule(user, 'cocina') || userHasModule(user, 'bar') || userHasModule(user, 'produccion');
   }
   return false;
@@ -105,19 +109,30 @@ function loadStaffProductionFields(user) {
   };
 }
 
+function hasExplicitAreaGrant(userId, station) {
+  const explicit = readAreaPermissions(getRawUserPermissionsJson(userId));
+  const keys = Object.keys(explicit);
+  if (!keys.length) return null;
+  const st = String(station || '').trim();
+  return Boolean(explicit[`prodarea:${st}`] || explicit[`prodarea:${st.toLowerCase()}`]);
+}
+
 /** Estación / área concreta. */
 function userCanAccessKitchenStation(user, station) {
   const st = String(station || '').trim() || 'cocina';
   const u = loadStaffProductionFields(user);
   const role = String(u?.role || '').toLowerCase();
   if (role === 'admin' || role === 'master_admin') return true;
-  if (role === 'produccion') {
-    return String(u.production_area_id || '').trim() === st;
-  }
-  if (role === 'cocina') return st === 'cocina';
-  if (role === 'bar') return st === 'bar';
-  if (st === 'cocina' || st === 'bar') return userHasModule(u, st);
-  return userHasModule(u, 'produccion') || userHasModule(u, 'cocina') || userHasModule(u, 'bar');
+  if (role === 'produccion' && String(u.production_area_id || '').trim() === st) return true;
+  if (role === 'cocina' && st === 'cocina') return true;
+  if (role === 'bar' && st === 'bar') return true;
+  const explicit = hasExplicitAreaGrant(u?.id, st);
+  if (explicit !== null) return explicit;
+  const stLc = st.toLowerCase();
+  if (stLc === 'cocina') return userHasModule(u, 'cocina');
+  if (stLc === 'bar') return userHasModule(u, 'bar');
+  const raw = getRawUserPermissionsJson(u?.id);
+  return raw.produccion === true || raw.produccion === 1 || raw.produccion === '1' || raw.produccion === 'true';
 }
 
 function resolveKitchenStation(user, queryStation) {
@@ -146,18 +161,19 @@ function userCanManageKitchenOrderForStation(user, areaItems, station = '') {
   const itemsForCheck = scopedItems.length ? scopedItems : areaItems;
   if (role === 'produccion') {
     const aid = String(u.production_area_id || '').trim();
-    if (!aid) return false;
-    return filterItemsForKitchenStation(itemsForCheck, aid).length > 0;
+    const station = st || aid;
+    if (!station || !userCanAccessKitchenStation(u, station)) return false;
+    return filterItemsForKitchenStation(itemsForCheck, station).length > 0;
   }
   const hasBar = orderHasBarItems(itemsForCheck);
   const hasKitchen = orderHasKitchenItems(itemsForCheck);
   if (role === 'cocina') return hasKitchen;
   if (role === 'bar') return hasBar;
-  if (st === 'bar') return hasBar && userHasModule(u, 'bar');
-  if (st === 'cocina') return hasKitchen && userHasModule(u, 'cocina');
+  if (st === 'bar') return hasBar && userCanAccessKitchenStation(u, 'bar');
+  if (st === 'cocina') return hasKitchen && userCanAccessKitchenStation(u, 'cocina');
   if (st) {
     return filterItemsForKitchenStation(itemsForCheck, st).length > 0
-      && (userHasModule(u, 'produccion') || userHasModule(u, 'cocina') || userHasModule(u, 'bar'));
+      && userCanAccessKitchenStation(u, st);
   }
   if (hasBar && !hasKitchen) return userHasModule(u, 'bar');
   if (hasKitchen && !hasBar) return userHasModule(u, 'cocina');

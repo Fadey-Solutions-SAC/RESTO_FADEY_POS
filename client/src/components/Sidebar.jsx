@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
-import { ADMIN_MODULE_PATHS, PRIMARY_MODULE_BY_ROLE, canAccessStaffModule, hasModulePermission } from '../utils/staffModuleAccess';
+import { ADMIN_MODULE_PATHS, PRIMARY_MODULE_BY_ROLE, canAccessProductionArea, canAccessStaffModule, hasModulePermission } from '../utils/staffModuleAccess';
 import { groupNavLinks, sortProductionAreasForNav } from '../utils/navMenuGroups';
 import { useShowDeliveryUi } from '../hooks/useDeliveryEnabled';
 import { usePrintingModule } from '../hooks/usePrintingModule';
@@ -274,7 +274,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
 
   const hasLinkPermission = (link) => {
     if (link?.isProductionArea) {
-      return canSeeProduction;
+      return canAccessProductionArea(user, link.productionAreaId);
     }
     const ids = link.moduleIds?.length ? link.moduleIds : [link.moduleId];
     return ids.some((moduleId) => canAccessStaffModule(user, { moduleId, roles: link.roles }));
