@@ -46,6 +46,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [brandLogo, setBrandLogo] = useState('');
   const [restaurantName, setRestaurantName] = useState('');
+  const [restaurantNameColor, setRestaurantNameColor] = useState('');
   const [coverImage, setCoverImage] = useState('');
   const [systemLocked, setSystemLocked] = useState(false);
   const [lockReason, setLockReason] = useState('');
@@ -127,6 +128,12 @@ export default function Login() {
         ).trim();
         setBrandLogo(logo);
         setRestaurantName(String(r?.name || '').trim());
+        const nameColor = String(
+          r?.profile?.general?.login_name_color
+            || r?.profile_effective?.general_extras?.login_name_color
+            || ''
+        ).trim();
+        setRestaurantNameColor(/^#[0-9a-fA-F]{6}$/.test(nameColor) ? nameColor : '');
         const cover = String(
           r?.profile_effective?.branding?.favicon ||
             r?.profile?.branding?.favicon ||
@@ -240,7 +247,12 @@ export default function Login() {
             />
           ) : null}
           {restaurantName ? (
-            <h1 className="rf-login-local-name">{restaurantName}</h1>
+            <h1
+              className="rf-login-local-name"
+              style={restaurantNameColor ? { color: restaurantNameColor } : undefined}
+            >
+              {restaurantName}
+            </h1>
           ) : null}
           <div className="rf-login-card">
             <span className="rf-login-version">{getSystemVersionLabel()}</span>

@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.1.8 — 2026-11-14
+
+- Junto al nombre comercial hay un botón de color. Ese color se usa en el nombre del inicio de sesión.
+
 ## 1.2.1.7 — 2026-11-14
 
 - El login vuelve a mostrar el nombre comercial del local (Mi restaurante), debajo del logo.

@@ -162,8 +162,23 @@ export default function MiRestaurantEmpresaHub({
           <section>
             <h3 className="font-bold text-[var(--ui-body-text)] mb-3">Datos comerciales y fiscales</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Nombre comercial *">
-                <input className="input-field" value={restaurant.name || ''} onChange={(e) => onRestaurantField('name', e.target.value)} required />
+              <Field label="Nombre comercial *" hint="El color se usa en el inicio de sesión.">
+                <div className="flex items-center gap-2">
+                  <input className="input-field flex-1 min-w-0" value={restaurant.name || ''} onChange={(e) => onRestaurantField('name', e.target.value)} required />
+                  <label
+                    className="relative shrink-0 w-10 h-10 rounded-lg border border-[color:var(--ui-border)] cursor-pointer overflow-hidden"
+                    title="Color del nombre en el login"
+                    style={{ background: /^#[0-9a-fA-F]{6}$/.test(String(g.login_name_color || '')) ? g.login_name_color : '#ffffff' }}
+                  >
+                    <input
+                      type="color"
+                      aria-label="Color del nombre en el login"
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      value={/^#[0-9a-fA-F]{6}$/.test(String(g.login_name_color || '')) ? g.login_name_color : '#ffffff'}
+                      onChange={(e) => onProfileSection('general', 'login_name_color', e.target.value)}
+                    />
+                  </label>
+                </div>
               </Field>
               <Field label="Razón social">
                 <input className="input-field" value={restaurant.legal_name || ''} onChange={(e) => onRestaurantField('legal_name', e.target.value)} />

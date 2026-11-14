@@ -10,6 +10,7 @@ export function defaultMiRestaurantProfile() {
       social_instagram: '',
       social_tiktok: '',
       description: '',
+      login_name_color: '',
     },
     branding: {
       logo_ticket: '',
