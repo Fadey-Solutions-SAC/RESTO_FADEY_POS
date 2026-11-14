@@ -1,6 +1,6 @@
 # Contexto del proyecto
 
-Versión de producto: **1.2.0.9** (`package.json` y `client/package.json`). En pantalla: `v 1.2.0.9`.
+Versión de producto: **1.2.1.0** (`package.json` y `client/package.json`). En pantalla: `v 1.2.1.0`.
 
 Este archivo describe el sistema tal como está en el código. No reemplaza `AGENTS.md` (cómo trabajar) ni `CHANGELOG.md` (qué cambió).
 
@@ -113,8 +113,8 @@ Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurant
 
 ## Asistentes de impresión
 
-- **PC** (`electron/main.js`): bandeja. Con vínculo de nube guardado, consulta `GET /api/assistant/operation-status`. Enciende impresión y e-fact si hay usuarios; si no hay, apaga esos servicios y, si hay actualización descargada, la instala. El proceso de bandeja sigue vivo. Horario en `electron/operationWatchSchedule.js` (Lima): con usuarios, 30 min de 5:00 a 7:00 y 15 min desde las 7:00; si ya cerraron, cada 2 horas hasta las 5:00.
-- **Usuario activo** (`server/assistantOperation.js`): personas distintas con jornada abierta y actividad en los últimos **6 minutos**, o heartbeat de POS en los últimos **120 segundos**. Una caja abierta sola no enciende el asistente. Las consultas del propio asistente (`operation-status`, `pending-local`, cola de `print-jobs`) no crean ni refrescan jornadas (`server/middleware/auth.js`).
+- **PC** (`electron/main.js`): bandeja. Con vínculo de nube guardado, consulta `GET /api/assistant/operation-status`. Enciende impresión y e-fact si hay usuarios; si no hay, apaga esos servicios y, si hay actualización descargada, la instala. El proceso de bandeja sigue vivo. Horario en `electron/operationWatchSchedule.js` (Lima): encendido, no consulta cada 15 minutos; cada 2 horas intenta apagarse y ahí consulta. Si queda alguien, sigue. Si ya cerraron todos, se apaga. Apagado, de 5:00 a 7:00 cada 30 minutos y el resto cada 2 horas hasta las 5:00.
+- **Usuario activo** (`server/assistantOperation.js`): personas distintas (`COUNT(DISTINCT user_id)`) con jornada abierta y actividad en los últimos **6 minutos**, o heartbeat de POS en los últimos **120 segundos**. El mismo usuario en dos equipos cuenta como uno. Una caja abierta sola no enciende el asistente. Las consultas del propio asistente (`operation-status`, `pending-local`, cola de `print-jobs`) no crean ni refrescan jornadas (`server/middleware/auth.js`).
 - **Android**: cola ` /api/print-jobs` y facturas ` /api/billing/pending-local`. El horario equivalente está en el repo del APK, no aquí.
 
 ## Decisiones que el código ya tomó

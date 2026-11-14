@@ -1582,8 +1582,15 @@ function scheduleOperationWatch() {
     operationWatchTimer = null;
   }
   if (!efactCloudLink?.apiBase || !efactCloudLink?.token) return;
-  const delay = nextOperationDelayMs(new Date(), servicesAreRunning());
-  console.log('[electron] próxima consulta de usuarios en', Math.round(delay / 60000), 'min');
+  const running = servicesAreRunning();
+  const delay = nextOperationDelayMs(new Date(), running);
+  console.log(
+    running
+      ? '[electron] próximo intento de cierre en'
+      : '[electron] próxima consulta de usuarios en',
+    Math.round(delay / 60000),
+    'min',
+  );
   operationWatchTimer = setTimeout(() => {
     operationWatchTimer = null;
     void syncAssistantToUsers();
@@ -1832,7 +1839,7 @@ function extractProtocolUrl(argv = process.argv) {
 }
 
 function wakePrintingServicesFromProtocol() {
-  /** Alguien abrió el sistema en esta PC: encender ya. El horario lo apaga si luego no hay usuarios. */
+  /** Alguien abrió el sistema en esta PC: encender ya. El apagado consulta usuarios antes de cerrar. */
   assistantAsleep = false;
   void (async () => {
     if (!assistantListenPort) await startPrintingAssistantServer();

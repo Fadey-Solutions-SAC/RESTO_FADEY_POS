@@ -2,6 +2,11 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.1.0 — 2026-11-13
+
+- El asistente de PC encendido ya no consulta usuarios cada 15 minutos. Cada 2 horas intenta apagarse: si queda alguien, sigue; si ya cerraron todos, se apaga.
+- Un usuario con el sistema abierto en dos equipos cuenta como uno.
+
 ## 1.2.0.9 — 2026-11-13
 
 - Por área, en Productividad POS, muestra Caja, Cocina, Delivery y Mesas con la misma ficha de color que Ventas.

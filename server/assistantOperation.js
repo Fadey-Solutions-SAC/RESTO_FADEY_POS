@@ -28,7 +28,10 @@ function countOpenRegisters() {
   }
 }
 
-/** Personas con la pestaña del sistema en uso. Varias jornadas del mismo usuario cuentan como una. */
+/**
+ * Personas con la pestaña del sistema en uso.
+ * El mismo usuario en dos equipos cuenta como uno (COUNT DISTINCT user_id).
+ */
 function countActiveUsers() {
   try {
     closeExcessOpenSessions();
