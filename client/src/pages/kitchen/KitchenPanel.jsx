@@ -852,6 +852,11 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
                             {orderTableLabel(order)}
                           </span>
                         ) : null}
+                        {String(order.ticket_guest_name || '').trim() ? (
+                          <span className="text-xs font-extrabold text-amber-800">
+                            Nombre: {String(order.ticket_guest_name).trim()}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-1 text-sm text-[var(--ui-muted)] shrink-0">
                         <MdAccessTime />
@@ -882,6 +887,7 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
           const isOverdue = isKitchenOrderOverdue(order);
 
           const cuentaCliente = isCuentaClienteSelfOrder(order);
+          const guestName = String(order.ticket_guest_name || '').trim();
           const stationPending = !isComandaPreparingForStation(order);
           const cardBorder = isOverdue
             ? 'border-[3px] border-[#DC2626] shadow-[0_0_36px_rgba(220,38,38,0.72)]'
@@ -937,6 +943,11 @@ export default function KitchenPanel({ station, areaId: areaIdProp }) {
                     </div>
                   </div>
                 )}
+                {guestName ? (
+                  <p className="mt-1.5 truncate text-sm font-extrabold text-amber-800" title={guestName}>
+                    Nombre: {guestName}
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-2 px-4 py-3">

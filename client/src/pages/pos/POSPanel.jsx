@@ -5062,6 +5062,9 @@ export default function POSPanel() {
                         ? `${tableDetail.orders.length} pedido(s) activo(s)`
                         : 'Sin pedidos activos'}
                   </p>
+                  {qrGuestNameLines(tableDetail.orders).map((line) => (
+                    <p key={line} className="mt-1 text-sm font-extrabold text-amber-800">{line}</p>
+                  ))}
                 </div>
                 <p className="text-xl font-bold text-[var(--ui-accent-muted)] shrink-0 tabular-nums">
                   {formatCurrency((tableDetail.orders || []).reduce((sum, o) => sum + getOrderChargeTotal(o), 0))}
@@ -5840,6 +5843,9 @@ export default function POSPanel() {
           const totalMesa = (tbl.orders || []).reduce((s, o) => s + getOrderChargeTotal(o), 0);
           return (
             <div className="max-h-[min(70vh,480px)] overflow-y-auto space-y-3 pr-1 text-[var(--ui-body-text)]">
+              {qrGuestNameLines(tbl.orders).map((line) => (
+                <p key={line} className="text-sm font-extrabold text-amber-800">{line}</p>
+              ))}
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)]">Productos en la mesa</p>
               {lines.length === 0 ? (
                 <p className="text-center text-[var(--ui-muted)] py-6">No hay productos para mostrar.</p>
@@ -6291,9 +6297,14 @@ export default function POSPanel() {
                   <div className="rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)]/70 backdrop-blur-md p-3 sm:p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <h3 className="text-base font-bold text-[var(--ui-body-text)] shrink-0">Cobro</h3>
-                      <p className="text-base sm:text-lg font-extrabold text-[var(--ui-body-text)] tracking-wide text-right leading-tight">
-                        {selectedTable ? getTableDisplayLabel(selectedTable) : '—'}
-                      </p>
+                      <div className="text-right leading-tight">
+                        <p className="text-base sm:text-lg font-extrabold text-[var(--ui-body-text)] tracking-wide">
+                          {selectedTable ? getTableDisplayLabel(selectedTable) : '—'}
+                        </p>
+                        {selectedTable ? qrGuestNameLines(selectedTable.orders).map((line) => (
+                          <p key={line} className="mt-0.5 text-sm font-extrabold text-amber-800">{line}</p>
+                        )) : null}
+                      </div>
                     </div>
                     {gitCardsEnabled && selectedTable && gitCardByTable[selectedTable.id] ? (
                       <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2">

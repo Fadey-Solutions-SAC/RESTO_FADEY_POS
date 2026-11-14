@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.1.2 — 2026-11-13
+
+- El nombre del auto-pedido se ve en la comanda de cocina, en la cuenta de la mesa y al cobrar. Sirve para identificar quién pidió por QR.
+
 ## 1.2.1.1 — 2026-11-13
 
 - El auto-pedido por QR pide un nombre antes de la carta. Ese nombre sale en la comanda y en la cuenta del pedido.
