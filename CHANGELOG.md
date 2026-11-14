@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.1.4 — 2026-11-14
+
+- En Productividad POS el menú de secciones se guarda en un botón arriba a la izquierda. Al tocarlo se abre para elegir otra y al tocarlo de nuevo se cierra.
+
 ## 1.2.1.3 — 2026-11-13
 
 - En Cobrar mesa, el nombre del producto queda en el mismo color sólido que la cantidad y el total.
