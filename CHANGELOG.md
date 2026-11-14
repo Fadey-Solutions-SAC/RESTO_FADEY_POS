@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.1.3 — 2026-11-13
+
+- En Cobrar mesa, el nombre del producto queda en el mismo color sólido que la cantidad y el total.
+
 ## 1.2.1.2 — 2026-11-13
 
 - El nombre del auto-pedido se ve en la comanda de cocina, en la cuenta de la mesa y al cobrar. Sirve para identificar quién pidió por QR.

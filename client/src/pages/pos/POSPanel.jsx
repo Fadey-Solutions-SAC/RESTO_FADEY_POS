@@ -5986,7 +5986,7 @@ export default function POSPanel() {
                                             ? 'border-[color:var(--ui-warning)] bg-[color-mix(in_srgb,var(--ui-warning)_18%,var(--ui-surface))] ring-1 ring-[color:var(--ui-warning)]'
                                             : sel
                                               ? 'border-[color:var(--ui-accent)]/80 bg-[var(--ui-sidebar-active-bg)]/25 text-[var(--ui-body-text)]'
-                                              : 'border-transparent text-[var(--ui-muted)]'
+                                              : 'border-transparent text-[var(--ui-body-text)]'
                                         } ${discountConfig.active && !discountConfig.applied ? 'cursor-pointer' : ''}`}
                                       >
                                         <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
@@ -6000,7 +6000,7 @@ export default function POSPanel() {
                                         <span className="text-center text-[10px] font-bold text-[var(--ui-accent-muted)] tabular-nums">
                                           #{line.orderNumber}
                                         </span>
-                                        <span className="col-start-3 col-end-7 sm:col-auto min-w-0 break-words leading-snug">{line.name}</span>
+                                        <span className="col-start-3 col-end-7 sm:col-auto min-w-0 break-words font-medium leading-snug text-[var(--ui-body-text)]">{line.name}</span>
                                         {showQtyStepper ? (
                                           <div
                                             onClick={(e) => e.stopPropagation()}
@@ -6031,7 +6031,7 @@ export default function POSPanel() {
                                         ) : (
                                           <span className="col-start-4 sm:col-auto text-center tabular-nums text-[var(--ui-body-text)]">{line.qty}</span>
                                         )}
-                                        <span className="text-right tabular-nums text-[#D1D5DB]">{formatCurrency(line.unit)}</span>
+                                        <span className="text-right tabular-nums text-[var(--ui-body-text)]">{formatCurrency(line.unit)}</span>
                                         <span className="text-right tabular-nums font-medium text-[var(--ui-body-text)]">{formatCurrency(lineTotal)}</span>
                                       </div>
                                     );
@@ -6062,11 +6062,11 @@ export default function POSPanel() {
                                   billLineItemsGrouped.map((row) => (
                                     <div
                                       key={row.key}
-                                      className="grid grid-cols-[minmax(0,1fr)_2.75rem_4.25rem_4.25rem] gap-2 text-sm text-[#D1D5DB] py-1.5 border-b border-[#3B82F6]/10 last:border-0"
+                                      className="grid grid-cols-[minmax(0,1fr)_2.75rem_4.25rem_4.25rem] gap-2 text-sm text-[var(--ui-body-text)] py-1.5 border-b border-[#3B82F6]/10 last:border-0"
                                     >
-                                      <span className="min-w-0 break-words leading-snug">{row.name}</span>
+                                      <span className="min-w-0 break-words font-medium leading-snug text-[var(--ui-body-text)]">{row.name}</span>
                                       <span className="text-center tabular-nums text-[var(--ui-body-text)]">{row.qty}</span>
-                                      <span className="text-right tabular-nums text-[#D1D5DB]">{formatCurrency(row.unitPrice)}</span>
+                                      <span className="text-right tabular-nums text-[var(--ui-body-text)]">{formatCurrency(row.unitPrice)}</span>
                                       <span className="text-right tabular-nums font-medium text-[var(--ui-body-text)]">{formatCurrency(row.subtotal)}</span>
                                     </div>
                                   ))
