@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import HotelRoomQrModal from '../../components/hotel/HotelRoomQrModal';
 import HotelRoomAccountModal from '../../components/hotel/HotelRoomAccountModal';
+import HotelBookingsPanel from '../../components/hotel/HotelBookingsPanel';
 import { useAuth } from '../../context/AuthContext';
 import { api, formatCurrency, PAYMENT_METHODS } from '../../utils/api';
 import { showStockInOrderingUI, orderingStockCellIsOut, orderingStockCellText } from '../../utils/productStockDisplay';
@@ -40,6 +41,7 @@ export default function Hoteleria() {
   const canHotelDesk = isAdmin || String(user?.role || '').toLowerCase() === 'recepcionista';
   const [rooms, setRooms] = useState([]);
   const [stations, setStations] = useState([]);
+  const [roomTypes, setRoomTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [roomForm, setRoomForm] = useState(null);
   const [guestForm, setGuestForm] = useState(null);
@@ -65,7 +67,12 @@ export default function Hoteleria() {
     api.get('/pos/caja-stations')
       .then((data) => setStations(Array.isArray(data?.stations) ? data.stations : []))
       .catch(() => setStations([]));
-  }, [load]);
+    if (isAdmin) {
+      api.get('/hotel/room-types')
+        .then((rows) => setRoomTypes(Array.isArray(rows) ? rows : []))
+        .catch(() => setRoomTypes([]));
+    }
+  }, [load, isAdmin]);
 
   const openAccount = async (room) => {
     setProductSearch('');
@@ -234,6 +241,8 @@ export default function Hoteleria() {
         ) : null}
       </div>
 
+      {canHotelDesk ? <HotelBookingsPanel isAdmin={isAdmin} onChanged={load} /> : null}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="card">
           <p className="text-xs text-[var(--ui-muted)]">Disponibles</p>
@@ -350,6 +359,14 @@ export default function Hoteleria() {
             <label className="block text-sm">Costo por noche
               <input type="number" min="0" step="0.5" className="input-field mt-1" value={roomForm.nightly_rate} onChange={(e) => setRoomForm({ ...roomForm, nightly_rate: e.target.value })} />
             </label>
+            {roomTypes.length ? (
+              <label className="block text-sm">Tipo para la web
+                <select className="input-field mt-1" value={roomForm.room_type_id || ''} onChange={(e) => setRoomForm({ ...roomForm, room_type_id: e.target.value })}>
+                  <option value="">Sin tipo</option>
+                  {roomTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+                </select>
+              </label>
+            ) : null}
             <label className="block text-sm">Caja
               <select className="input-field mt-1" value={roomForm.caja_station_id || 'recepcion'} onChange={(e) => setRoomForm({ ...roomForm, caja_station_id: e.target.value })}>
                 <option value="recepcion">Recepción</option>

@@ -307,6 +307,7 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/customer/login', authLimiter);
 
 app.use('/api/public/self-order', require('./routes/publicSelfOrder'));
+app.use('/api/public/hotel', require('./routes/publicHotel'));
 app.use('/api/public/loyalty', require('./routes/publicLoyalty'));
 app.use('/api/public/git-cards', require('./routes/publicGitCards'));
 app.use('/api/fadey', require('./routes/publicFadey'));

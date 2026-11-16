@@ -141,8 +141,8 @@ function createRoom(body, user) {
   const capacity = Math.max(1, Math.floor(Number(body?.capacity) || 2));
   runSql(
     `INSERT INTO hotel_rooms (
-      id, number, name, floor, capacity, nightly_rate, status, caja_station_id, restaurant_id, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, 'available', ?, ?, ?)`,
+      id, number, name, floor, capacity, nightly_rate, status, caja_station_id, room_type_id, restaurant_id, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)`,
     [
       id,
       number,
@@ -151,6 +151,7 @@ function createRoom(body, user) {
       capacity,
       rate,
       cajaId,
+      String(body?.room_type_id || '').trim(),
       restaurant?.id || '',
       String(body?.notes || '').trim(),
     ]
@@ -180,7 +181,7 @@ function updateRoom(id, body, user) {
   }
   runSql(
     `UPDATE hotel_rooms SET
-      number = ?, name = ?, floor = ?, capacity = ?, nightly_rate = ?, caja_station_id = ?, notes = ?,
+      number = ?, name = ?, floor = ?, capacity = ?, nightly_rate = ?, caja_station_id = ?, room_type_id = ?, notes = ?,
       updated_at = datetime('now')
      WHERE id = ?`,
     [
@@ -190,6 +191,7 @@ function updateRoom(id, body, user) {
       Math.max(1, Math.floor(Number(body?.capacity ?? current.capacity) || 2)),
       rate,
       cajaId,
+      body?.room_type_id != null ? String(body.room_type_id || '').trim() : String(current.room_type_id || '').trim(),
       String(body?.notes ?? current.notes ?? '').trim(),
       id,
     ]
@@ -327,11 +329,28 @@ function checkIn(id, body, user) {
   assertCanOperateRoom(user, room);
   if (room.status === 'maintenance') throw httpError('La habitación está en mantenimiento');
   if (room.status === 'occupied') throw httpError('La habitación ya está ocupada');
-  if (!(Number(room.nightly_rate) > 0)) throw httpError('La habitación no tiene costo por noche');
+  const checkInKey = /^\d{4}-\d{2}-\d{2}$/.test(String(body?.check_in || '').trim())
+    ? String(body.check_in).trim()
+    : getBusinessTodayDateKey(queryOne);
+  let nights = 0;
+  let checkOut = '';
+  const explicitOut = String(body?.check_out || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(explicitOut) && explicitOut > checkInKey) {
+    let cursor = checkInKey;
+    while (cursor < explicitOut && nights < 366) {
+      nights += 1;
+      cursor = shiftBusinessDateKey(cursor, 1);
+    }
+    if (nights < 1 || nights > 365) throw httpError('Indique las noches (1 a 365)');
+    checkOut = explicitOut;
+  } else {
+    nights = parseNights(body?.nights);
+    checkOut = shiftBusinessDateKey(checkInKey, nights);
+  }
+  const agreed = round2(body?.agreed_rate);
+  const rate = agreed > 0 ? agreed : round2(room.nightly_rate);
+  if (!(rate > 0)) throw httpError('La habitación no tiene costo por noche');
   const guest = guestFromBody(body);
-  const nights = parseNights(body?.nights);
-  const checkIn = getBusinessTodayDateKey(queryOne);
-  const checkOut = shiftBusinessDateKey(checkIn, nights);
   const restaurant = queryOne('SELECT id FROM restaurants LIMIT 1');
   const orderId = uuidv4();
   const tableLabel = `Hab ${room.number}`;
@@ -344,8 +363,8 @@ function checkIn(id, body, user) {
     }
     const orderNumber = Number(seq.current_number || 0) + 1;
     tx.run('UPDATE order_sequence SET current_number = ? WHERE id = 1', [orderNumber]);
-    const stay = { ...room, nights };
-    const lodgingTotal = round2(nights * Number(room.nightly_rate || 0));
+    const stay = { ...room, nights, nightly_rate: rate };
+    const lodgingTotal = round2(nights * rate);
     tx.run(
       `INSERT INTO orders (
         id, order_number, customer_name, restaurant_id, type, status, subtotal, tax, discount, delivery_fee, total,
@@ -368,11 +387,11 @@ function checkIn(id, body, user) {
     writeLodgingLine(tx, orderId, stay);
     recalcOrderTotals(tx, orderId);
     upsertStayTx(tx, {
-      room,
+      room: { ...room, nightly_rate: rate },
       orderId,
       guest,
       nights,
-      checkIn,
+      checkIn: checkInKey,
       checkOut,
     });
     tx.run(
@@ -382,7 +401,7 @@ function checkIn(id, body, user) {
        WHERE id = ?`,
       [
         guest.guestName, guest.docType, guest.docNumber, guest.phone, guest.email,
-        checkIn, checkOut, nights, orderId, room.id,
+        checkInKey, checkOut, nights, orderId, room.id,
       ]
     );
   });
@@ -505,6 +524,34 @@ function releaseRoomTx(tx, hotelRoomId) {
      WHERE id = ?`,
     [id]
   );
+  try {
+    tx.run(
+      `UPDATE hotel_booking_rooms SET released = 1
+       WHERE room_id = ?
+         AND booking_id IN (SELECT id FROM hotel_bookings WHERE status = 'check_in')`,
+      [id]
+    );
+    const openRows = tx.queryAll(
+      `SELECT DISTINCT b.id FROM hotel_bookings b
+       JOIN hotel_booking_rooms br ON br.booking_id = b.id
+       WHERE b.status = 'check_in' AND br.room_id = ?`,
+      [id]
+    );
+    for (const row of openRows) {
+      const pending = tx.queryOne(
+        'SELECT id FROM hotel_booking_rooms WHERE booking_id = ? AND IFNULL(released, 0) = 0 LIMIT 1',
+        [row.id]
+      );
+      if (!pending) {
+        tx.run(
+          "UPDATE hotel_bookings SET status = 'check_out', updated_at = datetime('now') WHERE id = ?",
+          [row.id]
+        );
+      }
+    }
+  } catch (_) {
+    /* la salida de la habitación no depende de la reserva */
+  }
 }
 
 const PAYMENT_LABELS = {

@@ -104,4 +104,87 @@ router.post('/rooms/:id/maintenance', (req, res) => {
   }
 });
 
+const bookings = require('../services/hotelBookingService');
+
+router.get('/room-types', (req, res) => {
+  try {
+    res.json(bookings.listRoomTypes());
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+router.post('/room-types', (req, res) => {
+  try {
+    const role = String(req.user?.role || '').toLowerCase();
+    if (role !== 'admin' && role !== 'master_admin') {
+      return res.status(403).json({ error: 'Solo el administrador crea tipos de habitación' });
+    }
+    res.status(201).json(bookings.saveRoomType(req.body || {}));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+router.put('/room-types/:id', (req, res) => {
+  try {
+    res.json(bookings.saveRoomType(req.body || {}, req.params.id));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+router.get('/availability', (req, res) => {
+  try {
+    res.json(bookings.searchAvailability({
+      checkIn: req.query.checkin || req.query.check_in,
+      checkOut: req.query.checkout || req.query.check_out,
+      adults: req.query.adultos || req.query.adults,
+      children: req.query.ninos || req.query.children,
+    }));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+router.get('/bookings', (req, res) => {
+  try {
+    res.json(bookings.listBookings({ from: req.query.from || '' }));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+router.post('/bookings', (req, res) => {
+  try {
+    res.status(201).json(bookings.createBooking(req.body || {}, { user: req.user }));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+router.post('/bookings/:id/confirm', (req, res) => {
+  try {
+    res.json(bookings.confirmBooking(req.params.id, req.body || {}));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+router.post('/bookings/:id/check-in', (req, res) => {
+  try {
+    res.json(bookings.checkInBooking(req.params.id, req.user));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+router.post('/bookings/:id/cancel', (req, res) => {
+  try {
+    res.json(bookings.cancelBooking(req.params.id));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 module.exports = router;

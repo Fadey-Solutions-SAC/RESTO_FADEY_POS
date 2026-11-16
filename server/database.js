@@ -1532,6 +1532,86 @@ async function initDatabase() {
       )
     `);
     db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_hotel_rooms_number ON hotel_rooms(number)');
+    try {
+      db.run("ALTER TABLE hotel_rooms ADD COLUMN room_type_id TEXT DEFAULT ''");
+    } catch (_) {
+      /* la columna ya existe */
+    }
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS hotel_room_types (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        adults INTEGER DEFAULT 2,
+        children INTEGER DEFAULT 0,
+        nightly_rate REAL DEFAULT 0,
+        weekend_rate REAL DEFAULT 0,
+        amenities_json TEXT DEFAULT '[]',
+        images_json TEXT DEFAULT '[]',
+        active INTEGER DEFAULT 1,
+        restaurant_id TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS hotel_bookings (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL,
+        customer_id TEXT DEFAULT '',
+        guest_name TEXT DEFAULT '',
+        guest_doc_type TEXT DEFAULT 'DNI',
+        guest_doc_number TEXT DEFAULT '',
+        guest_phone TEXT DEFAULT '',
+        guest_email TEXT DEFAULT '',
+        nationality TEXT DEFAULT '',
+        arrival_time TEXT DEFAULT '',
+        check_in TEXT NOT NULL,
+        check_out TEXT NOT NULL,
+        adults INTEGER DEFAULT 1,
+        children INTEGER DEFAULT 0,
+        channel TEXT DEFAULT 'recepcion',
+        status TEXT DEFAULT 'pendiente_pago',
+        lodging_total REAL DEFAULT 0,
+        paid_total REAL DEFAULT 0,
+        notes TEXT DEFAULT '',
+        expires_at TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_hotel_bookings_code ON hotel_bookings(code)');
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS hotel_booking_rooms (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL,
+        room_id TEXT NOT NULL,
+        agreed_rate REAL DEFAULT 0,
+        released INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    try {
+      db.run('ALTER TABLE hotel_booking_rooms ADD COLUMN released INTEGER DEFAULT 0');
+    } catch (_) {
+      /* la columna ya existe */
+    }
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS hotel_booking_guests (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL,
+        room_id TEXT DEFAULT '',
+        full_name TEXT NOT NULL,
+        doc_type TEXT DEFAULT 'DNI',
+        doc_number TEXT DEFAULT '',
+        nationality TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
 
     db.run(`
       CREATE TABLE IF NOT EXISTS hotel_stays (

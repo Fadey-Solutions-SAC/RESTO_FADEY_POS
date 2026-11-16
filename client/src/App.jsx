@@ -32,6 +32,7 @@ import Reports from './pages/admin/Reports';
 import Indicadores from './pages/admin/Indicadores';
 import Fidelizacion from './pages/admin/Fidelizacion';
 import EncuestaPublica from './pages/public/EncuestaPublica';
+import HotelPublicBooking from './pages/public/HotelPublicBooking';
 import FirmarContratoMovil from './pages/public/FirmarContratoMovil';
 import MiRestaurant from './pages/admin/MiRestaurant';
 import Settings from './pages/admin/Settings';
@@ -227,6 +228,7 @@ function AppRoutes({ user }) {
       <Route path="/auto-pedido" element={<SelfOrder />} />
       <Route path="/git-cards/:token" element={<GitCardPublic />} />
       <Route path="/encuesta" element={<EncuestaPublica />} />
+      <Route path="/reservar" element={<HotelPublicBooking />} />
       <Route path="/firmar-contrato" element={<FirmarContratoMovil />} />
       <Route path="/auto-pedido-cliente" element={<SelfOrderCliente />} />
       <Route path="/desbloquear-pago" element={<LoginComprobanteUnlock />} />
