@@ -95,4 +95,5 @@ module.exports = {
   collectOrderProductionAreaIds,
   stripKitchenItemMeta,
   expandItemTargets,
+  isHotelLodgingItem,
 };

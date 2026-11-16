@@ -294,7 +294,7 @@ export default function Tables() {
 
   const salonLabel = (id) => {
     if (id === 'all') return 'Todos';
-    if (id === HOTEL_MAP_ZONE) return 'Hotel';
+    if (id === HOTEL_MAP_ZONE) return 'HOTEL';
     const found = tablesBySalon.find((s) => s.zone === id);
     return found?.label ?? id;
   };

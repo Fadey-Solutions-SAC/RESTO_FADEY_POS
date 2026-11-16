@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.3.5 — 2026-11-16
+
+- En Caja, la habitación vinculada a esa caja se opera como una mesa: pedir, modificar, precuenta y cobrar. En Mesas queda igual. La zona se llama HOTEL, como los demás salones.
+
 ## 1.2.3.4 — 2026-11-16
 
 - En Hotel, junto a las cajas, está Recepción. Esa habitación no se vincula a ninguna caja y solo se ve en el módulo de Hotel. En la habitación ocupada, Pedido abre el mismo pedido de Caja y Mesas. Cada producto sale al área de producción que tiene configurada.

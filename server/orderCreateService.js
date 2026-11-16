@@ -16,7 +16,7 @@ const {
   getOrderAreaItemsTx,
 } = require('./services/tableOrderMergeService');
 const { allRequiredStationsReady, isStationCompleteForStation } = require('./utils/kitchenStationReady');
-const { collectOrderProductionAreaIds } = require('./utils/productionArea');
+const { collectOrderProductionAreaIds, isHotelLodgingItem } = require('./utils/productionArea');
 const { tableNumbersMatch } = require('./utils/tableNumberMatch');
 const { deductNonTransformedStockTx, addQuantityToWarehouseTx } = require('./warehouseStock');
 const {
@@ -827,6 +827,8 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
 
   const { computeAddedLineIds, attachExistingLineIdentity } = require('./utils/orderLineRemoval');
   const existingItems = tx.queryAll('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
+  const lodgingKept = existingItems.filter((row) => isHotelLodgingItem(row));
+  const productItems = (items || []).filter((item) => !isHotelLodgingItem(item));
 
   const restaurantRow = tx.queryOne('SELECT schedule FROM restaurants LIMIT 1');
   const restaurantSchedule = parseRestaurantSchedule(restaurantRow?.schedule);
@@ -835,7 +837,7 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
   assertMozoTableCajaTx(tx, actor, order.table_id);
 
   let subtotal = 0;
-  const orderItems = items.map((item) => {
+  const orderItems = productItems.map((item) => {
     if (String(item.combo_id || '').trim()) {
       const comboLine = buildComboOrderLine(tx, orderId, item);
       subtotal += comboLine.subtotal;
@@ -944,6 +946,11 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
     customerId: order.customer_id || '',
     preserveLines: new Map(existingItems.map((row) => [String(row.id), row])),
   });
+  const lodgingSubtotal = lodgingKept.reduce((sum, row) => sum + Number(row.subtotal || 0), 0);
+  subtotal += lodgingSubtotal;
+  if (!orderItems.length && !lodgingKept.length) {
+    throw new Error('El pedido debe tener al menos un producto');
+  }
 
   restoreNonTransformedStockForOrderTx(tx, orderId);
   tx.run('DELETE FROM order_items WHERE order_id = ?', [orderId]);
@@ -985,6 +992,23 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
       orderId,
       orderType: order.type,
     }),
+  });
+  lodgingKept.forEach((row) => {
+    tx.run(
+      `INSERT INTO order_items (
+        id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes,
+        original_unit_price, promo_discount, promotion_id, promotion_label
+      ) VALUES (?, ?, '', ?, 'hospedaje', ?, ?, ?, 'hotel_lodging', ?, 0, '', '')`,
+      [
+        row.id,
+        orderId,
+        row.product_name,
+        row.quantity,
+        row.unit_price,
+        row.subtotal,
+        row.original_unit_price != null ? row.original_unit_price : row.unit_price,
+      ],
+    );
   });
   recordPromotionUsagesTx(tx, orderId, orderItems, actor, { customerId: order.customer_id || '', syncOrder: true });
   if (newItemIds.length) {

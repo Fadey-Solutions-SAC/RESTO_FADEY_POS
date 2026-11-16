@@ -397,7 +397,6 @@ import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import { useMesaOrderLock } from '../../hooks/useMesaOrderLock';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
 import { useHotelSettings } from '../../hooks/useHotelEnabled';
-import HotelRoomAccountModal from '../../components/hotel/HotelRoomAccountModal';
 import { HOTEL_MAP_ZONE, HotelRoomMap } from '../../components/hotel/HotelRoomTile';
 import toast from 'react-hot-toast';
 import {
@@ -689,6 +688,27 @@ function formatOrderBadge(orderNumber) {
   return `# ${String(n).padStart(7, '0')}`;
 }
 
+function hotelRoomAsMesa(room) {
+  if (!room?.id) return null;
+  const account = room.account
+    && String(room.account.payment_status || 'pending') !== 'paid'
+    && String(room.account.status || '') !== 'cancelled'
+    ? room.account
+    : null;
+  return {
+    id: `hotel:${room.id}`,
+    hotel_room_id: room.id,
+    number: String(room.number || ''),
+    name: `Habitación ${room.number}`,
+    orders: account ? [account] : [],
+    status: room.status || 'available',
+  };
+}
+
+function isHotelLodgingLine(item) {
+  return String(item?.notes || '') === 'hotel_lodging' || String(item?.variant_name || '') === 'hospedaje';
+}
+
 function canEditOrderLines(order) {
   return (
     order &&
@@ -764,6 +784,7 @@ function mergedProductsOnTable(table, productsById) {
 function orderItemsToCart(order, productsById) {
   const m = new Map();
   for (const it of order.items || []) {
+    if (isHotelLodgingLine(it)) continue;
     const product = productsById.get(it.product_id);
     const parsed = parseOrderItemNotes(it.notes, product);
     const modId = parsed.modifierId || String(it.modifier_id || '').trim();
@@ -924,7 +945,6 @@ export default function POSPanel() {
   const { enabled: hotelEnabled, loaded: hotelLoaded } = useHotelSettings();
   const showHotelZone = hotelLoaded && hotelEnabled;
   const [hotelRooms, setHotelRooms] = useState([]);
-  const [hotelAccountId, setHotelAccountId] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -2866,7 +2886,7 @@ export default function POSPanel() {
         }
       }
 
-      if (!isClientCheckoutTable(selectedTable) && !isDeliveryCheckoutTable(selectedTable)) {
+      if (!isClientCheckoutTable(selectedTable) && !isDeliveryCheckoutTable(selectedTable) && !selectedTable?.hotel_room_id) {
         const memberIds = Array.isArray(selectedTable.union_member_ids) && selectedTable.union_member_ids.length
           ? selectedTable.union_member_ids
           : [selectedTable.id];
@@ -3010,6 +3030,7 @@ export default function POSPanel() {
       setCheckoutTipAmount('');
       setCheckoutPaymentNote(''); setPaymentNoteOpen(false);
       resetBillingForm();
+      if (selectedTable?.hotel_room_id) loadHotelRooms();
       loadData();
     } catch (err) { toast.error(err.message); }
     finally {
@@ -3628,7 +3649,8 @@ export default function POSPanel() {
           if (!byOrder.has(oid)) byOrder.set(oid, []);
           byOrder.get(oid).push(i);
         }
-        const willCancelOrders = sessionIds.some((oid) => (byOrder.get(oid) || []).length === 0);
+        const hotelAccount = Boolean(selectedTable?.hotel_room_id);
+        const willCancelOrders = !hotelAccount && sessionIds.some((oid) => (byOrder.get(oid) || []).length === 0);
         const hasRemovals = cartHasProductRemovals(editSessionInitialCartRef.current, cartByOrder);
         let removalReason = '';
         if (hasRemovals || willCancelOrders) {
@@ -3680,10 +3702,16 @@ export default function POSPanel() {
         for (const oid of sessionIds) {
           const lines = byOrder.get(oid) || [];
           if (lines.length === 0) {
-            await api.put(`/orders/${oid}/status`, {
-              status: 'cancelled',
-              cancellation_reason: cancelReason,
-            });
+            if (hotelAccount) {
+              if (hasRemovals) {
+                await api.put(`/orders/${oid}/lines`, { items: [], removal_reason: removalReason });
+              }
+            } else {
+              await api.put(`/orders/${oid}/status`, {
+                status: 'cancelled',
+                cancellation_reason: cancelReason,
+              });
+            }
           } else {
             const body = {
               items: linesPayload(lines),
@@ -3704,6 +3732,29 @@ export default function POSPanel() {
         setEditingSessionOrderIds([]);
         editSessionInitialCartRef.current = [];
         resetCart();
+        loadData();
+        if (selectedTable?.hotel_room_id) loadHotelRooms();
+        return;
+      }
+      if (selectedTable?.hotel_room_id && !quickSaleMode) {
+        const mesaErr = validateMesaForSubmit(tables, selectedTable);
+        if (mesaErr) {
+          toast.error(mesaErr, { id: tid });
+          return;
+        }
+        await api.post(`/hotel/rooms/${selectedTable.hotel_room_id}/items`, {
+          items: buildOrderItemsPayload(cart),
+        });
+        toast.success(`Pedido agregado a ${selectedTable.name || 'la habitación'}`, { id: tid });
+        setShowMenu(false);
+        setQuickSaleMode(false);
+        resetCart();
+        setAmountReceived('');
+        setTipPayEnabled(false);
+        setCheckoutTipAmount('');
+        resetBillingForm();
+        clearMesaLock();
+        loadHotelRooms();
         loadData();
         return;
       }
@@ -3897,6 +3948,16 @@ export default function POSPanel() {
     });
   }, [hotelRooms, register]);
   const showHotelMap = showHotelZone && hotelRoomsForCaja.length > 0;
+  useEffect(() => {
+    const nextFrom = (prev) => {
+      if (!prev?.hotel_room_id) return prev;
+      const room = hotelRooms.find((r) => r.id === prev.hotel_room_id);
+      if (!room) return prev;
+      return hotelRoomAsMesa(room);
+    };
+    setTableDetail(nextFrom);
+    setSelectedTable((prev) => (showMenu ? prev : nextFrom(prev)));
+  }, [hotelRooms, showMenu]);
   useEffect(() => {
     if (!tablesBySalon.length && !showHotelMap) {
       setSelectedPosSalon('');
@@ -4800,7 +4861,7 @@ export default function POSPanel() {
                     : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
                 }`}
               >
-                Hotel
+                HOTEL
                 <span className={`ml-1 tabular-nums ${selectedPosSalon === HOTEL_MAP_ZONE ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
                   ({hotelRoomsForCaja.length})
                 </span>
@@ -4862,12 +4923,27 @@ export default function POSPanel() {
         </p>
       ) : null}
 
-      <HotelRoomAccountModal roomId={hotelAccountId} onClose={() => { setHotelAccountId(null); loadHotelRooms(); }} />
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain scrollbar-hide space-y-6 pb-2">
         {selectedPosSalon === HOTEL_MAP_ZONE ? (
           <HotelRoomMap
             rooms={hotelRoomsForCaja}
-            onOpen={(room) => setHotelAccountId(room.id)}
+            onOpen={(room) => {
+              if (room.status === 'maintenance') {
+                toast('La habitación está en mantenimiento. Actívela en Hotel.');
+                return;
+              }
+              if (room.status !== 'occupied') {
+                toast('Registre el ingreso en Hotel para abrir la cuenta.');
+                return;
+              }
+              const mesa = hotelRoomAsMesa(room);
+              const lock = getMesaLock();
+              if (showMenu && !quickSaleMode && lock && String(lock.id) !== String(mesa?.id)) {
+                releasePendingOrderMenu();
+              }
+              setTableDetail(mesa);
+              setMesaDetailModalOpen(true);
+            }}
             emptyText="No hay habitaciones en esta caja"
           />
         ) : selectedSalonTables.length > 0 ? (
@@ -5126,7 +5202,9 @@ export default function POSPanel() {
               </div>
 
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] p-3 text-[var(--ui-body-text)]">
-                <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)] mb-2">Productos en la mesa</p>
+                <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-[var(--ui-muted)] mb-2">
+                  {tableDetail?.hotel_room_id ? 'Productos en la habitación' : 'Productos en la mesa'}
+                </p>
                 {(() => {
                   const lines = mergedProductsOnTable(tableDetail, productsById);
                   const totalMesa = (tableDetail.orders || []).reduce((s, o) => s + getOrderChargeTotal(o), 0);

@@ -439,18 +439,22 @@ router.post('/:id/delivery-driver-action', authenticateToken, requireRole('deliv
 });
 
 router.put('/:id/lines', authenticateToken, requireRole('admin', 'cajero', 'mozo', 'master_admin'), (req, res) => {
-  const { items } = req.body || {};
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'El pedido debe tener al menos un producto' });
-  }
+  let { items } = req.body || {};
   const orderBefore = queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
   if (!orderBefore) return res.status(404).json({ error: 'Pedido no encontrado' });
+  const hotelOrder = Boolean(String(orderBefore.hotel_room_id || '').trim());
+  if (!Array.isArray(items)) items = [];
+  if (!items.length && !hotelOrder) {
+    return res.status(400).json({ error: 'El pedido debe tener al menos un producto' });
+  }
   const existingItems = queryAll(
     'SELECT product_id, product_name, variant_name, quantity, unit_price, notes FROM order_items WHERE order_id = ?',
     [req.params.id],
   );
+  const { isHotelLodgingItem } = require('../utils/productionArea');
+  const comparableExisting = existingItems.filter((row) => !isHotelLodgingItem(row));
   const removalReason = String(req.body?.removal_reason || '').trim();
-  const requiresRemovalReason = hasCompleteOrderItemRemovals(existingItems, items);
+  const requiresRemovalReason = hasCompleteOrderItemRemovals(comparableExisting, items);
   const actorRole = String(req.user?.role || '').toLowerCase();
   const isAdminRole = actorRole === 'admin' || actorRole === 'master_admin';
   const canRemoveLines = isAdminRole || (actorRole === 'cajero' && userCanEliminarLiberarMesa(req.user));
