@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.3.7 — 2026-11-16
+
+- Al cobrar una habitación, la pantalla dice Cobrar habitación y muestra el nombre de la habitación. Las mesas siguen igual.
+
 ## 1.2.3.6 — 2026-11-16
 
 - Hotel puede apartar una habitación antes del ingreso, sin cambiar la cuenta ni la caja. En recepción la reserva queda confirmada. La página `/reservar` lee el origen de la red social y aparta 15 minutos. Al cobrar, esa habitación vuelve a poder reservarse.

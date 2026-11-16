@@ -700,6 +700,7 @@ function hotelRoomAsMesa(room) {
     hotel_room_id: room.id,
     number: String(room.number || ''),
     name: `Habitación ${room.number}`,
+    display_label: 'name',
     orders: account ? [account] : [],
     status: room.status || 'available',
   };
@@ -5336,7 +5337,15 @@ export default function POSPanel() {
                       onClick={() => beginCobrarMesa(tableDetail)}
                       disabled={!tableDetail.orders?.length}
                       className="btn-cobrar btn-mesa-grid"
-                      title={isQuickSaleCheckoutTable(tableDetail) ? 'Cobrar venta rápida' : isDeliveryCheckoutTable(tableDetail) ? 'Cobrar delivery' : 'Cobrar mesa'}
+                      title={
+                        isQuickSaleCheckoutTable(tableDetail)
+                          ? 'Cobrar venta rápida'
+                          : isDeliveryCheckoutTable(tableDetail)
+                            ? 'Cobrar delivery'
+                            : tableDetail?.hotel_room_id
+                              ? 'Cobrar habitación'
+                              : 'Cobrar mesa'
+                      }
                     >
                       <MdAttachMoney className="shrink-0 text-lg" />
                       <span>Cobrar</span>
@@ -6044,7 +6053,9 @@ export default function POSPanel() {
               ? 'COBRAR VENTA RÁPIDA'
               : selectedTable && isDeliveryCheckoutTable(selectedTable)
                 ? 'COBRAR DELIVERY'
-                : 'COBRAR MESA'
+                : selectedTable?.hotel_room_id
+                  ? 'COBRAR HABITACIÓN'
+                  : 'COBRAR MESA'
         }
         size="xl"
         dialogClassName="!max-w-5xl"
@@ -6812,7 +6823,9 @@ export default function POSPanel() {
                     ? (addToAccountEnabled ? 'AGREGANDO...' : 'COBRANDO...')
                     : (addToAccountEnabled
                       ? 'AGREGAR A CUENTA'
-                      : isQuickSaleCheckoutTable(selectedTable) ? 'COBRAR VENTA' : 'COBRAR MESA')}
+                      : selectedTable?.hotel_room_id
+                        ? 'COBRAR HABITACIÓN'
+                        : isQuickSaleCheckoutTable(selectedTable) ? 'COBRAR VENTA' : 'COBRAR MESA')}
                 </button>
               </div>
             </div>
