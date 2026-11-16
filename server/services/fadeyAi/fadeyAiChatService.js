@@ -553,8 +553,8 @@ function isBarePeriodMessage(message) {
 
 function isExplicitHowToMessage(message) {
   const m = String(message || '').toLowerCase().trim();
-  return /^(c[oó]mo|como)\s+(marcar|cerrar|abrir|crear|configurar|registrar|cambiar|usar|hacer|poner|activar|desactivar|generar|imprimir|liberar|mover|anular|cobrar|pagar)/.test(m)
-    || /\b(c[oó]mo|como)\s+(marcar|cerrar|abrir|crear|configurar|registrar|cambiar|usar)\b/.test(m)
+  return /^(c[oó]mo|como)\s+(marcar|cerrar|abrir|crear|configurar|registrar|cambiar|usar|hacer|poner|activar|desactivar|generar|imprimir|liberar|mover|anular|cobrar|pagar|consultar|ver|filtrar|vincular|descontar)/.test(m)
+    || /\b(c[oó]mo|como)\s+(marcar|cerrar|abrir|crear|configurar|registrar|cambiar|usar|consultar|filtrar|vincular|descontar)\b/.test(m)
     || (/cerrar\s+caja|abrir\s+caja/.test(m) && !/cu[aá]nto|vend[ií]|venta|demora|productividad|jornada|qui[eé]n/.test(m));
 }
 
@@ -795,7 +795,7 @@ function tryDirectDataAnswer(message, user) {
     }
   }
 
-  if (/stock|agotad|inventario bajo/.test(m)) {
+  if (/stock|agotad|inventario bajo/.test(m) && !isExplicitHowToMessage(m) && !(/caja|mesa/.test(m) && /cero|en 0/.test(m))) {
     const r = runTool('low_stock', {}, user);
     if (r?.denied && r?.error) {
       return { chunks: [r.error], sources: [{ kind: 'tool', title: 'permission_denied' }] };

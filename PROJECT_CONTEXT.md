@@ -1,6 +1,6 @@
 # Contexto del proyecto
 
-Versión de producto: **1.2.2.8** (`package.json` y `client/package.json`). En pantalla: `v 1.2.2.8`.
+Versión de producto: **1.2.2.9** (`package.json` y `client/package.json`). En pantalla: `v 1.2.2.9`.
 
 Este archivo describe el sistema tal como está en el código. No reemplaza `AGENTS.md` (cómo trabajar) ni `CHANGELOG.md` (qué cambió).
 
@@ -135,6 +135,7 @@ Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurant
 - Hotel se enciende con `restaurants.hotel_enabled`, en una opción propia al lado de Delivery. Cada habitación guarda huésped, costo por noche y `caja_station_id`. El ingreso abre un pedido (`orders.hotel_room_id`) que suma las noches y los productos. El QR usa `selfOrderUrl(..., 'habitacion')` y el mismo auto pedido de la mesa. El cobro es `POST /api/pos/checkout-table` y solo entra en la caja asignada.
 - El informe de hotelería lo arma `buildHotelReport` (`GET /api/reports/hoteleria`) a partir de `hotel_stays` y la cuenta. Informes lo muestra en `?view=hoteleria`. El submenú solo aparece si el módulo está activo.
 - Facturación electrónica en Informes filtra `GET /api/billing/documents` con `from` y `to` (fecha de emisión en hora del restaurante). Por defecto es del día 1 del mes a hoy. Sin esas fechas, el listado sigue siendo el más reciente.
+- La IA Fadey responde el paso a paso de mover a almacén, vincular el almacén de la caja y consultar comprobantes por fecha desde `server/services/fadeyAi/fadeyAiGuides.js`. Se refresca al abrir el chat.
 
 ## Dependencias de runtime (raíz)
 

@@ -101,7 +101,8 @@ Nota: requiere facturación electrónica / plan que lo permita. Si no ves la opc
 3. Agrega productos por categoría; indica notas o modificadores.
 4. Envía / confirma: la comanda va a cocina/bar según el área de cada producto.
 5. Puedes agregar más ítems después.
-6. Al terminar, cobra en Caja para liberar la mesa.`,
+6. Al terminar, cobra en Caja para liberar la mesa.
+El stock que ves es el del almacén de productos de la caja de esa mesa. Si ahí está en cero, el producto sigue en la carta aunque otro almacén tenga unidades.`,
   },
   {
     id: 'guide-mover-pedido',
@@ -430,14 +431,15 @@ Nota: si no ves «Requerimiento», el maestro o tu permiso lo bloquean.`,
   {
     id: 'guide-movimiento-interno',
     title: 'Cómo hacer un movimiento interno de almacén',
-    keywords: ['movimiento interno', 'transferir stock', 'traslado almacén', 'pasar insumos'],
-    body: `Paso a paso — Movimiento interno:
+    keywords: ['movimiento interno', 'transferir stock', 'traslado almacen', 'pasar insumos', 'mover a almacen', 'mover producto', 'otro almacen'],
+    body: `Paso a paso — Mover un producto a otro almacén:
 1. Control de recursos → Movimiento interno.
-2. Elige un almacén de productos, o Todos.
-3. En el producto, pulsa Mover.
-4. Elige el almacén de destino. La cantidad empieza en todo el stock del origen; puedes subirla o bajarla, o volver a Todo.
-5. Confirma. La cantidad pasa al almacén de destino y el stock total del producto sigue igual.
-Los insumos del kardex siguen en su almacén de insumos.`,
+2. Elige el almacén de origen, o Todos.
+3. En el producto pulsa Mover a almacén.
+4. Confirma el origen y elige el almacén de destino. Solo se listan almacenes de productos.
+5. La cantidad empieza en todo el stock de ese origen. Bájala o súbela con − y +, o vuelve a Todo. No puede pasar del stock del origen.
+6. Confirma. Esa cantidad sale del origen y entra al destino. El stock total del producto no cambia.
+Los insumos del kardex no se mueven entre almacenes: su stock es uno solo, en el almacén de insumos.`,
   },
   {
     id: 'guide-inventario-kardex',
@@ -465,13 +467,14 @@ Nota: distinto de Egresos de caja (turno de cajero).`,
   {
     id: 'guide-informes',
     title: 'Cómo ver informes y reportes',
-    keywords: ['informes', 'reportes', 'estadisticas', 'reporte ventas', 'informe caja', 'informe productos'],
+    keywords: ['informes', 'reportes', 'estadisticas', 'reporte ventas', 'informe caja', 'informe productos', 'consultar informes', 'facturacion electronica'],
     body: `Paso a paso — Informes:
 1. Menú Informes.
-2. Elige la vista: Ventas, Descuentos y cortesías, Productos, Reportes Caja, Compras, Finanzas, Facturación, Inventario.
-3. Filtra por fecha, caja o salón si aplica.
-4. Exporta (CSV/TXT/PDF) cuando el botón esté disponible.
-5. Ventas rápidas también en el módulo Ventas del menú.`,
+2. Elige la vista: Ventas, Descuentos y cortesías, Productos, Reportes Caja, Compras, Finanzas, Facturación electrónica, Inventario. Hotelería solo aparece si el módulo está activo.
+3. Filtra por fecha, caja o salón si la vista lo trae.
+4. En Facturación electrónica, a la derecha de Buscar están Desde y Hasta. Por defecto es del día 1 del mes hasta hoy. La lista y «Comprobantes emitidos» siguen ese periodo.
+5. Exporta (CSV/TXT/PDF) cuando el botón esté disponible.
+6. Ventas rápidas también en el módulo Ventas del menú.`,
   },
   {
     id: 'guide-ventas',
@@ -534,13 +537,18 @@ Nota: el Admin Maestro también puede limitar módulos por plan.`,
   {
     id: 'guide-cajas-config',
     title: 'Cómo configurar cajas del local',
-    keywords: ['configurar caja', 'crear caja', 'estaciones caja', 'cajas configuracion'],
+    keywords: ['configurar caja', 'crear caja', 'estaciones caja', 'cajas configuracion', 'almacen de la caja', 'vincular almacen'],
     body: `Paso a paso — Cajas (configuración):
 1. Configuración → Cajas.
-2. Agrega o edita cajas (nombre, activa).
-3. Asigna usuarios cajeros/mozos a una caja.
-4. Cada turno de apertura usa la caja asignada.
-5. Impresora de tickets: Caja → Impresora + app escritorio.`,
+2. Nueva Caja o el lápiz de una caja ya creada.
+3. Nombre y descripción.
+4. «Descontar productos de»: almacén de productos. Por defecto es Almacén principal.
+5. «Descontar insumos de»: almacén de insumos. Por defecto es el de insumos.
+6. Guardar en el cuadro y después Guardar en la pantalla de Cajas. Sin ese segundo Guardar, la caja sigue con el principal y el de insumos.
+7. Una caja nueva nace vinculada a esos mismos almacenes.
+8. Asigna cajeros y mozos a una caja. El turno usa esa caja.
+9. Impresora de tickets: Caja → Impresora + app escritorio.
+Al vender, caja, mesas de esa caja y la cuenta de habitación bajan el stock de productos solo del almacén elegido. En cero, el producto sigue visible.`,
   },
   {
     id: 'guide-impresora',
@@ -565,7 +573,7 @@ Sin la app abierta, la detección USB no funciona.`,
 - Usuarios y roles: Configuración → Usuarios
 - Salones y mesas: Configuración → Salones y Mesas
 - Áreas de producción: Configuración → Áreas de producción
-- Cajas del local: Configuración → Cajas
+- Cajas del local y su almacén: Configuración → Cajas («Descontar productos de» y «Descontar insumos de», y Guardar)
 - Impresoras: Caja/Cocina/Bar + app escritorio
 - Auto pedido QR y cartas: menú Auto pedido
 - Almacén: Control de recursos (requerimiento, recepción, kardex, gastos)
@@ -631,14 +639,52 @@ Si un ítem no aparece: falta permiso o el plan/maestro lo desactivó.`,
   {
     id: 'guide-facturacion-electronica',
     title: 'Cómo configurar facturación electrónica',
-    keywords: ['facturacion electronica', 'sunat', 'boleta', 'factura electronica', 'cpe'],
+    keywords: ['facturacion electronica', 'sunat', 'boleta', 'factura electronica', 'cpe', 'consultar comprobantes', 'desde hasta'],
     body: `Paso a paso — Facturación electrónica:
 1. Mi empresa → Facturación electrónica (si el plan lo incluye).
 2. Completa datos del emisor y credenciales según el asistente.
 3. Activa tipos de comprobante (boleta/factura).
 4. Al cobrar, elige el comprobante; se emite según configuración.
-5. Informes → Facturación para consultar emitidos.
+5. Para consultar: Informes → Facturación electrónica.
+6. A la derecha de Buscar están Desde y Hasta. Por defecto es del día 1 del mes hasta hoy.
+7. Cambia inicio y fin: la lista y «Comprobantes emitidos» muestran ese periodo. Si no hay, dice «Sin comprobantes en este periodo».
+8. «Cuentas cobradas hoy» y «Monto facturable hoy» siguen siendo el día de hoy.
+9. Limpiar devuelve el mes en curso y quita búsqueda y filtros. Filtros sirve para estado SUNAT y tipo (boleta, factura o nota).
 Nota: sin habilitación del maestro o plan básico, la opción no aparece.`,
+  },
+
+  {
+    id: 'guide-caja-almacen',
+    title: 'Cómo vincular un almacén a una caja',
+    keywords: ['vincular almacen', 'almacen de la caja', 'descontar productos', 'descontar insumos', 'stock de la caja', 'stock en cero', 'almacen principal'],
+    body: `Paso a paso — Almacén de la caja:
+1. Configuración → Cajas.
+2. Nueva Caja, o el lápiz de la caja que quieres cambiar.
+3. «Descontar productos de»: elige el almacén de productos. Si no eliges, queda Almacén principal.
+4. «Descontar insumos de»: elige el almacén de insumos. Si no eliges, queda el de insumos. El kardex de insumos sigue siendo un stock global, no se parte por caja.
+5. Guardar en el cuadro. Luego Guardar abajo en la pantalla de Cajas. Hasta ese Guardar, el servidor usa el principal y el de insumos.
+6. Cada caja nueva nace con esos mismos almacenes.
+Al pedir:
+- La caja, las mesas de esa caja (muestran sus salones y productos) y la cuenta de habitación descuentan los productos no transformados solo de ese almacén.
+- Si ese almacén está en cero, el producto sigue visible aunque otro almacén tenga stock.
+- La carta pública y el pedido por QR siguen usando el stock total.
+- Delivery descuenta el almacén de la caja solo si el usuario tiene caja asignada.`,
+  },
+  {
+    id: 'guide-consultar-comprobantes',
+    title: 'Cómo consultar comprobantes por fecha',
+    keywords: ['consultar comprobantes', 'comprobantes del mes', 'desde hasta', 'informe facturacion', 'facturacion electronica fechas', 'boletas del periodo', 'buscar comprobante'],
+    body: `Paso a paso — Consultar comprobantes:
+1. Menú Informes → Facturación electrónica.
+2. Arriba ves cuentas cobradas hoy, monto facturable hoy y comprobantes emitidos.
+3. A la derecha de Buscar están Desde y Hasta. Por defecto, desde el día 1 del mes hasta hoy.
+4. Elige el inicio y el fin. La lista y el número de «Comprobantes emitidos» cambian a ese periodo.
+5. Si el inicio queda después del fin, se ordenan solos.
+6. Buscar filtra por número, cliente o documento dentro de esas fechas.
+7. Filtros: estado SUNAT y tipo (nota, boleta o factura). Ahí también está Reintentar fallidos.
+8. Limpiar vuelve al mes en curso y quita búsqueda y filtros.
+9. Si no hay nada en el rango: «Sin comprobantes en este periodo».
+«Cuentas cobradas hoy» y «Monto facturable hoy» no cambian con el rango: siempre son el día de hoy.`,
   },
 
   /* —— Comunicación / sistema —— */

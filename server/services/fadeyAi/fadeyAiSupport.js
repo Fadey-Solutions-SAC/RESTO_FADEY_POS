@@ -98,7 +98,8 @@ const CATEGORIES = [
     cause: 'El producto no tiene receta o almacén asignado, o el stock no se registró en el almacén correcto.',
     checks: [
       'Verifica la receta y el almacén del producto.',
-      'Revisa el movimiento en Almacén → Movimiento interno.',
+      'Si vendes en una caja, el stock que baja es el de «Descontar productos de» en Configuración → Cajas. En cero, el producto sigue visible.',
+      'Para pasar unidades a ese almacén: Control de recursos → Movimiento interno → Mover a almacén.',
     ],
   },
   {
@@ -191,7 +192,8 @@ const CATEGORIES_EN = {
     cause: 'The product has no recipe or warehouse assigned, or the stock was recorded in the wrong warehouse.',
     checks: [
       'Check the recipe and warehouse of the product.',
-      'Review the movement in Warehouse → Internal movement.',
+      'Sales from a cash station deduct the warehouse set in Settings → Cash stations → Deduct products from. At zero, the product stays visible.',
+      'To move units into that warehouse: Resources → Internal movement → Move to warehouse.',
     ],
   },
   mesas: {

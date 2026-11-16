@@ -1124,6 +1124,8 @@ function toolBillingDocuments() {
     block(`Hoy (${formatDisplayDateKey(today)})`, todayStats),
     '',
     block(`Este mes (${month})`, monthStats),
+    '',
+    'Para otro periodo: Informes → Facturación electrónica. A la derecha de Buscar, Desde y Hasta. Por defecto es del día 1 del mes a hoy.',
   ].join('\n');
   return { ok: true, text, today: todayStats, month: monthStats };
 }

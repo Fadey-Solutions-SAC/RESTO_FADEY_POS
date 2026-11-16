@@ -90,6 +90,9 @@ function extractPhrases(q) {
     /requerimiento/,
     /recepcion/,
     /movimiento\s+interno/,
+    /mover\s+a\s+almacen/,
+    /vincular\s+(?:un\s+)?almacen/,
+    /consultar\s+comprobantes/,
     /kardex|inventario/,
     /auto\s*pedido/,
     /imprimir\s+qr|generar\s+qr/,
@@ -223,6 +226,25 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
     if (wantsTakeOrder && id === 'guide-mesas-pedido') score += 90;
     if (wantsTakeOrder && id === 'guide-cobrar') score -= 80;
     if (wantsStock && (id === 'guide-inventario-kardex' || id === 'guide-recepcion')) score += 40;
+    const wantsWarehouseMove = /mover|traslad|pasar/.test(q) && /almacen/.test(q);
+    const wantsCajaWarehouse = (/caja/.test(q) && /almacen/.test(q))
+      || /descontar productos|stock de la caja|almacen de la caja|vincular( un)? almacen/.test(q);
+    const wantsBillingRange = /comprobante|facturacion electronica|boleta|factura/.test(q)
+      && /fecha|desde|hasta|periodo|consultar|informe|buscar|mes/.test(q);
+    if (wantsWarehouseMove && !/vincular|descontar/.test(q)) {
+      if (id === 'guide-movimiento-interno') score += 80;
+      if (id === 'guide-mover-pedido') score -= 40;
+    }
+    if (wantsCajaWarehouse || (/stock/.test(q) && /cero|sin stock/.test(q))) {
+      if (id === 'guide-caja-almacen') score += 90;
+      if (id === 'guide-cajas-config') score += 30;
+      if (id === 'guide-area-produccion' || id === 'guide-movimiento-interno') score -= 25;
+    }
+    if (wantsBillingRange) {
+      if (id === 'guide-consultar-comprobantes') score += 90;
+      if (id === 'guide-facturacion-electronica') score += 25;
+      if (id === 'guide-ventas') score -= 30;
+    }
     if (
       wantsQr
       && (id === 'guide-qr-imprimir'
