@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.2.1 — 2026-11-16
+
+- El botón Instalar el sistema del perfil abre el cuadro de instalación de Chrome. Ya no deja solo el aviso del menú.
+
 ## 1.2.2.0 — 2026-11-16
 
 - En Mi perfil hay un botón al final para instalar el sistema, aunque Chrome no muestre su aviso.

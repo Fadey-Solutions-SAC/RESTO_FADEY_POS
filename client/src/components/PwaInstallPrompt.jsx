@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MdGetApp, MdClose } from 'react-icons/md';
-import { canPromptPwaInstall, promptPwaInstall, subscribePwaInstall } from '../utils/pwaInstall';
+import { canPromptPwaInstall, startPwaInstall, subscribePwaInstall } from '../utils/pwaInstall';
 
 const SNOOZE_KEY = 'resto_fadey_pwa_install_snooze_until';
 const DONE_KEY = 'resto_fadey_pwa_install_done';
@@ -85,7 +85,7 @@ export default function PwaInstallPrompt() {
   };
 
   const install = async () => {
-    await promptPwaInstall();
+    await startPwaInstall();
     setShowBar(false);
   };
 
