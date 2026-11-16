@@ -67,7 +67,7 @@ const ALMACEN_SUB_IDS = [
   'movimiento_interno', 'ir_modulo_logistica', 'requerimiento', 'recepcion', 'ir_modulo_gastos',
 ];
 const INFORMES_SUB_IDS = [
-  'ventas', 'descuentos', 'productos', 'caja', 'compras', 'finanzas', 'facturacion', 'inventario',
+  'ventas', 'descuentos', 'productos', 'caja', 'compras', 'finanzas', 'facturacion', 'inventario', 'hoteleria',
 ];
 
 export default function Sidebar({ collapsed, isMobile = false, mobileOpen = false, onClose = () => {}, onToggleMenu = () => {} }) {
@@ -319,7 +319,9 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
     if (subAlmacen[id] === false) return false;
     return true;
   }).map((id) => ({ id, label: t(`almacenSub.${id}`) }));
-  const informesSubOptions = INFORMES_SUB_IDS.map((id) => ({ id, label: t(`informesSub.${id}`) }));
+  const informesSubOptions = INFORMES_SUB_IDS
+    .filter((id) => id !== 'hoteleria' || showHotelUi)
+    .map((id) => ({ id, label: t(`informesSub.${id}`) }));
   const subMi = user?.sub_permissions?.mi_restaurant || {};
   const miRestaurantSubOptionsByPlan = MI_RESTAURANT_SUB_IDS.filter((id) => {
     if (id === 'facturacion_electronica' && subMi[id] !== true && user?.role !== 'master_admin') return false;

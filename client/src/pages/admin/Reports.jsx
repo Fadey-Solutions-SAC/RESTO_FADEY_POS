@@ -33,6 +33,7 @@ import {
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import CortesiasReportSection from '../../components/admin/CortesiasReportSection';
+import HotelReportSection from '../../components/admin/HotelReportSection';
 import { InlineDateField, DateFilterPeriodButton, currentYearDateBounds } from '../../components/DateFilterControls';
 import DownloadExcelTxtButtons from '../../components/admin/DownloadExcelTxtButtons';
 import VentasCuentasTable from '../../components/admin/VentasCuentasTable';
@@ -3290,6 +3291,8 @@ export default function Reports() {
           </div>
         </div>
       )}
+
+      {reportSection === 'hoteleria' && <HotelReportSection />}
 
       {reportSection === 'inventario' && (
         <div className="card">

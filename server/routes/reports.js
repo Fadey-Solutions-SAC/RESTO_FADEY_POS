@@ -1534,6 +1534,15 @@ router.get('/courtesies', authenticateToken, requireRole('admin', 'cajero'), (re
   }
 });
 
+router.get('/hoteleria', authenticateToken, requireRole('admin', 'cajero', 'master_admin'), (req, res) => {
+  try {
+    const { buildHotelReport } = require('../services/hotelService');
+    res.json(buildHotelReport(req.user, req.query || {}));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'No se pudo armar el informe de hotelería' });
+  }
+});
+
 router.post('/backfill-kardex-ventas', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     const { backfillKardexVentasPagadas } = require('../services/kardexBackfillService');

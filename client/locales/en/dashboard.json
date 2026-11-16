@@ -85,6 +85,7 @@
     "compras": "Purchases",
     "finanzas": "Finance",
     "facturacion": "E-invoicing",
-    "inventario": "Inventory"
+    "inventario": "Inventory",
+    "hoteleria": "Hotel report"
   }
 }

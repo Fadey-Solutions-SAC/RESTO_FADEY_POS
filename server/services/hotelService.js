@@ -266,6 +266,53 @@ function recalcOrderTotals(tx, orderId) {
   return total;
 }
 
+function cajaLabel(cajaId) {
+  return getActiveCajaById(cajaId)?.name || '';
+}
+
+function upsertStayTx(tx, { room, orderId, guest, nights, checkIn, checkOut }) {
+  const existing = tx.queryOne('SELECT id FROM hotel_stays WHERE order_id = ?', [orderId]);
+  const values = [
+    String(room?.number || '').trim(),
+    String(room?.name || '').trim(),
+    String(room?.floor || '').trim(),
+    Math.max(0, Number(room?.capacity) || 0),
+    String(room?.caja_station_id || '').trim(),
+    cajaLabel(room?.caja_station_id),
+    String(guest?.guestName || '').trim(),
+    String(guest?.docType || '').trim(),
+    String(guest?.docNumber || '').trim(),
+    String(guest?.phone || '').trim(),
+    String(guest?.email || '').trim(),
+    String(checkIn || '').trim(),
+    String(checkOut || '').trim(),
+    Math.max(0, Number(nights) || 0),
+    round2(room?.nightly_rate),
+    String(room?.notes || '').trim(),
+    String(room?.id || '').trim(),
+  ];
+  if (existing) {
+    tx.run(
+      `UPDATE hotel_stays SET
+        room_number = ?, room_name = ?, floor = ?, capacity = ?, caja_station_id = ?, caja_name = ?,
+        guest_name = ?, guest_doc_type = ?, guest_doc_number = ?, guest_phone = ?, guest_email = ?,
+        check_in = ?, check_out = ?, nights = ?, nightly_rate = ?, notes = ?, room_id = ?,
+        updated_at = datetime('now')
+       WHERE order_id = ?`,
+      [...values, orderId]
+    );
+    return;
+  }
+  tx.run(
+    `INSERT INTO hotel_stays (
+      id, room_number, room_name, floor, capacity, caja_station_id, caja_name,
+      guest_name, guest_doc_type, guest_doc_number, guest_phone, guest_email,
+      check_in, check_out, nights, nightly_rate, notes, room_id, order_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [uuidv4(), ...values, orderId]
+  );
+}
+
 function checkIn(id, body, user) {
   assertHotelEnabled();
   const room = queryOne('SELECT * FROM hotel_rooms WHERE id = ?', [id]);
@@ -313,6 +360,14 @@ function checkIn(id, body, user) {
     );
     writeLodgingLine(tx, orderId, stay);
     recalcOrderTotals(tx, orderId);
+    upsertStayTx(tx, {
+      room,
+      orderId,
+      guest,
+      nights,
+      checkIn,
+      checkOut,
+    });
     tx.run(
       `UPDATE hotel_rooms SET
         status = 'occupied', guest_name = ?, guest_doc_type = ?, guest_doc_number = ?, guest_phone = ?, guest_email = ?,
@@ -365,6 +420,14 @@ function updateStay(id, body, user) {
     );
     writeLodgingLine(tx, orderId, { ...room, nights });
     recalcOrderTotals(tx, orderId);
+    upsertStayTx(tx, {
+      room,
+      orderId,
+      guest,
+      nights,
+      checkIn,
+      checkOut,
+    });
   });
   return getRoom(id, user);
 }
@@ -408,6 +471,24 @@ function setMaintenance(id, enabled, user) {
 function releaseRoomTx(tx, hotelRoomId) {
   const id = String(hotelRoomId || '').trim();
   if (!id) return;
+  const room = tx.queryOne('SELECT * FROM hotel_rooms WHERE id = ?', [id]);
+  const orderId = String(room?.current_order_id || '').trim();
+  if (room && orderId && !tx.queryOne('SELECT id FROM hotel_stays WHERE order_id = ?', [orderId])) {
+    upsertStayTx(tx, {
+      room,
+      orderId,
+      guest: {
+        guestName: room.guest_name,
+        docType: room.guest_doc_type,
+        docNumber: room.guest_doc_number,
+        phone: room.guest_phone,
+        email: room.guest_email,
+      },
+      nights: Number(room.nights) || 0,
+      checkIn: room.check_in,
+      checkOut: room.check_out,
+    });
+  }
   tx.run(
     `UPDATE hotel_rooms SET
       status = 'available',
@@ -417,6 +498,207 @@ function releaseRoomTx(tx, hotelRoomId) {
      WHERE id = ?`,
     [id]
   );
+}
+
+const PAYMENT_LABELS = {
+  efectivo: 'Efectivo',
+  yape: 'Yape',
+  plin: 'Plin',
+  tarjeta: 'Tarjeta',
+  online: 'Online',
+  cuenta_cliente: 'Cuenta cliente',
+  cortesia: 'Cortesía',
+};
+
+const HOTEL_REPORT_COLUMNS = [
+  { key: 'room_number', label: 'Habitación' },
+  { key: 'room_name', label: 'Nombre' },
+  { key: 'floor', label: 'Piso' },
+  { key: 'caja_name', label: 'Caja' },
+  { key: 'guest_name', label: 'Huésped' },
+  { key: 'guest_document', label: 'Documento' },
+  { key: 'guest_phone', label: 'Teléfono' },
+  { key: 'guest_email', label: 'Correo' },
+  { key: 'check_in', label: 'Ingreso' },
+  { key: 'check_out', label: 'Salida' },
+  { key: 'nights', label: 'Noches', align: 'right' },
+  { key: 'nightly_rate', label: 'Precio por noche', align: 'right', money: true },
+  { key: 'lodging_total', label: 'Hospedaje', align: 'right', money: true },
+  { key: 'products_total', label: 'Productos', align: 'right', money: true },
+  { key: 'discount', label: 'Descuento', align: 'right', money: true },
+  { key: 'total', label: 'Total', align: 'right', money: true },
+  { key: 'status_label', label: 'Estado' },
+  { key: 'payment_label', label: 'Medio de pago' },
+  { key: 'paid_at', label: 'Cobrado' },
+  { key: 'order_number', label: 'Pedido' },
+  { key: 'sale_document_number', label: 'Comprobante' },
+  { key: 'products_summary', label: 'Detalle de productos' },
+];
+
+function dateKeyOf(value) {
+  return String(value || '').trim().slice(0, 10);
+}
+
+function inDateRange(dateKey, from, to) {
+  const d = dateKeyOf(dateKey);
+  if (!d) return false;
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+}
+
+function backfillHotelStays() {
+  const missing = queryAll(
+    `SELECT o.* FROM orders o
+     WHERE IFNULL(TRIM(o.hotel_room_id), '') != ''
+       AND NOT EXISTS (SELECT 1 FROM hotel_stays s WHERE s.order_id = o.id)`
+  );
+  for (const order of missing) {
+    const room = queryOne('SELECT * FROM hotel_rooms WHERE id = ?', [order.hotel_room_id]) || {};
+    const live = String(room.current_order_id || '') === String(order.id);
+    const lodging = queryOne(
+      "SELECT quantity, unit_price FROM order_items WHERE order_id = ? AND notes = ? LIMIT 1",
+      [order.id, LODGING_NOTE]
+    );
+    const nights = live
+      ? Math.max(0, Number(room.nights) || 0)
+      : Math.max(0, Number(lodging?.quantity) || 0);
+    const rate = live
+      ? round2(room.nightly_rate)
+      : round2(lodging?.unit_price ?? room.nightly_rate);
+    runSql(
+      `INSERT INTO hotel_stays (
+        id, order_id, room_id, room_number, room_name, floor, capacity, caja_station_id, caja_name,
+        guest_name, guest_doc_type, guest_doc_number, guest_phone, guest_email,
+        check_in, check_out, nights, nightly_rate, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        uuidv4(),
+        order.id,
+        String(room.id || order.hotel_room_id || ''),
+        String(room.number || String(order.table_number || '').replace(/^Hab\s+/i, '')).trim(),
+        String(room.name || ''),
+        String(room.floor || ''),
+        Number(room.capacity || 0),
+        String(room.caja_station_id || ''),
+        cajaLabel(room.caja_station_id),
+        live ? String(room.guest_name || order.customer_name || '') : String(order.customer_name || ''),
+        live ? String(room.guest_doc_type || '') : '',
+        live ? String(room.guest_doc_number || '') : '',
+        live ? String(room.guest_phone || '') : '',
+        live ? String(room.guest_email || '') : '',
+        live ? String(room.check_in || dateKeyOf(order.created_at)) : dateKeyOf(order.created_at),
+        live ? String(room.check_out || '') : '',
+        nights,
+        rate,
+        String(room.notes || order.notes || ''),
+      ]
+    );
+  }
+}
+
+function stayStatus(order) {
+  const payment = String(order?.payment_status || 'pending').toLowerCase();
+  const method = String(order?.payment_method || '').toLowerCase();
+  if (String(order?.order_status || order?.status || '') === 'cancelled') return { key: 'cancelled', label: 'Anulada' };
+  if (payment === 'paid' && method === 'cortesia') return { key: 'courtesy', label: 'Cortesía' };
+  if (payment === 'paid') return { key: 'paid', label: 'Cobrada' };
+  return { key: 'open', label: 'Abierta' };
+}
+
+function buildHotelReport(user, query = {}) {
+  assertHotelEnabled();
+  backfillHotelStays();
+  const from = dateKeyOf(query.from);
+  const to = dateKeyOf(query.to);
+  const statusFilter = String(query.status || 'all').trim().toLowerCase();
+  const role = String(user?.role || '').toLowerCase();
+  const mine = role === 'cajero' ? staffCajaId(user) : '';
+
+  const stays = queryAll(
+    `SELECT s.*, o.order_number, o.subtotal, o.discount, o.total, o.payment_status, o.payment_method,
+            o.paid_at, o.status AS order_status, o.sale_document_number, o.cash_register_id, o.created_at AS order_created_at
+     FROM hotel_stays s
+     JOIN orders o ON o.id = s.order_id
+     ORDER BY s.check_in DESC, o.order_number DESC`
+  );
+
+  const rows = [];
+  for (const stay of stays) {
+    if (mine && String(stay.caja_station_id || '').trim() !== mine) continue;
+    const items = queryAll('SELECT * FROM order_items WHERE order_id = ? ORDER BY rowid ASC', [stay.order_id]);
+    const lodgingItems = items.filter((it) => String(it.notes || '') === LODGING_NOTE);
+    const productItems = items.filter((it) => String(it.notes || '') !== LODGING_NOTE);
+    const lodgingTotal = sumItems(lodgingItems);
+    const productsTotal = sumItems(productItems);
+    const status = stayStatus(stay);
+    const paidKey = dateKeyOf(stay.paid_at);
+    const inPeriod = (!from && !to)
+      || status.key === 'open'
+      || inDateRange(stay.check_in, from, to)
+      || inDateRange(paidKey, from, to);
+    if (!inPeriod) continue;
+    if (statusFilter && statusFilter !== 'all' && status.key !== statusFilter) continue;
+    const lines = items.map((it) => ({
+      name: it.product_name,
+      quantity: Number(it.quantity || 0),
+      unit_price: round2(it.unit_price),
+      subtotal: round2(it.subtotal),
+      kind: String(it.notes || '') === LODGING_NOTE ? 'hospedaje' : 'producto',
+    }));
+    const productsSummary = productItems
+      .map((it) => `${Number(it.quantity || 0)} ${it.product_name}`)
+      .join(', ');
+    rows.push({
+      id: stay.id,
+      order_id: stay.order_id,
+      room_number: stay.room_number,
+      room_name: stay.room_name,
+      floor: stay.floor,
+      capacity: Number(stay.capacity || 0),
+      caja_name: stay.caja_name || cajaLabel(stay.caja_station_id),
+      guest_name: stay.guest_name,
+      guest_document: [stay.guest_doc_type, stay.guest_doc_number].filter(Boolean).join(' '),
+      guest_phone: stay.guest_phone,
+      guest_email: stay.guest_email,
+      check_in: stay.check_in,
+      check_out: stay.check_out,
+      nights: Number(stay.nights || 0),
+      nightly_rate: round2(stay.nightly_rate),
+      lodging_total: lodgingTotal,
+      products_total: productsTotal,
+      discount: round2(stay.discount),
+      total: round2(stay.total),
+      status_key: status.key,
+      status_label: status.label,
+      payment_label: status.key === 'open' ? '' : (PAYMENT_LABELS[String(stay.payment_method || '').toLowerCase()] || stay.payment_method || ''),
+      paid_at: stay.paid_at || '',
+      order_number: stay.order_number,
+      sale_document_number: stay.sale_document_number || '',
+      products_summary: productsSummary,
+      lines,
+    });
+  }
+
+  const summary = rows.reduce((acc, row) => {
+    acc.stays += 1;
+    if (row.status_key === 'open') acc.open += 1;
+    else if (row.status_key === 'paid' || row.status_key === 'courtesy') acc.closed += 1;
+    acc.nights += Number(row.nights || 0);
+    acc.lodging_total = round2(acc.lodging_total + row.lodging_total);
+    acc.products_total = round2(acc.products_total + row.products_total);
+    acc.total = round2(acc.total + row.total);
+    return acc;
+  }, { stays: 0, open: 0, closed: 0, nights: 0, lodging_total: 0, products_total: 0, total: 0 });
+
+  return {
+    module: 'hoteleria',
+    title: 'Informe de Hotelería',
+    filters: { from, to, status: statusFilter || 'all' },
+    summary,
+    columns: HOTEL_REPORT_COLUMNS,
+    rows,
+  };
 }
 
 function findRoomByNumber(raw) {
@@ -453,4 +735,5 @@ module.exports = {
   releaseRoomTx,
   findRoomByNumber,
   openOrderForRoom,
+  buildHotelReport,
 };

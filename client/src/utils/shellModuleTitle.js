@@ -9,6 +9,7 @@ export const INFORMES_SECTION_IDS = [
   'finanzas',
   'facturacion',
   'inventario',
+  'hoteleria',
 ];
 
 export function resolveInformesSection(search) {
