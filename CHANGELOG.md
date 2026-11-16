@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.2.8 — 2026-11-16
+
+- En Mi restaurante, Hotel es un interruptor igual al de Delivery y queda a su lado. Activarlo guarda `hotel_enabled` al momento y muestra Hotel en Operaciones y en Informes.
+
 ## 1.2.2.7 — 2026-11-16
 
 - En Informes → Facturación electrónica, a la derecha del buscador hay Desde y Hasta. Arranca en el primer día del mes y llega hasta hoy. La lista y el conteo de comprobantes siguen ese periodo.

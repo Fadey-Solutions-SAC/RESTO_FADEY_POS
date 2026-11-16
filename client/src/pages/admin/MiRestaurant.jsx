@@ -93,10 +93,13 @@ export default function MiRestaurant() {
   const cargarMontoPendingRef = useRef(null);
   const [restaurant, setRestaurant] = useState(null);
   const [profile, setProfile] = useState(() => defaultMiRestaurantProfile());
-  const [empresaTab, setEmpresaTab] = useState(() => searchParams.get('tab') || 'info');
+  const [empresaTab, setEmpresaTabState] = useState(() => searchParams.get('tab') || 'info');
   const [autosaveStatus, setAutosaveStatus] = useState('');
   const autosaveTimerRef = useRef(null);
   const skipAutosaveRef = useRef(true);
+  const restaurantRef = useRef(null);
+  const profileRef = useRef(null);
+  const saveSeqRef = useRef(0);
   const [billingConfig, setBillingConfig] = useState({
     billing_api_url: '',
     billing_api_token: '',
@@ -113,8 +116,8 @@ export default function MiRestaurant() {
   );
   useEffect(() => {
     const requested = String(searchParams.get('tab') || '').trim();
-    const allowed = new Set(['info', 'identidad', 'tickets', 'tributaria', 'delivery', 'qr', 'mensajes', 'schedule']);
-    if (requested && allowed.has(requested) && requested !== empresaTab) setEmpresaTab(requested);
+    const allowed = new Set(['info', 'identidad', 'tickets', 'tributaria', 'delivery', 'hoteleria', 'qr', 'mensajes', 'schedule']);
+    if (requested && allowed.has(requested) && requested !== empresaTab) setEmpresaTabState(requested);
   }, [searchParams, empresaTab]);
   const [appConfig, setAppConfig] = useState({
     regional: { country: 'Peru', timezone: 'America/Lima', language: 'es', date_format: 'DD/MM/YYYY' },
@@ -806,22 +809,48 @@ export default function MiRestaurant() {
     return errs;
   }, [restaurant]);
 
-  const persistEmpresaSilent = useCallback(async () => {
-    if (!restaurant || profileValidation.length) return;
+  restaurantRef.current = restaurant;
+  profileRef.current = profile;
+
+  const setEmpresaTab = useCallback((next) => {
+    setEmpresaTabState(next);
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', next);
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const persistEmpresaSilent = useCallback(async (override) => {
+    const snapshot = restaurantRef.current;
+    if (!snapshot) return;
+    if (!override && profileValidation.length) return;
+    const seq = ++saveSeqRef.current;
+    const source = override ? { ...snapshot, ...override } : snapshot;
     setAutosaveStatus('Guardando…');
     try {
-      const saved = await api.put('/restaurant', buildRestaurantPutPayload(restaurant, profile));
+      const saved = await api.put('/restaurant', buildRestaurantPutPayload(source, profileRef.current));
+      if (seq !== saveSeqRef.current) return;
       skipAutosaveRef.current = true;
       setRestaurant(saved);
-      notifyDeliveryEnabledChanged(isDeliveryEnabledValue(saved?.delivery_enabled));
-      notifyHotelEnabledChanged(isHotelEnabledValue(saved?.hotel_enabled));
+      notifyDeliveryEnabledChanged(isDeliveryEnabledValue(saved?.delivery_enabled ?? source.delivery_enabled));
+      notifyHotelEnabledChanged(isHotelEnabledValue(saved?.hotel_enabled ?? source.hotel_enabled));
+      if (
+        override
+        && Object.prototype.hasOwnProperty.call(override, 'hotel_enabled')
+        && isHotelEnabledValue(source.hotel_enabled) !== isHotelEnabledValue(saved?.hotel_enabled)
+      ) {
+        toast.error('Hotel no quedó guardado. Reinicie el servidor y vuelva a activarlo.');
+      }
       if (saved?.profile) setProfile(mergeMiRestaurantProfile(defaultMiRestaurantProfile(), saved.profile));
       setAutosaveStatus('Guardado automático');
     } catch (err) {
+      if (seq !== saveSeqRef.current) return;
       setAutosaveStatus('');
+      if (override) setRestaurant(snapshot);
+      notifyDeliveryEnabledChanged(isDeliveryEnabledValue(snapshot.delivery_enabled));
+      notifyHotelEnabledChanged(isHotelEnabledValue(snapshot.hotel_enabled));
       toast.error(err.message || 'No se pudo guardar');
     }
-  }, [restaurant, profile, profileValidation, buildRestaurantPutPayload]);
+  }, [profileValidation, buildRestaurantPutPayload]);
 
   useEffect(() => {
     if (activeView !== 'mi_empresa' || !restaurant) return undefined;
@@ -1088,6 +1117,7 @@ export default function MiRestaurant() {
           restaurant={restaurant}
           profile={profile}
           onRestaurantField={update}
+          onPersistFlags={(partial) => { void persistEmpresaSilent(partial); }}
           onProfileSection={updateProfileSection}
           onUploadLogoMain={uploadLogo}
           onUploadBranding={uploadBranding}

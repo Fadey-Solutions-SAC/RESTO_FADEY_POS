@@ -102,6 +102,14 @@ function keepIfBlank(value) {
   return value;
 }
 
+/** 1 o 0 para un interruptor. null deja el valor ya guardado. */
+function enabledFlag(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (value === true || value === 1 || value === '1' || value === 'true') return 1;
+  if (value === false || value === 0 || value === '0' || value === 'false') return 0;
+  return null;
+}
+
 function normalizeStoredBillingPanelJson(raw) {
   const text = String(raw || '').trim();
   if (!text || text === '{}') return JSON.stringify(defaultBillingPanel());
@@ -206,6 +214,8 @@ router.put('/', authenticateToken, requireRole('admin', 'master_admin'), (req, r
     const curPanel = String(current?.billing_panel_json || '').trim();
     touchBillingPanel = !curPanel || curPanel === '{}';
   }
+
+  hotel_enabled = enabledFlag(hotel_enabled);
 
   runSql(`UPDATE restaurants SET 
     name = COALESCE(?, name), address = COALESCE(?, address), phone = COALESCE(?, phone), email = COALESCE(?, email), logo = COALESCE(?, logo),

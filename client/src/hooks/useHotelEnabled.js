@@ -4,12 +4,14 @@ import { api } from '../utils/api';
 const listeners = new Set();
 let cachedEnabled = null;
 let inflight = null;
+let cacheRevision = 0;
 
 export function isHotelEnabledValue(raw) {
   return Number(raw) === 1;
 }
 
 export function notifyHotelEnabledChanged(enabled) {
+  cacheRevision += 1;
   cachedEnabled = Boolean(enabled);
   listeners.forEach((fn) => fn(cachedEnabled));
 }
@@ -17,11 +19,14 @@ export function notifyHotelEnabledChanged(enabled) {
 async function fetchHotelEnabledOnce() {
   if (cachedEnabled !== null) return cachedEnabled;
   if (inflight) return inflight;
+  const revisionAtStart = cacheRevision;
   inflight = (async () => {
     try {
       const r = await api.get('/restaurant');
+      if (revisionAtStart !== cacheRevision) return cachedEnabled;
       cachedEnabled = isHotelEnabledValue(r?.hotel_enabled);
     } catch {
+      if (revisionAtStart !== cacheRevision) return cachedEnabled;
       cachedEnabled = false;
     }
     return cachedEnabled;
