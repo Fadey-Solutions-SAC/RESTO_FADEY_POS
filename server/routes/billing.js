@@ -28,6 +28,7 @@ const { getUploadsRoot } = require('../uploadsPath');
 const { getOrderWithItems } = require('../orderCreateService');
 const { getSocketIo, emitBillingDocumentUpdate } = require('../socketBroadcast');
 const { touchPrintAgent } = require('../printAgentPresence');
+const { sqlBusinessTimestamp } = require('../utils/appDateTime');
 
 const router = express.Router();
 
@@ -779,10 +780,20 @@ router.put('/config', authenticateToken, requireRole('admin', 'master_admin'), (
 
 router.get('/documents', authenticateToken, requireRole('admin', 'cajero'), async (req, res) => {
   try {
-    const limit = Math.max(1, Math.min(200, Number(req.query.limit || 50)));
+    const limit = Math.max(1, Math.min(2000, Number(req.query.limit || 50)));
     const status = String(req.query.status || '').trim();
     const docType = String(req.query.doc_type || '').trim();
     const search = String(req.query.search || '').trim();
+    const ymd = /^\d{4}-\d{2}-\d{2}$/;
+    let from = String(req.query.from || '').trim();
+    let to = String(req.query.to || '').trim();
+    if (!ymd.test(from)) from = '';
+    if (!ymd.test(to)) to = '';
+    if (from && to && from > to) {
+      const swap = from;
+      from = to;
+      to = swap;
+    }
 
     let sql = `SELECT d.*, o.table_number
       FROM electronic_documents d
@@ -806,6 +817,17 @@ router.get('/documents', authenticateToken, requireRole('admin', 'cajero'), asyn
         OR IFNULL(d.customer_phone, '') LIKE ?
       )`;
       params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    if (from || to) {
+      const issuedDate = `date(${sqlBusinessTimestamp('d.created_at', queryOne)})`;
+      if (from) {
+        sql += ` AND ${issuedDate} >= date(?)`;
+        params.push(from);
+      }
+      if (to) {
+        sql += ` AND ${issuedDate} <= date(?)`;
+        params.push(to);
+      }
     }
 
     sql += ' ORDER BY d.created_at DESC LIMIT ?';

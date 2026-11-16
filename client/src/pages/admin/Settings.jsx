@@ -2740,22 +2740,24 @@ export default function Settings() {
                 <div key={field.key}>
                   <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{field.label}</label>
                   {field.type === 'warehouse' ? (
-                    <select
-                      value={settingsCrudForm[field.key] ?? ''}
-                      onChange={(e) => setSettingsCrudForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                      className="input-field"
-                    >
-                      {(stockWarehouses.filter((w) => (
-                        field.kind === 'insumos' ? isInsumosWarehouse(w) : !isInsumosWarehouse(w)
-                      ))).map((w) => (
-                        <option key={w.id} value={w.id}>{w.name}</option>
-                      ))}
-                    </select>
-                    {field.key === 'product_warehouse_id' ? (
-                      <p className="text-xs text-[var(--ui-muted)] mt-1">
-                        Las ventas de esta caja bajan el stock de este almacén. En cero, el producto sigue visible.
-                      </p>
-                    ) : null}
+                    <>
+                      <select
+                        value={settingsCrudForm[field.key] ?? ''}
+                        onChange={(e) => setSettingsCrudForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                        className="input-field"
+                      >
+                        {(stockWarehouses.filter((w) => (
+                          field.kind === 'insumos' ? isInsumosWarehouse(w) : !isInsumosWarehouse(w)
+                        ))).map((w) => (
+                          <option key={w.id} value={w.id}>{w.name}</option>
+                        ))}
+                      </select>
+                      {field.key === 'product_warehouse_id' ? (
+                        <p className="text-xs text-[var(--ui-muted)] mt-1">
+                          Las ventas de esta caja bajan el stock de este almacén. En cero, el producto sigue visible.
+                        </p>
+                      ) : null}
+                    </>
                   ) : field.type === 'select' && field.options ? (
                     <select
                       value={settingsCrudForm[field.key] ?? ''}

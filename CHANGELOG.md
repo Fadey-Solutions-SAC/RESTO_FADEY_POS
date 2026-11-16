@@ -2,6 +2,11 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.2.7 — 2026-11-16
+
+- En Informes → Facturación electrónica, a la derecha del buscador hay Desde y Hasta. Arranca en el primer día del mes y llega hasta hoy. La lista y el conteo de comprobantes siguen ese periodo.
+- El formulario de la caja vuelve a abrir. El aviso del almacén de productos impedía que el cliente compilara.
+
 ## 1.2.2.6 — 2026-11-16
 
 - Informes tiene el submódulo Informe de Hotelería. Trae huésped, documento, noches, hospedaje, productos, total, caja y cobro. Solo se ve si Hotelería está activa.

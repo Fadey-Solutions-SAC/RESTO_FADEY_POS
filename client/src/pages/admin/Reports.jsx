@@ -763,6 +763,8 @@ export default function Reports() {
   const [billingStatusFilter, setBillingStatusFilter] = useState('all');
   const [billingTypeFilter, setBillingTypeFilter] = useState('all');
   const [billingSearch, setBillingSearch] = useState('');
+  const [billingFrom, setBillingFrom] = useState(localMonthStartYmd);
+  const [billingTo, setBillingTo] = useState(localTodayYmd);
   const [billingFiltersOpen, setBillingFiltersOpen] = useState(false);
   const billingFiltersRef = useRef(null);
   const [retryingDocId, setRetryingDocId] = useState('');
@@ -839,12 +841,23 @@ export default function Reports() {
     status = billingStatusFilter,
     docType = billingTypeFilter,
     search = billingSearch,
+    from = billingFrom,
+    to = billingTo,
   } = {}) => {
     const params = new URLSearchParams();
-    params.set('limit', '150');
+    params.set('limit', '2000');
     if (status && status !== 'all') params.set('status', status);
     if (docType && docType !== 'all') params.set('doc_type', docType);
     if (search.trim()) params.set('search', search.trim());
+    let start = String(from || '').trim();
+    let end = String(to || '').trim();
+    if (start && end && start > end) {
+      const swap = start;
+      start = end;
+      end = swap;
+    }
+    if (start) params.set('from', start);
+    if (end) params.set('to', end);
     const docs = await api.get(`/billing/documents?${params.toString()}`);
     setBillingDocuments(Array.isArray(docs) ? docs : []);
   };
@@ -1152,7 +1165,7 @@ export default function Reports() {
       loadBillingDocumentsRef.current().catch(() => setBillingDocuments([]));
     }, delay);
     return () => window.clearTimeout(handle);
-  }, [reportSection, billingStatusFilter, billingTypeFilter, billingSearch]);
+  }, [reportSection, billingStatusFilter, billingTypeFilter, billingSearch, billingFrom, billingTo]);
 
   useEffect(() => {
     if (!billingFiltersOpen) return undefined;
@@ -2983,7 +2996,23 @@ export default function Reports() {
                   aria-label="Buscar comprobantes"
                 />
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <InlineDateField
+                  label="Desde"
+                  value={billingFrom}
+                  onChange={setBillingFrom}
+                  roundedNone={false}
+                  className="!rounded-lg"
+                  widthClass="w-[10.75rem]"
+                />
+                <InlineDateField
+                  label="Hasta"
+                  value={billingTo}
+                  onChange={setBillingTo}
+                  roundedNone={false}
+                  className="!rounded-lg"
+                  widthClass="w-[10.75rem]"
+                />
                 <div className="relative" ref={billingFiltersRef}>
                   <button
                     type="button"
@@ -3045,8 +3074,16 @@ export default function Reports() {
                     setBillingStatusFilter('all');
                     setBillingTypeFilter('all');
                     setBillingSearch('');
+                    setBillingFrom(localMonthStartYmd());
+                    setBillingTo(localTodayYmd());
                   }}
-                  disabled={billingStatusFilter === 'all' && billingTypeFilter === 'all' && !billingSearch.trim()}
+                  disabled={
+                    billingStatusFilter === 'all'
+                    && billingTypeFilter === 'all'
+                    && !billingSearch.trim()
+                    && billingFrom === localMonthStartYmd()
+                    && billingTo === localTodayYmd()
+                  }
                   className="h-9 px-2.5 rounded-lg text-sm border border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)] inline-flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none"
                 >
                   <MdClose className="text-base shrink-0" />
@@ -3156,7 +3193,7 @@ export default function Reports() {
               );
             })}
             {billingDocuments.length === 0 ? (
-              <p className="py-6 text-center text-sm text-[var(--ui-muted)]">Sin comprobantes emitidos todavía.</p>
+              <p className="py-6 text-center text-sm text-[var(--ui-muted)]">Sin comprobantes en este periodo.</p>
             ) : null}
           </div>
           <div className="hidden md:block overflow-x-auto rounded-xl border border-[color:var(--ui-border)]">
@@ -3283,7 +3320,7 @@ export default function Reports() {
                 ))}
                 {billingDocuments.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-6 text-center text-[var(--ui-muted)]">Sin comprobantes emitidos todavía.</td>
+                    <td colSpan={6} className="py-6 text-center text-[var(--ui-muted)]">Sin comprobantes en este periodo.</td>
                   </tr>
                 )}
               </tbody>
