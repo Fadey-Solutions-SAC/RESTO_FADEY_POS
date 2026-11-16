@@ -1,6 +1,6 @@
 # Contexto del proyecto
 
-Versión de producto: **1.2.3.1** (`package.json` y `client/package.json`). En pantalla: `v 1.2.3.1`.
+Versión de producto: **1.2.3.2** (`package.json` y `client/package.json`). En pantalla: `v 1.2.3.2`.
 
 Este archivo describe el sistema tal como está en el código. No reemplaza `AGENTS.md` (cómo trabajar) ni `CHANGELOG.md` (qué cambió).
 
@@ -132,7 +132,7 @@ Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurant
 - En Movimiento interno, cada producto puede moverse a otro almacén de productos (`POST /api/inventory/warehouse-move`). La cantidad parte de todo el stock del origen y se puede bajar o subir hasta ese tope. El stock total del producto sigue igual. Los insumos de kardex siguen en su almacén de insumos.
 - Cada caja descuenta los productos no transformados de su almacén (`product_warehouse_id` en la caja). Por defecto es Almacén Principal, y el de insumos queda vinculado aparte. Caja, mesas y la cuenta de habitación muestran el stock de ese almacén; en cero el producto sigue en la carta.
 - Los PDF de boleta y factura del flujo Android los arma el servidor (`server/billingFormalReceiptPdf.js`), no el teléfono.
-- Hotel se enciende con `restaurants.hotel_enabled`, en una opción propia al lado de Delivery. En Caja y Mesas las habitaciones ocupan la zona Hotel, con forma de puerta, y ahí solo se ven y se cargan productos. El ingreso, la salida y el mantenimiento siguen en el módulo Hotel. Cada habitación guarda huésped, costo por noche y `caja_station_id`. El ingreso abre un pedido (`orders.hotel_room_id`) que suma las noches y los productos. El QR usa `selfOrderUrl(..., 'habitacion')` y el mismo auto pedido de la mesa. El cobro es `POST /api/pos/checkout-table` y solo entra en la caja asignada.
+- Hotel se enciende con `restaurants.hotel_enabled`, en una opción propia al lado de Delivery. El recepcionista es el encargado: entra a Hotel y no queda bloqueado por la caja al dar salida. En Caja y Mesas la zona Hotel abre el mismo pedido que una mesa. Al cobrar, la habitación pasa a mantenimiento hasta que se active. Cada habitación guarda huésped, costo por noche y `caja_station_id`. El ingreso abre un pedido (`orders.hotel_room_id`) que suma las noches y los productos. El QR usa `selfOrderUrl(..., 'habitacion')` y el mismo auto pedido de la mesa. El cobro es `POST /api/pos/checkout-table` y solo entra en la caja asignada.
 - El informe de hotelería lo arma `buildHotelReport` (`GET /api/reports/hoteleria`) a partir de `hotel_stays` y la cuenta. Informes lo muestra en `?view=hoteleria`. El submenú solo aparece si el módulo está activo.
 - Facturación electrónica en Informes filtra `GET /api/billing/documents` con `from` y `to` (fecha de emisión en hora del restaurante). Por defecto es del día 1 del mes a hoy. Sin esas fechas, el listado sigue siendo el más reciente.
 - La IA Fadey responde el paso a paso de mover a almacén, vincular el almacén de la caja y consultar comprobantes por fecha desde `server/services/fadeyAi/fadeyAiGuides.js`. Se refresca al abrir el chat.

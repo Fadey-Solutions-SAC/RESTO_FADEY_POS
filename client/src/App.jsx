@@ -234,13 +234,13 @@ function AppRoutes({ user }) {
         getDefaultStaffPath(user)
       } /> : <Login />} />
 
-      <Route path="/admin" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar', 'master_admin']}><Layout /></ProtectedRoute>}>
+      <Route path="/admin" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo', 'recepcionista', 'produccion', 'cocina', 'bar', 'master_admin']}><Layout /></ProtectedRoute>}>
         <Route index element={<DefaultPage />} />
         <Route path="ventas" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="ventas"><Ventas /></ProtectedRoute>} />
         <Route path="caja" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="caja"><POSPanel /></ProtectedRoute>} />
         <Route path="tiempo-trabajado" element={<ProtectedRoute roles={['admin']} moduleId="tiempo_trabajado"><HrModule /></ProtectedRoute>} />
         <Route path="asistencia" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar']}><HrAttendanceKiosk /></ProtectedRoute>} />
-        <Route path="perfil" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo', 'produccion', 'cocina', 'bar', 'master_admin']}><MiPerfil /></ProtectedRoute>} />
+        <Route path="perfil" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo', 'recepcionista', 'produccion', 'cocina', 'bar', 'master_admin']}><MiPerfil /></ProtectedRoute>} />
         <Route path="mesas" element={<ProtectedRoute roles={['admin', 'mozo']} moduleId="mesas"><Tables /></ProtectedRoute>} />
         <Route path="reservas" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo']} moduleId="reservas"><Reservas /></ProtectedRoute>} />
         <Route path="auto-pedido" element={<AdminOnlyAutoPedido />} />
@@ -254,7 +254,7 @@ function AppRoutes({ user }) {
         <Route path="descuentos" element={<Navigate to="/admin/promociones" replace />} />
         <Route path="almacen" element={<ProtectedRoute roles={['admin']} moduleId="almacen"><Almacen /></ProtectedRoute>} />
         <Route path="delivery" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo']} moduleId="delivery"><DeliveryModuleGate><Delivery /></DeliveryModuleGate></ProtectedRoute>} />
-        <Route path="hoteleria" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="hoteleria"><HotelModuleGate><Hoteleria /></HotelModuleGate></ProtectedRoute>} />
+        <Route path="hoteleria" element={<ProtectedRoute roles={['admin', 'cajero', 'recepcionista']} moduleId="hoteleria"><HotelModuleGate><Hoteleria /></HotelModuleGate></ProtectedRoute>} />
         <Route path="produccion/:areaId" element={<ProtectedRoute roles={['admin', 'produccion', 'cocina', 'bar']} moduleIds={['produccion', 'cocina', 'bar']}><KitchenAreaRoute /></ProtectedRoute>} />
         <Route path="cocina" element={<ProtectedRoute roles={['admin', 'produccion', 'cocina']} moduleIds={['cocina', 'produccion']}><KitchenPanel station="cocina" areaId="cocina" /></ProtectedRoute>} />
         <Route path="bar" element={<ProtectedRoute roles={['admin', 'produccion', 'bar']} moduleIds={['bar', 'produccion']}><KitchenPanel station="bar" areaId="bar" /></ProtectedRoute>} />

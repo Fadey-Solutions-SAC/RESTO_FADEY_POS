@@ -11,7 +11,7 @@ function sendError(res, err) {
   return res.status(status).json({ error: err.message || 'No se pudo completar la operación' });
 }
 
-router.use(authenticateToken, requireRole('admin', 'cajero', 'mozo', 'master_admin'));
+router.use(authenticateToken, requireRole('admin', 'cajero', 'mozo', 'recepcionista', 'master_admin'));
 
 router.get('/rooms', (req, res) => {
   try {

@@ -9,7 +9,7 @@ export const ADMIN_MODULE_PATHS = [
   { path: '/admin/cocina', moduleId: 'cocina', roles: ['admin', 'produccion', 'cocina'] },
   { path: '/admin/bar', moduleId: 'bar', roles: ['admin', 'produccion', 'bar'] },
   { path: '/admin/delivery', moduleId: 'delivery', roles: ['admin', 'delivery'] },
-  { path: '/admin/hoteleria', moduleId: 'hoteleria', roles: ['admin', 'cajero'] },
+  { path: '/admin/hoteleria', moduleId: 'hoteleria', roles: ['admin', 'cajero', 'recepcionista'] },
   { path: '/admin/reservas', moduleId: 'reservas', roles: ['admin'] },
   { path: '/admin/auto-pedido', moduleId: 'auto_pedido', roles: ['admin'] },
   { path: '/admin/ventas', moduleId: 'ventas', roles: ['admin'] },
@@ -30,6 +30,7 @@ export const ADMIN_MODULE_PATHS = [
 export const PRIMARY_MODULE_BY_ROLE = {
   cajero: 'caja',
   mozo: 'mesas',
+  recepcionista: 'hoteleria',
 };
 
 export function isPermissionEnabled(value) {
@@ -208,7 +209,7 @@ export function getDefaultStaffPath(user, opts = {}) {
     return prodPath === '/' ? '/admin' : prodPath;
   }
   if (user.role === 'delivery') return hasModulePermission(user, 'delivery') ? '/delivery' : '/';
-  if (!['admin', 'cajero', 'mozo'].includes(user.role)) return '/admin';
+  if (!['admin', 'cajero', 'mozo', 'recepcionista'].includes(user.role)) return '/admin';
   const primaryId = PRIMARY_MODULE_BY_ROLE[user.role];
   const primary = primaryId && ADMIN_MODULE_PATHS.find((item) => item.moduleId === primaryId);
   if (primary && canAccessStaffModule(user, { moduleId: primary.moduleId, roles: primary.roles })) {

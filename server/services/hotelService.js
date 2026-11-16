@@ -32,7 +32,7 @@ function staffCajaId(user) {
 
 function assertCanOperateRoom(user, room, mode = 'operate') {
   const role = String(user?.role || '').toLowerCase();
-  if (role === 'admin' || role === 'master_admin') return;
+  if (role === 'admin' || role === 'master_admin' || role === 'recepcionista') return;
   if (mode === 'consume' && role === 'mozo') return;
   if (role !== 'cajero') throw httpError('No puede operar habitaciones', 403);
   const mine = staffCajaId(user);
@@ -459,8 +459,8 @@ function setMaintenance(id, enabled, user) {
   if (!room) throw httpError('Habitación no encontrada', 404);
   if (room.status === 'occupied') throw httpError('No puede pasar a mantenimiento una habitación ocupada');
   const role = String(user?.role || '').toLowerCase();
-  if (role !== 'admin' && role !== 'master_admin') {
-    throw httpError('Solo el administrador cambia el mantenimiento', 403);
+  if (role !== 'admin' && role !== 'master_admin' && role !== 'recepcionista') {
+    throw httpError('Solo el administrador o el recepcionista cambian el mantenimiento', 403);
   }
   runSql(
     "UPDATE hotel_rooms SET status = ?, updated_at = datetime('now') WHERE id = ?",
@@ -492,7 +492,7 @@ function releaseRoomTx(tx, hotelRoomId) {
   }
   tx.run(
     `UPDATE hotel_rooms SET
-      status = 'available',
+      status = 'maintenance',
       guest_name = '', guest_doc_type = 'DNI', guest_doc_number = '', guest_phone = '', guest_email = '',
       check_in = '', check_out = '', nights = 0, current_order_id = '',
       updated_at = datetime('now')

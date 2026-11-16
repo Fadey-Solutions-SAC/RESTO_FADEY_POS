@@ -24,7 +24,7 @@ const { purgeUserFromSystem } = require('../utils/purgeUserFromSystem');
 const { emitStaffDataUpdate } = require('../socketBroadcast');
 
 const router = express.Router();
-const VALID_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion']);
+const VALID_ROLES = new Set(['admin', 'cajero', 'mozo', 'cocina', 'bar', 'delivery', 'produccion', 'recepcionista']);
 /** Placeholder único cuando el correo es opcional (columna UNIQUE NOT NULL). */
 const NO_EMAIL_SUFFIX = '@no-email.local';
 

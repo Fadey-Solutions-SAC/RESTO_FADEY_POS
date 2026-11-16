@@ -89,7 +89,7 @@ const ALL_MODULES = [
   { id: 'ofertas', label: 'Promociones', icon: MdLocalOffer, defaultRoles: ['admin'] },
   { id: 'almacen', label: 'Control De Recursos', icon: MdWarehouse, defaultRoles: ['admin'] },
   { id: 'delivery', label: 'Delivery', icon: MdDeliveryDining, defaultRoles: ['admin', 'delivery'] },
-  { id: 'hoteleria', label: 'Hotelería', icon: MdHotel, defaultRoles: ['admin', 'cajero'] },
+  { id: 'hoteleria', label: 'Hotelería', icon: MdHotel, defaultRoles: ['admin', 'cajero', 'recepcionista'] },
   { id: 'informes', label: 'Informes', icon: MdAssessment, defaultRoles: ['admin'] },
   { id: 'indicadores', label: 'Indicadores', icon: MdInsights, defaultRoles: ['admin'] },
   { id: 'fidelizacion', label: 'Fidelización', icon: MdStars, defaultRoles: ['admin'] },
@@ -106,6 +106,7 @@ const ROLES = {
   admin: { label: 'Administrador', icon: MdAdminPanelSettings, color: UI_BADGE.purple, desc: 'Acceso completo al sistema' },
   cajero: { label: 'Cajero', icon: MdPointOfSale, color: UI_BADGE.blue, desc: 'Solo su caja' },
   mozo: { label: 'Mozo', icon: MdRoomService, color: UI_BADGE.emerald, desc: 'Mesas y pedidos de su caja' },
+  recepcionista: { label: 'Recepcionista', icon: MdHotel, color: UI_BADGE.amber, desc: 'Encargado de Hotel' },
   produccion: { label: 'Producción', icon: MdKitchen, color: UI_BADGE.amber, desc: 'Se vincula al área desde Áreas de producción' },
   delivery: { label: 'Delivery', icon: MdDeliveryDining, color: UI_BADGE.sky, desc: 'Reparto y entregas' },
 };

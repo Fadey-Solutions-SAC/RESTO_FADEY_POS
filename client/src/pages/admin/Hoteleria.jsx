@@ -36,6 +36,7 @@ function money(n) {
 export default function Hoteleria() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'master_admin';
+  const canHotelDesk = isAdmin || String(user?.role || '').toLowerCase() === 'recepcionista';
   const [rooms, setRooms] = useState([]);
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -171,6 +172,7 @@ export default function Hoteleria() {
       await api.post('/pos/checkout-table', {
         order_ids: [payRoom.current_order_id],
         payment_method: payMethod,
+        hotel_checkout: true,
       });
       toast.success('Habitación cobrada en su caja');
       setPayRoom(null);
@@ -285,7 +287,7 @@ export default function Hoteleria() {
                   {occupied ? (
                     <button type="button" className="btn-primary text-xs" onClick={() => { setPayMethod('efectivo'); setPayRoom(room); }}>Salida</button>
                   ) : null}
-                  {isAdmin && !occupied ? (
+                  {canHotelDesk && !occupied ? (
                     <button type="button" className="btn-secondary text-xs" onClick={() => toggleMaintenance(room)}>{maintenance ? 'Activar' : 'Mantenimiento'}</button>
                   ) : null}
                   <div className="relative ml-auto">
@@ -434,7 +436,7 @@ export default function Hoteleria() {
       <Modal isOpen={!!payRoom} onClose={() => setPayRoom(null)} title={`Salida · Habitación ${payRoom?.number || ''}`} size="sm">
         {payRoom ? (
           <div className="space-y-3">
-            <p className="text-sm">Se cobra en <strong>{payRoom.caja_name || 'la caja asignada'}</strong>. Abra esa caja antes de confirmar.</p>
+            <p className="text-sm">La salida se registra en <strong>{payRoom.caja_name || 'la caja de la habitación'}</strong>. Al confirmar, la habitación queda en mantenimiento.</p>
             <p className="text-2xl font-bold text-[var(--ui-accent)]">{money(payRoom.account_total)}</p>
             <label className="block text-sm">Medio de pago
               <select className="input-field mt-1" value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>

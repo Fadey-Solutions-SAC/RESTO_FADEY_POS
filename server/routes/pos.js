@@ -336,6 +336,18 @@ function onlyActiveStationRegister(register) {
   return register;
 }
 
+function openRegisterForCaja(cajaId) {
+  const id = String(cajaId || '').trim();
+  if (!id) return null;
+  const row = queryOne(
+    `SELECT * FROM cash_registers
+     WHERE closed_at IS NULL AND trim(coalesce(caja_station_id, '')) = ?
+     ORDER BY datetime(opened_at) DESC LIMIT 1`,
+    [id]
+  );
+  return onlyActiveStationRegister(row || null);
+}
+
 function resolvePosRegister(req) {
   const user = req.user;
   const role = String(user?.role || '').toLowerCase();
@@ -726,7 +738,7 @@ router.post('/send-close-email', authenticateToken, requireRole('admin', 'cajero
   }
 });
 
-router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero', 'recepcionista'), (req, res) => {
   const body = req.body || {};
   const {
     order_ids: orderIdsRaw,
@@ -799,7 +811,19 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
   }
 
   const paymentMethod = normalizePaymentMethod(paymentMethodRaw, { allowOnline: true, fallback: 'efectivo' });
-  const register = resolvePosRegister(req);
+  const hotelCheckout = req.body?.hotel_checkout === true
+    || req.body?.hotel_checkout === 1
+    || req.body?.hotel_checkout === '1'
+    || req.body?.hotel_checkout === 'true';
+  let register = resolvePosRegister(req);
+  if (hotelCheckout && orderIdsFromBody[0]) {
+    const orderRow = queryOne('SELECT hotel_room_id FROM orders WHERE id = ?', [orderIdsFromBody[0]]);
+    const roomRow = orderRow?.hotel_room_id
+      ? queryOne('SELECT caja_station_id FROM hotel_rooms WHERE id = ?', [orderRow.hotel_room_id])
+      : null;
+    const roomRegister = openRegisterForCaja(roomRow?.caja_station_id);
+    if (roomRegister) register = roomRegister;
+  }
   if (!register) return res.status(400).json({ error: 'No tienes una caja abierta para cobrar' });
 
   const formatCheckoutSoles = (n) => `S/ ${Number(n || 0).toFixed(2)}`;
@@ -901,7 +925,7 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         if (!order) throw new Error(`Pedido no encontrado: ${orderId}`);
         if (order.status === 'cancelled') throw new Error(`No puedes cobrar un pedido anulado: ${order.order_number}`);
         const hotelRoomId = String(order.hotel_room_id || '').trim();
-        if (hotelRoomId) {
+        if (hotelRoomId && !hotelCheckout) {
           const room = tx.queryOne('SELECT id, number, caja_station_id FROM hotel_rooms WHERE id = ?', [hotelRoomId]);
           const roomCaja = String(room?.caja_station_id || '').trim();
           const regCaja = String(register.caja_station_id || '').trim();

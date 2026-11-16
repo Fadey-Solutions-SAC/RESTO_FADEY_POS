@@ -77,6 +77,9 @@ function deriveHrPositionDepartment(user) {
   if (r === 'cajero') {
     return { position: 'cajero', department: 'caja', production_area_id: '' };
   }
+  if (r === 'recepcionista') {
+    return { position: 'recepcionista', department: 'hotel', production_area_id: '' };
+  }
   if (r === 'delivery') {
     return { position: 'delivery', department: 'delivery', production_area_id: '' };
   }

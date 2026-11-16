@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.3.2 — 2026-11-16
+
+- En Hotel, la salida no se bloquea por la caja de la habitación. El rol Recepcionista es el encargado del hotel. Al cobrar, la habitación queda en mantenimiento hasta activarla. En Caja y Mesas el pedido de la habitación usa el mismo formato que la mesa.
+
 ## 1.2.3.1 — 2026-11-16
 
 - En el detalle del cliente, a la derecha del QR, Hacer pedido abre su auto-pedido con el nombre ya puesto. Sirve para cargar la pensión sin contraseña ni escribir el nombre uno por uno. El QR del cliente no cambia.

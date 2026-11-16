@@ -1012,7 +1012,7 @@ async function initDatabase() {
         email TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         full_name TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion')),
+        role TEXT NOT NULL CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion','recepcionista')),
         restaurant_id TEXT,
         is_active INTEGER DEFAULT 1,
         phone TEXT DEFAULT '',
@@ -2280,7 +2280,7 @@ async function initDatabase() {
           email TEXT UNIQUE NOT NULL,
           password_hash TEXT NOT NULL,
           full_name TEXT NOT NULL,
-          role TEXT NOT NULL CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion')),
+          role TEXT NOT NULL CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion','recepcionista')),
           restaurant_id TEXT,
           is_active INTEGER DEFAULT 1,
           phone TEXT DEFAULT '',
@@ -3433,7 +3433,7 @@ function hasUsersColumn(colName) {
 }
 
 const USERS_ROLE_CHECK_SQL =
-  "CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion'))";
+  "CHECK(role IN ('admin','cajero','mozo','cocina','bar','delivery','produccion','recepcionista'))";
 
 function readUsersTableCreateSql() {
   try {
@@ -3456,7 +3456,7 @@ function usersCreateSqlAllowsProduccionRole(sql) {
   if (!raw.trim()) return false;
   const m = raw.match(/CHECK\s*\(\s*(?:["']?role["']?)\s+IN\s*\(([^)]*)\)/i);
   if (!m) return true;
-  return /['"]produccion['"]/i.test(m[1]);
+  return /['"]produccion['"]/i.test(m[1]) && /['"]recepcionista['"]/i.test(m[1]);
 }
 
 function probeUsersRoleAllowsProduccion() {
