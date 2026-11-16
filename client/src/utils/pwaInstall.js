@@ -56,30 +56,25 @@ function takeStoredEvent() {
   return event;
 }
 
-/** Abre el cuadro de instalación en el mismo clic, sin esperar otra cosa. */
+/** Abre el cuadro de instalación en el mismo clic. Si Chrome ya lo instaló, no hay evento. */
 export function startPwaInstall() {
   const event = takeStoredEvent();
   if (event && typeof event.prompt === 'function') {
     try {
       const prompted = event.prompt();
-      emit();
       const choice = event.userChoice || prompted;
       return Promise.resolve(choice)
-        .then((result) => (result?.outcome === 'accepted' ? 'accepted' : 'dismissed'))
-        .catch(() => 'error');
+        .then((result) => {
+          emit();
+          return result?.outcome === 'accepted' ? 'accepted' : 'dismissed';
+        })
+        .catch(() => {
+          emit();
+          return 'error';
+        });
     } catch {
-      /* El evento no sirvió: intentar el cuadro directo en este mismo clic. */
+      emit();
     }
   }
-  if (typeof navigator !== 'undefined' && typeof navigator.install === 'function') {
-    try {
-      return navigator.install()
-        .then(() => 'accepted')
-        .catch((err) => (err && err.name === 'AbortError' ? 'dismissed' : 'error'));
-    } catch {
-      return Promise.resolve('error');
-    }
-  }
-  emit();
   return Promise.resolve('unavailable');
 }

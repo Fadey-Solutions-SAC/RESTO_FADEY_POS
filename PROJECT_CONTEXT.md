@@ -1,6 +1,6 @@
 # Contexto del proyecto
 
-Versión de producto: **1.2.2.1** (`package.json` y `client/package.json`). En pantalla: `v 1.2.2.1`.
+Versión de producto: **1.2.2.2** (`package.json` y `client/package.json`). En pantalla: `v 1.2.2.2`.
 
 Este archivo describe el sistema tal como está en el código. No reemplaza `AGENTS.md` (cómo trabajar) ni `CHANGELOG.md` (qué cambió).
 
@@ -122,7 +122,7 @@ Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurant
 - La versión de UI es de cuatro segmentos `A.B.C.D` (cada uno 0–9). El instalador Electron la convierte a semver de tres segmentos (`scripts/electron-builder-with-semver.mjs`): `1.2.0.1` → `1.2.1`.
 - La dirección del cliente en el comprobante no se rellena con la del restaurante.
 - El color del nombre comercial en el login se guarda en el perfil de Mi restaurante (`general.login_name_color`). Vacío sigue en blanco.
-- Instalar la PWA: `beforeinstallprompt` se guarda en `window` desde `index.html`. El botón de Mi perfil llama a `prompt()` o, si Chrome no entregó el evento, a `navigator.install()`.
+- Instalar la PWA: `beforeinstallprompt` se guarda en `window` desde `index.html`. El botón de Mi perfil llama a `prompt()`. Si Chrome ya tiene esa app instalada, no hay evento y el perfil lo indica.
 - El auto-pedido por QR pide un nombre antes de la carta. Se guarda en `orders.ticket_guest_name`. Se ve en la comanda de cocina, en la cuenta de la mesa y al cobrar, y se imprime en la comanda y en la precuenta. No reemplaza la mesa ni el cliente de facturación.
 - La hora de emisión del comprobante usa la zona del restaurante, no el reloj UTC del servidor.
 - Un área de producción nueva recibe un color de una paleta fija, persistido en el registro del área.

@@ -4,30 +4,33 @@ import { MdGetApp } from 'react-icons/md';
 import { isDesktopEmbeddedRuntime, isElectronRuntime } from '../utils/api';
 import { needsIosHomeScreenInstall } from '../utils/webPush';
 import {
-  canPromptPwaInstall,
   isPwaInstalledHere,
   startPwaInstall,
   subscribePwaInstall,
 } from '../utils/pwaInstall';
 
-/** Botón al final del perfil: abre el cuadro de instalación de Chrome. */
+/** Botón al final del perfil. Abre el cuadro de Chrome, o avisa si ya está instalado. */
 export default function PwaInstallProfileButton() {
   const [, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [already, setAlready] = useState(false);
 
   useEffect(() => subscribePwaInstall(() => setTick((n) => n + 1)), []);
 
   if (isElectronRuntime() || isDesktopEmbeddedRuntime()) return null;
-  if (isPwaInstalledHere()) {
+  if (isPwaInstalledHere() || already) {
     return (
       <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-        <p className="text-sm font-semibold text-slate-800">El sistema ya está instalado en este equipo.</p>
+        <p className="text-sm font-semibold text-slate-800">El sistema ya está instalado en este Chrome.</p>
+        <p className="mt-1 text-xs text-slate-500 leading-snug">
+          Ábrelo con el icono Resto-FADEY del escritorio o del menú Inicio.
+        </p>
       </section>
     );
   }
 
   const install = () => {
-    if (needsIosHomeScreenInstall() && !canPromptPwaInstall() && typeof navigator.install !== 'function') {
+    if (needsIosHomeScreenInstall()) {
       toast('En iPhone: Compartir y luego Agregar a inicio.');
       return;
     }
@@ -35,10 +38,16 @@ export default function PwaInstallProfileButton() {
     setBusy(true);
     void pending.then((outcome) => {
       setBusy(false);
-      if (outcome === 'accepted') toast.success('El sistema se está instalando.');
-      else if (outcome === 'error' || outcome === 'unavailable') {
-        toast.error('Chrome no abrió la instalación. Vuelve a cargar la página e inténtalo otra vez.');
+      if (outcome === 'accepted') {
+        toast.success('El sistema se está instalando.');
+        return;
       }
+      if (outcome !== 'unavailable') return;
+      if (typeof window !== 'undefined' && !window.isSecureContext) {
+        toast.error('Abre el sistema con su enlace https para instalarlo.');
+        return;
+      }
+      if (typeof performance !== 'undefined' && performance.now() > 8000) setAlready(true);
     });
   };
 
