@@ -355,44 +355,24 @@ export default function MiRestaurantEmpresaHub({
         </div>
       )}
 
-      {(tab === 'delivery' || tab === 'hoteleria') && (
+      {tab === 'delivery' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="card flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-[var(--ui-body-text)]">Delivery</p>
-                <p className="text-sm font-medium text-[var(--ui-body-text)] mt-1">
-                  {deliveryOn ? 'Activado en su negocio' : 'Desactivado'}
-                </p>
-              </div>
-              <button
-                type="button"
-                className={deliveryOn ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
-                onClick={toggleDelivery}
-              >
-                {deliveryOn ? 'Desactivar' : 'Activar'}
-              </button>
+          <div className="card flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-[var(--ui-body-text)]">Delivery</p>
+              <p className="text-sm font-medium text-[var(--ui-body-text)] mt-1">
+                {deliveryOn ? 'Activado en su negocio' : 'Desactivado'}
+              </p>
             </div>
-            <div className="card flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-[var(--ui-body-text)]">Hotel</p>
-                <p className="text-sm font-medium text-[var(--ui-body-text)] mt-1">
-                  {hotelOn ? 'Activado en su negocio' : 'Desactivado'}
-                </p>
-                <p className="text-xs text-[var(--ui-muted)] mt-1">
-                  Es independiente de Delivery. Al activarlo, Hotel aparece en Operaciones y el informe en Informes.
-                </p>
-              </div>
-              <button
-                type="button"
-                className={hotelOn ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
-                onClick={toggleHotel}
-              >
-                {hotelOn ? 'Desactivar' : 'Activar'}
-              </button>
-            </div>
+            <button
+              type="button"
+              className={deliveryOn ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
+              onClick={toggleDelivery}
+            >
+              {deliveryOn ? 'Desactivar' : 'Activar'}
+            </button>
           </div>
-          {tab === 'delivery' && deliveryOn ? (
+          {deliveryOn ? (
           <div className="card space-y-4">
             <h4 className="font-bold text-[var(--ui-body-text)]">Configuración</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -423,6 +403,27 @@ export default function MiRestaurantEmpresaHub({
             </div>
           </div>
           ) : null}
+        </div>
+      )}
+
+      {tab === 'hoteleria' && (
+        <div className="card flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-[var(--ui-body-text)]">Hotel</p>
+            <p className="text-sm font-medium text-[var(--ui-body-text)] mt-1">
+              {hotelOn ? 'Activado en su negocio' : 'Desactivado'}
+            </p>
+            <p className="text-xs text-[var(--ui-muted)] mt-1">
+              Al activarlo, Hotel aparece en Operaciones y el informe en Informes.
+            </p>
+          </div>
+          <button
+            type="button"
+            className={hotelOn ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
+            onClick={toggleHotel}
+          >
+            {hotelOn ? 'Desactivar' : 'Activar'}
+          </button>
         </div>
       )}
 
