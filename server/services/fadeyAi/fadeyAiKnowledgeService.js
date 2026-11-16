@@ -240,6 +240,8 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
       if (id === 'guide-cajas-config') score += 30;
       if (id === 'guide-area-produccion' || id === 'guide-movimiento-interno') score -= 25;
     }
+    if (/cliente/.test(q) && /pedido|pension|qr/.test(q) && !/mesa/.test(q) && id === 'guide-clientes') score += 70;
+    if (/cliente/.test(q) && /pedido|pension/.test(q) && !/mesa/.test(q) && id === 'guide-mesas-pedido') score -= 40;
     if (wantsBillingRange) {
       if (id === 'guide-consultar-comprobantes') score += 90;
       if (id === 'guide-facturacion-electronica') score += 25;

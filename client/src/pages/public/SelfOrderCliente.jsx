@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, formatCurrency } from '../../utils/api';
 import { useActiveInterval } from '../../hooks/useActiveInterval';
 import { REFRESH_MS } from '../../constants/refreshIntervals';
@@ -20,11 +20,21 @@ function storageKeyForCliente(id) {
   return `selfOrderCliente:${id}`;
 }
 
+function readSession(key) {
+  try {
+    return String(sessionStorage.getItem(key) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 export default function SelfOrderCliente() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const clienteId = String(searchParams.get('cliente') || '').trim();
+  const openedFromClients = searchParams.get('atajo') === '1';
 
-  const [sessionToken, setSessionToken] = useState('');
+  const [sessionToken, setSessionToken] = useState(() => (clienteId ? readSession(storageKeyForCliente(clienteId)) : ''));
   const [passwordInput, setPasswordInput] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [bootstrap, setBootstrap] = useState(null);
@@ -40,7 +50,7 @@ export default function SelfOrderCliente() {
   const [clientView, setClientView] = useState(null);
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState('all');
-  const [guestName, setGuestName] = useState('');
+  const [guestName, setGuestName] = useState(() => (clienteId ? readSession(`selfOrderGuestCliente:${clienteId}`) : ''));
 
   const {
     cart,
@@ -363,6 +373,15 @@ export default function SelfOrderCliente() {
           <p className="truncate text-xs text-[#6b7280]">{table?.name || 'Cliente'}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {openedFromClients ? (
+            <button
+              type="button"
+              onClick={() => navigate('/admin/clientes')}
+              className="rounded-full px-2 py-1.5 text-xs font-semibold text-[#6b7280]"
+            >
+              Clientes
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={handleLogoutCliente}

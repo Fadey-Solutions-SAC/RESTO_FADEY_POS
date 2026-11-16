@@ -11,7 +11,7 @@ const {
 } = require('../orderCreateService');
 const { emitInventoryUpdate } = require('../socketBroadcast');
 const { createRateLimiter } = require('../middleware/rateLimit');
-const { JWT_SECRET } = require('../middleware/auth');
+const { JWT_SECRET, authenticateToken, requireRole } = require('../middleware/auth');
 const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
 const { getTableDisplayLabel } = require('../utils/tableDisplayLabel');
 const { loadActiveTableOrders } = require('../services/tableOrdersQueryService');
@@ -187,6 +187,22 @@ router.post('/client-verify', clientVerifyLimiter, (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Error al verificar' });
+  }
+});
+
+router.post('/client-staff-open', authenticateToken, requireRole('admin', 'cajero'), (req, res) => {
+  try {
+    const customerId = String(req.body?.customer_id || '').trim();
+    if (!customerId) return res.status(400).json({ error: 'Cliente requerido' });
+    const row = queryOne('SELECT id, name FROM customers WHERE id = ?', [customerId]);
+    if (!row) return res.status(404).json({ error: 'Cliente no encontrado' });
+    const name = String(row.name || '').replace(/\s+/g, ' ').trim().slice(0, 40) || 'Cliente';
+    res.json({
+      token: signSelfOrderClientToken(row.id),
+      customer: { id: row.id, name },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'No se pudo abrir el pedido' });
   }
 });
 

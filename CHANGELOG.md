@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.3.1 — 2026-11-16
+
+- En el detalle del cliente, a la derecha del QR, Hacer pedido abre su auto-pedido con el nombre ya puesto. Sirve para cargar la pensión sin contraseña ni escribir el nombre uno por uno. El QR del cliente no cambia.
+
 ## 1.2.3.0 — 2026-11-16
 
 - El QR de la habitación se abre al pulsar Ver QR y desde ahí se descarga. En Caja y Mesas hay una zona Hotel, con habitaciones en forma de puerta: ahí solo se ven y se cargan productos. En Hotel quedan a la vista Ingreso, Salida y Mantenimiento o Activar; el resto está en el menú de tres puntos.

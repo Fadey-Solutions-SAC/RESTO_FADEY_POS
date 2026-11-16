@@ -8,7 +8,7 @@ import {
   MdAdd, MdEdit, MdDelete, MdSearch, MdPhone, MdEmail, MdAttachMoney, MdContentCopy,
   MdPeople, MdPersonAdd, MdCreditCard, MdStar, MdChevronRight, MdChevronLeft, MdVisibility,
   MdMoreVert, MdFileDownload, MdBusiness, MdRepeat, MdFiberNew,
-  MdCheckCircle, MdLocationOn,
+  MdCheckCircle, MdLocationOn, MdRestaurantMenu,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import ToolbarFilterMenu from '../../components/admin/ToolbarFilterMenu';
@@ -111,6 +111,7 @@ export default function Clientes() {
   const [openMenuId, setOpenMenuId] = useState('');
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
   const [viewClientId, setViewClientId] = useState('');
+  const [openingSelfOrderId, setOpeningSelfOrderId] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editClient, setEditClient] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -392,6 +393,24 @@ export default function Clientes() {
       load('');
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  const openClienteSelfOrder = async (client) => {
+    const customerId = String(client?.id || '').trim();
+    if (!customerId || openingSelfOrderId) return;
+    setOpeningSelfOrderId(customerId);
+    try {
+      const data = await api.post('/public/self-order/client-staff-open', { customer_id: customerId });
+      const token = String(data?.token || '').trim();
+      if (!token) throw new Error('No se pudo abrir el pedido');
+      const name = String(data?.customer?.name || client?.name || 'Cliente').replace(/\s+/g, ' ').trim().slice(0, 40) || 'Cliente';
+      sessionStorage.setItem(`selfOrderCliente:${customerId}`, token);
+      sessionStorage.setItem(`selfOrderGuestCliente:${customerId}`, name);
+      navigate(`/auto-pedido-cliente?cliente=${encodeURIComponent(customerId)}&atajo=1`);
+    } catch (err) {
+      toast.error(err.message || 'No se pudo abrir el auto-pedido');
+      setOpeningSelfOrderId('');
     }
   };
 
@@ -859,6 +878,14 @@ export default function Clientes() {
                 alt="QR auto-pedido"
                 className="h-24 w-24 shrink-0 rounded border border-slate-200 bg-white p-0.5"
               />
+              <button
+                type="button"
+                onClick={() => openClienteSelfOrder(viewClient)}
+                disabled={openingSelfOrderId === viewClient.id}
+                className="btn-primary inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm disabled:opacity-60"
+              >
+                <MdRestaurantMenu /> {openingSelfOrderId === viewClient.id ? 'Abriendo…' : 'Hacer pedido'}
+              </button>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-slate-900">Auto-pedido del cliente</p>
                 <p className="text-xs text-slate-500">El cliente puede escanear este QR para hacer pedidos a su nombre.</p>

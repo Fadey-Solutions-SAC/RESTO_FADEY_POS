@@ -292,12 +292,19 @@ Para crear un área nueva, pregunta «cómo crear un área de producción».`,
   {
     id: 'guide-clientes',
     title: 'Cómo registrar o editar un cliente',
-    keywords: ['clientes', 'crear cliente', 'nuevo cliente', 'ficha cliente', 'buscar cliente'],
+    keywords: ['clientes', 'crear cliente', 'nuevo cliente', 'ficha cliente', 'buscar cliente', 'hacer pedido cliente', 'pension', 'auto pedido cliente'],
     body: `Paso a paso — Clientes:
 1. Menú Clientes.
 2. Nuevo: nombre, documento, teléfono, correo, dirección.
 3. Guarda. Puedes buscarlo al cobrar o en créditos/delivery.
-4. Edita o desactiva desde el mismo listado.`,
+4. Edita o desactiva desde el mismo listado.
+Para cargar el pedido de un cliente (por ejemplo de pensión) sin que él escanee el QR:
+1. Abre el detalle del cliente.
+2. A la derecha del QR pulsa Hacer pedido.
+3. Entras directo a su auto-pedido, con su nombre, sin contraseña.
+4. Elige los productos y envía. Queda en su cuenta para cobrar.
+5. Clientes, arriba en el menú, vuelve al listado para el siguiente.
+El QR sigue igual para el cliente: escanea, pone su contraseña, escribe su nombre y ve los productos.`,
   },
   {
     id: 'guide-creditos',
