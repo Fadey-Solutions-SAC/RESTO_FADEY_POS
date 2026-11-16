@@ -14,7 +14,7 @@ export const NAV_MENU_GROUPS = [
     id: 'operacion',
     title: 'OPERACIÓN',
     subtitle: 'Herramientas para la atención y el funcionamiento diario del restaurante',
-    moduleIds: ['caja', 'mesas', 'produccion', 'cocina', 'bar', 'delivery', 'reservas', 'auto_pedido'],
+    moduleIds: ['caja', 'mesas', 'produccion', 'cocina', 'bar', 'delivery', 'hoteleria', 'reservas', 'auto_pedido'],
   },
   {
     id: 'comercial',

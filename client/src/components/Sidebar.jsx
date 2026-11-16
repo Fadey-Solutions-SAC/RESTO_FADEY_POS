@@ -6,6 +6,7 @@ import { api } from '../utils/api';
 import { ADMIN_MODULE_PATHS, PRIMARY_MODULE_BY_ROLE, canAccessProductionArea, canAccessStaffModule, hasModulePermission } from '../utils/staffModuleAccess';
 import { groupNavLinks, sortProductionAreasForNav } from '../utils/navMenuGroups';
 import { useShowDeliveryUi } from '../hooks/useDeliveryEnabled';
+import { useShowHotelUi } from '../hooks/useHotelEnabled';
 import { usePrintingModule } from '../hooks/usePrintingModule';
 import EndShiftModal from './EndShiftModal';
 import AdminAttendanceReviewModal from './AdminAttendanceReviewModal';
@@ -13,7 +14,7 @@ import {
   MdDashboard, MdAttachMoney, MdPointOfSale, MdEventSeat,
   MdCreditCard, MdPeopleAlt, MdRestaurantMenu, MdLocalOffer,
   MdWarehouse, MdDeliveryDining, MdAssessment,
-  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdGroups, MdKitchen, MdLocalBar, MdTouchApp, MdStars,
+  MdInsights, MdStorefront, MdSettings, MdLogout, MdTableBar, MdGroups, MdKitchen, MdLocalBar, MdTouchApp, MdStars, MdHotel,
 } from 'react-icons/md';
 import { getProductionAreaIcon } from '../utils/productionAreaUi';
 import { useUiTheme } from '../theme/useUiTheme';
@@ -28,6 +29,7 @@ const SIDEBAR_LINK_META = {
   cocina: { icon: MdKitchen, labelKey: 'nav.cocina' },
   bar: { icon: MdLocalBar, labelKey: 'nav.bar' },
   delivery: { icon: MdDeliveryDining, labelKey: 'nav.delivery' },
+  hoteleria: { icon: MdHotel, labelKey: 'nav.hoteleria' },
   reservas: { icon: MdEventSeat, labelKey: 'nav.reservas' },
   auto_pedido: { icon: MdTouchApp, labelKey: 'nav.auto_pedido' },
   clientes: { icon: MdPeopleAlt, labelKey: 'nav.clientes' },
@@ -76,6 +78,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const uiTheme = useUiTheme();
   const brandMark = getSidebarBrandMark(uiTheme);
   const showDeliveryUi = useShowDeliveryUi();
+  const showHotelUi = useShowHotelUi();
   const [productionAreas, setProductionAreas] = useState([]);
 
   const loadProductionAreas = useCallback(() => {
@@ -309,7 +312,8 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   };
   const filtered = allLinks
     .filter(hasLinkPermission)
-    .filter((link) => link.moduleId !== 'delivery' || showDeliveryUi);
+    .filter((link) => link.moduleId !== 'delivery' || showDeliveryUi)
+    .filter((link) => link.moduleId !== 'hoteleria' || showHotelUi);
   const subAlmacen = user?.sub_permissions?.almacen || {};
   const almacenSubOptions = ALMACEN_SUB_IDS.filter((id) => {
     if (subAlmacen[id] === false) return false;

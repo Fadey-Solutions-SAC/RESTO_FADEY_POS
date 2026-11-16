@@ -1,6 +1,6 @@
 # Contexto del proyecto
 
-Versión de producto: **1.2.2.3** (`package.json` y `client/package.json`). En pantalla: `v 1.2.2.3`.
+Versión de producto: **1.2.2.4** (`package.json` y `client/package.json`). En pantalla: `v 1.2.2.4`.
 
 Este archivo describe el sistema tal como está en el código. No reemplaza `AGENTS.md` (cómo trabajar) ni `CHANGELOG.md` (qué cambió).
 
@@ -67,6 +67,7 @@ Definidas en `client/src/App.jsx`. No cambiar el path sin autorización (ver `AG
 | `/admin/promociones` | Ofertas y descuentos (`/admin/ofertas` y `/admin/descuentos` redirigen aquí) |
 | `/admin/almacen` | Almacén |
 | `/admin/delivery` | Delivery (admin) |
+| `/admin/hoteleria` | Hotelería (habitaciones, cuenta y cobro en su caja) |
 | `/admin/produccion/:areaId`, `/admin/cocina`, `/admin/bar` | Producción |
 | `/admin/informes` | Informes. Facturación: `?seccion=facturacion` |
 | `/admin/indicadores` | Indicadores |
@@ -92,6 +93,7 @@ Montados en `server/index.js`. El path del prefijo no se renombra sin autorizaci
 | `/api/fadey` y `/fadey` | Público Fadey |
 | `/api/orders`, `/api/pos`, `/api/tables`, `/api/products`, `/api/categories`, `/api/production-areas` | Operación de salón |
 | `/api/delivery` | Delivery |
+| `/api/hotel` | Hotelería (habitaciones y cuenta) |
 | `/api/inventory`, `/api/kardex-inventory` | Stock |
 | `/api/billing` | Comprobantes electrónicos |
 | `/api/printing`, `/api/print-jobs`, `/printers`, `/api/printers` | Impresión |
@@ -109,7 +111,7 @@ Socket.IO usa el path `/socket.io/`.
 
 ## Datos principales
 
-Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurants`, `users`, `user_work_sessions`, `user_work_activity_events`, `customers`, `categories`, `products`, `product_variants`, `orders`, `order_items`, `order_station_state`, `tables`, `reservations`, `cash_registers`, `cash_movements`, `delivery_assignments`, `electronic_documents`, `inventory_logs`, `insumos`, `kardex`, `recetas`, `suppliers`, `purchase_orders`, `promotions`, `loyalty_surveys`, `git_cards_*`, `customer_credits`, `print_jobs`, `printer_routes`, `printer_settings`, `app_settings`, `business_config_*`, `audit_logs`.
+Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurants`, `users`, `user_work_sessions`, `user_work_activity_events`, `customers`, `categories`, `products`, `product_variants`, `orders`, `order_items`, `order_station_state`, `tables`, `hotel_rooms`, `reservations`, `cash_registers`, `cash_movements`, `delivery_assignments`, `electronic_documents`, `inventory_logs`, `insumos`, `kardex`, `recetas`, `suppliers`, `purchase_orders`, `promotions`, `loyalty_surveys`, `git_cards_*`, `customer_credits`, `print_jobs`, `printer_routes`, `printer_settings`, `app_settings`, `business_config_*`, `audit_logs`.
 
 ## Asistentes de impresión
 
@@ -129,6 +131,7 @@ Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurant
 - Los permisos POS listan las áreas de producción activas del local. Cada área se guarda como `prodarea:<id>`. Cocina y Bar siguen reflejados en `cocina` y `bar`.
 - En Movimiento interno, cada producto puede moverse a otro almacén de productos (`POST /api/inventory/warehouse-move`). La cantidad parte de todo el stock del origen y se puede bajar o subir hasta ese tope. El stock total del producto sigue igual. Los insumos de kardex siguen en su almacén de insumos.
 - Los PDF de boleta y factura del flujo Android los arma el servidor (`server/billingFormalReceiptPdf.js`), no el teléfono.
+- Hotelería se enciende con `restaurants.hotel_enabled`, igual que Delivery. Cada habitación guarda huésped, costo por noche y `caja_station_id`. El ingreso abre un pedido (`orders.hotel_room_id`) que suma las noches y los productos. El QR usa `selfOrderUrl(..., 'habitacion')` y el mismo auto pedido de la mesa. El cobro es `POST /api/pos/checkout-table` y solo entra en la caja asignada.
 
 ## Dependencias de runtime (raíz)
 

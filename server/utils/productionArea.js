@@ -3,7 +3,12 @@
  * Sin área válida en producto → cocina.
  */
 
+function isHotelLodgingItem(item = {}) {
+  return String(item?.notes || '') === 'hotel_lodging' || String(item?.variant_name || '') === 'hospedaje';
+}
+
 function expandItemTargets(item = {}) {
+  if (isHotelLodgingItem(item)) return [];
   const combo = item._comboComponents;
   if (Array.isArray(combo) && combo.length > 0) return combo;
   return [item];
@@ -51,6 +56,7 @@ function filterItemsForKitchenStation(items, station) {
   if (!Array.isArray(items) || items.length === 0) return [];
   const st = String(station || 'cocina').trim() || 'cocina';
   return items.filter((item) => {
+    if (isHotelLodgingItem(item)) return false;
     const targets = expandItemTargets(item);
     return targets.some((t) => itemProductionAreaId(t) === st);
   });

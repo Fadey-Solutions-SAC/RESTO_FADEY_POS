@@ -900,6 +900,15 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
         const order = tx.queryOne('SELECT * FROM orders WHERE id = ?', [orderId]);
         if (!order) throw new Error(`Pedido no encontrado: ${orderId}`);
         if (order.status === 'cancelled') throw new Error(`No puedes cobrar un pedido anulado: ${order.order_number}`);
+        const hotelRoomId = String(order.hotel_room_id || '').trim();
+        if (hotelRoomId) {
+          const room = tx.queryOne('SELECT id, number, caja_station_id FROM hotel_rooms WHERE id = ?', [hotelRoomId]);
+          const roomCaja = String(room?.caja_station_id || '').trim();
+          const regCaja = String(register.caja_station_id || '').trim();
+          if (room && roomCaja && roomCaja !== regCaja) {
+            throw new Error(`La habitación ${room.number} pertenece a otra caja. Cóbrela en la caja correspondiente.`);
+          }
+        }
         if (order.status === 'delivered' && order.payment_status === 'paid') {
           return;
         }
@@ -1014,6 +1023,12 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero')
               "UPDATE electronic_documents SET payment_method = ?, updated_at = datetime('now') WHERE order_id = ?",
               [primaryMethod, row.id]
             );
+          }
+          const paidRow = tx.queryOne('SELECT hotel_room_id FROM orders WHERE id = ?', [row.id]);
+          const paidRoomId = String(paidRow?.hotel_room_id || '').trim();
+          if (paidRoomId) {
+            const { releaseRoomTx } = require('../services/hotelService');
+            releaseRoomTx(tx, paidRoomId);
           }
         }
         if (canSavePaymentNote) {

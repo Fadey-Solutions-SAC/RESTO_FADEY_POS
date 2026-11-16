@@ -1507,6 +1507,33 @@ async function initDatabase() {
     `);
 
     db.run(`
+      CREATE TABLE IF NOT EXISTS hotel_rooms (
+        id TEXT PRIMARY KEY,
+        number TEXT NOT NULL,
+        name TEXT DEFAULT '',
+        floor TEXT DEFAULT '',
+        capacity INTEGER DEFAULT 2,
+        nightly_rate REAL DEFAULT 0,
+        status TEXT DEFAULT 'available' CHECK(status IN ('available','occupied','maintenance')),
+        guest_name TEXT DEFAULT '',
+        guest_doc_type TEXT DEFAULT 'DNI',
+        guest_doc_number TEXT DEFAULT '',
+        guest_phone TEXT DEFAULT '',
+        guest_email TEXT DEFAULT '',
+        check_in TEXT DEFAULT '',
+        check_out TEXT DEFAULT '',
+        nights INTEGER DEFAULT 0,
+        notes TEXT DEFAULT '',
+        caja_station_id TEXT DEFAULT '',
+        current_order_id TEXT DEFAULT '',
+        restaurant_id TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_hotel_rooms_number ON hotel_rooms(number)');
+
+    db.run(`
       CREATE TABLE IF NOT EXISTS user_permissions (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL UNIQUE,
@@ -1971,6 +1998,7 @@ async function initDatabase() {
     addOrderColIfMissing('station_bar_preparing_at', 'ALTER TABLE orders ADD COLUMN station_bar_preparing_at TEXT');
     addOrderColIfMissing('kitchen_last_send_at', 'ALTER TABLE orders ADD COLUMN kitchen_last_send_at TEXT');
     addOrderColIfMissing('table_id', "ALTER TABLE orders ADD COLUMN table_id TEXT DEFAULT ''");
+    addOrderColIfMissing('hotel_room_id', "ALTER TABLE orders ADD COLUMN hotel_room_id TEXT DEFAULT ''");
     addOrderColIfMissing('ticket_guest_name', "ALTER TABLE orders ADD COLUMN ticket_guest_name TEXT DEFAULT ''");
     addOrderColIfMissing('sale_number', 'ALTER TABLE orders ADD COLUMN sale_number INTEGER');
     try {
@@ -2109,6 +2137,9 @@ async function initDatabase() {
     }
     if (!restaurantColumns.some(col => col.name === 'billing_emisor_distrito')) {
       db.run("ALTER TABLE restaurants ADD COLUMN billing_emisor_distrito TEXT DEFAULT 'LIMA'");
+    }
+    if (!restaurantColumns.some(col => col.name === 'hotel_enabled')) {
+      db.run('ALTER TABLE restaurants ADD COLUMN hotel_enabled INTEGER DEFAULT 0');
     }
 
     const rcPanelJson = queryAll('PRAGMA table_info(restaurants)');

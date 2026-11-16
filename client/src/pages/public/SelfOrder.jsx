@@ -20,6 +20,10 @@ import SelfOrderNameGate from '../../components/SelfOrderNameGate';
 export default function SelfOrder() {
   const [searchParams] = useSearchParams();
   const mesaParam = String(searchParams.get('mesa') || '').trim();
+  const roomParam = String(searchParams.get('habitacion') || '').trim();
+  const placeKind = roomParam ? 'habitacion' : 'mesa';
+  const placeValue = roomParam || mesaParam;
+  const placeLabel = placeKind === 'habitacion' ? `Habitación ${placeValue}` : `Mesa ${placeValue}`;
 
   const [bootstrap, setBootstrap] = useState(null);
   const [bootError, setBootError] = useState('');
@@ -58,21 +62,24 @@ export default function SelfOrder() {
   const retryTimerRef = useRef(null);
 
   useEffect(() => {
-    if (!mesaParam) return;
+    if (!placeValue) return;
     try {
-      setGuestName(String(sessionStorage.getItem(`selfOrderGuest:${mesaParam}`) || '').trim());
+      setGuestName(String(sessionStorage.getItem(`selfOrderGuest:${placeKind}:${placeValue}`) || '').trim());
     } catch {
       setGuestName('');
     }
-  }, [mesaParam]);
+  }, [placeKind, placeValue]);
 
   useEffect(() => () => clearTimeout(retryTimerRef.current), []);
 
   const loadBootstrap = useCallback((attempt = 0) => {
-    if (!mesaParam) return;
+    if (!placeValue) return;
     clearTimeout(retryTimerRef.current);
+    const bootQuery = placeKind === 'habitacion'
+      ? `habitacion=${encodeURIComponent(placeValue)}`
+      : `mesa=${encodeURIComponent(placeValue)}`;
     api
-      .get(`/public/self-order/bootstrap?mesa=${encodeURIComponent(mesaParam)}`)
+      .get(`/public/self-order/bootstrap?${bootQuery}`)
       .then((data) => {
         hasBootstrapRef.current = true;
         setSlowLoad(false);
@@ -95,20 +102,23 @@ export default function SelfOrder() {
         setBootError(err.message || 'No se pudo cargar');
         setBootstrap(null);
       });
-  }, [mesaParam]);
+  }, [placeKind, placeValue]);
 
   const loadOrders = useCallback(() => {
-    if (!mesaParam || bootError) return;
+    if (!placeValue || bootError) return;
+    const ordersQuery = placeKind === 'habitacion'
+      ? `habitacion=${encodeURIComponent(placeValue)}`
+      : `mesa=${encodeURIComponent(placeValue)}`;
     api
-      .get(`/public/self-order/orders?mesa=${encodeURIComponent(mesaParam)}`)
+      .get(`/public/self-order/orders?${ordersQuery}`)
       .then(setOrders)
       .catch(() => {});
-  }, [mesaParam, bootError]);
+  }, [placeKind, placeValue, bootError]);
 
   useEffect(() => {
-    if (!mesaParam) return;
+    if (!placeValue) return;
     loadBootstrap();
-  }, [mesaParam, loadBootstrap]);
+  }, [placeValue, loadBootstrap]);
 
   useEffect(() => {
     loadOrders();
@@ -122,15 +132,15 @@ export default function SelfOrder() {
   );
 
   useSocket('staff-data-update', (p) => {
-    if (!mesaParam || !STAFF_CATALOG_DOMAINS.has(p?.domain)) return;
+    if (!placeValue || !STAFF_CATALOG_DOMAINS.has(p?.domain)) return;
     void loadBootstrap();
   });
   useSocket('inventory-update', () => {
-    if (!mesaParam) return;
+    if (!placeValue) return;
     void loadBootstrap();
   });
   useSocket('order-update', () => {
-    if (!mesaParam) return;
+    if (!placeValue) return;
     void loadOrders();
   });
 
@@ -153,7 +163,7 @@ export default function SelfOrder() {
   };
 
   const submitOrder = async () => {
-    if (!table) return toast.error('Mesa no disponible');
+    if (!table) return toast.error(placeKind === 'habitacion' ? 'Habitación no disponible' : 'Mesa no disponible');
     if (cart.length === 0) return toast.error('Agrega productos al pedido');
     const missingRequiredNote = cart.find(
       (i) => Number(i.note_required || 0) === 1 && !String(i.notes || '').trim()
@@ -164,9 +174,7 @@ export default function SelfOrder() {
     }
     const tid = toast.loading('Enviando pedido…');
     try {
-      await api.post('/public/self-order/orders', {
-        mesa: String(table.number),
-        table_id: String(table.id || ''),
+      const orderBody = {
         items: cart.map((i) => ({
           product_id: i.product_id,
           quantity: i.quantity,
@@ -177,7 +185,13 @@ export default function SelfOrder() {
         payment_method: 'efectivo',
         customer_name: getTableDisplayLabel(table),
         guest_name: guestName,
-      });
+      };
+      if (placeKind === 'habitacion') orderBody.habitacion = placeValue;
+      else {
+        orderBody.mesa = String(table.number);
+        orderBody.table_id = String(table.id || '');
+      }
+      await api.post('/public/self-order/orders', orderBody);
       toast.success(`Pedido enviado — ${getTableDisplayLabel(table)}`, { id: tid });
       resetCart();
       closeOrderPanel();
@@ -187,14 +201,14 @@ export default function SelfOrder() {
     }
   };
 
-  if (!mesaParam) {
+  if (!placeValue) {
     return (
       <div className="min-h-screen bg-[var(--ui-body-bg)] flex items-center justify-center p-6 text-center">
         <div className="max-w-md rounded-2xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] p-8 text-[var(--ui-body-text)] shadow-xl">
           <MdRestaurantMenu className="text-5xl mx-auto mb-4 text-[var(--ui-accent)]" />
           <h1 className="text-xl font-bold mb-2">Auto pedido</h1>
           <p className="text-[var(--ui-muted)] text-sm">
-            Escanea el código QR de tu mesa para ver la carta y hacer tu pedido. Si llegaste aquí sin QR, pide al personal el enlace con el número de mesa.
+            Escanea el código QR de tu mesa o habitación para ver la carta y hacer tu pedido. Si llegaste aquí sin QR, pide al personal el enlace.
           </p>
         </div>
       </div>
@@ -202,7 +216,7 @@ export default function SelfOrder() {
   }
 
   if (!bootstrap && !bootError) {
-    return <SelfOrderLoading subtitle={`Mesa ${mesaParam}`} slow={slowLoad} />;
+    return <SelfOrderLoading subtitle={placeLabel} slow={slowLoad} />;
   }
 
   if (bootError || !bootstrap) {
@@ -232,7 +246,7 @@ export default function SelfOrder() {
         subtitle={getTableDisplayLabel(table)}
         onContinue={(name) => {
           try {
-            sessionStorage.setItem(`selfOrderGuest:${mesaParam}`, name);
+            sessionStorage.setItem(`selfOrderGuest:${placeKind}:${placeValue}`, name);
           } catch {
             /* private mode */
           }

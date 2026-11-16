@@ -9,6 +9,7 @@ export const ADMIN_MODULE_PATHS = [
   { path: '/admin/cocina', moduleId: 'cocina', roles: ['admin', 'produccion', 'cocina'] },
   { path: '/admin/bar', moduleId: 'bar', roles: ['admin', 'produccion', 'bar'] },
   { path: '/admin/delivery', moduleId: 'delivery', roles: ['admin', 'delivery'] },
+  { path: '/admin/hoteleria', moduleId: 'hoteleria', roles: ['admin', 'cajero'] },
   { path: '/admin/reservas', moduleId: 'reservas', roles: ['admin'] },
   { path: '/admin/auto-pedido', moduleId: 'auto_pedido', roles: ['admin'] },
   { path: '/admin/ventas', moduleId: 'ventas', roles: ['admin'] },

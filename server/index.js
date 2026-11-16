@@ -342,6 +342,7 @@ app.use('/api/kardex-inventory', require('./routes/kardexInventory'));
 app.use('/api/pos', require('./routes/pos'));
 app.use('/api/delivery', require('./routes/delivery'));
 app.use('/api/tables', require('./routes/tables'));
+app.use('/api/hotel', require('./routes/hotel'));
 app.use('/api/admin-modules', require('./routes/adminModules'));
 app.use('/api/legal-documents', require('./routes/legalDocuments'));
 app.use('/api/promotions', require('./routes/promotions'));

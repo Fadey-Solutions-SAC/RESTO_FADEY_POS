@@ -27,6 +27,7 @@ import Productos from './pages/admin/Productos';
 import Promociones from './pages/admin/Promociones';
 import Almacen from './pages/admin/Almacen';
 import Delivery from './pages/admin/Delivery';
+import Hoteleria from './pages/admin/Hoteleria';
 import Reports from './pages/admin/Reports';
 import Indicadores from './pages/admin/Indicadores';
 import Fidelizacion from './pages/admin/Fidelizacion';
@@ -50,8 +51,22 @@ import PrintingAssistantAutoDiscover from './components/PrintingAssistantAutoDis
 import { ADMIN_MODULE_PATHS, hasModulePermission, canAccessStaffModule, canAccessProductionArea, getDefaultStaffPath, getOwnProductionAreaId } from './utils/staffModuleAccess';
 import { isMasterViewingAsOwner } from './utils/masterViewMode';
 import { useDeliverySettings } from './hooks/useDeliveryEnabled';
+import { useHotelSettings } from './hooks/useHotelEnabled';
 import { api } from './utils/api';
 import { startOfflinePosListeners } from './utils/offlinePos';
+
+function HotelModuleGate({ children }) {
+  const { enabled, loaded } = useHotelSettings();
+  if (!loaded) {
+    return (
+      <div className="min-h-[40vh] flex items-center justify-center">
+        <div className="rf-loader rf-loader--md" />
+      </div>
+    );
+  }
+  if (!enabled) return <Navigate to="/admin" replace />;
+  return children;
+}
 
 function DeliveryModuleGate({ children }) {
   const { enabled, loaded } = useDeliverySettings();
@@ -239,6 +254,7 @@ function AppRoutes({ user }) {
         <Route path="descuentos" element={<Navigate to="/admin/promociones" replace />} />
         <Route path="almacen" element={<ProtectedRoute roles={['admin']} moduleId="almacen"><Almacen /></ProtectedRoute>} />
         <Route path="delivery" element={<ProtectedRoute roles={['admin', 'cajero', 'mozo']} moduleId="delivery"><DeliveryModuleGate><Delivery /></DeliveryModuleGate></ProtectedRoute>} />
+        <Route path="hoteleria" element={<ProtectedRoute roles={['admin', 'cajero']} moduleId="hoteleria"><HotelModuleGate><Hoteleria /></HotelModuleGate></ProtectedRoute>} />
         <Route path="produccion/:areaId" element={<ProtectedRoute roles={['admin', 'produccion', 'cocina', 'bar']} moduleIds={['produccion', 'cocina', 'bar']}><KitchenAreaRoute /></ProtectedRoute>} />
         <Route path="cocina" element={<ProtectedRoute roles={['admin', 'produccion', 'cocina']} moduleIds={['cocina', 'produccion']}><KitchenPanel station="cocina" areaId="cocina" /></ProtectedRoute>} />
         <Route path="bar" element={<ProtectedRoute roles={['admin', 'produccion', 'bar']} moduleIds={['bar', 'produccion']}><KitchenPanel station="bar" areaId="bar" /></ProtectedRoute>} />

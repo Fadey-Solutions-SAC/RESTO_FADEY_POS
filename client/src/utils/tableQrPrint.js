@@ -4,6 +4,13 @@ import { api, electronPrinting, hasElectronPrinting } from './api';
 import { fetchPrintingConfig, normalizePaperWidthMm } from './printingConfig';
 import { centerThermalLine, thermalCharWidth } from './ticketPlainText';
 
+/** Misma URL del auto pedido: mesa o habitación. */
+export function selfOrderUrl(number, kind = 'mesa') {
+  const base = typeof window !== 'undefined' ? window.location.origin : '';
+  const param = kind === 'habitacion' ? 'habitacion' : 'mesa';
+  return `${base}/auto-pedido?${param}=${encodeURIComponent(String(number ?? ''))}`;
+}
+
 function safeFileName(value) {
   return String(value || 'mesa')
     .normalize('NFD')

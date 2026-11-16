@@ -14,6 +14,7 @@ import { defaultBillingPanel, defaultBillingPanelPresence } from '../../data/sun
 import { defaultMiRestaurantProfile, mergeMiRestaurantProfile } from '../../data/miRestaurantProfileDefaults';
 import MiRestaurantEmpresaHub from '../../components/miRestaurant/MiRestaurantEmpresaHub';
 import { isDeliveryEnabledValue, notifyDeliveryEnabledChanged } from '../../hooks/useDeliveryEnabled';
+import { isHotelEnabledValue, notifyHotelEnabledChanged } from '../../hooks/useHotelEnabled';
 import { MdSave, MdReceipt, MdPayment, MdUpload, MdPeople, MdHistory, MdDelete, MdSupportAgent, MdQrCode2, MdOpenInNew, MdSend, MdForum } from 'react-icons/md';
 
 const PAGO_USO_WHATSAPP_SUPPORT = '934029719';
@@ -446,6 +447,7 @@ export default function MiRestaurant() {
         DAYS.forEach(d => { if (!data.schedule[d]) data.schedule[d] = { open: '11:00', close: '23:00', enabled: true }; });
         setRestaurant(data);
         notifyDeliveryEnabledChanged(isDeliveryEnabledValue(data?.delivery_enabled));
+        notifyHotelEnabledChanged(isHotelEnabledValue(data?.hotel_enabled));
         setProfile(mergeMiRestaurantProfile(defaultMiRestaurantProfile(), data.profile || data.profile_effective || {}));
         skipAutosaveRef.current = true;
         if (data?.billing_panel && typeof data.billing_panel === 'object') {
@@ -733,6 +735,7 @@ export default function MiRestaurant() {
       skipAutosaveRef.current = true;
       setRestaurant(saved);
       notifyDeliveryEnabledChanged(isDeliveryEnabledValue(saved?.delivery_enabled));
+      notifyHotelEnabledChanged(isHotelEnabledValue(saved?.hotel_enabled));
       if (saved?.profile) setProfile(mergeMiRestaurantProfile(defaultMiRestaurantProfile(), saved.profile));
       toast.success('Guardado correctamente');
     } catch (err) {
@@ -750,6 +753,7 @@ export default function MiRestaurant() {
     currency: r?.currency,
     currency_symbol: r?.currency_symbol,
     delivery_enabled: r?.delivery_enabled,
+    hotel_enabled: r?.hotel_enabled,
     delivery_fee: r?.delivery_fee,
     delivery_min_order: r?.delivery_min_order,
     delivery_radius_km: r?.delivery_radius_km,
@@ -810,6 +814,7 @@ export default function MiRestaurant() {
       skipAutosaveRef.current = true;
       setRestaurant(saved);
       notifyDeliveryEnabledChanged(isDeliveryEnabledValue(saved?.delivery_enabled));
+      notifyHotelEnabledChanged(isHotelEnabledValue(saved?.hotel_enabled));
       if (saved?.profile) setProfile(mergeMiRestaurantProfile(defaultMiRestaurantProfile(), saved.profile));
       setAutosaveStatus('Guardado automático');
     } catch (err) {

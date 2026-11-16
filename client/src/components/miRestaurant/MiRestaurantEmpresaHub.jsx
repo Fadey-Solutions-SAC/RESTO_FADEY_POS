@@ -6,6 +6,7 @@ import {
   MdReceipt,
   MdPercent,
   MdDeliveryDining,
+  MdHotel,
   MdQrCode2,
   MdChat,
   MdSchedule,
@@ -13,6 +14,7 @@ import {
   MdLink,
 } from 'react-icons/md';
 import { notifyDeliveryEnabledChanged } from '../../hooks/useDeliveryEnabled';
+import { notifyHotelEnabledChanged } from '../../hooks/useHotelEnabled';
 import { resolveMediaUrl } from '../../utils/api';
 import { MESSAGE_VARIABLES_HELP } from '../../data/miRestaurantProfileDefaults';
 import TicketPreviewPanel from './TicketPreviewPanel';
@@ -23,6 +25,7 @@ const EMPRESA_TABS = [
   { id: 'tickets', label: 'Tickets', icon: MdReceipt },
   { id: 'tributaria', label: 'Tributaria', icon: MdPercent },
   { id: 'delivery', label: 'Delivery', icon: MdDeliveryDining },
+  { id: 'hoteleria', label: 'Hotelería', icon: MdHotel },
   { id: 'qr', label: 'QR / menú', icon: MdQrCode2 },
   { id: 'mensajes', label: 'Mensajes', icon: MdChat },
   { id: 'schedule', label: 'Horarios', icon: MdSchedule },
@@ -113,11 +116,18 @@ export default function MiRestaurantEmpresaHub({
   const q = profile?.qr || {};
   const m = profile?.messages || {};
   const deliveryOn = Number(restaurant.delivery_enabled) === 1;
+  const hotelOn = Number(restaurant.hotel_enabled) === 1;
 
   const toggleDelivery = () => {
     const next = !deliveryOn;
     onRestaurantField('delivery_enabled', next ? 1 : 0);
     notifyDeliveryEnabledChanged(next);
+  };
+
+  const toggleHotel = () => {
+    const next = !hotelOn;
+    onRestaurantField('hotel_enabled', next ? 1 : 0);
+    notifyHotelEnabledChanged(next);
   };
 
   const messageFields = [
@@ -385,6 +395,28 @@ export default function MiRestaurantEmpresaHub({
             </div>
           </div>
           ) : null}
+        </div>
+      )}
+
+      {tab === 'hoteleria' && (
+        <div className="space-y-4">
+          <div className="card flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-[var(--ui-body-text)]">
+                {hotelOn ? 'Activado en su negocio' : 'Desactivado'}
+              </p>
+              <p className="text-xs text-[var(--ui-muted)] mt-1">
+                Con el módulo activo, Hotelería aparece en Operaciones. Cada habitación se cobra en la caja que tenga asignada.
+              </p>
+            </div>
+            <button
+              type="button"
+              className={hotelOn ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
+              onClick={toggleHotel}
+            >
+              {hotelOn ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>
         </div>
       )}
 

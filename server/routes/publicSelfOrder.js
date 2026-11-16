@@ -15,6 +15,11 @@ const { JWT_SECRET } = require('../middleware/auth');
 const { normalizeTableNumber, tableNumbersMatch } = require('../utils/tableNumberMatch');
 const { getTableDisplayLabel } = require('../utils/tableDisplayLabel');
 const { loadActiveTableOrders } = require('../services/tableOrdersQueryService');
+const {
+  assertHotelEnabled,
+  findRoomByNumber,
+  openOrderForRoom,
+} = require('../services/hotelService');
 
 const router = express.Router();
 
@@ -212,9 +217,38 @@ router.get('/bootstrap', (req, res) => {
       });
     }
 
+    const habitacion = String(req.query.habitacion || '').trim();
+    if (habitacion) {
+      try {
+        assertHotelEnabled();
+      } catch (err) {
+        return res.status(err.status || 403).json({ error: err.message || 'Hotelería no está habilitada' });
+      }
+      const room = findRoomByNumber(habitacion);
+      if (!room) return res.status(404).json({ error: 'Habitación no encontrada' });
+      const stay = openOrderForRoom(room);
+      if (!stay) {
+        return res.status(404).json({ error: 'Esta habitación no tiene una cuenta abierta' });
+      }
+      return res.json({
+        mode: 'habitacion',
+        table: {
+          id: room.id,
+          number: room.number,
+          name: room.name || `Habitación ${room.number}`,
+          zone: 'Habitación',
+        },
+        products: loadProductsMenu(),
+        categories: loadCategoriesActive(),
+        modifiers: loadModifiersPublic(),
+        cartas: getAutoPedidoCartas(),
+        qr_home: getAutoPedidoQrHome(),
+      });
+    }
+
     const mesa = String(req.query.mesa || '').trim();
     if (!mesa) {
-      return res.status(400).json({ error: 'Parámetro mesa o cliente+token requerido' });
+      return res.status(400).json({ error: 'Parámetro mesa, habitación o cliente+token requerido' });
     }
     const table = findTableByMesa(mesa);
     if (!table) {
@@ -236,6 +270,16 @@ router.get('/bootstrap', (req, res) => {
 
 router.get('/orders', (req, res) => {
   try {
+    const habitacion = String(req.query.habitacion || '').trim();
+    if (habitacion) {
+      assertHotelEnabled();
+      const room = findRoomByNumber(habitacion);
+      if (!room) return res.status(404).json({ error: 'Habitación no encontrada' });
+      const stay = openOrderForRoom(room);
+      if (!stay) return res.json([]);
+      stay.items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [stay.id]);
+      return res.json([stay]);
+    }
     const mesa = String(req.query.mesa || '').trim();
     if (!mesa) return res.status(400).json({ error: 'Parámetro mesa requerido' });
     const table = findTableByMesa(mesa);
@@ -303,6 +347,47 @@ router.post('/orders', selfOrderPostLimiter, (req, res) => {
   }
 
   const orderId = uuidv4();
+  const habitacion = String(req.body?.habitacion || '').trim();
+
+  if (habitacion) {
+    try {
+      assertHotelEnabled();
+    } catch (err) {
+      return res.status(err.status || 403).json({ error: err.message || 'Hotelería no está habilitada' });
+    }
+    const room = findRoomByNumber(habitacion);
+    if (!room) return res.status(404).json({ error: 'Habitación no encontrada' });
+    const stay = openOrderForRoom(room);
+    if (!stay) return res.status(404).json({ error: 'Esta habitación no tiene una cuenta abierta' });
+    try {
+      const { appendItemsToOrderInTransaction } = require('../orderCreateService');
+      const result = withTransaction((tx) =>
+        appendItemsToOrderInTransaction(tx, stay.id, items, { kind: 'public_qr' }, {
+          notes: notes || '',
+          ticketGuestName: guestName,
+        })
+      );
+      const order = getOrderWithItems(result.orderId);
+      const io = req.app.get('io');
+      if (io && order) {
+        io.emit('order-lines-updated', { order, new_item_ids: result.newItemIds || [], merged: true });
+        io.emit('order-update', order);
+      }
+      const { scheduleKitchenBarAutoPrint } = require('../services/kitchenBarAutoPrintService');
+      scheduleKitchenBarAutoPrint(order, {
+        newItemIds: result.newItemIds || [],
+        fromLinesUpdate: true,
+      });
+      emitInventoryUpdate({});
+      return res.status(200).json({
+        ...order,
+        merged_into_existing: true,
+        new_item_ids: result.newItemIds || [],
+      });
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'No se pudo crear el pedido' });
+    }
+  }
 
   if (cliente && clientToken) {
     const cid = verifySelfOrderClientToken(clientToken);

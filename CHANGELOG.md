@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.2.4 — 2026-11-16
+
+- Hotelería entra en Operaciones. Se activa o desactiva en Mi restaurante, como Delivery. Cada habitación lleva huésped, costo por noche y su caja. La cuenta suma las noches y los productos. El QR de auto pedido es el de la mesa.
+
 ## 1.2.2.3 — 2026-11-16
 
 - En Movimiento interno, cada producto tiene Mover a almacén. La cantidad empieza en todo el stock del origen y se puede subir o bajar.

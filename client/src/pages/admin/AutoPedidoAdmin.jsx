@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { MdAdd, MdDelete, MdSave, MdContentCopy, MdUploadFile, MdRestaurantMenu, MdEdit, MdVisibility, MdVisibilityOff, MdFolderOpen, MdDownload, MdPrint, MdFullscreen, MdFullscreenExit, MdOpenInFull, MdCloseFullscreen } from 'react-icons/md';
 import QRCode from 'qrcode';
-import { downloadTableQrA5, normalizeQrSlot, printTableQrA5Sheets, suggestFormatQrSlot } from '../../utils/tableQrPrint';
+import { downloadTableQrA5, normalizeQrSlot, printTableQrA5Sheets, selfOrderUrl, suggestFormatQrSlot } from '../../utils/tableQrPrint';
 import { QR_PRINT_FORMATS, qrPrintFormatBySrc } from '../../data/qrPrintFormats';
 import { CartaPreviewMedia } from '../../components/CartasHorizontalCarousel';
 import Modal from '../../components/Modal';
@@ -80,8 +80,7 @@ Wantán frito | Crujiente con salsa tamarindo  18
 Lomo saltado | Carne, papas y arroz  38`;
 
 function selfOrderUrlForTable(number) {
-  const base = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${base}/auto-pedido?mesa=${encodeURIComponent(String(number))}`;
+  return selfOrderUrl(number, 'mesa');
 }
 
 const LOGO_SHAPES = [
