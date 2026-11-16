@@ -3889,21 +3889,26 @@ export default function POSPanel() {
   useSocket('order-update', loadHotelRooms);
   const hotelRoomsForCaja = useMemo(() => {
     const cajaId = String(register?.caja_station_id || '').trim();
-    if (!cajaId) return hotelRooms;
-    return hotelRooms.filter((room) => String(room.caja_station_id || '') === cajaId);
+    return hotelRooms.filter((room) => {
+      const id = String(room.caja_station_id || '').trim();
+      if (!id) return false;
+      if (!cajaId) return true;
+      return id === cajaId;
+    });
   }, [hotelRooms, register]);
+  const showHotelMap = showHotelZone && hotelRoomsForCaja.length > 0;
   useEffect(() => {
-    if (!tablesBySalon.length && !showHotelZone) {
+    if (!tablesBySalon.length && !showHotelMap) {
       setSelectedPosSalon('');
       return;
     }
     setSelectedPosSalon((prev) => {
       const ids = tablesBySalon.map((s) => s.zone);
-      if (showHotelZone) ids.push(HOTEL_MAP_ZONE);
+      if (showHotelMap) ids.push(HOTEL_MAP_ZONE);
       if (!ids.length) return '';
       return ids.includes(prev) ? prev : ids[0];
     });
-  }, [tablesBySalon, showHotelZone]);
+  }, [tablesBySalon, showHotelMap]);
   const selectedSalonTables = useMemo(() => {
     const entry = tablesBySalon.find((s) => s.zone === selectedPosSalon);
     return entry?.tables || [];
@@ -4763,7 +4768,7 @@ export default function POSPanel() {
         ) : (
         <>
       <div className="rf-mesa-map-toolbar mb-2 shrink-0">
-        {(tablesBySalon.length > 0 || showHotelZone) ? (
+        {(tablesBySalon.length > 0 || showHotelMap) ? (
           <div className="rf-mesa-map-toolbar__zones scrollbar-hide">
             {tablesBySalon.map(({ zone, label, tables: salonTables }) => {
               const active = selectedPosSalon === zone;
@@ -4785,7 +4790,7 @@ export default function POSPanel() {
                 </button>
               );
             })}
-            {showHotelZone ? (
+            {showHotelMap ? (
               <button
                 type="button"
                 onClick={() => setSelectedPosSalon(HOTEL_MAP_ZONE)}

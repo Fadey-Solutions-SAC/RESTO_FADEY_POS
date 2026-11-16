@@ -3,6 +3,7 @@ import { MdAdd, MdBed, MdHotel, MdMoreVert, MdPerson, MdShoppingCart } from 'rea
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import HotelRoomQrModal from '../../components/hotel/HotelRoomQrModal';
+import HotelRoomAccountModal from '../../components/hotel/HotelRoomAccountModal';
 import { useAuth } from '../../context/AuthContext';
 import { api, formatCurrency, PAYMENT_METHODS } from '../../utils/api';
 import { showStockInOrderingUI, orderingStockCellIsOut, orderingStockCellText } from '../../utils/productStockDisplay';
@@ -48,6 +49,7 @@ export default function Hoteleria() {
   const [payRoom, setPayRoom] = useState(null);
   const [payMethod, setPayMethod] = useState('efectivo');
   const [qrRoom, setQrRoom] = useState(null);
+  const [pedidoRoomId, setPedidoRoomId] = useState(null);
   const [menuRoomId, setMenuRoomId] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -118,7 +120,7 @@ export default function Hoteleria() {
         guest_email: guestForm.guest_email,
         nights: Number(guestForm.nights) || 1,
       });
-      toast.success('Ingreso registrado. La cuenta ya está en su caja.');
+      toast.success('Ingreso registrado');
       setGuestForm(null);
       load();
     } catch (err) {
@@ -226,7 +228,7 @@ export default function Hoteleria() {
           <p className="text-sm text-[var(--ui-muted)]">Habitaciones, huésped, noches y consumo a cuenta de su caja.</p>
         </div>
         {isAdmin ? (
-          <button type="button" className="btn-primary text-sm" onClick={() => setRoomForm({ ...EMPTY_ROOM, caja_station_id: stations[0]?.id || '' })}>
+          <button type="button" className="btn-primary text-sm" onClick={() => setRoomForm({ ...EMPTY_ROOM, caja_station_id: 'recepcion' })}>
             <MdAdd className="inline mr-1" /> Nueva habitación
           </button>
         ) : null}
@@ -250,7 +252,7 @@ export default function Hoteleria() {
       {loading ? (
         <div className="min-h-[30vh] flex items-center justify-center"><div className="rf-loader rf-loader--md" /></div>
       ) : rooms.length === 0 ? (
-        <div className="card text-sm text-[var(--ui-muted)]">Todavía no hay habitaciones. Cree la primera y asígnele su caja.</div>
+        <div className="card text-sm text-[var(--ui-muted)]">Todavía no hay habitaciones. Cree la primera y elija Recepción o una caja.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {rooms.map((room) => {
@@ -285,7 +287,10 @@ export default function Hoteleria() {
                     <button type="button" className="btn-primary text-xs" onClick={() => setGuestForm({ room, ...EMPTY_GUEST })}>Ingreso</button>
                   ) : null}
                   {occupied ? (
-                    <button type="button" className="btn-primary text-xs" onClick={() => { setPayMethod('efectivo'); setPayRoom(room); }}>Salida</button>
+                    <>
+                      <button type="button" className="btn-secondary text-xs" onClick={() => setPedidoRoomId(room.id)}>Pedido</button>
+                      <button type="button" className="btn-primary text-xs" onClick={() => { setPayMethod('efectivo'); setPayRoom(room); }}>Salida</button>
+                    </>
                   ) : null}
                   {canHotelDesk && !occupied ? (
                     <button type="button" className="btn-secondary text-xs" onClick={() => toggleMaintenance(room)}>{maintenance ? 'Activar' : 'Mantenimiento'}</button>
@@ -346,11 +351,12 @@ export default function Hoteleria() {
               <input type="number" min="0" step="0.5" className="input-field mt-1" value={roomForm.nightly_rate} onChange={(e) => setRoomForm({ ...roomForm, nightly_rate: e.target.value })} />
             </label>
             <label className="block text-sm">Caja
-              <select className="input-field mt-1" value={roomForm.caja_station_id || ''} onChange={(e) => setRoomForm({ ...roomForm, caja_station_id: e.target.value })}>
-                <option value="">Seleccione</option>
+              <select className="input-field mt-1" value={roomForm.caja_station_id || 'recepcion'} onChange={(e) => setRoomForm({ ...roomForm, caja_station_id: e.target.value })}>
+                <option value="recepcion">Recepción</option>
                 {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </label>
+            <p className="text-xs text-[var(--ui-muted)]">Recepción no se vincula a una caja y la habitación solo aparece en Hotel.</p>
             <label className="block text-sm">Notas
               <input className="input-field mt-1" value={roomForm.notes || ''} onChange={(e) => setRoomForm({ ...roomForm, notes: e.target.value })} />
             </label>
@@ -431,12 +437,14 @@ export default function Hoteleria() {
         ) : null}
       </Modal>
 
+      <HotelRoomAccountModal roomId={pedidoRoomId} onClose={() => { setPedidoRoomId(null); load(); }} />
+
       <HotelRoomQrModal room={qrRoom} onClose={() => setQrRoom(null)} />
 
       <Modal isOpen={!!payRoom} onClose={() => setPayRoom(null)} title={`Salida · Habitación ${payRoom?.number || ''}`} size="sm">
         {payRoom ? (
           <div className="space-y-3">
-            <p className="text-sm">La salida se registra en <strong>{payRoom.caja_name || 'la caja de la habitación'}</strong>. Al confirmar, la habitación queda en mantenimiento.</p>
+            <p className="text-sm">La salida se registra en <strong>{payRoom.caja_name || 'Recepción'}</strong>. Al confirmar, la habitación queda en mantenimiento.</p>
             <p className="text-2xl font-bold text-[var(--ui-accent)]">{money(payRoom.account_total)}</p>
             <label className="block text-sm">Medio de pago
               <select className="input-field mt-1" value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>

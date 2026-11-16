@@ -279,12 +279,18 @@ export default function Tables() {
   useEffect(() => { loadHotelRooms(); }, [loadHotelRooms]);
   useSocket('order-update', loadHotelRooms);
 
+  const hotelRoomsOnMap = useMemo(
+    () => hotelRooms.filter((room) => String(room.caja_station_id || '').trim()),
+    [hotelRooms],
+  );
+  const showHotelMap = showHotelZone && hotelRoomsOnMap.length > 0;
+
   const salonOptions = useMemo(() => {
     const zones = tablesBySalon.map((s) => s.zone);
     const ids = ['all', ...zones];
-    if (showHotelZone) ids.push(HOTEL_MAP_ZONE);
+    if (showHotelMap) ids.push(HOTEL_MAP_ZONE);
     return ids;
-  }, [tablesBySalon, showHotelZone]);
+  }, [tablesBySalon, showHotelMap]);
 
   const salonLabel = (id) => {
     if (id === 'all') return 'Todos';
@@ -427,7 +433,7 @@ export default function Tables() {
       <HotelRoomAccountModal roomId={hotelAccountId} onClose={() => { setHotelAccountId(null); loadHotelRooms(); }} />
 
       {selectedSalon === HOTEL_MAP_ZONE ? (
-        <HotelRoomMap rooms={hotelRooms} onOpen={(room) => setHotelAccountId(room.id)} />
+        <HotelRoomMap rooms={hotelRoomsOnMap} onOpen={(room) => setHotelAccountId(room.id)} />
       ) : tablesToShow.length > 0 ? (
         <div className="rf-mesa-map-grid">
           {tablesToShow.map((table) => {

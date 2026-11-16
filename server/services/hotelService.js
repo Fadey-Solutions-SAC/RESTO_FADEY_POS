@@ -77,7 +77,10 @@ function decorateRoom(room) {
     && String(account.status || '') !== 'cancelled';
   return {
     ...room,
-    caja_name: getActiveCajaById(room.caja_station_id)?.name || '',
+    caja_name: String(room.caja_station_id || '').trim()
+      ? (getActiveCajaById(room.caja_station_id)?.name || '')
+      : 'Recepción',
+    reception_only: !String(room.caja_station_id || '').trim(),
     account: open ? account : null,
     account_total: open ? round2(Number(account.total || 0)) : 0,
   };
@@ -115,8 +118,9 @@ function assertUniqueNumber(number, exceptId) {
 
 function resolveCaja(cajaId) {
   const id = String(cajaId || '').trim();
+  if (!id || id === 'recepcion') return '';
   const caja = getActiveCajaById(id);
-  if (!caja) throw httpError('Seleccione una caja activa para la habitación');
+  if (!caja) throw httpError('Seleccione una caja activa o Recepción');
   return caja.id;
 }
 
@@ -268,7 +272,9 @@ function recalcOrderTotals(tx, orderId) {
 }
 
 function cajaLabel(cajaId) {
-  return getActiveCajaById(cajaId)?.name || '';
+  const id = String(cajaId || '').trim();
+  if (!id) return 'Recepción';
+  return getActiveCajaById(id)?.name || '';
 }
 
 function upsertStayTx(tx, { room, orderId, guest, nights, checkIn, checkOut }) {

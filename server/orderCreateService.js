@@ -31,7 +31,7 @@ const {
 
 const { priceOrderLinesTx, recordPromotionUsagesTx } = require('./services/promotionService');
 
-const STAFF_IN_HOUSE_ROLES = ['admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion'];
+const STAFF_IN_HOUSE_ROLES = ['admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion', 'recepcionista'];
 
 function promotionCustomerIdFromActor(actor, bodyCustomerId) {
   if (actor?.kind === 'customer' && actor.user) return String(actor.user.id || '');

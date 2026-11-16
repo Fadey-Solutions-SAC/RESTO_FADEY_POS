@@ -821,8 +821,15 @@ router.post('/checkout-table', authenticateToken, requireRole('admin', 'cajero',
     const roomRow = orderRow?.hotel_room_id
       ? queryOne('SELECT caja_station_id FROM hotel_rooms WHERE id = ?', [orderRow.hotel_room_id])
       : null;
-    const roomRegister = openRegisterForCaja(roomRow?.caja_station_id);
-    if (roomRegister) register = roomRegister;
+    const roomCaja = String(roomRow?.caja_station_id || '').trim();
+    if (roomCaja) {
+      const roomRegister = openRegisterForCaja(roomCaja);
+      if (roomRegister) register = roomRegister;
+    } else if (!register) {
+      register = onlyActiveStationRegister(
+        queryOne(`SELECT * FROM cash_registers WHERE closed_at IS NULL ORDER BY datetime(opened_at) DESC LIMIT 1`) || null,
+      );
+    }
   }
   if (!register) return res.status(400).json({ error: 'No tienes una caja abierta para cobrar' });
 
