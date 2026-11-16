@@ -1094,6 +1094,79 @@ html[data-ui-theme='gold_premium'] .rf-shell-header .w-px {
     border: 1px solid #1d4ed8;
   }
 
+  /* Habitación: arco de puerta, no el cuadrado de la mesa. */
+  .rf-hotel-room-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 999px 999px 0.7rem 0.7rem;
+  }
+
+  .rf-hotel-room-tile:hover {
+    transform: translateY(-1px);
+  }
+
+  .rf-hotel-room-tile:focus-visible {
+    outline: 2px solid var(--ui-accent);
+    outline-offset: 2px;
+  }
+
+  .rf-hotel-room-tile--selected {
+    box-shadow: 0 0 0 2px #fbbf24;
+    border-radius: 999px 999px 0.7rem 0.7rem;
+  }
+
+  .rf-hotel-room-tile__room {
+    width: 4.5rem;
+    height: 5.85rem;
+    border-radius: 2.25rem 2.25rem 0.55rem 0.55rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1rem;
+    box-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
+    color: #fff;
+  }
+
+  .rf-hotel-room-tile__number {
+    font-size: 1.05rem;
+    font-weight: 800;
+    line-height: 1;
+    text-shadow: 0 1px 0 rgb(0 0 0 / 0.12);
+  }
+
+  .rf-hotel-room-tile__meta {
+    font-size: 0.65rem;
+    font-weight: 600;
+    opacity: 0.95;
+  }
+
+  .rf-hotel-room-tile--available .rf-hotel-room-tile__room {
+    background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
+    border: 1px solid #16a34a;
+  }
+
+  .rf-hotel-room-tile--occupied .rf-hotel-room-tile__room {
+    background: linear-gradient(180deg, #fb923c 0%, #f97316 100%);
+    border: 1px solid #ea580c;
+  }
+
+  .rf-hotel-room-tile--maintenance .rf-hotel-room-tile__room {
+    background: linear-gradient(180deg, #d1d5db 0%, #9ca3af 100%);
+    border: 1px solid #6b7280;
+    color: #1f2937;
+  }
+
+  .rf-hotel-room-tile--maintenance .rf-hotel-room-tile__number {
+    text-shadow: none;
+  }
+
   .btn-loading {
     @apply inline-flex items-center justify-center gap-2 pointer-events-none opacity-80;
   }

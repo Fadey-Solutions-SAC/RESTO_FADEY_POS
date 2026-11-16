@@ -9,6 +9,9 @@ import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import Modal from '../../components/Modal';
 import MesaTransferModal from '../../components/MesaTransferModal';
 import MesaMapTableTile from '../../components/MesaMapTableTile';
+import HotelRoomAccountModal from '../../components/hotel/HotelRoomAccountModal';
+import { HOTEL_MAP_ZONE, HotelRoomMap } from '../../components/hotel/HotelRoomTile';
+import { useHotelSettings } from '../../hooks/useHotelEnabled';
 import StaffDineInOrderUI, { StaffDineInOrderCartPanel, VIEWPORT_CART_MAX_CLASS } from '../../components/StaffDineInOrderUI';
 import { staffOrderModalProps } from '../../components/staffOrderModalLayout';
 import StaffMesaPedidoTabs from '../../components/StaffMesaPedidoTabs';
@@ -48,6 +51,10 @@ export default function Tables() {
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState('all');
   const [selectedSalon, setSelectedSalon] = useState('all');
+  const { enabled: hotelEnabled, loaded: hotelLoaded } = useHotelSettings();
+  const showHotelZone = hotelLoaded && hotelEnabled;
+  const [hotelRooms, setHotelRooms] = useState([]);
+  const [hotelAccountId, setHotelAccountId] = useState(null);
   const [paraLlevarMesa, setParaLlevarMesa] = useState(false);
   const [mesaOrderObservation, setMesaOrderObservation] = useState('');
   const [mesaTransfer, setMesaTransfer] = useState(null);
@@ -259,13 +266,29 @@ export default function Tables() {
     [salonesConfig, tables]
   );
 
+  const loadHotelRooms = useCallback(() => {
+    if (!showHotelZone) {
+      setHotelRooms([]);
+      return;
+    }
+    api.get('/hotel/rooms')
+      .then((rows) => setHotelRooms(Array.isArray(rows) ? rows : []))
+      .catch(() => setHotelRooms([]));
+  }, [showHotelZone]);
+
+  useEffect(() => { loadHotelRooms(); }, [loadHotelRooms]);
+  useSocket('order-update', loadHotelRooms);
+
   const salonOptions = useMemo(() => {
     const zones = tablesBySalon.map((s) => s.zone);
-    return ['all', ...zones];
-  }, [tablesBySalon]);
+    const ids = ['all', ...zones];
+    if (showHotelZone) ids.push(HOTEL_MAP_ZONE);
+    return ids;
+  }, [tablesBySalon, showHotelZone]);
 
   const salonLabel = (id) => {
     if (id === 'all') return 'Todos';
+    if (id === HOTEL_MAP_ZONE) return 'Hotel';
     const found = tablesBySalon.find((s) => s.zone === id);
     return found?.label ?? id;
   };
@@ -354,6 +377,8 @@ export default function Tables() {
           })}
         </div>
         <div className="rf-mesa-map-toolbar__actions">
+          {selectedSalon === HOTEL_MAP_ZONE ? null : (
+          <>
           <div className="rf-mesa-map-toolbar__divider hidden sm:block" aria-hidden="true" />
           <button
             type="button"
@@ -373,9 +398,12 @@ export default function Tables() {
             <MdSwapHoriz className="shrink-0 text-sm" />
             <span>Mover ped.</span>
           </button>
+          </>
+          )}
         </div>
       </div>
 
+      {selectedSalon === HOTEL_MAP_ZONE ? null : (
       <div className="rf-mesa-map-legend shrink-0 mb-2">
         <span className="rf-mesa-map-legend__item">
           <span className="rf-mesa-map-legend__dot" style={{ background: '#22c55e' }} />
@@ -394,8 +422,13 @@ export default function Tables() {
           Reservada
         </span>
       </div>
+      )}
 
-      {tablesToShow.length > 0 ? (
+      <HotelRoomAccountModal roomId={hotelAccountId} onClose={() => { setHotelAccountId(null); loadHotelRooms(); }} />
+
+      {selectedSalon === HOTEL_MAP_ZONE ? (
+        <HotelRoomMap rooms={hotelRooms} onOpen={(room) => setHotelAccountId(room.id)} />
+      ) : tablesToShow.length > 0 ? (
         <div className="rf-mesa-map-grid">
           {tablesToShow.map((table) => {
             const isActive = showMenu && selectedTable?.id === table.id;

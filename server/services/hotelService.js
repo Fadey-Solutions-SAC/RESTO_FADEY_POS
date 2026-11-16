@@ -30,9 +30,10 @@ function staffCajaId(user) {
   return String(row?.caja_station_id || user.caja_station_id || '').trim();
 }
 
-function assertCanOperateRoom(user, room) {
+function assertCanOperateRoom(user, room, mode = 'operate') {
   const role = String(user?.role || '').toLowerCase();
   if (role === 'admin' || role === 'master_admin') return;
+  if (mode === 'consume' && role === 'mozo') return;
   if (role !== 'cajero') throw httpError('No puede operar habitaciones', 403);
   const mine = staffCajaId(user);
   const roomCaja = String(room?.caja_station_id || '').trim();
@@ -97,7 +98,7 @@ function getRoom(id, user) {
   assertHotelEnabled();
   const room = queryOne('SELECT * FROM hotel_rooms WHERE id = ?', [id]);
   if (!room) throw httpError('Habitación no encontrada', 404);
-  assertCanOperateRoom(user, room);
+  assertCanOperateRoom(user, room, 'consume');
   return decorateRoom(room);
 }
 
@@ -436,7 +437,7 @@ function addItems(id, items, user) {
   assertHotelEnabled();
   const room = queryOne('SELECT * FROM hotel_rooms WHERE id = ?', [id]);
   if (!room) throw httpError('Habitación no encontrada', 404);
-  assertCanOperateRoom(user, room);
+  assertCanOperateRoom(user, room, 'consume');
   if (room.status !== 'occupied') throw httpError('Primero registre el ingreso del huésped');
   const orderId = String(room.current_order_id || '').trim();
   if (!orderId) throw httpError('La habitación no tiene cuenta abierta');

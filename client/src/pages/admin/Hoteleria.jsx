@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MdAdd, MdBed, MdDelete, MdHotel, MdPerson, MdQrCode2, MdShoppingCart } from 'react-icons/md';
+import { MdAdd, MdBed, MdHotel, MdMoreVert, MdPerson, MdShoppingCart } from 'react-icons/md';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
+import HotelRoomQrModal from '../../components/hotel/HotelRoomQrModal';
 import { useAuth } from '../../context/AuthContext';
 import { api, formatCurrency, PAYMENT_METHODS } from '../../utils/api';
 import { showStockInOrderingUI, orderingStockCellIsOut, orderingStockCellText } from '../../utils/productStockDisplay';
-import { downloadTableQrPng, selfOrderUrl } from '../../utils/tableQrPrint';
 
 const EMPTY_ROOM = {
   number: '',
@@ -46,6 +46,8 @@ export default function Hoteleria() {
   const [productSearch, setProductSearch] = useState('');
   const [payRoom, setPayRoom] = useState(null);
   const [payMethod, setPayMethod] = useState('efectivo');
+  const [qrRoom, setQrRoom] = useState(null);
+  const [menuRoomId, setMenuRoomId] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -159,18 +161,6 @@ export default function Hoteleria() {
       toast.error(err.message || 'No se pudo cargar el producto');
     } finally {
       setBusy(false);
-    }
-  };
-
-  const downloadQr = async (room) => {
-    try {
-      await downloadTableQrPng({
-        url: selfOrderUrl(room.number, 'habitacion'),
-        title: `Habitación ${room.number}`,
-        subtitle: 'Auto pedido',
-      });
-    } catch (err) {
-      toast.error(err.message || 'No se pudo generar el QR');
     }
   };
 
@@ -288,24 +278,44 @@ export default function Hoteleria() {
                     <p>Cuenta: <strong className="text-[var(--ui-accent)]">{money(room.account_total)}</strong></p>
                   </div>
                 ) : null}
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-wrap items-center gap-2">
                   {!occupied && !maintenance ? (
                     <button type="button" className="btn-primary text-xs" onClick={() => setGuestForm({ room, ...EMPTY_GUEST })}>Ingreso</button>
                   ) : null}
                   {occupied ? (
-                    <>
-                      <button type="button" className="btn-secondary text-xs" onClick={() => openAccount(room)}>Cuenta</button>
-                      <button type="button" className="btn-primary text-xs" onClick={() => { setPayMethod('efectivo'); setPayRoom(room); }}>Cobrar</button>
-                    </>
+                    <button type="button" className="btn-primary text-xs" onClick={() => { setPayMethod('efectivo'); setPayRoom(room); }}>Salida</button>
                   ) : null}
-                  <button type="button" className="btn-secondary text-xs" onClick={() => downloadQr(room)}><MdQrCode2 className="inline" /> QR</button>
                   {isAdmin && !occupied ? (
-                    <>
-                      <button type="button" className="btn-secondary text-xs" onClick={() => setRoomForm({ ...room, nightly_rate: room.nightly_rate })}>Editar</button>
-                      <button type="button" className="btn-secondary text-xs" onClick={() => toggleMaintenance(room)}>{maintenance ? 'Activar' : 'Mantenimiento'}</button>
-                      <button type="button" className="btn-secondary text-xs" onClick={() => removeRoom(room)}><MdDelete className="inline" /></button>
-                    </>
+                    <button type="button" className="btn-secondary text-xs" onClick={() => toggleMaintenance(room)}>{maintenance ? 'Activar' : 'Mantenimiento'}</button>
                   ) : null}
+                  <div className="relative ml-auto">
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs px-2"
+                      aria-label="Más opciones"
+                      aria-expanded={menuRoomId === room.id}
+                      onClick={() => setMenuRoomId((id) => (id === room.id ? null : room.id))}
+                    >
+                      <MdMoreVert className="text-lg" />
+                    </button>
+                    {menuRoomId === room.id ? (
+                      <>
+                        <button type="button" className="fixed inset-0 z-10 cursor-default" aria-label="Cerrar menú" onClick={() => setMenuRoomId(null)} />
+                        <div className="absolute right-0 top-full z-20 mt-1 min-w-[9.5rem] rounded-xl border border-[color:var(--ui-border)] bg-[var(--ui-surface)] py-1 shadow-lg">
+                          {occupied ? (
+                            <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--ui-sidebar-hover)]" onClick={() => { setMenuRoomId(null); openAccount(room); }}>Cuenta</button>
+                          ) : null}
+                          <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--ui-sidebar-hover)]" onClick={() => { setMenuRoomId(null); setQrRoom(room); }}>Ver QR</button>
+                          {isAdmin && !occupied ? (
+                            <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--ui-sidebar-hover)]" onClick={() => { setMenuRoomId(null); setRoomForm({ ...room }); }}>Editar</button>
+                          ) : null}
+                          {isAdmin && !occupied ? (
+                            <button type="button" className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-[var(--ui-sidebar-hover)]" onClick={() => { setMenuRoomId(null); removeRoom(room); }}>Eliminar</button>
+                          ) : null}
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               </article>
             );
@@ -419,7 +429,9 @@ export default function Hoteleria() {
         ) : null}
       </Modal>
 
-      <Modal isOpen={!!payRoom} onClose={() => setPayRoom(null)} title={`Cobrar habitación ${payRoom?.number || ''}`} size="sm">
+      <HotelRoomQrModal room={qrRoom} onClose={() => setQrRoom(null)} />
+
+      <Modal isOpen={!!payRoom} onClose={() => setPayRoom(null)} title={`Salida · Habitación ${payRoom?.number || ''}`} size="sm">
         {payRoom ? (
           <div className="space-y-3">
             <p className="text-sm">Se cobra en <strong>{payRoom.caja_name || 'la caja asignada'}</strong>. Abra esa caja antes de confirmar.</p>
@@ -429,7 +441,7 @@ export default function Hoteleria() {
                 {PAY_OPTIONS.map((id) => <option key={id} value={id}>{PAYMENT_METHODS[id] || id}</option>)}
               </select>
             </label>
-            <button type="button" className="btn-primary w-full" disabled={busy} onClick={payStay}>Confirmar cobro</button>
+            <button type="button" className="btn-primary w-full" disabled={busy} onClick={payStay}>Confirmar salida</button>
           </div>
         ) : null}
       </Modal>

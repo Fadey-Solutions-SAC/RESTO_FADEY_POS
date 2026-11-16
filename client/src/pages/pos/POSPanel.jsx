@@ -396,6 +396,9 @@ import { REFRESH_MS } from '../../constants/refreshIntervals';
 import { useStaffOrderCart } from '../../hooks/useStaffOrderCart';
 import { useMesaOrderLock } from '../../hooks/useMesaOrderLock';
 import { useShowDeliveryUi } from '../../hooks/useDeliveryEnabled';
+import { useHotelSettings } from '../../hooks/useHotelEnabled';
+import HotelRoomAccountModal from '../../components/hotel/HotelRoomAccountModal';
+import { HOTEL_MAP_ZONE, HotelRoomMap } from '../../components/hotel/HotelRoomTile';
 import toast from 'react-hot-toast';
 import {
   archiveReservationCajaAviso,
@@ -918,6 +921,10 @@ function PosInlineLoading({ title, subtitle }) {
 
 export default function POSPanel() {
   const showDeliveryUi = useShowDeliveryUi();
+  const { enabled: hotelEnabled, loaded: hotelLoaded } = useHotelSettings();
+  const showHotelZone = hotelLoaded && hotelEnabled;
+  const [hotelRooms, setHotelRooms] = useState([]);
+  const [hotelAccountId, setHotelAccountId] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -3869,16 +3876,34 @@ export default function POSPanel() {
     () => buildTablesBySalon(salonesConfig, mesaPhysicalTables),
     [salonesConfig, mesaPhysicalTables]
   );
+  const loadHotelRooms = useCallback(() => {
+    if (!showHotelZone) {
+      setHotelRooms([]);
+      return;
+    }
+    api.get('/hotel/rooms')
+      .then((rows) => setHotelRooms(Array.isArray(rows) ? rows : []))
+      .catch(() => setHotelRooms([]));
+  }, [showHotelZone]);
+  useEffect(() => { loadHotelRooms(); }, [loadHotelRooms]);
+  useSocket('order-update', loadHotelRooms);
+  const hotelRoomsForCaja = useMemo(() => {
+    const cajaId = String(register?.caja_station_id || '').trim();
+    if (!cajaId) return hotelRooms;
+    return hotelRooms.filter((room) => String(room.caja_station_id || '') === cajaId);
+  }, [hotelRooms, register]);
   useEffect(() => {
-    if (!tablesBySalon.length) {
+    if (!tablesBySalon.length && !showHotelZone) {
       setSelectedPosSalon('');
       return;
     }
     setSelectedPosSalon((prev) => {
       const ids = tablesBySalon.map((s) => s.zone);
+      if (showHotelZone) ids.push(HOTEL_MAP_ZONE);
+      if (!ids.length) return '';
       return ids.includes(prev) ? prev : ids[0];
     });
-  }, [tablesBySalon]);
+  }, [tablesBySalon, showHotelZone]);
   const selectedSalonTables = useMemo(() => {
     const entry = tablesBySalon.find((s) => s.zone === selectedPosSalon);
     return entry?.tables || [];
@@ -4738,7 +4763,7 @@ export default function POSPanel() {
         ) : (
         <>
       <div className="rf-mesa-map-toolbar mb-2 shrink-0">
-        {tablesBySalon.length > 0 ? (
+        {(tablesBySalon.length > 0 || showHotelZone) ? (
           <div className="rf-mesa-map-toolbar__zones scrollbar-hide">
             {tablesBySalon.map(({ zone, label, tables: salonTables }) => {
               const active = selectedPosSalon === zone;
@@ -4760,13 +4785,29 @@ export default function POSPanel() {
                 </button>
               );
             })}
+            {showHotelZone ? (
+              <button
+                type="button"
+                onClick={() => setSelectedPosSalon(HOTEL_MAP_ZONE)}
+                className={`rf-mesa-map-toolbar__zone-btn ${
+                  selectedPosSalon === HOTEL_MAP_ZONE
+                    ? 'border-[color:var(--ui-border)] bg-[var(--ui-accent)] text-white shadow-sm'
+                    : 'border-[color:var(--ui-border)] bg-[var(--ui-surface-2)] text-[var(--ui-body-text)] hover:bg-[var(--ui-sidebar-hover)]'
+                }`}
+              >
+                Hotel
+                <span className={`ml-1 tabular-nums ${selectedPosSalon === HOTEL_MAP_ZONE ? 'text-white/90' : 'text-[var(--ui-muted)]'}`}>
+                  ({hotelRoomsForCaja.length})
+                </span>
+              </button>
+            ) : null}
           </div>
         ) : null}
         <div className="rf-mesa-map-toolbar__actions">
           {tablesBySalon.length > 0 ? (
             <div className="rf-mesa-map-toolbar__divider hidden sm:block" aria-hidden="true" />
           ) : null}
-          {mesaMapToolbarButtons}
+          {selectedPosSalon !== HOTEL_MAP_ZONE ? mesaMapToolbarButtons : null}
           {canSwitchCaja ? (
             <button
               type="button"
@@ -4816,8 +4857,15 @@ export default function POSPanel() {
         </p>
       ) : null}
 
+      <HotelRoomAccountModal roomId={hotelAccountId} onClose={() => { setHotelAccountId(null); loadHotelRooms(); }} />
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain scrollbar-hide space-y-6 pb-2">
-        {selectedSalonTables.length > 0 ? (
+        {selectedPosSalon === HOTEL_MAP_ZONE ? (
+          <HotelRoomMap
+            rooms={hotelRoomsForCaja}
+            onOpen={(room) => setHotelAccountId(room.id)}
+            emptyText="No hay habitaciones en esta caja"
+          />
+        ) : selectedSalonTables.length > 0 ? (
           <>
             <div className="rf-mesa-map-legend shrink-0">
               <span className="rf-mesa-map-legend__item">
