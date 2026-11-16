@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.2.0 — 2026-11-16
+
+- En Mi perfil hay un botón al final para instalar el sistema, aunque Chrome no muestre su aviso.
+
 ## 1.2.1.9 — 2026-11-15
 
 - La IA explica Mover mesa, Mover pedidos y Unir mesas como botones fijos del mapa (arriba en el celular, arriba a la derecha en la PC), sin pedir que se abra la mesa antes.

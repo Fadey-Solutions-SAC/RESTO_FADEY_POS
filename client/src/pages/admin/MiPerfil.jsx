@@ -14,6 +14,7 @@ import {
   StaffProductivityCard,
 } from '../../components/hr/StaffProfileSummary';
 import DevicePermissionsCard from '../../components/DevicePermissionsCard';
+import PwaInstallProfileButton from '../../components/PwaInstallProfileButton';
 import ProductionAreaProfileCard from '../../components/kitchen/ProductionAreaProfileCard';
 
 function PasswordInput({ value, onChange, placeholder, autoComplete }) {
@@ -174,6 +175,8 @@ export default function MiPerfil() {
         title="Mi productividad"
         selfView
       />
+
+      <PwaInstallProfileButton />
     </div>
   );
 }

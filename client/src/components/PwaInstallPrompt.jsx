@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MdGetApp, MdClose } from 'react-icons/md';
+import { canPromptPwaInstall, promptPwaInstall, subscribePwaInstall } from '../utils/pwaInstall';
 
 const SNOOZE_KEY = 'resto_fadey_pwa_install_snooze_until';
 const DONE_KEY = 'resto_fadey_pwa_install_done';
@@ -52,64 +53,27 @@ function isSnoozed() {
 export default function PwaInstallPrompt() {
   const { pathname } = useLocation();
   const hideOnThisPage = isPublicGuestPath(pathname);
-  const [deferred, setDeferred] = useState(null);
   const [showBar, setShowBar] = useState(false);
 
-  const refreshBar = useCallback((event) => {
-    if (isStandalone() || isPublicGuestPath(window.location.pathname)) {
-      setShowBar(false);
-      return;
-    }
-    if (isSnoozed()) {
-      setShowBar(false);
-      return;
-    }
-    try {
-      if (localStorage.getItem(DONE_KEY) === '1') {
+  useEffect(() => {
+    const sync = () => {
+      if (hideOnThisPage || isStandalone() || isSnoozed()) {
         setShowBar(false);
         return;
       }
-    } catch {
-      /* */
-    }
-    setShowBar(!!event);
-  }, []);
-
-  useEffect(() => {
-    if (hideOnThisPage) {
-      setShowBar(false);
-    } else if (deferred) {
-      refreshBar(deferred);
-    }
-  }, [hideOnThisPage, deferred, refreshBar]);
-
-  useEffect(() => {
-    if (isStandalone()) return;
-
-    const onBeforeInstall = (e) => {
-      e.preventDefault();
-      setDeferred(e);
-      refreshBar(e);
-    };
-
-    const onInstalled = () => {
       try {
-        localStorage.setItem(DONE_KEY, '1');
-        localStorage.removeItem(SNOOZE_KEY);
+        if (localStorage.getItem(DONE_KEY) === '1') {
+          setShowBar(false);
+          return;
+        }
       } catch {
         /* */
       }
-      setDeferred(null);
-      setShowBar(false);
+      setShowBar(canPromptPwaInstall());
     };
-
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
-  }, [refreshBar]);
+    sync();
+    return subscribePwaInstall(sync);
+  }, [hideOnThisPage]);
 
   const snooze = () => {
     try {
@@ -121,18 +85,11 @@ export default function PwaInstallPrompt() {
   };
 
   const install = async () => {
-    if (!deferred) return;
-    try {
-      deferred.prompt();
-      await deferred.userChoice;
-    } catch {
-      /* */
-    }
-    setDeferred(null);
+    await promptPwaInstall();
     setShowBar(false);
   };
 
-  if (hideOnThisPage || !showBar || !deferred || isStandalone()) return null;
+  if (hideOnThisPage || !showBar || isStandalone()) return null;
 
   return (
     <div

@@ -12,6 +12,7 @@ import { initOrientationRespect } from './orientationRespect';
 import { bootstrapUiTheme } from './theme/uiTheme';
 import { premiumToastOptions } from './theme/toastOptions';
 import i18n from './i18n';
+import './utils/pwaInstall';
 
 bootstrapUiTheme();
 initOrientationRespect();
