@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.1.9 — 2026-11-15
+
+- La IA explica Mover mesa, Mover pedidos y Unir mesas como botones fijos del mapa (arriba en el celular, arriba a la derecha en la PC), sin pedir que se abra la mesa antes.
+
 ## 1.2.1.8 — 2026-11-14
 
 - Junto al nombre comercial hay un botón de color. Ese color se usa en el nombre del inicio de sesión.

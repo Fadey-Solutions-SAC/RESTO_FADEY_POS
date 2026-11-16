@@ -106,18 +106,18 @@ Nota: requiere facturación electrónica / plan que lo permita. Si no ves la opc
   {
     id: 'guide-mover-pedido',
     title: 'Cómo mover un pedido o cuenta a otra mesa',
-    keywords: ['mover pedido', 'mover cuenta', 'trasladar', 'traslado', 'transferir mesa', 'cambiar mesa', 'pasar pedido'],
-    body: `Paso a paso — Mover pedido / traslado de mesa:
-1. Entra a Mesas o Caja (según tu permiso).
-2. Abre la mesa de origen (la que tiene el pedido o la cuenta).
-3. Busca la opción de traslado / mover / transferir (modal de mesa o menú de la cuenta).
-4. Elige destino:
-   - Mover toda la cuenta a otra mesa
-   - Mover solo algunos productos a otra mesa (si el sistema lo ofrece)
-5. Selecciona la mesa destino (libre o con cuenta; si tiene cuenta, puede unirse).
-6. Confirma (los pedidos pasan a la mesa destino y la origen se libera si quedó vacía).
+    keywords: ['mover pedido', 'mover mesa', 'mover ped', 'mover cuenta', 'trasladar', 'traslado', 'transferir mesa', 'cambiar mesa', 'pasar pedido'],
+    body: `Paso a paso — Mover mesa o mover pedidos:
+1. Entra a Caja o a Mesas. No hace falta abrir la mesa antes.
+2. Los botones ya están fijos en el mapa: arriba en el celular y arriba a la derecha en la PC.
+   - Mover mesa: pasa toda la cuenta a otra mesa.
+   - Mover ped.: pasa solo algunos productos.
+3. En el cuadro elige primero la mesa origen (la que tiene el pedido) y después la mesa destino.
+4. Si mueves pedidos, marca los productos y la cantidad.
+5. Confirma. Los pedidos quedan en la mesa destino. La origen se libera si quedó vacía.
 Importante:
-- Trasladar ≠ anular: el pedido sigue activo, solo cambia de mesa.
+- Mover no anula: el pedido sigue activo, solo cambia de mesa.
+- Unir mesas es otro botón de esa misma barra (en Caja): junta varias mesas en una cuenta.
 - Para liberar sin mover, usa anular/liberar mesa (requiere permiso).`,
   },
   {
@@ -134,12 +134,13 @@ Importante:
     id: 'guide-unir-cuentas',
     title: 'Cómo unir o juntar cuentas de mesas',
     keywords: ['unir mesas', 'juntar cuentas', 'fusionar cuenta', 'unir cuenta', 'combinar mesas'],
-    body: `Paso a paso — Unir cuentas:
-1. Abre Mesas o Caja.
-2. En la mesa origen usa traslado / unir cuenta hacia la mesa destino que ya tiene cuenta.
-3. Confirma la unión. Los ítems quedan en una sola cuenta.
-4. Cobra la cuenta unificada en Caja.
-Nota: si solo quieres pasar algunos productos, usa traslado parcial (cuando esté disponible).`,
+    body: `Paso a paso — Unir mesas:
+1. Entra a Caja. El botón Unir mesas está fijo arriba en el celular y arriba a la derecha en la PC, junto a Mover mesa y Mover ped. No se abre la mesa antes.
+2. Pulsa Unir mesas.
+3. Toca en el mapa las mesas que quieres juntar (al menos dos).
+4. Pulsa Unir (con el número de mesas) para confirmar. Los productos quedan en una sola cuenta.
+5. Cobra esa cuenta en Caja.
+Nota: si solo quieres pasar algunos productos, usa el botón Mover ped. (en Caja o en Mesas), no Unir mesas.`,
   },
   {
     id: 'guide-anular-producto',
@@ -162,7 +163,7 @@ Nota: requiere permiso; algunas anulaciones quedan registradas en informes de de
 3. Dentro de cada salón agrega mesas (número o nombre).
 4. Guarda. En Mesas/Caja verás pestañas por salón.
 5. Genera/imprime QR por mesa desde Auto pedido.
-6. Para mover pedidos entre mesas usa traslado en el mapa.`,
+6. Para mover cuentas o productos usa los botones fijos Mover mesa y Mover ped. del mapa, en Caja o en Mesas.`,
   },
 
   /* —— Producción / Cocina / Bar —— */
