@@ -15,6 +15,7 @@ const { normalizeCatalogDisplayName } = require('../utils/catalogNameFormat');
 const { parseProductMinStock, parseProductMaxStock, validateMinMaxStock } = require('../utils/productStockThreshold');
 const { resolveProductProductionAreaId } = require('../services/productionAreasService');
 const { attachKardexInsumos, buildKardexPersistFromRequest } = require('../utils/productKardexInsumos');
+const { productWarehouseIdForCaja } = require('../cajaWarehouseLink');
 const router = express.Router();
 
 function ensureWarehouseInfrastructure() {
@@ -171,6 +172,22 @@ router.get('/', (req, res) => {
   });
   if (available_now === 'true') {
     products = filterAvailableProducts(products, now, restaurantSchedule);
+  }
+  const cajaStationId = String(req.query.caja_station_id || '').trim();
+  if (cajaStationId) {
+    const scopeId = productWarehouseIdForCaja({ queryAll, queryOne }, cajaStationId);
+    if (scopeId) {
+      const stockRows = queryAll(
+        'SELECT product_id, quantity FROM inventory_warehouse_stocks WHERE warehouse_id = ?',
+        [scopeId],
+      );
+      const qtyByProduct = new Map(stockRows.map((row) => [String(row.product_id), Number(row.quantity || 0)]));
+      products.forEach((p) => {
+        if (String(p.process_type || '') !== 'non_transformed') return;
+        p.stock = qtyByProduct.has(String(p.id)) ? qtyByProduct.get(String(p.id)) : 0;
+        p.stock_warehouse_scoped = true;
+      });
+    }
   }
   res.json(products);
 });

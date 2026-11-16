@@ -2,6 +2,14 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.2.5 — 2026-11-16
+
+- Cada caja descuenta sus ventas del almacén que tenga configurado. Por defecto es el principal y el de insumos. En caja y mesas, el producto sigue visible si ese almacén está en cero.
+
+## 1.2.2.5 — 2026-11-16
+
+- Informes tiene el submódulo Informe de Hotelería. Trae huésped, documento, noches, hospedaje, productos, total, caja y cobro. Solo se ve si Hotelería está activa.
+
 ## 1.2.2.4 — 2026-11-16
 
 - Hotelería entra en Operaciones. Se activa o desactiva en Mi restaurante, como Delivery. Cada habitación lleva huésped, costo por noche y su caja. La cuenta suma las noches y los productos. El QR de auto pedido es el de la mesa.

@@ -1,6 +1,6 @@
 # Contexto del proyecto
 
-Versión de producto: **1.2.2.4** (`package.json` y `client/package.json`). En pantalla: `v 1.2.2.4`.
+Versión de producto: **1.2.2.5** (`package.json` y `client/package.json`). En pantalla: `v 1.2.2.5`.
 
 Este archivo describe el sistema tal como está en el código. No reemplaza `AGENTS.md` (cómo trabajar) ni `CHANGELOG.md` (qué cambió).
 
@@ -111,7 +111,7 @@ Socket.IO usa el path `/socket.io/`.
 
 ## Datos principales
 
-Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurants`, `users`, `user_work_sessions`, `user_work_activity_events`, `customers`, `categories`, `products`, `product_variants`, `orders`, `order_items`, `order_station_state`, `tables`, `hotel_rooms`, `reservations`, `cash_registers`, `cash_movements`, `delivery_assignments`, `electronic_documents`, `inventory_logs`, `insumos`, `kardex`, `recetas`, `suppliers`, `purchase_orders`, `promotions`, `loyalty_surveys`, `git_cards_*`, `customer_credits`, `print_jobs`, `printer_routes`, `printer_settings`, `app_settings`, `business_config_*`, `audit_logs`.
+Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurants`, `users`, `user_work_sessions`, `user_work_activity_events`, `customers`, `categories`, `products`, `product_variants`, `orders`, `order_items`, `order_station_state`, `tables`, `hotel_rooms`, `hotel_stays`, `reservations`, `cash_registers`, `cash_movements`, `delivery_assignments`, `electronic_documents`, `inventory_logs`, `insumos`, `kardex`, `recetas`, `suppliers`, `purchase_orders`, `promotions`, `loyalty_surveys`, `git_cards_*`, `customer_credits`, `print_jobs`, `printer_routes`, `printer_settings`, `app_settings`, `business_config_*`, `audit_logs`.
 
 ## Asistentes de impresión
 
@@ -130,8 +130,10 @@ Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurant
 - Un área de producción nueva recibe un color de una paleta fija, persistido en el registro del área.
 - Los permisos POS listan las áreas de producción activas del local. Cada área se guarda como `prodarea:<id>`. Cocina y Bar siguen reflejados en `cocina` y `bar`.
 - En Movimiento interno, cada producto puede moverse a otro almacén de productos (`POST /api/inventory/warehouse-move`). La cantidad parte de todo el stock del origen y se puede bajar o subir hasta ese tope. El stock total del producto sigue igual. Los insumos de kardex siguen en su almacén de insumos.
+- Cada caja descuenta los productos no transformados de su almacén (`product_warehouse_id` en la caja). Por defecto es Almacén Principal, y el de insumos queda vinculado aparte. Caja, mesas y la cuenta de habitación muestran el stock de ese almacén; en cero el producto sigue en la carta.
 - Los PDF de boleta y factura del flujo Android los arma el servidor (`server/billingFormalReceiptPdf.js`), no el teléfono.
 - Hotelería se enciende con `restaurants.hotel_enabled`, igual que Delivery. Cada habitación guarda huésped, costo por noche y `caja_station_id`. El ingreso abre un pedido (`orders.hotel_room_id`) que suma las noches y los productos. El QR usa `selfOrderUrl(..., 'habitacion')` y el mismo auto pedido de la mesa. El cobro es `POST /api/pos/checkout-table` y solo entra en la caja asignada.
+- El informe de hotelería lo arma `buildHotelReport` (`GET /api/reports/hoteleria`) a partir de `hotel_stays` y la cuenta. Informes lo muestra en `?view=hoteleria`. El submenú solo aparece si el módulo está activo.
 
 ## Dependencias de runtime (raíz)
 

@@ -25,16 +25,86 @@ function ensureWarehouseRowsForProductTx(tx, product) {
   return tx.queryAll('SELECT * FROM inventory_warehouse_stocks WHERE product_id = ?', [product.id]);
 }
 
+function ensureWarehouseQtyRowTx(tx, productId, warehouseId, initialQty) {
+  let row = tx.queryOne(
+    'SELECT * FROM inventory_warehouse_stocks WHERE product_id = ? AND warehouse_id = ?',
+    [productId, warehouseId],
+  );
+  if (row) return row;
+  const id = uuidv4();
+  tx.run(
+    'INSERT INTO inventory_warehouse_stocks (id, product_id, warehouse_id, quantity, updated_at) VALUES (?, ?, ?, ?, datetime(\'now\'))',
+    [id, productId, warehouseId, Number(initialQty || 0)],
+  );
+  return tx.queryOne('SELECT * FROM inventory_warehouse_stocks WHERE id = ?', [id]);
+}
+
+function syncProductStockTotalTx(tx, productId) {
+  const sum = tx.queryOne(
+    'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_warehouse_stocks WHERE product_id = ?',
+    [productId],
+  );
+  const total = Number(sum?.total || 0);
+  tx.run("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?", [total, productId]);
+  return total;
+}
+
 /**
- * Descuenta stock de almacén (no transformados). Permite saldo negativo en el almacén preferido.
- * No aplica a insumos kardex (se descuentan al cobrar en kardexInventoryService).
+ * Descuenta solo del almacén de la caja. Si no hay filas, el stock legado queda en el almacén
+ * del producto (o en el de la caja) y la venta baja únicamente el almacén indicado.
+ * Permite saldo negativo en ese almacén.
+ * @returns {string} id del almacén descontado
  */
-function deductNonTransformedStockTx(tx, productId, quantity) {
+function deductOnlyWarehouseTx(tx, product, quantity, warehouseId) {
+  const wh = String(warehouseId || '').trim();
+  const pending = Number(quantity || 0);
+  if (!wh || pending <= 0) return '';
+  const rows = tx.queryAll('SELECT id FROM inventory_warehouse_stocks WHERE product_id = ?', [product.id]);
+  if (rows.length === 0) {
+    const legacy = Number(product.stock || 0);
+    const home = String(product.stock_warehouse_id || '').trim() || wh;
+    if (legacy !== 0 || home === wh) {
+      ensureWarehouseQtyRowTx(tx, product.id, home, legacy);
+    }
+  }
+  const row = ensureWarehouseQtyRowTx(tx, product.id, wh, 0);
+  const next = Number(row?.quantity || 0) - pending;
+  tx.run(
+    "UPDATE inventory_warehouse_stocks SET quantity = ?, updated_at = datetime('now') WHERE id = ?",
+    [next, row.id],
+  );
+  syncProductStockTotalTx(tx, product.id);
+  return wh;
+}
+
+function addQuantityToWarehouseTx(tx, productId, warehouseId, quantity) {
+  const wh = String(warehouseId || '').trim();
+  const qty = Number(quantity || 0);
+  if (!wh || !qty) return false;
+  const row = ensureWarehouseQtyRowTx(tx, productId, wh, 0);
+  tx.run(
+    "UPDATE inventory_warehouse_stocks SET quantity = ?, updated_at = datetime('now') WHERE id = ?",
+    [Number(row?.quantity || 0) + qty, row.id],
+  );
+  syncProductStockTotalTx(tx, productId);
+  return true;
+}
+
+/**
+ * Descuenta stock de almacén (no transformados).
+ * Con warehouseId, solo ese almacén (saldo negativo permitido).
+ * Sin warehouseId, reparte como antes entre los almacenes con stock.
+ * No aplica a insumos kardex (se descuentan al cobrar en kardexInventoryService).
+ * @returns {string} almacén usado cuando el descuento fue de una sola caja; '' si fue el reparto anterior
+ */
+function deductNonTransformedStockTx(tx, productId, quantity, warehouseId) {
   const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [productId]);
-  if (!product || product.process_type !== 'non_transformed') return;
+  if (!product || product.process_type !== 'non_transformed') return '';
+  const scoped = String(warehouseId || '').trim();
+  if (scoped) return deductOnlyWarehouseTx(tx, product, quantity, scoped);
 
   let pending = Number(quantity || 0);
-  if (pending <= 0) return;
+  if (pending <= 0) return '';
 
   let stockRows = tx.queryAll(
     'SELECT id, quantity, warehouse_id FROM inventory_warehouse_stocks WHERE product_id = ? ORDER BY quantity DESC',
@@ -71,7 +141,7 @@ function deductNonTransformedStockTx(tx, productId, quantity) {
         'UPDATE products SET stock = COALESCE(stock, 0) - ?, updated_at = datetime(\'now\') WHERE id = ?',
         [pending, productId],
       );
-      return;
+      return '';
     }
   }
 
@@ -80,6 +150,7 @@ function deductNonTransformedStockTx(tx, productId, quantity) {
     [productId],
   );
   tx.run('UPDATE products SET stock = ?, updated_at = datetime(\'now\') WHERE id = ?', [Number(newSum?.total || 0), productId]);
+  return '';
 }
 
 function recalculateProductStock(productId) {
@@ -124,6 +195,29 @@ function addToWarehouses(product, quantityToAdd) {
   recalculateProductStock(product.id);
 }
 
+function addQuantityToWarehouse(productId, warehouseId, quantity) {
+  const wh = String(warehouseId || '').trim();
+  const qty = Number(quantity || 0);
+  if (!wh || !qty) return false;
+  let row = queryOne(
+    'SELECT * FROM inventory_warehouse_stocks WHERE product_id = ? AND warehouse_id = ?',
+    [productId, wh],
+  );
+  if (!row) {
+    runSql(
+      'INSERT INTO inventory_warehouse_stocks (id, product_id, warehouse_id, quantity, updated_at) VALUES (?, ?, ?, ?, datetime(\'now\'))',
+      [uuidv4(), productId, wh, qty],
+    );
+  } else {
+    runSql(
+      "UPDATE inventory_warehouse_stocks SET quantity = ?, updated_at = datetime('now') WHERE id = ?",
+      [Number(row.quantity || 0) + qty, row.id],
+    );
+  }
+  recalculateProductStock(productId);
+  return true;
+}
+
 /** Devuelve stock a almacén al anular un pedido (misma lógica que PUT /orders/:id/status → cancelled). */
 function restoreNonTransformedStockForOrder(orderId) {
   const items = queryAll('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
@@ -131,6 +225,8 @@ function restoreNonTransformedStockForOrder(orderId) {
     const product = queryOne('SELECT * FROM products WHERE id = ?', [item.product_id]);
     if (!product) return;
     if (product.process_type !== 'non_transformed') return;
+    const scoped = String(item.stock_warehouse_id || '').trim();
+    if (scoped && addQuantityToWarehouse(product.id, scoped, Number(item.quantity || 0))) return;
     addToWarehouses(product, Number(item.quantity || 0));
   });
 }
@@ -141,5 +237,6 @@ module.exports = {
   ensureWarehouseRowsForProductTx,
   addToWarehouses,
   deductNonTransformedStockTx,
+  addQuantityToWarehouseTx,
   restoreNonTransformedStockForOrder,
 };

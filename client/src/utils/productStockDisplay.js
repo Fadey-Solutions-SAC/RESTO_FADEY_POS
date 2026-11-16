@@ -30,13 +30,14 @@ export function productStockStatus(stock, minStock) {
  * - Debe ser explícitamente `non_transformed`.
  * - Si tiene stock 0 y no tiene almacén asignado, se trata como plato / dato incompleto → no mostrar
  *   (evita "Stock: 0" en platos transformados mal clasificados).
- * - Con almacén y stock 0 sí se muestra (agotado).
+ * - Con almacén de la caja y stock 0 sí se muestra (agotado), aunque otro almacén tenga unidades.
  */
 export function showStockInOrderingUI(product) {
   if (!product) return false;
   if (product.is_combo) return false;
   const pt = String(product.process_type ?? '').trim().toLowerCase();
   if (pt !== 'non_transformed') return false;
+  if (product.stock_warehouse_scoped) return true;
   const stock = Number(product.stock);
   const warehouseId = String(product.stock_warehouse_id ?? '').trim();
   if (warehouseId) return true;

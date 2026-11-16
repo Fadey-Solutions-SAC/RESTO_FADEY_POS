@@ -1534,6 +1534,32 @@ async function initDatabase() {
     db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_hotel_rooms_number ON hotel_rooms(number)');
 
     db.run(`
+      CREATE TABLE IF NOT EXISTS hotel_stays (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL UNIQUE,
+        room_id TEXT DEFAULT '',
+        room_number TEXT DEFAULT '',
+        room_name TEXT DEFAULT '',
+        floor TEXT DEFAULT '',
+        capacity INTEGER DEFAULT 0,
+        caja_station_id TEXT DEFAULT '',
+        caja_name TEXT DEFAULT '',
+        guest_name TEXT DEFAULT '',
+        guest_doc_type TEXT DEFAULT '',
+        guest_doc_number TEXT DEFAULT '',
+        guest_phone TEXT DEFAULT '',
+        guest_email TEXT DEFAULT '',
+        check_in TEXT DEFAULT '',
+        check_out TEXT DEFAULT '',
+        nights INTEGER DEFAULT 0,
+        nightly_rate REAL DEFAULT 0,
+        notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    db.run(`
       CREATE TABLE IF NOT EXISTS user_permissions (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL UNIQUE,
@@ -2051,6 +2077,7 @@ async function initDatabase() {
     addOrderItemColIfMissing('promo_discount', 'ALTER TABLE order_items ADD COLUMN promo_discount REAL DEFAULT 0');
     addOrderItemColIfMissing('promotion_id', "ALTER TABLE order_items ADD COLUMN promotion_id TEXT DEFAULT ''");
     addOrderItemColIfMissing('promotion_label', "ALTER TABLE order_items ADD COLUMN promotion_label TEXT DEFAULT ''");
+    addOrderItemColIfMissing('stock_warehouse_id', "ALTER TABLE order_items ADD COLUMN stock_warehouse_id TEXT DEFAULT ''");
 
     const reservationColumns = queryAll('PRAGMA table_info(reservations)');
     const addReservationColIfMissing = (colName, ddl) => {

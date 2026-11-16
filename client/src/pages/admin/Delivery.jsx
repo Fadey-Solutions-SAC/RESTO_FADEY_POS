@@ -59,8 +59,10 @@ export default function Delivery() {
   }, []);
 
   const loadProducts = useCallback(() => {
+    const caja = String(user?.caja_station_id || '').trim();
+    const stockQs = caja ? `&caja_station_id=${encodeURIComponent(caja)}` : '';
     Promise.all([
-      api.get('/products?active_only=true&available_now=true').catch(() => []),
+      api.get(`/products?active_only=true&available_now=true${stockQs}`).catch(() => []),
       api.get('/categories/active').catch(() => []),
       api.get('/admin-modules/combos').catch(() => []),
     ]).then(([prods, cats, combosData]) => {
@@ -72,7 +74,7 @@ export default function Delivery() {
       setProducts(merged.products);
       setCategories(merged.categories);
     }).catch(console.error);
-  }, []);
+  }, [user?.caja_station_id]);
 
   useEffect(() => {
     loadProducts();
@@ -202,6 +204,7 @@ export default function Delivery() {
         delivery_address: deliveryAddress.trim(),
         delivery_payment_modality: deliveryPaymentModality,
         notes: customerPhone ? `Tel: ${customerPhone}` : '',
+        caja_station_id: String(user?.caja_station_id || '').trim(),
       });
       void printKitchenBarOnComandaSend(created, { merged: false });
       toast.success('Pedido de delivery creado');

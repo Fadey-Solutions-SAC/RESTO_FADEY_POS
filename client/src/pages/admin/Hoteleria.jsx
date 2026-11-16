@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { api, formatCurrency, PAYMENT_METHODS } from '../../utils/api';
+import { showStockInOrderingUI, orderingStockCellIsOut, orderingStockCellText } from '../../utils/productStockDisplay';
 import { downloadTableQrPng, selfOrderUrl } from '../../utils/tableQrPrint';
 
 const EMPTY_ROOM = {
@@ -64,9 +65,10 @@ export default function Hoteleria() {
   const openAccount = async (room) => {
     setProductSearch('');
     setAccountRoom(room);
-    if (products.length) return;
     try {
-      const list = await api.get('/products?active_only=true&available_now=true');
+      const caja = String(room?.caja_station_id || '').trim();
+      const stockQs = caja ? `&caja_station_id=${encodeURIComponent(caja)}` : '';
+      const list = await api.get(`/products?active_only=true&available_now=true${stockQs}`);
       setProducts(Array.isArray(list) ? list : []);
     } catch (err) {
       toast.error(err.message || 'No se pudieron cargar los productos');
@@ -403,6 +405,11 @@ export default function Hoteleria() {
                 {filteredProducts.map((p) => (
                   <button key={p.id} type="button" disabled={busy} className="w-full text-left rounded-lg border border-[color:var(--ui-border)] px-3 py-2 text-sm hover:bg-[var(--ui-sidebar-hover)]" onClick={() => addProduct(p)}>
                     <span className="font-medium">{p.name}</span>
+                    {showStockInOrderingUI(p) ? (
+                      <span className={`ml-2 text-xs ${orderingStockCellIsOut(p) ? 'text-red-600' : 'text-[var(--ui-muted)]'}`}>
+                        Stock {orderingStockCellText(p)}
+                      </span>
+                    ) : null}
                     <span className="float-right text-[var(--ui-accent)]">{money(p.price)}</span>
                   </button>
                 ))}

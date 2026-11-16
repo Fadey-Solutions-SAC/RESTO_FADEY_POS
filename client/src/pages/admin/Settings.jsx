@@ -20,6 +20,14 @@ import {
 } from '../../utils/api';
 import PrintingAssistantDownloadButton from '../../components/printing/PrintingAssistantDownloadButton';
 import { useAuth } from '../../context/AuthContext';
+import {
+  cajaInsumosWarehouseId,
+  cajaProductWarehouseId,
+  defaultInsumosWarehouseId,
+  defaultProductWarehouseId,
+  isInsumosWarehouse,
+  warehouseNameById,
+} from '../../utils/cajaWarehouseLink';
 import Modal from '../../components/Modal';
 import toast from 'react-hot-toast';
 import {
@@ -355,6 +363,8 @@ const SETTINGS_SECTION_FORMS = {
     fields: [
       { key: 'name', label: 'Nombre', required: true },
       { key: 'description', label: 'Descripción' },
+      { key: 'product_warehouse_id', label: 'Descontar productos de', type: 'warehouse', kind: 'products' },
+      { key: 'insumos_warehouse_id', label: 'Descontar insumos de', type: 'warehouse', kind: 'insumos' },
     ],
   },
   comprobantes: {
@@ -466,6 +476,23 @@ export default function Settings() {
   const [historyPreview, setHistoryPreview] = useState(null);
   const [settingsCrudModal, setSettingsCrudModal] = useState({ isOpen: false, section: '', index: null });
   const [settingsCrudForm, setSettingsCrudForm] = useState({});
+  const [stockWarehouses, setStockWarehouses] = useState([]);
+
+  useEffect(() => {
+    api.get('/inventory/warehouses')
+      .then((rows) => setStockWarehouses(Array.isArray(rows) ? rows : []))
+      .catch(() => setStockWarehouses([]));
+  }, []);
+
+  useEffect(() => {
+    if (!settingsCrudModal.isOpen || settingsCrudModal.section !== 'cajas' || !stockWarehouses.length) return;
+    setSettingsCrudForm((prev) => {
+      const product = prev.product_warehouse_id || defaultProductWarehouseId(stockWarehouses);
+      const insumos = prev.insumos_warehouse_id || defaultInsumosWarehouseId(stockWarehouses);
+      if (product === prev.product_warehouse_id && insumos === prev.insumos_warehouse_id) return prev;
+      return { ...prev, product_warehouse_id: product, insumos_warehouse_id: insumos };
+    });
+  }, [stockWarehouses, settingsCrudModal.isOpen, settingsCrudModal.section]);
   const [printingConfig, setPrintingConfig] = useState(DEFAULT_PRINTING_CONFIG);
   const printingModuleEntries = useMemo(
     () => listPrintingUiModules(appSettings?.production_areas),
@@ -1348,9 +1375,15 @@ export default function Settings() {
       if (f.type === 'select') {
         const defOpt = f.options?.[0]?.value ?? '';
         nextForm[f.key] = source[f.key] ?? defOpt;
+      } else if (f.type === 'warehouse') {
+        nextForm[f.key] = String(source[f.key] || '').trim();
       } else if (f.type === 'number') nextForm[f.key] = source[f.key] ?? 0;
       else nextForm[f.key] = source[f.key] ?? '';
     });
+    if (section === 'cajas') {
+      if (!nextForm.product_warehouse_id) nextForm.product_warehouse_id = defaultProductWarehouseId(stockWarehouses);
+      if (!nextForm.insumos_warehouse_id) nextForm.insumos_warehouse_id = defaultInsumosWarehouseId(stockWarehouses);
+    }
     setSettingsCrudForm(nextForm);
     setSettingsCrudModal({ isOpen: true, section, index });
   };
@@ -1908,7 +1941,15 @@ export default function Settings() {
                 <div key={String(caja.id || '').trim() || `${caja.name}-${i}`} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-sky-100 rounded-lg flex items-center justify-center"><MdPointOfSale className="text-sky-600" /></div>
-                    <div><p className="font-medium">{caja.name}</p><p className="text-sm ui-text-muted">{caja.description || 'Sin descripción'}</p></div>
+                    <div>
+                      <p className="font-medium">{caja.name}</p>
+                      <p className="text-sm ui-text-muted">{caja.description || 'Sin descripción'}</p>
+                      <p className="text-xs text-[var(--ui-muted)]">
+                        Productos: {warehouseNameById(stockWarehouses, cajaProductWarehouseId(caja, stockWarehouses)) || 'Almacén principal'}
+                        {' · '}
+                        Insumos: {warehouseNameById(stockWarehouses, cajaInsumosWarehouseId(caja, stockWarehouses)) || 'Almacén de insumos'}
+                      </p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={() => toggleAppSection('cajas', i)} className={`px-2 py-1 text-xs rounded-full ${caja.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 ui-text-muted'}`}>{caja.active ? 'Activa' : 'Inactiva'}</button>
@@ -2698,7 +2739,24 @@ export default function Settings() {
               {(SETTINGS_SECTION_FORMS[settingsCrudModal.section]?.fields || []).map(field => (
                 <div key={field.key}>
                   <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">{field.label}</label>
-                  {field.type === 'select' && field.options ? (
+                  {field.type === 'warehouse' ? (
+                    <select
+                      value={settingsCrudForm[field.key] ?? ''}
+                      onChange={(e) => setSettingsCrudForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                      className="input-field"
+                    >
+                      {(stockWarehouses.filter((w) => (
+                        field.kind === 'insumos' ? isInsumosWarehouse(w) : !isInsumosWarehouse(w)
+                      ))).map((w) => (
+                        <option key={w.id} value={w.id}>{w.name}</option>
+                      ))}
+                    </select>
+                    {field.key === 'product_warehouse_id' ? (
+                      <p className="text-xs text-[var(--ui-muted)] mt-1">
+                        Las ventas de esta caja bajan el stock de este almacén. En cero, el producto sigue visible.
+                      </p>
+                    ) : null}
+                  ) : field.type === 'select' && field.options ? (
                     <select
                       value={settingsCrudForm[field.key] ?? ''}
                       onChange={e => setSettingsCrudForm(prev => ({ ...prev, [field.key]: e.target.value }))}

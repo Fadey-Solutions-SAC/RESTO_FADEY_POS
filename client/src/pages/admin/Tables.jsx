@@ -134,9 +134,11 @@ export default function Tables() {
       .finally(() => setLoading(false));
   }, [user?.role, user?.caja_station_id]);
 
-  const loadProducts = useCallback(() => {
+  const loadProducts = useCallback((cajaId) => {
+    const caja = String(cajaId || '').trim();
+    const stockQs = caja ? `&caja_station_id=${encodeURIComponent(caja)}` : '';
     Promise.all([
-      api.get('/products?active_only=true&available_now=true').catch(() => []),
+      api.get(`/products?active_only=true&available_now=true${stockQs}`).catch(() => []),
       api.get('/categories/active').catch(() => []),
       api.get('/admin-modules/modifiers').catch(() => []),
       api.get('/admin-modules/combos').catch(() => []),
@@ -152,14 +154,33 @@ export default function Tables() {
     }).catch(console.error);
   }, []);
 
+  const cajaForTable = useCallback((table) => {
+    const direct = String(table?.caja_station_id || '').trim();
+    if (direct) return direct;
+    const zone = String(table?.zone || 'principal');
+    const salon = (salonesConfig || []).find((s) => String(s.id) === zone);
+    return String(salon?.caja_station_id || '').trim() || 'b0b0b0b0-b0b0-4000-b0b0-b0b0b0b0b001';
+  }, [salonesConfig]);
+
+  const orderingCajaId = useCallback(() => {
+    if (showMenu && selectedTable) return cajaForTable(selectedTable);
+    const role = String(user?.role || '').toLowerCase();
+    const own = String(user?.caja_station_id || '').trim();
+    if ((role === 'mozo' || role === 'cajero') && own) return own;
+    return '';
+  }, [showMenu, selectedTable, cajaForTable, user?.role, user?.caja_station_id]);
+
   useEffect(() => {
     showMenuRef.current = showMenu;
   }, [showMenu]);
 
   useEffect(() => {
     loadTables();
-    loadProducts();
-  }, [loadTables, loadProducts]);
+  }, [loadTables]);
+
+  useEffect(() => {
+    loadProducts(orderingCajaId());
+  }, [loadProducts, orderingCajaId]);
 
   const pollTables = useCallback(() => {
     if (showMenuRef.current) return;
@@ -175,9 +196,9 @@ export default function Tables() {
     return () => window.removeEventListener('rf-offline-synced', onSynced);
   }, [loadTables]);
   useSocket('salones-update', loadTables);
-  useSocket('inventory-update', loadProducts);
+  useSocket('inventory-update', () => loadProducts(orderingCajaId()));
   useSocket('staff-data-update', (p) => {
-    if (['catalog', 'modifiers', 'combos'].includes(p?.domain)) loadProducts();
+    if (['catalog', 'modifiers', 'combos'].includes(p?.domain)) loadProducts(orderingCajaId());
     if (p?.domain === 'reservations') loadTables();
   });
 

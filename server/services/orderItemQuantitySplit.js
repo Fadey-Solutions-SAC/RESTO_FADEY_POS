@@ -46,8 +46,8 @@ function materializePartialItemQuantitiesTx(tx, orderId, itemIds, quantitiesByIt
       `INSERT INTO order_items (
         id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes,
         original_unit_price, promo_discount, promotion_id, promotion_label,
-        station_cocina_ready_at, station_bar_ready_at, kitchen_highlight_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        station_cocina_ready_at, station_bar_ready_at, kitchen_highlight_at, stock_warehouse_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         remainId,
         orderId,
@@ -65,6 +65,7 @@ function materializePartialItemQuantitiesTx(tx, orderId, itemIds, quantitiesByIt
         it.station_cocina_ready_at || null,
         it.station_bar_ready_at || null,
         it.kitchen_highlight_at || null,
+        it.stock_warehouse_id || '',
       ]
     );
     tx.run('UPDATE order_items SET quantity = ?, subtotal = ?, promo_discount = ? WHERE id = ?', [takeQ, moveSub, movePromo, itemId]);

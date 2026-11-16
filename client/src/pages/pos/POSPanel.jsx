@@ -1414,7 +1414,7 @@ export default function POSPanel() {
         reservationsData,
         restaurantRes,
       ] = await Promise.all([
-        api.get('/products?active_only=true&available_now=true'),
+        api.get(`/products?active_only=true&available_now=true${scopedCaja ? `&caja_station_id=${encodeURIComponent(scopedCaja)}` : ''}`),
         api.get('/categories/active'),
         api.get('/admin-modules/modifiers').catch(() => []),
         api.get('/admin-modules/combos').catch(() => []),
@@ -3715,6 +3715,7 @@ export default function POSPanel() {
           payment_method: paymentMethod,
           notes: !quickSaleMode ? buildMesaOrderNotes(paraLlevarMesa, mesaOrderObservation) : '',
           ...(quickSaleMode ? { type: 'pickup', table_number: '', table_id: '', target_order_id: '', customer_name: QUICK_SALE_CUSTOMER_NAME } : {}),
+          caja_station_id: String(register?.caja_station_id || user?.caja_station_id || '').trim(),
         },
       }));
       if (quickSaleMode) {

@@ -18,7 +18,12 @@ const {
 const { allRequiredStationsReady, isStationCompleteForStation } = require('./utils/kitchenStationReady');
 const { collectOrderProductionAreaIds } = require('./utils/productionArea');
 const { tableNumbersMatch } = require('./utils/tableNumberMatch');
-const { deductNonTransformedStockTx } = require('./warehouseStock');
+const { deductNonTransformedStockTx, addQuantityToWarehouseTx } = require('./warehouseStock');
+const {
+  productWarehouseIdForCaja,
+  cajaIdFromTable,
+  cajaIdFromHotelOrder,
+} = require('./cajaWarehouseLink');
 const {
   resolveProductProductionAreaId,
   upsertOrderStationState,
@@ -268,12 +273,36 @@ function promoColumnValues(item) {
   ];
 }
 
-function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew = false, highlightIdSet = null }) {
+function resolveStaffStockWarehouseId(tx, { actor, tableId, orderId, bodyCajaId, orderType }) {
+  if (actor?.kind !== 'staff' || !actor.user) return '';
+  let cajaId = cajaIdFromTable(tx, tableId);
+  if (!cajaId) cajaId = cajaIdFromHotelOrder(tx, orderId);
+  const role = String(actor.user.role || '').toLowerCase();
+  const requested = String(bodyCajaId || '').trim();
+  if (!cajaId && requested && role !== 'mozo') cajaId = requested;
+  if (!cajaId) {
+    const row = tx.queryOne('SELECT caja_station_id FROM users WHERE id = ?', [actor.user.id]);
+    cajaId = String(row?.caja_station_id || '').trim();
+  }
+  if (!cajaId && orderType !== 'delivery') {
+    const reg = tx.queryOne(
+      `SELECT caja_station_id FROM cash_registers
+       WHERE user_id = ? AND closed_at IS NULL
+       ORDER BY datetime(opened_at) DESC LIMIT 1`,
+      [actor.user.id],
+    );
+    cajaId = String(reg?.caja_station_id || '').trim();
+  }
+  if (!cajaId) return '';
+  return productWarehouseIdForCaja(tx, cajaId);
+}
+
+function insertOrderLineRows(tx, orderItems, { highlightNew = false, highlightIdSet = null, stockWarehouseId = '' } = {}) {
   const newIds = [];
   orderItems.forEach((item) => {
-    if (item.process_type === 'non_transformed') {
-      deductNonTransformedStockTx(tx, item.product_id, item.quantity);
-    }
+    const usedWarehouse = item.process_type === 'non_transformed'
+      ? (deductNonTransformedStockTx(tx, item.product_id, item.quantity, stockWarehouseId) || '')
+      : '';
     const shouldHighlight =
       highlightNew || (highlightIdSet instanceof Set && highlightIdSet.has(String(item.id)));
     const highlightAt = shouldHighlight ? null : (item.kitchen_highlight_at || null);
@@ -296,6 +325,9 @@ function insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightNew =
           item.station_cocina_ready_at || null, item.station_bar_ready_at || null, highlightAt,
         ],
     );
+    if (usedWarehouse) {
+      tx.run('UPDATE order_items SET stock_warehouse_id = ? WHERE id = ?', [usedWarehouse, item.id]);
+    }
     newIds.push(item.id);
   });
   return newIds;
@@ -357,8 +389,13 @@ function appendItemsToOrderInTransaction(tx, orderId, items, actor, { notes, tic
     (aid) => !isStationCompleteForStation(order, existingArea, aid),
   );
   const newItemIds = insertOrderLineRows(tx, lines, {
-    staffInHouseOrder,
     highlightNew: stationStillOpen || existingArea.length > 0,
+    stockWarehouseId: resolveStaffStockWarehouseId(tx, {
+      actor,
+      tableId: order.table_id,
+      orderId,
+      orderType: order.type,
+    }),
   });
   recordPromotionUsagesTx(tx, orderId, lines, actor, { customerId: order.customer_id || '' });
 
@@ -710,10 +747,18 @@ function createOrderInTransaction(tx, orderId, body, actor) {
     ]
   );
 
+  const stockWarehouseId = resolveStaffStockWarehouseId(tx, {
+    actor,
+    tableId,
+    orderId,
+    bodyCajaId: body.caja_station_id,
+    orderType,
+  });
+
   orderItems.forEach((item) => {
-    if (item.process_type === 'non_transformed') {
-      deductNonTransformedStockTx(tx, item.product_id, item.quantity);
-    }
+    const usedWarehouse = item.process_type === 'non_transformed'
+      ? (deductNonTransformedStockTx(tx, item.product_id, item.quantity, stockWarehouseId) || '')
+      : '';
     tx.run(
       `INSERT INTO order_items (id, order_id, product_id, product_name, variant_name, quantity, unit_price, subtotal, notes,
         original_unit_price, promo_discount, promotion_id, promotion_label)
@@ -723,6 +768,9 @@ function createOrderInTransaction(tx, orderId, body, actor) {
         item.subtotal, item.notes, ...promoColumnValues(item),
       ]
     );
+    if (usedWarehouse) {
+      tx.run('UPDATE order_items SET stock_warehouse_id = ? WHERE id = ?', [usedWarehouse, item.id]);
+    }
   });
   recordPromotionUsagesTx(tx, orderId, orderItems, actor, { customerId: customerId || '' });
 
@@ -738,6 +786,8 @@ function restoreNonTransformedStockForOrderTx(tx, orderId) {
     const product = tx.queryOne('SELECT * FROM products WHERE id = ?', [item.product_id]);
     if (!product || product.process_type !== 'non_transformed') continue;
     const qtyBack = Number(item.quantity || 0);
+    const scoped = String(item.stock_warehouse_id || '').trim();
+    if (scoped && addQuantityToWarehouseTx(tx, product.id, scoped, qtyBack)) continue;
     const rows = tx.queryAll('SELECT * FROM inventory_warehouse_stocks WHERE product_id = ?', [product.id]);
     if (rows.length === 0) {
       tx.run('UPDATE products SET stock = stock + ?, updated_at = datetime(\'now\') WHERE id = ?', [qtyBack, product.id]);
@@ -777,14 +827,6 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
 
   const { computeAddedLineIds, attachExistingLineIdentity } = require('./utils/orderLineRemoval');
   const existingItems = tx.queryAll('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
-
-  const orderType = order.type;
-  const staffInHouseOrder =
-    actor.kind === 'staff' &&
-    (orderType === 'dine_in' || orderType === 'pickup') &&
-    actor.user &&
-    actor.user.type !== 'customer' &&
-    STAFF_IN_HOUSE_ROLES.includes(String(actor.user.role || ''));
 
   const restaurantRow = tx.queryOne('SELECT schedule FROM restaurants LIMIT 1');
   const restaurantSchedule = parseRestaurantSchedule(restaurantRow?.schedule);
@@ -935,7 +977,15 @@ function replaceOrderLinesInTransaction(tx, orderId, items, actor) {
     }
   }
 
-  insertOrderLineRows(tx, orderItems, { staffInHouseOrder, highlightIdSet });
+  insertOrderLineRows(tx, orderItems, {
+    highlightIdSet,
+    stockWarehouseId: resolveStaffStockWarehouseId(tx, {
+      actor,
+      tableId: order.table_id,
+      orderId,
+      orderType: order.type,
+    }),
+  });
   recordPromotionUsagesTx(tx, orderId, orderItems, actor, { customerId: order.customer_id || '', syncOrder: true });
   if (newItemIds.length) {
     reopenProductionStationsForNewLines(tx, orderId, newItemIds);
