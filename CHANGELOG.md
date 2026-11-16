@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.2.3 — 2026-11-16
+
+- En Movimiento interno, cada producto tiene Mover a almacén. La cantidad empieza en todo el stock del origen y se puede subir o bajar.
+
 ## 1.2.2.2 — 2026-11-16
 
 - Si Chrome ya tiene el sistema instalado, el botón del perfil lo indica. Si no lo tiene, el clic abre el cuadro de instalación.

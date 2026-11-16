@@ -173,6 +173,12 @@ function getWarehouseByName(name) {
   return queryOne('SELECT * FROM warehouse_locations WHERE LOWER(name) = LOWER(?) AND is_active = 1', [name]);
 }
 
+function warehouseIsInsumos(warehouse) {
+  if (!warehouse) return false;
+  if (Number(warehouse.linked_insumos) === 1) return true;
+  return String(warehouse.name || '').toLowerCase().includes('insumos');
+}
+
 function getWarehouseStockRow(productId, warehouseId) {
   ensureWarehouseTables();
   return queryOne(
@@ -1145,6 +1151,133 @@ router.put('/warehouse-adjust/:product_id', authenticateToken, requireRole('admi
     previous_total_stock: previousTotalStock,
     new_total_stock: newTotalStock,
   });
+});
+
+router.post('/warehouse-move', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    ensureWarehouseTables();
+    const { product_id, from_warehouse_id, to_warehouse_id, quantity } = req.body || {};
+    const qtyRaw = Number(quantity);
+    const qty = Math.floor(qtyRaw);
+    if (!product_id || !from_warehouse_id || !to_warehouse_id) {
+      return res.status(400).json({ error: 'Producto, origen y destino son requeridos' });
+    }
+    if (!Number.isFinite(qtyRaw) || qtyRaw !== qty || qty <= 0) {
+      return res.status(400).json({ error: 'La cantidad debe ser un entero mayor a 0' });
+    }
+    if (String(from_warehouse_id) === String(to_warehouse_id)) {
+      return res.status(400).json({ error: 'El almacén de destino debe ser distinto al de origen' });
+    }
+
+    const product = queryOne('SELECT * FROM products WHERE id = ? AND is_active = 1', [product_id]);
+    if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    const fromWh = queryOne('SELECT * FROM warehouse_locations WHERE id = ? AND is_active = 1', [from_warehouse_id]);
+    const toWh = queryOne('SELECT * FROM warehouse_locations WHERE id = ? AND is_active = 1', [to_warehouse_id]);
+    if (!fromWh || !toWh) return res.status(404).json({ error: 'Almacén no encontrado' });
+    if (warehouseIsInsumos(fromWh) || warehouseIsInsumos(toWh)) {
+      return res.status(400).json({ error: 'El traslado de productos es entre almacenes de productos' });
+    }
+
+    const result = withTransaction((tx) => {
+      const rows = tx.queryAll('SELECT * FROM inventory_warehouse_stocks WHERE product_id = ?', [product_id]);
+      if (rows.length === 0) {
+        const legacy = Number(product.stock || 0);
+        if (legacy > 0) {
+          tx.run(
+            'INSERT INTO inventory_warehouse_stocks (id, product_id, warehouse_id, quantity, updated_at) VALUES (?, ?, ?, ?, datetime(\'now\'))',
+            [uuidv4(), product_id, from_warehouse_id, legacy]
+          );
+        }
+      }
+      const source = tx.queryOne(
+        'SELECT * FROM inventory_warehouse_stocks WHERE product_id = ? AND warehouse_id = ?',
+        [product_id, from_warehouse_id]
+      );
+      const available = Number(source?.quantity || 0);
+      if (!source || available < qty) {
+        const err = new Error('Stock insuficiente en el almacén de origen');
+        err.status = 400;
+        throw err;
+      }
+      const left = available - qty;
+      tx.run(
+        'UPDATE inventory_warehouse_stocks SET quantity = ?, updated_at = datetime(\'now\') WHERE id = ?',
+        [left, source.id]
+      );
+      const dest = tx.queryOne(
+        'SELECT * FROM inventory_warehouse_stocks WHERE product_id = ? AND warehouse_id = ?',
+        [product_id, to_warehouse_id]
+      );
+      if (dest) {
+        tx.run(
+          'UPDATE inventory_warehouse_stocks SET quantity = ?, updated_at = datetime(\'now\') WHERE id = ?',
+          [Number(dest.quantity || 0) + qty, dest.id]
+        );
+      } else {
+        tx.run(
+          'INSERT INTO inventory_warehouse_stocks (id, product_id, warehouse_id, quantity, updated_at) VALUES (?, ?, ?, ?, datetime(\'now\'))',
+          [uuidv4(), product_id, to_warehouse_id, qty]
+        );
+      }
+      if (left <= 0 && String(product.stock_warehouse_id || '') === String(from_warehouse_id)) {
+        tx.run('UPDATE products SET stock_warehouse_id = ? WHERE id = ?', [to_warehouse_id, product_id]);
+      }
+      const sum = tx.queryOne(
+        'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_warehouse_stocks WHERE product_id = ?',
+        [product_id]
+      );
+      const total = Number(sum?.total || 0);
+      const previousTotal = Number(product.stock || 0);
+      tx.run("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?", [total, product_id]);
+      tx.run(
+        'INSERT INTO inventory_logs (id, product_id, quantity_change, previous_stock, new_stock, reason, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [
+          uuidv4(),
+          product_id,
+          0,
+          previousTotal,
+          total,
+          `Traslado ${qty} de ${fromWh.name} a ${toWh.name}`,
+          req.user.id,
+        ]
+      );
+      return {
+        moved: qty,
+        from_remaining: left,
+        previous_total: previousTotal,
+        new_total: total,
+      };
+    });
+
+    logAudit({
+      actorUserId: req.user.id,
+      actorName: req.user.full_name || req.user.username || '',
+      action: 'inventory.warehouse_move',
+      resourceType: 'product',
+      resourceId: product_id,
+      details: {
+        from_warehouse_id,
+        to_warehouse_id,
+        from_name: fromWh.name,
+        to_name: toWh.name,
+        quantity: qty,
+      },
+    });
+    emitInventoryUpdate({ productId: product_id });
+    res.json({
+      success: true,
+      product_id,
+      from_warehouse_id,
+      to_warehouse_id,
+      from_name: fromWh.name,
+      to_name: toWh.name,
+      quantity: qty,
+      ...result,
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'No se pudo mover el producto' });
+  }
 });
 
 router.post('/warehouse-stock', authenticateToken, requireRole('admin'), (req, res) => {

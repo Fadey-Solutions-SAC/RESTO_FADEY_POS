@@ -1,6 +1,6 @@
 # Contexto del proyecto
 
-Versión de producto: **1.2.2.2** (`package.json` y `client/package.json`). En pantalla: `v 1.2.2.2`.
+Versión de producto: **1.2.2.3** (`package.json` y `client/package.json`). En pantalla: `v 1.2.2.3`.
 
 Este archivo describe el sistema tal como está en el código. No reemplaza `AGENTS.md` (cómo trabajar) ni `CHANGELOG.md` (qué cambió).
 
@@ -127,6 +127,7 @@ Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurant
 - La hora de emisión del comprobante usa la zona del restaurante, no el reloj UTC del servidor.
 - Un área de producción nueva recibe un color de una paleta fija, persistido en el registro del área.
 - Los permisos POS listan las áreas de producción activas del local. Cada área se guarda como `prodarea:<id>`. Cocina y Bar siguen reflejados en `cocina` y `bar`.
+- En Movimiento interno, cada producto puede moverse a otro almacén de productos (`POST /api/inventory/warehouse-move`). La cantidad parte de todo el stock del origen y se puede bajar o subir hasta ese tope. El stock total del producto sigue igual. Los insumos de kardex siguen en su almacén de insumos.
 - Los PDF de boleta y factura del flujo Android los arma el servidor (`server/billingFormalReceiptPdf.js`), no el teléfono.
 
 ## Dependencias de runtime (raíz)

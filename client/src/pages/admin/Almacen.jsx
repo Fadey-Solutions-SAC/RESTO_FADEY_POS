@@ -142,6 +142,13 @@ function productQtyInWarehouse(p, warehouseId) {
   return Number(row?.quantity || 0);
 }
 
+function productStockBreakdown(p) {
+  const parts = (p?.warehouse_stocks || [])
+    .filter((ws) => Number(ws.quantity || 0) > 0)
+    .map((ws) => `${ws.warehouse_name}: ${Number(ws.quantity)}`);
+  return parts.length ? parts.join(' · ') : '—';
+}
+
 function productLinkedToWarehouse(p, whId) {
   if (!whId) return true;
   if (String(p.stock_warehouse_id || '') === String(whId)) return true;
@@ -385,6 +392,11 @@ export default function Almacen() {
   const [search, setSearch] = useState('');
   const [showLowStockList, setShowLowStockList] = useState(false);
   const [stockModal, setStockModal] = useState(null);
+  const [moveTarget, setMoveTarget] = useState(null);
+  const [moveFromId, setMoveFromId] = useState('');
+  const [moveToId, setMoveToId] = useState('');
+  const [moveQty, setMoveQty] = useState(0);
+  const [moveSaving, setMoveSaving] = useState(false);
   const [stockChange, setStockChange] = useState('');
   const [stockReason, setStockReason] = useState('');
   const [showDeleteFlow, setShowDeleteFlow] = useState(false);
@@ -561,8 +573,6 @@ export default function Almacen() {
           return {
             ...p,
             process: p.process_type === 'non_transformed' ? 'non_transformed' : (p.process_type === 'transformed' ? 'transformed' : parsed.process),
-            stock_main: Number((p.warehouse_stocks || []).find(ws => ws.warehouse_name === 'Almacen Principal')?.quantity || 0),
-            stock_kitchen: Number((p.warehouse_stocks || []).find(ws => ws.warehouse_name === 'Almacen Cocina')?.quantity || 0),
             stock: Number(p.total_stock || 0),
             notes: parsed.notes,
             warehouse_stocks: p.warehouse_stocks || [],
@@ -764,9 +774,7 @@ export default function Almacen() {
 
   const productsForSelectedWarehouse = isAllWarehousesView(selectedWarehouseView)
     ? scopedProducts
-    : scopedProducts.filter(p =>
-      (p.warehouse_stocks || []).some(ws => sameWarehouseId(ws.warehouse_id, selectedWarehouseView))
-    );
+    : scopedProducts.filter(p => productQtyInWarehouse(p, selectedWarehouseView) > 0);
 
   const warehouseUsageMap = products.reduce((acc, product) => {
     (product.warehouse_stocks || []).forEach(ws => {
@@ -781,14 +789,15 @@ export default function Almacen() {
     (p) => p.process === 'non_transformed' && isProductLowStock(p.stock, p.min_stock)
   );
   const selectedWarehouse = warehouses.find((w) => sameWarehouseId(w.id, selectedWarehouseView));
-  const selectedIsPrincipalWarehouse = Boolean(
-    selectedWarehouse
-    && (
-      String(selectedWarehouse.name || '').toLowerCase() === 'almacen principal'
-      || sameWarehouseId(selectedWarehouse.id, principalWarehouse?.id)
-    )
-  );
   const selectedIsInsumosWarehouse = isInsumosWarehouse(selectedWarehouse);
+  const productWarehouses = warehouses.filter((w) => !isInsumosWarehouse(w));
+  const moveAvailable = moveTarget
+    ? Math.max(0, Math.floor(productQtyInWarehouse(moveTarget, moveFromId)))
+    : 0;
+  const moveOriginOptions = moveTarget
+    ? productWarehouses.filter((w) => productQtyInWarehouse(moveTarget, w.id) > 0)
+    : [];
+  const moveDestOptions = productWarehouses.filter((w) => !sameWarehouseId(w.id, moveFromId));
   const insumosActivos = (kardexInsumos || []).filter((i) => Number(i.activo) !== 0);
   const insumosPorVista =
     !selectedIsInsumosWarehouse || insumosVistaArea === 'all'
@@ -953,6 +962,84 @@ export default function Almacen() {
     setStockPurchasePrice('');
     setShowDeleteFlow(false);
     setDeleteReason('');
+  };
+
+  const openMoveModal = (product) => {
+    const origins = productWarehouses.filter((w) => productQtyInWarehouse(product, w.id) > 0);
+    let fromId = '';
+    if (!isAllWarehousesView(selectedWarehouseView)) {
+      const inView = origins.find((w) => sameWarehouseId(w.id, selectedWarehouseView));
+      if (inView) fromId = String(inView.id);
+    }
+    if (!fromId && origins.length) {
+      const best = origins.reduce((a, b) => (
+        productQtyInWarehouse(product, b.id) > productQtyInWarehouse(product, a.id) ? b : a
+      ));
+      fromId = String(best.id);
+    }
+    const dest = productWarehouses.find((w) => !sameWarehouseId(w.id, fromId));
+    setMoveTarget(product);
+    setMoveFromId(fromId);
+    setMoveToId(dest ? String(dest.id) : '');
+    setMoveQty(fromId ? Math.floor(productQtyInWarehouse(product, fromId)) : 0);
+  };
+
+  const changeMoveFrom = (nextFromId) => {
+    setMoveFromId(nextFromId);
+    const available = moveTarget ? Math.floor(productQtyInWarehouse(moveTarget, nextFromId)) : 0;
+    setMoveQty(Math.max(0, available));
+    setMoveToId((prev) => {
+      if (prev && !sameWarehouseId(prev, nextFromId) && productWarehouses.some((w) => sameWarehouseId(w.id, prev))) {
+        return prev;
+      }
+      const next = productWarehouses.find((w) => !sameWarehouseId(w.id, nextFromId));
+      return next ? String(next.id) : '';
+    });
+  };
+
+  const closeMoveModal = () => {
+    if (moveSaving) return;
+    setMoveTarget(null);
+    setMoveFromId('');
+    setMoveToId('');
+    setMoveQty(0);
+  };
+
+  const handleMoveWarehouse = async () => {
+    if (!moveTarget || moveSaving) return;
+    if (!moveFromId || !moveToId || sameWarehouseId(moveFromId, moveToId)) {
+      toast.error('Elige un almacén de destino distinto al origen');
+      return;
+    }
+    const qty = Math.floor(Number(moveQty));
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast.error('Indica la cantidad a mover');
+      return;
+    }
+    if (qty > moveAvailable) {
+      toast.error('La cantidad supera el stock del origen');
+      return;
+    }
+    setMoveSaving(true);
+    try {
+      const moved = await api.post('/inventory/warehouse-move', {
+        product_id: moveTarget.id,
+        from_warehouse_id: moveFromId,
+        to_warehouse_id: moveToId,
+        quantity: qty,
+      });
+      const destName = moved?.to_name || productWarehouses.find((w) => sameWarehouseId(w.id, moveToId))?.name || 'el almacén';
+      toast.success(`Se movieron ${qty} a ${destName}`);
+      setMoveSaving(false);
+      setMoveTarget(null);
+      setMoveFromId('');
+      setMoveToId('');
+      setMoveQty(0);
+      load();
+    } catch (err) {
+      toast.error(err.message || 'No se pudo mover el producto');
+      setMoveSaving(false);
+    }
   };
 
   const handleSavePurchasePrice = async () => {
@@ -2526,11 +2613,10 @@ export default function Almacen() {
                 <th className="pb-2 font-medium">Tipo</th>
                 <th className="pb-2 font-medium">Precio venta</th>
                 <th className="pb-2 font-medium">P. compra</th>
-                <th className="pb-2 font-medium">Principal</th>
-                {!selectedIsPrincipalWarehouse && (
-                  <th className="pb-2 font-medium">Cocina</th>
-                )}
-                <th className="pb-2 font-medium">Stock Total</th>
+                <th className="pb-2 font-medium">
+                  {isAllWarehousesView(selectedWarehouseView) ? 'Por almacén' : 'En este almacén'}
+                </th>
+                <th className="pb-2 font-medium">Stock total</th>
                 <th className="pb-2 font-medium">Valor</th>
                 <th className="pb-2 font-medium">Estado</th>
                 <th className="pb-2 font-medium"></th>
@@ -2547,10 +2633,11 @@ export default function Almacen() {
                       ? formatCurrency(p.purchase_price)
                       : '—'}
                   </td>
-                  <td className="py-3 font-bold">{p.stock_main || 0}</td>
-                  {!selectedIsPrincipalWarehouse && (
-                    <td className="py-3 font-bold">{p.stock_kitchen || 0}</td>
-                  )}
+                  <td className="py-3 font-bold">
+                    {isAllWarehousesView(selectedWarehouseView)
+                      ? productStockBreakdown(p)
+                      : productQtyInWarehouse(p, selectedWarehouseView)}
+                  </td>
                   <td className="py-3 font-bold">{productStockTotal(p)}</td>
                   <td className="py-3">{formatCurrency(p.price * productStockTotal(p))}</td>
                   <td className="py-3"><span className={
@@ -2562,6 +2649,15 @@ export default function Almacen() {
                   }>{productStockStatus(productStockTotal(p), p.min_stock) === 'normal' ? 'Normal' : productStockStatus(productStockTotal(p), p.min_stock) === 'low' ? 'Bajo' : 'Agotado'}</span></td>
                   <td className="py-2 whitespace-nowrap text-right">
                     <div className="inline-flex flex-nowrap items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => openMoveModal(p)}
+                        className="shrink-0 text-xs px-2.5 py-1 bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100 inline-flex items-center gap-1"
+                        title="Mover a almacén"
+                      >
+                        <MdSwapHoriz className="text-sm" />
+                        Mover a almacén
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -2599,7 +2695,7 @@ export default function Almacen() {
               {productsForSelectedWarehouse.length === 0 && (
                 <tr>
                   <td
-                    colSpan={selectedIsPrincipalWarehouse ? 9 : 10}
+                    colSpan={9}
                     className="py-10 text-center text-[var(--ui-muted)]"
                   >
                     {isAllWarehousesView(selectedWarehouseView)
@@ -2617,9 +2713,8 @@ export default function Almacen() {
       <Modal isOpen={!!stockModal} onClose={closeStockModal} title={`Ajustar Stock - ${stockModal?.name}`} size="sm">
         <div className="space-y-4">
           <div className="text-sm ui-text-muted space-y-1">
-            <p>Stock total: <strong>{stockModal?.stock}</strong> unidades</p>
-            <p>Almacén principal: <strong>{stockModal?.stock_main || 0}</strong></p>
-            <p>Almacén cocina: <strong>{stockModal?.stock_kitchen || 0}</strong></p>
+            <p>Stock total: <strong>{productStockTotal(stockModal)}</strong> unidades</p>
+            <p>Por almacén: <strong>{productStockBreakdown(stockModal)}</strong></p>
           </div>
           <div><label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Cantidad</label><input type="number" min="1" value={stockChange} onChange={e => setStockChange(e.target.value)} className="input-field" placeholder="0" /></div>
           <div>
@@ -2685,6 +2780,134 @@ export default function Almacen() {
               </button>
             </div>
           )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!moveTarget}
+        onClose={closeMoveModal}
+        title={`Mover a almacén — ${moveTarget?.name || ''}`}
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--ui-muted)]">
+            La cantidad pasa del origen al destino. El stock total del producto sigue igual.
+          </p>
+          {moveOriginOptions.length === 0 ? (
+            <p className="text-sm text-amber-700">Este producto no tiene stock para mover.</p>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Origen</label>
+              <select
+                value={moveFromId}
+                onChange={(e) => changeMoveFrom(e.target.value)}
+                className="input-field"
+              >
+                {moveOriginOptions.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({Math.floor(productQtyInWarehouse(moveTarget, w.id))})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {moveOriginOptions.length > 0 && moveDestOptions.length === 0 && (
+            <p className="text-sm text-amber-700">
+              Crea otro almacén de productos para poder mover.
+            </p>
+          )}
+          {moveDestOptions.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-[var(--ui-body-text)] mb-1">Destino</label>
+              <select
+                value={moveToId}
+                onChange={(e) => setMoveToId(e.target.value)}
+                className="input-field"
+              >
+                {moveDestOptions.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-medium text-[var(--ui-body-text)]">Cantidad</label>
+              <button
+                type="button"
+                onClick={() => setMoveQty(moveAvailable)}
+                disabled={moveAvailable <= 0 || moveQty === moveAvailable}
+                className="text-xs font-semibold text-blue-700 disabled:text-slate-400"
+              >
+                Todo
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMoveQty((q) => Math.max(1, Number(q) - 1))}
+                disabled={moveQty <= 1}
+                className="h-11 w-11 shrink-0 rounded-xl border border-slate-200 bg-white text-slate-700 inline-flex items-center justify-center disabled:opacity-40"
+                aria-label="Bajar cantidad"
+              >
+                <MdRemove />
+              </button>
+              <input
+                type="number"
+                min={moveAvailable > 0 ? 1 : 0}
+                max={moveAvailable || 0}
+                step="1"
+                value={moveQty}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    setMoveQty(0);
+                    return;
+                  }
+                  const n = Math.floor(Number(raw));
+                  if (!Number.isFinite(n)) return;
+                  if (moveAvailable <= 0) {
+                    setMoveQty(0);
+                    return;
+                  }
+                  setMoveQty(Math.min(moveAvailable, Math.max(1, n)));
+                }}
+                className="input-field text-center tabular-nums"
+              />
+              <button
+                type="button"
+                onClick={() => setMoveQty((q) => Math.min(moveAvailable, Number(q) + 1))}
+                disabled={moveAvailable <= 0 || moveQty >= moveAvailable}
+                className="h-11 w-11 shrink-0 rounded-xl border border-slate-200 bg-white text-slate-700 inline-flex items-center justify-center disabled:opacity-40"
+                aria-label="Subir cantidad"
+              >
+                <MdAdd />
+              </button>
+            </div>
+            <p className="text-xs text-[var(--ui-muted)] mt-1">
+              En el origen hay {moveAvailable}.
+              {moveAvailable > 0 && moveQty === moveAvailable ? ' Se moverá todo.' : ''}
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={closeMoveModal} className="btn-secondary flex-1" disabled={moveSaving}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleMoveWarehouse()}
+              disabled={
+                moveSaving
+                || moveQty < 1
+                || moveQty > moveAvailable
+                || !moveToId
+                || sameWarehouseId(moveFromId, moveToId)
+              }
+              className="btn-primary flex-1 disabled:opacity-50"
+            >
+              {moveSaving ? 'Moviendo…' : 'Mover'}
+            </button>
+          </div>
         </div>
       </Modal>
 

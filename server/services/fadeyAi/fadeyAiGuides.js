@@ -433,9 +433,11 @@ Nota: si no ves «Requerimiento», el maestro o tu permiso lo bloquean.`,
     keywords: ['movimiento interno', 'transferir stock', 'traslado almacén', 'pasar insumos'],
     body: `Paso a paso — Movimiento interno:
 1. Control de recursos → Movimiento interno.
-2. Indica origen, destino y productos/insumos.
-3. Cantidades y confirma.
-4. El kardex refleja la salida y entrada entre ubicaciones.`,
+2. Elige un almacén de productos, o Todos.
+3. En el producto, pulsa Mover.
+4. Elige el almacén de destino. La cantidad empieza en todo el stock del origen; puedes subirla o bajarla, o volver a Todo.
+5. Confirma. La cantidad pasa al almacén de destino y el stock total del producto sigue igual.
+Los insumos del kardex siguen en su almacén de insumos.`,
   },
   {
     id: 'guide-inventario-kardex',
