@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MdAdd, MdBed, MdHotel, MdMoreVert, MdPerson, MdShoppingCart } from 'react-icons/md';
+import { MdAdd, MdBed, MdHotel, MdMoreVert, MdPerson, MdShoppingCart, MdCheckCircle, MdMeetingRoom, MdPayments } from 'react-icons/md';
+import ModuleKpiCard from '../../components/ModuleKpiCard';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import HotelRoomQrModal from '../../components/hotel/HotelRoomQrModal';
@@ -235,8 +236,8 @@ export default function Hoteleria() {
           <p className="text-sm text-[var(--ui-muted)]">Habitaciones, huésped, noches y consumo a cuenta de su caja.</p>
         </div>
         {isAdmin ? (
-          <button type="button" className="btn-primary text-sm" onClick={() => setRoomForm({ ...EMPTY_ROOM, caja_station_id: 'recepcion' })}>
-            <MdAdd className="inline mr-1" /> Nueva habitación
+          <button type="button" className="inline-flex items-center gap-1 rounded-lg bg-[#3B82F6] px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600" onClick={() => setRoomForm({ ...EMPTY_ROOM, caja_station_id: 'recepcion' })}>
+            <MdAdd /> Nueva habitación
           </button>
         ) : null}
       </div>
@@ -244,18 +245,9 @@ export default function Hoteleria() {
       {canHotelDesk ? <HotelBookingsPanel isAdmin={isAdmin} onChanged={load} /> : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="card">
-          <p className="text-xs text-[var(--ui-muted)]">Disponibles</p>
-          <p className="text-2xl font-bold text-[var(--ui-body-text)]">{counts.available}</p>
-        </div>
-        <div className="card">
-          <p className="text-xs text-[var(--ui-muted)]">Ocupadas</p>
-          <p className="text-2xl font-bold text-[var(--ui-accent)]">{counts.occupied}</p>
-        </div>
-        <div className="card">
-          <p className="text-xs text-[var(--ui-muted)]">Por cobrar</p>
-          <p className="text-2xl font-bold text-[var(--ui-body-text)]">{money(counts.due)}</p>
-        </div>
+        <ModuleKpiCard icon={MdCheckCircle} title="Disponibles" value={counts.available} tone="emerald" />
+        <ModuleKpiCard icon={MdMeetingRoom} title="Ocupadas" value={counts.occupied} tone="amber" />
+        <ModuleKpiCard icon={MdPayments} title="Por cobrar" value={money(counts.due)} tone="sky" />
       </div>
 
       {loading ? (
@@ -270,8 +262,9 @@ export default function Hoteleria() {
             return (
               <article
                 key={room.id}
-                className="rounded-2xl border bg-[var(--ui-surface)] p-4 text-[var(--ui-body-text)] shadow-sm"
-                style={{ borderColor: occupied ? 'var(--ui-accent)' : 'var(--ui-border)' }}
+                className={`rounded-2xl border bg-[var(--ui-surface)] p-4 text-[var(--ui-body-text)] shadow-sm ${
+                  occupied ? 'border-amber-300' : maintenance ? 'border-slate-300' : 'border-emerald-300'
+                }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -279,7 +272,9 @@ export default function Hoteleria() {
                     <h2 className="text-lg font-bold flex items-center gap-1"><MdBed /> {room.number}</h2>
                     <p className="text-sm text-[var(--ui-muted)]">{room.name}{room.floor ? ` · Piso ${room.floor}` : ''}</p>
                   </div>
-                  <span className="text-xs font-semibold px-2 py-1 rounded-full border border-[color:var(--ui-border)]">
+                  <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                    occupied ? 'bg-amber-100 text-amber-800' : maintenance ? 'bg-slate-100 text-slate-600' : 'bg-emerald-100 text-emerald-700'
+                  }`}>
                     {occupied ? 'Ocupada' : maintenance ? 'Mantenimiento' : 'Disponible'}
                   </span>
                 </div>
@@ -288,21 +283,21 @@ export default function Hoteleria() {
                   <div className="mt-2 text-sm space-y-1">
                     <p className="flex items-center gap-1"><MdPerson /> {room.guest_name}</p>
                     <p className="text-[var(--ui-muted)]">{room.guest_doc_type} {room.guest_doc_number} · {room.nights} noche(s)</p>
-                    <p>Cuenta: <strong className="text-[var(--ui-accent)]">{money(room.account_total)}</strong></p>
+                    <p>Cuenta: <strong className="text-violet-700">{money(room.account_total)}</strong></p>
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   {!occupied && !maintenance ? (
-                    <button type="button" className="btn-primary text-xs" onClick={() => setGuestForm({ room, ...EMPTY_GUEST })}>Ingreso</button>
+                    <button type="button" className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700" onClick={() => setGuestForm({ room, ...EMPTY_GUEST })}>Ingreso</button>
                   ) : null}
                   {occupied ? (
                     <>
-                      <button type="button" className="btn-secondary text-xs" onClick={() => setPedidoRoomId(room.id)}>Pedido</button>
-                      <button type="button" className="btn-primary text-xs" onClick={() => { setPayMethod('efectivo'); setPayRoom(room); }}>Salida</button>
+                      <button type="button" className="rounded-lg bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-200" onClick={() => setPedidoRoomId(room.id)}>Pedido</button>
+                      <button type="button" className="rounded-lg bg-[#3B82F6] px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600" onClick={() => { setPayMethod('efectivo'); setPayRoom(room); }}>Salida</button>
                     </>
                   ) : null}
                   {canHotelDesk && !occupied ? (
-                    <button type="button" className="btn-secondary text-xs" onClick={() => toggleMaintenance(room)}>{maintenance ? 'Activar' : 'Mantenimiento'}</button>
+                    <button type="button" className="rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-200" onClick={() => toggleMaintenance(room)}>{maintenance ? 'Activar' : 'Mantenimiento'}</button>
                   ) : null}
                   <div className="relative ml-auto">
                     <button

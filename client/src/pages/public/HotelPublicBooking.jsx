@@ -144,7 +144,7 @@ export default function HotelPublicBooking() {
                 <input type="number" min="0" className="input-field mt-1" value={search.ninos} onChange={(e) => setSearch({ ...search, ninos: e.target.value })} />
               </label>
             </div>
-            <button type="button" className="btn-primary w-full" disabled={busy} onClick={look}>Buscar</button>
+            <button type="button" className="w-full rounded-lg bg-[#3B82F6] px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-60" disabled={busy} onClick={look}>Buscar</button>
             {error ? <p className="text-sm text-red-600">{error}</p> : null}
             {searched && types.length === 0 && !error ? (
               <p className="text-sm text-[var(--ui-muted)]">No hay habitaciones libres en esas fechas. Pruebe otra entrada o menos personas.</p>
@@ -154,12 +154,12 @@ export default function HotelPublicBooking() {
                 key={type.id}
                 type="button"
                 onClick={() => { setPicked(type); setStep(2); }}
-                className="w-full rounded-2xl border border-[color:var(--ui-border)] p-3 text-left"
+                className="w-full rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-3 text-left"
               >
                 <p className="font-semibold">{type.nombre}</p>
                 <p className="text-sm text-[var(--ui-muted)]">{type.descripcion}</p>
                 <p className="mt-1 text-sm">{type.noches} noche(s) · {type.cantidad_libre} libre(s)</p>
-                <p className="text-lg font-bold text-[var(--ui-accent)]">{formatCurrency(type.precio_total)}</p>
+                <p className="text-lg font-bold text-emerald-700">{formatCurrency(type.precio_total)}</p>
                 {type.amenidades?.length ? <p className="text-xs text-[var(--ui-muted)]">{type.amenidades.join(' · ')}</p> : null}
               </button>
             ))}
@@ -185,7 +185,7 @@ export default function HotelPublicBooking() {
               <input className="input-field mt-1" placeholder="15:00" value={guest.arrival_time} onChange={(e) => setGuest({ ...guest, arrival_time: e.target.value })} />
             </label>
             {error ? <p className="text-sm text-red-600">{error}</p> : null}
-            <button type="button" className="btn-primary w-full" disabled={busy} onClick={reserve}>Apartar 15 minutos</button>
+            <button type="button" className="w-full rounded-lg bg-[#3B82F6] px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-60" disabled={busy} onClick={reserve}>Apartar 15 minutos</button>
             <button type="button" className="btn-secondary w-full" onClick={() => setStep(1)}>Volver</button>
           </section>
         ) : null}
@@ -196,10 +196,10 @@ export default function HotelPublicBooking() {
             <p className="text-3xl font-bold tracking-wide">{result.codigo_reserva}</p>
             <p>{result.huesped}</p>
             <p className="text-sm">{result.fecha_checkin} → {result.fecha_checkout}</p>
-            <p className="text-lg font-semibold text-[var(--ui-accent)]">{formatCurrency(result.total_hospedaje)}</p>
+            <p className="text-lg font-semibold text-violet-700">{formatCurrency(result.total_hospedaje)}</p>
             <p className="text-sm text-[var(--ui-muted)]">Estado: {result.estado === 'pendiente_pago' ? 'Pendiente de pago' : result.estado}</p>
             {result.whatsapp_url ? (
-              <a className="btn-primary block text-center" href={result.whatsapp_url} target="_blank" rel="noreferrer">Enviar comprobante por WhatsApp</a>
+              <a className="block rounded-lg bg-emerald-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-emerald-700" href={result.whatsapp_url} target="_blank" rel="noreferrer">Enviar comprobante por WhatsApp</a>
             ) : (
               <p className="text-sm text-[var(--ui-muted)]">El hotel aún no tiene WhatsApp configurado. Guarde el código y envíe el pago por el medio que le indiquen.</p>
             )}

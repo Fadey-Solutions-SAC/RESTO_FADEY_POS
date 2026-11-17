@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.3.8 — 2026-11-16
+
+- La reserva de Hotel se abre en una ventana encima de la pantalla. Totales, estados y botones de hotelería usan el verde, el azul, el naranja y el violeta de Informes.
+
 ## 1.2.3.7 — 2026-11-16
 
 - Al cobrar una habitación, la pantalla dice Cobrar habitación y muestra el nombre de la habitación. Las mesas siguen igual.
