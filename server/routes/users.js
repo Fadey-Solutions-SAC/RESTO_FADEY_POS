@@ -51,7 +51,7 @@ function withPublicEmail(user) {
 const { readAreaPermissions, applyLegacyStationFlags, isAreaPermKey } = require('../utils/productionAreaPermissions');
 const MODULE_IDS = [
   'escritorio', 'ventas', 'caja', 'mesas', 'reservas', 'auto_pedido', 'creditos', 'clientes',
-  'productos', 'ofertas', 'descuentos', 'almacen', 'delivery', 'informes',
+  'productos', 'ofertas', 'descuentos', 'almacen', 'delivery', 'hoteleria', 'informes',
   'indicadores', 'fidelizacion', 'mi_restaurant', 'configuracion', 'cocina', 'bar', 'produccion', 'tiempo_trabajado',
 ];
 function isPermissionEnabled(value) {

@@ -26,6 +26,7 @@ const {
 const { normalizePlan } = require('../servicePlan');
 const { getEffectivePermissions, buildSubPermissions } = require('../planModuleCatalog');
 const { getRawUserPermissionsJson } = require('../lib/cajaPermissions');
+const { applyHotelStaffPermission } = require('../utils/staffWorkPermissions');
 const { readAreaPermissions } = require('../utils/productionAreaPermissions');
 const { advanceStaffChatCycleIfDue, markAllStaffOfflineIfNeeded } = require('../staffChatService');
 const { getActiveCajaById } = require('../cajaSettings');
@@ -94,7 +95,7 @@ function normalizeAttendancePhoto(input) {
 
 const MODULE_IDS = [
   'escritorio', 'ventas', 'caja', 'mesas', 'reservas', 'auto_pedido', 'creditos', 'clientes',
-  'productos', 'ofertas', 'descuentos', 'almacen', 'delivery', 'informes',
+  'productos', 'ofertas', 'descuentos', 'almacen', 'delivery', 'hoteleria', 'informes',
   'indicadores', 'fidelizacion', 'mi_restaurant', 'configuracion', 'cocina', 'bar', 'tiempo_trabajado',
 ];
 function isPermissionEnabled(value) {
@@ -278,10 +279,11 @@ router.post('/login', async (req, res) => {
   const control = getControlConfig();
   const plan = normalizePlan(control.service_plan);
   const moduleOverrides = control.service_plan_module_overrides || {};
-  const permissions = {
+  const rawPerms = getRawUserPermissionsJson(user.id);
+  const permissions = applyHotelStaffPermission({
     ...getEffectivePermissions(plan, user.role, getUserPermissions(user.id), moduleOverrides),
-    ...readAreaPermissions(getRawUserPermissionsJson(user.id)),
-  };
+    ...readAreaPermissions(rawPerms),
+  }, user.role, rawPerms);
   const sub_permissions = buildSubPermissions(plan, moduleOverrides, permissions, getRawUserPermissionsJson(user.id));
   const padron_quota = getPadronQuotaPublic();
   try {
@@ -467,10 +469,11 @@ router.get('/me', authenticateToken, async (req, res) => {
   const control = getControlConfig();
   const plan = normalizePlan(control.service_plan);
   const moduleOverrides = control.service_plan_module_overrides || {};
-  const permissions = {
+  const rawPerms = getRawUserPermissionsJson(req.user.id);
+  const permissions = applyHotelStaffPermission({
     ...getEffectivePermissions(plan, user.role, getUserPermissions(req.user.id), moduleOverrides),
-    ...readAreaPermissions(getRawUserPermissionsJson(req.user.id)),
-  };
+    ...readAreaPermissions(rawPerms),
+  }, user.role, rawPerms);
   const sub_permissions = buildSubPermissions(plan, moduleOverrides, permissions, getRawUserPermissionsJson(req.user.id));
   const padron_quota = getPadronQuotaPublic();
   const roleLc = String(user?.role || '').toLowerCase();

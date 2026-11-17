@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.3.9 — 2026-11-16
+
+- El recepcionista entra con Hotelería marcada. En permisos el interruptor queda encendido; si el administrador lo apaga, se respeta.
+
 ## 1.2.3.8 — 2026-11-16
 
 - La reserva de Hotel se abre en una ventana encima de la pantalla. Totales, estados y botones de hotelería usan el verde, el azul, el naranja y el violeta de Informes.

@@ -489,10 +489,14 @@ async function start() {
   try {
     await initDatabase();
     try {
-      const { ensureStaffWorkModulePermissions } = require('./utils/staffWorkPermissions');
+      const { ensureStaffWorkModulePermissions, ensureRecepcionistaHotelPermission } = require('./utils/staffWorkPermissions');
       const perms = ensureStaffWorkModulePermissions();
       if (!perms.skipped && perms.updated) {
         console.log(`[permisos] Personal alineado a su módulo de trabajo: ${perms.updated}`);
+      }
+      const receptionPerms = ensureRecepcionistaHotelPermission();
+      if (!receptionPerms.skipped && receptionPerms.updated) {
+        console.log(`[permisos] Recepcionista con Hotelería activa: ${receptionPerms.updated}`);
       }
     } catch (permErr) {
       console.warn('[permisos] no se pudieron alinear los módulos de trabajo:', permErr.message || permErr);

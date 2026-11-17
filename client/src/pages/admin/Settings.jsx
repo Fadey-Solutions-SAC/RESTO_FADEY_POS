@@ -2887,7 +2887,9 @@ function UsersSection({
       const data = await api.get(`/users/${u.id}/permissions`);
       const defaults = {};
       ALL_MODULES.forEach((m) => {
-        defaults[m.id] = data[m.id] === true;
+        defaults[m.id] = Object.prototype.hasOwnProperty.call(data, m.id)
+          ? data[m.id] === true
+          : isModuleDefaultForUser(m, userForPerms);
       });
       CAJA_EXTRA_PERMISSIONS.forEach((p) => {
         defaults[p.key] = data[p.key] === true;
