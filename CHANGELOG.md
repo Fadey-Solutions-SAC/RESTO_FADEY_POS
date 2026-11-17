@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.4.2 — 2026-11-17
+
+- La disponibilidad horaria de productos usa la hora del restaurante (Lima). Un desayuno de 7 a 11 vuelve a verse a las 9 aunque el servidor esté en UTC.
+
 ## 1.2.4.1 — 2026-11-17
 
 - Los submódulos de Hotelería quedan solo en el panel lateral. Se quitó la fila de botones de arriba.

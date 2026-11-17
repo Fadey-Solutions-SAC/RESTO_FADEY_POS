@@ -1,6 +1,10 @@
 /**
  * Disponibilidad horaria de productos (espejo de server/services/productScheduleService.js).
+ * La hora es la del restaurante (America/Lima), no la del navegador ni la del servidor.
  */
+
+const BUSINESS_TZ = 'America/Lima';
+const WEEKDAYS = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 export const DAY_KEYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 
@@ -83,6 +87,27 @@ export function scheduleTypeLabel(type, t) {
   return SCHEDULE_TYPE_LABELS[String(type || 'personalizado').toLowerCase()] || SCHEDULE_TYPE_LABELS.personalizado;
 }
 
+function businessClock(date = new Date()) {
+  const d = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: BUSINESS_TZ,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      weekday: 'short',
+    });
+    const map = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value]));
+    let hour = Number(map.hour);
+    if (hour === 24) hour = 0;
+    const dayIndex = WEEKDAYS[map.weekday];
+    if (dayIndex == null || !Number.isFinite(hour)) throw new Error('clock');
+    return { minutes: hour * 60 + Number(map.minute), dayIndex };
+  } catch (_) {
+    return { minutes: d.getHours() * 60 + d.getMinutes(), dayIndex: d.getDay() };
+  }
+}
+
 export function evaluateProductSchedule(product, now = new Date()) {
   if (!product || !isScheduleEnabled(product)) {
     return { available: true, label: null };
@@ -98,7 +123,8 @@ export function evaluateProductSchedule(product, now = new Date()) {
     return { available: true, label };
   }
 
-  const dayKey = DAY_KEYS[now.getDay()];
+  const clock = businessClock(now);
+  const dayKey = DAY_KEYS[clock.dayIndex];
   if (!isDayAllowed(product, dayKey)) {
     return {
       available: false,
@@ -109,8 +135,7 @@ export function evaluateProductSchedule(product, now = new Date()) {
     };
   }
 
-  const currentMins = now.getHours() * 60 + now.getMinutes();
-  if (isMinuteInWindow(currentMins, fromMins, toMins)) {
+  if (isMinuteInWindow(clock.minutes, fromMins, toMins)) {
     return { available: true, label, available_from: from, available_to: to };
   }
 

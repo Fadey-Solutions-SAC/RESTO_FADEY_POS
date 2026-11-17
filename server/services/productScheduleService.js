@@ -1,7 +1,11 @@
 /**
  * Disponibilidad horaria de productos (desayuno, almuerzo, cena, promos).
  * Soporta ventanas que cruzan medianoche y validación vs horario del local.
+ * La hora es la del restaurante (America/Lima por defecto), no el reloj del servidor.
  */
+
+const { resolveRegionalTimezone, shiftBusinessDateKey, DEFAULT_TIMEZONE } = require('../utils/appDateTime');
+const promotionEngine = require('../../packages/shared-types/promotionEngine');
 
 const DAY_KEYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 
@@ -52,8 +56,38 @@ function formatMinutesToTime(mins) {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
 
-function getDayKeyFromDate(date) {
-  return DAY_KEYS[date.getDay()];
+let cachedTimeZone = '';
+let cachedTimeZoneAt = 0;
+
+/** Zona regional del local. Se relee cada 15 s por si cambia en Configuración. */
+function businessTimeZone() {
+  const nowMs = Date.now();
+  if (cachedTimeZone && nowMs - cachedTimeZoneAt < 15000) return cachedTimeZone;
+  try {
+    const { queryOne } = require('../database');
+    cachedTimeZone = resolveRegionalTimezone(queryOne) || DEFAULT_TIMEZONE;
+  } catch (_) {
+    cachedTimeZone = DEFAULT_TIMEZONE;
+  }
+  cachedTimeZoneAt = nowMs;
+  return cachedTimeZone;
+}
+
+/** Reloj del negocio: minutos del día y día de semana (0 = domingo) en la zona del local. */
+function businessClock(date = new Date()) {
+  const d = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+  const clock = promotionEngine.clockFromDate(d, businessTimeZone());
+  return {
+    dateKey: clock.dateKey,
+    minutes: clock.minutes,
+    dayIndex: clock.dow,
+  };
+}
+
+function dowFromDateKey(dateKey) {
+  const [y, m, d] = String(dateKey || '').split('-').map((n) => Number(n));
+  if (!y || !m || !d) return 0;
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0)).getUTCDay();
 }
 
 function normalizeAvailableDays(raw) {
@@ -116,7 +150,8 @@ function evaluateProductSchedule(product, now = new Date(), restaurantSchedule =
     return { available: true, label: scheduleTypeLabel(product.schedule_type) };
   }
 
-  const dayKey = getDayKeyFromDate(now);
+  const clock = businessClock(now);
+  const dayKey = DAY_KEYS[clock.dayIndex];
   const label = scheduleTypeLabel(product.schedule_type);
 
   if (!isDayAllowed(product, dayKey)) {
@@ -126,12 +161,11 @@ function evaluateProductSchedule(product, now = new Date(), restaurantSchedule =
       label,
       available_from: from,
       available_to: to,
-      next_available_hint: buildNextAvailableHint(product, now, restaurantSchedule),
+      next_available_hint: buildNextAvailableHint(product, clock),
     };
   }
 
-  const currentMins = now.getHours() * 60 + now.getMinutes();
-  const inWindow = isMinuteInWindow(currentMins, fromMins, toMins);
+  const inWindow = isMinuteInWindow(clock.minutes, fromMins, toMins);
 
   if (inWindow) {
     return { available: true, label, available_from: from, available_to: to };
@@ -143,23 +177,20 @@ function evaluateProductSchedule(product, now = new Date(), restaurantSchedule =
     label,
     available_from: from,
     available_to: to,
-    next_available_hint: buildNextAvailableHint(product, now, restaurantSchedule),
+    next_available_hint: buildNextAvailableHint(product, clock),
   };
 }
 
-function buildNextAvailableHint(product, now, restaurantSchedule) {
+function buildNextAvailableHint(product, clock) {
   const { from } = productScheduleWindow(product);
   if (!from) return null;
+  const fromMins = parseTimeToMinutes(product.available_from);
+  if (fromMins == null) return from;
   for (let d = 0; d < 8; d += 1) {
-    const probe = new Date(now);
-    probe.setDate(probe.getDate() + d);
-    probe.setHours(0, 0, 0, 0);
-    const dayKey = getDayKeyFromDate(probe);
+    const dateKey = d === 0 ? clock.dateKey : shiftBusinessDateKey(clock.dateKey, d);
+    const dayKey = DAY_KEYS[d === 0 ? clock.dayIndex : dowFromDateKey(dateKey)];
     if (!isDayAllowed(product, dayKey)) continue;
-    const fromMins = parseTimeToMinutes(product.available_from);
-    if (fromMins == null) continue;
-    const probeMins = d === 0 ? now.getHours() * 60 + now.getMinutes() : -1;
-    if (d === 0 && probeMins >= fromMins) continue;
+    if (d === 0 && clock.minutes >= fromMins) continue;
     const timeStr = formatMinutesToTime(fromMins);
     if (d === 0) return timeStr;
     return `${dayKey} ${timeStr}`;
