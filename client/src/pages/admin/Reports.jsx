@@ -934,6 +934,9 @@ export default function Reports() {
   useEffect(() => {
     const nextSection = resolveInformesSection(searchParams);
     setReportSection((prev) => (prev === nextSection ? prev : nextSection));
+    if (nextSection === 'hoteleria') {
+      navigate('/admin/hoteleria?seccion=informes', { replace: true });
+    }
     const resaltar = String(searchParams.get('resaltar') || '').trim();
     if (resaltar) {
       setDescuentosHighlightIds(resaltar.split(',').map((id) => id.trim()).filter(Boolean));

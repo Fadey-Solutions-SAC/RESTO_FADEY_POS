@@ -1,4 +1,5 @@
 import { ADMIN_MODULE_PATHS } from './staffModuleAccess';
+import { hotelSectionLabel, resolveHotelSection } from '../components/hotel/hotelNav';
 
 export const INFORMES_SECTION_IDS = [
   'ventas',
@@ -75,6 +76,9 @@ export function getShellModuleTitle(pathname, search, t) {
     const section = resolveInformesSection(search);
     const sub = t(`informesSub.${section}`);
     return sub ? `${base} - ${sub}` : base;
+  }
+  if (path.startsWith('/admin/hoteleria')) {
+    return `${base} - ${hotelSectionLabel(resolveHotelSection(search))}`;
   }
   if (path.startsWith('/admin/almacen')) {
     const section = resolveAlmacenSection(search);

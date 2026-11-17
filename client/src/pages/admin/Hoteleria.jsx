@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MdAdd, MdBed, MdHotel, MdMoreVert, MdPerson, MdShoppingCart, MdCheckCircle, MdMeetingRoom, MdPayments } from 'react-icons/md';
+import { useSearchParams } from 'react-router-dom';
+import { MdAdd, MdBed, MdHotel, MdMoreVert, MdPerson, MdShoppingCart, MdCheckCircle, MdMeetingRoom, MdPayments, MdEventAvailable } from 'react-icons/md';
 import ModuleKpiCard from '../../components/ModuleKpiCard';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
 import HotelRoomQrModal from '../../components/hotel/HotelRoomQrModal';
 import HotelRoomAccountModal from '../../components/hotel/HotelRoomAccountModal';
 import HotelBookingsPanel from '../../components/hotel/HotelBookingsPanel';
+import HotelReportSection from '../../components/admin/HotelReportSection';
+import { HOTEL_SECTIONS, resolveHotelSection } from '../../components/hotel/hotelNav';
 import { useAuth } from '../../context/AuthContext';
 import { api, formatCurrency, PAYMENT_METHODS } from '../../utils/api';
 import { showStockInOrderingUI, orderingStockCellIsOut, orderingStockCellText } from '../../utils/productStockDisplay';
@@ -36,11 +39,21 @@ function money(n) {
   return formatCurrency(Number(n) || 0);
 }
 
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export default function Hoteleria() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const section = resolveHotelSection(searchParams);
   const isAdmin = user?.role === 'admin' || user?.role === 'master_admin';
   const canHotelDesk = isAdmin || String(user?.role || '').toLowerCase() === 'recepcionista';
   const [rooms, setRooms] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [dayIncome, setDayIncome] = useState(null);
+  const [roomQuery, setRoomQuery] = useState('');
   const [stations, setStations] = useState([]);
   const [roomTypes, setRoomTypes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +74,9 @@ export default function Hoteleria() {
       .then((rows) => setRooms(Array.isArray(rows) ? rows : []))
       .catch((err) => toast.error(err.message || 'No se pudieron cargar las habitaciones'))
       .finally(() => setLoading(false));
+    api.get('/hotel/bookings')
+      .then((rows) => setBookings(Array.isArray(rows) ? rows : []))
+      .catch(() => setBookings([]));
   }, []);
 
   useEffect(() => {
@@ -68,12 +84,10 @@ export default function Hoteleria() {
     api.get('/pos/caja-stations')
       .then((data) => setStations(Array.isArray(data?.stations) ? data.stations : []))
       .catch(() => setStations([]));
-    if (isAdmin) {
-      api.get('/hotel/room-types')
-        .then((rows) => setRoomTypes(Array.isArray(rows) ? rows : []))
-        .catch(() => setRoomTypes([]));
-    }
-  }, [load, isAdmin]);
+    api.get('/hotel/room-types')
+      .then((rows) => setRoomTypes(Array.isArray(rows) ? rows : []))
+      .catch(() => setRoomTypes([]));
+  }, [load]);
 
   const openAccount = async (room) => {
     setProductSearch('');
@@ -220,11 +234,80 @@ export default function Hoteleria() {
     return products.filter((p) => !q || String(p.name || '').toLowerCase().includes(q)).slice(0, 30);
   }, [products, productSearch]);
 
+  const today = todayKey();
+  const activeBookings = useMemo(
+    () => bookings.filter((row) => !row.expired && !['cancelada', 'check_out'].includes(row.status)),
+    [bookings],
+  );
   const counts = useMemo(() => ({
     available: rooms.filter((r) => r.status === 'available').length,
     occupied: rooms.filter((r) => r.status === 'occupied').length,
-    due: rooms.reduce((s, r) => s + Number(r.account_total || 0), 0),
-  }), [rooms]);
+    maintenance: rooms.filter((r) => r.status === 'maintenance').length,
+    reserved: activeBookings.filter((row) => row.status === 'confirmada' || row.status === 'pendiente_pago').length,
+    due: rooms.reduce((sum, room) => sum + Number(room.account_total || 0), 0),
+  }), [rooms, activeBookings]);
+
+  const guests = useMemo(() => {
+    const map = new Map();
+    const add = (row) => {
+      const name = String(row.name || '').trim();
+      if (!name) return;
+      const doc = String(row.doc || '').trim();
+      const key = doc ? `doc:${doc.toLowerCase()}` : `name:${name.toLowerCase()}`;
+      const current = map.get(key) || { name, doc, phone: row.phone || '', stays: 0, where: '' };
+      current.stays += 1;
+      if (row.phone) current.phone = row.phone;
+      if (row.where) current.where = row.where;
+      map.set(key, current);
+    };
+    rooms.filter((room) => room.status === 'occupied').forEach((room) => add({
+      name: room.guest_name,
+      doc: room.guest_doc_number,
+      phone: room.guest_phone,
+      where: `En casa · Hab. ${room.number}`,
+    }));
+    activeBookings.forEach((row) => add({
+      name: row.guest_name,
+      doc: row.guest_doc_number,
+      phone: row.guest_phone,
+      where: row.status === 'check_in' ? 'En casa' : `Reserva ${row.check_in}`,
+    }));
+    return [...map.values()].sort((a, b) => b.stays - a.stays || a.name.localeCompare(b.name));
+  }, [rooms, activeBookings]);
+
+  const shownRooms = useMemo(() => {
+    const q = roomQuery.trim().toLowerCase();
+    return rooms.filter((room) => {
+      if (section === 'estadias' || section === 'cuentas') {
+        if (room.status !== 'occupied') return false;
+      } else if (section === 'limpieza') {
+        if (room.status !== 'maintenance') return false;
+      } else if (section !== 'habitaciones') {
+        return false;
+      }
+      if (!q) return true;
+      return `${room.number} ${room.name} ${room.guest_name || ''}`.toLowerCase().includes(q);
+    });
+  }, [rooms, section, roomQuery]);
+
+  const roomSections = section === 'habitaciones' || section === 'estadias' || section === 'cuentas' || section === 'limpieza';
+  const upcomingIn = activeBookings.filter((row) => row.status !== 'check_in' && String(row.check_in || '') >= today).slice(0, 5);
+  const upcomingOut = rooms.filter((room) => room.status === 'occupied' && room.check_out).slice(0, 5);
+  const dueRooms = rooms.filter((room) => room.status === 'occupied' && Number(room.account_total || 0) > 0).slice(0, 5);
+
+  useEffect(() => {
+    if (section !== 'dashboard') return undefined;
+    const day = todayKey();
+    api.get(`/reports/hoteleria?from=${day}&to=${day}`)
+      .then((data) => {
+        const paid = (data?.rows || []).filter((row) => row.status_key === 'paid' && String(row.paid_at || '').slice(0, 10) === day);
+        setDayIncome(paid.reduce((sum, row) => sum + Number(row.total || 0), 0));
+      })
+      .catch(() => setDayIncome(null));
+    return undefined;
+  }, [section, rooms]);
+
+  const openSection = (id) => setSearchParams({ seccion: id });
 
   return (
     <div className="space-y-4">
@@ -233,30 +316,144 @@ export default function Hoteleria() {
           <h1 className="text-2xl font-bold text-[var(--ui-body-text)] flex items-center gap-2">
             <MdHotel className="text-[var(--ui-accent)]" /> Hotelería
           </h1>
-          <p className="text-sm text-[var(--ui-muted)]">Habitaciones, huésped, noches y consumo a cuenta de su caja.</p>
+          <p className="text-sm text-[var(--ui-muted)]">{HOTEL_SECTIONS.find((item) => item.id === section)?.label}. La cuenta y la caja siguen siendo las de siempre.</p>
         </div>
-        {isAdmin ? (
+        {isAdmin && section === 'habitaciones' ? (
           <button type="button" className="inline-flex items-center gap-1 rounded-lg bg-[#3B82F6] px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600" onClick={() => setRoomForm({ ...EMPTY_ROOM, caja_station_id: 'recepcion' })}>
             <MdAdd /> Nueva habitación
           </button>
         ) : null}
       </div>
 
-      {canHotelDesk ? <HotelBookingsPanel isAdmin={isAdmin} onChanged={load} /> : null}
+      <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Submódulos de hotelería">
+        {HOTEL_SECTIONS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => openSection(item.id)}
+            className={section === item.id
+              ? 'shrink-0 rounded-lg bg-[#3B82F6] px-3 py-2 text-xs font-semibold text-white'
+              : 'shrink-0 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-xs font-semibold text-[var(--ui-body-text)]'}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <ModuleKpiCard icon={MdCheckCircle} title="Disponibles" value={counts.available} tone="emerald" />
-        <ModuleKpiCard icon={MdMeetingRoom} title="Ocupadas" value={counts.occupied} tone="amber" />
-        <ModuleKpiCard icon={MdPayments} title="Por cobrar" value={money(counts.due)} tone="sky" />
-      </div>
+      {section === 'dashboard' ? (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+            <ModuleKpiCard icon={MdCheckCircle} title="Disponibles" value={counts.available} tone="emerald" />
+            <ModuleKpiCard icon={MdMeetingRoom} title="Ocupadas" value={counts.occupied} tone="amber" />
+            <ModuleKpiCard icon={MdEventAvailable} title="Reservadas" value={counts.reserved} tone="sky" />
+            <ModuleKpiCard icon={MdBed} title="Mantenimiento" value={counts.maintenance} tone="violet" />
+            <ModuleKpiCard icon={MdPayments} title="Por cobrar" value={money(counts.due)} tone="sky" />
+            <ModuleKpiCard icon={MdCheckCircle} title="Cobrado hoy" value={dayIncome == null ? '—' : money(dayIncome)} tone="emerald" />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <section className="card space-y-2">
+              <h2 className="font-semibold">Próximos ingresos</h2>
+              {upcomingIn.length === 0 ? <p className="text-sm text-[var(--ui-muted)]">No hay reservas por llegar.</p> : upcomingIn.map((row) => (
+                <p key={row.id} className="text-sm">{row.check_in} · {row.guest_name}</p>
+              ))}
+            </section>
+            <section className="card space-y-2">
+              <h2 className="font-semibold">Próximas salidas</h2>
+              {upcomingOut.length === 0 ? <p className="text-sm text-[var(--ui-muted)]">Nadie tiene fecha de salida cargada.</p> : upcomingOut.map((room) => (
+                <p key={room.id} className="text-sm">Hab. {room.number} · {room.guest_name} · {room.check_out}</p>
+              ))}
+            </section>
+            <section className="card space-y-2">
+              <h2 className="font-semibold">Cuentas pendientes</h2>
+              {dueRooms.length === 0 ? <p className="text-sm text-[var(--ui-muted)]">No hay saldo en habitaciones ocupadas.</p> : dueRooms.map((room) => (
+                <button key={room.id} type="button" className="block w-full text-left text-sm" onClick={() => openSection('cuentas')}>
+                  Hab. {room.number} · <strong className="text-violet-700">{money(room.account_total)}</strong>
+                </button>
+              ))}
+              {counts.maintenance > 0 ? (
+                <button type="button" className="text-sm font-semibold text-amber-800" onClick={() => openSection('limpieza')}>
+                  {counts.maintenance} en mantenimiento
+                </button>
+              ) : null}
+            </section>
+          </div>
+        </>
+      ) : null}
 
-      {loading ? (
+      {section === 'reservas' && canHotelDesk ? <HotelBookingsPanel isAdmin={isAdmin} onChanged={load} /> : null}
+      {section === 'reservas' && !canHotelDesk ? <p className="card text-sm text-[var(--ui-muted)]">Las reservas las registra recepción o el administrador.</p> : null}
+
+      {section === 'huespedes' ? (
+        <section className="card overflow-x-auto">
+          <h2 className="font-semibold mb-2">Huéspedes de reservas y estadías abiertas</h2>
+          <p className="text-xs text-[var(--ui-muted)] mb-3">Si el documento coincide, se muestra una sola vez. El historial cobrado está en Informes.</p>
+          {guests.length === 0 ? <p className="text-sm text-[var(--ui-muted)]">Todavía no hay huéspedes cargados.</p> : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[color:var(--ui-border)] text-left text-[var(--ui-muted)]">
+                  <th className="py-2 pr-3">Nombre</th>
+                  <th className="py-2 pr-3">Documento</th>
+                  <th className="py-2 pr-3">Teléfono</th>
+                  <th className="py-2 pr-3">Dónde</th>
+                  <th className="py-2">Veces</th>
+                </tr>
+              </thead>
+              <tbody>
+                {guests.map((guest) => (
+                  <tr key={`${guest.doc}-${guest.name}`} className="border-b border-[color:var(--ui-border)]">
+                    <td className="py-2 pr-3 font-medium">{guest.name}</td>
+                    <td className="py-2 pr-3">{guest.doc || '—'}</td>
+                    <td className="py-2 pr-3">{guest.phone || '—'}</td>
+                    <td className="py-2 pr-3">{guest.where || '—'}</td>
+                    <td className="py-2">{guest.stays > 1 ? 'Recurrente' : '1'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ) : null}
+
+      {section === 'informes' ? <HotelReportSection /> : null}
+
+      {section === 'configuracion' ? (
+        <section className="card space-y-3">
+          <h2 className="font-semibold">Tipos y tarifas</h2>
+          <p className="text-sm text-[var(--ui-muted)]">Cada habitación guarda su tarifa por noche, piso y capacidad. El tipo publica esa tarifa en la web y, si tiene precio de fin de semana, la reserva lo usa al cotizar.</p>
+          {roomTypes.length === 0 ? <p className="text-sm text-[var(--ui-muted)]">Aún no hay tipos.</p> : (
+            <ul className="space-y-2">
+              {roomTypes.map((type) => (
+                <li key={type.id} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm">
+                  <strong>{type.name}</strong> · {money(type.nightly_rate)} por noche
+                  {Number(type.weekend_rate) > 0 ? ` · fin de semana ${money(type.weekend_rate)}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+          {isAdmin ? <HotelBookingsPanel isAdmin onlyTypes onChanged={() => api.get('/hotel/room-types').then((rows) => setRoomTypes(Array.isArray(rows) ? rows : [])).catch(() => {})} /> : (
+            <p className="text-sm text-[var(--ui-muted)]">Solo el administrador crea tipos y habitaciones.</p>
+          )}
+        </section>
+      ) : null}
+
+      {roomSections && (section === 'habitaciones' || section === 'estadias' || section === 'cuentas') ? (
+        <input className="input-field" placeholder="Buscar habitación o huésped" value={roomQuery} onChange={(e) => setRoomQuery(e.target.value)} />
+      ) : null}
+      {section === 'limpieza' ? (
+        <p className="text-sm text-[var(--ui-muted)]">Al cobrar, la habitación pasa a mantenimiento y no se puede reservar ni ocupar hasta que recepción la active.</p>
+      ) : null}
+
+      {roomSections && loading ? (
         <div className="min-h-[30vh] flex items-center justify-center"><div className="rf-loader rf-loader--md" /></div>
-      ) : rooms.length === 0 ? (
-        <div className="card text-sm text-[var(--ui-muted)]">Todavía no hay habitaciones. Cree la primera y elija Recepción o una caja.</div>
-      ) : (
+      ) : null}
+      {roomSections && !loading && shownRooms.length === 0 ? (
+        <div className="card text-sm text-[var(--ui-muted)]">
+          {section === 'limpieza' ? 'No hay habitaciones en mantenimiento.' : section === 'habitaciones' && rooms.length === 0 ? 'Todavía no hay habitaciones. Cree la primera y elija Recepción o una caja.' : 'No hay habitaciones en esta vista.'}
+        </div>
+      ) : null}
+      {roomSections && !loading && shownRooms.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {rooms.map((room) => {
+          {shownRooms.map((room) => {
             const occupied = room.status === 'occupied';
             const maintenance = room.status === 'maintenance';
             return (
@@ -332,7 +529,7 @@ export default function Hoteleria() {
             );
           })}
         </div>
-      )}
+      ) : null}
 
       <Modal isOpen={!!roomForm} onClose={() => setRoomForm(null)} title={roomForm?.id ? 'Editar habitación' : 'Nueva habitación'} size="md">
         {roomForm ? (

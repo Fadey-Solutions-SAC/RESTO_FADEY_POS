@@ -35,7 +35,7 @@ const STATUS_CHIP = {
   cancelada: 'bg-slate-100 text-slate-600',
 };
 
-function TypeForm() {
+function TypeForm({ onSaved }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [rate, setRate] = useState('');
@@ -64,6 +64,7 @@ function TypeForm() {
       setOpen(false);
       setName('');
       setRate('');
+      onSaved?.();
     } catch (err) {
       toast.error(err.message || 'No se pudo crear el tipo');
     } finally {
@@ -88,7 +89,7 @@ function TypeForm() {
   );
 }
 
-export default function HotelBookingsPanel({ onChanged, isAdmin = false }) {
+export default function HotelBookingsPanel({ onChanged, isAdmin = false, onlyTypes = false }) {
   const [rows, setRows] = useState([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -172,6 +173,10 @@ export default function HotelBookingsPanel({ onChanged, isAdmin = false }) {
 
   const visible = rows.filter((row) => !row.expired && row.status !== 'check_out' && row.status !== 'cancelada');
 
+  if (onlyTypes) {
+    return isAdmin ? <TypeForm onSaved={onChanged} /> : null;
+  }
+
   return (
     <section className="card space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -183,9 +188,6 @@ export default function HotelBookingsPanel({ onChanged, isAdmin = false }) {
           <MdEventAvailable className="text-base" /> Nueva reserva
         </button>
       </div>
-      {isAdmin ? (
-        <TypeForm />
-      ) : null}
       {visible.length === 0 ? (
         <p className="text-sm text-[var(--ui-muted)]">No hay reservas por llegar.</p>
       ) : (

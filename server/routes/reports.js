@@ -1534,7 +1534,7 @@ router.get('/courtesies', authenticateToken, requireRole('admin', 'cajero'), (re
   }
 });
 
-router.get('/hoteleria', authenticateToken, requireRole('admin', 'cajero', 'master_admin'), (req, res) => {
+router.get('/hoteleria', authenticateToken, requireRole('admin', 'cajero', 'recepcionista', 'master_admin'), (req, res) => {
   try {
     const { buildHotelReport } = require('../services/hotelService');
     res.json(buildHotelReport(req.user, req.query || {}));

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { ADMIN_MODULE_PATHS, PRIMARY_MODULE_BY_ROLE, canAccessProductionArea, canAccessStaffModule, hasModulePermission } from '../utils/staffModuleAccess';
+import { HOTEL_SECTIONS } from './hotel/hotelNav';
 import { groupNavLinks, sortProductionAreasForNav } from '../utils/navMenuGroups';
 import { useShowDeliveryUi } from '../hooks/useDeliveryEnabled';
 import { useShowHotelUi } from '../hooks/useHotelEnabled';
@@ -67,7 +68,7 @@ const ALMACEN_SUB_IDS = [
   'movimiento_interno', 'ir_modulo_logistica', 'requerimiento', 'recepcion', 'ir_modulo_gastos',
 ];
 const INFORMES_SUB_IDS = [
-  'ventas', 'descuentos', 'productos', 'caja', 'compras', 'finanzas', 'facturacion', 'inventario', 'hoteleria',
+  'ventas', 'descuentos', 'productos', 'caja', 'compras', 'finanzas', 'facturacion', 'inventario',
 ];
 
 export default function Sidebar({ collapsed, isMobile = false, mobileOpen = false, onClose = () => {}, onToggleMenu = () => {} }) {
@@ -241,6 +242,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const [isMiRestaurantExpanded, setIsMiRestaurantExpanded] = useState(location.pathname.startsWith('/admin/mi-restaurant'));
   const [isAlmacenExpanded, setIsAlmacenExpanded] = useState(location.pathname.startsWith('/admin/almacen'));
   const [isInformesExpanded, setIsInformesExpanded] = useState(location.pathname.startsWith('/admin/informes'));
+  const [isHotelExpanded, setIsHotelExpanded] = useState(location.pathname.startsWith('/admin/hoteleria'));
   const [isHrExpanded, setIsHrExpanded] = useState(
     location.pathname.startsWith('/admin/tiempo-trabajado')
     || (roleLc === 'admin' && onAsistenciaPath),
@@ -265,6 +267,7 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
     if (location.pathname.startsWith('/admin/caja') || (roleLc === 'cajero' && onAsistenciaPath)) {
       setIsCajaExpanded(true);
     }
+    if (location.pathname.startsWith('/admin/hoteleria')) setIsHotelExpanded(true);
     if (
       location.pathname.startsWith('/admin/produccion')
       || location.pathname.startsWith('/admin/cocina')
@@ -458,7 +461,9 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                   ? '/admin/caja?view=cobrar'
                   : link.moduleId === 'informes'
                     ? '/admin/informes?view=ventas'
-                    : link.to
+                    : link.moduleId === 'hoteleria'
+                      ? '/admin/hoteleria?seccion=dashboard'
+                      : link.to
               }
               end={link.end}
               className={linkHostsAttendanceQr(link) ? parentLinkClass(link) : linkClass}
@@ -496,6 +501,11 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                 if (link.to === '/admin/informes' || link.moduleId === 'informes') {
                   e.preventDefault();
                   setIsInformesExpanded((prev) => !prev);
+                  return;
+                }
+                if (link.moduleId === 'hoteleria') {
+                  e.preventDefault();
+                  setIsHotelExpanded((prev) => !prev);
                   return;
                 }
                 if (link.moduleId === 'tiempo_trabajado') {
@@ -616,6 +626,25 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                         || 'ventas';
                       const current = raw === 'cortesias' ? 'descuentos' : raw;
                       const selected = isActive && current === option.id;
+                      return `rf-nav-sublink !whitespace-normal leading-snug ${selected ? 'rf-nav-sublink--active' : ''}`;
+                    }}
+                    onClick={() => { if (isMobile) onClose(); }}
+                  >
+                    {option.label}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+
+            {!isCollapsed && link.moduleId === 'hoteleria' && isHotelExpanded && (
+              <div className="mt-1 ml-8 space-y-0.5">
+                {HOTEL_SECTIONS.map((option) => (
+                  <NavLink
+                    key={option.id}
+                    to={`/admin/hoteleria?seccion=${option.id}`}
+                    className={() => {
+                      const current = new URLSearchParams(location.search).get('seccion') || 'dashboard';
+                      const selected = location.pathname.startsWith('/admin/hoteleria') && current === option.id;
                       return `rf-nav-sublink !whitespace-normal leading-snug ${selected ? 'rf-nav-sublink--active' : ''}`;
                     }}
                     onClick={() => { if (isMobile) onClose(); }}

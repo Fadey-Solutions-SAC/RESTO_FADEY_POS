@@ -147,6 +147,8 @@ export default function HotelReportSection() {
         <div className="card"><p className="text-xs text-[var(--ui-muted)]">Abiertas</p><p className="text-2xl font-bold text-[var(--ui-accent)]">{summary.open || 0}</p></div>
         <div className="card"><p className="text-xs text-[var(--ui-muted)]">Hospedaje</p><p className="text-2xl font-bold text-[var(--ui-body-text)]">{formatCurrency(summary.lodging_total)}</p></div>
         <div className="card"><p className="text-xs text-[var(--ui-muted)]">Total</p><p className="text-2xl font-bold text-[var(--ui-body-text)]">{formatCurrency(summary.total)}</p></div>
+        <div className="card"><p className="text-xs text-[var(--ui-muted)]">Promedio por noche</p><p className="text-2xl font-bold text-[var(--ui-body-text)]">{summary.nights > 0 ? formatCurrency(summary.lodging_total / summary.nights) : formatCurrency(0)}</p></div>
+        <div className="card"><p className="text-xs text-[var(--ui-muted)]">Noches por estadía</p><p className="text-2xl font-bold text-[var(--ui-body-text)]">{summary.stays > 0 ? (summary.nights / summary.stays).toFixed(1) : '0'}</p></div>
       </div>
 
       <div className="card overflow-x-auto">
