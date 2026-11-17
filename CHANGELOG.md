@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.4.1 — 2026-11-17
+
+- Los submódulos de Hotelería quedan solo en el panel lateral. Se quitó la fila de botones de arriba.
+
 ## 1.2.4.0 — 2026-11-17
 
 - Hotelería se abre en submódulos: dashboard, habitaciones, reservas, huéspedes, estadías, cuentas, limpieza, informes y configuración. El informe de estadías sale del menú general de Informes y queda en Hotelería. La ruta `/admin/hoteleria` no cambia.

@@ -1,6 +1,6 @@
 # Contexto del proyecto
 
-Versión de producto: **1.2.4.0** (`package.json` y `client/package.json`). En pantalla: `v 1.2.4.0`.
+Versión de producto: **1.2.4.1** (`package.json` y `client/package.json`). En pantalla: `v 1.2.4.1`.
 
 Este archivo describe el sistema tal como está en el código. No reemplaza `AGENTS.md` (cómo trabajar) ni `CHANGELOG.md` (qué cambió).
 

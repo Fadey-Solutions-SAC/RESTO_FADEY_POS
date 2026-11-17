@@ -8,7 +8,7 @@ import HotelRoomQrModal from '../../components/hotel/HotelRoomQrModal';
 import HotelRoomAccountModal from '../../components/hotel/HotelRoomAccountModal';
 import HotelBookingsPanel from '../../components/hotel/HotelBookingsPanel';
 import HotelReportSection from '../../components/admin/HotelReportSection';
-import { HOTEL_SECTIONS, resolveHotelSection } from '../../components/hotel/hotelNav';
+import { resolveHotelSection } from '../../components/hotel/hotelNav';
 import { useAuth } from '../../context/AuthContext';
 import { api, formatCurrency, PAYMENT_METHODS } from '../../utils/api';
 import { showStockInOrderingUI, orderingStockCellIsOut, orderingStockCellText } from '../../utils/productStockDisplay';
@@ -316,7 +316,7 @@ export default function Hoteleria() {
           <h1 className="text-2xl font-bold text-[var(--ui-body-text)] flex items-center gap-2">
             <MdHotel className="text-[var(--ui-accent)]" /> Hotelería
           </h1>
-          <p className="text-sm text-[var(--ui-muted)]">{HOTEL_SECTIONS.find((item) => item.id === section)?.label}. La cuenta y la caja siguen siendo las de siempre.</p>
+          <p className="text-sm text-[var(--ui-muted)]">La cuenta y la caja siguen siendo las de siempre.</p>
         </div>
         {isAdmin && section === 'habitaciones' ? (
           <button type="button" className="inline-flex items-center gap-1 rounded-lg bg-[#3B82F6] px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600" onClick={() => setRoomForm({ ...EMPTY_ROOM, caja_station_id: 'recepcion' })}>
@@ -324,21 +324,6 @@ export default function Hoteleria() {
           </button>
         ) : null}
       </div>
-
-      <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Submódulos de hotelería">
-        {HOTEL_SECTIONS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => openSection(item.id)}
-            className={section === item.id
-              ? 'shrink-0 rounded-lg bg-[#3B82F6] px-3 py-2 text-xs font-semibold text-white'
-              : 'shrink-0 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-xs font-semibold text-[var(--ui-body-text)]'}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
 
       {section === 'dashboard' ? (
         <>
