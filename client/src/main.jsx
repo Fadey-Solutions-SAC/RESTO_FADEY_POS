@@ -2,10 +2,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './i18n';
 import { BrowserRouter, HashRouter } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, ToastBar, toast } from 'react-hot-toast';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
+import SwipeToDismiss from './components/SwipeToDismiss';
 import './index.css';
 import './styles/premium-ui.css';
 import { initOrientationRespect } from './orientationRespect';
@@ -13,6 +14,21 @@ import { bootstrapUiTheme } from './theme/uiTheme';
 import { premiumToastOptions } from './theme/toastOptions';
 import i18n from './i18n';
 import './utils/pwaInstall';
+
+function AppToaster() {
+  return (
+    <Toaster position="top-right" toastOptions={premiumToastOptions} gutter={10}>
+      {(t) => (
+        <SwipeToDismiss
+          onDismiss={() => toast.dismiss(t.id)}
+          className="rounded-xl max-w-[min(100vw-1.5rem,26rem)]"
+        >
+          <ToastBar toast={t} style={{ ...t.style, maxWidth: '100%' }} />
+        </SwipeToDismiss>
+      )}
+    </Toaster>
+  );
+}
 
 bootstrapUiTheme();
 initOrientationRespect();
@@ -45,7 +61,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <AuthProvider>
             <CartProvider>
               <App />
-              <Toaster position="top-right" toastOptions={premiumToastOptions} gutter={10} />
+              <AppToaster />
             </CartProvider>
           </AuthProvider>
         </HashRouter>
@@ -54,7 +70,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <AuthProvider>
             <CartProvider>
               <App />
-              <Toaster position="top-right" toastOptions={premiumToastOptions} gutter={10} />
+              <AppToaster />
             </CartProvider>
           </AuthProvider>
         </BrowserRouter>

@@ -2,6 +2,12 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.4.3 — 2026-11-19
+
+- En detalle del cliente, la cuenta pendiente y «Ir a caja a cobrar» quedan dentro de Deuda pendiente y se abren al pulsar esa tarjeta.
+- En el bloque de auto-pedido del cliente, el texto queda arriba y Copiar a la derecha.
+- Todos los avisos toast se pueden quitar deslizando; el tiempo de auto-cierre baja un poco.
+
 ## 1.2.4.2 — 2026-11-17
 
 - La disponibilidad horaria de productos usa la hora del restaurante (Lima). Un desayuno de 7 a 11 vuelve a verse a las 9 aunque el servidor esté en UTC.

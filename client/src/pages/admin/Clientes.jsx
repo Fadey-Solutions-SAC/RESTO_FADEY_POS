@@ -8,7 +8,7 @@ import {
   MdAdd, MdEdit, MdDelete, MdSearch, MdPhone, MdEmail, MdAttachMoney, MdContentCopy,
   MdPeople, MdPersonAdd, MdCreditCard, MdStar, MdChevronRight, MdChevronLeft, MdVisibility,
   MdMoreVert, MdFileDownload, MdBusiness, MdRepeat, MdFiberNew,
-  MdCheckCircle, MdLocationOn, MdRestaurantMenu,
+  MdCheckCircle, MdLocationOn, MdRestaurantMenu, MdExpandMore, MdExpandLess,
 } from 'react-icons/md';
 import Modal from '../../components/Modal';
 import ToolbarFilterMenu from '../../components/admin/ToolbarFilterMenu';
@@ -111,6 +111,7 @@ export default function Clientes() {
   const [openMenuId, setOpenMenuId] = useState('');
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
   const [viewClientId, setViewClientId] = useState('');
+  const [debtDetailOpen, setDebtDetailOpen] = useState(false);
   const [openingSelfOrderId, setOpeningSelfOrderId] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editClient, setEditClient] = useState(null);
@@ -119,6 +120,10 @@ export default function Clientes() {
   const [gitCardsEnabled, setGitCardsEnabled] = useState(true);
   const searchRef = useRef('');
   const menuRef = useRef(null);
+
+  useEffect(() => {
+    setDebtDetailOpen(false);
+  }, [viewClientId]);
 
   const load = useCallback(async (term) => {
     const q = term !== undefined && term !== null ? String(term) : searchRef.current;
@@ -792,7 +797,12 @@ export default function Clientes() {
         )
         : null}
 
-      <Modal isOpen={!!viewClient} onClose={() => setViewClientId('')} title="Detalle del cliente" size="lg">
+      <Modal
+        isOpen={!!viewClient}
+        onClose={() => { setViewClientId(''); setDebtDetailOpen(false); }}
+        title="Detalle del cliente"
+        size="lg"
+      >
         {viewClient && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-4">
@@ -818,89 +828,118 @@ export default function Clientes() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                ['Visitas', viewClient._visits],
-                ['Consumo total', formatCurrency(viewClient.total_spent || 0)],
-                ['Deuda pendiente', formatCurrency(viewClient._debt)],
-                ['Última compra', viewClient._lastDate ? daysAgoLabel(viewClient._lastDays) : 'Sin compras'],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">{label}</p>
-                  <p className="mt-1 font-bold tabular-nums text-slate-900">{value}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <p className="mb-2 text-xs font-semibold text-slate-900">Pedidos pendientes por cobrar</p>
-              {(pendingOrdersByCustomer[viewClient.id] || []).length === 0 ? (
-                <p className="text-xs text-slate-700">No tiene pedidos pendientes.</p>
-              ) : (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-[minmax(4.5rem,0.85fr)_minmax(0,1fr)_2.25rem_4.25rem] gap-x-2 border-b border-slate-200 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                    <span>Fecha</span>
-                    <span className="min-w-0">Pedido</span>
-                    <span className="text-right">Cant.</span>
-                    <span className="text-right">Precio</span>
-                  </div>
-                  {(pendingOrdersByCustomer[viewClient.id] || []).map((o) => (
-                    <div
-                      key={o.id}
-                      className="grid grid-cols-[minmax(4.5rem,0.85fr)_minmax(0,1fr)_2.25rem_4.25rem] items-center gap-x-2 border-b border-slate-100 py-1.5 text-xs last:border-0"
-                    >
-                      <span className="shrink-0 text-slate-700">{formatDate(o.created_at)}</span>
-                      <span className="min-w-0 break-words font-medium leading-snug text-slate-900" title={pedidoColumnText(o)}>
-                        {pedidoColumnText(o)}
-                      </span>
-                      <span className="text-right tabular-nums text-slate-800">{orderTotalPieces(o)}</span>
-                      <span className="text-right tabular-nums font-medium text-slate-900">{formatCurrency(getOrderChargeTotal(o))}</span>
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-between border-t border-slate-200 pt-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total a cobrar</span>
-                    <span className="text-lg font-bold tabular-nums text-slate-900">{formatCurrency(viewClient._debt)}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => goToCajaToChargeCustomer(viewClient)}
-                    className="btn-primary flex w-full items-center justify-center gap-2"
-                  >
-                    <MdAttachMoney />
-                    Ir a caja a cobrar
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=96x96&data=${encodeURIComponent(selfOrderClienteUrl(viewClient.id))}`}
-                alt="QR auto-pedido"
-                className="h-24 w-24 shrink-0 rounded border border-slate-200 bg-white p-0.5"
-              />
-              <button
-                type="button"
-                onClick={() => openClienteSelfOrder(viewClient)}
-                disabled={openingSelfOrderId === viewClient.id}
-                className="btn-primary inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm disabled:opacity-60"
-              >
-                <MdRestaurantMenu /> {openingSelfOrderId === viewClient.id ? 'Abriendo…' : 'Hacer pedido'}
-              </button>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-slate-900">Auto-pedido del cliente</p>
-                <p className="text-xs text-slate-500">El cliente puede escanear este QR para hacer pedidos a su nombre.</p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Visitas</p>
+                <p className="mt-1 font-bold tabular-nums text-slate-900">{viewClient._visits}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Consumo total</p>
+                <p className="mt-1 font-bold tabular-nums text-slate-900">{formatCurrency(viewClient.total_spent || 0)}</p>
               </div>
               <button
                 type="button"
-                onClick={() => copyClienteSelfOrderLink(viewClient.id)}
-                className="btn-secondary inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm"
+                onClick={() => setDebtDetailOpen((v) => !v)}
+                aria-expanded={debtDetailOpen}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  debtDetailOpen
+                    ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-200'
+                    : 'border-slate-200 bg-slate-50 hover:border-amber-200 hover:bg-amber-50/60'
+                }`}
               >
-                <MdContentCopy /> Copiar
+                <p className="flex items-center justify-between gap-1 text-xs text-slate-500">
+                  <span>Deuda pendiente</span>
+                  {debtDetailOpen ? <MdExpandLess className="text-base text-slate-600" /> : <MdExpandMore className="text-base text-slate-600" />}
+                </p>
+                <p className="mt-1 font-bold tabular-nums text-slate-900">{formatCurrency(viewClient._debt)}</p>
               </button>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Última compra</p>
+                <p className="mt-1 font-bold tabular-nums text-slate-900">
+                  {viewClient._lastDate ? daysAgoLabel(viewClient._lastDays) : 'Sin compras'}
+                </p>
+              </div>
+            </div>
+
+            {debtDetailOpen ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="mb-2 text-xs font-semibold text-slate-900">Pedidos pendientes por cobrar</p>
+                {(pendingOrdersByCustomer[viewClient.id] || []).length === 0 ? (
+                  <p className="text-xs text-slate-700">No tiene pedidos pendientes.</p>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-[minmax(4.5rem,0.85fr)_minmax(0,1fr)_2.25rem_4.25rem] gap-x-2 border-b border-slate-200 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      <span>Fecha</span>
+                      <span className="min-w-0">Pedido</span>
+                      <span className="text-right">Cant.</span>
+                      <span className="text-right">Precio</span>
+                    </div>
+                    {(pendingOrdersByCustomer[viewClient.id] || []).map((o) => (
+                      <div
+                        key={o.id}
+                        className="grid grid-cols-[minmax(4.5rem,0.85fr)_minmax(0,1fr)_2.25rem_4.25rem] items-center gap-x-2 border-b border-slate-100 py-1.5 text-xs last:border-0"
+                      >
+                        <span className="shrink-0 text-slate-700">{formatDate(o.created_at)}</span>
+                        <span className="min-w-0 break-words font-medium leading-snug text-slate-900" title={pedidoColumnText(o)}>
+                          {pedidoColumnText(o)}
+                        </span>
+                        <span className="text-right tabular-nums text-slate-800">{orderTotalPieces(o)}</span>
+                        <span className="text-right tabular-nums font-medium text-slate-900">{formatCurrency(getOrderChargeTotal(o))}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between border-t border-slate-200 pt-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total a cobrar</span>
+                      <span className="text-lg font-bold tabular-nums text-slate-900">{formatCurrency(viewClient._debt)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => goToCajaToChargeCustomer(viewClient)}
+                      className="btn-primary flex w-full items-center justify-center gap-2"
+                    >
+                      <MdAttachMoney />
+                      Ir a caja a cobrar
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=96x96&data=${encodeURIComponent(selfOrderClienteUrl(viewClient.id))}`}
+                  alt="QR auto-pedido"
+                  className="h-24 w-24 shrink-0 rounded border border-slate-200 bg-white p-0.5"
+                />
+                <button
+                  type="button"
+                  onClick={() => openClienteSelfOrder(viewClient)}
+                  disabled={openingSelfOrderId === viewClient.id}
+                  className="btn-primary inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm disabled:opacity-60"
+                >
+                  <MdRestaurantMenu /> {openingSelfOrderId === viewClient.id ? 'Abriendo…' : 'Hacer pedido'}
+                </button>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-900">Auto-pedido del cliente</p>
+                  <p className="text-xs text-slate-500">El cliente puede escanear este QR para hacer pedidos a su nombre.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copyClienteSelfOrderLink(viewClient.id)}
+                  className="btn-secondary inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm"
+                >
+                  <MdContentCopy /> Copiar
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-3">
-              <button type="button" onClick={() => { const c = viewClient; setViewClientId(''); openEdit(c); }} className="btn-secondary flex flex-1 items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => { const c = viewClient; setViewClientId(''); setDebtDetailOpen(false); openEdit(c); }}
+                className="btn-secondary flex flex-1 items-center justify-center gap-2"
+              >
                 <MdEdit /> Editar
               </button>
               {gitCardsEnabled && (
@@ -912,7 +951,13 @@ export default function Clientes() {
                   <MdStar /> GIT Cards
                 </button>
               )}
-              <button type="button" onClick={() => setViewClientId('')} className="btn-primary flex-1">Cerrar</button>
+              <button
+                type="button"
+                onClick={() => { setViewClientId(''); setDebtDetailOpen(false); }}
+                className="btn-primary flex-1"
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         )}
