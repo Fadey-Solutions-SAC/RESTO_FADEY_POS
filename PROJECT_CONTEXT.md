@@ -1,6 +1,6 @@
 # Contexto del proyecto
 
-Versión de producto: **1.2.4.4** (`package.json` y `client/package.json`). En pantalla: `v 1.2.4.4`.
+Versión de producto: **1.2.4.5** (`package.json` y `client/package.json`). En pantalla: `v 1.2.4.5`.
 
 Este archivo describe el sistema tal como está en el código. No reemplaza `AGENTS.md` (cómo trabajar) ni `CHANGELOG.md` (qué cambió).
 
@@ -139,6 +139,7 @@ Tablas creadas en `server/database.js` (no es la lista de columnas): `restaurant
 - Facturación electrónica en Informes filtra `GET /api/billing/documents` con `from` y `to` (fecha de emisión en hora del restaurante). Por defecto es del día 1 del mes a hoy. Sin esas fechas, el listado sigue siendo el más reciente.
 - La IA Fadey responde el paso a paso de mover a almacén, vincular el almacén de la caja y consultar comprobantes por fecha desde `server/services/fadeyAi/fadeyAiGuides.js`. Se refresca al abrir el chat.
 - En el detalle del cliente, Hacer pedido (a la derecha del QR) abre su auto-pedido ya identificado: `POST /api/public/self-order/client-staff-open` entrega la sesión al personal (admin o cajero). No pide contraseña ni nombre. El QR del cliente sigue pidiendo ambos.
+- La confirmación de impresión tras cobrar (`confirmPrint` de caja) es global del restaurante en `app_settings` (`caja_sale_print_confirm`), vía `GET/PUT /api/printing/caja-confirm-print`. No depende del asistente local; USB/IP del asistente siguen en el bridge.
 
 ## Dependencias de runtime (raíz)
 

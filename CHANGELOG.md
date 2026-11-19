@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.4.5 — 2026-11-19
+
+- La confirmación de impresión tras cobrar se activa o desactiva sin el asistente y vale para todo el sistema (se guarda en el servidor del restaurante).
+
 ## 1.2.4.4 — 2026-11-19
 
 - Se quitaron restos de Vercel (`vercel.json`, guía vieja). El despliegue documentado es un solo Web Service en Render (API + front). En unificado, `/api` en el mismo origen es válido (respaldos e impresión local incluidos).

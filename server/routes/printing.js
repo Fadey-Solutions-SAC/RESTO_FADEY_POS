@@ -1,24 +1,78 @@
 const router = require('express').Router();
 const { authenticateTokenAllowLoopback, requireRole } = require('../middleware/auth');
 const { loadConfig, saveConfig, normalizeConfig, ensurePrintingModules } = require('../printing/printerConfig');
+const {
+  parseConfirmPrintValue,
+  readCajaSalePrintConfirm,
+  writeCajaSalePrintConfirm,
+} = require('../printing/cajaConfirmPrintSetting');
 const { getPrinters, getNetworkPrinters } = require('../printing/printerDetector');
 const { print, printTest, getPrinterStatus } = require('../printing/printerService');
 
 router.use(authenticateTokenAllowLoopback, requireRole('admin', 'master_admin', 'cajero', 'mozo', 'cocina', 'bar', 'produccion'));
+
+function withGlobalCajaConfirm(cfg) {
+  const out = cfg && typeof cfg === 'object' ? { ...cfg } : {};
+  const caja = out.caja && typeof out.caja === 'object' ? { ...out.caja } : {};
+  caja.confirmPrint = readCajaSalePrintConfirm();
+  out.caja = caja;
+  return out;
+}
+
+function emitCajaConfirmPrint(io, enabled) {
+  if (!io) return;
+  const confirmPrint = Boolean(enabled);
+  io.emit('printing-caja-confirm-print', { confirmPrint });
+  try {
+    io.emit('printing-config-update', withGlobalCajaConfirm(loadConfig()));
+  } catch (_) {
+    /* bridge sin archivo de config: igual se notificó el flag */
+  }
+}
+
+/** Preferencia global del restaurante (SQLite). No depende del asistente local. */
+router.get('/caja-confirm-print', requireRole('admin', 'master_admin', 'cajero', 'mozo'), (req, res) => {
+  res.json({ confirmPrint: readCajaSalePrintConfirm() });
+});
+
+router.put('/caja-confirm-print', requireRole('admin', 'master_admin', 'cajero'), (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const raw = Object.prototype.hasOwnProperty.call(body, 'confirmPrint')
+      ? body.confirmPrint
+      : body.enabled;
+    const next = writeCajaSalePrintConfirm(parseConfirmPrintValue(raw));
+    emitCajaConfirmPrint(req.app.get('io'), next);
+    res.json({ confirmPrint: next });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'No se pudo guardar la confirmación de impresión' });
+  }
+});
 
 router.get('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar', 'produccion'), (req, res) => {
   try {
     const { listKnownProductionAreaIds } = require('../services/productionAreasService');
     ensurePrintingModules(listKnownProductionAreaIds());
   } catch (_) { /* noop */ }
-  res.json(loadConfig());
+  try {
+    res.json(withGlobalCajaConfirm(loadConfig()));
+  } catch (_) {
+    res.json(withGlobalCajaConfirm({}));
+  }
 });
 
 router.put('/config', requireRole('admin', 'master_admin', 'cajero', 'cocina', 'bar', 'produccion'), (req, res) => {
   try {
-    const next = saveConfig(req.body || {});
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    if (body.caja && Object.prototype.hasOwnProperty.call(body.caja, 'confirmPrint')) {
+      writeCajaSalePrintConfirm(parseConfirmPrintValue(body.caja.confirmPrint));
+    }
+    const next = withGlobalCajaConfirm(saveConfig(body));
     const io = req.app.get('io');
-    if (io) io.emit('printing-config-update', next);
+    if (io) {
+      io.emit('printing-config-update', next);
+      io.emit('printing-caja-confirm-print', { confirmPrint: Boolean(next?.caja?.confirmPrint) });
+    }
     res.json(next);
   } catch (err) {
     res.status(400).json({ error: err.message || 'No se pudo guardar configuración de impresión' });

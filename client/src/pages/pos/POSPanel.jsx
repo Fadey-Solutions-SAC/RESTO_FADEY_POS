@@ -1646,6 +1646,20 @@ export default function POSPanel() {
     return () => window.removeEventListener(PRINTING_CONFIG_UPDATED_EVENT, onPrintingConfigUpdated);
   }, []);
 
+  useSocket('printing-caja-confirm-print', (payload) => {
+    if (!payload || typeof payload !== 'object') return;
+    const next = !(
+      payload.confirmPrint === false
+      || payload.confirmPrint === 0
+      || payload.confirmPrint === '0'
+      || payload.confirmPrint === 'false'
+    );
+    setPrintingConfig((prev) => ({
+      ...prev,
+      caja: { ...(prev?.caja || {}), confirmPrint: next },
+    }));
+  });
+
   useEffect(() => {
     selectedTableIdRef.current = selectedTable?.id ?? null;
   }, [selectedTable?.id]);

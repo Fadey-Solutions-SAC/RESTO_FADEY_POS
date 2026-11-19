@@ -222,6 +222,23 @@ export function usePrintingModule(moduleKey, { autoLoad = true } = {}) {
     if (cfg && typeof cfg === 'object') applyConfig(cfg);
   });
 
+  useSocket('printing-caja-confirm-print', (payload) => {
+    if (!payload || typeof payload !== 'object') return;
+    const next = !(
+      payload.confirmPrint === false
+      || payload.confirmPrint === 0
+      || payload.confirmPrint === '0'
+      || payload.confirmPrint === 'false'
+    );
+    setPrintingConfig((prev) => {
+      const merged = {
+        ...prev,
+        caja: { ...(prev?.caja || {}), confirmPrint: next },
+      };
+      return cachePrintingConfig(merged);
+    });
+  });
+
   useEffect(() => {
     const onUpdated = (event) => {
       if (event?.detail) applyConfig(event.detail);

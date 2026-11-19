@@ -154,7 +154,7 @@ export function isPrintingModuleEnabled(cfg, moduleKey) {
 }
 
 /**
- * Confirmación de impresión en caja tras cobrar.
+ * Confirmación de impresión en caja tras cobrar (preferencia global del restaurante).
  * Por defecto activa. Si está desactivada, no muestra el aviso y no imprime (como «No»).
  */
 export function isCajaSalePrintConfirmEnabled(cfg) {
@@ -163,15 +163,60 @@ export function isCajaSalePrintConfirmEnabled(cfg) {
   return true;
 }
 
+function applyCajaConfirmPrint(cfg, confirmPrint) {
+  const base = normalizePrintingConfig(cfg);
+  return {
+    ...base,
+    caja: {
+      ...base.caja,
+      confirmPrint: Boolean(confirmPrint),
+    },
+  };
+}
+
+/** Lee el flag global desde el API del restaurante (no del asistente local). */
+export async function fetchCajaSalePrintConfirm() {
+  const data = await api.get('/printing/caja-confirm-print');
+  return !(
+    data?.confirmPrint === false
+    || data?.confirmPrint === 0
+    || data?.confirmPrint === '0'
+    || data?.confirmPrint === 'false'
+  );
+}
+
+export async function saveCajaSalePrintConfirmGlobal(confirmPrint) {
+  const data = await api.put('/printing/caja-confirm-print', {
+    confirmPrint: Boolean(confirmPrint),
+  });
+  return !(
+    data?.confirmPrint === false
+    || data?.confirmPrint === 0
+    || data?.confirmPrint === '0'
+    || data?.confirmPrint === 'false'
+  );
+}
+
 export function isValidPrintingIp(value) {
   return /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(String(value || '').trim());
 }
 
 export async function fetchPrintingConfig() {
-  const loader = hasElectronPrinting()
-    ? electronPrinting.getConfig()
-    : api.printing.get('/printing/config');
-  const cfg = await loader;
+  let cfg = null;
+  try {
+    const loader = hasElectronPrinting()
+      ? electronPrinting.getConfig()
+      : api.printing.get('/printing/config');
+    cfg = await loader;
+  } catch (_) {
+    cfg = loadPrintingConfigFromCache() || DEFAULT_PRINTING_CONFIG;
+  }
+  try {
+    const confirmPrint = await fetchCajaSalePrintConfirm();
+    cfg = applyCajaConfirmPrint(cfg, confirmPrint);
+  } catch (_) {
+    /* sin API: dejar lo que haya en bridge/caché */
+  }
   return cachePrintingConfig(cfg);
 }
 
@@ -322,13 +367,12 @@ export async function savePrintingModuleAutoPrint(fullConfig, moduleKey, autoPri
   return savePrintingModuleConfig(fullConfig, moduleKey, moduleCfg);
 }
 
-/** Guarda solo confirmPrint de caja (aviso tras cobrar). */
+/** Guarda confirmPrint de caja en el servidor del restaurante (global; sin asistente). */
 export async function savePrintingCajaConfirmPrint(fullConfig, confirmPrint) {
-  const moduleCfg = {
-    ...(fullConfig?.caja || {}),
-    confirmPrint: Boolean(confirmPrint),
-  };
-  return savePrintingModuleConfig(fullConfig, 'caja', moduleCfg);
+  const next = Boolean(confirmPrint);
+  await saveCajaSalePrintConfirmGlobal(next);
+  const merged = applyCajaConfirmPrint(fullConfig || DEFAULT_PRINTING_CONFIG, next);
+  return cachePrintingConfig(merged);
 }
 
 export async function savePrintingModuleConfig(fullConfig, moduleKey, moduleCfgOverride = null) {
@@ -342,18 +386,39 @@ export async function savePrintingModuleConfig(fullConfig, moduleKey, moduleCfgO
       paperWidth: width,
     },
   };
-  const saved = hasElectronPrinting()
-    ? await electronPrinting.saveConfig(payload)
-    : await api.printing.put('/printing/config', payload);
+  if (moduleKey === 'caja' && Object.prototype.hasOwnProperty.call(moduleCfg, 'confirmPrint')) {
+    try {
+      await saveCajaSalePrintConfirmGlobal(moduleCfg.confirmPrint);
+    } catch (_) {
+      /* el guardado del bridge puede seguir; el flag global se reintenta al toggle */
+    }
+  }
+  let saved = null;
+  try {
+    saved = hasElectronPrinting()
+      ? await electronPrinting.saveConfig(payload)
+      : await api.printing.put('/printing/config', payload);
+  } catch (err) {
+    if (moduleKey === 'caja' && Object.prototype.hasOwnProperty.call(moduleCfg, 'confirmPrint')) {
+      // Sin asistente: al menos queda el flag global.
+      const mergedOnlyFlag = applyCajaConfirmPrint(fullConfig || DEFAULT_PRINTING_CONFIG, moduleCfg.confirmPrint);
+      cachePrintingConfig(mergedOnlyFlag);
+      throw err;
+    }
+    throw err;
+  }
   // Prioriza lo enviado (p. ej. confirmPrint:false) por si el bridge omite el campo.
   const base = saved && typeof saved === 'object' ? saved : { ...fullConfig };
-  const merged = {
+  let merged = {
     ...base,
     [moduleKey]: {
       ...(base[moduleKey] || {}),
       ...(payload[moduleKey] || {}),
     },
   };
+  if (moduleKey === 'caja') {
+    merged = applyCajaConfirmPrint(merged, moduleCfg.confirmPrint);
+  }
   cachePrintingConfig(merged);
   try {
     let origin = getPersistedPrintingBridgeOrigin();

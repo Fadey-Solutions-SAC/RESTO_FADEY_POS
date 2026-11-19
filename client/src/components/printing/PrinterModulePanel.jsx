@@ -394,8 +394,8 @@ export default function PrinterModulePanel({
             <p className="text-sm font-semibold text-[var(--ui-body-text)]">Confirmación de impresión</p>
             <p className="text-xs text-[var(--ui-muted)] mt-0.5">
               {confirmPrintEnabled
-                ? 'Activa: tras cobrar pregunta si desea imprimir la nota de venta.'
-                : 'Desactivada: tras cobrar no avisa y no imprime (como pulsar «No»).'}
+                ? 'Activa en todo el sistema: tras cobrar pregunta si desea imprimir la nota de venta.'
+                : 'Desactivada en todo el sistema: tras cobrar no avisa y no imprime (como pulsar «No»).'}
             </p>
           </div>
           <button
