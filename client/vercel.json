@@ -1,7 +1,0 @@
-{
-  "rewrites": [
-    { "source": "/fadey-link.json", "destination": "/fadey-link.json" },
-    { "source": "/build-meta.json", "destination": "/build-meta.json" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
-}

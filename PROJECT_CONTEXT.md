@@ -1,6 +1,6 @@
 # Contexto del proyecto
 
-Versión de producto: **1.2.4.3** (`package.json` y `client/package.json`). En pantalla: `v 1.2.4.3`.
+Versión de producto: **1.2.4.4** (`package.json` y `client/package.json`). En pantalla: `v 1.2.4.4`.
 
 Este archivo describe el sistema tal como está en el código. No reemplaza `AGENTS.md` (cómo trabajar) ni `CHANGELOG.md` (qué cambió).
 
@@ -28,7 +28,8 @@ El asistente Android **no vive en este repo**. El cliente lo descarga desde `Fad
 
 - Desarrollo: `npm run dev` → API en el puerto `PORT` (defecto **3001**) y Vite en **5173**.
 - `JWT_SECRET` es obligatoria para la API.
-- Nube: `npm run start:render`. `LISTEN_HOST` es `0.0.0.0` si `RENDER` está definido; si no, `127.0.0.1`.
+- Nube: un Web Service de Render por cliente (`bash scripts/render-build.sh` / `bash scripts/render-start.sh`). Sirve API + `client/dist` en el mismo origen (`/api`). Guía: `DEPLOY_RENDER.md`. No se usa front en Vercel.
+- `LISTEN_HOST` es `0.0.0.0` si `RENDER` está definido; si no, `127.0.0.1`.
 - App empaquetada: la API embebida escucha en **3001**; el puente de impresión del asistente empieza en **3002** (`electron/main.js`).
 
 ## Árbol útil

@@ -1,8 +1,8 @@
 /**
  * Origen del API:
- * - En cada despliegue: VITE_API_URL (Vercel / .env). Sin URLs de clientes en el código.
+ * - En Render (un solo Web Service): sin VITE_API_URL → `/api` (mismo origen).
  * - En desarrollo (npm run dev) sin variable: `/api` → proxy de Vite al backend local (p. ej. :3001).
- * - En producción sin variable: `/api` (mismo origen). El front mostrará error hasta definir VITE_API_URL.
+ * - VITE_API_URL solo si el front y el API van en hosts distintos (caso excepcional).
  *
  * Impresión USB (Node + módulo `printer` en Windows):
  * - Debe apuntar al backend local. Use `VITE_LOCAL_PRINTING_API` (build) o en runtime:
@@ -47,7 +47,7 @@ function isLocalHostName(host) {
   return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
 }
 
-/** Front en producción (Vercel, dominio propio, etc.), no localhost. */
+/** Front en producción remota (Render, dominio propio, etc.), no localhost. */
 function isProductionRemoteFront() {
   if (typeof window === 'undefined' || !import.meta.env.PROD) return false;
   return !isLocalHostName(window.location.hostname);
@@ -66,34 +66,25 @@ export function getConfiguredApiOrigin() {
   return '';
 }
 
-/** Valida VITE_API_URL del build (Vercel) para este despliegue. */
+/** Valida VITE_API_URL del build (opcional en Render unificado). */
 export function getApiDeployIssues() {
   const issues = [];
   if (typeof window === 'undefined' || !import.meta.env.PROD || !isProductionRemoteFront()) {
     return issues;
   }
-  const frontOrigin = window.location.origin;
   const configured = getConfiguredApiOrigin();
-
-  if (!configured) {
-    issues.push(
-      'Falta VITE_API_URL en Vercel (Environment Variables). Use la URL de su API en Render, sin /api, y Redeploy.',
-    );
-    return issues;
-  }
+  // Sin VITE_API_URL → `/api` en el mismo Web Service de Render (correcto).
+  if (!configured) return issues;
 
   try {
     const apiHost = new URL(configured).hostname.toLowerCase();
     if (/\.vercel\.app$/i.test(apiHost)) {
-      issues.push('VITE_API_URL no puede apuntar a Vercel. Debe ser la URL onrender.com de su API.');
+      issues.push(
+        'VITE_API_URL apunta a .vercel.app. En Render unificado déjela vacía (usa /api) o use la URL onrender.com del mismo servicio.',
+      );
     }
   } catch (_) {
     issues.push('VITE_API_URL no es una URL válida.');
-    return issues;
-  }
-
-  if (configured === frontOrigin) {
-    issues.push('VITE_API_URL no puede ser la misma URL del frontend.');
   }
   return issues;
 }
@@ -210,16 +201,12 @@ export function usesInstalledLocalPrinting() {
 
 function assertBackupApiReachable() {
   if (typeof window === 'undefined') return;
-  const base = getApiBase();
   const origin = getApiOrigin();
-  if (base.startsWith('/') || origin === window.location.origin) {
+  // Mismo origen (/api) es correcto cuando Node sirve el SPA en Render.
+  if (!origin || origin === window.location.origin) return;
+  if (/\.vercel\.app$/i.test(origin) || /\.vercel\.app$/i.test(window.location.hostname)) {
     throw new Error(
-      'El respaldo se estaba enviando al frontend (405). En Vercel → Environment → VITE_API_URL ponga la URL pública de ESTE Web Service de Render (sin /api) y haga Redeploy.',
-    );
-  }
-  if (/\.vercel\.app$/i.test(origin)) {
-    throw new Error(
-      'VITE_API_URL apunta al frontend (Vercel), no al API. Use la URL del Web Service de Render de este cliente, no la de .vercel.app.',
+      'El respaldo no puede ir a un host .vercel.app. Abra el Web Service de Render de este cliente (mismo origen /api) o corrija VITE_API_URL.',
     );
   }
 }
@@ -261,17 +248,15 @@ export function getPrintingApiBase() {
       return `${o}/api`;
     }
   }
-  if (typeof window !== 'undefined' && import.meta.env.PROD) {
-    if (/onrender\.com|vercel\.app/i.test(API_BASE)) {
-      /** En .exe empaquetado el asistente de impresión está en 3002+ (3001 = API embebida). */
-      const port = String(import.meta.env.VITE_LOCAL_PRINTING_PORT || '3002').trim() || '3002';
-      const o = normalizeApiOrigin(`http://127.0.0.1:${port}`);
-      logOnce(
-        `def:${o}`,
-        `[printing] API remota: bridge local por defecto ${o}/api (asistente Electron)`,
-      );
-      return `${o}/api`;
-    }
+  if (typeof window !== 'undefined' && import.meta.env.PROD && !isLocalHostName(window.location.hostname)) {
+    /** En nube el USB no vive en el servidor: bridge local (asistente Electron en 3002+). */
+    const port = String(import.meta.env.VITE_LOCAL_PRINTING_PORT || '3002').trim() || '3002';
+    const o = normalizeApiOrigin(`http://127.0.0.1:${port}`);
+    logOnce(
+      `def:${o}`,
+      `[printing] API remota: bridge local por defecto ${o}/api (asistente Electron)`,
+    );
+    return `${o}/api`;
   }
   return API_BASE;
 }
@@ -435,7 +420,7 @@ async function request(endpoint, options = {}, attempt = 0) {
     const msg = String(err?.message || err || '');
     if (/failed to fetch|networkerror|load failed|network|abort/i.test(msg) || err?.name === 'AbortError') {
       const origin = getApiOrigin() || url;
-      const frontOrigin = typeof window !== 'undefined' ? window.location.origin : 'su dominio Vercel';
+      const frontOrigin = typeof window !== 'undefined' ? window.location.origin : 'su dominio Render';
       if (skipOffline && attempt < 1 && isNetworkFailure(err)) {
         await sleep(2000);
         await wakeRemoteApi();
@@ -738,7 +723,7 @@ async function probeOriginHealth(originBase, timeoutMs) {
 
 /**
  * Escanea localhost en varios hosts/puertos y guarda `resto_local_printing_api` para **este** origen (cada
- * dominio Vercel tiene su propio localStorage; el mismo .exe del asistente sirve para todos los clientes).
+ * dominio Render tiene su propio localStorage; el mismo .exe del asistente sirve para todos los clientes).
  * Solo acepta respuestas con `mode: 'assistant'` para no confundir con otro Node en el mismo puerto.
  */
 async function discoverAssistantAndPersist() {
@@ -1174,7 +1159,7 @@ export function normalizeUsbPrinterList(data) {
 
 /**
  * Impresoras instaladas en Windows (Get-Printer). En bridge local usa GET /printers sin JWT
- * para evitar "Token inválido" cuando el panel está en Vercel/Render.
+ * para evitar "Token inválido" cuando el panel está en Render (HTTPS) y el bridge en localhost.
  */
 export async function fetchUsbPrintersFromBridge(moduleKey = '') {
   if (hasElectronPrinting()) {
@@ -1424,7 +1409,7 @@ export const api = {
     const full = await blob.arrayBuffer();
     const head = new TextDecoder().decode(new Uint8Array(full).subarray(0, 16));
     if (!head.startsWith('SQLite format')) {
-      throw new Error('La respuesta no es un archivo SQLite válido. Revise VITE_API_URL en Vercel.');
+      throw new Error('La respuesta no es un archivo SQLite válido. Abra el Web Service de Render (mismo origen) o revise VITE_API_URL.');
     }
     const pageSizeRaw = new DataView(full).getUint16(16, false);
     const pageSize = pageSizeRaw === 1 ? 65536 : pageSizeRaw;

@@ -43,7 +43,7 @@ const { createRateLimiter } = require('./middleware/rateLimit');
 const app = express();
 const server = http.createServer(app);
 
-/** En Render/Railway el API es público; en PC local el bridge debe aceptar el origen de la PWA (Vercel) y localhost. */
+/** En Render/Railway el API es público; en PC local el bridge acepta localhost. */
 function isCloudDeployment() {
   return String(process.env.RENDER || '').toLowerCase() === 'true' || !!process.env.RAILWAY_ENVIRONMENT;
 }
@@ -66,7 +66,6 @@ function isOriginAllowed(origin) {
   // Electron empaquetado (file://) suele enviar Origin "null".
   if (!origin || origin === 'null') return true;
   if (!isCloudDeployment()) {
-    if (/\.vercel\.app$/i.test(origin)) return true;
     if (/^https?:\/\/localhost(:\d+)?$/i.test(origin)) return true;
     if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(origin)) return true;
   }
@@ -477,7 +476,7 @@ function logSqlitePersistenceWarnings() {
 *
 * Render: Service → Disks → Add disk → Mount path: /data
 * Environment: DB_PATH=/data/restaurant.db  (sin comillas, ruta absoluta)
-* Luego Manual Deploy. Guía: DEPLOY_GITHUB_VERCEL_RENDER.md sección 1b
+* Luego Manual Deploy. Guía: DEPLOY_RENDER.md (disco persistente)
 ********************************************************************************
 `);
   } else if (cloudEphemeralHost && persistentMount) {
@@ -754,7 +753,7 @@ async function start() {
   });
   if (isCloudDeployment() && !corsOrigins.length) {
     console.warn(
-      '[CRÍTICO] CORS_ORIGIN vacío en Render. Defina la URL de su front (Vercel o dominio propio) en Environment.',
+      '[server] CORS_ORIGIN vacío: correcto si el front se sirve desde este mismo Web Service. Defínalo solo si hay otros orígenes.',
     );
   }
 

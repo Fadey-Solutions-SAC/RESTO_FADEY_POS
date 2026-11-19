@@ -44,7 +44,7 @@ function defaultThermalPrintWidthChars() {
   return thermalCharWidth(80);
 }
 
-/** Indica si el bundle JS actual incluye el layout térmico (diagnosticar caché de Vercel/navegador). */
+/** Indica si el bundle JS actual incluye el layout térmico (diagnosticar caché del navegador/CDN). */
 export function getThermalPrintRevision() {
   return String(thermalLayout?.revision || '');
 }

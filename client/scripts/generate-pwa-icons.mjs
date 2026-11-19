@@ -14,7 +14,7 @@ const repoRoot = join(clientRoot, '..');
 const script = join(repoRoot, 'scripts', 'generate-branding-assets.js');
 const source = join(publicDir, 'branding', 'resto-fadey-source.png');
 
-/** Iconos ya versionados en git: no hace falta jimp ni scripts/ de la raíz (Vercel solo instala client/). */
+/** Iconos ya versionados en git: no hace falta jimp ni scripts/ de la raíz en builds livianos. */
 function hasCommittedBrandingAssets() {
   return (
     existsSync(join(publicDir, 'pwa-icon-192.png')) &&

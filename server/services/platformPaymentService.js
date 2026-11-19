@@ -259,7 +259,7 @@ function legacyConfirmComprobanteOnUpload(urlTrimmed) {
   releaseAutoLockIfComprobantePresent(urlTrimmed, { legacySuccessMessage: true });
 }
 
-/** Panel Vercel/Supabase envuelve respuestas en { success, data: { ... } }. */
+/** El panel central a veces envuelve respuestas en { success, data: { ... } }. */
 function unwrapCentralApiBody(data) {
   if (!data || typeof data !== 'object') return data;
   const inner = data.data;

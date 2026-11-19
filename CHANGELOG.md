@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.4.4 — 2026-11-19
+
+- Se quitaron restos de Vercel (`vercel.json`, guía vieja). El despliegue documentado es un solo Web Service en Render (API + front). En unificado, `/api` en el mismo origen es válido (respaldos e impresión local incluidos).
+
 ## 1.2.4.3 — 2026-11-19
 
 - En detalle del cliente, la cuenta pendiente y «Ir a caja a cobrar» quedan dentro de Deuda pendiente y se abren al pulsar esa tarjeta.

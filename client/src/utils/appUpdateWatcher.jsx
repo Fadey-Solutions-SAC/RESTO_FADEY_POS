@@ -1,7 +1,7 @@
 import toast from 'react-hot-toast';
 
 /**
- * Detecta cuando Vercel publica una versión nueva y recarga la pestaña sola cuando nadie la usa
+ * Detecta cuando Render publica una versión nueva y recarga la pestaña sola cuando nadie la usa
  * (las cajas dejan el POS abierto todo el día y seguían con el código viejo en memoria).
  */
 const CHECK_EVERY_MS = 3 * 60 * 1000;

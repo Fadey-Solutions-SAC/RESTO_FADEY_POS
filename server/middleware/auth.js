@@ -157,7 +157,7 @@ function grantLocalPrintingUser(req) {
 }
 
 /**
- * Impresión USB en esta PC: el panel (a veces en Vercel) envía un JWT del API remoto.
+ * Impresión USB en esta PC: el panel en Render (HTTPS) puede enviar un JWT del API remoto al bridge local.
  * Ese token no coincide con JWT_SECRET local → "Token inválido".
  * En loopback se acepta igual que el asistente Electron (sin JWT).
  */
