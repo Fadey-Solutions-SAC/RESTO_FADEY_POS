@@ -2,6 +2,11 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.4.6 — 2026-11-20
+
+- Nuevo logo Resto Fadey POS (RF dorado con gorro de chef) en la pestaña del navegador, el icono al instalar la app (PWA, Android/iOS) y el instalador de escritorio. Fuente: `client/public/branding/resto-fadey-app-icon-source.jpg`. La pantalla de entrada (splash) no cambia.
+- Pendiente: `scripts/generate-branding-assets.js` sigue usando la fuente antigua; correrlo con `FORCE_BRANDING=1` volvería a poner el icono anterior. Los dispositivos con la app ya instalada pueden tardar en refrescar el icono o requerir reinstalarla.
+
 ## 1.2.4.5 — 2026-11-19
 
 - La confirmación de impresión tras cobrar se activa o desactiva sin el asistente y vale para todo el sistema (se guarda en el servidor del restaurante).
