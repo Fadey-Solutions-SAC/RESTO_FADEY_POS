@@ -70,6 +70,13 @@ let operationSyncInFlight = false;
 /** Impresión y facturación local apagadas porque no hay usuarios. El proceso sigue para la consulta de la mañana. */
 let assistantAsleep = false;
 let pendingUpdateReady = false;
+/**
+ * Último uso real del asistente desde un sistema de esta PC (Punto Fadey u otro): imprimir o emitir.
+ * Mientras sea reciente no se pone en espera aunque Resto Fadey no tenga usuarios.
+ */
+let lastLocalUseAt = 0;
+const LOCAL_USE_GRACE_MS = 3 * 60 * 60 * 1000;
+const LOCAL_PROBE_PATHS = new Set(['/api/health', '/health', '/api/printing/bridge']);
 /** Puerto de la API restaurant (solo empaquetado). */
 let embeddedApiListenPort = null;
 let restaurantApiChild = null;
@@ -975,6 +982,10 @@ function buildAssistantExpressApp() {
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Access-Control-Request-Private-Network'],
   }));
   assistant.use(express.json({ limit: '8mb' }));
+  assistant.use((req, _res, next) => {
+    if (req.method !== 'OPTIONS' && !LOCAL_PROBE_PATHS.has(req.path)) markLocalUse();
+    next();
+  });
 
   const assistantHealthPayload = () => ({
     status: 'ok',
@@ -998,6 +1009,7 @@ function buildAssistantExpressApp() {
 
   assistant.post('/api/efact/emitir', async (req, res) => {
     try {
+      await ensureEfactBotAwake();
       const r = await fetch('http://127.0.0.1:8765/emitir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1471,6 +1483,55 @@ async function startPrintingAssistantServer() {
   return null;
 }
 
+function markLocalUse() {
+  lastLocalUseAt = Date.now();
+  if (assistantAsleep) {
+    // Alguien imprime o emite desde esta PC: salir de la espera (la API y el bot SUNAT arrancan solos).
+    assistantAsleep = false;
+    if (app.isPackaged && !restaurantApiChild) startEmbeddedRestaurantApi();
+    updateTrayMenu();
+    try {
+      tray?.setToolTip('Resto FADEY — Impresión (mantenga abierto para cobrar con ticket)');
+    } catch (_) {
+      /* noop */
+    }
+    scheduleOperationWatch();
+  }
+}
+
+function recentLocalUse() {
+  return Date.now() - lastLocalUseAt < LOCAL_USE_GRACE_MS;
+}
+
+function efactBotHealthy(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const req = http.get('http://127.0.0.1:8765/health', (res) => {
+      res.resume();
+      resolve(res.statusCode === 200);
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(timeoutMs, () => {
+      try {
+        req.destroy();
+      } catch (_) {
+        /* noop */
+      }
+      resolve(false);
+    });
+  });
+}
+
+/** El bot SUNAT (8765) vive con la API embebida: si estaba en espera, la enciende y espera al bot. */
+async function ensureEfactBotAwake(maxMs = 60_000) {
+  if (await efactBotHealthy()) return;
+  if (app.isPackaged && !restaurantApiChild) startEmbeddedRestaurantApi();
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (await efactBotHealthy()) return;
+  }
+}
+
 function servicesAreRunning() {
   return Boolean(assistantListenPort) && !assistantAsleep;
 }
@@ -1539,14 +1600,15 @@ async function deactivateAssistantServices() {
   const wasOn = Boolean(assistantListenPort) || (Boolean(restaurantApiChild) && !shouldKeepEmbeddedApi());
   assistantAsleep = true;
   stopEfactCloudPoll();
-  await stopAssistantServer();
-  assistantListenPort = null;
+  // El servidor de impresión (3002…) queda escuchando: es liviano y lo usan otros sistemas de esta PC
+  // (Punto Fadey). Al recibir una impresión o emisión sale de la espera solo (markLocalUse).
+  if (!assistantListenPort) await startPrintingAssistantServer();
   if (app.isPackaged && !shouldKeepEmbeddedApi()) {
     await stopEmbeddedRestaurantApiGracefully();
   }
   updateTrayMenu();
   try {
-    tray?.setToolTip('Resto FADEY — en espera (sin usuarios en el sistema)');
+    tray?.setToolTip('Resto FADEY — en espera (impresión activa; sin usuarios en el sistema)');
   } catch (_) {
     /* noop */
   }
@@ -1554,8 +1616,8 @@ async function deactivateAssistantServices() {
     showTrayBalloon(
       'Resto FADEY',
       pendingUpdateReady
-        ? 'Sin usuarios. El asistente queda en espera y se instala la actualización.'
-        : 'Sin usuarios. El asistente queda en espera y consulta cada 2 horas hasta las 5:00.',
+        ? 'Sin usuarios. La impresión sigue activa; el resto queda en espera y se instala la actualización.'
+        : 'Sin usuarios. La impresión sigue activa; el resto queda en espera y consulta cada 2 horas.',
       { cooldownMs: 30 * 60 * 1000 },
     );
   }
@@ -1620,6 +1682,9 @@ async function syncAssistantToUsers() {
     if (status.operating) {
       console.log('[electron] usuarios activos:', status.users);
       await activateAssistantServices();
+    } else if (recentLocalUse()) {
+      console.log('[electron] sin usuarios en Resto, pero hay uso local reciente (p. ej. Punto Fadey); no se pone en espera');
+      await activateAssistantServices();
     } else {
       console.log('[electron] sin usuarios; asistente en espera');
       await deactivateAssistantServices();
@@ -1634,7 +1699,9 @@ async function syncAssistantToUsers() {
 function updateTrayMenu() {
   if (!tray) return;
   const statusLabel = assistantAsleep
-    ? 'En espera · sin usuarios en el sistema'
+    ? assistantListenPort
+      ? `En espera · impresión activa en puerto ${assistantListenPort}`
+      : 'En espera · sin usuarios en el sistema'
     : assistantListenPort
       ? `Servicio listo · puerto ${assistantListenPort}`
       : 'Servicio detenido — pulse «Reintentar»';
