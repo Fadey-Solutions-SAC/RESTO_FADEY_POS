@@ -134,9 +134,22 @@ def _placeholder_lima(value: str) -> bool:
     return _fold_place(value) in ("", "LIMA", "LIMA LIMA", "LIMA LIMA LIMA")
 
 
+_DEPARTAMENTOS_PERU = {
+    "AMAZONAS", "ANCASH", "APURIMAC", "AREQUIPA", "AYACUCHO", "CAJAMARCA", "CALLAO", "CUSCO", "CUZCO",
+    "HUANCAVELICA", "HUANUCO", "ICA", "JUNIN", "LA LIBERTAD", "LAMBAYEQUE", "LIMA", "LORETO",
+    "MADRE DE DIOS", "MOQUEGUA", "PASCO", "PIURA", "PUNO", "SAN MARTIN", "TACNA", "TUMBES", "UCAYALI",
+}
+
+
 def _parse_place(address: str):
     parts = [part.strip() for part in re.split(r"\s*[-–—,/]\s*", str(address or "")) if part.strip()]
+    # «… - San Martín - Perú»: el país no es el departamento.
+    if parts and _fold_place(parts[-1]) == "PERU":
+        parts.pop()
     if len(parts) < 2:
+        return "", "", ""
+    # SUNAT 4097: solo se lee el lugar si la dirección termina en un departamento real.
+    if _fold_place(parts[-1]) not in _DEPARTAMENTOS_PERU:
         return "", "", ""
     distrito = parts[0]
     provincia = parts[1] if len(parts) >= 3 else parts[0]

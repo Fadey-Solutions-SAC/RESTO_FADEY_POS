@@ -41,6 +41,11 @@ def _money(d: Decimal) -> str:
     return str(d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+def _texto_corto(value: str, max_len: int) -> str:
+    """Una línea, sin espacios repetidos ni en los extremos, recortada a max_len."""
+    return " ".join(str(value or "").split())[:max_len].strip()
+
+
 def formato_monto(d: Decimal) -> str:
     """Formato decimal para PDF / UI (2 decimales)."""
     return _money(d)
@@ -131,7 +136,8 @@ def _supplier_party(root, venta: VentaInput) -> None:
     city = etree.SubElement(addr, _q(NS_CBC, "CityName"))
     city.text = e.distrito
     ctry = etree.SubElement(addr, _q(NS_CBC, "CountrySubentity"))
-    ctry.text = e.departamento
+    # SUNAT 4097: departamento de 1 a 30 caracteres, sin espacios sobrantes.
+    ctry.text = _texto_corto(e.departamento, 30) or "LIMA"
     dist = etree.SubElement(addr, _q(NS_CBC, "District"))
     dist.text = e.distrito
     al = etree.SubElement(addr, _q(NS_CAC, "AddressLine"))
@@ -183,7 +189,15 @@ def _tax_subtotal(parent, taxable: Decimal, tax: Decimal, pct: Decimal, code: st
     te.text = code
     scheme_id, scheme_name, tax_type = _tax_scheme_for(code)
     tsch = etree.SubElement(cat, _q(NS_CAC, "TaxScheme"))
-    sid = etree.SubElement(tsch, _q(NS_CBC, "ID"), schemeID="UN/ECE 5153", schemeName="Tax Scheme Identifier", schemeAgencyName="United Nations Economic Commission for Europe")
+    # Catálogo 05 SUNAT (obs. 4255/4256/4257).
+    sid = etree.SubElement(
+        tsch,
+        _q(NS_CBC, "ID"),
+        schemeID="UN/ECE 5153",
+        schemeName="Codigo de tributos",
+        schemeAgencyName="PE:SUNAT",
+        schemeURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo05",
+    )
     sid.text = scheme_id
     sn = etree.SubElement(tsch, _q(NS_CBC, "Name"))
     sn.text = scheme_name
@@ -299,7 +313,7 @@ def generar_xml_ubl(venta: VentaInput) -> Tuple[bytes, str]:
         _q(NS_CBC, "InvoiceTypeCode"),
         listID="0101",
         listAgencyName="PE:SUNAT",
-        listName="SUNAT:Identificador de Tipo de Documento",
+        listName="Tipo de Documento",
         listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo01",
     )
     itc.text = tipo

@@ -2,6 +2,11 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.4.7 — 2026-11-20
+
+- Boletas y facturas: se corrigen las observaciones del CDR de SUNAT 4252, 4255, 4256 y 4097. El tipo de documento usa `listName="Tipo de Documento"`. El código de tributo (`TaxScheme/ID`) usa el catálogo 05 de SUNAT (`Codigo de tributos`, `PE:SUNAT` y su `schemeURI`). El departamento del emisor solo se lee de la dirección fiscal si termina en un departamento real del Perú (se ignora «Perú» al final) y sale recortado a 30 caracteres.
+- Pendiente: los comprobantes ya emitidos conservan sus observaciones. Falta confirmarlo en SUNAT beta con un comprobante real. `CityName` sigue llevando el distrito y no la provincia. Para que llegue al restaurante hay que reiniciar el bot e-fact o actualizar el instalador.
+
 ## 1.2.4.6 — 2026-11-20
 
 - Nuevo logo Resto Fadey POS (RF dorado con gorro de chef) en la pestaña del navegador, el icono al instalar la app (PWA, Android/iOS) y el instalador de escritorio. Fuente: `client/public/branding/resto-fadey-app-icon-source.jpg`. La pantalla de entrada (splash) no cambia.

@@ -81,12 +81,25 @@ const UBIGEO_POR_LUGAR = {
   'LIMA|LIMA': '150101',
 };
 
+/** Departamentos del Perú (texto plegado). SUNAT obs. 4097 si CountrySubentity no es uno válido. */
+const DEPARTAMENTOS_PERU = new Set([
+  'AMAZONAS', 'ANCASH', 'APURIMAC', 'AREQUIPA', 'AYACUCHO', 'CAJAMARCA', 'CALLAO', 'CUSCO', 'CUZCO',
+  'HUANCAVELICA', 'HUANUCO', 'ICA', 'JUNIN', 'LA LIBERTAD', 'LAMBAYEQUE', 'LIMA', 'LORETO',
+  'MADRE DE DIOS', 'MOQUEGUA', 'PASCO', 'PIURA', 'PUNO', 'SAN MARTIN', 'TACNA', 'TUMBES', 'UCAYALI',
+]);
+
 function parseFiscalPlace(address) {
   const parts = String(address || '')
     .split(/\s*[-–—,/]\s*/)
     .map((part) => part.trim())
     .filter(Boolean);
+  // «… - San Martín - Perú»: el país no es el departamento.
+  if (parts.length && foldPlace(parts[parts.length - 1]) === 'PERU') parts.pop();
   if (parts.length < 2) return { distrito: '', provincia: '', departamento: '' };
+  // Solo se lee el lugar si la dirección termina en un departamento real.
+  if (!DEPARTAMENTOS_PERU.has(foldPlace(parts[parts.length - 1]))) {
+    return { distrito: '', provincia: '', departamento: '' };
+  }
   return {
     distrito: parts[0],
     provincia: parts.length >= 3 ? parts[1] : parts[0],
