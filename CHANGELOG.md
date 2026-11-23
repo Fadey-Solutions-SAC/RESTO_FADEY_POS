@@ -2,6 +2,11 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.5.1 — 2026-11-23
+
+- Impresión USB del asistente (GDI): el ticket ahora va centrado en el papel. Antes el bloque quedaba pegado al borde izquierdo y salía corrido (se notaba en la Epson TM-T20IV-L con Punto Fadey). Cambio en `electron/main.js`, columna con `margin:0 auto`.
+- Pendiente: falta probarlo impreso en una ticketera real. Llega a las PC solo cuando se publique el instalador en GitHub Releases.
+
 ## 1.2.5.0 — 2026-11-23
 
 - PIX: «¿qué productos vendí más?» (con tilde en «vendí») vuelve a dar los productos más vendidos. Antes respondía con la carta de precios y decía «No encontré productos». El detector de «más vendidos» ahora quita las tildes antes de comparar, y la pregunta de carta cede cuando es de más vendidos.
