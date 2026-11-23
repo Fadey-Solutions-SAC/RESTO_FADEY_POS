@@ -133,13 +133,14 @@ def _supplier_party(root, venta: VentaInput) -> None:
     lid.text = e.ubigeo
     ad = etree.SubElement(addr, _q(NS_CBC, "AddressTypeCode"))
     ad.text = "0000"
+    # SUNAT: CityName = provincia, CountrySubentity = departamento, District = distrito.
     city = etree.SubElement(addr, _q(NS_CBC, "CityName"))
-    city.text = e.distrito
+    city.text = _texto_corto(e.provincia, 30) or _texto_corto(e.distrito, 30)
     ctry = etree.SubElement(addr, _q(NS_CBC, "CountrySubentity"))
     # SUNAT 4097: departamento de 1 a 30 caracteres, sin espacios sobrantes.
     ctry.text = _texto_corto(e.departamento, 30) or "LIMA"
     dist = etree.SubElement(addr, _q(NS_CBC, "District"))
-    dist.text = e.distrito
+    dist.text = _texto_corto(e.distrito, 30)
     al = etree.SubElement(addr, _q(NS_CAC, "AddressLine"))
     aline = etree.SubElement(al, _q(NS_CBC, "Line"))
     aline.text = e.direccion

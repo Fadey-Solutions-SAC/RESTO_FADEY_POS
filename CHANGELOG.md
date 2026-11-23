@@ -2,6 +2,11 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.5.4 — 2026-11-23
+
+- XML de boleta y factura: CityName lleva la provincia guardada (antes repetía el distrito). Departamento, provincia, distrito y ubigeo salen tal como están en el bloque Emisor.
+- Pendiente: leyenda de la Amazonía (catálogo 52) y aviso si el ubigeo no tiene 6 dígitos.
+
 ## 1.2.5.3 — 2026-11-23
 
 - Productos: el impuesto por defecto al crear pasa de Inafecto a Exonerado (código 20, tributo EXO). Al arrancar, una sola vez, los productos Inafecto quedan Exonerado. Si el emisor tiene departamento AMAZONAS (Ley 27037), también los que estaban con IGV.
