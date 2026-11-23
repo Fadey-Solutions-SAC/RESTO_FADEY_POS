@@ -1,6 +1,7 @@
 import { MdBed } from 'react-icons/md';
 
-export const HOTEL_MAP_ZONE = 'hotel';
+/** Id de la vista de habitaciones. Lleva '@' para no chocar con un salón cuyo id sea 'hotel' (salonSlugFromName quita '@'). */
+export const HOTEL_MAP_ZONE = '@hotel-rooms';
 
 function roomState(room) {
   if (room?.status === 'occupied') return 'occupied';

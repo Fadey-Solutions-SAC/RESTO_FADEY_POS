@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.5.6 — 2026-11-23
+
+- Una zona de mesas con id interno `hotel` (creada con el nombre "HOTEL") vuelve a mostrar su nombre y sus mesas en Mesas y Caja. Antes se confundía con la vista de habitaciones de Hotelería, que ahora usa el id `@hotel-rooms`.
+
 ## 1.2.5.5 — 2026-11-23
 
 - Avisos y notificaciones: al deslizar se van directo. Ya no queda el fondo rojo con «Quitar» detrás del aviso. Un deslizamiento corto lo devuelve a su sitio.
