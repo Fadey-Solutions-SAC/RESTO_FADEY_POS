@@ -2,6 +2,11 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.5.0 — 2026-11-23
+
+- PIX: «¿qué productos vendí más?» (con tilde en «vendí») vuelve a dar los productos más vendidos. Antes respondía con la carta de precios y decía «No encontré productos». El detector de «más vendidos» ahora quita las tildes antes de comparar, y la pregunta de carta cede cuando es de más vendidos.
+- Pendiente: se probó en una copia local sin productos ni ventas. El ruteo es correcto, pero no se vio una lista real de productos.
+
 ## 1.2.4.9 — 2026-11-23
 
 - PIX (IA Fadey) suma 32 guías nuevas en `server/services/fadeyAi/fadeyAiModuleGuides.js`:

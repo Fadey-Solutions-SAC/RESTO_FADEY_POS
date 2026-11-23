@@ -577,6 +577,7 @@ function isProductCatalogQuestion(message) {
   const m = foldCatalogQuestion(message);
   if (/como (crear|cambiar|poner|editar|actualizar|subir|bajar|configurar|registrar)/.test(m)) return false;
   if (/precio de compra|costo|margen|mas vendid|se vende mas|stock|inventario|compra sugerid/.test(m)) return false;
+  if (isTopProductsQuestion(m)) return false;
   const about = /producto|plato|bebida|carta|menu|articulo|catalogo/.test(m);
   const price = /precio|precios|\bcuesta\b|\bcuestan\b|\bvale\b|\bvalen\b|cuanto (cuesta|vale|sale)|a como|con su precio|y su precio/.test(m);
   const list = /lista|listado|listar|enumer|que productos|cuales son los productos|que hay en la carta|muestrame (la|el) (carta|menu)|productos (que )?(hay|tenemos|vendemos|ofrec)/.test(m);
@@ -585,7 +586,9 @@ function isProductCatalogQuestion(message) {
   return false;
 }
 
-function isTopProductsQuestion(m) {
+function isTopProductsQuestion(message) {
+  // Sin tildes: «vendí más» no coincide con `vend\w*` porque \w no incluye «í».
+  const m = foldCatalogQuestion(message);
   if (/mesero|mozo|cajero/.test(m)) return false;
   return /(producto|plato|bebida|item|art[ií]culo)s?\b.*(m[aá]s\s+vend|se\s+vend\w*\s+m[aá]s|vend\w*\s+m[aá]s|m[aá]s\s+pedid|m[aá]s\s+sal|top)/.test(m)
     || /(qu[eé]|cu[aá]l(es)?)\s+(es\s+lo\s+que\s+)?se\s+vende\w*\s+m[aá]s|lo\s+m[aá]s\s+vendido|m[aá]s\s+vendid[oa]s?|top\s+(de\s+)?(producto|plato|venta)s?/.test(m);
