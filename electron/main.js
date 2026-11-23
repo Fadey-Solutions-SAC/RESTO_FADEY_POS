@@ -500,7 +500,8 @@ function printUsbGdi(printerName, buffer, paperWidthMm = 80, gdiOpts = {}) {
     const colSpacer = colChars
       ? `<div aria-hidden="true" style="height:0;overflow:hidden;font-family:Consolas,'Courier New',monospace;font-size:${fontPx}px;white-space:pre">${'&nbsp;'.repeat(colChars)}</div>`
       : '';
-    const column = `<div style="width:max-content;max-width:${paperMm}mm;margin:0">${colSpacer}${logoBlock}${brandBlock}${bodyHtml}${footerImageBlock}</div>`;
+    /** Bloque centrado en el papel (antes pegado al borde izquierdo: el ticket salía corrido). */
+    const column = `<div style="width:max-content;max-width:${paperMm}mm;margin:0 auto">${colSpacer}${logoBlock}${brandBlock}${bodyHtml}${footerImageBlock}</div>`;
     /**
      * Sin bloque <style>: algunos drivers térmicos GDI imprimen su contenido como texto.
      * La cola recibe únicamente elementos con estilos internos y márgenes controlados por
