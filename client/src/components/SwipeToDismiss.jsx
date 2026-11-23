@@ -1,12 +1,14 @@
 import { useRef, useState } from 'react';
 
-const SWIPE_DISMISS_PX = 88;
+const SWIPE_DISMISS_PX = 72;
+const EXIT_MS = 160;
 
-/** Deslizar horizontalmente para quitar avisos y toasts. */
+/** Deslizar horizontalmente para quitar avisos y toasts. Sin fondo ni botón: el aviso se va directo. */
 export default function SwipeToDismiss({ children, onDismiss, className = '', disabled = false }) {
   const startX = useRef(null);
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   const reset = () => {
     startX.current = null;
@@ -15,7 +17,7 @@ export default function SwipeToDismiss({ children, onDismiss, className = '', di
   };
 
   const onPointerDown = (e) => {
-    if (disabled) return;
+    if (disabled || leaving) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     startX.current = e.clientX;
     setDragging(true);
@@ -30,23 +32,33 @@ export default function SwipeToDismiss({ children, onDismiss, className = '', di
   const onPointerUp = () => {
     if (startX.current == null) return;
     const delta = dx;
-    reset();
-    if (Math.abs(delta) >= SWIPE_DISMISS_PX) onDismiss?.();
+    startX.current = null;
+    setDragging(false);
+    if (Math.abs(delta) < SWIPE_DISMISS_PX) {
+      setDx(0);
+      return;
+    }
+    // Sale de pantalla hacia el lado del gesto y se quita.
+    const width = typeof window !== 'undefined' ? window.innerWidth : 600;
+    setLeaving(true);
+    setDx(delta > 0 ? width : -width);
+    setTimeout(() => {
+      onDismiss?.();
+      setLeaving(false);
+      setDx(0);
+    }, EXIT_MS);
   };
 
+  const opacity = Math.max(0, 1 - Math.abs(dx) / 260);
+
   return (
-    <div className={`relative overflow-hidden ${className}`}>
+    <div className={className}>
       <div
-        className="absolute inset-0 flex items-center justify-end px-4 bg-red-600/90 text-white text-xs font-semibold pointer-events-none"
-        aria-hidden
-      >
-        Quitar
-      </div>
-      <div
-        className="relative touch-pan-y"
+        className="touch-pan-y select-none"
         style={{
           transform: `translateX(${dx}px)`,
-          transition: dragging ? 'none' : 'transform 0.18s ease-out',
+          opacity,
+          transition: dragging ? 'none' : `transform ${EXIT_MS}ms ease-out, opacity ${EXIT_MS}ms ease-out`,
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

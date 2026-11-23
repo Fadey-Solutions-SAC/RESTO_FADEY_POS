@@ -2,6 +2,10 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.5.5 — 2026-11-23
+
+- Avisos y notificaciones: al deslizar se van directo. Ya no queda el fondo rojo con «Quitar» detrás del aviso. Un deslizamiento corto lo devuelve a su sitio.
+
 ## 1.2.5.4 — 2026-11-23
 
 - XML de boleta y factura: CityName lleva la provincia guardada (antes repetía el distrito). Departamento, provincia, distrito y ubigeo salen tal como están en el bloque Emisor.
