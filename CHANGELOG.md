@@ -2,6 +2,12 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.5.2 — 2026-11-23
+
+- Facturación electrónica: en el bloque Emisor se pueden editar departamento, provincia, distrito y ubigeo del domicilio fiscal. Antes no había campo y el XML salía con LIMA / 150101 por defecto. Los guarda el maestro o el admin con permiso del bot, igual que las series.
+- Ventas: al emitir boleta o factura, si el cliente no tiene dirección el campo queda vacío. Ya no se copia la dirección del local al cliente.
+- Pendiente: no se probó la pantalla en el navegador; solo compila.
+
 ## 1.2.5.1 — 2026-11-23
 
 - Impresión USB del asistente (GDI): el ticket ahora va centrado en el papel. Antes el bloque quedaba pegado al borde izquierdo y salía corrido (se notaba en la Epson TM-T20IV-L con Punto Fadey). Cambio en `electron/main.js`, columna con `margin:0 auto`.

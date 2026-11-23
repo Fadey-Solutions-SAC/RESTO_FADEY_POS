@@ -102,6 +102,55 @@ export default function BillingSunatManualForm({
               onChange={(e) => onRestaurantField('billing_emisor_direccion', e.target.value)}
             />
           </div>
+          {/* Ubicación del domicilio fiscal (ficha RUC). Va al XML: ubigeo, departamento, provincia y distrito. */}
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${labelCls}`}>Departamento</label>
+            <input
+              className={inputCls}
+              value={restaurant?.billing_emisor_departamento ?? ''}
+              disabled={disabled}
+              autoComplete="off"
+              maxLength={30}
+              placeholder="Ej. AMAZONAS"
+              onChange={(e) => onRestaurantField('billing_emisor_departamento', e.target.value.toUpperCase())}
+            />
+          </div>
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${labelCls}`}>Provincia</label>
+            <input
+              className={inputCls}
+              value={restaurant?.billing_emisor_provincia ?? ''}
+              disabled={disabled}
+              autoComplete="off"
+              maxLength={30}
+              placeholder="Ej. LUYA"
+              onChange={(e) => onRestaurantField('billing_emisor_provincia', e.target.value.toUpperCase())}
+            />
+          </div>
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${labelCls}`}>Distrito</label>
+            <input
+              className={inputCls}
+              value={restaurant?.billing_emisor_distrito ?? ''}
+              disabled={disabled}
+              autoComplete="off"
+              maxLength={30}
+              placeholder="Ej. TINGO"
+              onChange={(e) => onRestaurantField('billing_emisor_distrito', e.target.value.toUpperCase())}
+            />
+          </div>
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${labelCls}`}>Ubigeo (6 dígitos, INEI)</label>
+            <input
+              className={inputCls}
+              value={String(restaurant?.billing_emisor_ubigeo ?? '').replace(/\D/g, '').slice(0, 6)}
+              disabled={disabled}
+              autoComplete="off"
+              inputMode="numeric"
+              placeholder="Ej. 150101"
+              onChange={(e) => onRestaurantField('billing_emisor_ubigeo', e.target.value.replace(/\D/g, '').slice(0, 6))}
+            />
+          </div>
         </div>
       </div>
 

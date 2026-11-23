@@ -40,7 +40,6 @@ import {
 import { downloadBlobFile, downloadExcelFile } from '../../utils/inventoryCuadreExport';
 import { formatOrderPaymentLabel, orderPaymentDetail } from '../../utils/paymentBreakdownDisplay';
 import PaymentSummaryDisplay from '../../components/admin/PaymentSummaryDisplay';
-import { restaurantLocalAddress } from '../../utils/restaurantLocalAddress';
 import { printCajaTicket } from '../../utils/printCajaTicket';
 import { withSunatQr } from '../../utils/sunatQr';
 import { SUNAT_TICKET_WIDTH_MM } from '../../utils/billingDocumentActions';
@@ -610,9 +609,8 @@ export default function Ventas() {
     );
     setEditCustomerDocNumber(String(doc.customer_doc_number || '').replace(/\D/g, ''));
     setEditCustomerName(String(doc.customer_name || '').trim());
-    setEditCustomerAddress(
-      String(doc.customer_address || '').trim() || restaurantLocalAddress(restaurantInfo),
-    );
+    // Sin dirección del cliente el campo queda vacío (no se copia la del local).
+    setEditCustomerAddress(String(doc.customer_address || '').trim());
     setEditCustomerPhone(String(doc.customer_phone || '').trim());
     setSelected(order);
     setSelectedGroup(group);
@@ -672,8 +670,7 @@ export default function Ventas() {
       const dni = editCustomerDocNumber.replace(/\D/g, '');
       if (dni && !/^\d{8}$/.test(dni)) return toast.error('DNI inválido (8 dígitos)');
     }
-    const localAddr = restaurantLocalAddress(restaurantInfo);
-    const customerAddress = editCustomerAddress.trim() || localAddr;
+    const customerAddress = editCustomerAddress.trim();
     setIssuingDoc(true);
     try {
       for (const orderId of editing.orderIds) {
@@ -720,7 +717,7 @@ export default function Ventas() {
           customer: {
             name: editCustomerName.trim() || doc.customer_name || 'CLIENTE VARIOS',
             doc_number: editCustomerDocNumber.replace(/\D/g, '') || doc.customer_doc_number || '',
-            address: customerAddress || doc.customer_address || localAddr,
+            address: customerAddress || doc.customer_address || '',
           },
           widthMm: pw,
           taxKind: taxKindFromItems(items),
@@ -798,12 +795,11 @@ export default function Ventas() {
     const total = Number(group?.total != null ? group.total : primary.total) || 0;
     const discount = Math.max(0, subtotal - total);
     const paymentMethod = String(primary.payment_method || orders[0]?.payment_method || 'efectivo');
-    const localAddr = restaurantLocalAddress(restaurantInfo);
     const customerName = String(
       fullDoc.customer_name || primary.customer_name || '',
     ).trim();
     const customerDoc = String(fullDoc.customer_doc_number || '').replace(/\D/g, '');
-    const customerAddress = String(fullDoc.customer_address || '').trim() || localAddr;
+    const customerAddress = String(fullDoc.customer_address || '').trim();
     const logoUrl = String(restaurantInfo?.logo || '').trim() || undefined;
     const brand = restaurantThermalBrandLine(restaurantInfo) || undefined;
 
@@ -1322,9 +1318,6 @@ export default function Ventas() {
                         const next = e.target.value;
                         setEditDocType(next);
                         if (next === 'factura') setEditCustomerDocType('6');
-                        if ((next === 'boleta' || next === 'factura') && !String(editCustomerAddress || '').trim()) {
-                          setEditCustomerAddress(restaurantLocalAddress(restaurantInfo));
-                        }
                         // Igual que Caja: al elegir boleta/factura abre el modal de emisión.
                         if (next === 'boleta' || next === 'factura') {
                           if (!editing.singleComanda) {
@@ -1628,7 +1621,7 @@ export default function Ventas() {
                 className="input-field text-sm"
                 value={editCustomerAddress}
                 onChange={(e) => setEditCustomerAddress(e.target.value)}
-                placeholder={restaurantLocalAddress(restaurantInfo) || 'Dirección del local'}
+                placeholder="Opcional (vacío si no se indica)"
               />
             </div>
           </div>
