@@ -2887,6 +2887,35 @@ async function initDatabase() {
       ]);
     }
 
+    /**
+     * Una sola vez: «Inafecto» era el impuesto por defecto al crear productos; pasa a «Exonerado».
+     * Si el emisor está en Amazonas (Ley 27037), también los productos con IGV quedan exonerados.
+     */
+    const migProductsExonerado = queryOne(
+      'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
+      ['2026-11-products-exonerado-default-v1']
+    );
+    if (!migProductsExonerado?.ok) {
+      try {
+        const restRow = queryOne('SELECT billing_emisor_departamento FROM restaurants LIMIT 1');
+        const dep = String(restRow?.billing_emisor_departamento || '')
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .toUpperCase()
+          .trim();
+        if (dep === 'AMAZONAS') {
+          db.run("UPDATE products SET tax_type = 'exonerado' WHERE LOWER(COALESCE(tax_type, 'igv')) <> 'exonerado'");
+        } else {
+          db.run("UPDATE products SET tax_type = 'exonerado' WHERE LOWER(COALESCE(tax_type, '')) = 'inafecto'");
+        }
+      } catch (_) {
+        /* sin tabla products o restaurants: nada que migrar */
+      }
+      db.run('INSERT OR IGNORE INTO schema_migrations (migration_key) VALUES (?)', [
+        '2026-11-products-exonerado-default-v1',
+      ]);
+    }
+
     const migPagosYapePlin = queryOne(
       'SELECT 1 as ok FROM schema_migrations WHERE migration_key = ?',
       ['2026-05-pagos-yape-plin-default-v1']

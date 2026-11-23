@@ -261,7 +261,7 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
   const safeProductionArea = resolveProductProductionAreaId(production_area);
   const safeTaxType = ['igv', 'exonerado', 'inafecto'].includes(String(tax_type || '').toLowerCase())
     ? String(tax_type).toLowerCase()
-    : 'inafecto';
+    : 'exonerado';
   const safeModifierId = String(modifier_id || '').trim();
   const safeNoteRequired = Number(note_required) === 1 ? 1 : 0;
   const safeHideInSelfOrder = Number(hide_in_self_order) === 1 ? 1 : 0;

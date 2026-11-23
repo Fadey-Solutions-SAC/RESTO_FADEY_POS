@@ -64,7 +64,7 @@ const EMPTY_PRODUCT_FORM = {
   process_type: 'transformed',
   stock_warehouse_id: '',
   production_area: 'cocina',
-  tax_type: 'inafecto',
+  tax_type: 'exonerado',
   modifier_id: '',
   note_required: 0,
   hide_in_self_order: 0,

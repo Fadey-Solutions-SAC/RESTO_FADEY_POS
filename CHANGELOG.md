@@ -2,6 +2,11 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.5.3 — 2026-11-23
+
+- Productos: el impuesto por defecto al crear pasa de Inafecto a Exonerado (código 20, tributo EXO). Al arrancar, una sola vez, los productos Inafecto quedan Exonerado. Si el emisor tiene departamento AMAZONAS (Ley 27037), también los que estaban con IGV.
+- Pendiente: falta la leyenda de la Amazonía (catálogo 52) en el XML y que CityName lleve la provincia.
+
 ## 1.2.5.2 — 2026-11-23
 
 - Facturación electrónica: en el bloque Emisor se pueden editar departamento, provincia, distrito y ubigeo del domicilio fiscal. Antes no había campo y el XML salía con LIMA / 150101 por defecto. Los guarda el maestro o el admin con permiso del bot, igual que las series.
