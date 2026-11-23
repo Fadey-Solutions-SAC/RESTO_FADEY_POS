@@ -2,6 +2,11 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.4.8 — 2026-11-23
+
+- Control de Recursos (Inventario y kardex): las seis pestañas (Insumos, Compras, Recetas, Kardex, transformables y no transformables) pasan a una columna lateral izquierda con sus colores, iconos e indicador de activa; el contenido queda a la derecha. En pantallas angostas van arriba en una fila desplazable, sin scroll horizontal de la página. La ruta `/kardex-inventory` no cambia.
+- Pendiente: no se verificó en el navegador con sesión iniciada (solo compila con `vite build`).
+
 ## 1.2.4.7 — 2026-11-20
 
 - Boletas y facturas: se corrigen las observaciones del CDR de SUNAT 4252, 4255, 4256 y 4097. El tipo de documento usa `listName="Tipo de Documento"`. El código de tributo (`TaxScheme/ID`) usa el catálogo 05 de SUNAT (`Codigo de tributos`, `PE:SUNAT` y su `schemeURI`). El departamento del emisor solo se lee de la dirección fiscal si termina en un departamento real del Perú (se ignora «Perú» al final) y sale recortado a 30 caracteres.

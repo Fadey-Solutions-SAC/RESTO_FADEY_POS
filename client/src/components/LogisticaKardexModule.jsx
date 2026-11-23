@@ -674,8 +674,12 @@ export default function LogisticaKardexModule() {
   }
 
   return (
-    <div className="logistica-kardex-module space-y-4 text-[var(--ui-body-text)]">
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 pb-1">
+    <div className="logistica-kardex-module flex flex-col lg:flex-row lg:items-start gap-4 text-[var(--ui-body-text)]">
+      {/* Pestañas: columna lateral en escritorio; fila desplazable (sin scroll de página) en móvil. */}
+      <nav
+        aria-label="Secciones de inventario y kardex"
+        className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0 lg:w-56 lg:shrink-0 lg:sticky lg:top-4 min-w-0 max-w-full"
+      >
         {TABS.map((t) => {
           const Icon = t.Icon;
           const active = tab === t.id;
@@ -684,19 +688,24 @@ export default function LogisticaKardexModule() {
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className="relative flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left min-h-[72px] transition hover:brightness-[0.98]"
+              aria-current={active ? 'page' : undefined}
+              className="relative flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left min-h-[64px] w-40 shrink-0 lg:w-full transition hover:brightness-[0.98]"
               style={{ background: t.bg, color: t.fg, borderColor: t.line }}
             >
               <Icon className="w-7 h-7 shrink-0" />
               <span className="text-[13px] font-semibold leading-tight">{t.label}</span>
               {active ? (
-                <span className="absolute left-4 right-4 -bottom-0.5 h-1 rounded-full" style={{ background: t.line }} />
+                <>
+                  <span className="lg:hidden absolute left-4 right-4 -bottom-0.5 h-1 rounded-full" style={{ background: t.line }} />
+                  <span className="hidden lg:block absolute top-3 bottom-3 -right-0.5 w-1 rounded-full" style={{ background: t.line }} />
+                </>
               ) : null}
             </button>
           );
         })}
-      </div>
+      </nav>
 
+      <div className="flex-1 min-w-0 space-y-4">
       {tab === 'insumos' && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -1908,6 +1917,7 @@ export default function LogisticaKardexModule() {
           </div>
         </div>
       )}
+      </div>
 
       <Modal
         isOpen={showReconciliationsModal}
