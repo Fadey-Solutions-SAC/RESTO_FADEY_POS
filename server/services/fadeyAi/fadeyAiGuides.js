@@ -2,6 +2,8 @@
  * Guías paso a paso del POS Resto Fadey (conocimiento base de la IA Fadey).
  * Cubren los módulos del menú y operaciones habituales del local.
  */
+const { MODULE_GUIDES } = require('./fadeyAiModuleGuides');
+
 const OPERATION_GUIDES = [
   /* —— Caja —— */
   {
@@ -753,6 +755,7 @@ Al pedir:
 No puedo cobrar, anular ni cambiar precios por ti: te indico cómo hacerlo en el sistema.
 Frase: «Conectado con tu negocio».`,
   },
+  ...MODULE_GUIDES,
 ];
 
 module.exports = { OPERATION_GUIDES };

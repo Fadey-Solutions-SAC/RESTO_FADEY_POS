@@ -1089,7 +1089,16 @@ function rememberSuccessfulIntent(message, sources) {
   }
 }
 
-const MORE_DETAIL_RE = /^(m[aá]s detalles?|dame m[aá]s detalles?|ver (todo|completo|la respuesta completa)|respuesta completa|completa)[.!]?$/i;
+/** «¿Para qué sirve Ventas?» va a la guía del módulo antes que a los datos en vivo. */
+const MODULE_PURPOSE_RE = /para qu[eé] (sirve|es|se usa)|de qu[eé] trata/i;
+function modulePurposeAnswer(message, user) {
+  if (!MODULE_PURPOSE_RE.test(String(message || ''))) return null;
+  const r = guidesOnlyReply(message, user);
+  const id = String(r?.sources?.[0]?.id || '');
+  return id.startsWith('guide-modulo-') ? r : null;
+}
+
+const MORE_DETAIL_RE =/^(m[aá]s detalles?|dame m[aá]s detalles?|ver (todo|completo|la respuesta completa)|respuesta completa|completa)[.!]?$/i;
 /** Última respuesta completa por usuario cuando se resumió (estilo «respuestas cortas»). */
 const LAST_FULL_REPLY = new Map();
 const NO_PERSONALIZE = new Set(['user_memory', 'greeting', 'creator_mode', 'origin', 'permission_denied', 'support_contact']);
@@ -1184,7 +1193,8 @@ async function chat(user, message, context = {}) {
     return { ...full, lang, mode: 'local', status: getStatus(), creator_mode: isMasterCreator(user) };
   }
 
-  const report = buildForecastChatAnswer(query, user)
+  const report = modulePurposeAnswer(query, user)
+    || buildForecastChatAnswer(query, user)
     || buildConceptAnswer(query, user, { lang, analyzeFn: analyzeBusiness, periodFn: resolveAdvicePeriod })
     || buildPurchaseAnswer(query, user)
     || buildAdvisorAnswer(query, user, { lang })

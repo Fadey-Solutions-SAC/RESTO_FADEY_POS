@@ -158,6 +158,13 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
   const wantsQr = /qr|auto\s*pedido/.test(q);
   const wantsEncuesta = /encuesta|satisfaccion|calificacion\s+(?:de\s+)?clientes|opinion/.test(q);
   const wantsCredito = /credito|fiado|abono/.test(q) && !wantsEncuesta;
+  const wantsPurpose = /para que (sirve|es|se usa)|que hace (el|la)|de que trata|^que es (el|la) (modulo|seccion|pantalla)/.test(q);
+  const wantsClientView = /(cliente|comensal|huesped)/.test(q)
+    && /que ve|ve el|ven los|vive el|desde su celular|escanea|por la web|pagina/.test(q);
+  const wantsHotelStay = /habitacion|huesped/.test(q)
+    && /cobr|salida|ingreso|check|pedido|consumo|cuenta|limpieza|mantenimiento/.test(q)
+    && !/crear|nueva|tipo|tarifa/.test(q);
+  const wantsCreditRules = /credito/.test(q) && /limite|maximo|dias|configur|regla|politica|mora/.test(q);
 
   const learnedBoost = new Map();
   try {
@@ -261,7 +268,11 @@ function searchMemory(query, { kinds = null, limit = 8 } = {}) {
       if (id === 'guide-fidelizacion') score += 25;
       if (id === 'guide-creditos' || id === 'guide-clientes') score -= 60;
     }
-    if (wantsCredito && id === 'guide-creditos') score += 70;
+    if (wantsPurpose && id.startsWith('guide-modulo-')) score += 35;
+    if (wantsClientView && id.startsWith('guide-cliente-')) score += 100;
+    if (wantsHotelStay && id === 'guide-hotel-operar') score += 60;
+    if (wantsCreditRules && id === 'guide-pagos-creditos-config') score += 120;
+    if (wantsCredito && !wantsPurpose && id === 'guide-creditos') score += 70;
     if (wantsCredito && id === 'guide-encuesta-clientes') score -= 40;
 
     if (learnedBoost.has(id)) score += learnedBoost.get(id);

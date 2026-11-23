@@ -2,6 +2,16 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.4.9 — 2026-11-23
+
+- PIX (IA Fadey) suma 32 guías nuevas en `server/services/fadeyAi/fadeyAiModuleGuides.js`:
+  - «Para qué sirve» cada módulo del menú (20 módulos).
+  - Hotel: ingreso, pedido, salida y mantenimiento; habitaciones, tipos y tarifas; reservas.
+  - GIT Cards; Mi perfil (cambiar contraseña); Pagos de créditos; Contrato.
+  - Lo que ve el cliente final: QR de mesa y de habitación, carta web con carrito y seguimiento, encuesta, reserva web de hotel y un resumen de esas páginas.
+- Las preguntas «¿para qué sirve…?» van a la guía del módulo antes que a los datos en vivo; por ejemplo, «para qué sirve ventas» ya no responde con las ventas de hoy. Cada guía respeta los permisos por módulo del usuario.
+- Pendiente: se probó con 41 preguntas en una copia local de la base, no en el chat del navegador. «¿Qué productos vendí más?» responde «No encontré productos…»; es anterior a este cambio y no se tocó.
+
 ## 1.2.4.8 — 2026-11-23
 
 - Control de Recursos (Inventario y kardex): las seis pestañas (Insumos, Compras, Recetas, Kardex, transformables y no transformables) pasan a una columna lateral izquierda con sus colores, iconos e indicador de activa; el contenido queda a la derecha. En pantallas angostas van arriba en una fila desplazable, sin scroll horizontal de la página. La ruta `/kardex-inventory` no cambia.
