@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { resolveMediaUrl } from '../utils/api';
 
 const STATUS_LABEL = {
@@ -559,8 +559,12 @@ function CardBack({ theme, model }) {
   );
 }
 
-function FlipCard({ front, back }) {
-  const [flipped, setFlipped] = useState(false);
+function FlipCard({ front, back, side }) {
+  const [flipped, setFlipped] = useState(side === 'back');
+  // `side` lo fija quien muestra la tarjeta (ej. el asistente de promociones según el paso).
+  useEffect(() => {
+    if (side === 'back' || side === 'front') setFlipped(side === 'back');
+  }, [side]);
   return (
     <button
       type="button"
@@ -594,7 +598,7 @@ function themeFor(card) {
   };
 }
 
-export default function GitCardVisual({ card, compact = false, backgroundOnly = false }) {
+export default function GitCardVisual({ card, compact = false, backgroundOnly = false, side }) {
   if (!card) return null;
   const model = cardModel(card);
   const theme = themeFor(card);
@@ -609,6 +613,7 @@ export default function GitCardVisual({ card, compact = false, backgroundOnly = 
     <FlipCard
       front={<CardFront theme={theme} model={model} compact={compact} />}
       back={<CardBack theme={theme} model={model} />}
+      side={side}
     />
   );
 }

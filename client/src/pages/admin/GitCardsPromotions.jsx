@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   MdAdd, MdPause, MdPlayArrow, MdStop, MdEdit, MdVisibility, MdDelete,
-  MdArrowBack, MdChevronLeft, MdChevronRight, MdSearch,
+  MdArrowBack, MdChevronLeft, MdChevronRight, MdSearch, MdCheck, MdCheckCircle,
 } from 'react-icons/md';
-import { api, formatCurrency, formatDate } from '../../utils/api';
+import { api, formatCurrency, formatDate, toLocalDateKey } from '../../utils/api';
 import GitCardVisual from '../../components/GitCardVisual';
 
 const STEPS = [
@@ -223,7 +223,8 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
       card_bg: pick?.bg || '',
       card_text: pick?.text || '',
       card_accent: pick?.accent || '',
-      start_at: new Date().toISOString().slice(0, 10),
+      // Fecha del restaurante (Lima), no la UTC: de noche toISOString ya da el día siguiente.
+      start_at: toLocalDateKey(new Date()),
     });
     setStep(1);
     setMode('wizard');
@@ -430,280 +431,390 @@ export default function GitCardsPromotions({ canEdit, onClose }) {
   );
 }
 
+const STEP_HINTS = {
+  1: 'Ponle un nombre y una frase corta. Así aparecerán en el frente de la tarjeta.',
+  2: 'Define qué compra cuenta como avance y cuántos avances necesita el cliente.',
+  3: 'Elige lo que gana el cliente al completar la tarjeta.',
+  4: 'Elige el fondo de la tarjeta y los textos que verá el cliente.',
+  5: 'Revisa todo. Puedes volver a cualquier paso tocándolo arriba.',
+};
+
+/** Avisos por paso: lo que falta para poder activar la promoción. */
+function stepIssues(draft) {
+  const out = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+  if (!String(draft.name || '').trim()) out[1].push('Escribe el nombre de la promoción.');
+  const start = dateInput(draft.start_at);
+  const end = dateInput(draft.end_at);
+  if (start && end && end < start) out[1].push('La fecha de fin es anterior a la de inicio.');
+  if (!(Number(draft.goal) >= 1)) out[2].push('La meta debe ser de al menos 1 avance.');
+  if (Number(draft.min_spend) < 0) out[2].push('El consumo mínimo no puede ser negativo.');
+  if (draft.reward_kind === 'product' && !draft.product_id) out[3].push('Elige el producto de cortesía.');
+  if (draft.reward_kind === 'discount' && !(Number(draft.discount_value) > 0)) out[3].push('Indica el valor del descuento.');
+  if (draft.reward_kind === 'other' && !String(draft.other_name || '').trim()) out[3].push('Escribe el nombre del beneficio.');
+  return out;
+}
+
+function rewardSummary(draft) {
+  if (draft.reward_kind === 'product') {
+    return draft.product_name
+      ? `${Number(draft.product_qty || 1) !== 1 ? `${draft.product_qty} × ` : ''}${[draft.product_name, draft.variant_name].filter(Boolean).join(' · ')}`
+      : 'producto sin elegir';
+  }
+  if (draft.reward_kind === 'discount') {
+    return draft.discount_type === 'percent' ? `${draft.discount_value || 0} % de descuento` : `${formatCurrency(draft.discount_value)} de descuento`;
+  }
+  return draft.other_name || 'beneficio sin nombre';
+}
+
 function Wizard({
   step, setStep, draft, setField, setDraft, styles, previewCard, products, productQ, setProductQ,
   searching, saving, canEdit, editingId, onCancel, onSaveDraft, onActivate,
 }) {
+  const issues = stepIssues(draft);
+  const allIssues = [1, 2, 3, 4].flatMap((id) => issues[id]);
+  const previewSide = step === 2 || step === 3 ? 'back' : 'front';
+  const goal = Number(draft.goal || 0);
+  const optionsRef = useRef(null);
+  const optionsHeight = useFitOptionsHeight(optionsRef, step);
+
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {editingId ? 'Editar promoción' : 'Nueva promoción'} · paso {step} de 5
-        </p>
-        <h2 className="text-xl font-bold text-slate-900">{STEPS[step - 1].title}</h2>
-        <div className="mt-3 flex gap-1">
-          {STEPS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setStep(s.id)}
-              className={`h-1.5 flex-1 rounded-full ${s.id <= step ? 'bg-[var(--ui-accent)]' : 'bg-[color:var(--ui-border)]'}`}
-              title={s.title}
-            />
-          ))}
+    <div className="space-y-5">
+      <div className="flex min-w-0 items-start gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-700 hover:bg-slate-100"
+          aria-label="Volver a promociones"
+        >
+          <MdArrowBack className="text-xl" />
+        </button>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {editingId ? 'Editar promoción' : 'Nueva promoción'} · paso {step} de 5
+          </p>
+          <h2 className="text-xl font-bold text-slate-900">{STEPS[step - 1].title}</h2>
+          <p className="mt-0.5 text-sm text-slate-500">{STEP_HINTS[step]}</p>
         </div>
       </div>
 
-      {step === 1 ? (
-        <Section>
-          <Field label="Nombre de la promoción">
-            <input value={draft.name} onChange={(e) => setField('name', e.target.value)} className="input" placeholder="Ej. Postre de cortesía" />
-          </Field>
-          <Field label="Descripción breve para el cliente" wide>
-            <textarea value={draft.description} onChange={(e) => setField('description', e.target.value)} className="input min-h-[4.5rem]" placeholder="Completa la tarjeta y recibe un postre." />
-          </Field>
-          <Field label="Fecha de inicio">
-            <input type="date" value={dateInput(draft.start_at)} onChange={(e) => setField('start_at', e.target.value)} className="input" />
-          </Field>
-          <Field label="Fecha de finalización (opcional)">
-            <input type="date" value={dateInput(draft.end_at)} onChange={(e) => setField('end_at', e.target.value)} className="input" />
-          </Field>
-          <Field label="Estado inicial">
-            <select value={draft.status} onChange={(e) => setField('status', e.target.value)} className="input">
-              <option value="draft">Borrador</option>
-              <option value="scheduled">Programada</option>
-              <option value="active">Activa</option>
-            </select>
-          </Field>
-        </Section>
-      ) : null}
+      <Stepper step={step} setStep={setStep} issues={issues} />
 
-      {step === 2 ? (
-        <Section>
-          <p className="sm:col-span-2 text-sm text-slate-600">
-            Cada compra que cumpla las condiciones y se cobre correctamente sumará un avance a la tarjeta.
-          </p>
-          <Field label="Consumo mínimo por compra (S/)">
-            <input type="number" min="0" step="0.01" value={draft.min_spend} onChange={(e) => setField('min_spend', e.target.value)} className="input" />
-          </Field>
-          <Field label="Avances para completar la tarjeta">
-            <input type="number" min="1" step="1" value={draft.goal} onChange={(e) => setField('goal', e.target.value)} className="input" />
-          </Field>
-          <Field label="¿Exigir encuesta?">
-            <select value={draft.survey_required ? 'yes' : 'no'} onChange={(e) => setField('survey_required', e.target.value === 'yes')} className="input">
-              <option value="no">No</option>
-              <option value="yes">Sí</option>
-            </select>
-          </Field>
-          <Field label="Vigencia de la tarjeta (días)">
-            <input type="number" min="0" value={draft.cycle_valid_days} onChange={(e) => setField('cycle_valid_days', e.target.value)} className="input" />
-          </Field>
-          <Field label="Vigencia de la recompensa (días)">
-            <input type="number" min="0" value={draft.reward_valid_days} onChange={(e) => setField('reward_valid_days', e.target.value)} className="input" />
-          </Field>
-          <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
-            <input type="checkbox" checked={!!draft.auto_reset} onChange={(e) => setField('auto_reset', e.target.checked)} />
-            Reiniciar el ciclo después de completar la meta
-          </label>
-        </Section>
-      ) : null}
-
-      {step === 3 ? (
-        <Section>
-          <div className="sm:col-span-2 grid gap-2 sm:grid-cols-3">
-            {[
-              { id: 'product', title: 'Producto de cortesía', hint: 'Se elige del catálogo real' },
-              { id: 'discount', title: 'Descuento', hint: 'Porcentaje o importe fijo' },
-              { id: 'other', title: 'Otro beneficio', hint: 'Sin inventario ni cobro automático' },
-            ].map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => setField('reward_kind', opt.id)}
-                className={`rounded-2xl border px-3 py-3 text-left ${draft.reward_kind === opt.id ? 'border-[var(--ui-accent)] bg-[var(--ui-accent)] text-white' : 'border-[color:var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-body-text)]'}`}
-              >
-                <p className="font-semibold">{opt.title}</p>
-                <p className={`mt-1 text-xs ${draft.reward_kind === opt.id ? 'text-white/80' : 'text-slate-500'}`}>{opt.hint}</p>
-              </button>
-            ))}
+      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_19rem]">
+        {/* Opciones a la izquierda; tarjeta abajo a la derecha (en celular, debajo de las opciones). */}
+        <aside className="order-last space-y-2 md:col-start-2 md:row-start-1 md:self-end">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vista previa en vivo</p>
+            <span className="text-[11px] text-slate-400">{previewSide === 'back' ? 'Reverso: condiciones' : 'Frente'}</span>
           </div>
-          {draft.reward_kind === 'product' ? (
-            <>
-              <Field label="Buscar producto del catálogo" wide>
-                <div className="relative">
-                  <MdSearch className="pointer-events-none absolute left-3 top-2.5 text-slate-400" />
-                  <input
-                    value={productQ}
-                    onChange={(e) => setProductQ(e.target.value)}
-                    className="input search-input"
-                    placeholder="Nombre, categoría o presentación"
-                    spellCheck={false}
-                    autoComplete="off"
-                    autoCorrect="off"
-                  />
+          <div className="mx-auto w-[19rem] max-w-full">
+            <GitCardVisual card={previewCard} compact side={previewSide} />
+          </div>
+          <p className="text-center text-[11px] text-slate-400 md:[@media(max-height:780px)]:hidden">Toca la tarjeta para voltearla.</p>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600 md:[@media(max-height:780px)]:hidden">
+            El cliente suma <strong>1 avance</strong> por cada compra
+            {Number(draft.min_spend) > 0 ? <> de al menos <strong>{formatCurrency(draft.min_spend)}</strong></> : null}
+            {draft.survey_required ? <> y encuesta respondida</> : null}.
+            {' '}Con <strong>{goal || '—'} avance{goal === 1 ? '' : 's'}</strong> gana <strong>{rewardSummary(draft)}</strong>.
+          </div>
+        </aside>
+
+        {/* Solo las opciones tienen scroll; la tarjeta y los botones quedan fijos. */}
+        <div
+          ref={optionsRef}
+          style={optionsHeight ? { height: optionsHeight } : undefined}
+          className="min-w-0 space-y-3 md:col-start-1 md:row-start-1 md:overflow-y-auto md:overscroll-contain md:pr-2"
+        >
+
+          {step === 1 ? (
+            <Section>
+              <Field label="Nombre de la promoción" wide hint="Sale en grande">
+                <input value={draft.name} onChange={(e) => setField('name', e.target.value)} className="input" placeholder="Ej. Postre de cortesía" maxLength={60} />
+              </Field>
+              <Field label="Descripción breve para el cliente" wide hint="Una frase corta">
+                <textarea value={draft.description} onChange={(e) => setField('description', e.target.value)} className="input min-h-[3rem]" rows={2} placeholder="Completa la tarjeta y recibe un postre." maxLength={140} />
+              </Field>
+              <Field label="Fecha de inicio">
+                <input type="date" value={dateInput(draft.start_at)} onChange={(e) => setField('start_at', e.target.value)} className="input" />
+              </Field>
+              <Field label="Fecha de fin" hint="Opcional">
+                <input type="date" value={dateInput(draft.end_at)} min={dateInput(draft.start_at) || undefined} onChange={(e) => setField('end_at', e.target.value)} className="input" />
+              </Field>
+              <div className="sm:col-span-2">
+                <p className="mb-1 text-sm font-medium text-slate-700">Estado al guardar</p>
+                <Segmented
+                  value={draft.status}
+                  onChange={(v) => setField('status', v)}
+                  options={[
+                    { id: 'draft', title: 'Borrador', hint: 'No la ven los clientes' },
+                    { id: 'scheduled', title: 'Programada', hint: 'Empieza en la fecha de inicio' },
+                    { id: 'active', title: 'Activa', hint: 'Empieza ya' },
+                  ]}
+                />
+              </div>
+              <StepIssues list={issues[1]} />
+            </Section>
+          ) : null}
+
+          {step === 2 ? (
+            <Section>
+              <Field label="Compras para ganar" wide hint="Avances de la tarjeta">
+                <div className="flex flex-wrap items-center gap-2">
+                  {[3, 5, 8, 10].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setField('goal', n)}
+                      className={`h-9 min-w-[2.75rem] rounded-lg border px-3 text-sm font-semibold ${goal === n ? 'border-[var(--ui-accent)] bg-[var(--ui-accent)] text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  <input type="number" min="1" step="1" value={draft.goal} onChange={(e) => setField('goal', e.target.value)} className="input !w-24" aria-label="Otra cantidad de avances" />
                 </div>
               </Field>
-              <div className="sm:col-span-2 max-h-52 overflow-auto rounded-xl border border-slate-100">
-                {searching ? <p className="p-3 text-sm text-slate-500">Buscando…</p> : !products.length ? (
-                  <p className="p-3 text-sm text-slate-500">
-                    {productQ.trim() ? 'Ningún producto coincide con la búsqueda.' : 'No hay productos activos en el catálogo.'}
-                  </p>
-                ) : products.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setDraft((prev) => ({
-                      ...prev,
-                      product_id: p.id,
-                      product_name: p.name,
-                      variant_id: '',
-                      variant_name: '',
-                      reward_title: p.name,
-                    }))}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${draft.product_id === p.id ? 'bg-[var(--ui-accent)] text-white' : 'hover:bg-[var(--ui-sidebar-hover)]'}`}
-                  >
-                    <span>
-                      <span className="font-semibold">{p.name}</span>
-                      {p.category_name ? <span className="ml-2 opacity-70">{p.category_name}</span> : null}
-                    </span>
-                    <span>
-                      {formatCurrency(p.price)}
-                      {p.inventory_controlled ? ` · stock ${p.stock}` : ' · sin inventario controlado'}
-                    </span>
-                  </button>
-                ))}
+              <Field label="Consumo mínimo por compra" hint="0 = cualquiera">
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-2.5 text-sm text-slate-400">S/</span>
+                  <input type="number" min="0" step="0.01" value={draft.min_spend} onChange={(e) => setField('min_spend', e.target.value)} className="input !pl-9" />
+                </div>
+              </Field>
+              <Field label="Vigencia de la tarjeta" hint="0 = sin límite">
+                <DaysInput value={draft.cycle_valid_days} onChange={(v) => setField('cycle_valid_days', v)} />
+              </Field>
+              <Field label="Vigencia del premio" hint="0 = sin límite">
+                <DaysInput value={draft.reward_valid_days} onChange={(v) => setField('reward_valid_days', v)} />
+              </Field>
+              <div className="space-y-2 sm:col-span-2">
+                <Toggle
+                  checked={!!draft.survey_required}
+                  onChange={(v) => setField('survey_required', v)}
+                  title="Exigir encuesta"
+                  hint="El avance solo cuenta si el cliente responde la encuesta."
+                />
+                <Toggle
+                  checked={!!draft.auto_reset}
+                  onChange={(v) => setField('auto_reset', v)}
+                  title="Reiniciar al completar"
+                  hint="Al ganar, la tarjeta vuelve a cero y el cliente puede empezar otra."
+                />
               </div>
-              {draft.product_id ? (
+              <StepIssues list={issues[2]} />
+            </Section>
+          ) : null}
+
+          {step === 3 ? (
+            <Section>
+              <div className="sm:col-span-2 grid gap-2 sm:grid-cols-3">
+                {[
+                  { id: 'product', title: 'Producto gratis', hint: 'Un plato o bebida del catálogo', icon: '🎁' },
+                  { id: 'discount', title: 'Descuento', hint: 'Porcentaje o monto fijo', icon: '🏷️' },
+                  { id: 'other', title: 'Otro beneficio', hint: 'Lo entregas tú (sin cobro automático)', icon: '⭐' },
+                ].map((opt) => {
+                  const on = draft.reward_kind === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setField('reward_kind', opt.id)}
+                      className={`flex items-start gap-2 rounded-xl border-2 px-3 py-2 text-left transition ${on ? 'border-[var(--ui-accent)] bg-slate-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                    >
+                      <span className="text-xl leading-none" aria-hidden>{opt.icon}</span>
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5 font-semibold text-slate-900">
+                          {opt.title}
+                          {on ? <MdCheckCircle className="text-[var(--ui-accent)]" /> : null}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-500">{opt.hint}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {draft.reward_kind === 'product' ? (
                 <>
-                  <p className="sm:col-span-2 text-sm text-slate-600">Seleccionado: <strong>{draft.product_name}</strong></p>
-                  {products.find((p) => p.id === draft.product_id)?.variants?.length ? (
-                    <Field label="Presentación">
-                      <select
-                        value={draft.variant_id}
-                        onChange={(e) => {
-                          const variant = products.find((p) => p.id === draft.product_id)?.variants?.find((v) => v.id === e.target.value);
-                          setDraft((prev) => ({ ...prev, variant_id: e.target.value, variant_name: variant?.name || '' }));
-                        }}
-                        className="input"
-                      >
-                        <option value="">Sin variante</option>
-                        {products.find((p) => p.id === draft.product_id).variants.map((v) => (
-                          <option key={v.id} value={v.id}>{v.name}</option>
-                        ))}
-                      </select>
-                    </Field>
+                  <Field label="Busca el producto" wide>
+                    <div className="relative">
+                      <MdSearch className="pointer-events-none absolute left-3 top-2.5 text-slate-400" />
+                      <input
+                        value={productQ}
+                        onChange={(e) => setProductQ(e.target.value)}
+                        className="input search-input"
+                        placeholder="Nombre, categoría o presentación"
+                        spellCheck={false}
+                        autoComplete="off"
+                        autoCorrect="off"
+                      />
+                    </div>
+                  </Field>
+                  <div className="sm:col-span-2 max-h-40 overflow-auto rounded-xl border border-slate-200">
+                    {searching ? <p className="p-3 text-sm text-slate-500">Buscando…</p> : !products.length ? (
+                      <p className="p-3 text-sm text-slate-500">
+                        {productQ.trim() ? 'Ningún producto coincide con la búsqueda.' : 'No hay productos activos en el catálogo.'}
+                      </p>
+                    ) : products.map((p) => {
+                      const on = draft.product_id === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setDraft((prev) => ({
+                            ...prev,
+                            product_id: p.id,
+                            product_name: p.name,
+                            variant_id: '',
+                            variant_name: '',
+                            reward_title: p.name,
+                          }))}
+                          className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5 text-left text-sm last:border-b-0 ${on ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            {on ? <MdCheckCircle className="shrink-0 text-emerald-600" /> : <span className="h-4 w-4 shrink-0 rounded-full border border-slate-300" />}
+                            <span className="min-w-0 truncate">
+                              <span className="font-semibold text-slate-900">{p.name}</span>
+                              {p.category_name ? <span className="ml-2 text-xs text-slate-500">{p.category_name}</span> : null}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-xs text-slate-500">
+                            {formatCurrency(p.price)}
+                            {p.inventory_controlled ? ` · stock ${p.stock}` : ''}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {draft.product_id ? (
+                    <>
+                      {products.find((p) => p.id === draft.product_id)?.variants?.length ? (
+                        <Field label="Presentación">
+                          <select
+                            value={draft.variant_id}
+                            onChange={(e) => {
+                              const variant = products.find((p) => p.id === draft.product_id)?.variants?.find((v) => v.id === e.target.value);
+                              setDraft((prev) => ({ ...prev, variant_id: e.target.value, variant_name: variant?.name || '' }));
+                            }}
+                            className="input"
+                          >
+                            <option value="">Sin variante</option>
+                            {products.find((p) => p.id === draft.product_id).variants.map((v) => (
+                              <option key={v.id} value={v.id}>{v.name}</option>
+                            ))}
+                          </select>
+                        </Field>
+                      ) : null}
+                      <Field label="Cantidad que recibe el cliente">
+                        <input type="number" min="0.01" step="0.01" value={draft.product_qty} onChange={(e) => setField('product_qty', e.target.value)} className="input" />
+                      </Field>
+                    </>
                   ) : null}
-                  <Field label="Cantidad que recibirá el cliente">
-                    <input type="number" min="0.01" step="0.01" value={draft.product_qty} onChange={(e) => setField('product_qty', e.target.value)} className="input" />
+                </>
+              ) : null}
+              {draft.reward_kind === 'discount' ? (
+                <>
+                  <div className="sm:col-span-2">
+                    <p className="mb-1 text-sm font-medium text-slate-700">Tipo de descuento</p>
+                    <Segmented
+                      value={draft.discount_type}
+                      onChange={(v) => setField('discount_type', v)}
+                      options={[
+                        { id: 'percent', title: 'Porcentaje (%)', hint: 'Ej. 10 % de la cuenta' },
+                        { id: 'fixed', title: 'Monto fijo (S/)', hint: 'Ej. S/ 15 menos' },
+                      ]}
+                    />
+                  </div>
+                  <Field label={draft.discount_type === 'percent' ? 'Porcentaje' : 'Monto en soles'}>
+                    <input type="number" min="0" step="0.01" value={draft.discount_value} onChange={(e) => setField('discount_value', e.target.value)} className="input" />
+                  </Field>
+                  <Field label="Compra mínima para canjear" hint="0 = sin mínimo">
+                    <input type="number" min="0" step="0.01" value={draft.discount_min_spend} onChange={(e) => setField('discount_min_spend', e.target.value)} className="input" />
+                  </Field>
+                  <Field label="Descuento máximo" hint="0 = sin tope">
+                    <input type="number" min="0" step="0.01" value={draft.discount_max} onChange={(e) => setField('discount_max', e.target.value)} className="input" />
+                  </Field>
+                  <Field label="Condiciones de uso" wide hint="Van al reverso">
+                    <textarea value={draft.discount_conditions} onChange={(e) => setField('discount_conditions', e.target.value)} className="input min-h-[3rem]" rows={2} />
                   </Field>
                 </>
+              ) : null}
+              {draft.reward_kind === 'other' ? (
+                <>
+                  <Field label="Nombre del beneficio" wide>
+                    <input value={draft.other_name} onChange={(e) => setField('other_name', e.target.value)} className="input" placeholder="Ej. Lavado de auto gratis" />
+                  </Field>
+                  <Field label="Descripción" wide>
+                    <textarea value={draft.other_description} onChange={(e) => setField('other_description', e.target.value)} className="input min-h-[3rem]" rows={2} />
+                  </Field>
+                  <Field label="Condiciones de uso" wide hint="Van al reverso">
+                    <textarea value={draft.other_conditions} onChange={(e) => setField('other_conditions', e.target.value)} className="input min-h-[3rem]" rows={2} />
+                  </Field>
+                  <Field label="Cómo se entrega o canjea" wide>
+                    <textarea value={draft.other_delivery} onChange={(e) => setField('other_delivery', e.target.value)} className="input min-h-[3rem]" rows={2} />
+                  </Field>
+                </>
+              ) : null}
+              <StepIssues list={issues[3]} />
+            </Section>
+          ) : null}
+
+          {step === 4 ? (
+            <Section>
+              <Field label="Fondo de la tarjeta" wide>
+                <div className="grid grid-cols-3 gap-2 lg:grid-cols-4">
+                  {styles.filter((s) => !RETIRED_CARD_STYLES.has(s.id) && (s.family !== 'classic' || s.id === draft.card_style)).map((s) => {
+                    const on = draft.card_style === s.id;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setDraft((prev) => ({ ...prev, card_style: s.id, card_bg: s.bg, card_text: s.text, card_accent: s.accent }))}
+                        className={`relative rounded-xl p-1 text-left transition ${on ? 'ring-2 ring-[var(--ui-accent)]' : 'ring-1 ring-slate-200 hover:ring-slate-300'}`}
+                      >
+                        <GitCardVisual backgroundOnly compact card={{ card_style: s.id, colors: { bg: s.bg, text: s.text, accent: s.accent } }} />
+                        <span className="mt-1 flex items-center gap-1 px-1 text-[11px] font-semibold text-slate-700">
+                          {on ? <MdCheckCircle className="text-[var(--ui-accent)]" /> : null}
+                          {s.label || s.id}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+              <Field label="Texto informativo" wide hint="Vacío = usa la descripción">
+                <textarea value={draft.info_text} onChange={(e) => setField('info_text', e.target.value)} className="input min-h-[3rem]" rows={2} placeholder="Cada compra cobrada suma un avance." />
+              </Field>
+              <Field label="Detalle de la recompensa" wide hint="Va al reverso">
+                <textarea value={draft.reward_description} onChange={(e) => setField('reward_description', e.target.value)} className="input min-h-[3rem]" rows={2} />
+              </Field>
+            </Section>
+          ) : null}
+
+          {step === 5 ? (
+            <div className="space-y-3">
+              {allIssues.length ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p className="font-semibold">Antes de activar, completa:</p>
+                  <ul className="mt-1 list-disc pl-5">
+                    {allIssues.map((msg) => <li key={msg}>{msg}</li>)}
+                  </ul>
+                </div>
               ) : (
-                <p className="sm:col-span-2 text-sm text-amber-700">Debe elegir un producto existente. No se admite texto libre.</p>
+                <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+                  <MdCheckCircle className="text-lg" /> Todo listo. Puedes guardarla como borrador o activarla.
+                </div>
               )}
-            </>
-          ) : null}
-          {draft.reward_kind === 'discount' ? (
-            <>
-              <Field label="Tipo de descuento">
-                <select value={draft.discount_type} onChange={(e) => setField('discount_type', e.target.value)} className="input">
-                  <option value="percent">Porcentual</option>
-                  <option value="fixed">Importe fijo (S/)</option>
-                </select>
-              </Field>
-              <Field label={draft.discount_type === 'percent' ? 'Porcentaje' : 'Importe en soles'}>
-                <input type="number" min="0" step="0.01" value={draft.discount_value} onChange={(e) => setField('discount_value', e.target.value)} className="input" />
-              </Field>
-              <Field label="Compra mínima para canjear (opcional)">
-                <input type="number" min="0" step="0.01" value={draft.discount_min_spend} onChange={(e) => setField('discount_min_spend', e.target.value)} className="input" />
-              </Field>
-              <Field label="Importe máximo de descuento (opcional)">
-                <input type="number" min="0" step="0.01" value={draft.discount_max} onChange={(e) => setField('discount_max', e.target.value)} className="input" />
-              </Field>
-              <Field label="Condiciones de uso" wide>
-                <textarea value={draft.discount_conditions} onChange={(e) => setField('discount_conditions', e.target.value)} className="input min-h-[4rem]" />
-              </Field>
-            </>
-          ) : null}
-          {draft.reward_kind === 'other' ? (
-            <>
-              <Field label="Nombre del beneficio">
-                <input value={draft.other_name} onChange={(e) => setField('other_name', e.target.value)} className="input" />
-              </Field>
-              <Field label="Descripción" wide>
-                <textarea value={draft.other_description} onChange={(e) => setField('other_description', e.target.value)} className="input min-h-[4rem]" />
-              </Field>
-              <Field label="Condiciones de uso" wide>
-                <textarea value={draft.other_conditions} onChange={(e) => setField('other_conditions', e.target.value)} className="input min-h-[4rem]" />
-              </Field>
-              <Field label="Procedimiento de entrega o canje" wide>
-                <textarea value={draft.other_delivery} onChange={(e) => setField('other_delivery', e.target.value)} className="input min-h-[4rem]" />
-              </Field>
-            </>
-          ) : null}
-        </Section>
-      ) : null}
-
-      {step === 4 ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.9fr)]">
-          <Section>
-            <Field label="Diseño de la tarjeta" wide>
-              <p className="mb-2 text-xs text-slate-500">Elija solo el fondo. El nombre, el texto y la recompensa se colocan con los campos de este formato.</p>
-              <div className="grid max-h-[28rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
-                {styles.filter((s) => !RETIRED_CARD_STYLES.has(s.id) && (s.family !== 'classic' || s.id === draft.card_style)).map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setDraft((prev) => ({ ...prev, card_style: s.id, card_bg: s.bg, card_text: s.text, card_accent: s.accent }))}
-                    className={`rounded-xl p-1 text-left ${draft.card_style === s.id ? 'ring-2 ring-blue-500' : 'ring-1 ring-slate-200'}`}
-                  >
-                    <GitCardVisual backgroundOnly compact card={{ card_style: s.id, colors: { bg: s.bg, text: s.text, accent: s.accent } }} />
-                    <span className="mt-1 block px-1 text-[11px] font-semibold text-slate-700">{s.label || s.id}</span>
-                  </button>
-                ))}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ReviewCard label="Nombre" value={draft.name || '—'} onEdit={() => setStep(1)} />
+                <ReviewCard label="Vigencia" value={`${dateInput(draft.start_at) ? formatDate(dateInput(draft.start_at)) : 'Desde hoy'} → ${dateInput(draft.end_at) ? formatDate(dateInput(draft.end_at)) : 'sin fin'}`} onEdit={() => setStep(1)} />
+                <ReviewCard label="Meta" value={`${goal || '—'} avance${goal === 1 ? '' : 's'} · mínimo ${formatCurrency(draft.min_spend)}`} onEdit={() => setStep(2)} />
+                <ReviewCard label="Encuesta" value={draft.survey_required ? 'Obligatoria' : 'No exigida'} onEdit={() => setStep(2)} />
+                <ReviewCard label="Recompensa" value={rewardSummary(draft)} onEdit={() => setStep(3)} />
+                <ReviewCard label="Diseño" value={styles.find((s) => s.id === draft.card_style)?.label || draft.card_style} onEdit={() => setStep(4)} />
               </div>
-            </Field>
-            <Field label="Nombre visible">
-              <input value={draft.name} onChange={(e) => setField('name', e.target.value)} className="input" />
-            </Field>
-            <Field label="Texto informativo" wide>
-              <textarea value={draft.info_text} onChange={(e) => setField('info_text', e.target.value)} className="input min-h-[4rem]" placeholder="Cada compra cobrada suma un avance." />
-            </Field>
-            <Field label="Descripción de la recompensa" wide>
-              <textarea value={draft.reward_description} onChange={(e) => setField('reward_description', e.target.value)} className="input min-h-[4rem]" />
-            </Field>
-          </Section>
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Vista previa para el cliente</p>
-            <GitCardVisual card={previewCard} compact />
-          </div>
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
-      {step === 5 ? (
-        <Section>
-          <ReviewRow label="Nombre" value={draft.name || '—'} />
-          <ReviewRow label="Vigencia" value={`${dateInput(draft.start_at) || 'sin inicio'} → ${dateInput(draft.end_at) || 'sin fin'}`} />
-          <ReviewRow label="Consumo mínimo" value={formatCurrency(draft.min_spend)} />
-          <ReviewRow label="Meta de avances" value={String(draft.goal)} />
-          <ReviewRow label="Encuesta" value={draft.survey_required ? 'Sí' : 'No'} />
-          <ReviewRow
-            label="Recompensa"
-            value={
-              draft.reward_kind === 'product'
-                ? `Producto · ${draft.product_name || 'sin seleccionar'}`
-                : draft.reward_kind === 'discount'
-                  ? `Descuento · ${draft.discount_type === 'percent' ? `${draft.discount_value} %` : formatCurrency(draft.discount_value)}`
-                  : `Otro · ${draft.other_name || '—'}`
-            }
-          />
-          <ReviewRow label="Estilo" value={styles.find((s) => s.id === draft.card_style)?.label || draft.card_style} />
-          <div className="sm:col-span-2 max-w-md">
-            <GitCardVisual card={previewCard} compact />
-          </div>
-        </Section>
-      ) : null}
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white/95 px-1 py-3 backdrop-blur">
         <button type="button" onClick={onCancel} className="btn-secondary px-4 py-2 text-sm">
           Cancelar
         </button>
@@ -711,22 +822,178 @@ function Wizard({
           <button type="button" disabled={step <= 1} onClick={() => setStep(step - 1)} className="btn-secondary inline-flex items-center gap-1 px-4 py-2 text-sm disabled:opacity-40">
             <MdChevronLeft /> Atrás
           </button>
+          <button type="button" disabled={!canEdit || saving} onClick={onSaveDraft} className="btn-secondary px-4 py-2 text-sm">
+            {saving ? 'Guardando…' : 'Guardar borrador'}
+          </button>
           {step < 5 ? (
             <button type="button" onClick={() => setStep(step + 1)} className="btn-primary inline-flex items-center gap-1 px-4 py-2 text-sm">
               Continuar <MdChevronRight />
             </button>
-          ) : null}
-          <button type="button" disabled={!canEdit || saving} onClick={onSaveDraft} className="btn-secondary px-4 py-2 text-sm">
-            Guardar borrador
-          </button>
-          {step === 5 ? (
-            <button type="button" disabled={!canEdit || saving} onClick={onActivate} className="btn-primary px-4 py-2 text-sm">
-              Activar
+          ) : (
+            <button
+              type="button"
+              disabled={!canEdit || saving || allIssues.length > 0}
+              title={allIssues.length ? 'Completa los avisos de arriba para activar' : undefined}
+              onClick={onActivate}
+              className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+            >
+              Activar promoción
             </button>
-          ) : null}
+          )}
         </div>
       </div>
-      <style>{`.input{width:100%;height:2.5rem;border-radius:0.75rem;border:1px solid #e2e8f0;padding:0 0.75rem;font-size:0.875rem;background:#fff}textarea.input{height:auto;padding:0.75rem}select.input{background:#fff}.input.search-input{padding-left:2.25rem}`}</style>
+      <style>{`.input{width:100%;height:2.25rem;border-radius:0.75rem;border:1px solid #e2e8f0;padding:0 0.75rem;font-size:0.875rem;background:#fff}textarea.input{height:auto;padding:0.5rem 0.75rem}select.input{background:#fff}.input.search-input{padding-left:2.25rem}.input:focus{outline:none;border-color:var(--ui-accent);box-shadow:0 0 0 3px rgba(100,116,139,.15)}`}</style>
+    </div>
+  );
+}
+
+/** Ancestro más cercano con scroll vertical (el área principal de contenido). */
+function scrollParentOf(el) {
+  let node = el?.parentElement;
+  while (node && node !== document.body) {
+    const { overflowY } = getComputedStyle(node);
+    if (/(auto|scroll)/.test(overflowY)) return node;
+    node = node.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+}
+
+/**
+ * Alto para la columna de opciones: llena el espacio libre para que la página no tenga scroll.
+ * Solo en pantallas md o más anchas; en celular la página se desplaza normal.
+ */
+function useFitOptionsHeight(ref, step) {
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    let frame = 0;
+    const fit = () => {
+      if (window.innerWidth < 768) {
+        setHeight(0);
+        return;
+      }
+      const parent = scrollParentOf(el);
+      const top = el.getBoundingClientRect().top;
+      const bottom = parent === document.scrollingElement || parent === document.documentElement
+        ? window.innerHeight
+        : parent.getBoundingClientRect().bottom;
+      let next = Math.max(160, Math.floor(bottom - top - 96));
+      // Se prueba el alto y se descuenta lo que aún sobre en la página (barras, paddings).
+      for (let i = 0; i < 3; i += 1) {
+        el.style.height = `${next}px`;
+        const doc = document.documentElement;
+        const extra = Math.max(parent.scrollHeight - parent.clientHeight, doc.scrollHeight - doc.clientHeight);
+        if (extra <= 0) break;
+        next = Math.max(160, next - extra - 1);
+      }
+      setHeight(next);
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
+    };
+    fit();
+    schedule(); // segunda medición cuando el paso ya terminó de dibujarse
+    window.addEventListener('resize', schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', schedule);
+    };
+  }, [ref, step]);
+  return height;
+}
+
+function Stepper({ step, setStep, issues }) {
+  return (
+    <ol className="flex items-center gap-1 overflow-x-auto pb-1">
+      {STEPS.map((s, i) => {
+        const current = s.id === step;
+        const done = s.id < step;
+        const warn = done && issues[s.id]?.length > 0;
+        return (
+          <li key={s.id} className="flex min-w-0 flex-1 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setStep(s.id)}
+              className={`flex min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition ${current ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+              aria-current={current ? 'step' : undefined}
+            >
+              <span
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                  warn ? 'bg-amber-100 text-amber-800' : current ? 'bg-[var(--ui-accent)] text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {warn ? '!' : done ? <MdCheck /> : s.id}
+              </span>
+              <span className={`whitespace-nowrap text-xs font-semibold ${current ? 'text-slate-900' : 'hidden text-slate-500 lg:inline'}`}>{s.title}</span>
+            </button>
+            {i < STEPS.length - 1 ? <span className={`h-0.5 min-w-[0.75rem] flex-1 rounded-full ${done ? 'bg-emerald-300' : 'bg-slate-200'}`} /> : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function Segmented({ value, onChange, options }) {
+  return (
+    <div className={`grid gap-2 ${options.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+      {options.map((opt) => {
+        const on = value === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onChange(opt.id)}
+            className={`rounded-xl border-2 px-3 py-1.5 text-left transition ${on ? 'border-[var(--ui-accent)] bg-slate-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+          >
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+              {on ? <MdCheckCircle className="text-[var(--ui-accent)]" /> : null}
+              {opt.title}
+            </span>
+            {opt.hint ? <span className="mt-0.5 block text-xs text-slate-500">{opt.hint}</span> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Toggle({ checked, onChange, title, hint }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
+    >
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-slate-900">{title}</span>
+        {hint ? <span className="block text-xs text-slate-500">{hint}</span> : null}
+      </span>
+      <span className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition ${checked ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${checked ? 'left-[1.375rem]' : 'left-0.5'}`} />
+      </span>
+    </button>
+  );
+}
+
+function DaysInput({ value, onChange }) {
+  return (
+    <div className="relative">
+      <input type="number" min="0" step="1" value={value} onChange={(e) => onChange(e.target.value)} className="input !pr-14" />
+      <span className="pointer-events-none absolute right-3 top-2.5 text-sm text-slate-400">días</span>
+    </div>
+  );
+}
+
+function StepIssues({ list }) {
+  if (!list?.length) return null;
+  return (
+    <div className="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      {list.map((msg) => <p key={msg}>• {msg}</p>)}
     </div>
   );
 }
@@ -771,31 +1038,32 @@ function DetailView({ promo, canEdit, onBack, onEdit, onActivate, onPause, onEnd
 }
 
 function Section({ children }) {
-  return <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2">{children}</section>;
+  return <section className="grid gap-x-4 gap-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2">{children}</section>;
 }
 
-function Field({ label, children, wide }) {
+function Field({ label, children, wide, hint }) {
   return (
     <label className={`block text-sm text-slate-700 ${wide ? 'sm:col-span-2' : ''}`}>
-      <span className="mb-1 block font-medium">{label}</span>
+      <span className="mb-1 flex items-baseline justify-between gap-2">
+        <span className="font-medium">{label}</span>
+        {hint ? <span className="truncate text-[11px] text-slate-400" title={hint}>{hint}</span> : null}
+      </span>
       {children}
     </label>
   );
 }
 
-function ReviewRow({ label, value }) {
-  return (
-    <div>
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="font-semibold text-slate-900">{value}</p>
-    </div>
-  );
-}
-
-function ReviewCard({ label, value }) {
+function ReviewCard({ label, value, onEdit }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+        {onEdit ? (
+          <button type="button" onClick={onEdit} className="text-xs font-semibold text-slate-500 hover:text-slate-900">
+            Cambiar
+          </button>
+        ) : null}
+      </div>
       <p className="mt-1 font-semibold text-slate-900">{value}</p>
     </div>
   );

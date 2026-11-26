@@ -2,6 +2,19 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.5.7 — 2026-11-26
+
+- GIT Cards → Nueva promoción, rediseño del asistente:
+  - Las opciones van a la izquierda y la tarjeta abajo a la derecha, con tamaño fijo. La tarjeta muestra los cambios mientras se escribe.
+  - En Reglas y Recompensa la tarjeta se voltea sola para mostrar las condiciones.
+  - Solo la columna de opciones tiene scroll; la página, la tarjeta y los botones quedan fijos.
+  - Los pasos se ven con número y nombre y avisan lo que falta.
+  - Formularios más compactos: atajos 3/5/8/10 para la meta, interruptores para encuesta y reinicio, ayuda corta junto a cada etiqueta.
+  - La Revisión permite volver a cada paso con «Cambiar». «Activar promoción» se bloquea si falta algo.
+  - La fecha de inicio por defecto es la de Lima. Antes, de noche salía el día siguiente.
+- `.claude/launch.json` suma la configuración `server` para la vista previa local.
+- Pendiente: probado en local a 955×622, 1280×720 y 1920×1000. Falta probarlo en el celular.
+
 ## 1.2.5.6 — 2026-11-23
 
 - Una zona de mesas con id interno `hotel` (creada con el nombre "HOTEL") vuelve a mostrar su nombre y sus mesas en Mesas y Caja. Antes se confundía con la vista de habitaciones de Hotelería, que ahora usa el id `@hotel-rooms`.
