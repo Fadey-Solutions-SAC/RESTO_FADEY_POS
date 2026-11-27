@@ -52,7 +52,7 @@
     "asistencia": "QR attendance"
   },
   "cajaSub": {
-    "cobrar": "Checkout",
+    "cobrar": "Operate register",
     "mapa_mesas": "Table map",
     "apertura_cierre": "Open & close",
     "cierres_caja": "Register closings",

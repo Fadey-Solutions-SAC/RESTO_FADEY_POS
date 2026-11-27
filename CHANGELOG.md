@@ -2,6 +2,11 @@
 
 Entradas nuevas arriba. El procedimiento para escribirlas está en `AGENTS.md`. El detalle técnico vive en `PROJECT_CONTEXT.md`. Historial anterior a esta lista: `git log`.
 
+## 1.2.5.8 — 2026-11-27
+
+- Menú lateral → Caja: nuevo primer submódulo «Operar caja» (en inglés «Operate register»). Lleva a la vista principal, con el mapa de mesas y el cobro (`/admin/caja?view=cobrar`), y queda marcado en esa vista o si falta `view`. Lo ve todo el que tiene acceso a Caja, también el cajero. Los demás submódulos no cambian.
+- Pendiente: no se probó en el navegador porque no se pudo abrir el servidor local.
+
 ## 1.2.5.7 — 2026-11-26
 
 - GIT Cards → Nueva promoción, rediseño del asistente:

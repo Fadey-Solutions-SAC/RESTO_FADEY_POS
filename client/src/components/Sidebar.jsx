@@ -58,7 +58,7 @@ if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
 }
 
 const CAJA_SUB_IDS = [
-  'apertura_cierre', 'cierres_caja', 'ingresos', 'egresos',
+  'cobrar', 'apertura_cierre', 'cierres_caja', 'ingresos', 'egresos',
   'impresora',
 ];
 const MI_RESTAURANT_SUB_IDS = [
@@ -339,6 +339,8 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
   const subCaja = user?.sub_permissions?.caja || {};
   const { moduleEnabled: cajaPrinterEnabled } = usePrintingModule('caja');
   const cajaSubOptions = CAJA_SUB_IDS.filter((id) => {
+    /** «Operar caja» (vista principal) lo ve siempre quien tiene acceso a Caja. */
+    if (id === 'cobrar') return true;
     if (id === 'impresora' && !cajaPrinterEnabled) return false;
     if (subCaja[id] === false) return false;
     if (String(user?.role || '').toLowerCase() === 'cajero' && (id === 'apertura_cierre' || id === 'cierres_caja')) {
@@ -565,7 +567,8 @@ export default function Sidebar({ collapsed, isMobile = false, mobileOpen = fals
                     key={option.id}
                     to={`/admin/caja?view=${option.id}`}
                     className={({ isActive }) => {
-                      const selected = isActive && new URLSearchParams(location.search).get('view') === option.id;
+                      const currentView = new URLSearchParams(location.search).get('view') || 'cobrar';
+                      const selected = isActive && currentView === option.id;
                       return `rf-nav-sublink ${selected ? 'rf-nav-sublink--active' : ''}`;
                     }}
                     onClick={() => { if (isMobile) onClose(); }}
